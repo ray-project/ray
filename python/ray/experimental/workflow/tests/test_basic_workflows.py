@@ -1,7 +1,8 @@
 import time
 
-import pytest
+from ray.tests.conftest import *  # noqa
 
+import pytest
 import ray
 from ray.experimental import workflow
 from ray.experimental.workflow import workflow_access
@@ -78,9 +79,11 @@ def blocking():
     return 314
 
 
-def test_basic_workflows():
-    ray.init(namespace="workflow")
-
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_basic_workflows(ray_start_regular_shared):
     output = workflow.run(simple_sequential.step())
     assert ray.get(output) == "[source1][append1][append2]"
 
@@ -96,19 +99,17 @@ def test_basic_workflows():
     output = workflow.run(fork_join.step())
     assert ray.get(output) == "join([source1][append1], [source1][append2])"
 
-    ray.shutdown()
 
-
-def test_async_execution():
-    ray.init(namespace="workflow")
-
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_async_execution(ray_start_regular_shared):
     start = time.time()
     output = workflow.run(blocking.step())
     duration = time.time() - start
     assert duration < 5  # workflow.run is not blocked
     assert ray.get(output) == 314
-
-    ray.shutdown()
 
 
 @ray.remote
@@ -124,8 +125,11 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef):
     return output
 
 
-def test_workflow_output_resolving():
-    ray.init(namespace="workflow")
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_workflow_output_resolving(ray_start_regular_shared):
     # deep nested workflow
     nested_ref = deep_nested.remote(30)
     original_func = workflow_access._resolve_workflow_output
@@ -139,11 +143,13 @@ def test_workflow_output_resolving():
         # restore the function
         workflow_access._resolve_workflow_output = original_func
     assert ray.get(ref) == 42
-    ray.shutdown()
 
 
-def test_run_or_resume_during_running():
-    ray.init(namespace="workflow")
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_run_or_resume_during_running(ray_start_regular_shared):
     output = workflow.run(
         simple_sequential.step(), workflow_id="running_workflow")
 
@@ -153,4 +159,3 @@ def test_run_or_resume_during_running():
         workflow.resume(workflow_id="running_workflow")
 
     assert ray.get(output) == "[source1][append1][append2]"
-    ray.shutdown()
