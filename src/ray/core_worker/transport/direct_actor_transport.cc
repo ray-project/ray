@@ -138,7 +138,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   if (num_restarts < queue->second.num_restarts) {
     // This message is about an old version of the actor and the actor has
     // already restarted since then. Skip the connection.
-    RAY_LOG(INFO) << "Skip actor creation that has already been restarted, actor_id="
+    RAY_LOG(INFO) << "Skip actor connection that has already been restarted, actor_id="
                   << actor_id;
     return;
   }
@@ -191,7 +191,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
   if (num_restarts <= queue->second.num_restarts && !dead) {
     // This message is about an old version of the actor that has already been
     // restarted successfully. Skip the message handling.
-    RAY_LOG(INFO) << "Skip actor creation that has already been restarted, actor_id="
+    RAY_LOG(INFO) << "Skip actor disconnection that has already been restarted, actor_id="
                   << actor_id;
     return;
   }

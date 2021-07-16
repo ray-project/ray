@@ -416,8 +416,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
         pool_(pool),
         is_asyncio_(is_asyncio) {
     if (is_asyncio_) {
-      RAY_LOG(DEBUG) << "Setting actor as async with max_concurrency=" << max_concurrency
-                     << ", creating new fiber thread.";
+      RAY_LOG(INFO) << "Setting actor as async with max_concurrency=" << max_concurrency
+                    << ", creating new fiber thread.";
       fiber_state_ = std::make_unique<FiberState>(max_concurrency);
     }
   }
