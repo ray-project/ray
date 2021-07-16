@@ -9,6 +9,7 @@ import torch
 from ray.exceptions import RayActorError
 from ray.util.placement_group import get_current_placement_group, \
     remove_placement_group
+from ray.util.sgd.torch.constants import SGD_PLACEMENT_GROUP_TIMEOUT_S
 from ray.util.sgd.torch.distributed_torch_runner import \
     LocalDistributedRunner, DistributedTorchRunner
 from ray.util.sgd.torch.torch_runner import TorchRunner
@@ -160,8 +161,18 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             bundles = [bundle] * num_workers
             pg = ray.util.placement_group(bundles, strategy="SPREAD")
             logger.debug("Waiting for placement group to start.")
-            ray.get(pg.ready(), timeout=self._timeout_s)
-            logger.debug("Placement group has started.")
+            ready, _ = ray.wait(
+                [pg.ready()], timeout=SGD_PLACEMENT_GROUP_TIMEOUT_S)
+            if ready:
+                logger.debug("Placement group has started.")
+            else:
+                raise TimeoutError(
+                    "Placement group creation timed out. Make sure "
+                    "your cluster either has enough resources or use "
+                    "an autoscaling cluster. Current resources "
+                    "available: {}, resources requested by the "
+                    "placement group: {}".format(ray.available_resources(),
+                                                 pg.bundle_specs))
             self._worker_placement_group = pg
 
     def _init_dist_workers(self, num_workers):

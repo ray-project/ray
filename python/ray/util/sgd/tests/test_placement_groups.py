@@ -1,3 +1,5 @@
+import os
+
 import pytest
 import ray
 import torch.nn as nn
@@ -190,12 +192,9 @@ def test_resize(ray_8_node_2_cpu):
 
 def test_timeout(ray_4_node_1_cpu):
     """Tests that an error is thrown when placement group setup times out."""
-    with pytest.raises(ray.exceptions.GetTimeoutError):
+    with pytest.raises(TimeoutError):
         trainer = TorchTrainer(
-            training_operator_cls=Operator,
-            num_workers=7,
-            use_gpu=False,
-            timeout_s=10)
+            training_operator_cls=Operator, num_workers=7, use_gpu=False)
         trainer.shutdown()
 
 
