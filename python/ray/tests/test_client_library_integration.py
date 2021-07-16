@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from ray.rllib.examples import rock_paper_scissors_multiagent
+from ray.rllib.examples import random_parametric_agent
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray._private.client_mode_hook import enable_client_mode,\
     client_mode_should_convert
@@ -19,7 +19,7 @@ def test_rllib_integration(ray_start_regular_shared):
             # Confirming mode hook is enabled.
             assert client_mode_should_convert()
 
-            rock_paper_scissors_multiagent.main()
+            random_parametric_agent.main()
 
 
 @pytest.mark.asyncio
