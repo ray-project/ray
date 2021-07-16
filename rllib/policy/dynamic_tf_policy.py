@@ -215,7 +215,7 @@ class DynamicTFPolicy(TFPolicy):
         # Setup standard placeholders.
         if existing_inputs is not None:
             timestep = existing_inputs["timestep"]
-            explore = existing_inputs["is_exploring"]
+            explore = None  #existing_inputs["is_exploring"]
             self._input_dict, self._dummy_batch = \
                 self._get_input_dict_and_dummy_batch(
                     self.view_requirements, existing_inputs)
@@ -242,7 +242,7 @@ class DynamicTFPolicy(TFPolicy):
         # Placeholder for `is_training` flag.
         self._input_dict["is_training"] = self._get_is_training_placeholder()
 
-        #TEST:
+        sampled_action = sampled_action_logp = dist_inputs = self._state_out = None
         if not existing_inputs:
             # Create the Exploration object to use for this Policy.
             self.exploration = self._create_exploration()
@@ -349,31 +349,27 @@ class DynamicTFPolicy(TFPolicy):
             explore=explore,
             timestep=timestep)
 
+        # Phase 2 init.
+        if before_loss_init is not None:
+            before_loss_init(self, obs_space, action_space, config)
+
         # Loss initialization and model/postprocessing test calls.
         if not existing_inputs:
-            # Phase 2 init.
-            if before_loss_init is not None:
-                before_loss_init(self, obs_space, action_space, config)
-
             self._initialize_loss_from_dummy_batch(
                 auto_remove_unneeded_view_reqs=True)
 
-            # Create n x m multi-GPU towers, if applicable.
-            # n=num_multi_gpu_tower_stacks
-            # m=num_gpus
-            self.multi_gpu_tower_stacks = [
-                TFMultiGPUTowerStack(
-                    policy=self,
-                    #optimizer=self._optimizer,
-                    #devices=self.devices,
-                    max_per_device_batch_size=999999,
-                )
-                for i in range(self.config.get("num_multi_gpu_tower_stacks", 1))
-            ]
+            # Create MultiGPUTowerStacks, if we have at least one actual
+            # GPU or >1 CPUs (fake GPUs).
+            if len(self.devices) > 1 or any("gpu" in d for d in self.devices):
+                with tf1.variable_scope("", reuse=tf1.AUTO_REUSE):
+                    self.multi_gpu_tower_stacks = [
+                        TFMultiGPUTowerStack(policy=self)
+                        for i in range(self.config.get("num_multi_gpu_tower_stacks", 1))
+                    ]
 
     @override(TFPolicy)
     @DeveloperAPI
-    def _copy(self,
+    def copy(self,
              existing_inputs: List[Tuple[str, "tf1.placeholder"]]) -> TFPolicy:
         """Creates a copy of self using existing input placeholders."""
 
@@ -400,6 +396,7 @@ class DynamicTFPolicy(TFPolicy):
             [(k, existing_inputs[i])
              for i, k in enumerate(self._loss_input_dict_no_rnn.keys())] +
             rnn_inputs)
+
         instance = self.__class__(
             self.observation_space,
             self.action_space,
@@ -434,20 +431,28 @@ class DynamicTFPolicy(TFPolicy):
 
     @override(Policy)
     @DeveloperAPI
-    def load_batch_into_buffer(self,
-                               batch: SampleBatch,
-                               data_loader_buffer: int = 0) -> int:
+    def load_batch_into_buffer(
+            self,
+            batch: SampleBatch,
+            buffer_index: int = 0,
+    ) -> int:
+        # Shortcut for 1 CPU only: Store batch in
+        # `self._loaded_single_cpu_batch`.
+        if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
+            assert buffer_index == 0
+            self._loaded_single_cpu_batch = batch
+            return len(batch)
 
-        tuples = self._get_loss_inputs_dict(batch, shuffle=False)
+        input_dict = self._get_loss_inputs_dict(batch, shuffle=False)
         data_keys = list(self._loss_input_dict_no_rnn.values())
         if self._state_inputs:
             state_keys = self._state_inputs + [self._seq_lens]
         else:
             state_keys = []
-        inputs = [tuples[k] for k in data_keys]
-        state_inputs = [tuples[k] for k in state_keys]
+        inputs = [input_dict[k] for k in data_keys]
+        state_inputs = [input_dict[k] for k in state_keys]
 
-        return self.data_loader_buffers[data_loader_buffer].load_data(
+        return self.multi_gpu_tower_stacks[buffer_index].load_data(
             sess=self.get_session(),
             inputs=inputs,
             state_inputs=state_inputs,
@@ -455,23 +460,21 @@ class DynamicTFPolicy(TFPolicy):
 
     @override(Policy)
     @DeveloperAPI
-    def learn_on_loaded_buffer(self, offset = 0, data_loader_buffer: int = 0):
-        return self.data_loader_buffers[data_loader_buffer].load_data(
+    def learn_on_loaded_batch(self, offset = 0, buffer_index: int = 0):
+        # Shortcut for 1 CPU only: Batch should already be stored in
+        # `self._loaded_single_cpu_batch`.
+        if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
+            assert buffer_index == 0
+            if self._loaded_single_cpu_batch is None:
+                raise ValueError(
+                    "Must call Policy.load_batch_into_buffer() before "
+                    "Policy.learn_on_loaded_batch()!")
+            ret = self.learn_on_batch(self._loaded_single_cpu_batch)
+            self._loaded_single_cpu_batch = None
+            return ret
+
+        return self.multi_gpu_tower_stacks[buffer_index].optimize(
             self.get_session(), offset)
-        #feed_dict = {
-        #   self._batch_index: offset,
-        #   self._per_device_batch_size: self._loaded_per_device_batch_size,
-        #   self._max_seq_len: self._loaded_max_seq_len,
-        #}
-        #for tower in self.multi_gpu_towers:
-        #    feed_dict.update(tower.loss_graph.extra_compute_grad_feed_dict())
-
-        #fetches = {"train": self._apply_op}
-        #for tower_num, tower in enumerate(self.multi_gpu_towers):
-        #    tower_fetch = tower.loss_graph._get_grad_and_stats_fetches()
-        #    fetches["tower_{}".format(tower_num)] = tower_fetch
-
-        #return self.get_session().run(fetches, feed_dict=feed_dict)
 
     def _get_input_dict_and_dummy_batch(self, view_requirements,
                                         existing_inputs):
@@ -747,20 +750,7 @@ class TFMultiGPUTowerStack:
         """Initializes a TFMultiGPUTowerStack instance.
 
         Args:
-            optimizer: Delegate TensorFlow optimizer object.
-            devices: List of the names of TensorFlow devices to parallelize over.
-            input_placeholders: List of input_placeholders for the loss function.
-                Tensors of these shapes will be passed to build_graph() in order
-                to define the per-device loss ops.
-            rnn_inputs: Extra input placeholders for RNN inputs. These will have
-                shape [BATCH_SIZE // MAX_SEQ_LEN, ...].
-            max_per_device_batch_size: Number of tuples to optimize over at a time
-                per device. In each call to `optimize()`,
-                `len(devices) * per_device_batch_size` tuples of data will be
-                processed. If this is larger than the total data size, it will be
-                clipped.
-            build_graph: Function that takes the specified inputs and returns a
-                TF Policy instance.
+            policy: The policy object that this tower stack belongs to.
         """
         # Obsoleted usage, use only `policy` arg from here on.
         if policy is None:
@@ -769,24 +759,28 @@ class TFMultiGPUTowerStack:
                 new="TFMultiGPUTowerStack(policy=...)",
                 error=False,
             )
+            self.policy = None
             self.optimizer = optimizer
             self.devices = devices
             self.max_per_device_batch_size = max_per_device_batch_size
-            self.loss_inputs = input_placeholders + rnn_inputs
             self.build_graph = build_graph
         else:
             self.policy = policy
             self.optimizer = self.policy._optimizer
             self.devices = self.policy.devices
             self.max_per_device_batch_size = 99999
-            self.loss_inputs = [
+            input_placeholders = [
                 v for v in self.policy._loss_input_dict_no_rnn.values()
-            ] + self.policy._state_inputs + [self.policy._seq_lens]
-            self.build_graph = self.policy._copy
+            ]
+            rnn_inputs = \
+                self.policy._state_inputs + \
+                ([self.policy._seq_lens] if self.policy._seq_lens else [])
+            grad_norm_clipping = self.policy.config.get("grad_clip")
+            self.build_graph = self.policy.copy
 
-        # First initialize the shared loss network.
-        with tf1.name_scope(TOWER_SCOPE_NAME):
-            self._shared_loss = build_graph(self.loss_inputs)
+        assert len(self.devices) > 0 or all("gpu" in d for d in self.devices)
+        self.loss_inputs = input_placeholders + rnn_inputs
+
         shared_ops = tf1.get_collection(
             tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
 
@@ -805,12 +799,13 @@ class TFMultiGPUTowerStack:
         # Split on the CPU in case the data doesn't fit in GPU memory.
         with tf.device("/cpu:0"):
             data_splits = zip(
-                *[tf.split(ph, len(devices)) for ph in self.loss_inputs])
+                *[tf.split(ph, len(self.devices)) for ph in self.loss_inputs])
 
         self._towers = []
-        for device, device_placeholders in zip(self.devices, data_splits):
+        for tower_i, (device, device_placeholders) in enumerate(
+                zip(self.devices, data_splits)):
             self._towers.append(
-                self._setup_device(device, device_placeholders,
+                self._setup_device(tower_i, device, device_placeholders,
                                    len(input_placeholders)))
 
         avg = average_gradients([t.grads for t in self._towers])
@@ -855,7 +850,7 @@ class TFMultiGPUTowerStack:
         Returns:
             The number of tuples loaded per device.
         """
-
+        #TODO: what if we only have CPUs?
         if log_once("load_data"):
             logger.info(
                 "Training on concatenated sample batches:\n\n{}\n".format(
@@ -979,16 +974,14 @@ class TFMultiGPUTowerStack:
 
         return sess.run(fetches, feed_dict=feed_dict)
 
-    def get_common_loss(self):
-        return self._shared_loss
-
     def get_device_losses(self):
         return [t.loss_graph for t in self._towers]
 
-    def _setup_device(self, device, device_input_placeholders, num_data_in):
+    def _setup_device(self, tower_i, device,
+                      device_input_placeholders, num_data_in):
         assert num_data_in <= len(device_input_placeholders)
         with tf.device(device):
-            with tf1.name_scope(TOWER_SCOPE_NAME):
+            with tf1.name_scope(TOWER_SCOPE_NAME + f"_{tower_i}"):
                 device_input_batches = []
                 device_input_slices = []
                 for i, ph in enumerate(device_input_placeholders):

@@ -520,9 +520,8 @@ class Policy(metaclass=ABCMeta):
         return []
 
     @DeveloperAPI
-    def load_batch_into_buffer(self,
-                               batch: SampleBatch,
-                               data_loader_buffer: int = 0) -> int:
+    def load_batch_into_buffer(self, batch: SampleBatch,
+                               buffer_index: int = 0) -> int:
         """Bulk-loads the given SampleBatch into the devices' memories.
 
         The data is split equally across all the devices. If the data is not
@@ -533,8 +532,8 @@ class Policy(metaclass=ABCMeta):
 
         Args:
             batch (SampleBatch): The SampleBatch to load.
-            data_loader_buffer (int): The index of the data loader buffer to
-                use on the devices.
+            buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
+                to use on the devices.
 
         Returns:
             int: The number of tuples loaded per device.
@@ -542,7 +541,7 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def learn_on_loaded_buffer(self, offset = 0, data_loader_buffer: int = 0):
+    def learn_on_loaded_batch(self, offset=0, buffer_index: int = 0):
         """Runs a single step of SGD on already loaded data in a buffer.
 
         Runs a SGD step over a slice of the preloaded batch with size given by
@@ -559,6 +558,8 @@ class Policy(metaclass=ABCMeta):
                 Used for pre-loading a train-batch once to a device, then
                 iterating over (subsampling through) this batch n times doing
                 minibatch SGD.
+            buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
+                to take the already pre-loaded data from.
 
         Returns:
             The outputs of extra_ops evaluated over the batch.

@@ -14,7 +14,7 @@ tf1, tf, tfv = try_import_tf()
 class TestIMPALA(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)#TODO
+        ray.init(local_mode=True)  #TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -80,27 +80,20 @@ class TestIMPALA(unittest.TestCase):
         """Test whether IMPALATrainer can learn CartPole w/ faked multi-GPU."""
         config = copy.deepcopy(impala.DEFAULT_CONFIG)
         # Fake GPU setup.
-        config["num_gpus"] = 2
         config["_fake_gpus"] = True
-        # Mimic tuned_example for PPO CartPole.
-        config["num_workers"] = 2
-        config["observation_filter"] = "MeanStdFilter"
-        config["model"]["fcnet_hiddens"] = [32]
-        config["model"]["fcnet_activation"] = "linear"
-        config["model"]["vf_share_layers"] = True
+        config["num_gpus"] = 2
 
         # Test w/ LSTMs.
         config["model"]["use_lstm"] = True
 
-        # TODO: (sven) torch.
-        for _ in framework_iterator(config, frameworks="tf"):
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = impala.ImpalaTrainer(config=config, env="CartPole-v0")
             num_iterations = 200
             learnt = False
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
-                if results["episode_reward_mean"] > 65.0:
+                if results["episode_reward_mean"] > 55.0:
                     learnt = True
                     break
             assert learnt, \

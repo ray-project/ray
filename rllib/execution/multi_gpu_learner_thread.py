@@ -24,18 +24,19 @@ class MultiGPULearnerThread(LearnerThread):
     This class is used for async sampling algorithms.
     """
 
-    def __init__(self,
-                 local_worker: RolloutWorker,
-                 num_gpus: int = 1,
-                 lr=None,  # deprecated 
-                 train_batch_size: int = 500,
-                 num_multi_gpu_tower_stacks: int = 1,
-                 minibatch_buffer_size: int = 1,
-                 num_sgd_iter: int = 1,
-                 learner_queue_size: int = 16,
-                 learner_queue_timeout: int = 300,
-                 num_data_load_threads: int = 16,
-                 _fake_gpus: bool = False):
+    def __init__(
+            self,
+            local_worker: RolloutWorker,
+            num_gpus: int = 1,
+            lr=None,  # deprecated 
+            train_batch_size: int = 500,
+            num_multi_gpu_tower_stacks: int = 1,
+            minibatch_buffer_size: int = 1,
+            num_sgd_iter: int = 1,
+            learner_queue_size: int = 16,
+            learner_queue_timeout: int = 300,
+            num_data_load_threads: int = 16,
+            _fake_gpus: bool = False):
         """Initializes a MultiGPULearnerThread instance.
 
         Args:
@@ -84,7 +85,7 @@ class MultiGPULearnerThread(LearnerThread):
         # per-GPU graph copies created below must share vars with the policy
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
-        self.data_loader_buffer_indices = \
+        self.tower_stack_indices = \
             [i for i in range(num_multi_gpu_tower_stacks)]
         #with self.local_worker.tf_sess.graph.as_default():
         #    with self.local_worker.tf_sess.as_default():
@@ -112,43 +113,42 @@ class MultiGPULearnerThread(LearnerThread):
         #        self.sess = self.local_worker.tf_sess
         #        self.sess.run(tf1.global_variables_initializer())
 
-        self.idle_data_loader_buffers = queue.Queue()
-        self.ready_data_loader_buffers = queue.Queue()
-        for idx in self.data_loader_buffer_indices:
-            self.idle_data_loader_buffers.put(idx)
+        self.idle_tower_stacks = queue.Queue()
+        self.ready_tower_stacks = queue.Queue()
+        for idx in self.tower_stack_indices:
+            self.idle_tower_stacks.put(idx)
         for i in range(num_data_load_threads):
-            self.loader_thread = _MultiGPULoaderThread(self, share_stats=(i == 0))
+            self.loader_thread = _MultiGPULoaderThread(
+                self, share_stats=(i == 0))
             self.loader_thread.start()
 
         self.minibatch_buffer = MinibatchBuffer(
-            self.ready_data_loader_buffers, minibatch_buffer_size,
+            self.ready_tower_stacks, minibatch_buffer_size,
             learner_queue_timeout, num_sgd_iter)
 
     @override(LearnerThread)
     def step(self) -> None:
         assert self.loader_thread.is_alive()
         with self.load_wait_timer:
-            data_loader_buffer_idx, released = self.minibatch_buffer.get()
+            buffer_idx, released = self.minibatch_buffer.get()
 
         with self.grad_timer:
-            fetches = self.policy.learn_on_loaded_buffer(
-                offset=0,
-                data_loader_buffer=data_loader_buffer_idx
-            )
+            fetches = self.policy.learn_on_loaded_batch(
+                offset=0, buffer_index=buffer_idx)
             self.weights_updated = True
             self.stats = get_learner_stats(fetches)
 
         if released:
-            self.idle_data_loader_buffers.put(data_loader_buffer_idx)
+            self.idle_tower_stacks.put(buffer_idx)
 
-        self.outqueue.put((self.policy.data_loader_buffers[data_loader_buffer_idx].
-                           num_tuples_loaded, self.stats))
+        self.outqueue.put(
+            (self.policy.multi_gpu_tower_stacks[buffer_idx].num_tuples_loaded,
+             self.stats))
         self.learner_queue_size.push(self.inqueue.qsize())
 
 
 class _MultiGPULoaderThread(threading.Thread):
-    def __init__(self,
-                 multi_gpu_learner_thread: MultiGPULearnerThread,
+    def __init__(self, multi_gpu_learner_thread: MultiGPULearnerThread,
                  share_stats: bool):
         threading.Thread.__init__(self)
         self.multi_gpu_learner_thread = multi_gpu_learner_thread
@@ -170,7 +170,7 @@ class _MultiGPULoaderThread(threading.Thread):
         with self.queue_timer:
             batch = s.inqueue.get()
 
-        buffer_idx = s.idle_data_loader_buffers.get()
+        buffer_idx = s.idle_tower_stacks.get()
 
         with self.load_timer:
             #tuples = policy._get_loss_inputs_dict(batch, shuffle=False)
@@ -180,8 +180,8 @@ class _MultiGPULoaderThread(threading.Thread):
             #else:
             #    state_keys = []
             #TODO: implement this in policy (move the above 6 lines into dyn. tf policy!)
-            policy.load_batch_into_buffer(batch=batch, data_loader_buffer=buffer_idx)
-                #, [tuples[k] for k in data_keys],
-                #          [tuples[k] for k in state_keys])
+            policy.load_batch_into_buffer(batch=batch, buffer_index=buffer_idx)
+            #, [tuples[k] for k in data_keys],
+            #          [tuples[k] for k in state_keys])
 
-        s.ready_data_loader_buffers.put(buffer_idx)
+        s.ready_tower_stacks.put(buffer_idx)

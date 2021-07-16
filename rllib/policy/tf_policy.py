@@ -143,28 +143,29 @@ class TFPolicy(Policy):
         self.framework = "tf"
         super().__init__(observation_space, action_space, config)
 
-        # Log devices and worker index.
-        from ray.rllib.evaluation.rollout_worker import get_global_worker
-        worker = get_global_worker()
-        worker_idx = worker.worker_index if worker else 0
+        # Get devices to build the graph on.
+        worker_idx = self.config.get("worker_index", 0)
+        num_gpus = config["num_gpus"] if worker_idx == 0 \
+            else config["num_gpus_per_worker"]
         if tfv == 2:
-            if config["_fake_gpus"] or config["num_gpus"] == 0 or \
+            if config["_fake_gpus"] or num_gpus == 0 or \
                 not tf.config.list_physical_devices("GPU"):
                 logger.info("TFPolicy (worker={}) running on {}.".format(
-                    worker_idx if worker_idx > 0 else "local",
-                    "{} fake-GPUs".format(config["num_gpus"])
+                    worker_idx
+                    if worker_idx > 0 else "local", f"{num_gpus} fake-GPUs"
                     if config["_fake_gpus"] else "CPU"))
-                self.devices = [
-                    f"/cpu:{i}" for i in range(config["num_gpus"] or 1)
-                ]
+                self.devices = [f"/cpu:0" for i in range(num_gpus or 1)]
             else:
-                logger.info("TFPolicy (worker={}) running on {} GPU(s).".format(
-                    worker_idx if worker_idx > 0 else "local", config["num_gpus"]))
+                logger.info(
+                    "TFPolicy (worker={}) running on {} GPU(s).".format(
+                        worker_idx if worker_idx > 0 else "local", num_gpus))
                 gpu_ids = ray.get_gpu_ids()
                 self.devices = [
-                    f"/gpu:{i}"
-                    for i, _ in enumerate(gpu_ids) if i < config["num_gpus"]
+                    f"/gpu:{i}" for i, _ in enumerate(gpu_ids) if i < num_gpus
                 ]
+        else:
+            raise NotImplementedError  #TODO: fix problem of
+            #tf.config.list_physical_devices("GPU") for tf1
 
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
@@ -180,7 +181,8 @@ class TFPolicy(Policy):
         if self.model is not None:
             self._update_model_view_requirements_from_init_state()
 
-        self.exploration = self._create_exploration()
+        self.exploration = self._create_exploration() if explore is not None \
+            else None
         self._sess = sess
         self._obs_input = obs_input
         self._prev_action_input = prev_action_input
@@ -201,10 +203,10 @@ class TFPolicy(Policy):
         self._state_outputs = state_outputs or []
         self._seq_lens = seq_lens
         self._max_seq_len = max_seq_len
-        if len(self._state_inputs) != len(self._state_outputs):
-            raise ValueError(
-                "Number of state input and output tensors must match, got: "
-                "{} vs {}".format(self._state_inputs, self._state_outputs))
+        #if len(self._state_inputs) != len(self._state_outputs):
+        #    raise ValueError(
+        #        "Number of state input and output tensors must match, got: "
+        #        "{} vs {}".format(self._state_inputs, self._state_outputs))
         if self._state_inputs and self._seq_lens is None:
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
