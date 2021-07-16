@@ -1,4 +1,3 @@
-# flake8: noqa
 # TODO (Alex): Split these into separate files once runtime envs work. The
 # releaser doesn't push files to worker nodes.
 ################ model.py ###########################3
@@ -32,8 +31,6 @@ class Preprocessor:
             tensor = self.torch_transform(img)
             return tensor
         except Exception as e:
-            # PIL.UnidentifiedImageError: cannot identify image file <_io.BytesIO object at 0x7fb24feaa830>
-            print(img_bytes[:100])
             raise e
 
 
@@ -54,7 +51,6 @@ class ImageModel:
 import ray
 import boto3
 import json
-import pyarrow.fs
 import requests
 import time
 import os
@@ -62,7 +58,7 @@ from tqdm import tqdm
 import numpy as np
 
 
-def get_paths(bucket, path, max_files=10):
+def get_paths(bucket, path, max_files=100 * 1000):
     if os.path.exists("./cache.txt"):
         return list(
             map(lambda line: line.strip().split(","),

@@ -8,6 +8,8 @@ exclude =
   python/build/
   python/.eggs/
   python/ray/_private/thirdparty/*
+  release/nightly_tests/dataset/inference.py
+  
 max-line-length = 79
 inline-quotes = "
 ignore =
