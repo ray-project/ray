@@ -5,10 +5,10 @@ import ray
 
 from ray.tests.conftest import *  # noqa
 from ray.experimental import workflow
-from ray.experimental.workflow import virtual_actor
+from ray.experimental.workflow import virtual_actor_class
 
 
-@workflow.actor
+@workflow.virtual_actor
 class Counter:
     def __init__(self, x: int):
         self.x = x
@@ -62,7 +62,7 @@ def test_readonly_actor(ray_start_regular):
     assert end - start < 5
 
 
-@workflow.actor
+@workflow.virtual_actor
 class SlowInit:
     def __init__(self, x: int):
         time.sleep(5)
@@ -87,7 +87,7 @@ class SlowInit:
     indirect=True)
 def test_actor_ready(ray_start_regular):
     actor = SlowInit.options(actor_id="SlowInit").create(42)
-    with pytest.raises(virtual_actor.VirtualActorNotInitializedError):
+    with pytest.raises(virtual_actor_class.VirtualActorNotInitializedError):
         ray.get(actor.get.options(readonly=True).run())
     ray.get(actor.ready())
     assert ray.get(actor.get.options(readonly=True).run()) == 42

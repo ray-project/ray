@@ -3,7 +3,7 @@ from typing import Callable, Generic, Optional, TypeVar, Union, overload
 
 from ray._raylet import ObjectRef
 from ray.experimental.workflow.storage import Storage
-from ray.experimental.workflow.virtual_actor import VirtualActorClass, VirtualActor
+from ray.experimental.workflow.virtual_actor_class import VirtualActorClass, VirtualActor
 
 T0 = TypeVar("T0")
 T1 = TypeVar("T1")
@@ -87,7 +87,7 @@ def resume(workflow_id: str) -> ObjectRef: ...
 @overload
 def resume(workflow_id: str, storage: Optional[Union[str, Storage]]) -> ObjectRef: ...
 
-def actor(cls: type) -> VirtualActorClass: ...
+def virtual_actor(cls: type) -> VirtualActorClass: ...
 
 def get_output(workflow_id: str) -> ObjectRef: ...
 
