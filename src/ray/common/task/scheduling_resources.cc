@@ -175,7 +175,7 @@ const ResourceSet ResourceSet::GetNumCpus() const {
   return cpu_resource_set;
 }
 
-const std::string format_resource(std::string resource_name, double quantity) {
+std::string format_resource(std::string resource_name, double quantity) {
   if (resource_name == "object_store_memory" || resource_name == "memory") {
     return std::to_string(quantity / (1024 * 1024 * 1024)) + " GiB";
   }

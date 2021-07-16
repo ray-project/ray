@@ -6,7 +6,9 @@ from telnetlib import Telnet
 
 import pexpect
 import pytest
+
 import ray
+from ray.test_utils import run_string_as_driver, wait_for_condition
 
 
 def test_ray_debugger_breakpoint(shutdown_only):
@@ -132,6 +134,46 @@ def test_ray_debugger_recursive(shutdown_only):
     p.sendline("remote")
 
     ray.get(result)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_job_exit_cleanup(ray_start_regular):
+    address = ray_start_regular["redis_address"]
+
+    driver_script = """
+import time
+
+import ray
+ray.init(address="{}")
+
+@ray.remote
+def f():
+    ray.util.rpdb.set_trace()
+
+f.remote()
+# Give the remote function long enough to actually run.
+time.sleep(5)
+""".format(address)
+
+    assert not len(ray.experimental.internal_kv._internal_kv_list("RAY_PDB_"))
+
+    run_string_as_driver(driver_script)
+
+    def one_active_session():
+        return len(ray.experimental.internal_kv._internal_kv_list("RAY_PDB_"))
+
+    wait_for_condition(one_active_session)
+
+    # Start the debugger. This should clean up any existing sessions that
+    # belong to dead jobs.
+    p = pexpect.spawn("ray debug")  # noqa:F841
+
+    def no_active_sessions():
+        return not len(
+            ray.experimental.internal_kv._internal_kv_list("RAY_PDB_"))
+
+    wait_for_condition(no_active_sessions)
 
 
 if __name__ == "__main__":

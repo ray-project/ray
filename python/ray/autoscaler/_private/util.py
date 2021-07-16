@@ -4,7 +4,6 @@ from datetime import datetime
 import logging
 import hashlib
 import json
-import jsonschema
 import os
 import threading
 from typing import Any, Dict, List
@@ -75,6 +74,17 @@ def validate_config(config: Dict[str, Any]) -> None:
 
     with open(RAY_SCHEMA_PATH) as f:
         schema = json.load(f)
+
+    try:
+        import jsonschema
+    except (ModuleNotFoundError, ImportError) as e:
+        logger.warning(
+            "Not all Ray autoscaler dependencies were found. "
+            "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
+            "only be usable via `pip install 'ray[default]'`. Please "
+            "update your install command.")
+        raise e from None
+
     try:
         jsonschema.validate(config, schema)
     except jsonschema.ValidationError as e:
