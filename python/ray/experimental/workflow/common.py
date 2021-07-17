@@ -1,11 +1,13 @@
 from collections import deque
 import re
-from typing import Tuple, List, Optional, Callable, Set, Iterator
+from typing import (Tuple, List, Optional, Callable, Set, Iterator, Any, Union,
+                    TYPE_CHECKING)
 import unicodedata
 import uuid
 
 from dataclasses import dataclass
 
+import ray
 from ray import ObjectRef
 
 # Alias types
@@ -15,6 +17,9 @@ WorkflowInputTuple = Tuple[ObjectRef, List["Workflow"], List[ObjectRef]]
 StepExecutionFunction = Callable[
     [StepID, WorkflowInputTuple, Optional[StepID]], WorkflowOutputType]
 SerializedStepFunction = str
+
+if TYPE_CHECKING:
+    from ray.experimental.workflow.storage import Storage
 
 
 @dataclass
@@ -136,3 +141,69 @@ class Workflow:
             "Maybe you are passing it to a Ray remote function, "
             "returning it from a Ray remote function, or using "
             "'ray.put()' with it?")
+
+    def run(self,
+            workflow_id: Optional[str] = None,
+            storage: "Optional[Union[str, Storage]]" = None) -> Any:
+        """Run a workflow asynchronously.
+
+        Examples:
+            >>> @workflow.step
+            ... def book_flight(origin: str, dest: str) -> Flight:
+            ...    return Flight(...)
+
+            >>> @workflow.step
+            ... def book_hotel(location: str) -> Reservation:
+            ...    return Reservation(...)
+
+            >>> @workflow.step
+            ... def finalize_trip(bookings: List[Any]) -> Trip:
+            ...    return Trip(...)
+
+            >>> flight1 = book_flight.step("OAK", "SAN")
+            >>> flight2 = book_flight.step("SAN", "OAK")
+            >>> hotel = book_hotel.step("SAN")
+            >>> trip = finalize_trip.step([flight1, flight2, hotel])
+            >>> workflow.run(trip)
+
+        Args:
+            workflow_id: A unique identifier that can be used to resume the
+                workflow. If not specified, a random id will be generated.
+            storage: The external storage URL or a custom storage class. If not
+                specified, ``/tmp/ray/workflow_data`` will be used.
+        """
+        return ray.get(self.run_async(workflow_id, storage))
+
+    def run_async(self,
+                  workflow_id: Optional[str] = None,
+                  storage: "Optional[Union[str, Storage]]" = None) -> Any:
+        """Run a workflow asynchronously.
+
+        Examples:
+            >>> @workflow.step
+            ... def book_flight(origin: str, dest: str) -> Flight:
+            ...    return Flight(...)
+
+            >>> @workflow.step
+            ... def book_hotel(location: str) -> Reservation:
+            ...    return Reservation(...)
+
+            >>> @workflow.step
+            ... def finalize_trip(bookings: List[Any]) -> Trip:
+            ...    return Trip(...)
+
+            >>> flight1 = book_flight.step("OAK", "SAN")
+            >>> flight2 = book_flight.step("SAN", "OAK")
+            >>> hotel = book_hotel.step("SAN")
+            >>> trip = finalize_trip.step([flight1, flight2, hotel])
+            >>> workflow.run(trip)
+
+        Args:
+            workflow_id: A unique identifier that can be used to resume the
+                workflow. If not specified, a random id will be generated.
+            storage: The external storage URL or a custom storage class. If not
+                specified, ``/tmp/ray/workflow_data`` will be used.
+        """
+        # avoid cyclic importing
+        from ray.experimental.workflow.execution import run
+        return run(self, storage, workflow_id)
