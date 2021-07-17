@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from typing import Union, Optional
 
@@ -16,10 +17,24 @@ from ray.experimental.workflow.workflow_access import (
 logger = logging.getLogger(__name__)
 
 
+def _is_anonymous_namespace():
+    namespace = ray.get_runtime_context().namespace
+    regex = re.compile(
+        r"^[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?"
+        r"[89ab][a-f0-9]{3}-?[a-f0-9]{12}\Z", re.I)
+    match = regex.match(namespace)
+    return bool(match)
+
+
 def run(entry_workflow: Workflow,
         storage: Optional[Union[str, Storage]] = None,
         workflow_id: Optional[str] = None) -> ray.ObjectRef:
     """Run a workflow asynchronously. See "api.run()" for details."""
+    assert ray.is_initialized()
+    if _is_anonymous_namespace():
+        raise ValueError("Must use a namespace in 'ray.init()' to access "
+                         "workflows properly. Current namespace seems to "
+                         "be anonymous.")
     if workflow_id is None:
         # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
         workflow_id = f"{entry_workflow.id}.{time.time():.9f}"
@@ -54,6 +69,11 @@ def resume(workflow_id: str,
            storage: Optional[Union[str, Storage]] = None) -> ray.ObjectRef:
     """Resume a workflow asynchronously. See "api.resume()" for details.
     """
+    assert ray.is_initialized()
+    if _is_anonymous_namespace():
+        raise ValueError("Must use a namespace in 'ray.init()' to access "
+                         "workflows properly. Current namespace seems to "
+                         "be anonymous.")
     if isinstance(storage, str):
         store = create_storage(storage)
     elif isinstance(storage, Storage):
@@ -80,6 +100,11 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
     """Get the output of a running workflow.
     See "api.get_output()" for details.
     """
+    assert ray.is_initialized()
+    if _is_anonymous_namespace():
+        raise ValueError("Must use a namespace in 'ray.init()' to access "
+                         "workflows properly. Current namespace seems to "
+                         "be anonymous.")
     try:
         actor = ray.get_actor(MANAGEMENT_ACTOR_NAME)
     except ValueError as e:

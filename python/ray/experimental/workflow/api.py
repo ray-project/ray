@@ -1,5 +1,4 @@
 import logging
-import re
 import types
 from typing import Union, Optional, TYPE_CHECKING
 
@@ -12,20 +11,10 @@ from ray.experimental.workflow import storage as storage_base
 
 if TYPE_CHECKING:
     from ray.experimental.workflow.storage import Storage
-    from ray.experimental.workflow.common import Workflow
     from ray.experimental.workflow.virtual_actor_class import (
         VirtualActorClass, VirtualActor)
 
 logger = logging.getLogger(__name__)
-
-
-def _is_anonymous_namespace():
-    namespace = ray.get_runtime_context().namespace
-    regex = re.compile(
-        r"^[a-f0-9]{8}-?[a-f0-9]{4}-?4[a-f0-9]{3}-?"
-        r"[89ab][a-f0-9]{3}-?[a-f0-9]{12}\Z", re.I)
-    match = regex.match(namespace)
-    return bool(match)
 
 
 def step(func: types.FunctionType) -> WorkflowStepFunction:
@@ -111,50 +100,6 @@ def get_actor(actor_id: str, storage: "Optional[Union[str, Storage]]" = None
     return virtual_actor_class.get_actor(actor_id, storage)
 
 
-def run(entry_workflow: "Workflow",
-        storage: "Optional[Union[str, Storage]]" = None,
-        workflow_id: Optional[str] = None) -> ray.ObjectRef:
-    """Run a workflow asynchronously.
-
-    Examples:
-        >>> @workflow.step
-        ... def book_flight(origin: str, dest: str) -> Flight:
-        ...    return Flight(...)
-
-        >>> @workflow.step
-        ... def book_hotel(location: str) -> Reservation:
-        ...    return Reservation(...)
-
-        >>> @workflow.step
-        ... def finalize_trip(bookings: List[Any]) -> Trip:
-        ...    return Trip(...)
-
-        >>> flight1 = book_flight.step("OAK", "SAN")
-        >>> flight2 = book_flight.step("SAN", "OAK")
-        >>> hotel = book_hotel.step("SAN")
-        >>> trip = finalize_trip.step([flight1, flight2, hotel])
-        >>> ray.get(workflow.run(trip))
-
-    Args:
-        entry_workflow: The output step of the workflow to run. The return
-            type of the workflow will be ObjectRef[T] if the output step is
-            a workflow step returning type T.
-        storage: The external storage URL or a custom storage class. If not
-            specified, ``/tmp/ray/workflow_data`` will be used.
-        workflow_id: A unique identifier that can be used to resume the
-            workflow. If not specified, a random id will be generated.
-
-    Returns:
-        An object reference that can be used to retrieve the workflow result.
-    """
-    assert ray.is_initialized()
-    if _is_anonymous_namespace():
-        raise ValueError("Must use a namespace in 'ray.init()' to access "
-                         "workflows properly. Current namespace seems to "
-                         "be anonymous.")
-    return execution.run(entry_workflow, storage, workflow_id)
-
-
 def resume(workflow_id: str,
            storage: "Optional[Union[str, Storage]]" = None) -> ray.ObjectRef:
     """Resume a workflow.
@@ -176,11 +121,6 @@ def resume(workflow_id: str,
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
-    assert ray.is_initialized()
-    if _is_anonymous_namespace():
-        raise ValueError("Must use a namespace in 'ray.init()' to access "
-                         "workflows properly. Current namespace seems to "
-                         "be anonymous.")
     return execution.resume(workflow_id, storage)
 
 
@@ -199,12 +139,7 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
-    assert ray.is_initialized()
-    if _is_anonymous_namespace():
-        raise ValueError("Must use a namespace in 'ray.init()' to access "
-                         "workflows properly. Current namespace seems to "
-                         "be anonymous.")
     return execution.get_output(workflow_id)
 
 
-__all__ = ("step", "virtual_actor", "run", "resume", "get_output")
+__all__ = ("step", "virtual_actor", "resume", "get_output", "get_actor")
