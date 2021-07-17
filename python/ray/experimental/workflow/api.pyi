@@ -1,5 +1,5 @@
 # yapf: disable
-from typing import Callable, Generic, Optional, TypeVar, Union, overload
+from typing import Callable, Generic, Optional, TypeVar, Union, overload, Any
 from types import FunctionType
 
 from ray._raylet import ObjectRef
@@ -19,7 +19,9 @@ T9 = TypeVar("T9")
 R = TypeVar("R")
 
 
-class Workflow(Generic[R]): ...
+class Workflow(Generic[R]):
+    def run(self, workflow_id: Optional[str]=None, storage: Optional[Storage]=None) -> Any: ...
+    def run_async(self, workflow_id: Optional[str]=None, storage: Optional[Storage]=None) -> ObjectRef: ...
 
 
 class WorkflowStepFunction(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
