@@ -13,7 +13,6 @@ from ray.rllib.execution.common import \
     LOAD_BATCH_TIMER, NUM_TARGET_UPDATES, STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER, WORKER_UPDATE_TIMER, _check_sample_batch_type, \
     _get_global_vars, _get_shared_metrics
-from ray.rllib.execution.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf
@@ -114,13 +113,10 @@ class MultiGPUTrainOneStep:
                  num_sgd_iter: int,
                  num_gpus: int,
                  shuffle_sequences: bool,
-                 #policies: List[PolicyID] = frozenset([]),
                  _fake_gpus: bool = False,
                  framework: str = "tf"):
         self.workers = workers
         self.local_worker = workers.local_worker()
-        #self.policy_map = self.local_worker.pol
-        #self.policies = policies
         self.num_sgd_iter = num_sgd_iter
         self.sgd_minibatch_size = sgd_minibatch_size
         self.shuffle_sequences = shuffle_sequences
@@ -164,30 +160,16 @@ class MultiGPUTrainOneStep:
                 # Not a policy-to-train.
                 if policy_id not in self.local_worker.policies_to_train:
                     continue
-                ## Policy seems to be new and doesn't have an optimizer yet.
-                ## Add it here and continue.
-                #elif policy_id not in self.optimizers:
-                #    with self.workers.local_worker().tf_sess.graph.as_default(
-                #    ):
-                #        with self.workers.local_worker().tf_sess.as_default():
-                #            self.add_optimizer(policy_id)
 
                 # Decompress SampleBatch, in case some columns are compressed.
                 batch.decompress_if_needed()
 
-                #policy = self.workers.local_worker().get_policy(policy_id)
-                #policy._debug_vars()
-                #tuples = policy._get_loss_inputs_dict(
-                #    batch, shuffle=self.shuffle_sequences)
-                #data_keys = list(policy._loss_input_dict_no_rnn.values())
-                #if policy._state_inputs:
-                #    state_keys = policy._state_inputs + [policy._seq_lens]
-                #else:
-                #    state_keys = []
+                # Load the entire train batch into the Policy's only buffer
+                # (idx=0). Policies only have >1 buffers, if we are training
+                # asynchronously.
                 num_loaded_tuples[policy_id] = self.local_worker.policy_map[
-                    policy_id].load_batch_into_buffer(batch, 0)
-                    #[tuples[k] for k in data_keys],
-                    #[tuples[k] for k in state_keys]))
+                    policy_id].load_batch_into_buffer(
+                        batch, buffer_index=0)
 
         # Execute minibatch SGD on loaded data.
         with learn_timer:
@@ -202,9 +184,13 @@ class MultiGPUTrainOneStep:
                     permutation = np.random.permutation(num_batches)
                     batch_fetches_all_towers = []
                     for batch_index in range(num_batches):
+                        # Learn on the pre-loaded data in the buffer.
+                        # Note: For minibatch SGD, the data is an offset into
+                        # the pre-loaded entire train batch.
                         batch_fetches = policy.learn_on_loaded_batch(
                             permutation[batch_index] *
-                            self.per_device_batch_size, buffer_index=0)
+                            self.per_device_batch_size,
+                            buffer_index=0)
 
                         batch_fetches_all_towers.append(
                             tree.map_structure_with_path(
@@ -235,18 +221,6 @@ class MultiGPUTrainOneStep:
         # Also update global vars of the local worker.
         self.workers.local_worker().set_global_vars(_get_global_vars())
         return samples, fetches
-
-    #def add_optimizer(self, policy_id):
-    #    policy = self.workers.local_worker().get_policy(policy_id)
-    #    with tf1.variable_scope(policy_id, reuse=tf1.AUTO_REUSE):
-    #        if policy._state_inputs:
-    #            rnn_inputs = policy._state_inputs + [policy._seq_lens]
-    #        else:
-    #            rnn_inputs = []
-    #        self.optimizers[policy_id] = (LocalSyncParallelOptimizer(
-    #            policy._optimizer, self.devices,
-    #            list(policy._loss_input_dict_no_rnn.values()), rnn_inputs,
-    #            self.per_device_batch_size, policy.copy))
 
 
 # Backward compatibility.

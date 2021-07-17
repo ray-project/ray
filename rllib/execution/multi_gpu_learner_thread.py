@@ -1,6 +1,5 @@
 import logging
 import threading
-import math
 
 from six.moves import queue
 
