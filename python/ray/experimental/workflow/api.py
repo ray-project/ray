@@ -56,6 +56,9 @@ class _VirtualActorDecorator:
         ... def __init__(self, x: int):
         ...     self.x = x
         ...
+        ... # Mark a method as a readonly method. It would not modify the
+        ... # state of the virtual actor.
+        ... @workflow.virtual_actor.readonly
         ... def get(self):
         ...     return self.x
         ...
@@ -70,7 +73,7 @@ class _VirtualActorDecorator:
         ...     self.x = state
         ...
         ... # Create and run a virtual actor.
-        ... counter = Counter.get_or_create(1)
+        ... counter = Counter.get_or_create(actor_id="Counter", x=1)
         ... assert ray.get(counter.run(incr)) == 2
     """
 
