@@ -105,7 +105,7 @@ class MultiGPULearnerThread(LearnerThread):
             self.idle_tower_stacks.put(buffer_idx)
 
         self.outqueue.put(
-            (self.policy.multi_gpu_tower_stacks[buffer_idx].num_tuples_loaded,
+            (self.policy.get_num_samples_loaded_into_buffer(buffer_idx),
              self.stats))
         self.learner_queue_size.push(self.inqueue.qsize())
 

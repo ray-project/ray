@@ -471,7 +471,19 @@ class DynamicTFPolicy(TFPolicy):
 
     @override(Policy)
     @DeveloperAPI
-    def learn_on_loaded_batch(self, offset=0, buffer_index: int = 0):
+    def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
+        # Shortcut for 1 CPU only: Batch should already be stored in
+        # `self._loaded_single_cpu_batch`.
+        if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
+            assert buffer_index == 0
+            return len(self._loaded_single_cpu_batch) if \
+                self._loaded_single_cpu_batch is not None else 0
+
+        return self.multi_gpu_tower_stacks[buffer_index].num_tuples_loaded
+
+    @override(Policy)
+    @DeveloperAPI
+    def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
         # Shortcut for 1 CPU only: Batch should already be stored in
         # `self._loaded_single_cpu_batch`.
         if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
@@ -481,7 +493,6 @@ class DynamicTFPolicy(TFPolicy):
                     "Must call Policy.load_batch_into_buffer() before "
                     "Policy.learn_on_loaded_batch()!")
             ret = self.learn_on_batch(self._loaded_single_cpu_batch)
-            self._loaded_single_cpu_batch = None
             return ret
 
         return self.multi_gpu_tower_stacks[buffer_index].optimize(
@@ -895,10 +906,12 @@ class TFMultiGPUTowerStack:
                 feed_dict[ph] = arr
             truncated_len = len(inputs[0])
         else:
-            for ph, arr in zip(self.loss_inputs, inputs + state_inputs):
+            truncated_len = 0
+            for ph, arr in zip(self.loss_inputs, inputs):
                 truncated_arr = make_divisible_by(arr, sequences_per_minibatch)
                 feed_dict[ph] = truncated_arr
-                truncated_len = len(truncated_arr)
+                if truncated_len == 0:
+                    truncated_len = len(truncated_arr)
 
         sess.run([t.init_op for t in self._towers], feed_dict=feed_dict)
 

@@ -525,10 +525,7 @@ class Policy(metaclass=ABCMeta):
         """Bulk-loads the given SampleBatch into the devices' memories.
 
         The data is split equally across all the devices. If the data is not
-        evenly divisible by the batch size, excess data will be discarded.
-
-        The shape of the inputs must conform to the shapes of the input
-        placeholders this Policy was constructed with.
+        evenly divisible by the batch size, excess data should be discarded.
 
         Args:
             batch (SampleBatch): The SampleBatch to load.
@@ -541,23 +538,34 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def learn_on_loaded_batch(self, offset=0, buffer_index: int = 0):
+    def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
+        """Returns the number of currently loaded samples in the given buffer.
+
+        Args:
+            batch (SampleBatch): The SampleBatch to load.
+            buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
+                to use on the devices.
+
+        Returns:
+            int: The number of tuples loaded per device.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
         """Runs a single step of SGD on already loaded data in a buffer.
 
-        Runs a SGD step over a slice of the preloaded batch with size given by
-        self._loaded_per_device_batch_size and offset given by the `offset`
-        argument.
+        Runs an SGD step over a slice of the pre-loaded batch, offset by
+        the `offset` argument (useful for performing n minibatch SGD
+        updates repeatedly on the same, already pre-loaded data).
 
         Updates shared model weights based on the averaged per-device
         gradients.
 
         Args:
-            offset: Offset into the preloaded data. This value must be
-                between `0` and `tuples_per_device`. The amount of data to
-                process is at most `max_per_device_batch_size`.
-                Used for pre-loading a train-batch once to a device, then
-                iterating over (subsampling through) this batch n times doing
-                minibatch SGD.
+            offset (int): Offset into the preloaded data. Used for pre-loading
+                a train-batch once to a device, then iterating over
+                (subsampling through) this batch n times doing minibatch SGD.
             buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
                 to take the already pre-loaded data from.
 
