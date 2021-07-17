@@ -49,21 +49,24 @@ def init_virtual_actor(x):
 def test_readonly_actor(ray_start_regular):
     actor = Counter.options(actor_id="Counter").create(42)
     ray.get(actor.ready())
-    assert ray.get(actor.readonly_get.run()) == 42
-    assert ray.get(actor.readonly_incr.run()) == 43
-    assert ray.get(actor.readonly_get.run()) == 42
+    assert actor.readonly_get.run() == 42
+    assert actor.readonly_incr.run() == 43
+    assert actor.readonly_get.run() == 42
 
     # test get actor
     readonly_actor = workflow.get_actor("Counter")
     # test concurrency
-    assert ray.get(
-        [readonly_actor.readonly_get.run() for _ in range(10)]) == [42] * 10
-    assert ray.get(
-        [readonly_actor.readonly_incr.run() for _ in range(10)]) == [43] * 10
-    assert ray.get(
-        [readonly_actor.readonly_get.run() for _ in range(10)]) == [42] * 10
+    assert ray.get([
+        readonly_actor.readonly_get.run_async() for _ in range(10)
+    ]) == [42] * 10
+    assert ray.get([
+        readonly_actor.readonly_incr.run_async() for _ in range(10)
+    ]) == [43] * 10
+    assert ray.get([
+        readonly_actor.readonly_get.run_async() for _ in range(10)
+    ]) == [42] * 10
     start = time.time()
-    ray.get([readonly_actor.readonly_workload.run() for _ in range(10)])
+    ray.get([readonly_actor.readonly_workload.run_async() for _ in range(10)])
     end = time.time()
     assert end - start < 5
 
@@ -95,6 +98,6 @@ class SlowInit:
 def test_actor_ready(ray_start_regular):
     actor = SlowInit.options(actor_id="SlowInit").create(42)
     with pytest.raises(virtual_actor_class.VirtualActorNotInitializedError):
-        ray.get(actor.readonly_get.run())
+        actor.readonly_get.run()
     ray.get(actor.ready())
-    assert ray.get(actor.readonly_get.run()) == 42
+    assert actor.readonly_get.run() == 42

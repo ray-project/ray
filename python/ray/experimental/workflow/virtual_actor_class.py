@@ -57,9 +57,17 @@ def _virtual_actor_init(cls: type, flattened_args: List) -> Any:
 
 
 class ActorMethodBase(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    def run(self, *args, **kwargs) -> "ObjectRef":
+    def run(self, *args, **kwargs) -> Any:
         """Execute the actor method.
+
+        Returns:
+            A future object represents the result.
+        """
+        return ray.get(self.run_async(*args, **kwargs))
+
+    @abc.abstractmethod
+    def run_async(self, *args, **kwargs) -> "ObjectRef":
+        """Execute the actor method asynchronously.
 
         Returns:
             A future object represents the result.
@@ -88,8 +96,8 @@ class ActorMethod(ActorMethodBase):
                         f"of running 'object.{self._method_name}()', try "
                         f"'object.{self._method_name}.remote()'.")
 
-    def run(self, *args, **kwargs) -> "ObjectRef":
-        """Execute the actor method.
+    def run_async(self, *args, **kwargs) -> "ObjectRef":
+        """Execute the actor method asynchronously.
 
         Returns:
             A future object represents the result.
@@ -111,7 +119,7 @@ class ActorMethod(ActorMethodBase):
         func_cls = self
 
         class FuncWrapper(ActorMethodBase):
-            def run(self, *args, **kwargs):
+            def run_async(self, *args, **kwargs):
                 return func_cls._run(args=args, kwargs=kwargs, **options)
 
         return FuncWrapper()
