@@ -348,11 +348,11 @@ class VirtualActor:
         workflow_storage.save_actor_class_body(self._metadata.cls)
         # TODO(suquark): This is just a temporary solution.
         # A virtual actor writer should take place of this solution later.
-        from ray.experimental.workflow import run
         arg_list = self._metadata.flatten_args("__init__", args, kwargs)
         init_step = _virtual_actor_init.step(self._metadata.cls, arg_list)
         init_step._step_id = self._metadata.cls.__init__.__name__
-        ref = run(init_step, storage=self._storage, workflow_id=self._actor_id)
+        ref = init_step.run_async(
+            storage=self._storage, workflow_id=self._actor_id)
         workflow_manager = get_or_create_management_actor()
         # keep the ref in a list to prevent dereference
         ray.get(workflow_manager.init_actor.remote(self._actor_id, [ref]))
