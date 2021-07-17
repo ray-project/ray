@@ -443,7 +443,7 @@ def debug(address):
     "--temp-dir",
     hidden=True,
     default=None,
-    help="Deprecated: use the TMPDIR env var instead.")
+    help="manually specify the root temporary dir of the Ray process")
 @click.option(
     "--system-config",
     default=None,

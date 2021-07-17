@@ -683,7 +683,9 @@ def init(
         _memory: Amount of reservable memory resource to create.
         _redis_password (str): Prevents external clients without the password
             from connecting to Redis if provided.
-        _temp_dir (str): Deprecated: please use the TMPDIR env var instead.
+        _temp_dir (str): If provided, specifies the root temporary
+            directory for the Ray process. Defaults to an OS-specific
+            conventional location, e.g., "/tmp/ray".
         _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
