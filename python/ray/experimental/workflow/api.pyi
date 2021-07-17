@@ -1,5 +1,6 @@
 # yapf: disable
 from typing import Callable, Generic, Optional, TypeVar, Union, overload
+from types import FunctionType
 
 from ray._raylet import ObjectRef
 from ray.experimental.workflow.storage import Storage
@@ -87,7 +88,13 @@ def resume(workflow_id: str) -> ObjectRef: ...
 @overload
 def resume(workflow_id: str, storage: Optional[Union[str, Storage]]) -> ObjectRef: ...
 
-def virtual_actor(cls: type) -> VirtualActorClass: ...
+class _VirtualActorDecorator:
+    @classmethod
+    def __call__(cls, _cls: type) -> "VirtualActorClass": ...
+    @classmethod
+    def readonly(cls, method:  FunctionType) ->  FunctionType: ...
+
+virtual_actor: _VirtualActorDecorator
 
 def get_output(workflow_id: str) -> ObjectRef: ...
 

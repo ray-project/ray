@@ -4,7 +4,6 @@ import types
 from typing import Union, Optional, TYPE_CHECKING
 
 import ray
-
 from ray.experimental.workflow import execution
 from ray.experimental.workflow.step_function import WorkflowStepFunction
 # avoid collision with arguments & APIs
@@ -46,7 +45,7 @@ def step(func: types.FunctionType) -> WorkflowStepFunction:
     return WorkflowStepFunction(func)
 
 
-def virtual_actor(cls: type) -> "VirtualActorClass":
+class _VirtualActorDecorator:
     """A decorator used for creating a virtual actor based on a class.
     The class that is based on must have the "__getstate__" and
      "__setstate__" method.
@@ -73,22 +72,31 @@ def virtual_actor(cls: type) -> "VirtualActorClass":
         ... # Create and run a virtual actor.
         ... counter = Counter.create(1)
         ... assert ray.get(counter.run(incr)) == 2
-
-    Args:
-        cls: The class that the virtual actor is based on.
     """
-    return virtual_actor_class.decorate_actor(cls)
+
+    @classmethod
+    def __call__(cls, _cls: type) -> "VirtualActorClass":
+        return virtual_actor_class.decorate_actor(_cls)
+
+    @classmethod
+    def readonly(cls, method: types.FunctionType) -> types.FunctionType:
+        if not isinstance(method, types.FunctionType):
+            raise TypeError("The @workflow.virtual_actor.readonly "
+                            "decorator can only wrap a method.")
+        method.__virtual_actor_readonly__ = True
+        return method
 
 
-def get_actor(actor_id: str,
-              storage: "Optional[Union[str, Storage]]" = None,
-              readonly=False) -> "VirtualActor":
+virtual_actor = _VirtualActorDecorator()
+
+
+def get_actor(actor_id: str, storage: "Optional[Union[str, Storage]]" = None
+              ) -> "VirtualActor":
     """Get an virtual actor.
 
     Args:
         actor_id: The ID of the actor.
         storage: The storage of the actor.
-        readonly: Turn the actor into readonly actor or not.
 
     Returns:
         A virtual actor.
@@ -97,7 +105,7 @@ def get_actor(actor_id: str,
         storage = storage_base.get_global_storage()
     elif isinstance(storage, str):
         storage = storage_base.create_storage(storage)
-    return virtual_actor_class.get_actor(actor_id, storage, readonly)
+    return virtual_actor_class.get_actor(actor_id, storage)
 
 
 def run(entry_workflow: "Workflow",
