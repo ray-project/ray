@@ -233,8 +233,6 @@ By default, transformations are executed using Ray tasks. For transformations th
 .. code-block:: python
 
     # Example of GPU batch inference on an ImageNet model.
-    model = None
-
     def preprocess(image: bytes) -> bytes:
         return image
 
@@ -283,11 +281,11 @@ Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is
     @ray.remote(num_gpus=1)
     class Worker:
         def __init__(self, rank: int):
-            ...
+            pass
 
         def train(self, shard: Dataset[int]) -> int:
             for batch in shard.iter_batches(batch_size=256):
-                ...
+                pass
             return shard.count()
 
     workers = [Worker.remote(i) for i in range(16)]
