@@ -150,11 +150,19 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
        shapes_it != tasks_to_dispatch_.end();) {
     auto &dispatch_queue = shapes_it->second;
     bool is_infeasible = false;
+    std::unordered_set<int> blocked_runtime_env_to_skip;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto &work = *work_it;
       const auto &task = std::get<0>(work);
       const auto &spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
+      int runtime_env_hash = spec.GetRuntimeEnvHash();
+
+      // Current task and runtime env combination doesn't have an available worker,
+      // therefore skipping the task.
+      if (blocked_runtime_env_to_skip.find(runtime_env_hash) != runtime_env_hash.end()) {
+        continue
+      }
 
       bool args_missing = false;
       bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
@@ -236,6 +244,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // correct job ID.  However, another task with a different env or job ID
           // might have a worker available, so continue iterating through the queue.
           work_it++;
+          // Keep track of runtime env that doesn't have workers available so we
+          // won't call PopWorker for subsequent tasks requiring the same runtime env.
+          blocked_runtime_env_to_skip.insert(runtime_env_hash);
           continue;
         }
 
