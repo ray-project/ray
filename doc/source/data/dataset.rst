@@ -233,8 +233,6 @@ By default, transformations are executed using Ray tasks. For transformations th
 .. code-block:: python
 
     # Example of GPU batch inference on an ImageNet model.
-    model = None
-
     def preprocess(image: bytes) -> bytes:
         return image
 
