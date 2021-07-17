@@ -174,9 +174,10 @@ class Workflow:
         """
         return ray.get(self.run_async(workflow_id, storage))
 
-    def run_async(self,
-                  workflow_id: Optional[str] = None,
-                  storage: "Optional[Union[str, Storage]]" = None) -> Any:
+    def run_async(
+            self,
+            workflow_id: Optional[str] = None,
+            storage: "Optional[Union[str, Storage]]" = None) -> ObjectRef:
         """Run a workflow asynchronously.
 
         Examples:
