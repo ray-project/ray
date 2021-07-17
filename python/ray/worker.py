@@ -1329,8 +1329,10 @@ def connect(node,
         job_config.set_ray_namespace(namespace)
 
     # Make sure breakpoint() in the user's code will
-    # always invoke the Ray debugger.
-    os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
+    # invoke the Ray debugger if we are in a worker or actor process
+    # (but not on the driver).
+    if mode == WORKER_MODE:
+        os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
