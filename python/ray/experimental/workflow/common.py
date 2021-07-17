@@ -145,7 +145,7 @@ class Workflow:
     def run(self,
             workflow_id: Optional[str] = None,
             storage: "Optional[Union[str, Storage]]" = None) -> Any:
-        """Run a workflow asynchronously.
+        """Run a workflow.
 
         Examples:
             >>> @workflow.step
@@ -164,7 +164,7 @@ class Workflow:
             >>> flight2 = book_flight.step("SAN", "OAK")
             >>> hotel = book_hotel.step("SAN")
             >>> trip = finalize_trip.step([flight1, flight2, hotel])
-            >>> workflow.run(trip)
+            >>> result = workflow.run(trip)
 
         Args:
             workflow_id: A unique identifier that can be used to resume the
@@ -197,7 +197,7 @@ class Workflow:
             >>> flight2 = book_flight.step("SAN", "OAK")
             >>> hotel = book_hotel.step("SAN")
             >>> trip = finalize_trip.step([flight1, flight2, hotel])
-            >>> workflow.run(trip)
+            >>> result = ray.get(workflow.run_async(trip))
 
         Args:
             workflow_id: A unique identifier that can be used to resume the
