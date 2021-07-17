@@ -47,7 +47,7 @@ def init_virtual_actor(x):
     }],
     indirect=True)
 def test_readonly_actor(ray_start_regular):
-    actor = Counter.options(actor_id="Counter").create(42)
+    actor = Counter.get_or_create("Counter", 42)
     ray.get(actor.ready())
     assert actor.readonly_get.run() == 42
     assert actor.readonly_incr.run() == 43
@@ -96,7 +96,7 @@ class SlowInit:
     }],
     indirect=True)
 def test_actor_ready(ray_start_regular):
-    actor = SlowInit.options(actor_id="SlowInit").create(42)
+    actor = SlowInit.get_or_create("SlowInit", 42)
     with pytest.raises(virtual_actor_class.VirtualActorNotInitializedError):
         actor.readonly_get.run()
     ray.get(actor.ready())

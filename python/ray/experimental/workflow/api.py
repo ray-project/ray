@@ -70,7 +70,7 @@ class _VirtualActorDecorator:
         ...     self.x = state
         ...
         ... # Create and run a virtual actor.
-        ... counter = Counter.create(1)
+        ... counter = Counter.get_or_create(1)
         ... assert ray.get(counter.run(incr)) == 2
     """
 

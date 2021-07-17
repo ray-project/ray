@@ -201,10 +201,11 @@ class VirtualActorMetadata:
 
 class VirtualActorClassBase(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def create(self, *args, **kwargs) -> "VirtualActor":
-        """Create a virtual actor.
+    def get_or_create(self, actor_id: str, *args, **kwargs) -> "VirtualActor":
+        """Get or create a virtual actor.
 
         Args:
+            actor_id: The ID of the actor.
             args: These arguments are forwarded directly to the actor
                 constructor.
             kwargs: These arguments are forwarded directly to the actor
@@ -289,21 +290,21 @@ class VirtualActorClass(VirtualActorClassBase):
         self._metadata = metadata
         return self
 
-    def create(self, *args, **kwargs) -> "VirtualActor":
+    def get_or_create(self, actor_id: str, *args, **kwargs) -> "VirtualActor":
         """Create an actor. See `VirtualActorClassBase.create()`."""
-        return self._create(
-            args=args, kwargs=kwargs, actor_id=None, storage=None)
+        return self._get_or_create(
+            actor_id, args=args, kwargs=kwargs, storage=None)
 
     # TODO(suquark): support num_cpu etc in options
-    def options(self, actor_id: str,
+    def options(self,
                 storage: Optional[Storage] = None) -> VirtualActorClassBase:
         """Configures and overrides the actor instantiation parameters."""
 
         actor_cls = self
 
         class ActorOptionWrapper(VirtualActorClassBase):
-            def create(self, *args, **kwargs):
-                return actor_cls._create(
+            def get_or_create(self, actor_id: str, *args, **kwargs):
+                return actor_cls._get_or_create(
                     args=args,
                     kwargs=kwargs,
                     actor_id=actor_id,
@@ -311,16 +312,17 @@ class VirtualActorClass(VirtualActorClassBase):
 
         return ActorOptionWrapper()
 
-    def _create(self, args, kwargs, actor_id: Optional[str],
-                storage: Optional[Storage]) -> "VirtualActor":
+    def _get_or_create(self, actor_id: str, args, kwargs,
+                       storage: Optional[Storage]) -> "VirtualActor":
         """Create a new virtual actor"""
-        if actor_id is None:
-            actor_id = self._metadata.generate_random_actor_id()
         if storage is None:
             storage = get_global_storage()
-        instance = self._construct(actor_id, storage)
-        instance._create(args, kwargs)
-        return instance
+        try:
+            return get_actor(actor_id, storage)
+        except Exception:
+            instance = self._construct(actor_id, storage)
+            instance._create(args, kwargs)
+            return instance
 
     def _construct(self, actor_id: str, storage: Storage) -> "VirtualActor":
         """Construct a blank virtual actor."""
