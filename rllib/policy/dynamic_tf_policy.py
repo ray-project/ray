@@ -150,8 +150,9 @@ class DynamicTFPolicy(TFPolicy):
         self._stats_fn = stats_fn
         self._grad_stats_fn = grad_stats_fn
         self._seq_lens = None
+        self._is_tower = existing_inputs is not None
 
-        dist_class = dist_inputs = None
+        dist_class = None
         if action_sampler_fn or action_distribution_fn:
             if not make_model:
                 raise ValueError(
