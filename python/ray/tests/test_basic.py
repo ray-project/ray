@@ -619,6 +619,25 @@ def test_args_named_and_star(ray_start_shared_local_modes):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
+def test_oversized_function(ray_start_shared_local_modes):
+    bar = np.zeros(100 * 1024 * 1024)
+
+    @ray.remote
+    class Actor:
+        def foo(self):
+            return len(bar)
+
+    @ray.remote
+    def f():
+        return len(bar)
+
+    with pytest.raises(ValueError):
+        f.remote()
+
+    with pytest.raises(ValueError):
+        Actor.remote()
+
+
 def test_args_stars_after(ray_start_shared_local_modes):
     def star_args_after(a="hello", b="heo", *args, **kwargs):
         return a, b, args, kwargs
