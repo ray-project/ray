@@ -1,5 +1,7 @@
 from typing import List, Dict
 
+from ray.tests.conftest import *  # noqa
+
 import pytest
 
 import numpy as np
@@ -68,19 +70,22 @@ def receive_data(data: np.ndarray):
 
 
 # TODO(suquark): Support ObjectRef checkpointing.
-def test_objectref_inputs_exception():
-    ray.init(namespace="workflow")
-
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_objectref_inputs_exception(ray_start_regular_shared):
     with pytest.raises(ValueError):
         output = workflow.run(receive_data.step(ray.put([42])))
         assert ray.get(output)
-    ray.shutdown()
 
 
 @pytest.mark.skip(reason="no support for ObjectRef checkpointing yet")
-def test_objectref_inputs():
-    ray.init(namespace="workflow")
-
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_objectref_inputs(ray_start_regular_shared):
     output = workflow.run(
         deref_check.step(
             ray.put(42), nested_ref.remote(), [nested_ref.remote()],
@@ -88,12 +93,13 @@ def test_objectref_inputs():
                 "output": nested_workflow.step(7)
             }]))
     assert ray.get(output)
-    ray.shutdown()
 
 
-def test_object_deref():
-    ray.init(namespace="workflow")
-
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_object_deref(ray_start_regular_shared):
     x = empty_list.step()
     output = workflow.run(deref_shared.step(x, x))
     assert ray.get(output)
@@ -111,5 +117,3 @@ def test_object_deref():
     obj = return_data.step()
     arr: np.ndarray = ray.get(workflow.run(receive_data.step(obj)))
     assert np.array_equal(arr, np.ones(4096))
-
-    ray.shutdown()

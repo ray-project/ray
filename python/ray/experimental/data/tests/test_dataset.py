@@ -1,5 +1,6 @@
 import os
 import random
+import requests
 import shutil
 import time
 
@@ -24,6 +25,62 @@ def test_basic_actors(shutdown_only):
     ds = ray.experimental.data.range(5)
     assert sorted(ds.map(lambda x: x + 1,
                          compute="actors").take()) == [1, 2, 3, 4, 5]
+
+
+def test_callable_classes(shutdown_only):
+    ray.init(num_cpus=1)
+    ds = ray.experimental.data.range(10)
+
+    class StatefulFn:
+        def __init__(self):
+            self.num_reuses = 0
+
+        def __call__(self, x):
+            r = self.num_reuses
+            self.num_reuses += 1
+            return r
+
+    # map
+    task_reuse = ds.map(StatefulFn, compute="tasks").take()
+    assert sorted(task_reuse) == list(range(10)), task_reuse
+    actor_reuse = ds.map(StatefulFn, compute="actors").take()
+    assert sorted(actor_reuse) == list(range(10)), actor_reuse
+
+    class StatefulFn:
+        def __init__(self):
+            self.num_reuses = 0
+
+        def __call__(self, x):
+            r = self.num_reuses
+            self.num_reuses += 1
+            return [r]
+
+    # flat map
+    task_reuse = ds.flat_map(StatefulFn, compute="tasks").take()
+    assert sorted(task_reuse) == list(range(10)), task_reuse
+    actor_reuse = ds.flat_map(StatefulFn, compute="actors").take()
+    assert sorted(actor_reuse) == list(range(10)), actor_reuse
+
+    # map batches
+    task_reuse = ds.map_batches(StatefulFn, compute="tasks").take()
+    assert sorted(task_reuse) == list(range(10)), task_reuse
+    actor_reuse = ds.map_batches(StatefulFn, compute="actors").take()
+    assert sorted(actor_reuse) == list(range(10)), actor_reuse
+
+    class StatefulFn:
+        def __init__(self):
+            self.num_reuses = 0
+
+        def __call__(self, x):
+            r = self.num_reuses
+            self.num_reuses += 1
+            return r > 0
+
+    # filter
+    task_reuse = ds.filter(StatefulFn, compute="tasks").take()
+    assert len(task_reuse) == 9, task_reuse
+    actor_reuse = ds.filter(StatefulFn, compute="actors").take()
+    assert len(actor_reuse) == 9, actor_reuse
 
 
 def test_basic(ray_start_regular_shared):
@@ -351,6 +408,16 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
         for i, item in enumerate(ds.iter_rows()):
             expected = open(paths[i], "rb").read()
             assert expected == item
+
+
+def test_read_binary_files_s3(ray_start_regular_shared):
+    ds = ray.experimental.data.read_binary_files(
+        ["s3://anyscale-data/small-files/0.dat"])
+    item = ds.take(1).pop()
+    expected = requests.get(
+        "https://anyscale-data.s3.us-west-2.amazonaws.com/small-files/0.dat"
+    ).content
+    assert item == expected
 
 
 def test_iter_batches_basic(ray_start_regular_shared):

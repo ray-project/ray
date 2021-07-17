@@ -1,9 +1,9 @@
 import time
 
 import pytest
-
 import ray
 
+from ray.tests.conftest import *  # noqa
 from ray.experimental import workflow
 from ray.experimental.workflow import virtual_actor
 
@@ -36,8 +36,14 @@ def init_virtual_actor(x):
     return x
 
 
-def test_readonly_actor():
-    ray.init(namespace="workflow")
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [{
+        "namespace": "workflow",
+        "num_cpus": 4  # We need more CPUs for concurrency
+    }],
+    indirect=True)
+def test_readonly_actor(ray_start_regular):
     actor = Counter.options(actor_id="Counter").create(42)
     ray.get(actor.ready())
     assert ray.get(actor.get.options(readonly=True).run()) == 42
@@ -54,7 +60,6 @@ def test_readonly_actor():
     ray.get([readonly_actor.workload.run() for _ in range(10)])
     end = time.time()
     assert end - start < 5
-    ray.shutdown()
 
 
 @workflow.actor
@@ -73,11 +78,16 @@ class SlowInit:
         self.x = state
 
 
-def test_actor_ready():
-    ray.init(namespace="workflow")
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [{
+        "namespace": "workflow",
+        "num_cpus": 4  # We need more CPUs, otherwise 'create()' blocks 'get()'
+    }],
+    indirect=True)
+def test_actor_ready(ray_start_regular):
     actor = SlowInit.options(actor_id="SlowInit").create(42)
     with pytest.raises(virtual_actor.VirtualActorNotInitializedError):
         ray.get(actor.get.options(readonly=True).run())
     ray.get(actor.ready())
     assert ray.get(actor.get.options(readonly=True).run()) == 42
-    ray.shutdown()
