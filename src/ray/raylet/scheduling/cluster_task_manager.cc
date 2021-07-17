@@ -160,8 +160,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
       // Current task and runtime env combination doesn't have an available worker,
       // therefore skipping the task.
-      if (blocked_runtime_env_to_skip.find(runtime_env_hash) != runtime_env_hash.end()) {
-        continue
+      if (blocked_runtime_env_to_skip.count(runtime_env_hash) > 0) {
+        continue;
       }
 
       bool args_missing = false;
