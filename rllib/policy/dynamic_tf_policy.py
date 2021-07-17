@@ -877,6 +877,8 @@ class TFMultiGPUTowerStack:
                 "to ensure that at least one sequence fits per device.")
         self._loaded_per_device_batch_size = (sequences_per_minibatch // len(
             self.devices) * self._loaded_max_seq_len)
+        #TODO
+        print(f"self._loaded_per_device_batch_size = {self._loaded_per_device_batch_size}")
 
         if len(state_inputs) > 0:
             # First truncate the RNN state arrays to the sequences_per_minib.

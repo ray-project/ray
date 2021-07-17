@@ -149,7 +149,7 @@ class TestPPO(unittest.TestCase):
         config["model"]["vf_share_layers"] = True
 
         # Test w/ LSTMs.
-        config["model"]["use_lstm"] = True
+        #config["model"]["use_lstm"] = True
 
         for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
