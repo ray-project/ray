@@ -733,7 +733,10 @@ class TFMultiGPUTowerStack:
             self.policy = policy
             self.optimizer = self.policy._optimizer
             self.devices = self.policy.devices
-            self.max_per_device_batch_size = max_per_device_batch_size or 99999
+            self.max_per_device_batch_size = \
+                (max_per_device_batch_size or
+                 policy.config.get("sgd_minibatch_size", policy.config.get(
+                     "train_batch_size", 999999)))
             input_placeholders = list(
                 self.policy._loss_input_dict_no_rnn.values())
             rnn_inputs = []

@@ -136,27 +136,13 @@ class MultiGPUTrainOneStep:
             for i in range(int(math.ceil(num_gpus)))
         ]
 
-        # Total batch size (all towers). Make sure it is dividable by
-        # num towers.
-        self.batch_size = int(sgd_minibatch_size / len(self.devices)) * len(
-            self.devices)
-        assert self.batch_size % len(self.devices) == 0
-        assert self.batch_size >= len(self.devices), "batch size too small"
+        # Make sure total batch size is dividable by the number of devices.
         # Batch size per tower.
-        self.per_device_batch_size = int(self.batch_size / len(self.devices))
-
-        # per-GPU graph copies created below must share vars with the policy
-        # reuse is set to AUTO_REUSE because Adam nodes are created after
-        # all of the device copies are created.
-        #self.optimizers = {}
-        #with self.workers.local_worker().tf_sess.graph.as_default():
-        #    with self.workers.local_worker().tf_sess.as_default():
-        #        for policy_id in (self.policies
-        #                          or self.local_worker.policies_to_train):
-        #            self.add_optimizer(policy_id)
-        #
-        #        self.sess = self.workers.local_worker().tf_sess
-        #        self.sess.run(tf1.global_variables_initializer())
+        self.per_device_batch_size = sgd_minibatch_size // len(self.devices)
+        # Total batch size.
+        self.batch_size = self.per_device_batch_size * len(self.devices)
+        assert self.batch_size % len(self.devices) == 0
+        assert self.batch_size >= len(self.devices), "Batch size too small!"
 
     def __call__(self,
                  samples: SampleBatchType) -> (SampleBatchType, List[dict]):
