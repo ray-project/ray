@@ -51,24 +51,24 @@ def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
 
 @DeveloperAPI
 def build_trainer(
-    name: str,
-    *,
-    default_config: Optional[TrainerConfigDict] = None,
-    validate_config: Optional[Callable[[TrainerConfigDict], None]] = None,
-    default_policy: Optional[Type[Policy]] = None,
-    get_policy_class: Optional[Callable[[TrainerConfigDict],
-                                        Optional[Type[Policy]]]] = None,
-    validate_env: Optional[Callable[[EnvType, EnvContext], None]] = None,
-    before_init: Optional[Callable[[Trainer], None]] = None,
-    after_init: Optional[Callable[[Trainer], None]] = None,
-    before_evaluate_fn: Optional[Callable[[Trainer], None]] = None,
-    mixins: Optional[List[type]] = None,
-    execution_plan: Optional[
-        Callable[[WorkerSet, TrainerConfigDict],
-                 Iterable[ResultDict]]] = default_execution_plan,
-    allow_unknown_configs: bool = False,
-    allow_unknown_subkeys: Optional[List[str]] = None,
-    override_all_subkeys_if_type_changes: Optional[List[str]] = None,
+        name: str,
+        *,
+        default_config: Optional[TrainerConfigDict] = None,
+        validate_config: Optional[Callable[[TrainerConfigDict], None]] = None,
+        default_policy: Optional[Type[Policy]] = None,
+        get_policy_class: Optional[Callable[[TrainerConfigDict], Optional[Type[
+            Policy]]]] = None,
+        validate_env: Optional[Callable[[EnvType, EnvContext], None]] = None,
+        before_init: Optional[Callable[[Trainer], None]] = None,
+        after_init: Optional[Callable[[Trainer], None]] = None,
+        before_evaluate_fn: Optional[Callable[[Trainer], None]] = None,
+        mixins: Optional[List[type]] = None,
+        execution_plan: Optional[Callable[[
+            WorkerSet, TrainerConfigDict
+        ], Iterable[ResultDict]]] = default_execution_plan,
+        allow_unknown_configs: bool = False,
+        allow_unknown_subkeys: Optional[List[str]] = None,
+        override_all_subkeys_if_type_changes: Optional[List[str]] = None,
 ) -> Type[Trainer]:
     """Helper function for defining a custom trainer.
 
