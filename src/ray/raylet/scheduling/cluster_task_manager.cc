@@ -150,17 +150,21 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
        shapes_it != tasks_to_dispatch_.end();) {
     auto &dispatch_queue = shapes_it->second;
     bool is_infeasible = false;
+    // TODO(simon): blocked_runtime_env_to_skip is added as a hack to make sure tasks
+    // requiring different runtime env doesn't block each other. We need to find a
+    // long term solution for this, see #17154.
     std::unordered_set<int> blocked_runtime_env_to_skip;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto &work = *work_it;
       const auto &task = std::get<0>(work);
       const auto &spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
-      int runtime_env_hash = spec.GetRuntimeEnvHash();
+      const int runtime_env_hash = spec.GetRuntimeEnvHash();
 
       // Current task and runtime env combination doesn't have an available worker,
       // therefore skipping the task.
       if (blocked_runtime_env_to_skip.count(runtime_env_hash) > 0) {
+        work_it++;
         continue;
       }
 
