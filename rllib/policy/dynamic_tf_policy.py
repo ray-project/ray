@@ -493,9 +493,7 @@ class DynamicTFPolicy(TFPolicy):
                 raise ValueError(
                     "Must call Policy.load_batch_into_buffer() before "
                     "Policy.learn_on_loaded_batch()!")
-            ret = self.learn_on_batch(self._loaded_single_cpu_batch)
-            # Pretend, we have a single tower.
-            return {"tower_0": ret}
+            return self.learn_on_batch(self._loaded_single_cpu_batch)
 
         return self.multi_gpu_tower_stacks[buffer_index].optimize(
             self.get_session(), offset)

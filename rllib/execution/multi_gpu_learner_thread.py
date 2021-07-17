@@ -99,7 +99,7 @@ class MultiGPULearnerThread(LearnerThread):
             fetches = self.policy.learn_on_loaded_batch(
                 offset=0, buffer_index=buffer_idx)
             self.weights_updated = True
-            self.stats = get_learner_stats(fetches)
+            self.stats = {DEFAULT_POLICY_ID: get_learner_stats(fetches)}
 
         if released:
             self.idle_tower_stacks.put(buffer_idx)

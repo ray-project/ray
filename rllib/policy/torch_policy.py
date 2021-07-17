@@ -547,7 +547,7 @@ class TorchPolicy(Policy):
             all_grads, grad_info = tower_outputs[0]
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
-        grad_info.update(self.extra_grad_info(postprocessed_batch))
+        grad_info.update(self.extra_grad_info(batches[0]))
 
         fetches = self.extra_compute_grad_fetches()
 

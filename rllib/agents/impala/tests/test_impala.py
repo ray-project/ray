@@ -56,6 +56,7 @@ class TestIMPALA(unittest.TestCase):
             [0, 0.0005],
             [10000, 0.000001],
         ]
+        config["num_gpus"] = 0  # Do not use any (fake) GPUs.
         config["env"] = "CartPole-v0"
 
         def get_lr(result):
@@ -82,6 +83,8 @@ class TestIMPALA(unittest.TestCase):
         # Fake GPU setup.
         config["_fake_gpus"] = True
         config["num_gpus"] = 2
+
+        config["train_batch_size"] *= 2
 
         # Test w/ LSTMs.
         config["model"]["use_lstm"] = True
