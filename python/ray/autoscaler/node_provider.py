@@ -132,6 +132,21 @@ class NodeProvider:
                         "{}: Terminating node".format(node_id))
             self.terminate_node(node_id)
 
+    def before_autoscaler_update(self) -> None:
+        """Optional hook to run at the start of an autoscaler update.
+
+        See autoscaler.py
+        """
+        raise NotImplementedError
+
+    def after_autoscaler_update(self) -> None:
+        """Optional hook to run at the end of an autoscaler update.
+
+        See autoscaler.py
+        """
+        raise NotImplementedError
+
+
     @staticmethod
     def bootstrap_config(cluster_config: Dict[str, Any]) -> Dict[str, Any]:
         """Bootstraps the cluster config by adding env defaults if needed."""
