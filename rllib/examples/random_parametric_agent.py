@@ -83,7 +83,6 @@ RandomParametricTrainer = build_trainer(
 
 
 def main():
-    ray.init()
     register_env("pa_cartpole", lambda _: ParametricActionsCartPole(10))
     trainer = RandomParametricTrainer(env="pa_cartpole")
     result = trainer.train()
@@ -92,4 +91,5 @@ def main():
 
 
 if __name__ == "__main__":
+    ray.init()
     main()
