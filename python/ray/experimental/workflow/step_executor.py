@@ -161,14 +161,16 @@ def _workflow_step_executor(
     Returns:
         Workflow step output.
     """
-    # Before running the actual function, we
-    # 1. Setup the workflow context, so we have proper access to
-    #    workflow storage.
-    # 2. Decode step inputs to arguments and keyword-arguments.
     ret = None
     err = None
+    # step_max_retries are for application level failure.
+    # For ray failure, we should use max_retries.
     for _ in range(step_max_retries):
         try:
+            # Before running the actual function, we
+            # 1. Setup the workflow context, so we have proper access to
+            #    workflow storage.
+            # 2. Decode step inputs to arguments and keyword-arguments.
             workflow_context.update_workflow_step_context(context, step_id)
             args, kwargs = _resolve_step_inputs(step_inputs)
             # Running the actual step function
