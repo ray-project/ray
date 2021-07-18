@@ -1,3 +1,4 @@
+from enum import Enum
 from collections import deque
 import re
 from typing import Tuple, List, Optional, Callable, Set, Iterator
@@ -15,6 +16,13 @@ WorkflowInputTuple = Tuple[ObjectRef, List["Workflow"], List[ObjectRef]]
 StepExecutionFunction = Callable[
     [StepID, WorkflowInputTuple, Optional[StepID]], WorkflowOutputType]
 SerializedStepFunction = str
+
+
+class WorkflowStatus(Enum):
+    RUNNING = 1
+    CANCELED = 2
+    FINISHED = 3
+    FAILED = 4
 
 
 @dataclass

@@ -3,4 +3,4 @@ from ray.experimental.workflow.api import (step, actor, run, resume,
 from ray.experimental.workflow.workflow_access import WorkflowExecutionError
 
 __all__ = ("step", "actor", "run", "resume", "get_output", "get_actor",
-           "WorkflowExecutionError")
+           "WorkflowExecutionError", "list", "resume_all", "get_status")

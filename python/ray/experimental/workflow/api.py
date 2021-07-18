@@ -10,6 +10,7 @@ from ray.experimental.workflow.step_function import WorkflowStepFunction
 from ray.experimental.workflow import virtual_actor
 # avoid collision with arguments
 from ray.experimental.workflow import storage as storage_base
+from ray.experimental.workflow.common import WorkflowStatus
 
 if TYPE_CHECKING:
     from ray.experimental.workflow.storage import Storage
@@ -196,4 +197,13 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
     return execution.get_output(workflow_id)
 
 
-__all__ = ("step", "actor", "run", "resume", "get_output")
+def list(status: Optional[WorkflowStatus]) -> List[Tuple[str, WorkflowStatus]]:
+    pass
+
+def resume_all() -> List[Tuple[str, WorkflowStatus]]:
+    pass
+
+def get_status(workflow_id: str) -> WorkflowStatus:
+    pass
+
+__all__ = ("step", "actor", "run", "resume", "get_output", "list")
