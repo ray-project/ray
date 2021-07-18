@@ -1,4 +1,5 @@
 import time
+from filelock import FileLock
 
 from ray.tests.conftest import *  # noqa
 
@@ -209,3 +210,30 @@ def test_step_failure(ray_start_regular_shared, tmp_path):
                                   catch_exception=True).step()))
     assert ret == 10
     assert err is None
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{
+        "namespace": "workflow",
+        "num_cpus": 2,
+    }], indirect=True)
+def test_step_failure(ray_start_regular_shared, tmp_path):
+    lock_path = str(tmp_path / "lock")
+    @workflow.step
+    def step_run():
+        with FileLock(lock_path):
+            return None
+
+    @ray.remote(num_cpus=1)
+    def remote_run():
+        return None
+
+    lock = FileLock(lock_path)
+    lock.acquire()
+    ret = workflow.run(step_run.options(num_cpus=2).step())
+    obj = remote_run.remote()
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(obj, timeout=2)
+    lock.release()
+    assert ray.get(ret) == None
+    assert ray.get(obj) == None
