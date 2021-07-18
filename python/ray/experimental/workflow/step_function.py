@@ -18,6 +18,9 @@ class WorkflowStepFunction:
 
     def __init__(self, func: Callable):
         self._func = func
+        self._step_max_retries = 1
+        self._catch_exception = False
+        self._options_kwargs = {}
         self._func_signature = list(
             inspect.signature(func).parameters.values())
 
@@ -60,10 +63,39 @@ class WorkflowStepFunction:
             step_id: StepID,
             step_inputs: WorkflowInputTuple,
             outer_most_step_id: Optional[StepID] = None) -> WorkflowOutputType:
-        return execute_workflow_step(self._func, step_id, step_inputs,
-                                     outer_most_step_id)
+        return execute_workflow_step(
+            self._func, step_id, step_inputs, outer_most_step_id,
+            self._step_max_retries, self._catch_exception,
+            self._options_kwargs)
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Workflow steps cannot be called directly. Instead "
                         f"of running '{self.step.__name__}()', "
                         f"try '{self.step.__name__}.step()'.")
+
+    def options(self,
+                *,
+                step_max_retries: Optional[int] = None,
+                catch_exception: Optional[bool] = None,
+                **kwargs) -> "WorkflowStepFunction":
+        """This function set how the step function is going to be executed.
+
+        Args:
+            step_max_retries(int): num of retries the step for an application level error
+            catch_exception(bool): Whether the user want to take care of the failure mannually.
+                If it's set to be true, (Optional[R], Optional[E]) will be returned.
+                If it's false, the normal result will be returned.
+            **kwargs(dict): All parameters in this fields will be passed to ray remote function
+                options.
+
+        Returns:
+            The step function itself.
+        """
+        if catch_exception is not None:
+            self._catch_exception = catch_exception
+        if step_max_retries is not None:
+            if  step_max_retries < 1:
+                raise ValueError("step_max_retries has to be greater than 0")
+            self._step_max_retries = step_max_retries
+        self._options_kwargs = kwargs
+        return self
