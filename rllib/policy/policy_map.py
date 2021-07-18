@@ -98,27 +98,26 @@ class PolicyMap(dict):
             var_scope = policy_id + (("_wk" + str(self.worker_index))
                                      if self.worker_index else "")
 
-            with tf1.variable_scope(var_scope):
-                # For tf static graph, build every policy in its own graph
-                # and create a new session for it.
-                if framework == "tf":
-                    with tf1.Graph().as_default():
-                        if self.session_creator:
-                            sess = self.session_creator()
-                        else:
-                            sess = tf1.Session(
-                                config=tf1.ConfigProto(
-                                    gpu_options=tf1.GPUOptions(
-                                        allow_growth=True)))
-                        with sess.as_default():
-                            # Set graph-level seed.
-                            if self.seed is not None:
-                                tf1.set_random_seed(self.seed)
-
+            # For tf static graph, build every policy in its own graph
+            # and create a new session for it.
+            if framework == "tf":
+                with tf1.Graph().as_default():
+                    if self.session_creator:
+                        sess = self.session_creator()
+                    else:
+                        sess = tf1.Session(
+                            config=tf1.ConfigProto(
+                                gpu_options=tf1.GPUOptions(allow_growth=True)))
+                    with sess.as_default():
+                        # Set graph-level seed.
+                        if self.seed is not None:
+                            tf1.set_random_seed(self.seed)
+                        with tf1.variable_scope(var_scope):
                             self[policy_id] = class_(
                                 observation_space, action_space, merged_config)
-                # For tf-eager: no graph, no session.
-                else:
+            # For tf-eager: no graph, no session.
+            else:
+                with tf1.variable_scope(var_scope):
                     self[policy_id] = \
                         class_(observation_space, action_space, merged_config)
         # Non-tf: No graph, no session.

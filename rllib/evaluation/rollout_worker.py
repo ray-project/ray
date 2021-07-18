@@ -1007,12 +1007,11 @@ class RolloutWorker(ParallelIteratorWorker):
             return ret
 
     @DeveloperAPI
-    def get_policy(
-            self, policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID) -> Policy:
+    def get_policy(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> Policy:
         """Return policy for the specified id, or None.
 
         Args:
-            policy_id (str): ID of the policy to return.
+            policy_id (PolicyID): ID of the policy to return.
 
         Returns:
             Optional[Policy]: The policy under the given ID (or None if not
