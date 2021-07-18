@@ -199,8 +199,9 @@ class MultiGPUTrainOneStep:
                             batch_fetches_all_towers.append(
                                 tree.map_structure_with_path(
                                     lambda p, *s: all_tower_reduce(p, *s),
-                                    *(batch_fetches["tower_{}".format(tower_num)]
-                                      for tower_num in range(len(self.devices)))))
+                                    *(batch_fetches["tower_{}".format(
+                                        tower_num)] for tower_num in range(
+                                            len(self.devices)))))
 
                 # Reduce mean across all minibatch SGD steps (axis=0 to keep
                 # all shapes as-is).
