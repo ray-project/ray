@@ -294,8 +294,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 if match:
                     pid = match.group(1)
                     ip = match.group(2)
-                    errs_for_ip = DataSource.ip_and_pid_to_errors.get(ip, {})
-                    pid_errors = errs_for_ip.get(pid, [])
+                    errs_for_ip = dict(
+                        DataSource.ip_and_pid_to_errors.get(ip, {}))
+                    pid_errors = list(errs_for_ip.get(pid, []))
                     pid_errors.append({
                         "message": message,
                         "timestamp": error_data.timestamp,
