@@ -2,8 +2,9 @@ from collections import deque
 import gym
 import os
 import pickle
-from typing import Callable, Optional, Type, TYPE_CHECKING
+from typing import Callable, Dict, Optional, Type, TYPE_CHECKING
 
+from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import get_tf_eager_cls_if_necessary
@@ -65,9 +66,9 @@ class PolicyMap(dict):
         # The core config to use. Each single policy's config override is
         # added on top of this.
         self.policy_config = policy_config or {}
-        # The orig classes of the Policies and their config overrides.
-        self.policy_orig_cls = {}
-        self.policy_config_override = {}
+        # The orig classes/obs+act spaces, and config overrides of the
+        # Policies.
+        self.policy_specs = {}  # type: Dict[PolicyID, PolicySpec]
 
     def create_policy(self, policy_id: PolicyID, policy_cls: Type["Policy"],
                       observation_space: gym.Space, action_space: gym.Space,
@@ -126,11 +127,14 @@ class PolicyMap(dict):
             self[policy_id] = class_(observation_space, action_space,
                                      merged_config)
 
-        # Experimental: Store orig classes and config overrides such that
-        # the map will be able to reproduce on-the-fly added policies
+        # Store spec (class, obs-space, act-space, and config overrides) such
+        # that the map will be able to reproduce on-the-fly added policies
         # from disk.
-        self.policy_orig_cls[policy_id] = policy_cls
-        self.policy_config_override[policy_id] = config_override
+        self.policy_specs[policy_id] = PolicySpec(
+            policy_class=policy_cls,
+            observation_space=observation_space,
+            action_space=action_space,
+            config=config_override)
 
     @override(dict)
     def __getitem__(self, item):
@@ -265,16 +269,16 @@ class PolicyMap(dict):
 
         # Get class and config override.
         merged_conf = merge_dicts(self.policy_config,
-                                  self.policy_config_override[policy_id])
+                                  self.policy_specs[policy_id].config)
 
         # Create policy object (from its spec: cls, obs-space, act-space,
         # config).
         self.create_policy(
             policy_id,
-            self.policy_orig_cls[policy_id],
-            policy_state["observation_space"],
-            policy_state["action_space"],
-            self.policy_config_override[policy_id],
+            self.policy_specs[policy_id].policy_class,
+            self.policy_specs[policy_id].observation_space,
+            self.policy_specs[policy_id].action_space,
+            self.policy_specs[policy_id].config,
             merged_conf,
         )
         # Restore policy's state.

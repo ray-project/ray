@@ -40,7 +40,9 @@ class TestTrainer(unittest.TestCase):
             },
         })
 
-        for _ in framework_iterator(config):
+        # TODO: (sven) this will work for tf, once we have the DynamicTFPolicy
+        #  refactor PR merged.
+        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
             trainer = pg.PGTrainer(config=config)
             r = trainer.train()
             self.assertTrue("p0" in r["policy_reward_min"])
