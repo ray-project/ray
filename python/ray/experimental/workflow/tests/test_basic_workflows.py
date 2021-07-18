@@ -175,3 +175,27 @@ def test_run_or_resume_during_running(ray_start_regular_shared):
         workflow.resume(workflow_id="running_workflow")
 
     assert ray.get(output) == "[source1][append1][append2]"
+
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_step_failure(ray_start_regular_shared, tmp_path):
+    t = (tmp_path / "test").write_text("0")
+    @workflow.step
+    def unstable_step():
+        v = int((tmp_path / "test").read_text())
+        (tmp_path / "test").write_text(f"{v + 1}")
+        if v < 10:
+            raise ValueError("Invalid")
+        return v
+    with pytest.raises(Exception):
+        ray.get(workflow.run(unstable_step.options(step_max_retries=3).step()))
+    assert 10 == ray.get(workflow.run(unstable_step.options(step_max_retries=8).step()))
+    t = (tmp_path / "test").write_text("0")
+    (ret, err) = ray.get(workflow.run(unstable_step.options(step_max_retries=3, catch_exception=True).step()))
+    assert ret is None
+    assert isinstance(err, ValueError)
+    (ret, err) = ray.get(workflow.run(unstable_step.options(step_max_retries=8, catch_exception=True).step()))
+    assert ret == 10
+    assert err is None

@@ -1,6 +1,6 @@
 import functools
 import inspect
-from typing import List, Tuple, Callable, Optional
+from typing import Any, Dict, List, Tuple, Callable, Optional
 
 import ray
 
@@ -16,14 +16,16 @@ StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 class WorkflowStepFunction:
     """This class represents a workflow step."""
 
-    def __init__(self, func: Callable):
+    def __init__(self, func: Callable,
+                 step_max_retries=1,
+                 catch_exception=False,
+                 ray_options={}):
         self._func = func
-        self._step_max_retries = 1
-        self._catch_exception = False
-        self._options_kwargs = {}
+        self._step_max_retries = step_max_retries
+        self._catch_exception = catch_exception
+        self._ray_options = ray_options
         self._func_signature = list(
             inspect.signature(func).parameters.values())
-
         # Override signature and docstring
         @functools.wraps(func)
         def _build_workflow(*args, **kwargs) -> Workflow:
@@ -54,7 +56,10 @@ class WorkflowStepFunction:
                         "workflow currently does not support checkpointing "
                         "ObjectRefs.")
             return Workflow(self._func, self._run_step, input_placeholder,
-                            workflows, object_refs)
+                            workflows, object_refs,
+                            self._step_max_retries,
+                            self._catch_exception,
+                            self._ray_options)
 
         self.step = _build_workflow
 
@@ -62,11 +67,12 @@ class WorkflowStepFunction:
             self,
             step_id: StepID,
             step_inputs: WorkflowInputTuple,
+            catch_exception: bool,
+            step_max_retries: int,
+            ray_options: Dict[str, Any],
             outer_most_step_id: Optional[StepID] = None) -> WorkflowOutputType:
         return execute_workflow_step(
-            self._func, step_id, step_inputs, outer_most_step_id,
-            self._step_max_retries, self._catch_exception,
-            self._options_kwargs)
+            self._func, step_id, step_inputs, catch_exception, step_max_retries, ray_options, outer_most_step_id)
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Workflow steps cannot be called directly. Instead "
@@ -75,9 +81,9 @@ class WorkflowStepFunction:
 
     def options(self,
                 *,
-                step_max_retries: Optional[int] = None,
-                catch_exception: Optional[bool] = None,
-                **kwargs) -> "WorkflowStepFunction":
+                step_max_retries: int = 1,
+                catch_exception: bool = False,
+                **ray_options) -> "WorkflowStepFunction":
         """This function set how the step function is going to be executed.
 
         Args:
@@ -91,11 +97,4 @@ class WorkflowStepFunction:
         Returns:
             The step function itself.
         """
-        if catch_exception is not None:
-            self._catch_exception = catch_exception
-        if step_max_retries is not None:
-            if  step_max_retries < 1:
-                raise ValueError("step_max_retries has to be greater than 0")
-            self._step_max_retries = step_max_retries
-        self._options_kwargs = kwargs
-        return self
+        return WorkflowStepFunction(self._func, step_max_retries, catch_exception, ray_options)
