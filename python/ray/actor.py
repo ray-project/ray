@@ -7,6 +7,7 @@ import ray._raylet
 import ray._private.signature as signature
 import ray._private.runtime_env as runtime_support
 import ray.worker
+from ray.util.annotations import PublicAPI
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
 
@@ -29,6 +30,7 @@ from ray.util.tracing.tracing_helper import (_tracing_actor_creation,
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 @client_mode_hook
 def method(*args, **kwargs):
     """Annotate an actor method.

@@ -205,8 +205,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
       // Check if the node is still schedulable. It may not be if dependency resolution
       // took a long time.
-      std::shared_ptr<TaskResourceInstances> allocated_instances(
-          new TaskResourceInstances());
+      auto allocated_instances = std::make_shared<TaskResourceInstances>();
       bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
           spec.GetRequiredResources().GetResourceMap(), allocated_instances);
 
@@ -232,12 +231,11 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // double-acquiring when the next invocation of this function tries to schedule
           // this task.
           cluster_resource_scheduler_->ReleaseWorkerResources(allocated_instances);
+          // No worker available, we won't be able to schedule any kind of task.
+          // Worker processes spin up pretty quickly, so it's not worth trying to spill
+          // this task.
           ReleaseTaskArgs(task_id);
-          // It may be that no worker was available with the correct runtime env or
-          // correct job ID.  However, another task with a different env or job ID
-          // might have a worker available, so continue iterating through the queue.
-          work_it++;
-          continue;
+          return;
         }
 
         RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "

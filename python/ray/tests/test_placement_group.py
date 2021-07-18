@@ -28,6 +28,30 @@ class Increase:
         return x + 2
 
 
+@pytest.mark.parametrize("connect_to_client", [True, False])
+def test_placement_ready(ray_start_regular, connect_to_client):
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            pass
+
+        def v(self):
+            return 10
+
+    # bundle is placement group reserved resources and can't be used in bundles
+    with pytest.raises(Exception):
+        ray.util.placement_group(bundles=[{"bundle": 1}])
+    # This test is to test the case that even there all resource in the
+    # bundle got allocated, we are still able to return from ready[I
+    # since ready use 0 CPU
+    with connect_to_client_or_not(connect_to_client):
+        pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+        ray.get(pg.ready())
+        a = Actor.options(num_cpus=1, placement_group=pg).remote()
+        ray.get(a.v.remote())
+        ray.get(pg.ready())
+
+
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_pack(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=2)

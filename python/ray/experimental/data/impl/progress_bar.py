@@ -1,7 +1,7 @@
 from typing import List
 
 import ray
-from ray.experimental.data.block import ObjectRef
+from ray.types import ObjectRef
 
 try:
     import tqdm

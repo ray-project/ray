@@ -320,6 +320,22 @@ def test_async_loop_forever():
     loop.run_forever()
     assert counter[0] > 2
 
+    counter2 = [0]
+    task = None
+
+    @dashboard_utils.async_loop_forever(interval_seconds=0.1, cancellable=True)
+    async def bar():
+        nonlocal task
+        counter2[0] += 1
+        if counter2[0] > 2:
+            task.cancel()
+
+    loop = asyncio.new_event_loop()
+    task = loop.create_task(bar())
+    with pytest.raises(asyncio.CancelledError):
+        loop.run_until_complete(task)
+    assert counter2[0] == 3
+
 
 def test_dashboard_module_decorator(enable_test_module):
     head_cls_list = dashboard_utils.get_all_modules(

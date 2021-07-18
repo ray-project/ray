@@ -13,7 +13,8 @@ if TYPE_CHECKING:
     import pyspark
 
 import ray
-from ray.experimental.data.block import ObjectRef, Block, BlockMetadata
+from ray.types import ObjectRef
+from ray.experimental.data.block import Block, BlockMetadata
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.datasource import Datasource, RangeDatasource, \
     JSONDatasource, CSVDatasource, ReadTask, _S3FileSystemWrapper
@@ -320,9 +321,13 @@ def read_binary_files(
     """
     import pyarrow as pa
 
+    if isinstance(paths, str):
+        paths = _reader.list_objects(paths)
+
     dataset = from_items(paths, parallelism=parallelism)
     if isinstance(filesystem, pa.fs.S3FileSystem):
         filesystem = _S3FileSystemWrapper(filesystem)
+
     return dataset.map(
         lambda path: _reader.read_file(
             path,

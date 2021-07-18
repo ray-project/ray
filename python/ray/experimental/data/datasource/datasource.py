@@ -4,7 +4,8 @@ from typing import Any, Generic, List, Callable, Union
 import numpy as np
 
 import ray
-from ray.experimental.data.block import Block, BlockMetadata, ObjectRef, T
+from ray.types import ObjectRef
+from ray.experimental.data.block import Block, BlockMetadata, T
 from ray.experimental.data.impl.block_builder import SimpleBlock
 from ray.experimental.data.impl.arrow_block import ArrowRow, ArrowBlock
 
