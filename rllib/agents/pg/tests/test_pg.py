@@ -14,7 +14,7 @@ from ray.rllib.utils import check, check_compute_single_action, fc, \
 
 class TestPG(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     def tearDown(self):
         ray.shutdown()
@@ -25,10 +25,7 @@ class TestPG(unittest.TestCase):
         config["num_workers"] = 0
         num_iterations = 2
 
-        for fw in framework_iterator(config):
-            # For tf, build with fake-GPUs.
-            config["_fake_gpus"] = fw == "tf"
-            config["num_gpus"] = 2 if fw == "tf" else 0
+        for _ in framework_iterator(config):
             trainer = pg.PGTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 print(trainer.train())

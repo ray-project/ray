@@ -180,9 +180,9 @@ class MultiGPUTrainOneStep:
                     1,
                     int(tuples_per_device) // int(self.per_device_batch_size))
                 logger.debug("== sgd epochs for {} ==".format(policy_id))
+                batch_fetches_all_towers = []
                 for _ in range(self.num_sgd_iter):
                     permutation = np.random.permutation(num_batches)
-                    batch_fetches_all_towers = []
                     for batch_index in range(num_batches):
                         # Learn on the pre-loaded data in the buffer.
                         # Note: For minibatch SGD, the data is an offset into
@@ -192,11 +192,15 @@ class MultiGPUTrainOneStep:
                             self.per_device_batch_size,
                             buffer_index=0)
 
-                        batch_fetches_all_towers.append(
-                            tree.map_structure_with_path(
-                                lambda p, *s: all_tower_reduce(p, *s),
-                                *(batch_fetches["tower_{}".format(tower_num)]
-                                  for tower_num in range(len(self.devices)))))
+                        # No towers: Single CPU.
+                        if "tower_0" not in batch_fetches:
+                            batch_fetches_all_towers.append(batch_fetches)
+                        else:
+                            batch_fetches_all_towers.append(
+                                tree.map_structure_with_path(
+                                    lambda p, *s: all_tower_reduce(p, *s),
+                                    *(batch_fetches["tower_{}".format(tower_num)]
+                                      for tower_num in range(len(self.devices)))))
 
                 # Reduce mean across all minibatch SGD steps (axis=0 to keep
                 # all shapes as-is).
