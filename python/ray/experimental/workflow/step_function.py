@@ -16,7 +16,8 @@ StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 class WorkflowStepFunction:
     """This class represents a workflow step."""
 
-    def __init__(self, func: Callable,
+    def __init__(self,
+                 func: Callable,
                  step_max_retries=1,
                  catch_exception=False,
                  ray_options={}):
@@ -26,6 +27,7 @@ class WorkflowStepFunction:
         self._ray_options = ray_options
         self._func_signature = list(
             inspect.signature(func).parameters.values())
+
         # Override signature and docstring
         @functools.wraps(func)
         def _build_workflow(*args, **kwargs) -> Workflow:
@@ -56,10 +58,8 @@ class WorkflowStepFunction:
                         "workflow currently does not support checkpointing "
                         "ObjectRefs.")
             return Workflow(self._func, self._run_step, input_placeholder,
-                            workflows, object_refs,
-                            self._step_max_retries,
-                            self._catch_exception,
-                            self._ray_options)
+                            workflows, object_refs, self._step_max_retries,
+                            self._catch_exception, self._ray_options)
 
         self.step = _build_workflow
 
@@ -71,8 +71,9 @@ class WorkflowStepFunction:
             step_max_retries: int,
             ray_options: Dict[str, Any],
             outer_most_step_id: Optional[StepID] = None) -> WorkflowOutputType:
-        return execute_workflow_step(
-            self._func, step_id, step_inputs, catch_exception, step_max_retries, ray_options, outer_most_step_id)
+        return execute_workflow_step(self._func, step_id, step_inputs,
+                                     catch_exception, step_max_retries,
+                                     ray_options, outer_most_step_id)
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Workflow steps cannot be called directly. Instead "
@@ -87,14 +88,18 @@ class WorkflowStepFunction:
         """This function set how the step function is going to be executed.
 
         Args:
-            step_max_retries(int): num of retries the step for an application level error
-            catch_exception(bool): Whether the user want to take care of the failure mannually.
-                If it's set to be true, (Optional[R], Optional[E]) will be returned.
+            step_max_retries(int): num of retries the step for an application
+                level error
+            catch_exception(bool): Whether the user want to take care of the
+                failure mannually.
+                If it's set to be true, (Optional[R], Optional[E]) will be
+                returned.
                 If it's false, the normal result will be returned.
-            **kwargs(dict): All parameters in this fields will be passed to ray remote function
-                options.
+            **kwargs(dict): All parameters in this fields will be passed to
+                ray remote function options.
 
         Returns:
             The step function itself.
         """
-        return WorkflowStepFunction(self._func, step_max_retries, catch_exception, ray_options)
+        return WorkflowStepFunction(self._func, step_max_retries,
+                                    catch_exception, ray_options)

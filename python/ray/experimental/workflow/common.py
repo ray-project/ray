@@ -69,10 +69,8 @@ class Workflow:
                  step_execution_function: StepExecutionFunction,
                  input_placeholder: ObjectRef,
                  input_workflows: List["Workflow"],
-                 input_object_refs: List[ObjectRef],
-                 step_max_retries: int,
-                 catch_exception: bool,
-                 ray_options: Dict[str, Any]):
+                 input_object_refs: List[ObjectRef], step_max_retries: int,
+                 catch_exception: bool, ray_options: Dict[str, Any]):
         self._input_placeholder: ObjectRef = input_placeholder
         self._input_workflows: List[Workflow] = input_workflows
         self._input_object_refs: List[ObjectRef] = input_object_refs
@@ -122,12 +120,8 @@ class Workflow:
         step_inputs = (self._input_placeholder, workflow_outputs,
                        self._input_object_refs)
         output = self._step_execution_function(
-            self._step_id,
-            step_inputs,
-            self._catch_exception,
-            self._step_max_retries,
-            self._ray_options,
-            outer_most_step_id)
+            self._step_id, step_inputs, self._catch_exception,
+            self._step_max_retries, self._ray_options, outer_most_step_id)
         if not isinstance(output, WorkflowOutputType):
             raise TypeError("Unexpected return type of the workflow.")
         self._output = output

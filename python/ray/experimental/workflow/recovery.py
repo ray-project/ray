@@ -95,8 +95,8 @@ def _construct_resume_workflow_from_step(
     recovery_workflow: Workflow = _recover_workflow_step.options(
         step_max_retries=result.step_max_retries,
         catch_exception=result.catch_exception,
-        **result.ray_options).step(
-            result.object_refs, input_workflows, instant_workflow_outputs)
+        **result.ray_options).step(result.object_refs, input_workflows,
+                                   instant_workflow_outputs)
     recovery_workflow._step_id = step_id
     return recovery_workflow
 
