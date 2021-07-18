@@ -493,7 +493,13 @@ class DynamicTFPolicy(TFPolicy):
                 raise ValueError(
                     "Must call Policy.load_batch_into_buffer() before "
                     "Policy.learn_on_loaded_batch()!")
-            return self.learn_on_batch(self._loaded_single_cpu_batch)
+            # Get the correct slice of the already loaded batch to use,
+            # based on offset and batch size.
+            batch_size = self.config.get("sgd_minibatch_size",
+                                         self.config["train_batch_size"])
+            sliced_batch = self._loaded_single_cpu_batch.slice(
+                start=offset, end=offset + batch_size)
+            return self.learn_on_batch(sliced_batch)
 
         return self.multi_gpu_tower_stacks[buffer_index].optimize(
             self.get_session(), offset)
