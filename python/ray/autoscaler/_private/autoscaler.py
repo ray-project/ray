@@ -17,8 +17,7 @@ import collections
 from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
-    TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
-    STATUS_SYNCING_FILES, STATUS_SETTING_UP, STATUS_UP_TO_DATE,
+    TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED,
     NODE_KIND_WORKER, NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
@@ -873,11 +872,8 @@ class StandardAutoscaler:
                 non_failed.add(node_id)
             else:
                 status = node_tags[TAG_RAY_NODE_STATUS]
-                pending_states = [
-                    STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
-                    STATUS_SYNCING_FILES, STATUS_SETTING_UP
-                ]
-                is_pending = status in pending_states
+                completed_states = [STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED]
+                is_pending = status not in completed_states
                 if is_pending:
                     pending_nodes.append((ip, node_type, status))
                     non_failed.add(node_id)
