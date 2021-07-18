@@ -216,9 +216,11 @@ def test_step_failure(ray_start_regular_shared, tmp_path):
     "ray_start_regular_shared", [{
         "namespace": "workflow",
         "num_cpus": 2,
-    }], indirect=True)
-def test_step_failure(ray_start_regular_shared, tmp_path):
+    }],
+    indirect=True)
+def test_step_resources(ray_start_regular_shared, tmp_path):
     lock_path = str(tmp_path / "lock")
+
     @workflow.step
     def step_run():
         with FileLock(lock_path):
@@ -235,5 +237,5 @@ def test_step_failure(ray_start_regular_shared, tmp_path):
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(obj, timeout=2)
     lock.release()
-    assert ray.get(ret) == None
-    assert ray.get(obj) == None
+    assert ray.get(ret) is None
+    assert ray.get(obj) is None
