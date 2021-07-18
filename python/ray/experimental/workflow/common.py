@@ -164,7 +164,7 @@ class Workflow:
             >>> flight2 = book_flight.step("SAN", "OAK")
             >>> hotel = book_hotel.step("SAN")
             >>> trip = finalize_trip.step([flight1, flight2, hotel])
-            >>> result = workflow.run(trip)
+            >>> result = trip.run()
 
         Args:
             workflow_id: A unique identifier that can be used to resume the
@@ -197,7 +197,7 @@ class Workflow:
             >>> flight2 = book_flight.step("SAN", "OAK")
             >>> hotel = book_hotel.step("SAN")
             >>> trip = finalize_trip.step([flight1, flight2, hotel])
-            >>> result = ray.get(workflow.run_async(trip))
+            >>> result = ray.get(trip.run_async())
 
         Args:
             workflow_id: A unique identifier that can be used to resume the
