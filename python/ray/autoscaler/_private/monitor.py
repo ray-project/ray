@@ -96,7 +96,8 @@ class Monitor:
                  redis_password=None,
                  prefix_cluster_info=False,
                  monitor_ip=None,
-                 stop_event: Optional[Event] = None):
+                 stop_event: Optional[Event] = None,
+                 disable_node_updaters=False):
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
             redis_address, redis_password=redis_password)
@@ -129,6 +130,7 @@ class Monitor:
         self.prefix_cluster_info = prefix_cluster_info
         # Can be used to signal graceful exit from monitor loop.
         self.stop_event = stop_event  # type: Optional[Event]
+        self.disable_node_updaters = disable_node_updaters
         self.autoscaling_config = autoscaling_config
         self.autoscaler = None
 

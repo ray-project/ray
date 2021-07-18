@@ -80,7 +80,8 @@ class StandardAutoscaler:
                  update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S,
                  prefix_cluster_info=False,
                  event_summarizer=None,
-                 prom_metrics=None):
+                 prom_metrics=None,
+                 disable_node_updaters=False):
         self.config_path = config_path
         # Prefix each line of info string with cluster name if True
         self.prefix_cluster_info = prefix_cluster_info
@@ -103,13 +104,16 @@ class StandardAutoscaler:
         self.process_runner = process_runner
         self.event_summarizer = event_summarizer or EventSummarizer()
 
-        # Map from node_id to NodeUpdater processes
+        # Map from node_id to NodeUpdater threads
         self.updaters = {}
         self.num_failed_updates = defaultdict(int)
         self.num_successful_updates = defaultdict(int)
         self.num_failures = 0
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
+
+        # Disable NodeUpdater threads if true
+        self.disable_node_updaters = disable_node_updaters
 
         # Node launchers
         self.launch_queue = queue.Queue()
@@ -774,6 +778,8 @@ class StandardAutoscaler:
         self.updaters[node_id] = updater
 
     def can_update(self, node_id):
+        if self.disable_node_updaters:
+            return False
         if node_id in self.updaters:
             return False
         if not self.launch_config_ok(node_id):
