@@ -2,7 +2,6 @@ import logging
 from typing import Any, Dict, List, TYPE_CHECKING
 
 import ray
-from ray.experimental.workflow import common
 from ray.experimental.workflow import recovery
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
@@ -144,8 +143,7 @@ class WorkflowManagementActor:
             initialized successfully.
         """
         store = storage.create_storage(storage_url)
-        workflow_id = common.actor_id_to_workflow_id(actor_id)
-        ws = workflow_storage.WorkflowStorage(workflow_id, store)
+        ws = workflow_storage.WorkflowStorage(actor_id, store)
         try:
             step_id = ws.get_entrypoint_step_id()
             output_exists = ws.inspect_step(step_id).output_object_valid

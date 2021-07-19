@@ -148,14 +148,9 @@ class TrainTFMultiGPU:
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
         self.optimizers = {}
-        with self.workers.local_worker().tf_sess.graph.as_default():
-            with self.workers.local_worker().tf_sess.as_default():
-                for policy_id in (self.policies
-                                  or self.local_worker.policies_to_train):
-                    self.add_optimizer(policy_id)
-
-                self.sess = self.workers.local_worker().tf_sess
-                self.sess.run(tf1.global_variables_initializer())
+        for policy_id in (self.policies
+                          or self.local_worker.policies_to_train):
+            self.add_optimizer(policy_id)
 
     def __call__(self,
                  samples: SampleBatchType) -> (SampleBatchType, List[dict]):
@@ -181,10 +176,7 @@ class TrainTFMultiGPU:
                 # Policy seems to be new and doesn't have an optimizer yet.
                 # Add it here and continue.
                 elif policy_id not in self.optimizers:
-                    with self.workers.local_worker().tf_sess.graph.as_default(
-                    ):
-                        with self.workers.local_worker().tf_sess.as_default():
-                            self.add_optimizer(policy_id)
+                    self.add_optimizer(policy_id)
 
                 # Decompress SampleBatch, in case some columns are compressed.
                 batch.decompress_if_needed()
@@ -200,13 +192,14 @@ class TrainTFMultiGPU:
                     state_keys = []
                 num_loaded_tuples[policy_id] = (
                     self.optimizers[policy_id].load_data(
-                        self.sess, [tuples[k] for k in data_keys],
+                        policy.get_session(), [tuples[k] for k in data_keys],
                         [tuples[k] for k in state_keys]))
 
         # Execute minibatch SGD on loaded data.
         with learn_timer:
             fetches = {}
             for policy_id, tuples_per_device in num_loaded_tuples.items():
+                policy = self.workers.local_worker().get_policy(policy_id)
                 optimizer = self.optimizers[policy_id]
                 num_batches = max(
                     1,
@@ -217,7 +210,7 @@ class TrainTFMultiGPU:
                     batch_fetches_all_towers = []
                     for batch_index in range(num_batches):
                         batch_fetches = optimizer.optimize(
-                            self.sess, permutation[batch_index] *
+                            policy.get_session(), permutation[batch_index] *
                             self.per_device_batch_size)
 
                         batch_fetches_all_towers.append(
@@ -250,15 +243,20 @@ class TrainTFMultiGPU:
 
     def add_optimizer(self, policy_id):
         policy = self.workers.local_worker().get_policy(policy_id)
-        with tf1.variable_scope(policy_id, reuse=tf1.AUTO_REUSE):
-            if policy._state_inputs:
-                rnn_inputs = policy._state_inputs + [policy._seq_lens]
-            else:
-                rnn_inputs = []
-            self.optimizers[policy_id] = (LocalSyncParallelOptimizer(
-                policy._optimizer, self.devices,
-                list(policy._loss_input_dict_no_rnn.values()), rnn_inputs,
-                self.per_device_batch_size, policy.copy))
+        tf_session = policy.get_session()
+        with tf_session.graph.as_default():
+            with tf_session.as_default():
+                with tf1.variable_scope(policy_id, reuse=tf1.AUTO_REUSE):
+                    if policy._state_inputs:
+                        rnn_inputs = policy._state_inputs + [policy._seq_lens]
+                    else:
+                        rnn_inputs = []
+                    self.optimizers[policy_id] = (LocalSyncParallelOptimizer(
+                        policy._optimizer, self.devices,
+                        list(policy._loss_input_dict_no_rnn.values()),
+                        rnn_inputs, self.per_device_batch_size, policy.copy))
+
+                tf_session.run(tf1.global_variables_initializer())
 
 
 def all_tower_reduce(path, *tower_data):
