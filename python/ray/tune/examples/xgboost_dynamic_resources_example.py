@@ -149,7 +149,7 @@ class BreastCancerTrainable(Trainable):
             self.new_nthread = new_resources.cpu
 
 
-def tune_xgboost(trainable=True):
+def tune_xgboost(use_class_trainable=True):
     search_space = {
         # You can mix constants with search space objects.
         "objective": "binary:logistic",
@@ -234,7 +234,7 @@ def tune_xgboost(trainable=True):
         # resources_allocation_function=evenly_distribute_cpus_gpus  # default
     )
 
-    if trainable:
+    if use_class_trainable:
         fn = BreastCancerTrainable
     else:
         fn = train_breast_cancer
@@ -250,9 +250,9 @@ def tune_xgboost(trainable=True):
         config=search_space,
         num_samples=1,
         scheduler=scheduler,
-        checkpoint_at_end=trainable)
+        checkpoint_at_end=use_class_trainable)
 
-    if trainable:
+    if use_class_trainable:
         assert analysis.results_df["nthread"].max() > 1
 
     return analysis
@@ -269,7 +269,7 @@ if __name__ == "__main__":
         help="The address of server to connect to if using "
         "Ray Client.")
     parser.add_argument(
-        "--trainable",
+        "--class-trainable",
         action="store_true",
         default=False,
         help="set to use the Trainable (class) API instead of functional one")
@@ -286,10 +286,10 @@ if __name__ == "__main__":
         ray.init(num_cpus=8)
 
     if args.test:
-        analysis = tune_xgboost(True)
+        analysis = tune_xgboost(use_class_trainable=True)
         best_bst = get_best_model_checkpoint(analysis)
 
-    analysis = tune_xgboost(args.trainable)
+    analysis = tune_xgboost(use_class_trainable=args.class_trainable)
 
     # Load the best model checkpoint.
     if args.server_address:
