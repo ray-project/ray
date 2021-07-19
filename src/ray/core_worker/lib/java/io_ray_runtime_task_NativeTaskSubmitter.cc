@@ -183,7 +183,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       full_name,
       // TODO(suquark): support passing namespace for Java. Currently
       // there is no use case.
-      /*actor_namespace=*/"",
+      /*ray_namespace=*/"",
       /*is_asyncio=*/false,
       placement_options};
   return actor_creation_options;

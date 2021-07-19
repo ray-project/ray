@@ -321,7 +321,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
 
   // Use the namespace in task options by default. Otherwise use the
   // namespace from the job.
-  std::string ray_namespace = actor_creation_task_spec.actor_namespace();
+  std::string ray_namespace = actor_creation_task_spec.ray_namespace();
   if (ray_namespace.empty()) {
     ray_namespace = get_ray_namespace_(job_id);
   }

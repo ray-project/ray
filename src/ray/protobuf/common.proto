@@ -300,7 +300,7 @@ message ActorCreationTaskSpec {
   // Globally-unique name of the actor. Should only be populated when is_detached is true.
   string name = 8;
   // The namespace of the actor. Should only be populated when is_detached is true.
-  string actor_namespace = 9;
+  string ray_namespace = 9;
   // Whether the actor use async actor calls.
   bool is_asyncio = 10;
   // Field used for storing application-level extensions to the actor definition.
