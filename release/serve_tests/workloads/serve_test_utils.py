@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import re
 
+
 def parse_time_to_ms(time_string: str) -> float:
     """Given a time string with various unit, convert
     to ms in float:
@@ -14,9 +15,9 @@ def parse_time_to_ms(time_string: str) -> float:
             "1.5s" -> 1500
     """
     # Group 1 - (one or more digits + optional dot + one or more digits)
-        # 71.91 / 50 / 1.5
+    # 71.91 / 50 / 1.5
     # Group 2 - (All words)
-        # ms / us / s
+    # ms / us / s
     parsed = re.split(r"(\d+.?\d+)(\w+)", time_string)
     values = [val for val in parsed if val]
 
@@ -29,6 +30,7 @@ def parse_time_to_ms(time_string: str) -> float:
 
     # Should not return here in common benchmark
     return values[1]
+
 
 def parse_size_to_KB(size_string: str) -> float:
     """Given a size string with various unit, convert
@@ -43,9 +45,9 @@ def parse_size_to_KB(size_string: str) -> float:
             "0.5GB" -> 524288
     """
     # Group 1 - (one or more digits + optional dot + one or more digits)
-        # 71.91 / 50 / 1.5
+    # 71.91 / 50 / 1.5
     # Group 2 - (All words)
-        # ms / us / s
+    # ms / us / s
     parsed = re.split(r"(\d+.?\d+)(\w+)", size_string)
     values = [val for val in parsed if val]
 
@@ -58,6 +60,7 @@ def parse_size_to_KB(size_string: str) -> float:
 
     # Should not return here in common benchmark
     return values[1]
+
 
 def parse_wrk_decoded_stdout(decoded_out):
     """
