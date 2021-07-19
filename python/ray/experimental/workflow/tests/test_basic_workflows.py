@@ -98,23 +98,22 @@ def factorial(n):
         "namespace": "workflow"
     }], indirect=True)
 def test_basic_workflows(ray_start_regular_shared):
-    output = workflow.run(simple_sequential.step())
-    assert ray.get(output) == "[source1][append1][append2]"
+    # This test also shows different "style" of running workflows.
+    assert simple_sequential.step().run() == "[source1][append1][append2]"
 
-    output = workflow.run(simple_sequential_with_input.step("start:"))
-    assert ray.get(output) == "start:[append1][append2]"
+    wf = simple_sequential_with_input.step("start:")
+    assert wf.run() == "start:[append1][append2]"
 
-    output = workflow.run(loop_sequential.step(3))
-    assert ray.get(output) == "[source1]" + "[append1]" * 3 + "[append2]"
+    wf = loop_sequential.step(3)
+    assert wf.run() == "[source1]" + "[append1]" * 3 + "[append2]"
 
-    output = workflow.run(nested.step("nested:"))
-    assert ray.get(output) == "nested:~[nested]~[append1][append2]"
+    wf = nested.step("nested:")
+    assert wf.run() == "nested:~[nested]~[append1][append2]"
 
-    output = workflow.run(fork_join.step())
-    assert ray.get(output) == "join([source1][append1], [source1][append2])"
+    wf = fork_join.step()
+    assert wf.run() == "join([source1][append1], [source1][append2])"
 
-    outputs = workflow.run(factorial.step(10))
-    assert ray.get(outputs) == 3628800
+    assert factorial.step(10).run() == 3628800
 
 
 @pytest.mark.parametrize(
@@ -123,7 +122,7 @@ def test_basic_workflows(ray_start_regular_shared):
     }], indirect=True)
 def test_async_execution(ray_start_regular_shared):
     start = time.time()
-    output = workflow.run(blocking.step())
+    output = blocking.step().run_async()
     duration = time.time() - start
     assert duration < 5  # workflow.run is not blocked
     assert ray.get(output) == 314
@@ -167,14 +166,11 @@ def test_workflow_output_resolving(ray_start_regular_shared):
         "namespace": "workflow"
     }], indirect=True)
 def test_run_or_resume_during_running(ray_start_regular_shared):
-    output = workflow.run(
-        simple_sequential.step(), workflow_id="running_workflow")
-
+    output = simple_sequential.step().run_async(workflow_id="running_workflow")
     with pytest.raises(ValueError):
-        workflow.run(simple_sequential.step(), workflow_id="running_workflow")
+        simple_sequential.step().run_async(workflow_id="running_workflow")
     with pytest.raises(ValueError):
         workflow.resume(workflow_id="running_workflow")
-
     assert ray.get(output) == "[source1][append1][append2]"
 
 
