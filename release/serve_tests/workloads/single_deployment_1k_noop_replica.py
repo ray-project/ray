@@ -14,7 +14,9 @@ Report:
 """
 
 import click
+import json
 import math
+import os
 import ray
 import requests
 import subprocess
@@ -22,13 +24,16 @@ import time
 
 from ray import serve
 from ray.cluster_utils import Cluster
+from serve_test_utils import parse_wrk_decoded_stdout
 from subprocess import PIPE
 from typing import Optional
-from serve_test_utils import parse_wrk_decoded_stdout
 
 # Experiment configs
-DEFAULT_NUM_REPLICA = 8
-DEFAULT_NUM_TRIALS = 1
+DEFAULT_SMOKE_TEST_NUM_REPLICA = 8
+DEFAULT_SMOKE_TEST_NUM_TRIALS = 1
+
+DEFAULT_FULL_TEST_NUM_REPLICA = 1000
+DEFAULT_FULL_TEST_NUM_TRIALS = 10
 
 # Cluster setup configs
 NUM_REDIS_SHARDS = 1
@@ -40,12 +45,8 @@ NUM_CPU_PER_NODE = 8
 DEFAULT_MAX_BATCH_SIZE = 16
 
 # Experiment configs - wrk specific
-DEFAULT_TRAIL_LENGTH = "1m"
-# For detailed discussion, see https://github.com/wg/wrk/issues/205
-# TODO:(jiaodong) What's the best number to use here ?
-DEFAULT_NUM_CONNECTIONS = int(
-    DEFAULT_NUM_REPLICA * DEFAULT_MAX_BATCH_SIZE * 0.75)
-
+DEFAULT_SMOKE_TEST_TRAIL_LENGTH = "1m"
+DEFAULT_FULL_TEST_TRAIL_LENGTH = "10m"
 
 def setup_local_single_node_cluster(num_nodes):
     """Setup ray cluster locally via ray.init() and Cluster()
@@ -75,7 +76,10 @@ def setup_anyscale_cluster():
     Note this is by default large scale and should be kicked off
     less frequently.
     """
-    ray.client().env({}).connect()
+    # TODO: Ray client didn't work with releaser script yet because
+    # we cannot connect to anyscale cluster from its headnode
+    # ray.client().env({}).connect()
+    ray.init(address="auto")
     serve.start()
 
 
@@ -127,39 +131,71 @@ def shutdown_cluster():
 
 
 @click.command()
-@click.option("--num-replicas", type=int, default=DEFAULT_NUM_REPLICA)
-@click.option("--num-trials", type=int, default=DEFAULT_NUM_TRIALS)
-@click.option("--trial-length", type=str, default=DEFAULT_TRAIL_LENGTH)
+@click.option("--num-replicas", type=int)
+@click.option("--num-trials", type=int)
+@click.option("--trial-length", type=str)
 @click.option("--max-batch-size", type=int, default=DEFAULT_MAX_BATCH_SIZE)
 @click.option("--run-locally", type=bool, default=True)
+@click.option("--smoke-test", type=bool, default=True)
 def main(num_replicas: Optional[int], num_trials: Optional[int],
          trial_length: Optional[str], max_batch_size: Optional[int],
-         run_locally: Optional[bool]):
-    num_nodes = int(math.ceil(DEFAULT_NUM_REPLICA / NUM_CPU_PER_NODE))
-    if run_locally:
+         run_locally: Optional[bool], smoke_test: Optional[bool]):
+    
+    # Give default cluster parameter values based on smoke_test config
+    # if user provided values explicitly, use them instead.
+    if not smoke_test:
+        num_replicas = num_replicas or DEFAULT_FULL_TEST_NUM_REPLICA
+        num_trials = num_trials or DEFAULT_FULL_TEST_NUM_TRIALS
+        trial_length = trial_length or DEFAULT_FULL_TEST_TRAIL_LENGTH
         print(
-            f"\n\nSetting up local ray cluster with {num_nodes} nodes ....\n\n"
+            f"\nRunning full test with {num_replicas} replicas, "
+            f"{num_trials} trails that lasts {trial_length} each.. \n"
+        )
+    else:
+        num_replicas = num_replicas or DEFAULT_SMOKE_TEST_NUM_REPLICA
+        num_trials = num_trials or DEFAULT_SMOKE_TEST_NUM_TRIALS
+        trial_length = trial_length or DEFAULT_SMOKE_TEST_TRAIL_LENGTH
+        print(
+            f"\nRunning smoke test with {num_replicas} replicas, "
+            f"{num_trials} trails that lasts {trial_length} each.. \n"
+        )
+    
+    # Choose cluster setup based on user config. Local test uses Cluster()
+    # to mock actors that requires # of nodes to be specified, but ray
+    # client doesn't need to
+    if run_locally:
+        num_nodes = int(math.ceil(num_replicas/ NUM_CPU_PER_NODE))
+        print(
+            f"\nSetting up local ray cluster with {num_nodes} nodes ....\n"
         )
         setup_local_single_node_cluster(num_nodes)
     else:
-        print(f"\n\nSetting up anyscale ray cluster with {num_nodes} "
-              f"nodes ....\n\n")
+        print("\nSetting up anyscale ray cluster .. \n")
         setup_anyscale_cluster()
 
-    print(f"\n\nDeploying with {num_replicas} target replicas ....\n\n")
+    print(f"\nDeploying with {num_replicas} target replicas ....\n")
     deploy_replicas(num_replicas, max_batch_size)
 
-    print("\n\nWarming up cluster ....\n\n")
+    print("\nWarming up cluster ....\n")
     warm_up_cluster(5)
 
     final_result = []
     for iteration in range(num_trials):
-        print(f"\n\nStarting wrk trail # {iteration + 1} ....\n\n")
-        decoded_out = run_one_trial(trial_length, DEFAULT_NUM_CONNECTIONS)
+        print(f"\nStarting wrk trail # {iteration + 1} ....\n")
+        # For detailed discussion, see https://github.com/wg/wrk/issues/205
+        # TODO:(jiaodong) What's the best number to use here ?
+        num_connections = int(
+            num_replicas * DEFAULT_MAX_BATCH_SIZE * 0.75)
+        decoded_out = run_one_trial(trial_length, num_connections)
         metrics_dict = parse_wrk_decoded_stdout(decoded_out)
         final_result.append(metrics_dict)
 
     print(final_result)
+
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/single_deployment_1k_noop_replica.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(final_result, f)
 
 
 if __name__ == "__main__":
