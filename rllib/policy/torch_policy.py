@@ -196,6 +196,12 @@ class TorchPolicy(Policy):
                     param_indices.append(main_params[p])
             self.multi_gpu_param_groups.append(set(param_indices))
 
+        # Create n sample-batch buffers (num_multi_gpu_tower_stacks), each
+        # one with m towers (num_gpus).
+        if len(self.devices) > 1 or any("gpu" in d for d in self.devices):
+            num_buffers = self.config.get("num_multi_gpu_tower_stacks", 1)
+            self._loaded_batches = [[] for _ in range(num_buffers)]
+
         self.dist_class = action_distribution_class
         self.action_sampler_fn = action_sampler_fn
         self.action_distribution_fn = action_distribution_fn
@@ -478,6 +484,46 @@ class TorchPolicy(Policy):
 
         return fetches
 
+    @override(Policy)
+    @DeveloperAPI
+    def load_batch_into_buffer(
+            self,
+            batch: SampleBatch,
+            buffer_index: int = 0,
+    ) -> int:
+        # If not zero-padded yet, do this here on the CPU before
+        # splitting loading.
+        if not isinstance(batch, SampleBatch) or not batch.zero_padded:
+            pad_batch_to_sequences_of_same_size(
+                batch,
+                max_seq_len=self.max_seq_len,
+                shuffle=False,
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
+
+        # Shortcut for 1 CPU only: Store batch in
+        # `self._loaded_single_cpu_batch`.
+        if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
+            assert buffer_index == 0
+            self._loaded_batches[0] = [batch]
+        # For multi-GPU, split the batch into n slices (n=#GPUs).
+        # and move each one to its respective GPU.
+        else:
+            from ray.rllib.utils.sgd import minibatches
+            batches = list(
+                minibatches(
+                    batch,
+                    len(batch) // len(self.devices),
+                    shuffle=False))
+            self._loaded_batches[buffer_index] = []
+            for i, b in enumerate(batches):
+                TODO:
+                self._loaded_batches[buffer_index].append(
+                    b.to_device(self.devices[i], self.view_requirements))
+
+        return len(batch)
+
     @with_lock
     @override(Policy)
     @DeveloperAPI
@@ -485,30 +531,30 @@ class TorchPolicy(Policy):
                           postprocessed_batch: SampleBatch) -> ModelGradients:
 
         # For multi-GPU, split the batch into n slices (n=#GPUs).
-        if len(self.devices) == 1:
-            batches = [postprocessed_batch]
-        else:
-            from ray.rllib.utils.sgd import minibatches
-            batches = list(
-                minibatches(
-                    postprocessed_batch,
-                    len(postprocessed_batch) // len(self.devices),
-                    shuffle=False))
+        #if len(self.devices) == 1:
+        #    batches = [postprocessed_batch]
+        #else:
+        #    from ray.rllib.utils.sgd import minibatches
+        #    batches = list(
+        #        minibatches(
+        #            postprocessed_batch,
+        #            len(postprocessed_batch) // len(self.devices),
+        #            shuffle=False))
 
-        if not isinstance(postprocessed_batch, SampleBatch) or \
-                not postprocessed_batch.zero_padded:
-            for b in batches:
-                pad_batch_to_sequences_of_same_size(
-                    b,
-                    max_seq_len=self.max_seq_len,
-                    shuffle=False,
-                    batch_divisibility_req=self.batch_divisibility_req,
-                    view_requirements=self.view_requirements,
-                )
+        #if not isinstance(postprocessed_batch, SampleBatch) or \
+        #        not postprocessed_batch.zero_padded:
+        #    for b in batches:
+        #        pad_batch_to_sequences_of_same_size(
+        #            b,
+        #            max_seq_len=self.max_seq_len,
+        #            shuffle=False,
+        #            batch_divisibility_req=self.batch_divisibility_req,
+        #            view_requirements=self.view_requirements,
+        #        )
 
-        for b, d in zip(batches, self.devices):
-            b.is_training = True
-            self._lazy_tensor_dict(b, device=d)
+        #for b, d in zip(batches, self.devices):
+        #    b.is_training = True
+        #    self._lazy_tensor_dict(b, device=d)
 
         # Multi-GPU case: Slice inputs into n (roughly) equal batches.
         if len(self.devices) > 1:
