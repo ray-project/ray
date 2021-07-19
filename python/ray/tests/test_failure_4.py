@@ -7,7 +7,8 @@ import pytest
 
 from ray.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
-from ray.test_utils import (init_error_pubsub, get_error_message)
+from ray.test_utils import (init_error_pubsub, get_error_message,
+                            run_string_as_driver)
 
 
 def test_fill_object_store_exception(shutdown_only):
@@ -77,6 +78,57 @@ def test_connect_with_disconnected_node(shutdown_only):
     errors = get_error_message(p, 1, timeout=2)
     assert len(errors) == 0
     p.close()
+
+
+def test_detached_actor_ref(call_ray_start):
+    address = call_ray_start
+
+    driver_script = """
+import ray
+import time
+
+
+@ray.remote
+def foo(x):
+    return ray.put(42)
+
+
+@ray.remote
+class Actor:
+    def __init__(self):
+        self.ref = None
+
+    def invoke(self):
+        self.ref = foo.remote(0)
+        # Wait for the task to finish before exiting the driver.
+        ray.get(self.ref)
+
+    def get(self):
+        print("get", self.ref)
+        return self.ref
+
+
+if __name__ == "__main__":
+    ray.init(address="{}", namespace="default")
+    a = Actor.options(name="holder", lifetime="detached").remote()
+    # Wait for the task to finish before exiting the driver.
+    ray.get(a.invoke.remote())
+    print("success")
+""".format(address)
+
+    out = run_string_as_driver(driver_script)
+    assert "success" in out
+
+    import time
+    time.sleep(5)
+
+    # connect to the cluster
+    ray.init(address=address, namespace="default")
+    actor = ray.get_actor("holder")
+    x = actor.get.remote()
+    while isinstance(x, ray.ObjectRef):
+        x = ray.get(x)
+    assert x == 42
 
 
 if __name__ == "__main__":
