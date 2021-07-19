@@ -523,6 +523,7 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
       env, java_contained_ids, &contained_object_ids, [](JNIEnv *env, jobject id) {
         return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
+  env->DeleteLocalRef(java_contained_ids);
   return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer,
                                           contained_object_ids);
 }
