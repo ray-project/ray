@@ -1,5 +1,4 @@
 from collections import defaultdict, namedtuple, Counter
-from contextlib import suppress
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from typing import Any, Optional, Dict, List, Tuple
 from urllib3.exceptions import MaxRetryError
@@ -151,14 +150,12 @@ class StandardAutoscaler:
             self.reset(errors_fatal=False)
 
             # Optional pre-update hook.
-            with suppress(NotImplementedError):
-                self.provider.before_autoscaler_update()
+            self.provider.before_autoscaler_update()
 
             self._update()
 
             # Optional post-update hook.
-            with suppress(NotImplementedError):
-                self.provider.after_autoscaler_update()
+            self.provider.after_autoscaler_update(self.pending_launches)
 
         except Exception as e:
             self.prom_metrics.update_loop_exceptions.inc()

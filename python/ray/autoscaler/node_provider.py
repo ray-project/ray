@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler._private.command_runner import \
     SSHCommandRunner, DockerCommandRunner
+from ray.autoscaler._private.util import ConcurrentCounter
 
 logger = logging.getLogger(__name__)
 
@@ -134,18 +135,26 @@ class NodeProvider:
 
     def before_autoscaler_update(self) -> None:
         """Optional hook to run at the start of an autoscaler update.
-
         See autoscaler.py
-        """
-        raise NotImplementedError
 
-    def after_autoscaler_update(self) -> None:
+        Example use: Receive updates from a remote operator.
+        """
+        return
+
+    def after_autoscaler_update(self,
+                                pending_launches: ConcurrentCounter) -> None:
         """Optional hook to run at the end of an autoscaler update.
-
         See autoscaler.py
-        """
-        raise NotImplementedError
 
+        Example use: Send a scale request to a remote operator.
+
+        The parameter pending_launches can be used by a NodeProvider, e.g. to
+        wait for pending node launches to finish processing.
+
+        Args:
+            pending_launches: ConcurrentCounter of pending node launches.
+        """
+        return
 
     @staticmethod
     def bootstrap_config(cluster_config: Dict[str, Any]) -> Dict[str, Any]:
