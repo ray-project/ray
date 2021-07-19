@@ -474,36 +474,6 @@ class FunctionApiTest(unittest.TestCase):
         self.assertEqual(trial_2.last_result["cp"], "DIR")
         self.assertTrue(str(trial_1).startswith("train_"))
 
-        # With checkpoint dir and new resources parameter
-        def train(config, checkpoint_dir="DIR", new_resources=None, data=None):
-            data.data[101] = 2  # Changes are local
-            tune.report(metric=len(data.data), cp=checkpoint_dir)
-
-        trial_1, trial_2 = tune.run(
-            with_parameters(train, data=data), num_samples=2).trials
-
-        self.assertEqual(data.data[101], 0)
-        self.assertEqual(trial_1.last_result["metric"], 500_000)
-        self.assertEqual(trial_1.last_result["cp"], "DIR")
-        self.assertEqual(trial_2.last_result["metric"], 500_000)
-        self.assertEqual(trial_2.last_result["cp"], "DIR")
-        self.assertTrue(str(trial_1).startswith("train_"))
-
-        # With checkpoint dir and new resources parameter, different order
-        def train(config, new_resources=None, checkpoint_dir="DIR", data=None):
-            data.data[101] = 2  # Changes are local
-            tune.report(metric=len(data.data), cp=checkpoint_dir)
-
-        trial_1, trial_2 = tune.run(
-            with_parameters(train, data=data), num_samples=2).trials
-
-        self.assertEqual(data.data[101], 0)
-        self.assertEqual(trial_1.last_result["metric"], 500_000)
-        self.assertEqual(trial_1.last_result["cp"], "DIR")
-        self.assertEqual(trial_2.last_result["metric"], 500_000)
-        self.assertEqual(trial_2.last_result["cp"], "DIR")
-        self.assertTrue(str(trial_1).startswith("train_"))
-
     def testWithParameters2(self):
         class Data:
             def __init__(self):
@@ -520,41 +490,26 @@ class FunctionApiTest(unittest.TestCase):
         assert sys.getsizeof(dumped) < 100 * 1024
 
     def testNewResources(self):
-        # No checkpoint_dir, should error
-        def train(config, new_resources=None):
-            tune.report(metric=1)
-
-        with self.assertRaisesRegex(
-                ValueError, r"`new_resources` argument can only be used "
-                r"with `checkpoint_dir` argument."):
-            tune.run(train, num_samples=1)
-
         sched = ResourceChangingScheduler(
             resources_allocation_function=(
                 lambda a, b, c, d: PlacementGroupFactory([{"CPU": 2}])
             )
         )
 
-        # checkpoint_dir, should work
-        def train(config, checkpoint_dir=None, new_resources=None):
-            tune.report(metric=1)
-
-        tune.run(train, num_samples=1)
-        tune.run(train, scheduler=sched, num_samples=1)
-
-        # checkpoint_dir different order, should work
-        def train(config, new_resources=None, checkpoint_dir=None):
-            tune.report(metric=1)
-
-        tune.run(train, num_samples=1)
-        tune.run(train, scheduler=sched, num_samples=1)
-
-        # no new resources, should error
         def train(config, checkpoint_dir=None):
-            tune.report(metric=1)
+            tune.report(metric=1, resources=tune.get_trial_resources())
 
-        with self.assertRaises(tune.TuneError):
-            tune.run(train, scheduler=sched, num_samples=1)
+        analysis = tune.run(
+            train,
+            scheduler=sched,
+            stop={"training_iteration": 2},
+            resources_per_trial=PlacementGroupFactory([{
+                "CPU": 1
+            }]),
+            num_samples=1)
+
+        results_list = list(analysis.results.values())
+        assert results_list[0]["resources"].head_cpus == 2.0
 
     def testWithParametersTwoRuns1(self):
         # Makes sure two runs in the same script but different ray sessions

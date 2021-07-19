@@ -696,7 +696,11 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testTrialInfoAccess(self):
         class TestTrainable(Trainable):
             def step(self):
-                result = {"name": self.trial_name, "trial_id": self.trial_id}
+                result = {
+                    "name": self.trial_name,
+                    "trial_id": self.trial_id,
+                    "trial_resources": self.trial_resources
+                }
                 print(result)
                 return result
 
@@ -704,24 +708,38 @@ class TrainableFunctionApiTest(unittest.TestCase):
         trial = analysis.trials[0]
         self.assertEqual(trial.last_result.get("name"), str(trial))
         self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
+        self.assertEqual(
+            trial.last_result.get("trial_resources"),
+            trial.placement_group_factory)
 
     def testTrialInfoAccessFunction(self):
         def train(config, reporter):
-            reporter(name=reporter.trial_name, trial_id=reporter.trial_id)
+            reporter(
+                name=reporter.trial_name,
+                trial_id=reporter.trial_id,
+                trial_resources=reporter.trial_resources)
 
         analysis = tune.run(train, stop={TRAINING_ITERATION: 1})
         trial = analysis.trials[0]
         self.assertEqual(trial.last_result.get("name"), str(trial))
         self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
+        self.assertEqual(
+            trial.last_result.get("trial_resources"),
+            trial.placement_group_factory)
 
         def track_train(config):
             tune.report(
-                name=tune.get_trial_name(), trial_id=tune.get_trial_id())
+                name=tune.get_trial_name(),
+                trial_id=tune.get_trial_id(),
+                trial_resources=tune.get_trial_resources())
 
         analysis = tune.run(track_train, stop={TRAINING_ITERATION: 1})
         trial = analysis.trials[0]
         self.assertEqual(trial.last_result.get("name"), str(trial))
         self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
+        self.assertEqual(
+            trial.last_result.get("trial_resources"),
+            trial.placement_group_factory)
 
     @patch("ray.tune.ray_trial_executor.TRIAL_CLEANUP_THRESHOLD", 3)
     def testLotsOfStops(self):

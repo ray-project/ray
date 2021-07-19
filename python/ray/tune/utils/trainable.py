@@ -13,7 +13,6 @@ import os
 import ray
 from ray.tune.registry import _ParameterRegistry
 from ray.tune.utils import detect_checkpoint_function
-from ray.tune.utils.util import detect_new_resources
 from ray.util import placement_group
 from six import string_types
 
@@ -323,24 +322,17 @@ def with_parameters(trainable, **kwargs):
     else:
         # Function trainable
         use_checkpoint = detect_checkpoint_function(trainable, partial=True)
-        use_new_resources = detect_new_resources(trainable, partial=True)
-        use_new_resources_correct = use_checkpoint and use_new_resources
         keys = list(kwargs.keys())
 
-        def set_default_param(fn_kwargs, default, param_name: str):
-            sig = inspect.signature(trainable)
-            if param_name in sig.parameters:
-                default = sig.parameters[param_name].default \
-                          or default
-            fn_kwargs[param_name] = default
-
-        def inner(config, checkpoint_dir=None, new_resources=None):
+        def inner(config, checkpoint_dir=None):
             fn_kwargs = {}
             if use_checkpoint:
-                set_default_param(fn_kwargs, checkpoint_dir, "checkpoint_dir")
-                if use_new_resources_correct:
-                    set_default_param(fn_kwargs, new_resources,
-                                      "new_resources")
+                default = checkpoint_dir
+                sig = inspect.signature(trainable)
+                if "checkpoint_dir" in sig.parameters:
+                    default = sig.parameters["checkpoint_dir"].default \
+                              or default
+                fn_kwargs["checkpoint_dir"] = default
 
             for k in keys:
                 fn_kwargs[k] = parameter_registry.get(prefix + k)
@@ -353,20 +345,7 @@ def with_parameters(trainable, **kwargs):
         if not use_checkpoint:
 
             def _inner(config):
-                inner(config, checkpoint_dir=None, new_resources=None)
-
-            _inner.__name__ = trainable_name
-
-            if hasattr(trainable, "__mixins__"):
-                _inner.__mixins__ = trainable.__mixins__
-            return _inner
-        # Use correct function signature if no `new_resources` parameter
-        # is set
-        elif not use_new_resources_correct:
-
-            def _inner(config, checkpoint_dir=None):
-                inner(
-                    config, checkpoint_dir=checkpoint_dir, new_resources=None)
+                inner(config, checkpoint_dir=None)
 
             _inner.__name__ = trainable_name
 

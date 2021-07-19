@@ -702,8 +702,8 @@ def detect_checkpoint_function(train_func, abort=False, partial=False):
     if abort and not validated:
         func_args = inspect.getfullargspec(train_func).args
         raise ValueError(
-            "Provided training function must have at least 2 args "
-            "in the signature, and the second arg must "
+            "Provided training function must have 2 args "
+            "in the signature, and the latter arg must "
             "contain `checkpoint_dir`. For example: "
             "`func(config, checkpoint_dir=None)`. Got {}".format(func_args))
     return validated
@@ -719,21 +719,6 @@ def detect_reporter(func):
         logger.debug(str(e))
         use_reporter = False
     return use_reporter
-
-
-def detect_new_resources(func, partial=False):
-    """Check if any arg has 'new_resources'"""
-    func_sig = inspect.signature(func)
-    use_new_resources = True
-    try:
-        if partial:
-            func_sig.bind_partial({}, new_resources=None)
-        else:
-            func_sig.bind({}, new_resources=None)
-    except Exception as e:
-        logger.debug(str(e))
-        use_new_resources = False
-    return use_new_resources
 
 
 def detect_config_single(func):

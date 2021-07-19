@@ -237,9 +237,9 @@ ResourceChangingScheduler
 
 This class is a utility scheduler, allowing for trial resource requirements to be changed during tuning. It wraps around another scheduler and uses its decisions.
 
-* If you are using the Trainable (class) API for tuning, your Trainable must implement ``Trainable.update_resources``, which will let your model know about the new resources assigned.
+* If you are using the Trainable (class) API for tuning, your Trainable must implement ``Trainable.update_resources``, which will let your model know about the new resources assigned. You can also obtain the current trial resources by ``Trainable.trial_resources``.
 
-* If you are using the functional API for tuning, you need to add ``checkpoint_dir=None`` and ``new_resources=None`` keyword arguments to your train function (eg. ``func(config, checkpoint_dir=None, new_resources=None)``. The changed resources will be passed through the ``new_resources`` argument. The value will be None if the resources have not yet been changed. The function should be able to load and save checkpoints (the latter preferably every iteration).
+* If you are using the functional API for tuning, the current trial resources can be obtained by calling `tune.get_trial_resources()` inside the training function. The function should be able to :ref:`load and save checkpoints <tune-checkpoint>` (the latter preferably every iteration).
 
 An example of this in use can be found here: :doc:`/tune/examples/xgboost_dynamic_resources_example`.
 

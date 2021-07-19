@@ -38,9 +38,9 @@ def get_best_model_checkpoint(analysis):
 # FUNCTION API EXAMPLE
 
 
-# our train function needs both checkpoint_dir and new_resources
+# our train function needs to be able to checkpoint
 # to work with ResourceChangingScheduler
-def train_breast_cancer(config: dict, checkpoint_dir=None, new_resources=None):
+def train_breast_cancer(config: dict, checkpoint_dir=None):
     # This is a simple training function to be passed into Tune
     # Load dataset
     data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
@@ -58,10 +58,9 @@ def train_breast_cancer(config: dict, checkpoint_dir=None, new_resources=None):
         xgb_model = xgb.Booster()
         xgb_model.load_model(os.path.join(checkpoint_dir, CHECKPOINT_FILENAME))
 
-    if new_resources is None:
-        config["nthread"] = 1
-    else:
-        config["nthread"] = int(new_resources.head_cpus)
+    # we can obtain current trial resources through
+    # tune.get_trial_resources()
+    config["nthread"] = int(tune.get_trial_resources().head_cpus)
     print(f"nthreads: {config['nthread']} xgb_model: {xgb_model}")
     # Train the classifier, using the Tune callback
     xgb.train(
@@ -96,6 +95,11 @@ class BreastCancerTrainable(Trainable):
         self.test_set = xgb.DMatrix(test_x, label=test_y)
 
     def step(self):
+        # you can also obtain current trial resources:
+        current_resources = self.trial_resources
+        # testing purposes only:
+        assert int(current_resources.head_cpus) == int(self.nthread)
+
         results = {}
         config = self.config.copy()
         config["nthread"] = int(self.nthread)

@@ -18,7 +18,7 @@ from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
                              RESULT_DUPLICATE, SHOULD_CHECKPOINT)
 from ray.tune.utils import (detect_checkpoint_function, detect_config_single,
-                            detect_reporter, detect_new_resources)
+                            detect_reporter)
 from ray.tune.utils.trainable import with_parameters  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -124,7 +124,8 @@ class StatusReporter:
                  end_event,
                  trial_name=None,
                  trial_id=None,
-                 logdir=None):
+                 logdir=None,
+                 trial_resources=None):
         self._queue = result_queue
         self._last_report_time = None
         self._continue_semaphore = continue_semaphore
@@ -134,13 +135,19 @@ class StatusReporter:
         self._logdir = logdir
         self._last_checkpoint = None
         self._fresh_checkpoint = False
+        self._trial_resources = trial_resources
 
-    def reset(self, trial_name=None, trial_id=None, logdir=None):
+    def reset(self,
+              trial_name=None,
+              trial_id=None,
+              logdir=None,
+              trial_resources=None):
         self._trial_name = trial_name
         self._trial_id = trial_id
         self._logdir = logdir
         self._last_checkpoint = None
         self._fresh_checkpoint = False
+        self._trial_resources = trial_resources
 
     def __call__(self, _metric=None, **kwargs):
         """Report updated training status.
@@ -233,6 +240,11 @@ class StatusReporter:
         """Trial id for the corresponding trial of this Trainable."""
         return self._trial_id
 
+    @property
+    def trial_resources(self):
+        """Resources assigned to the trial of this Trainable."""
+        return self._trial_resources
+
 
 class _RunnerThread(threading.Thread):
     """Supervisor thread that runs your script."""
@@ -273,7 +285,6 @@ class FunctionRunner(Trainable):
     This mode of execution does not support checkpoint/restore."""
 
     _name = "func"
-    _has_new_resources = False
 
     def setup(self, config):
         # Semaphore for notifying the reporter to continue with the computation
@@ -298,16 +309,16 @@ class FunctionRunner(Trainable):
             self._end_event,
             trial_name=self.trial_name,
             trial_id=self.trial_id,
-            logdir=self.logdir)
+            logdir=self.logdir,
+            trial_resources=self.trial_resources)
         self._last_result = {}
 
         session.init(self._status_reporter)
         self._runner = None
         self._restore_tmpdir = None
-        self._new_resources = None
         self.temp_checkpoint_dir = None
 
-    def _trainable_func(self, config, reporter, checkpoint_dir, new_resources):
+    def _trainable_func(self, config, reporter, checkpoint_dir):
         """Subclasses can override this to set the trainable func."""
 
         raise NotImplementedError
@@ -315,8 +326,7 @@ class FunctionRunner(Trainable):
     def _start(self):
         def entrypoint():
             return self._trainable_func(self.config, self._status_reporter,
-                                        self._status_reporter.get_checkpoint(),
-                                        self._new_resources)
+                                        self._status_reporter.get_checkpoint())
 
         # the runner thread is not started until the first call to _train
         self._runner = _RunnerThread(entrypoint, self._error_queue)
@@ -508,15 +518,6 @@ class FunctionRunner(Trainable):
 
         return True
 
-    def update_resources(self, new_resources):
-        if not self._has_new_resources:
-            raise ValueError(
-                "The trial's resources were updated, but the function "
-                "doesn't have a `new_resources` keyword argument. To fix, "
-                "set the train function arguments to include "
-                "`new_resources=None`.")
-        self._new_resources = new_resources
-
     def _report_thread_runner_error(self, block=False):
         try:
             err_tb_str = self._error_queue.get(
@@ -542,50 +543,34 @@ def wrap_function(train_func, durable=False, warn=True):
     use_checkpoint = detect_checkpoint_function(train_func)
     use_config_single = detect_config_single(train_func)
     use_reporter = detect_reporter(train_func)
-    has_new_resources = detect_new_resources(train_func)
 
     if not any([use_checkpoint, use_config_single, use_reporter]):
         # use_reporter is hidden
         raise ValueError(
             "Unknown argument found in the Trainable function. "
             "The function args must include a 'config' positional "
-            "parameter. Any other args must be 'checkpoint_dir' or "
-            "'new_resources'. "
+            "parameter. Any other args must be 'checkpoint_dir'. "
             "Found: {}".format(func_args))
 
     if use_config_single and not use_checkpoint:
-        if has_new_resources:
-            raise ValueError(
-                "`new_resources` argument can only be used with "
-                "`checkpoint_dir` argument. Set the train function "
-                "arguments to be func(config, checkpoint_dir=None, "
-                "new_resources=None)`.")
         if log_once("tune_function_checkpoint") and warn:
             logger.warning(
                 "Function checkpointing is disabled. This may result in "
                 "unexpected behavior when using checkpointing features or "
                 "certain schedulers. To enable, set the train function "
-                "arguments to be `func(config, checkpoint_dir=None)` or "
-                "`func(config, checkpoint_dir=None, new_resources=None)`.")
+                "arguments to be `func(config, checkpoint_dir=None)`.")
 
     class ImplicitFunc(*inherit_from):
         _name = train_func.__name__ if hasattr(train_func, "__name__") \
             else "func"
-        _has_new_resources = has_new_resources
 
-        def _trainable_func(self, config, reporter, checkpoint_dir,
-                            new_resources):
-            partial_args = [train_func, config]
-            partial_kwargs = {}
-            if use_checkpoint:
-                partial_kwargs["checkpoint_dir"] = checkpoint_dir
-            elif use_reporter:
-                partial_args.append(reporter)
-
-            if self._has_new_resources:
-                partial_kwargs["new_resources"] = new_resources
-
-            fn = partial(*partial_args, **partial_kwargs)
+        def _trainable_func(self, config, reporter, checkpoint_dir):
+            if not use_checkpoint and not use_reporter:
+                fn = partial(train_func, config)
+            elif use_checkpoint:
+                fn = partial(train_func, config, checkpoint_dir=checkpoint_dir)
+            else:
+                fn = partial(train_func, config, reporter)
 
             def handle_output(output):
                 if not output:
