@@ -48,6 +48,7 @@ DEFAULT_MAX_BATCH_SIZE = 16
 DEFAULT_SMOKE_TEST_TRAIL_LENGTH = "1m"
 DEFAULT_FULL_TEST_TRAIL_LENGTH = "10m"
 
+
 def setup_local_single_node_cluster(num_nodes):
     """Setup ray cluster locally via ray.init() and Cluster()
 
@@ -140,34 +141,28 @@ def shutdown_cluster():
 def main(num_replicas: Optional[int], num_trials: Optional[int],
          trial_length: Optional[str], max_batch_size: Optional[int],
          run_locally: Optional[bool], smoke_test: Optional[bool]):
-    
+
     # Give default cluster parameter values based on smoke_test config
     # if user provided values explicitly, use them instead.
     if not smoke_test:
         num_replicas = num_replicas or DEFAULT_FULL_TEST_NUM_REPLICA
         num_trials = num_trials or DEFAULT_FULL_TEST_NUM_TRIALS
         trial_length = trial_length or DEFAULT_FULL_TEST_TRAIL_LENGTH
-        print(
-            f"\nRunning full test with {num_replicas} replicas, "
-            f"{num_trials} trails that lasts {trial_length} each.. \n"
-        )
+        print(f"\nRunning full test with {num_replicas} replicas, "
+              f"{num_trials} trails that lasts {trial_length} each.. \n")
     else:
         num_replicas = num_replicas or DEFAULT_SMOKE_TEST_NUM_REPLICA
         num_trials = num_trials or DEFAULT_SMOKE_TEST_NUM_TRIALS
         trial_length = trial_length or DEFAULT_SMOKE_TEST_TRAIL_LENGTH
-        print(
-            f"\nRunning smoke test with {num_replicas} replicas, "
-            f"{num_trials} trails that lasts {trial_length} each.. \n"
-        )
-    
+        print(f"\nRunning smoke test with {num_replicas} replicas, "
+              f"{num_trials} trails that lasts {trial_length} each.. \n")
+
     # Choose cluster setup based on user config. Local test uses Cluster()
     # to mock actors that requires # of nodes to be specified, but ray
     # client doesn't need to
     if run_locally:
-        num_nodes = int(math.ceil(num_replicas/ NUM_CPU_PER_NODE))
-        print(
-            f"\nSetting up local ray cluster with {num_nodes} nodes ....\n"
-        )
+        num_nodes = int(math.ceil(num_replicas / NUM_CPU_PER_NODE))
+        print(f"\nSetting up local ray cluster with {num_nodes} nodes ....\n")
         setup_local_single_node_cluster(num_nodes)
     else:
         print("\nSetting up anyscale ray cluster .. \n")
@@ -184,16 +179,15 @@ def main(num_replicas: Optional[int], num_trials: Optional[int],
         print(f"\nStarting wrk trail # {iteration + 1} ....\n")
         # For detailed discussion, see https://github.com/wg/wrk/issues/205
         # TODO:(jiaodong) What's the best number to use here ?
-        num_connections = int(
-            num_replicas * DEFAULT_MAX_BATCH_SIZE * 0.75)
+        num_connections = int(num_replicas * DEFAULT_MAX_BATCH_SIZE * 0.75)
         decoded_out = run_one_trial(trial_length, num_connections)
         metrics_dict = parse_wrk_decoded_stdout(decoded_out)
         final_result.append(metrics_dict)
 
     print(final_result)
 
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/single_deployment_1k_noop_replica.json")
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/single_deployment_1k_noop_replica.json")
     with open(test_output_json, "wt") as f:
         json.dump(final_result, f)
 
