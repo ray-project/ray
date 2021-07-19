@@ -138,6 +138,7 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
   return can_dispatch;
 }
 
+using job_id_runtime_env_hash_pair = std::pair<size_t, int>;
 void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     WorkerPoolInterface &worker_pool,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
@@ -153,17 +154,20 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     // TODO(simon): blocked_runtime_env_to_skip is added as a hack to make sure tasks
     // requiring different runtime env doesn't block each other. We need to find a
     // long term solution for this, see #17154.
-    std::unordered_set<int> blocked_runtime_env_to_skip;
+    std::unordered_set<job_id_runtime_env_hash_pair,
+                       boost::hash<job_id_runtime_env_hash_pair>>
+        blocked_runtime_env_to_skip;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto &work = *work_it;
       const auto &task = std::get<0>(work);
       const auto &spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
-      const int runtime_env_hash = spec.GetRuntimeEnvHash();
+      const auto runtime_env_worker_key =
+          std::make_pair(spec.JobId().Hash(), spec.GetRuntimeEnvHash());
 
       // Current task and runtime env combination doesn't have an available worker,
       // therefore skipping the task.
-      if (blocked_runtime_env_to_skip.count(runtime_env_hash) > 0) {
+      if (blocked_runtime_env_to_skip.count(runtime_env_worker_key) > 0) {
         work_it++;
         continue;
       }
@@ -250,7 +254,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           work_it++;
           // Keep track of runtime env that doesn't have workers available so we
           // won't call PopWorker for subsequent tasks requiring the same runtime env.
-          blocked_runtime_env_to_skip.insert(runtime_env_hash);
+          blocked_runtime_env_to_skip.insert(runtime_env_worker_key);
           continue;
         }
 
