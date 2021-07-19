@@ -5,6 +5,8 @@ import ray.cloudpickle as cp
 import colorama
 from contextlib import contextmanager
 
+from ray.util.annotations import DeveloperAPI
+
 
 @contextmanager
 def _indent(printer):
@@ -128,6 +130,7 @@ def _inspect_generic_serialization(base_obj, depth, parent, failure_set):
     return found
 
 
+@DeveloperAPI
 def inspect_serializability(
         base_obj: Any,
         name: Optional[str] = None,
