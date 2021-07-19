@@ -13,7 +13,7 @@ class Block(Generic[T]):
     """Represents a batch of rows to be stored in the Ray object store.
 
     Blocks can be accessed in a uniform way via ``BlockAccessors`` such as
-    ``ListBlockAccessor`` and ``ArrowBlockAccessor``.
+    ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
 
     This class is a dummy type that cannot be constructed. It stands in for the
     real type ``Union[pyarrow.Table, List[T]] (Generic[T])`` which cannot be
@@ -51,7 +51,7 @@ class BlockAccessor(Generic[T]):
     this is needed if we want to support storing ``pyarrow.Table`` directly
     as a top-level Ray object, without a wrapping class (issue #17186).
 
-    There are two types of block accessors: ``ListBlockAccessor``, which
+    There are two types of block accessors: ``SimpleBlockAccessor``, which
     operates over a plain Python list, and ``ArrowBlockAccessor``, for
     ``pyarrow.Table`` type blocks.
     """
