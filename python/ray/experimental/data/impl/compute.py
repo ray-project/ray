@@ -1,12 +1,16 @@
-from typing import TypeVar, Iterable, Any, Union
+from typing import TypeVar, Iterable, Any, Union, Callable
 
 import ray
-from ray.experimental.data.block import Block, BlockMetadata, ObjectRef
+from ray.types import ObjectRef
+from ray.experimental.data.block import Block, BlockMetadata
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.progress_bar import ProgressBar
 
 T = TypeVar("T")
 U = TypeVar("U")
+
+# A class type that implements __call__.
+CallableClass = type
 
 
 class ComputeStrategy:
@@ -111,6 +115,34 @@ class ActorPool(ComputeStrategy):
         new_metadata = ray.get([metadata_mapping[b] for b in blocks_out])
         map_bar.close()
         return BlockList(blocks_out, new_metadata)
+
+
+cached_cls = None
+cached_fn = None
+
+
+def cache_wrapper(fn: Union[CallableClass, Callable[[Any], Any]]
+                  ) -> Callable[[Any], Any]:
+    """Implements caching of stateful callables.
+
+    Args:
+        fn: Either a plain function or class of a stateful callable.
+
+    Returns:
+        A plain function with per-process initialization cached as needed.
+    """
+    if isinstance(fn, CallableClass):
+
+        def _fn(item: Any) -> Any:
+            global cached_cls, cached_fn
+            if cached_fn is None or cached_cls != fn:
+                cached_cls = fn
+                cached_fn = fn()
+            return cached_fn(item)
+
+        return _fn
+    else:
+        return fn
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:

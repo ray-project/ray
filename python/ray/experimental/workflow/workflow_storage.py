@@ -275,3 +275,24 @@ class WorkflowStorage:
             for w in workflow.iter_workflows_in_dag()
         ]
         asyncio_run(asyncio.gather(*tasks))
+
+    def load_actor_class_body(self) -> type:
+        """Load the class body of the virtual actor.
+
+        Raises:
+            DataLoadError: if we fail to load the class body.
+        """
+        return asyncio_run(
+            self._storage.load_actor_class_body(self._workflow_id))
+
+    def save_actor_class_body(self, cls: type) -> None:
+        """Save the class body of the virtual actor.
+
+        Args:
+            cls: The class body used by the virtual actor.
+
+        Raises:
+            DataSaveError: if we fail to save the class body.
+        """
+        asyncio_run(
+            self._storage.save_actor_class_body(self._workflow_id, cls))

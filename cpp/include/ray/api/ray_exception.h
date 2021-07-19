@@ -14,5 +14,10 @@ class RayException : public std::exception {
 
   std::string msg_;
 };
+
+class RayFunctionNotFound : public RayException {
+ public:
+  RayFunctionNotFound(const std::string &msg) : RayException(msg){};
+};
 }  // namespace api
 }  // namespace ray

@@ -6,8 +6,6 @@ if TYPE_CHECKING:
     import pyarrow
     from ray.experimental.data.impl.block_builder import BlockBuilder
 
-# TODO(ekl) shouldn't Ray provide an ObjectRef type natively?
-ObjectRef = List
 T = TypeVar("T")
 
 
