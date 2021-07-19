@@ -514,7 +514,8 @@ class FunctionRunner(Trainable):
         self._status_reporter.reset(
             trial_name=self.trial_name,
             trial_id=self.trial_id,
-            logdir=self.logdir)
+            logdir=self.logdir,
+            trial_resources=self.trial_resources)
 
         return True
 
