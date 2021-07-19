@@ -55,12 +55,11 @@ class RayConfig {
 /// \param type Type of the config item.
 /// \param name Name of the config item.
 /// \param default_value Default value of the config item.
-#define RAY_CONFIG(type, name, default_value)                                     \
- private:                                                                         \
-  type name##_ =                                                                  \
-      ReadEnv<type>("RAY_" #name, #type, default_value); \
-                                                                                  \
- public:                                                                          \
+#define RAY_CONFIG(type, name, default_value)                       \
+ private:                                                           \
+  type name##_ = ReadEnv<type>("RAY_" #name, #type, default_value); \
+                                                                    \
+ public:                                                            \
   inline type name() { return name##_; }
 
 #include "ray/common/ray_config_def.h"
