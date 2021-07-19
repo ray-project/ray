@@ -2,6 +2,7 @@
 
 #include <google/protobuf/map.h>
 
+#include <boost/functional/hash.hpp>
 #include <boost/range/join.hpp>
 
 #include "ray/stats/stats.h"
