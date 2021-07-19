@@ -1,43 +1,13 @@
 
 #include <gtest/gtest.h>
 #include <ray/api.h>
+
 #include "../../util/process_helper.h"
+#include "counter.h"
 #include "gflags/gflags.h"
+#include "plus.h"
 
 using namespace ::ray::api;
-
-/// general function of user code
-int Return1() { return 1; }
-int Plus1(int x) { return x + 1; }
-int Plus(int x, int y) { return x + y; }
-
-RAY_REMOTE(Return1, Plus1, Plus);
-
-/// a class of user code
-class Counter {
- public:
-  int count;
-
-  Counter(int init) { count = init; }
-
-  static Counter *FactoryCreate() { return new Counter(0); }
-  static Counter *FactoryCreate(int init) { return new Counter(init); }
-  static Counter *FactoryCreate(int init1, int init2) {
-    return new Counter(init1 + init2);
-  }
-  /// non static function
-  int Plus1() {
-    count += 1;
-    return count;
-  }
-  int Add(int x) {
-    count += x;
-    return count;
-  }
-};
-
-RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), RAY_FUNC(Counter::FactoryCreate, int),
-           RAY_FUNC(Counter::FactoryCreate, int, int), &Counter::Plus1, &Counter::Add);
 
 int *cmd_argc = nullptr;
 char ***cmd_argv = nullptr;

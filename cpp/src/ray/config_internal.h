@@ -1,8 +1,10 @@
 
 #pragma once
 #include <ray/api/ray_config.h>
+
 #include <memory>
 #include <string>
+
 #include "ray/core_worker/common.h"
 
 namespace ray {
@@ -24,7 +26,7 @@ class ConfigInternal {
 
   int node_manager_port = 0;
 
-  std::string dynamic_library_path = "";
+  std::vector<std::string> code_search_path;
 
   std::string plasma_store_socket_name = "";
 

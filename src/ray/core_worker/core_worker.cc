@@ -1613,6 +1613,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                             worker_context_.GetCurrentTaskID(), next_task_index);
   auto constrained_resources = AddPlacementGroupConstraint(
       task_options.resources, placement_options.first, placement_options.second);
+
   const std::unordered_map<std::string, double> required_resources;
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
@@ -1743,6 +1744,17 @@ Status CoreWorker::CreatePlacementGroup(
     PlacementGroupID *return_placement_group_id) {
   std::shared_ptr<std::promise<Status>> status_promise =
       std::make_shared<std::promise<Status>>();
+  const auto &bundles = placement_group_creation_options.bundles;
+  for (const auto &bundle : bundles) {
+    for (const auto &resource : bundle) {
+      if (resource.first == kBundle_ResourceLabel) {
+        std::ostringstream stream;
+        stream << kBundle_ResourceLabel << " is a system reserved resource, which is not "
+               << "allowed to be used in placement groupd ";
+        return Status::Invalid(stream.str());
+      }
+    }
+  }
   const PlacementGroupID placement_group_id = PlacementGroupID::FromRandom();
   PlacementGroupSpecBuilder builder;
   builder.SetPlacementGroupSpec(
@@ -2992,15 +3004,16 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
   // any object pinning RPCs in flight.
   bool is_idle = !own_objects && pins_in_flight == 0;
   reply->set_success(is_idle);
-  send_reply_callback(Status::OK(),
-                      [this, is_idle]() {
-                        // If the worker is idle, we exit.
-                        if (is_idle) {
-                          Exit(rpc::WorkerExitType::IDLE_EXIT);
-                        }
-                      },
-                      // We need to kill it regardless if the RPC failed.
-                      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
+  send_reply_callback(
+      Status::OK(),
+      [this, is_idle]() {
+        // If the worker is idle, we exit.
+        if (is_idle) {
+          Exit(rpc::WorkerExitType::IDLE_EXIT);
+        }
+      },
+      // We need to kill it regardless if the RPC failed.
+      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {

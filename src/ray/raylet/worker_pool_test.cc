@@ -96,9 +96,10 @@ class WorkerPoolMock : public WorkerPool {
  public:
   explicit WorkerPoolMock(instrumented_io_context &io_service,
                           const WorkerCommandMap &worker_commands)
-      : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
-                   MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
-                   []() {}, [this]() { return current_time_ms_; }),
+      : WorkerPool(
+            io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
+            MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands, []() {},
+            [this]() { return current_time_ms_; }),
         last_worker_process_() {
     SetNodeManagerPort(1);
   }
@@ -1210,6 +1211,26 @@ TEST_F(WorkerPoolTest, StartWorkWithDifferentShimPid) {
   // After worker finished starting, starting_worker_processes will erase this process.
   worker_pool_->OnWorkerStarted(worker);
   ASSERT_EQ(0, worker_pool_->NumWorkerProcessesStarting());
+
+  // test dedicated workers with different shim pid
+  std::vector<std::string> actor_jvm_options;
+  actor_jvm_options.insert(
+      actor_jvm_options.end(),
+      {"-Dmy-actor.hello=foo", "-Dmy-actor.world=bar", "-Xmx2g", "-Xms1g"});
+  auto task_id = TaskID::ForDriverTask(JOB_ID);
+  auto actor_id = ActorID::Of(JOB_ID, task_id, 1);
+  TaskSpecification java_task_spec = ExampleTaskSpec(
+      ActorID::Nil(), Language::JAVA, JOB_ID, actor_id, actor_jvm_options, task_id);
+  ASSERT_EQ(worker_pool_->PopWorker(java_task_spec), nullptr);
+  last_process = worker_pool_->LastStartedWorkerProcess();
+  pid_t java_shim_pid = last_process.GetId();
+  pid_t java_pid = java_shim_pid + 1000;
+  auto java_worker = CreateWorker(Process(), Language::JAVA);
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(java_worker, java_pid, java_shim_pid,
+                                            [](Status, int) {}));
+  // Add the workers to the pool.
+  worker_pool_->PushWorker(java_worker);
+  ASSERT_TRUE(worker_pool_->PopWorker(java_task_spec) != nullptr);
 }
 
 }  // namespace raylet

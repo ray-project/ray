@@ -1647,8 +1647,10 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
         "--ray-node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--ray-address={redis_address}",
         f"--ray-redis-password={redis_password}",
-        f"--ray-session-dir={session_dir}", f"--ray-logs-dir={log_dir}",
-        f"--ray-node-ip-address={node_ip_address}"
+        f"--ray-session-dir={session_dir}",
+        f"--ray-logs-dir={log_dir}",
+        f"--ray-node-ip-address={node_ip_address}",
+        "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 
     return command
