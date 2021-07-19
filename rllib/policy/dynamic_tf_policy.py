@@ -214,9 +214,9 @@ class DynamicTFPolicy(TFPolicy):
             self.view_requirements[SampleBatch.INFOS].used_for_training = False
 
         # Setup standard placeholders.
-        if existing_inputs is not None:
+        if self._is_tower:
             timestep = existing_inputs["timestep"]
-            explore = None
+            explore = False
             self._input_dict, self._dummy_batch = \
                 self._get_input_dict_and_dummy_batch(
                     self.view_requirements, existing_inputs)
@@ -249,7 +249,7 @@ class DynamicTFPolicy(TFPolicy):
         sampled_action_logp = None
         dist_inputs = None
         self._state_out = None
-        if not existing_inputs:
+        if not self._is_tower:
             # Create the Exploration object to use for this Policy.
             self.exploration = self._create_exploration()
 
@@ -362,7 +362,7 @@ class DynamicTFPolicy(TFPolicy):
             before_loss_init(self, obs_space, action_space, config)
 
         # Loss initialization and model/postprocessing test calls.
-        if not existing_inputs:
+        if not self._is_tower:
             self._initialize_loss_from_dummy_batch(
                 auto_remove_unneeded_view_reqs=True)
 
@@ -497,8 +497,11 @@ class DynamicTFPolicy(TFPolicy):
             # based on offset and batch size.
             batch_size = self.config.get("sgd_minibatch_size",
                                          self.config["train_batch_size"])
-            sliced_batch = self._loaded_single_cpu_batch.slice(
-                start=offset, end=offset + batch_size)
+            if batch_size >= len(self._loaded_single_cpu_batch):
+                sliced_batch = self._loaded_single_cpu_batch
+            else:
+                sliced_batch = self._loaded_single_cpu_batch.slice(
+                    start=offset, end=offset + batch_size)
             return self.learn_on_batch(sliced_batch)
 
         return self.multi_gpu_tower_stacks[buffer_index].optimize(

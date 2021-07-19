@@ -18,6 +18,7 @@ from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
+from ray.rllib.utils.tf_ops import get_gpu_devices
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
@@ -132,11 +133,13 @@ class TFPolicy(Policy):
             batch_divisibility_req (int): pad all agent experiences batches to
                 multiples of this value. This only has an effect if not using
                 a LSTM model.
-            update_ops (List[TensorType]): override the batchnorm update ops to
-                run when applying gradients. Otherwise we run all update ops
-                found in the current variable scope.
-            explore (Optional[TensorType]): Placeholder for `explore` parameter
-                into call to Exploration.get_exploration_action.
+            update_ops (List[TensorType]): override the batchnorm update ops
+                to run when applying gradients. Otherwise we run all update
+                ops found in the current variable scope.
+            explore (Optional[Union[TensorType, bool]]): Placeholder for
+                `explore` parameter into call to
+                Exploration.get_exploration_action. Explicitly set this to
+                False for not creating any Exploration component.
             timestep (Optional[TensorType]): Placeholder for the global
                 sampling timestep.
         """
@@ -147,25 +150,22 @@ class TFPolicy(Policy):
         worker_idx = self.config.get("worker_index", 0)
         num_gpus = config["num_gpus"] if worker_idx == 0 \
             else config["num_gpus_per_worker"]
-        if tfv == 2:
-            if config["_fake_gpus"] or num_gpus == 0 or \
-                    not tf.config.list_physical_devices("GPU"):
-                logger.info("TFPolicy (worker={}) running on {}.".format(
-                    worker_idx
-                    if worker_idx > 0 else "local", f"{num_gpus} fake-GPUs"
-                    if config["_fake_gpus"] else "CPU"))
-                self.devices = ["/cpu:0" for i in range(num_gpus or 1)]
-            else:
-                logger.info(
-                    "TFPolicy (worker={}) running on {} GPU(s).".format(
-                        worker_idx if worker_idx > 0 else "local", num_gpus))
-                gpu_ids = ray.get_gpu_ids()
-                self.devices = [
-                    f"/gpu:{i}" for i, _ in enumerate(gpu_ids) if i < num_gpus
-                ]
+
+        # No GPU configured, fake GPUs, or none available.
+        if config["_fake_gpus"] or num_gpus == 0 or not get_gpu_devices():
+            logger.info("TFPolicy (worker={}) running on {}.".format(
+                worker_idx
+                if worker_idx > 0 else "local", f"{num_gpus} fake-GPUs"
+                if config["_fake_gpus"] else "CPU"))
+            self.devices = ["/cpu:0" for _ in range(num_gpus or 1)]
+        # One or more actual GPUs (no fake GPUs).
         else:
-            raise NotImplementedError  # TODO: fix problem of
-            # tf.config.list_physical_devices("GPU") for tf1
+            logger.info("TFPolicy (worker={}) running on {} GPU(s).".format(
+                worker_idx if worker_idx > 0 else "local", num_gpus))
+            gpu_ids = ray.get_gpu_ids()
+            self.devices = [
+                f"/gpu:{i}" for i, _ in enumerate(gpu_ids) if i < num_gpus
+            ]
 
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
@@ -181,8 +181,11 @@ class TFPolicy(Policy):
         if self.model is not None:
             self._update_model_view_requirements_from_init_state()
 
-        self.exploration = self._create_exploration() if explore is not None \
+        # If `explore` is explicitly set to False, don't create an exploration
+        # component.
+        self.exploration = self._create_exploration() if explore is not False \
             else None
+
         self._sess = sess
         self._obs_input = obs_input
         self._prev_action_input = prev_action_input

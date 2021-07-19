@@ -37,6 +37,7 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
+from ray.rllib.utils.tf_ops import get_gpu_devices as get_tf_gpu_devices
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
     ModelConfigDict, ModelGradients, ModelWeights, \
@@ -578,7 +579,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     worker_index) +
                              " on CPU (please ignore any CUDA init errors)")
             elif (policy_config["framework"] in ["tf2", "tf", "tfe"] and
-                  not tf.config.experimental.list_physical_devices("GPU")) or \
+                  not get_tf_gpu_devices()) or \
                     (policy_config["framework"] == "torch" and
                      not torch.cuda.is_available()):
                 raise RuntimeError(
