@@ -325,8 +325,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   if (ray_namespace.empty()) {
     ray_namespace = get_ray_namespace_(job_id);
   }
-  auto actor =
-      std::make_shared<GcsActor>(request.task_spec(), ray_namespace);
+  auto actor = std::make_shared<GcsActor>(request.task_spec(), ray_namespace);
   if (!actor->GetName().empty()) {
     auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
     auto it = actors_in_namespace.find(actor->GetName());

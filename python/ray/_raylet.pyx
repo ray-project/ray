@@ -1334,7 +1334,8 @@ cdef class CoreWorker:
                     CActorCreationOptions(
                         max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
-                        dynamic_worker_options, is_detached, name, ray_namespace,
+                        dynamic_worker_options, is_detached, name,
+                        ray_namespace,
                         is_asyncio,
                         c_pair[CPlacementGroupID, int64_t](
                             c_placement_group_id,
@@ -1555,7 +1556,8 @@ cdef class CoreWorker:
         return self.make_actor_handle(
             CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
 
-    def get_named_actor_handle(self, const c_string &name, const c_string &ray_namespace):
+    def get_named_actor_handle(self, const c_string &name,
+                               const c_string &ray_namespace):
         cdef:
             pair[ActorHandleSharedPtr, CRayStatus] named_actor_handle_pair
 

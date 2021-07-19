@@ -66,12 +66,11 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
 
   std::string name = "";
   std::string ray_namespace = "";
-  ActorCreationOptions actor_options{
-      max_restarts,
-      /*max_task_retries=*/0,
-      /*max_concurrency*/ 1,  resources, resources,           {},
-      /*is_detached=*/false,  name,  ray_namespace,
-      /*is_asyncio=*/false};
+  ActorCreationOptions actor_options{max_restarts,
+                                     /*max_task_retries=*/0,
+                                     /*max_concurrency*/ 1,  resources, resources,     {},
+                                     /*is_detached=*/false,  name,      ray_namespace,
+                                     /*is_asyncio=*/false};
 
   // Create an actor.
   ActorID actor_id;
