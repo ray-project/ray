@@ -1106,7 +1106,7 @@ class Dataset(Generic[T]):
 
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.get_blocks()`` instead.
+        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -1125,14 +1125,25 @@ class Dataset(Generic[T]):
         """Convert this dataset into a distributed set of Arrow tables.
 
         This is only supported for datasets convertible to Arrow records.
-        This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.get_blocks()`` instead.
+        This function is zero-copy if the existing data is already in Arrow
+        format. Otherwise, the data will be converted to Arrow format.
 
-        Time complexity: O(dataset size / parallelism)
+        Time complexity: O(1) unless conversion is required.
 
         Returns:
             A list of remote Arrow tables created from this dataset.
         """
+
+        @ray.remote
+        def check_is_arrow(block: Block) -> bool:
+            import pyarrow
+            return isinstance(block, pyarrow.Table)
+
+        blocks: List[ObjectRef[Block[T]]] = list(self._blocks)
+        is_arrow = ray.get(check_is_arrow.remote(blocks[0]))
+
+        if is_arrow:
+            return blocks  # Zero-copy path.
 
         @ray.remote
         def block_to_df(block: Block):

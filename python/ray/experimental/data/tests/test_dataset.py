@@ -258,8 +258,17 @@ def test_to_pandas(ray_start_regular_shared):
 
 def test_to_arrow(ray_start_regular_shared):
     n = 5
+
+    # Zero-copy.
     df = pd.DataFrame({"value": list(range(n))})
     ds = ray.experimental.data.range_arrow(n)
+    dfds = pd.concat(
+        [t.to_pandas() for t in ray.get(ds.to_arrow())], ignore_index=True)
+    assert df.equals(dfds)
+
+    # Conversion.
+    df = pd.DataFrame({0: list(range(n))})
+    ds = ray.experimental.data.range(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow())], ignore_index=True)
     assert df.equals(dfds)
