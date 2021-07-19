@@ -1,10 +1,12 @@
 from collections import defaultdict
 import json
 import logging
+import os
 
 import ray
 
 from ray import gcs_utils
+from ray.util.annotations import DeveloperAPI
 from google.protobuf.json_format import MessageToDict
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.utils import (decode, binary_to_hex, hex_to_binary)
@@ -47,6 +49,10 @@ class GlobalState:
 
         # _really_init_global_state should have set self.global_state_accessor
         if self.global_state_accessor is None:
+            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
+                ray.client().connect()
+                # Retry connect!
+                return self._check_connected()
             raise ray.exceptions.RaySystemError(
                 "Ray has not been started yet. You can start Ray with "
                 "'ray.init()'.")
@@ -276,6 +282,16 @@ class GlobalState:
             results.append(job_info)
 
         return results
+
+    def next_job_id(self):
+        """Get next job id from GCS.
+
+        Returns:
+            Next job id in the cluster.
+        """
+        self._check_connected()
+
+        return ray.JobID.from_int(self.global_state_accessor.get_next_job_id())
 
     def profile_table(self):
         self._check_connected()
@@ -752,6 +768,19 @@ class GlobalState:
 
         return dict(total_available_resources)
 
+    def get_system_config(self):
+        """Get the system config of the cluster.
+        """
+        self._check_connected()
+        return json.loads(self.global_state_accessor.get_system_config())
+
+    def get_node_to_connect_for_driver(self, node_ip_address):
+        """Get the node to connect for a Ray driver."""
+        self._check_connected()
+        node_info_str = (self.global_state_accessor.
+                         get_node_to_connect_for_driver(node_ip_address))
+        return gcs_utils.GcsNodeInfo.FromString(node_info_str)
+
 
 state = GlobalState()
 """A global object used to access the cluster's global state."""
@@ -771,6 +800,16 @@ def jobs():
     return state.job_table()
 
 
+def next_job_id():
+    """Get next job id from GCS.
+
+    Returns:
+        Next job id in integer representation in the cluster.
+    """
+    return state.next_job_id()
+
+
+@DeveloperAPI
 @client_mode_hook
 def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
@@ -834,19 +873,7 @@ def actors(actor_id=None):
     return state.actor_table(actor_id=actor_id)
 
 
-def objects(object_ref=None):
-    """Fetch and parse the object table info for one or more object refs.
-
-    Args:
-        object_ref: An object ref to fetch information about. If this is None,
-            then the entire object table is fetched.
-
-    Returns:
-        Information from the object table.
-    """
-    return state.object_table(object_ref=object_ref)
-
-
+@DeveloperAPI
 @client_mode_hook
 def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
@@ -888,6 +915,7 @@ def object_transfer_timeline(filename=None):
     return state.chrome_tracing_object_transfer_dump(filename=filename)
 
 
+@DeveloperAPI
 @client_mode_hook
 def cluster_resources():
     """Get the current total cluster resources.
@@ -902,6 +930,7 @@ def cluster_resources():
     return state.cluster_resources()
 
 
+@DeveloperAPI
 @client_mode_hook
 def available_resources():
     """Get the current available cluster resources.

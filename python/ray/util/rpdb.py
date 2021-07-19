@@ -11,6 +11,7 @@ import re
 import select
 import socket
 import sys
+import time
 import uuid
 from pdb import Pdb
 import setproctitle
@@ -18,6 +19,7 @@ import traceback
 
 import ray
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
+from ray.util.annotations import DeveloperAPI
 
 PY3 = sys.version_info[0] == 3
 log = logging.getLogger(__name__)
@@ -97,7 +99,11 @@ class RemotePdb(Pdb):
             cry("RemotePdb accepted connection from %s." % repr(address))
         self.handle = LF2CRLF_FileWrapper(connection)
         Pdb.__init__(
-            self, completekey="tab", stdin=self.handle, stdout=self.handle)
+            self,
+            completekey="tab",
+            stdin=self.handle,
+            stdout=self.handle,
+            skip=["ray.*"])
         self.backup = []
         if self._patch_stdstreams:
             for name in (
@@ -160,8 +166,11 @@ class RemotePdb(Pdb):
         # Tell the next task to drop into the debugger.
         ray.worker.global_worker.debugger_breakpoint = self._breakpoint_uuid
         # Tell the debug loop to connect to the next task.
+        data = json.dumps({
+            "job_id": ray.get_runtime_context().job_id.hex(),
+        })
         _internal_kv_put("RAY_PDB_CONTINUE_{}".format(self._breakpoint_uuid),
-                         "")
+                         data)
         self.__restore()
         self.handle.connection.close()
         return Pdb.do_continue(self, arg)
@@ -207,7 +216,9 @@ def connect_ray_pdb(host=None,
         "pdb_address": pdb_address,
         "filename": parentframeinfo.filename,
         "lineno": parentframeinfo.lineno,
-        "traceback": "\n".join(traceback.format_exception(*sys.exc_info()))
+        "traceback": "\n".join(traceback.format_exception(*sys.exc_info())),
+        "timestamp": time.time(),
+        "job_id": ray.get_runtime_context().job_id.hex(),
     }
     _internal_kv_put(
         "RAY_PDB_{}".format(breakpoint_uuid), json.dumps(data), overwrite=True)
@@ -217,6 +228,7 @@ def connect_ray_pdb(host=None,
     return rdb
 
 
+@DeveloperAPI
 def set_trace(breakpoint_uuid=None):
     """Interrupt the flow of the program and drop into the Ray debugger.
 

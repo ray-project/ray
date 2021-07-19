@@ -118,8 +118,7 @@ from ray.exceptions import (
 )
 from ray._private.utils import decode
 from ray._private.client_mode_hook import (
-    _enable_client_hook,
-    _disable_client_hook,
+    disable_client_hook,
 )
 import msgpack
 
@@ -221,6 +220,40 @@ cdef increase_recursion_limit():
         logger.debug("Increasing Python recursion limit to {} "
                      "current recursion depth is {}.".format(
                          new_limit, current_depth))
+
+
+cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
+    """A helper function that converts a CObjectLocation to a Python dict.
+
+    Returns:
+        A Dict with following attributes:
+        - node_ids:
+            The hex IDs of the nodes that have a copy of this object.
+        - object_size:
+            The size of data + metadata in bytes.
+    """
+    object_size = c_object_location.GetObjectSize()
+
+    node_ids = set()
+    c_node_ids = c_object_location.GetNodeIDs()
+    for i in range(c_node_ids.size()):
+        node_id = c_node_ids[i].Hex().decode("ascii")
+        node_ids.add(node_id)
+
+    # add primary_node_id into node_ids
+    if not c_object_location.GetPrimaryNodeID().IsNil():
+        node_ids.add(
+            c_object_location.GetPrimaryNodeID().Hex().decode("ascii"))
+
+    # add spilled_node_id into node_ids
+    if not c_object_location.GetSpilledNodeID().IsNil():
+        node_ids.add(
+            c_object_location.GetSpilledNodeID().Hex().decode("ascii"))
+
+    return {
+        "node_ids": list(node_ids),
+        "object_size": object_size,
+    }
 
 
 @cython.auto_pickle(False)
@@ -527,6 +560,11 @@ cdef execute_task(
                 task_exception = True
                 raise TaskCancelledError(
                             core_worker.get_current_task_id())
+            if (c_return_ids.size() > 0 and
+                    len(outputs) != int(c_return_ids.size())):
+                raise ValueError(
+                    "Task returned {} objects, but num_returns={}.".format(
+                        len(outputs), c_return_ids.size()))
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
                 core_worker.store_task_outputs(
@@ -587,9 +625,8 @@ cdef CRayStatus task_execution_handler(
         const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes) nogil:
-    with gil:
+    with gil, disable_client_hook():
         try:
-            client_was_enabled = _disable_client_hook()
             try:
                 # The call to execute_task should never raise an exception. If
                 # it does, that indicates that there was an internal error.
@@ -630,8 +667,6 @@ cdef CRayStatus task_execution_handler(
             else:
                 logger.exception("SystemExit was raised from the worker")
                 return CRayStatus.UnexpectedSystemExit()
-        finally:
-            _enable_client_hook(client_was_enabled)
 
     return CRayStatus.OK()
 
@@ -856,7 +891,8 @@ cdef class CoreWorker:
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
-                  serialized_job_config, metrics_agent_port, runtime_env_hash):
+                  serialized_job_config, metrics_agent_port, runtime_env_hash,
+                  worker_shim_pid):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -911,6 +947,7 @@ cdef class CoreWorker:
         options.metrics_agent_port = metrics_agent_port
         options.connect_on_start = False
         options.runtime_env_hash = runtime_env_hash
+        options.worker_shim_pid = worker_shim_pid
         CCoreWorkerProcess.Initialize(options)
 
     def __dealloc__(self):
@@ -955,6 +992,10 @@ cdef class CoreWorker:
         return PlacementGroupID(
             CCoreWorkerProcess.GetCoreWorker()
             .GetCurrentPlacementGroupId().Binary())
+
+    def get_worker_id(self):
+        return WorkerID(
+            CCoreWorkerProcess.GetCoreWorker().GetWorkerID().Binary())
 
     def should_capture_child_tasks_in_placement_group(self):
         return CCoreWorkerProcess.GetCoreWorker(
@@ -1195,26 +1236,30 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
                 free_ids, local_only))
 
+    def get_object_locations(self, object_refs, int64_t timeout_ms):
+        cdef:
+            c_vector[shared_ptr[CObjectLocation]] results
+            c_vector[CObjectID] lookup_ids = ObjectRefsToVector(object_refs)
+
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().GetLocationFromOwner(
+                    lookup_ids, timeout_ms, &results))
+
+        object_locations = {}
+        for i in range(results.size()):
+            # core_worker will return a nullptr for objects that couldn't be
+            # located
+            if not results[i].get():
+                continue
+            else:
+                object_locations[object_refs[i]] = \
+                    CObjectLocationPtrToDict(results[i].get())
+        return object_locations
+
     def global_gc(self):
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().TriggerGlobalGC()
-
-    def set_object_store_client_options(self, client_name,
-                                        int64_t limit_bytes):
-        try:
-            logger.debug("Setting plasma memory limit to {} for {}".format(
-                limit_bytes, client_name))
-            check_status(CCoreWorkerProcess.GetCoreWorker().SetClientOptions(
-                client_name.encode("ascii"), limit_bytes))
-        except RayError as e:
-            self.dump_object_store_memory_usage()
-            raise memory_monitor.RayOutOfMemoryError(
-                "Failed to set object_store_memory={} for {}. The "
-                "plasma store may have insufficient memory remaining "
-                "to satisfy this limit (30% of object store memory is "
-                "permanently reserved for shared usage). The current "
-                "object store memory status is:\n\n{}".format(
-                    limit_bytes, client_name, e))
 
     def dump_object_store_memory_usage(self):
         message = CCoreWorkerProcess.GetCoreWorker().MemoryUsageString()
@@ -1469,6 +1514,9 @@ cdef class CoreWorker:
 
         return resources_dict
 
+    def plasma_unlimited(self):
+        return RayConfig.instance().plasma_unlimited()
+
     def profile_event(self, c_string event_type, object extra_data=None):
         if RayConfig.instance().enable_timeline():
             return ProfileEvent.make(
@@ -1549,6 +1597,28 @@ cdef class CoreWorker:
         check_status(named_actor_handle_pair.second)
 
         return self.make_actor_handle(named_actor_handle_pair.first)
+
+    def get_actor_handle(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+        return self.make_actor_handle(
+            CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
+
+    def list_named_actors(self, c_bool all_namespaces):
+        """Returns (namespace, name) for named actors in the system.
+
+        If all_namespaces is True, returns all actors in all namespaces,
+        else returns only the actors in the current namespace.
+        """
+        cdef:
+            pair[c_vector[pair[c_string, c_string]], CRayStatus] result_pair
+
+        result_pair = CCoreWorkerProcess.GetCoreWorker().ListNamedActors(
+            all_namespaces)
+        check_status(result_pair.second)
+        return [
+            (namespace.decode("utf-8"),
+             name.decode("utf-8")) for namespace, name in result_pair.first]
 
     def serialize_actor_handle(self, ActorID actor_id):
         cdef:
@@ -1708,11 +1778,15 @@ cdef class CoreWorker:
     def get_current_runtime_env_dict(self):
         # This should never change, so we can safely cache it to avoid ser/de
         if self.current_runtime_env_dict is None:
-            self.current_runtime_env_dict = json.loads(
-                CCoreWorkerProcess.GetCoreWorker()
-                .GetWorkerContext()
-                .GetCurrentSerializedRuntimeEnv()
-            )
+            if self.is_driver:
+                self.current_runtime_env_dict = \
+                    json.loads(self.get_job_config().serialized_runtime_env)
+            else:
+                self.current_runtime_env_dict = json.loads(
+                    CCoreWorkerProcess.GetCoreWorker()
+                    .GetWorkerContext()
+                    .GetCurrentSerializedRuntimeEnv()
+                )
         return self.current_runtime_env_dict
 
     def is_exiting(self):
@@ -1772,30 +1846,43 @@ cdef class CoreWorker:
         return self.job_config
 
     def prepare_runtime_env(self, runtime_env_dict: dict) -> str:
-        """Update parent's runtime env with new env via a simple dict update.
+        """Merge the given new runtime env with the current runtime env.
 
-        If the resulting runtime env is empty, fall back to the runtime env
-        set in the JobConfig.  Returns the JSON-serialized runtime env.
+        If running in a driver, the current runtime env comes from the
+        JobConfig.  Otherwise, we are running in a worker for an actor or
+        task, and the current runtime env comes from the current TaskSpec.
+
+        The child's runtime env dict is merged with the parents via a simple
+        dict update, except for runtime_env["env_vars"], which is merged
+        with runtime_env["env_vars"] of the parent rather than overwriting it.
+        This is so that env vars set in the parent propagate to child actors
+        and tasks even if a new env var is set in the child.
+
+        Args:
+            runtime_env_dict (dict): A runtime env for a child actor or task.
+        Returns:
+            The resulting merged JSON-serialized runtime env.
         """
 
-        # Short-circuit in the common case.
-        if (runtime_env_dict == {}
-                and self.get_current_runtime_env_dict() == {}):
-            return self.get_job_config().serialized_runtime_env
-
         result_dict = copy.deepcopy(self.get_current_runtime_env_dict())
-        result_dict.update(runtime_env_dict)
 
-        # TODO(architkulkarni): remove once workers are cached by runtime env.
+        result_env_vars = copy.deepcopy(result_dict.get("env_vars") or {})
+        child_env_vars = runtime_env_dict.get("env_vars") or {}
+        result_env_vars.update(child_env_vars)
+
+        result_dict.update(runtime_env_dict)
+        result_dict["env_vars"] = result_env_vars
+
+        # NOTE(architkulkarni): This allows worker caching code in C++ to
+        # check if a runtime env is empty without deserializing it.
+        if result_dict["env_vars"] == {}:
+            result_dict["env_vars"] = None
         if all(val is None for val in result_dict.values()):
             result_dict = {}
 
-        if result_dict == {}:
-            return self.get_job_config().serialized_runtime_env
-        else:
-            # TODO(architkulkarni): We should just use RuntimeEnvDict here
-            # so all the serialization and validation is done in one place
-            return json.dumps(result_dict, sort_keys=True)
+        # TODO(architkulkarni): We should just use RuntimeEnvDict here
+        # so all the serialization and validation is done in one place
+        return json.dumps(result_dict, sort_keys=True)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

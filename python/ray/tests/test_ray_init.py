@@ -1,9 +1,13 @@
 import os
+import sys
+
 import pytest
 import redis
-
+import unittest.mock
 import ray
 import ray._private.services
+from ray.util.client.ray_client_helpers import ray_start_client_server
+from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
 
 
@@ -121,6 +125,114 @@ def test_ports_assignment(ray_start_cluster):
     with pytest.raises(ValueError):
         head_node = cluster.add_node(
             **pre_selected_ports, min_worker_port=25000, max_worker_port=35000)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="skip except linux")
+def test_ray_init_from_workers(ray_start_cluster):
+    cluster = ray_start_cluster
+    # add first node
+    node1 = cluster.add_node(node_ip_address="127.0.0.2")
+    # add second node
+    node2 = cluster.add_node(node_ip_address="127.0.0.3")
+    address = cluster.address
+    password = cluster.redis_password
+    assert address.split(":")[0] == "127.0.0.2"
+    assert node1.node_manager_port != node2.node_manager_port
+    info = ray.init(
+        address, _redis_password=password, _node_ip_address="127.0.0.3")
+    assert info["node_ip_address"] == "127.0.0.3"
+
+    node_info = ray._private.services.get_node_to_connect_for_driver(
+        address, "127.0.0.3", redis_password=password)
+    assert node_info.node_manager_port == node2.node_manager_port
+
+
+def test_ray_init_local(shutdown_only):
+    with ray.init("local://", dashboard_port=22222) as context:
+        assert context.dashboard_url.split(":")[-1] == "22222"
+
+
+def test_ray_init_namespace(shutdown_only):
+    with ray.init("local://", namespace="abcdefg"):
+        assert ray.get_runtime_context().namespace == "abcdefg"
+
+
+def test_ray_init_invalid_keyword(shutdown_only):
+    with pytest.raises(RuntimeError) as excinfo:
+        ray.init("localhost", logginglevel="<- missing underscore")
+    assert "logginglevel" in str(excinfo.value)
+
+
+def test_ray_init_invalid_keyword_with_client(shutdown_only):
+    with pytest.raises(RuntimeError) as excinfo:
+        ray.init("ray://127.0.0.0", logginglevel="<- missing underscore")
+    assert "logginglevel" in str(excinfo.value)
+
+
+def test_ray_init_valid_keyword_with_client(shutdown_only):
+    with pytest.raises(RuntimeError) as excinfo:
+        # num_cpus is a valid argument for regular ray.init, but not for
+        # init(ray://)
+        ray.init("ray://127.0.0.0", num_cpus=1)
+    assert "num_cpus" in str(excinfo.value)
+
+
+def test_ray_init_local_with_unstable_parameter(shutdown_only):
+    with pytest.raises(RuntimeError) as excinfo:
+        # _redis_password is a valid init argument, but should be passed as
+        # internal_config={"_redis_password": "1234"} for local.
+        ray.init("local://", _redis_password="1234")
+    assert "_redis_password" in str(excinfo.value)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        # Passing an invalid unstable parameter through internal_config
+        # should error
+        ray.init("local://", internal_config={"asdfasd": "1234"})
+    assert "asdfasd" in str(excinfo.value)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        # Error if internal_config has valid parameter but with underscore
+        # still included
+        ray.init("local://", internal_config={"_node_ip_address": "0.0.0.0"})
+    assert "_node_ip_address" in str(excinfo.value)
+
+    # Make sure local:// works when unstables passed correctly
+    ray.init("local://", internal_config={"node_ip_address": "0.0.0.0"})
+
+
+def test_env_var_override():
+    with unittest.mock.patch.dict(os.environ, {"RAY_NAMESPACE": "envName"}), \
+            ray_start_client_server() as given_connection:
+        given_connection.disconnect()
+
+        with ray.init("ray://localhost:50051"):
+            assert ray.get_runtime_context().namespace == "envName"
+
+
+def test_env_var_no_override():
+    # init() argument has precedence over environment variables
+    with unittest.mock.patch.dict(os.environ, {"RAY_NAMESPACE": "envName"}), \
+            ray_start_client_server() as given_connection:
+        given_connection.disconnect()
+
+        with ray.init("ray://localhost:50051", namespace="argumentName"):
+            assert ray.get_runtime_context().namespace == "argumentName"
+
+
+@pytest.mark.parametrize("input", [None, "auto"])
+def test_ray_address(input, call_ray_start):
+    address = call_ray_start
+    with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": address}):
+        res = ray.init(input)
+        # Ensure this is not a client.connect()
+        assert not isinstance(res, ClientContext)
+        ray.shutdown()
+
+    addr = "localhost:{}".format(address.split(":")[-1])
+    with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": addr}):
+        res = ray.init(input)
+        # Ensure this is not a client.connect()
+        assert not isinstance(res, ClientContext)
 
 
 if __name__ == "__main__":

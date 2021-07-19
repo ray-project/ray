@@ -18,7 +18,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     start = time.time()
-    success = 1
+
     commands = [
         "python", "-m", "ray.experimental.shuffle", "--ray-address={}".format(
             os.environ["RAY_ADDRESS"]),
@@ -28,14 +28,8 @@ if __name__ == "__main__":
     if args.no_streaming:
         commands.append("--no-streaming")
 
-    try:
-        subprocess.check_call(commands)
-    except Exception as e:
-        print(f"The test failed with {e}")
-        success = 0
+    subprocess.check_call(commands)
     delta = time.time() - start
 
-    if not success:
-        delta = 0
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
-        f.write(json.dumps({"shuffle_time": delta, "success": success}))
+        f.write(json.dumps({"shuffle_time": delta, "success": 1}))

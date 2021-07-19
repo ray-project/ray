@@ -103,6 +103,12 @@ def test_submit_api(shutdown_only):
     assert len(ready_ids) == 0
     assert len(remaining_ids) == 1
 
+    # Check mismatch with num_returns.
+    with pytest.raises(ValueError):
+        ray.get(f.options(num_returns=2).remote(3))
+    with pytest.raises(ValueError):
+        ray.get(f.options(num_returns=3).remote(2))
+
     @ray.remote
     class Actor:
         def __init__(self, x, y=0):
@@ -296,6 +302,7 @@ def test_ray_options(shutdown_only):
 
     to_check = ["CPU", "GPU", "memory", "custom1"]
     for key in to_check:
+        print(key, without_options[key], with_options[key])
         assert without_options[key] != with_options[key], key
     assert without_options != with_options
 
@@ -610,6 +617,25 @@ def test_args_named_and_star(ray_start_shared_local_modes):
     local_method = local_actor.hello
     test_function(local_method, actor_method)
     ray.get(remote_test_function.remote(local_method, actor_method))
+
+
+def test_oversized_function(ray_start_shared_local_modes):
+    bar = np.zeros(100 * 1024 * 1024)
+
+    @ray.remote
+    class Actor:
+        def foo(self):
+            return len(bar)
+
+    @ray.remote
+    def f():
+        return len(bar)
+
+    with pytest.raises(ValueError):
+        f.remote()
+
+    with pytest.raises(ValueError):
+        Actor.remote()
 
 
 def test_args_stars_after(ray_start_shared_local_modes):

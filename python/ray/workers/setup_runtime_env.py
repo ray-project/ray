@@ -14,8 +14,9 @@ import ray
 from ray._private.conda import (get_conda_activate_commands,
                                 get_or_create_conda_env)
 from ray._private.utils import try_to_create_directory
-from ray.test_utils import (get_wheel_filename, get_master_wheel_url,
-                            get_release_wheel_url)
+from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
+                                get_release_wheel_url)
+from ray.workers.pluggable_runtime_env import RuntimeEnvContext
 logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
@@ -25,24 +26,19 @@ parser.add_argument(
     type=str,
     help="the serialized parsed runtime env dict")
 
+parser.add_argument(
+    "--serialized-runtime-env-context",
+    type=str,
+    help="the serialized runtime env context")
+
 # The worker is not set up yet, so we can't get session_dir from the worker.
 parser.add_argument(
     "--session-dir", type=str, help="the directory for the current session")
 
 
-def setup(input_args):
-    # remaining_args contains the arguments to the original worker command,
-    # minus the python executable, e.g. default_worker.py --node-ip-address=...
-    args, remaining_args = parser.parse_known_args(args=input_args)
-
-    commands = []
-    runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
-
-    py_executable: str = sys.executable
-
+def setup_runtime_env(runtime_env: dict, session_dir):
     if runtime_env.get("conda") or runtime_env.get("pip"):
-        conda_dict = get_conda_dict(runtime_env, args.session_dir)
-        py_executable = "python"
+        conda_dict = get_conda_dict(runtime_env, session_dir)
         if isinstance(runtime_env.get("conda"), str):
             conda_env_name = runtime_env["conda"]
         else:
@@ -56,14 +52,13 @@ def setup(input_args):
                 extra_pip_dependencies = []
             conda_dict = inject_dependencies(conda_dict, py_version,
                                              extra_pip_dependencies)
-            # Locking to avoid multiple processes installing concurrently
-            conda_hash = hashlib.sha1(
-                json.dumps(conda_dict,
-                           sort_keys=True).encode("utf-8")).hexdigest()
-            conda_hash_str = f"conda-generated-{conda_hash}"
-            file_lock_name = f"ray-{conda_hash_str}.lock"
-            with FileLock(os.path.join(args.session_dir, file_lock_name)):
-                conda_dir = os.path.join(args.session_dir, "runtime_resources",
+            # It is not safe for multiple processes to install conda envs
+            # concurrently, even if the envs are different, so use a global
+            # lock for all conda installs.
+            # See https://github.com/ray-project/ray/issues/17086
+            file_lock_name = "ray-conda-install.lock"
+            with FileLock(os.path.join(session_dir, file_lock_name)):
+                conda_dir = os.path.join(session_dir, "runtime_resources",
                                          "conda")
                 try_to_create_directory(conda_dir)
                 conda_yaml_path = os.path.join(conda_dir, "environment.yml")
@@ -75,20 +70,56 @@ def setup(input_args):
                 conda_env_name = get_or_create_conda_env(
                     conda_yaml_path, conda_dir)
 
-        commands += get_conda_activate_commands(conda_env_name)
+        return RuntimeEnvContext(conda_env_name)
+
+    return RuntimeEnvContext()
+
+
+def setup_worker(input_args):
+    # remaining_args contains the arguments to the original worker command,
+    # minus the python executable, e.g. default_worker.py --node-ip-address=...
+    args, remaining_args = parser.parse_known_args(args=input_args)
+
+    commands = []
+    py_executable: str = sys.executable
+    runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
+    runtime_env_context: RuntimeEnvContext = None
+
+    # Ray client server setups runtime env by itself instead of agent.
+    if runtime_env.get("conda") or runtime_env.get("pip"):
+        if not args.serialized_runtime_env_context:
+            runtime_env_context = setup_runtime_env(runtime_env,
+                                                    args.session_dir)
+        else:
+            runtime_env_context = RuntimeEnvContext.deserialize(
+                args.serialized_runtime_env_context)
+
+    # activate conda
+    if runtime_env_context and runtime_env_context.conda_env_name:
+        py_executable = "python"
+        conda_activate_commands = get_conda_activate_commands(
+            runtime_env_context.conda_env_name)
+        if (conda_activate_commands):
+            commands += conda_activate_commands
+    elif runtime_env.get("conda"):
+        logger.warning(
+            "Conda env name is not found in context, "
+            "but conda exists in runtime env. The runtime env %s, "
+            "the context %s.", args.serialized_runtime_env,
+            args.serialized_runtime_env_context)
 
     commands += [" ".join([f"exec {py_executable}"] + remaining_args)]
     command_separator = " && "
     command_str = command_separator.join(commands)
 
+    # update env vars
     if runtime_env.get("env_vars"):
         env_vars = runtime_env["env_vars"]
         os.environ.update(env_vars)
-
     os.execvp("bash", ["bash", "-c", command_str])
 
 
-def get_conda_dict(runtime_env, session_dir) -> Optional[Dict[Any, Any]]:
+def get_conda_dict(runtime_env, runtime_env_dir) -> Optional[Dict[Any, Any]]:
     """ Construct a conda dependencies dict from a runtime env.
 
         This function does not inject Ray or Python into the conda dict.
@@ -108,7 +139,7 @@ def get_conda_dict(runtime_env, session_dir) -> Optional[Dict[Any, Any]]:
         pip_hash = hashlib.sha1(requirements_txt.encode("utf-8")).hexdigest()
         pip_hash_str = f"pip-generated-{pip_hash}"
 
-        conda_dir = os.path.join(session_dir, "runtime_resources", "conda")
+        conda_dir = os.path.join(runtime_env_dir, "conda")
         requirements_txt_path = os.path.join(
             conda_dir, f"requirements-{pip_hash_str}.txt")
         conda_dict = {
@@ -118,7 +149,7 @@ def get_conda_dict(runtime_env, session_dir) -> Optional[Dict[Any, Any]]:
             }]
         }
         file_lock_name = f"ray-{pip_hash_str}.lock"
-        with FileLock(os.path.join(session_dir, file_lock_name)):
+        with FileLock(os.path.join(runtime_env_dir, file_lock_name)):
             try_to_create_directory(conda_dir)
             with open(requirements_txt_path, "w") as file:
                 file.write(requirements_txt)
@@ -210,3 +241,7 @@ def inject_dependencies(
         deps.append({"pip": pip_dependencies})
 
     return conda_dict
+
+
+if __name__ == "__main__":
+    setup_worker(sys.argv[1:])

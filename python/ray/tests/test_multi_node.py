@@ -1,12 +1,15 @@
 import os
 import pytest
+import psutil
 import sys
 import time
 
 import ray
+from ray import ray_constants
 from ray.test_utils import (RayTestTimeoutException, run_string_as_driver,
                             run_string_as_driver_nonblocking,
-                            init_error_pubsub, get_error_message)
+                            init_error_pubsub, get_error_message,
+                            object_memory_usage, wait_for_condition)
 
 
 def test_error_isolation(call_ray_start):
@@ -164,13 +167,9 @@ print("success")
 
 
 @pytest.mark.parametrize(
-    "call_ray_start",
-    [
+    "call_ray_start", [
         "ray start --head --num-cpus=1 --min-worker-port=0 "
-        "--max-worker-port=0 --port 0 --system-config="
-        # This test uses ray.state.objects(), which only works with the
-        # GCS-based object directory
-        "{\"ownership_based_object_directory_enabled\":false}",
+        "--max-worker-port=0 --port 0",
     ],
     indirect=True)
 def test_cleanup_on_driver_exit(call_ray_start):
@@ -185,27 +184,50 @@ def test_cleanup_on_driver_exit(call_ray_start):
 import time
 import ray
 import numpy as np
+from ray.test_utils import object_memory_usage
+import os
+
+
 ray.init(address="{}")
 object_refs = [ray.put(np.zeros(200 * 1024, dtype=np.uint8))
               for i in range(1000)]
 start_time = time.time()
 while time.time() - start_time < 30:
-    if len(ray.state.objects()) == 1000:
+    if object_memory_usage() > 0:
         break
 else:
     raise Exception("Objects did not appear in object table.")
+
+@ray.remote
+def f():
+    time.sleep(1)
+
 print("success")
+# Submit some tasks without waiting for them to finish. Their workers should
+# still get cleaned up eventually, even if they get started after the driver
+# exits.
+[f.remote() for _ in range(10)]
 """.format(address)
 
-    run_string_as_driver(driver_script)
+    out = run_string_as_driver(driver_script)
+    assert "success" in out
 
     # Make sure the objects are removed from the object table.
     start_time = time.time()
     while time.time() - start_time < 30:
-        if len(ray.state.objects()) == 0:
+        if object_memory_usage() == 0:
             break
     else:
         raise Exception("Objects were not all removed from object table.")
+
+    def all_workers_exited():
+        for proc in psutil.process_iter():
+            if ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER in proc.name():
+                return False
+        return True
+
+    # Check that workers are eventually cleaned up.
+    wait_for_condition(all_workers_exited)
 
 
 def test_drivers_named_actors(call_ray_start):

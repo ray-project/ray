@@ -1,3 +1,6 @@
+import ray
+import pytest
+from ray.tests.conftest import *  # noqa
 from ray.experimental import workflow
 
 
@@ -20,10 +23,10 @@ def variable_mutable():
     return projection.step(a, b)
 
 
-def test_variable_mutable():
-    import ray
-    ray.init()
-
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_variable_mutable(ray_start_regular):
     outputs = workflow.run(variable_mutable.step())
     assert ray.get(outputs) == []
-    ray.shutdown()

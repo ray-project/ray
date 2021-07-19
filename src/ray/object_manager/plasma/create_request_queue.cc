@@ -63,6 +63,13 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
     const CreateObjectCallback &create_callback, size_t object_size) {
   PlasmaObject result = {};
 
+  // Immediately fulfill it using the fallback allocator.
+  if (RayConfig::instance().plasma_unlimited()) {
+    PlasmaError error = create_callback(/*fallback_allocator=*/true, &result,
+                                        /*spilling_required=*/nullptr);
+    return {result, error};
+  }
+
   if (!queue_.empty()) {
     // There are other requests queued. Return an out-of-memory error
     // immediately because this request cannot be served.
@@ -83,13 +90,13 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
   return {result, error};
 }
 
-Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request,
-                                          bool fallback_allocator) {
-  request->error = request->create_callback(&request->result, fallback_allocator);
+Status CreateRequestQueue::ProcessRequest(bool fallback_allocator,
+                                          std::unique_ptr<CreateRequest> &request,
+                                          bool *spilling_required) {
+  request->error =
+      request->create_callback(fallback_allocator, &request->result, spilling_required);
   if (request->error == PlasmaError::OutOfMemory) {
     return Status::ObjectStoreFull("");
-  } else if (request->error == PlasmaError::TransientOutOfMemory) {
-    return Status::TransientObjectStoreFull("");
   } else {
     return Status::OK();
   }
@@ -100,7 +107,12 @@ Status CreateRequestQueue::ProcessRequests() {
   bool logged_oom = false;
   while (!queue_.empty()) {
     auto request_it = queue_.begin();
-    auto status = ProcessRequest(*request_it, /*fallback_allocator=*/false);
+    bool spilling_required = false;
+    auto status =
+        ProcessRequest(/*fallback_allocator=*/false, *request_it, &spilling_required);
+    if (spilling_required) {
+      spill_objects_callback_();
+    }
     auto now = get_time_();
     if (status.ok()) {
       FinishRequest(request_it);
@@ -115,26 +127,24 @@ Status CreateRequestQueue::ProcessRequests() {
         oom_start_time_ns_ = now;
       }
       auto grace_period_ns = oom_grace_period_ns_;
-      if (plasma_unlimited_) {
-        // Use a faster timeout in unlimited allocation mode to avoid excess latency.
-        grace_period_ns = std::min(grace_period_ns, (int64_t)2e9);
-      }
-      if (status.IsTransientObjectStoreFull() || spill_objects_callback_()) {
+      auto spill_pending = spill_objects_callback_();
+      if (spill_pending) {
+        RAY_LOG(DEBUG) << "Reset grace period " << status << " " << spill_pending;
         oom_start_time_ns_ = -1;
-        return Status::TransientObjectStoreFull("Waiting for objects to seal or spill.");
+        return Status::TransientObjectStoreFull("Waiting for objects to spill.");
       } else if (now - oom_start_time_ns_ < grace_period_ns) {
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
         // actually freeing up in the object store.
+        RAY_LOG(DEBUG) << "In grace period before fallback allocation / oom.";
         return Status::ObjectStoreFull("Waiting for grace period.");
       } else {
         if (plasma_unlimited_) {
           // Trigger the fallback allocator.
-          RAY_CHECK_OK(ProcessRequest(*request_it, /*fallback_allocator=*/true));
-          // Note that we don't reset oom_start_time_ns_ until we complete a
-          // "normal" allocation.
-          FinishRequest(request_it);
-        } else {
+          status = ProcessRequest(/*fallback_allocator=*/true, *request_it,
+                                  /*spilling_required=*/nullptr);
+        }
+        if (!status.ok()) {
           std::string dump = "";
           if (dump_debug_info_callback_ && !logged_oom) {
             dump = dump_debug_info_callback_();
@@ -144,10 +154,8 @@ Status CreateRequestQueue::ProcessRequests() {
                         << (*request_it)->object_id << " of size "
                         << (*request_it)->object_size / 1024 / 1024 << "MB\n"
                         << dump;
-          // Raise OOM. In this case, the request will be marked as OOM.
-          // We don't return so that we can process the next entry right away.
-          FinishRequest(request_it);
         }
+        FinishRequest(request_it);
       }
     }
   }

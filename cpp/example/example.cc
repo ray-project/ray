@@ -3,8 +3,6 @@
 
 /// including the header
 #include <ray/api.h>
-#include "gflags/gflags.h"
-#include "ray/util/logging.h"
 
 /// using namespace
 using namespace ::ray::api;
@@ -46,7 +44,7 @@ int main(int argc, char **argv) {
   ray::api::RayConfig config;
 
   /// initialization
-  Ray::Init(config, &argc, &argv);
+  Ray::Init(config);
 
   /// put and get object
   auto obj = Ray::Put(12345);

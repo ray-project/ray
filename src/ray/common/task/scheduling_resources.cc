@@ -175,7 +175,7 @@ const ResourceSet ResourceSet::GetNumCpus() const {
   return cpu_resource_set;
 }
 
-const std::string format_resource(std::string resource_name, double quantity) {
+std::string format_resource(std::string resource_name, double quantity) {
   if (resource_name == "object_store_memory" || resource_name == "memory") {
     return std::to_string(quantity / (1024 * 1024 * 1024)) + " GiB";
   }
@@ -733,10 +733,23 @@ void SchedulingResources::DeleteResource(const std::string &resource_name) {
   resources_load_.DeleteResource(resource_name);
 }
 
+const ResourceSet &SchedulingResources::GetNormalTaskResources() const {
+  return resources_normal_tasks_;
+}
+
+void SchedulingResources::SetNormalTaskResources(const ResourceSet &newset) {
+  resources_normal_tasks_ = newset;
+}
+
 std::string SchedulingResources::DebugString() const {
   std::stringstream result;
+
+  auto resources_available = resources_available_;
+  resources_available.SubtractResources(resources_normal_tasks_);
+
   result << "\n- total: " << resources_total_.ToString();
-  result << "\n- avail: " << resources_available_.ToString();
+  result << "\n- avail: " << resources_available.ToString();
+  result << "\n- normal task usage: " << resources_normal_tasks_.ToString();
   return result.str();
 };
 

@@ -1,8 +1,9 @@
+#include "ray/raylet/scheduling/cluster_task_manager.h"
+
 #include <google/protobuf/map.h>
 
 #include <boost/range/join.hpp>
 
-#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
 
@@ -172,11 +173,11 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // The task's args cannot be pinned due to lack of memory. We should
           // retry dispatching the task once another task finishes and releases
           // its arguments.
-          RAY_LOG(INFO) << "Dispatching task " << task_id
-                        << " would put this node over the max memory allowed for "
-                           "arguments of executing tasks ("
-                        << max_pinned_task_arguments_bytes_
-                        << "). Waiting to dispatch task until other tasks complete";
+          RAY_LOG(DEBUG) << "Dispatching task " << task_id
+                         << " would put this node over the max memory allowed for "
+                            "arguments of executing tasks ("
+                         << max_pinned_task_arguments_bytes_
+                         << "). Waiting to dispatch task until other tasks complete";
           RAY_CHECK(!executing_task_args_.empty() && !pinned_task_arguments_.empty())
               << "Cannot dispatch task " << task_id
               << " until another task finishes and releases its arguments, but no other "
@@ -204,8 +205,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
       // Check if the node is still schedulable. It may not be if dependency resolution
       // took a long time.
-      std::shared_ptr<TaskResourceInstances> allocated_instances(
-          new TaskResourceInstances());
+      auto allocated_instances = std::make_shared<TaskResourceInstances>();
       bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
           spec.GetRequiredResources().GetResourceMap(), allocated_instances);
 
@@ -301,11 +301,6 @@ void ClusterTaskManager::QueueAndScheduleTask(
   ScheduleAndDispatchTasks();
 }
 
-void ClusterTaskManager::ScheduleInfeasibleTasks() {
-  // Do nothing.
-  // TODO(Shanly): This method will be removed once we remove the legacy scheduler.
-}
-
 void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   if (ready_ids.empty()) {
     return;
@@ -353,7 +348,7 @@ bool ClusterTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &s
         // This can happen if the task's arguments were all local at some
         // point, but then at least one was evicted before the task could
         // be dispatched to a worker.
-        RAY_LOG(INFO)
+        RAY_LOG(DEBUG)
             << "Task " << spec.TaskId() << " argument " << deps[i]
             << " was evicted before the task could be dispatched. This can happen "
                "when there are many objects needed on this node. The task will be "
@@ -413,8 +408,8 @@ void ClusterTaskManager::PinTaskArgs(const TaskSpecification &spec,
       it->second.second++;
     }
   } else {
-    RAY_LOG(INFO) << "Scheduler received duplicate task " << spec.TaskId()
-                  << ", most likely because the first execution failed";
+    RAY_LOG(DEBUG) << "Scheduler received duplicate task " << spec.TaskId()
+                   << ", most likely because the first execution failed";
   }
 }
 
@@ -561,13 +556,12 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
   }
 }
 
-void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
+void ClusterTaskManager::FillResourceUsage(
+    rpc::ResourcesData &data,
+    const std::shared_ptr<SchedulingResources> &last_reported_resources) {
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }
-  // TODO (WangTao): Find a way to check if load changed and combine it with light
-  // heartbeat. Now we just report it every time.
-  data.set_resource_load_changed(true);
   auto resource_loads = data.mutable_resource_load();
   auto resource_load_by_shape =
       data.mutable_resource_load_by_shape()->mutable_resource_demands();
@@ -727,6 +721,19 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
     if (backlog_it != backlog_tracker_.end()) {
       by_shape_entry->set_backlog_size(backlog_it->second);
     }
+  }
+
+  if (RayConfig::instance().enable_light_weight_resource_report()) {
+    // Check whether resources have been changed.
+    std::unordered_map<std::string, double> local_resource_map(
+        data.resource_load().begin(), data.resource_load().end());
+    ResourceSet local_resource(local_resource_map);
+    if (last_reported_resources == nullptr ||
+        !last_reported_resources->GetLoadResources().IsEqual(local_resource)) {
+      data.set_resource_load_changed(true);
+    }
+  } else {
+    data.set_resource_load_changed(true);
   }
 }
 
@@ -923,8 +930,8 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to, const Work &work)
 
   if (!cluster_resource_scheduler_->AllocateRemoteTaskResources(
           spillback_to.Binary(), task_spec.GetRequiredResources().GetResourceMap())) {
-    RAY_LOG(INFO) << "Tried to allocate resources for request " << task_spec.TaskId()
-                  << " on a remote node that are no longer available";
+    RAY_LOG(DEBUG) << "Tried to allocate resources for request " << task_spec.TaskId()
+                   << " on a remote node that are no longer available";
   }
 
   auto node_info_opt = get_node_info_(spillback_to);
@@ -1039,7 +1046,6 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 }
 
 void ClusterTaskManager::SpillWaitingTasks() {
-  RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue";
   // Try to spill waiting tasks to a remote node, prioritizing those at the end
   // of the queue. Waiting tasks are spilled if there are enough remote
   // resources AND (we have no resources available locally OR their
@@ -1095,6 +1101,41 @@ void ClusterTaskManager::SpillWaitingTasks() {
       break;
     }
   }
+}
+
+ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
+  std::unordered_map<std::string, FixedPoint> total_normal_task_resources;
+  const auto &string_id_map = cluster_resource_scheduler_->GetStringIdMap();
+  for (auto &entry : leased_workers_) {
+    std::shared_ptr<WorkerInterface> worker = entry.second;
+    auto &task_spec = worker->GetAssignedTask().GetTaskSpecification();
+    if (!task_spec.PlacementGroupBundleId().first.IsNil()) {
+      continue;
+    }
+
+    auto task_id = worker->GetAssignedTaskId();
+    auto actor_id = task_id.ActorId();
+    if (!actor_id.IsNil() && task_id == TaskID::ForActorCreationTask(actor_id)) {
+      // This task ID corresponds to an actor creation task.
+      continue;
+    }
+
+    if (auto allocated_instances = worker->GetAllocatedInstances()) {
+      auto resource_request = allocated_instances->ToResourceRequest();
+      for (size_t i = 0; i < resource_request.predefined_resources.size(); i++) {
+        if (resource_request.predefined_resources[i] > 0) {
+          total_normal_task_resources[ResourceEnumToString(PredefinedResources(i))] +=
+              resource_request.predefined_resources[i];
+        }
+      }
+      for (auto &entry : resource_request.custom_resources) {
+        if (entry.second > 0) {
+          total_normal_task_resources[string_id_map.Get(entry.first)] += entry.second;
+        }
+      }
+    }
+  }
+  return total_normal_task_resources;
 }
 
 }  // namespace raylet

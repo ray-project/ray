@@ -57,6 +57,7 @@ class ExportFormat:
     """
     CHECKPOINT = "checkpoint"
     MODEL = "model"
+    ONNX = "onnx"
     H5 = "h5"
 
     @staticmethod
@@ -70,7 +71,7 @@ class ExportFormat:
             formats[i] = formats[i].strip().lower()
             if formats[i] not in [
                     ExportFormat.CHECKPOINT, ExportFormat.MODEL,
-                    ExportFormat.H5
+                    ExportFormat.ONNX, ExportFormat.H5
             ]:
                 raise TuneError("Unsupported import/export format: " +
                                 formats[i])
@@ -187,6 +188,7 @@ class Trial:
                  placement_group_factory=None,
                  stopping_criterion=None,
                  remote_checkpoint_dir=None,
+                 sync_to_cloud=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  sync_on_checkpoint=True,
@@ -283,6 +285,7 @@ class Trial:
             self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
         else:
             self.remote_checkpoint_dir_prefix = None
+        self.sync_to_cloud = sync_to_cloud
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self.keep_checkpoints_num = keep_checkpoints_num
@@ -296,6 +299,7 @@ class Trial:
         self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
+        self.has_new_resources = False
 
         # AutoML fields
         self.results = None
@@ -434,6 +438,8 @@ class Trial:
         self._setup_resources()
 
         self.invalidate_json_state()
+
+        self.has_new_resources = True
 
     def set_runner(self, runner):
         self.runner = runner

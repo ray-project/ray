@@ -23,7 +23,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
   /// We will enhance this after implement the cluster mode.
   auto functionDescriptor = FunctionDescriptorBuilder::BuildCpp(
-      "SingleProcess", invocation.remote_function_holder.function_name);
+      invocation.remote_function_holder.function_name);
   rpc::Address address;
   std::unordered_map<std::string, double> required_resources;
   std::unordered_map<std::string, double> required_placement_resources;
@@ -39,7 +39,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {
     invocation.actor_id = local_mode_ray_tuntime_.GetNextActorID();
-    builder.SetActorCreationTaskSpec(invocation.actor_id);
+    builder.SetActorCreationTaskSpec(invocation.actor_id, "");
   } else if (invocation.task_type == TaskType::ACTOR_TASK) {
     const TaskID actor_creation_task_id =
         TaskID::ForActorCreationTask(invocation.actor_id);

@@ -171,6 +171,7 @@ test_python() {
       -python/ray/tests:test_multi_node_2
       -python/ray/tests:test_multi_node_3
       -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
+      -python/ray/tests:test_multiprocessing_client_mode  # timeout
       -python/ray/tests:test_node_manager
       -python/ray/tests:test_object_manager
       -python/ray/tests:test_placement_group # timeout and OOM
@@ -200,8 +201,11 @@ test_cpp() {
   bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
   bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
+  # run cluster mode test with external cluster
+  bazel test //cpp:cluster_mode_test --test_arg=--external-cluster=true --test_arg=--redis-password="1234" \
+    --test_arg=--ray-redis-password="1234"
   # run the cpp example
-  bazel run //cpp/example:example
+  cd cpp/example && bazel --nosystem_rc --nohome_rc run //:example
 
 }
 
@@ -237,7 +241,8 @@ build_dashboard_front_end() {
     (
       cd ray/new_dashboard/client
 
-      if [ -z "${BUILDKITE-}" ]; then
+      # skip nvm activation on buildkite linux instances.
+      if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
         set +x  # suppress set -x since it'll get very noisy here
         . "${HOME}/.nvm/nvm.sh"
         nvm use --silent node
@@ -333,6 +338,7 @@ build_wheels() {
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
         quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
       else
+        rm -rf /ray-mount/*
         cp -rT /ray /ray-mount
         ls /ray-mount
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
@@ -345,8 +351,7 @@ build_wheels() {
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      # Remove suppress_output for now to avoid timeout
-      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
       keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
@@ -527,7 +532,7 @@ build() {
     install_cython_examples
   fi
 
-  if [ "${RAY_DEFAULT_BUILD-}" = 1 ] || [ "${LINT-}" = 1 ]; then
+  if [ "${LINT-}" = 1 ]; then
     install_go
   fi
 
