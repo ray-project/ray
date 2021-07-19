@@ -152,6 +152,7 @@ if setup_spec.type == SetupType.RAY:
             "colorful",  # noqa
             "py-spy >= 0.2.0",  # noqa
             "jsonschema",  # noqa
+            "gpustat"  # noqa
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
@@ -193,7 +194,6 @@ if setup_spec.type == SetupType.RAY:
         "colorama",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "gpustat",
         "grpcio >= 1.28.1",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",

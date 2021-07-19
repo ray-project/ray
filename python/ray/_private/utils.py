@@ -21,10 +21,13 @@ import inspect
 from inspect import signature
 from pathlib import Path
 import numpy as np
-import psutil
+
 import ray
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 pwd = None
 if sys.platform != "win32":
