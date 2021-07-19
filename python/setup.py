@@ -40,7 +40,7 @@ exe_suffix = ".exe" if sys.platform == "win32" else ""
 pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
 pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
-               "c0c1a158f59366696161e0dffdd10cfe17601372.tar.gz")
+               "e6117502435aba2901585cc6c692fb9582545f08.tar.gz")
 
 
 def find_version(*filepath):
