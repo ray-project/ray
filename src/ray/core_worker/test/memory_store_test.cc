@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/synchronization/mutex.h"
-
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
+#include "absl/synchronization/mutex.h"
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
 

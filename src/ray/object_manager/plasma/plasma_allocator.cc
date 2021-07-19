@@ -15,11 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "ray/common/ray_config.h"
-#include "ray/util/logging.h"
-
-#include "ray/object_manager/plasma/malloc.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
+
+#include "ray/common/ray_config.h"
+#include "ray/object_manager/plasma/malloc.h"
+#include "ray/util/logging.h"
 
 namespace plasma {
 

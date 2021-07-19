@@ -77,8 +77,7 @@ int main(int argc, char *argv[]) {
         storage->InternalConfigTable().Put(ray::UniqueID::Nil(), config, on_done));
     boost::asio::io_service::work work(service);
     service.run();
-  })
-      .detach();
+  }).detach();
   promise->get_future().get();
 
   const ray::stats::TagsType global_tags = {

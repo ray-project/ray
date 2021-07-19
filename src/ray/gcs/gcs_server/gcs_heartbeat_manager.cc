@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
+
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
 #include "src/ray/protobuf/gcs.pb.h"

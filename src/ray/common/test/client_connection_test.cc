@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "ray/common/client_connection.h"
-#include "ray/common/asio/instrumented_io_context.h"
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
@@ -22,6 +21,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 
 namespace ray {
 namespace raylet {

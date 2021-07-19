@@ -35,8 +35,7 @@ message MarkJobFinishedReply {
   GcsStatus status = 1;
 }
 
-message GetAllJobInfoRequest {
-}
+message GetAllJobInfoRequest {}
 
 message GetAllJobInfoReply {
   GcsStatus status = 1;
@@ -50,8 +49,7 @@ message ReportJobErrorReply {
   GcsStatus status = 1;
 }
 
-message GetNextJobIDRequest {
-}
+message GetNextJobIDRequest {}
 message GetNextJobIDReply {
   GcsStatus status = 1;
   int32 job_id = 2;
@@ -173,8 +171,7 @@ message UnregisterNodeReply {
   GcsStatus status = 1;
 }
 
-message GetAllNodeInfoRequest {
-}
+message GetAllNodeInfoRequest {}
 
 message GetAllNodeInfoReply {
   GcsStatus status = 1;
@@ -189,8 +186,7 @@ message ReportHeartbeatReply {
   GcsStatus status = 1;
 }
 
-message GetInternalConfigRequest {
-}
+message GetInternalConfigRequest {}
 
 message GetInternalConfigReply {
   GcsStatus status = 1;
@@ -236,8 +232,7 @@ message DeleteResourcesReply {
   GcsStatus status = 1;
 }
 
-message GetAllAvailableResourcesRequest {
-}
+message GetAllAvailableResourcesRequest {}
 
 message GetAllAvailableResourcesReply {
   GcsStatus status = 1;
@@ -269,8 +264,7 @@ message GetObjectLocationsReply {
   ObjectLocationInfo location_info = 2;
 }
 
-message GetAllObjectLocationsRequest {
-}
+message GetAllObjectLocationsRequest {}
 
 message GetAllObjectLocationsReply {
   GcsStatus status = 1;
@@ -391,8 +385,7 @@ message AddProfileDataReply {
   GcsStatus status = 1;
 }
 
-message GetAllProfileInfoRequest {
-}
+message GetAllProfileInfoRequest {}
 
 message GetAllProfileInfoReply {
   GcsStatus status = 1;
@@ -426,8 +419,7 @@ message GetWorkerInfoReply {
   WorkerTableData worker_table_data = 2;
 }
 
-message GetAllWorkerInfoRequest {
-}
+message GetAllWorkerInfoRequest {}
 
 message GetAllWorkerInfoReply {
   GcsStatus status = 1;
@@ -501,8 +493,7 @@ enum GcsServiceFailureType {
   GCS_SERVER_RESTART = 1;
 }
 
-message GetAllPlacementGroupRequest {
-}
+message GetAllPlacementGroupRequest {}
 
 message GetAllPlacementGroupReply {
   GcsStatus status = 1;
@@ -616,8 +607,7 @@ service InternalKVGcsService {
   rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
 }
 
-message GetAllResourceUsageRequest {
-}
+message GetAllResourceUsageRequest {}
 
 message GetAllResourceUsageReply {
   GcsStatus status = 1;

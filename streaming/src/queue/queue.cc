@@ -236,48 +236,47 @@ void WriterQueue::OnPull(
   STREAMING_CHECK(peer_actor_id_ == pull_msg->ActorId())
       << peer_actor_id_ << " " << pull_msg->ActorId();
 
-  FindItem(pull_msg->MsgId(),
-           /// target_msg_id is too large.
-           [this, &pull_msg, &callback]() {
-             STREAMING_LOG(WARNING)
-                 << "No valid data to pull, the writer has not push data yet. ";
-             PullResponseMessage msg(pull_msg->PeerActorId(), pull_msg->ActorId(),
-                                     pull_msg->QueueId(), QUEUE_INVALID_SEQ_ID,
-                                     QUEUE_INVALID_SEQ_ID,
-                                     queue::protobuf::StreamingQueueError::NO_VALID_DATA,
-                                     is_upstream_first_pull_);
-             std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
-             is_upstream_first_pull_ = false;
-             callback(std::move(buffer));
-           },
-           /// target_msg_id is too small.
-           [this, &pull_msg, &callback]() {
-             STREAMING_LOG(WARNING) << "Data lost.";
-             PullResponseMessage msg(pull_msg->PeerActorId(), pull_msg->ActorId(),
-                                     pull_msg->QueueId(), QUEUE_INVALID_SEQ_ID,
-                                     QUEUE_INVALID_SEQ_ID,
-                                     queue::protobuf::StreamingQueueError::DATA_LOST,
-                                     is_upstream_first_pull_);
-             std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
+  FindItem(
+      pull_msg->MsgId(),
+      /// target_msg_id is too large.
+      [this, &pull_msg, &callback]() {
+        STREAMING_LOG(WARNING)
+            << "No valid data to pull, the writer has not push data yet. ";
+        PullResponseMessage msg(
+            pull_msg->PeerActorId(), pull_msg->ActorId(), pull_msg->QueueId(),
+            QUEUE_INVALID_SEQ_ID, QUEUE_INVALID_SEQ_ID,
+            queue::protobuf::StreamingQueueError::NO_VALID_DATA, is_upstream_first_pull_);
+        std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
+        is_upstream_first_pull_ = false;
+        callback(std::move(buffer));
+      },
+      /// target_msg_id is too small.
+      [this, &pull_msg, &callback]() {
+        STREAMING_LOG(WARNING) << "Data lost.";
+        PullResponseMessage msg(
+            pull_msg->PeerActorId(), pull_msg->ActorId(), pull_msg->QueueId(),
+            QUEUE_INVALID_SEQ_ID, QUEUE_INVALID_SEQ_ID,
+            queue::protobuf::StreamingQueueError::DATA_LOST, is_upstream_first_pull_);
+        std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
 
-             callback(std::move(buffer));
-           },
-           /// target_msg_id found.
-           [this, &pull_msg, &callback, &service](
-               std::list<QueueItem>::iterator target_item, uint64_t first_seq_id,
-               uint64_t last_seq_id) {
-             is_resending_ = true;
-             STREAMING_LOG(INFO) << "OnPull return";
-             service.post(std::bind(&WriterQueue::ResendItems, this, target_item,
-                                    first_seq_id, last_seq_id));
-             PullResponseMessage msg(
-                 pull_msg->PeerActorId(), pull_msg->ActorId(), pull_msg->QueueId(),
-                 target_item->SeqId(), pull_msg->MsgId(),
-                 queue::protobuf::StreamingQueueError::OK, is_upstream_first_pull_);
-             std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
-             is_upstream_first_pull_ = false;
-             callback(std::move(buffer));
-           });
+        callback(std::move(buffer));
+      },
+      /// target_msg_id found.
+      [this, &pull_msg, &callback, &service](std::list<QueueItem>::iterator target_item,
+                                             uint64_t first_seq_id,
+                                             uint64_t last_seq_id) {
+        is_resending_ = true;
+        STREAMING_LOG(INFO) << "OnPull return";
+        service.post(std::bind(&WriterQueue::ResendItems, this, target_item, first_seq_id,
+                               last_seq_id));
+        PullResponseMessage msg(
+            pull_msg->PeerActorId(), pull_msg->ActorId(), pull_msg->QueueId(),
+            target_item->SeqId(), pull_msg->MsgId(),
+            queue::protobuf::StreamingQueueError::OK, is_upstream_first_pull_);
+        std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
+        is_upstream_first_pull_ = false;
+        callback(std::move(buffer));
+      });
 }
 
 void ReaderQueue::OnConsumed(uint64_t msg_id) {

@@ -13,9 +13,10 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_client/global_state_accessor.h"
-#include "ray/common/asio/instrumented_io_context.h"
 
 #include <boost/algorithm/string.hpp>
+
+#include "ray/common/asio/instrumented_io_context.h"
 
 namespace ray {
 namespace gcs {

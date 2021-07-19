@@ -1,7 +1,7 @@
 #include <cstring>
 #include <string>
-#include "gtest/gtest.h"
 
+#include "gtest/gtest.h"
 #include "queue/message.h"
 using namespace ray;
 using namespace ray::streaming;

@@ -16,6 +16,7 @@
 #include <memory>
 #include <msgpack.hpp>
 #include <string>
+
 #include "boost/optional.hpp"
 
 namespace ray {

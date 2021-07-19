@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
+
 #include "ray/stats/stats.h"
 
 namespace ray {

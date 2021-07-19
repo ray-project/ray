@@ -14,11 +14,10 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include "msgpack.hpp"
 #include "ray/common/buffer.h"
 #include "ray/common/constants.h"
 #include "ray/util/util.h"
-
-#include "msgpack.hpp"
 
 namespace ray {
 

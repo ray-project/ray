@@ -1,4 +1,5 @@
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
+
 #include "ray/stats/stats.h"
 
 namespace ray {

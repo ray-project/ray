@@ -16,7 +16,6 @@
 
 #include <cstdint>
 #include <cstdio>
-
 #include <functional>
 #include <memory>
 

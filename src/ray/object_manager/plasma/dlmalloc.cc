@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "ray/object_manager/plasma/malloc.h"
-
 #include <assert.h>
+
+#include "ray/object_manager/plasma/malloc.h"
 
 #ifdef __linux__
 #ifndef _GNU_SOURCE

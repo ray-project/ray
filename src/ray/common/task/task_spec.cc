@@ -1,8 +1,8 @@
 #include "ray/common/task/task_spec.h"
 
+#include <boost/functional/hash.hpp>
 #include <sstream>
 
-#include <boost/functional/hash.hpp>
 #include "ray/util/logging.h"
 
 namespace ray {

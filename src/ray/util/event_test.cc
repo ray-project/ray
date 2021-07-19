@@ -13,10 +13,12 @@
 // limitations under the License.
 
 #include "ray/util/event.h"
+
 #include <boost/filesystem.hpp>
 #include <fstream>
 #include <set>
 #include <thread>
+
 #include "gtest/gtest.h"
 
 namespace ray {

@@ -1,4 +1,5 @@
 #include "io_ray_streaming_runtime_transfer_channel_ChannelId.h"
+
 #include "streaming_jni_common.h"
 
 using namespace ray::streaming;

@@ -24,6 +24,7 @@
 #include <memory>
 #include <sstream>
 #include <vector>
+
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 #include "spdlog/sinks/basic_file_sink.h"
