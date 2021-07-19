@@ -1296,6 +1296,7 @@ cdef class CoreWorker:
                      int32_t max_concurrency,
                      c_bool is_detached,
                      c_string name,
+                     c_string actor_namespace,
                      c_bool is_asyncio,
                      PlacementGroupID placement_group_id,
                      int64_t placement_group_bundle_index,
@@ -1333,7 +1334,8 @@ cdef class CoreWorker:
                     CActorCreationOptions(
                         max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
-                        dynamic_worker_options, is_detached, name, is_asyncio,
+                        dynamic_worker_options, is_detached, name, actor_namespace,
+                        is_asyncio,
                         c_pair[CPlacementGroupID, int64_t](
                             c_placement_group_id,
                             placement_group_bundle_index),

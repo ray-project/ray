@@ -44,6 +44,7 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
                                      {},
                                      /*is_detached=*/false,
                                      name,
+                                     /*actor_namespace=*/"",
                                      /*is_asyncio=*/false};
   ActorID actor_id;
   auto status = core_worker.CreateActor(BuildRayFunction(invocation), invocation.args,
