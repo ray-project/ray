@@ -46,15 +46,15 @@ def get_args(*args, **kwargs):
     )
     parser.add_argument(
         "--num_reducers",
-        default=64,
+        default=32,
         type=int,
         help="number of reduce actors",
     )
     parser.add_argument(
         "--merge_concurrency",
-        default=8,
+        default=4,
         type=int,
-        help="number of merge tasks per node",
+        help="max number of merge tasks per worker node",
     )
     parser.add_argument(
         "--merge_factor",
@@ -63,13 +63,13 @@ def get_args(*args, **kwargs):
         help="number of mapper results to buffer before merging",
     )
     parser.add_argument(
-        "--reducer_chunk_size",
+        "--reducer_input_chunk",
         default=100 * 1024 * 1024,
         type=ByteCount,
         help="number of bytes to read in memory from each mapper block",
     )
     parser.add_argument(
-        "--reducer_batch_num_records",
+        "--reducer_output_chunk",
         default=1 * 1024 * 1024,
         type=RecordCount,
         help="number of bytes to buffer before writing the output to EBS",
@@ -226,7 +226,7 @@ def mapper(args: Args, boundaries: List[int], path: Path) -> List[np.ndarray]:
 
 def _dummy_merge(
         num_blocks: int, _n: int,
-        get_block: Callable[[int, int], np.ndarray]) -> Iterable[memoryview]:
+        get_block: Callable[[int, int], np.ndarray]) -> Iterable[np.ndarray]:
     blocks = [((i, 0), get_block(i, 0)) for i in range(num_blocks)]
     while len(blocks) > 0:
         (m, d), block = blocks.pop(random.randrange(len(blocks)))
@@ -238,24 +238,43 @@ def _dummy_merge(
         blocks.append(((m, d_), block))
 
 
+@ray.remote(num_cpus=0, resources={"worker": 1e-3})
+def _write_data(path, data):
+    with open(path, "ab") as fout:
+        fout.write(data)
+
+
 def _merge_impl(args: Args,
                 M: int,
                 pinfo: PartInfo,
                 get_block: Callable[[int, int], np.ndarray],
-                skip_output=False):
+                skip_output=False,
+                remote_writer=True):
     merge_fn = _dummy_merge if args.skip_sorting else sortlib.merge_partitions
-    merger = merge_fn(M, args.reducer_batch_num_records, get_block)
+    merger = merge_fn(M, args.reducer_output_chunk, get_block)
+
     if skip_output:
         for datachunk in merger:
             del datachunk
     else:
-        with open(pinfo.path, "wb") as fout:
+        if not remote_writer:
+            with open(pinfo.path, "wb") as fout:
+                for datachunk in merger:
+                    fout.write(datachunk)
+        else:
+            with open(pinfo.path, "wb"):
+                pass
+            task = None
             for datachunk in merger:
-                fout.write(datachunk)
+                if task is not None:
+                    ray.get(task)
+                task = _write_data.remote(pinfo.path, datachunk)
+            if task is not None:
+                ray.get(task)
     return pinfo
 
 
-@ray.remote
+@ray.remote(num_cpus=0, resources={"worker": 1e-3})
 @tracing_utils.timeit("merge")
 def merge_mapper_blocks(args: Args, reducer_id: PartId, mapper_id: PartId,
                         *blocks: List[np.ndarray]) -> PartInfo:
@@ -270,82 +289,84 @@ def merge_mapper_blocks(args: Args, reducer_id: PartId, mapper_id: PartId,
         return blocks[i]
 
     _merge_impl(args, M, pinfo, get_block)
-    return reducer_id, pinfo
+    return pinfo
 
 
-@ray.remote
-def _load_block_chunk(args: Args, pinfo: PartInfo, d: int) -> np.ndarray:
-    return np.fromfile(pinfo.path,
-                       dtype=np.uint8,
-                       count=args.reducer_chunk_size,
-                       offset=d * args.reducer_chunk_size)
-
-
-@ray.remote
+@ray.remote(num_cpus=0, resources={"worker": 1e-3})
 @tracing_utils.timeit("reduce")
 def final_merge(args: Args, reducer_id: PartId,
-                merged_blocks: List[PartInfo]) -> PartInfo:
-    M = len(merged_blocks)
-    D = ByteCount(
-        np.ceil(args.total_data_size / args.num_merged_mappers /
-                args.num_reducers / args.reducer_chunk_size))
-    opt = _current_node_res()
+                *merged_parts: List[PartInfo]) -> PartInfo:
+    M = len(merged_parts)
+
+    @ray.remote(num_cpus=0, resources={"worker": 1e-3})
+    def _load_block_chunk(pinfo: PartInfo, d: int) -> np.ndarray:
+        return np.fromfile(pinfo.path,
+                           dtype=np.uint8,
+                           count=args.reducer_input_chunk,
+                           offset=d * args.reducer_input_chunk)
 
     block_chunks = [
-        _load_block_chunk.options(**opt).remote(args, pinfo, 0)
-        for pinfo in merged_blocks
+        _load_block_chunk.remote(pinfo, 0) for pinfo in merged_parts
     ]
 
     def get_block(i, d):
-        if i >= M or d >= D:
-            return None
         ret = block_chunks[i]
-        if d < D - 1:  # prefetch the next block chunk
-            block_chunks[i] = _load_block_chunk.options(**opt).remote(
-                args, merged_blocks[i], d + 1)
-        return np.copy(ray.get(ret))
+        block_chunks[i] = _load_block_chunk.remote(merged_parts[i], d + 1)
+        ret = ray.get(ret)
+        if ret.size == 0:
+            return None
+        return np.copy(ret)
 
     pinfo = _part_info(args, reducer_id, "output")
-    return _merge_impl(args, M, pinfo, get_block, args.skip_output)
-
-
-def _current_node_res() -> Dict[str, float]:
-    return _node_res(ray.worker.global_worker.node_ip_address)
+    _merge_impl(args, M, pinfo, get_block, args.skip_output)
+    return pinfo
 
 
 def _node_res(node: str) -> Dict[str, float]:
     return {"resources": {f"node:{node}": 1e-3}}
 
 
+def _get_placement_groups(args: Args) -> List[ray.PlacementGroupID]:
+    worker_share = args.num_workers / args.num_reducers
+    pgs = [
+        ray.util.placement_group([{
+            "worker": worker_share
+        }]) for _ in range(args.num_reducers)
+    ]
+    ray.get([pg.ready() for pg in pgs])
+    return pgs
+
+
 @tracing_utils.timeit("sort", report_time=True)
 def sort_main(args: Args):
     parts = _load_manifest(args, constants.INPUT_MANIFEST_FILE)
     boundaries = sortlib.get_boundaries(args.num_reducers)
+    pgs = _get_placement_groups(args)
 
     opt = {
         "num_returns": args.num_reducers,
         "memory": args.input_part_size * 2,
     }
     mapper_results = None
-    merge_results = []
+    merge_results = np.empty((args.num_merged_mappers, args.num_reducers),
+                             dtype=object)
+    merge_concurrency = args.merge_concurrency * args.num_workers
     merge_count = 0
-    merge_concurrency = args.merge_concurrency * args.num_reducers
 
-    # TODO: use placement groups to map tasks for one reducer onto
-    # the same node. The current impl is not correct.
     def submit_merge_tasks():
         nonlocal merge_count
         if mapper_results is None:
             return
-        if merge_count > merge_concurrency:
-            ray.wait(merge_results,
-                     num_returns=merge_count - merge_concurrency)
-        merge_results.extend([
-            merge_mapper_blocks.remote(args, r, merge_count,
-                                       *mapper_results[:, r].tolist())
+        num_extra_tasks = merge_count * args.num_reducers - merge_concurrency
+        if num_extra_tasks > 0:
+            ray.wait([f for f in merge_results.flatten() if f is not None],
+                     num_returns=num_extra_tasks)
+        merge_results[merge_count, :] = [
+            merge_mapper_blocks.options(placement_group=pgs[r]).remote(
+                args, r, merge_count, *mapper_results[:, r].tolist())
             for r in range(args.num_reducers)
-        ])
-        merge_count += args.num_reducers
+        ]
+        merge_count += 1
 
     for part_id, node, path in parts:
         m = part_id % args.merge_factor
@@ -361,16 +382,10 @@ def sort_main(args: Args):
     submit_merge_tasks()
     mapper_results = None
 
-    merge_results = ray.get(merge_results)
-    key = lambda tup: (tup[0], tup[1].node)
-    reducer_inputs = [
-        (k, [p for _, p in g])
-        for k, g in itertools.groupby(sorted(merge_results, key=key), key=key)
-    ]
-    print(reducer_inputs)
     reducer_results = [
-        final_merge.options(**_node_res(node)).remote(args, r, parts)
-        for (r, node), parts in reducer_inputs
+        final_merge.options(placement_group=pgs[r]).remote(
+            args, r, *merge_results[:, r].tolist())
+        for r in range(args.num_reducers)
     ]
     reducer_results = ray.get(reducer_results)
 
@@ -385,15 +400,21 @@ def sort_main(args: Args):
 # ------------------------------------------------------------
 
 
+def _run_valsort(args: List[str]):
+    proc = subprocess.run([constants.VALSORT_PATH] + args, capture_output=True)
+    if proc.returncode != 0:
+        logging.critical("\n" + proc.stderr.decode("ascii"))
+        raise RuntimeError(f"Validation failed: {args}")
+
+
 @ray.remote
 def validate_part(path: Path):
     logging_utils.init()
-    proc = subprocess.run([constants.VALSORT_PATH, path], capture_output=True)
-    if proc.returncode != 0:
-        logging.critical("\n" + proc.stderr.decode("ascii"))
-        raise RuntimeError(f"Validation failed: {path}")
+    sum_path = path + ".sum"
+    _run_valsort(["-o", sum_path, path])
     logging.info(f"Validated output {path}")
-    return os.path.getsize(path)
+    with open(sum_path, "rb") as fin:
+        return os.path.getsize(path), fin.read()
 
 
 def validate_output(args: Args):
@@ -404,8 +425,14 @@ def validate_output(args: Args):
     for _, node, path in partitions:
         results.append(validate_part.options(**_node_res(node)).remote(path))
     logging.info(f"Validating {len(results)} partitions")
-    total = sum(ray.get(results))
-    assert total == args.total_data_size, (total, args.total_data_size)
+    results = ray.get(results)
+    total = sum(s for s, _ in results)
+    assert total == args.total_data_size, total - args.total_data_size
+    all_checksum = b"".join(c for _, c in results)
+    with tempfile.NamedTemporaryFile() as fout:
+        fout.write(all_checksum)
+        fout.flush()
+        _run_valsort(["-s", fout.name])
     logging.info("All OK!")
 
 
@@ -421,8 +448,10 @@ def init(args: Args):
         ray.init(address=args.ray_address)
     logging_utils.init()
     logging.info(args)
-    logging.info(ray.available_resources())
     os.makedirs(constants.WORK_DIR, exist_ok=True)
+    resources = ray.cluster_resources()
+    logging.info(resources)
+    args.num_workers = resources["worker"]
     progress_tracker = tracing_utils.create_progress_tracker(args)
     return progress_tracker
 
