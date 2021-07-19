@@ -1,8 +1,10 @@
-import psutil
 import signal
 import sys
 import pytest
 import ray
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 
 def get_pid(name):

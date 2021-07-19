@@ -1,7 +1,8 @@
 import time
 
-import pytest
+from ray.tests.conftest import *  # noqa
 
+import pytest
 import ray
 from ray.experimental import workflow
 from ray.experimental.workflow import workflow_access
@@ -78,37 +79,52 @@ def blocking():
     return 314
 
 
-def test_basic_workflows():
-    ray.init(namespace="workflow")
-
-    output = workflow.run(simple_sequential.step())
-    assert ray.get(output) == "[source1][append1][append2]"
-
-    output = workflow.run(simple_sequential_with_input.step("start:"))
-    assert ray.get(output) == "start:[append1][append2]"
-
-    output = workflow.run(loop_sequential.step(3))
-    assert ray.get(output) == "[source1]" + "[append1]" * 3 + "[append2]"
-
-    output = workflow.run(nested.step("nested:"))
-    assert ray.get(output) == "nested:~[nested]~[append1][append2]"
-
-    output = workflow.run(fork_join.step())
-    assert ray.get(output) == "join([source1][append1], [source1][append2])"
-
-    ray.shutdown()
+@workflow.step
+def mul(a, b):
+    return a * b
 
 
-def test_async_execution():
-    ray.init(namespace="workflow")
+@workflow.step
+def factorial(n):
+    if n == 1:
+        return 1
+    else:
+        return mul.step(n, factorial.step(n - 1))
 
+
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_basic_workflows(ray_start_regular_shared):
+    # This test also shows different "style" of running workflows.
+    assert simple_sequential.step().run() == "[source1][append1][append2]"
+
+    wf = simple_sequential_with_input.step("start:")
+    assert wf.run() == "start:[append1][append2]"
+
+    wf = loop_sequential.step(3)
+    assert wf.run() == "[source1]" + "[append1]" * 3 + "[append2]"
+
+    wf = nested.step("nested:")
+    assert wf.run() == "nested:~[nested]~[append1][append2]"
+
+    wf = fork_join.step()
+    assert wf.run() == "join([source1][append1], [source1][append2])"
+
+    assert factorial.step(10).run() == 3628800
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_async_execution(ray_start_regular_shared):
     start = time.time()
-    output = workflow.run(blocking.step())
+    output = blocking.step().run_async()
     duration = time.time() - start
     assert duration < 5  # workflow.run is not blocked
     assert ray.get(output) == 314
-
-    ray.shutdown()
 
 
 @ray.remote
@@ -124,8 +140,11 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef):
     return output
 
 
-def test_workflow_output_resolving():
-    ray.init(namespace="workflow")
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_workflow_output_resolving(ray_start_regular_shared):
     # deep nested workflow
     nested_ref = deep_nested.remote(30)
     original_func = workflow_access._resolve_workflow_output
@@ -139,18 +158,16 @@ def test_workflow_output_resolving():
         # restore the function
         workflow_access._resolve_workflow_output = original_func
     assert ray.get(ref) == 42
-    ray.shutdown()
 
 
-def test_run_or_resume_during_running():
-    ray.init(namespace="workflow")
-    output = workflow.run(
-        simple_sequential.step(), workflow_id="running_workflow")
-
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_run_or_resume_during_running(ray_start_regular_shared):
+    output = simple_sequential.step().run_async(workflow_id="running_workflow")
     with pytest.raises(ValueError):
-        workflow.run(simple_sequential.step(), workflow_id="running_workflow")
+        simple_sequential.step().run_async(workflow_id="running_workflow")
     with pytest.raises(ValueError):
         workflow.resume(workflow_id="running_workflow")
-
     assert ray.get(output) == "[source1][append1][append2]"
-    ray.shutdown()

@@ -610,6 +610,7 @@ time.sleep(5)
 """
 
 
+@pytest.mark.skip(reason="Blocked by reverting of #16535 in #17127.")
 @pytest.mark.skipif(
     os.environ.get("CI") is None,
     reason="This test is only run on CI because it uses the built Ray wheel.")

@@ -321,9 +321,13 @@ def read_binary_files(
     """
     import pyarrow as pa
 
+    if isinstance(paths, str):
+        paths = _reader.list_objects(paths)
+
     dataset = from_items(paths, parallelism=parallelism)
     if isinstance(filesystem, pa.fs.S3FileSystem):
         filesystem = _S3FileSystemWrapper(filesystem)
+
     return dataset.map(
         lambda path: _reader.read_file(
             path,

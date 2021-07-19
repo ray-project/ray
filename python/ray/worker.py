@@ -31,6 +31,7 @@ import ray._private.services as services
 import ray._private.runtime_env as runtime_env_pkg
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
+from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 import ray
 import setproctitle
 import ray.state
@@ -471,6 +472,7 @@ class Worker:
             pubsub_client.close()
 
 
+@PublicAPI
 @client_mode_hook
 def get_gpu_ids():
     """Get the IDs of the GPUs that are available to the worker.
@@ -511,6 +513,7 @@ def get_gpu_ids():
     return assigned_ids
 
 
+@Deprecated
 def get_resource_ids():
     """Get the IDs of the resources that are available to the worker.
 
@@ -530,6 +533,7 @@ def get_resource_ids():
     return global_worker.core_worker.resource_ids()
 
 
+@Deprecated
 def get_dashboard_url():
     """Get the URL to access the Ray dashboard.
 
@@ -554,6 +558,7 @@ _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
 
 
+@PublicAPI
 @client_mode_hook
 def init(
         address=None,
@@ -947,6 +952,7 @@ def init(
 _post_init_hooks = []
 
 
+@PublicAPI
 @client_mode_hook
 def shutdown(_exiting_interpreter=False):
     """Disconnect the worker, and terminate processes started by ray.init().
@@ -1194,6 +1200,7 @@ def listen_error_messages_raylet(worker, threads_stopped):
         worker.error_message_pubsub_client.close()
 
 
+@PublicAPI
 @client_mode_hook
 def is_initialized():
     """Check if ray.init has been called yet.
@@ -1323,8 +1330,10 @@ def connect(node,
         job_config.set_ray_namespace(namespace)
 
     # Make sure breakpoint() in the user's code will
-    # always invoke the Ray debugger.
-    os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
+    # invoke the Ray debugger if we are in a worker or actor process
+    # (but not on the driver).
+    if mode == WORKER_MODE:
+        os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
@@ -1469,6 +1478,7 @@ def _changeproctitle(title, next_title):
             setproctitle.setproctitle(next_title)
 
 
+@DeveloperAPI
 def show_in_dashboard(message, key="", dtype="text"):
     """Display message in dashboard.
 
@@ -1501,6 +1511,7 @@ def show_in_dashboard(message, key="", dtype="text"):
 blocking_get_inside_async_warned = False
 
 
+@PublicAPI
 @client_mode_hook
 def get(object_refs, *, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
@@ -1582,6 +1593,7 @@ def get(object_refs, *, timeout=None):
         return values
 
 
+@PublicAPI
 @client_mode_hook
 def put(value):
     """Store an object in the object store.
@@ -1611,6 +1623,7 @@ def put(value):
 blocking_wait_inside_async_warned = False
 
 
+@PublicAPI
 @client_mode_hook
 def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
     """Return a list of IDs that are ready and a list of IDs that are not.
@@ -1712,6 +1725,7 @@ def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
         return ready_ids, remaining_ids
 
 
+@PublicAPI
 @client_mode_hook
 def get_actor(name):
     """Get a handle to a named actor.
@@ -1733,6 +1747,7 @@ def get_actor(name):
     return worker.core_worker.get_named_actor_handle(name)
 
 
+@PublicAPI
 @client_mode_hook
 def kill(actor, *, no_restart=True):
     """Kill an actor forcefully.
@@ -1761,6 +1776,7 @@ def kill(actor, *, no_restart=True):
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 
+@PublicAPI
 @client_mode_hook
 def cancel(object_ref, *, force=False, recursive=True):
     """Cancels a task according to the following conditions.
@@ -1879,6 +1895,7 @@ def make_decorator(num_returns=None,
     return decorator
 
 
+@PublicAPI
 def remote(*args, **kwargs):
     """Defines a remote function or an actor class.
 

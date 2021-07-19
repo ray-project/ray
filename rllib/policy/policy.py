@@ -461,6 +461,9 @@ class Policy(metaclass=ABCMeta):
     def get_weights(self) -> ModelWeights:
         """Returns model weights.
 
+        Note: The return value of this method will reside under the "weights"
+        key in the return value of Policy.get_state().
+
         Returns:
             ModelWeights: Serializable copy or view of model weights.
         """
@@ -468,7 +471,7 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def set_weights(self, weights: ModelWeights) -> None:
-        """Sets model weights.
+        """Sets this Policy's model's weights.
 
         Args:
             weights (ModelWeights): Serializable copy or view of model weights.
@@ -523,12 +526,16 @@ class Policy(metaclass=ABCMeta):
     def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
         """Returns all local state.
 
+        Note: Not to be confused with an RNN model's internal state.
+
         Returns:
             Union[Dict[str, TensorType], List[TensorType]]: Serialized local
                 state.
         """
         state = {
+            # All the policy's weights.
             "weights": self.get_weights(),
+            # The current global timestep.
             "global_timestep": self.global_timestep,
         }
         return state
@@ -580,6 +587,16 @@ class Policy(metaclass=ABCMeta):
             import_file (str): Local readable file.
         """
         raise NotImplementedError
+
+    @DeveloperAPI
+    def get_session(self) -> Optional["tf1.Session"]:
+        """Returns tf.Session object to use for computing actions or None.
+
+        Returns:
+            Optional[tf1.Session]: The tf Session to use for computing actions
+                and losses with this policy.
+        """
+        return None
 
     def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.
