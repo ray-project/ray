@@ -96,7 +96,7 @@ class ArrowBlockBuilder(BlockBuilder[T]):
             self._columns[key].append(value)
         self._num_rows += 1
 
-    def add_block(self, block: pyarrow.Table) -> None:
+    def add_block(self, block: "pyarrow.Table") -> None:
         assert isinstance(block, pyarrow.Table), block
         self._tables.append(block)
         self._num_rows += block.num_rows
