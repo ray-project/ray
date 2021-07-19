@@ -196,12 +196,12 @@ def test_step_failure(ray_start_regular_shared, tmp_path):
         unstable_step.options(step_max_retries=3).step().run()
     assert 10 == unstable_step.options(step_max_retries=8).step().run()
     (tmp_path / "test").write_text("0")
-    (ret, err) = unstable_step.options(step_max_retries=3,
-                                  catch_exception=True).step().run()
+    (ret, err) = unstable_step.options(
+        step_max_retries=3, catch_exception=True).step().run()
     assert ret is None
     assert isinstance(err, ValueError)
-    (ret, err) = unstable_step.options(step_max_retries=8,
-                                  catch_exception=True).step().run()
+    (ret, err) = unstable_step.options(
+        step_max_retries=8, catch_exception=True).step().run()
     assert ret == 10
     assert err is None
 
