@@ -1555,7 +1555,7 @@ cdef class CoreWorker:
         return self.make_actor_handle(
             CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
 
-    def get_named_actor_handle(self, const c_string &name):
+    def get_named_actor_handle(self, const c_string &name, const c_string &ray_namespace):
         cdef:
             pair[ActorHandleSharedPtr, CRayStatus] named_actor_handle_pair
 
@@ -1563,7 +1563,8 @@ cdef class CoreWorker:
         # to call a method that holds the gil.
         with nogil:
             named_actor_handle_pair = (
-                CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))
+                CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(
+                    name, ray_namespace))
         check_status(named_actor_handle_pair.second)
 
         return self.make_actor_handle(named_actor_handle_pair.first)

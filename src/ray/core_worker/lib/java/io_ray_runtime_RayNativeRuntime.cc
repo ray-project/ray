@@ -291,7 +291,8 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, j
   auto full_name = GetFullName(global, native_actor_name);
 
   const auto actor_handle =
-      ray::CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(full_name).first;
+      ray::CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(
+        full_name, /*ray_namespace=*/"").first;
   ray::ActorID actor_id;
   if (actor_handle) {
     actor_id = actor_handle->GetActorID();

@@ -1974,7 +1974,7 @@ std::shared_ptr<const ActorHandle> CoreWorker::GetActorHandle(
 }
 
 std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorHandle(
-    const std::string &name) {
+    const std::string &name, const std::string &ray_namespace) {
   RAY_CHECK(!name.empty());
   if (options_.is_local_mode) {
     return GetNamedActorHandleLocalMode(name);
@@ -1988,9 +1988,8 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
   ActorID actor_id;
   std::shared_ptr<std::promise<void>> ready_promise =
       std::make_shared<std::promise<void>>(std::promise<void>());
-  const auto &ray_namespace = job_config_->ray_namespace();
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
-      name, ray_namespace,
+      name, ray_namespace.empty() ? job_config_->ray_namespace() : ray_namespace,
       [this, &actor_id, name, ready_promise](
           Status status, const boost::optional<rpc::ActorTableData> &result) {
         if (status.ok() && result) {
