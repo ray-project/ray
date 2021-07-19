@@ -1,3 +1,6 @@
+"""
+TODO: document the algorithm
+"""
 from typing import List, Any, Callable, TypeVar, Tuple, Union
 
 import numpy as np
@@ -5,9 +8,11 @@ import ray
 from ray.experimental.data.block import Block
 from ray.experimental.data.impl.block_builder import SimpleBlock
 from ray.experimental.data.impl.block_list import BlockList
+from ray.experimental.data.impl.progress_bar import ProgressBar
 
 T = TypeVar("T")
 
+# TODO: comment
 SortKeyT = Union[None, str, List[str], Callable[[T], Any]]
 
 
@@ -23,7 +28,12 @@ def sample_boundaries(blocks: BlockList[T], num_reducers: int) -> List[T]:
         samples = np.random.choice(items, k, replace=False)
         return (min_item, max_item, samples)
 
-    samples = ray.get([sample_simple_block.remote(block) for block in blocks])
+    sample_results = [sample_simple_block.remote(block) for block in blocks]
+    sample_bar = ProgressBar("Sort Sample", len(sample_results))
+    sample_bar.block_until_complete(sample_results)
+    sample_bar.close()
+
+    samples = ray.get(sample_results)
     min_item = min(m for m, _, _ in samples)
     max_item = max(m for _, m, _ in samples)
     sample_items = np.concatenate([s for _, _, s in samples] +
@@ -74,7 +84,8 @@ def merge_simple_blocks(blocks: List[Block[T]], key=SortKeyT) -> Block[T]:
     return ret_block, ret_block.get_metadata(None)
 
 
-def sort_impl(blocks: BlockList[T], key: SortKeyT,
+def sort_impl(blocks: BlockList[T],
+              key: SortKeyT,
               descending: bool = False) -> BlockList[T]:
     num_mappers = len(blocks)
     num_reducers = num_mappers
@@ -91,11 +102,17 @@ def sort_impl(blocks: BlockList[T], key: SortKeyT,
     map_results = np.empty((num_mappers, num_reducers), dtype=object)
     for i, block in enumerate(blocks):
         map_results[i, :] = sort_block.remote(block, boundaries)
+    map_bar = ProgressBar("Sort Map", len(map_results))
+    map_bar.block_until_complete(map_results)
+    map_bar.close()
 
     reduce_results = []
     for j in range(num_reducers):
         ret = merge_sorted_blocks.remote(*map_results[:, j].tolist())
         reduce_results.append(ret)
+    merge_bar = ProgressBar("Sort Merge", len(reduce_results))
+    merge_bar.block_until_complete(reduce_results)
+    merge_bar.close()
 
     blocks = [b for b, _ in reduce_results]
     metadata = ray.get([m for _, m in reduce_results])
