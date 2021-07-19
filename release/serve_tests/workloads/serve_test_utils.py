@@ -83,13 +83,13 @@ def parse_wrk_decoded_stdout(decoded_out):
     Transfer/sec:    198.19KB
 
     Returns:
-        {'latency_avg_ms': 72.32, 'latency_stdev_ms': 6.0, 
-         'latency_max_ms': 139.0, 'latency_+/-_stdev %': 91.6, 
-        'req/sec_avg': 165.99, 'req/sec_stdev': 34.84, 
-        'req/sec_max': 242.0, 'req/sec_+/-_stdev %': 57.2, 
-        'P50_latency_ms': 70.78, 'P75_latency_ms': 72.59, 
-        'P90_latency_ms': 75.67, 'P99_latency_ms': 98.71, 
-        'requests/sec': 1317.73, 'transfer/sec_KB': 198.19}
+        {'latency_avg_ms': 72.32, 'latency_stdev_ms': 6.0,
+         'latency_max_ms': 139.0, 'latency_+/-_stdev %': 91.6,
+        'req/sec_avg': 165.99, 'req/sec_stdev': 34.84,
+        'req/sec_max': 242.0, 'req/sec_+/-_stdev %': 57.2,
+        'P50_latency_ms': 70.78, 'P75_latency_ms': 72.59,
+        'P90_latency_ms': 75.67, 'P99_latency_ms': 98.71,
+        'requests/sec': 1317.73, 'transfer/sec_KB': 198.19
     """
     metrics_dict = {}
     for line in decoded_out.splitlines():
