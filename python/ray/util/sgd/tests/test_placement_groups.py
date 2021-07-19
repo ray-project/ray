@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 import ray
 import torch.nn as nn
@@ -188,6 +190,7 @@ def test_resize(ray_8_node_2_cpu):
     assert second_placement_group["state"] == "REMOVED"
 
 
+@patch("ray.util.sgd.torch.worker_group.SGD_PLACEMENT_GROUP_TIMEOUT_S", 5)
 def test_timeout(ray_4_node_1_cpu):
     """Tests that an error is thrown when placement group setup times out."""
     with pytest.raises(TimeoutError):
