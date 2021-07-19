@@ -1,4 +1,3 @@
-from gym.spaces import Box, Discrete
 import os
 from pathlib import Path
 import re
@@ -150,9 +149,6 @@ def learn_test_multi_agent_plus_rollout(algo):
         def policy_fn(agent_id, episode, **kwargs):
             return "pol{}".format(agent_id)
 
-        observation_space = Box(float("-inf"), float("inf"), (4, ))
-        action_space = Discrete(2)
-
         config = {
             "num_gpus": 0,
             "num_workers": 1,
@@ -162,10 +158,7 @@ def learn_test_multi_agent_plus_rollout(algo):
             "framework": fw,
             "env": MultiAgentCartPole,
             "multiagent": {
-                "policies": {
-                    "pol0": (None, observation_space, action_space, {}),
-                    "pol1": (None, observation_space, action_space, {}),
-                },
+                "policies": {"pol0", "pol1"},
                 "policy_mapping_fn": policy_fn,
             },
         }

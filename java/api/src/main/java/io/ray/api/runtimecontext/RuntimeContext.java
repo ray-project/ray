@@ -1,5 +1,6 @@
 package io.ray.api.runtimecontext;
 
+import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
@@ -31,4 +32,9 @@ public interface RuntimeContext {
 
   /** Get all node information in Ray cluster. */
   List<NodeInfo> getAllNodeInfo();
+
+  /**
+   * Get the handle to the current actor itself. Note that this method must be invoked in an actor.
+   */
+  <T extends BaseActorHandle> T getCurrentActorHandle();
 }

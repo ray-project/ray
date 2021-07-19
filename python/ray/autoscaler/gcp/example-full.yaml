@@ -115,6 +115,11 @@ available_node_types:
             # Comment this out to use on-demand.
             scheduling:
               - preemptible: true
+            # Un-Comment this to launch workers with the Service Account of the Head Node
+            # serviceAccounts:
+            # - email: ray-autoscaler-sa-v1@<project_id>.iam.gserviceaccount.com
+            #   scopes:
+            #   - https://www.googleapis.com/auth/cloud-platform
 
     # Additional options can be found in in the compute docs at
     # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert

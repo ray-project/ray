@@ -4,6 +4,7 @@ import pytest
 import sys
 import unittest
 import yaml
+import time
 
 import subprocess
 
@@ -12,7 +13,8 @@ import ray
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray._private.runtime_env import RuntimeEnvDict
 from ray.job_config import JobConfig
-from ray.test_utils import run_string_as_driver
+from ray.test_utils import (run_string_as_driver,
+                            run_string_as_driver_nonblocking)
 
 
 @pytest.fixture(scope="session")
@@ -592,6 +594,101 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
                 # Ensure pip-install-test is not installed on the test machine
                 import pip_install_test  # noqa
             assert ray.get(f.remote())
+
+
+install_env_script = """
+import ray
+import time
+job_config = ray.job_config.JobConfig(runtime_env={env})
+ray.init(address="auto", job_config=job_config)
+@ray.remote
+def f():
+    return "hello"
+f.remote()
+# Give the env 5 seconds to begin installing in a new worker.
+time.sleep(5)
+"""
+
+
+@pytest.mark.skip(reason="Blocked by reverting of #16535 in #17127.")
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+def test_env_installation_nonblocking(shutdown_only):
+    """Test fix for https://github.com/ray-project/ray/issues/16226."""
+    env1 = {"pip": ["pip-install-test==0.5"]}
+    job_config = ray.job_config.JobConfig(runtime_env=env1)
+
+    ray.init(job_config=job_config)
+
+    @ray.remote
+    def f():
+        return "hello"
+
+    # Warm up a worker because it takes time to start.
+    ray.get(f.remote())
+
+    def assert_tasks_finish_quickly(total_sleep_s=0.1):
+        """Call f every 0.01 seconds for total time total_sleep_s."""
+        gap_s = 0.01
+        for i in range(int(total_sleep_s / gap_s)):
+            start = time.time()
+            ray.get(f.remote())
+            # Env installation takes around 10 to 60 seconds.  If we fail the
+            # below assert, we can be pretty sure an env installation blocked
+            # the task.
+            assert time.time() - start < 1.0
+            time.sleep(gap_s)
+
+    assert_tasks_finish_quickly()
+
+    env2 = {"pip": ["pip-install-test==0.5", "requests"]}
+    f.options(runtime_env=env2).remote()
+    # Check that installing env2 above does not block tasks using env1.
+    assert_tasks_finish_quickly()
+
+    proc = run_string_as_driver_nonblocking(
+        install_env_script.format(env=env1))
+    # Check that installing env1 in a new worker in the script above does not
+    # block other tasks that use env1.
+    assert_tasks_finish_quickly(total_sleep_s=5)
+    proc.kill()
+    proc.wait()
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") is None,
+    reason="This test is only run on CI because it uses the built Ray wheel.")
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="This test is only run on Buildkite.")
+def test_simultaneous_install(shutdown_only):
+    """Test that two envs can be installed without affecting each other."""
+    ray.init()
+
+    @ray.remote
+    class TensorflowWorker:
+        def __init__(self):
+            import tensorflow as tf
+            self.version = tf.__version__
+
+        def get_version(self):
+            return self.version
+
+    # Before we used a global lock on conda installs, these two envs would be
+    # installed concurrently, leading to errors:
+    # https://github.com/ray-project/ray/issues/17086
+    # Now we use a global lock, so the envs are installed sequentially.
+    tf1 = TensorflowWorker.options(runtime_env={
+        "pip": ["tensorflow==2.4.2"]
+    }).remote()
+    tf2 = TensorflowWorker.options(runtime_env={
+        "pip": ["tensorflow==2.5.0"]
+    }).remote()
+
+    assert ray.get(tf1.get_version.remote()) == "2.4.2"
+    assert ray.get(tf2.get_version.remote()) == "2.5.0"
 
 
 if __name__ == "__main__":

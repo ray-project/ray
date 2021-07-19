@@ -18,6 +18,7 @@ STEP_OUTPUTS_METADATA = "outputs.json"
 STEP_ARGS = "args.pkl"
 STEP_OUTPUT = "output.pkl"
 STEP_FUNC_BODY = "func_body.pkl"
+CLASS_BODY = "class_body.pkl"
 
 
 @contextlib.contextmanager
@@ -133,8 +134,8 @@ class FilesystemStorageImpl(Storage):
     def __init__(self, workflow_root_dir: str):
         self._workflow_root_dir = pathlib.Path(workflow_root_dir)
 
-    def load_step_input_metadata(self, workflow_id: str,
-                                 step_id: StepID) -> Dict[str, Any]:
+    async def load_step_input_metadata(self, workflow_id: str,
+                                       step_id: StepID) -> Dict[str, Any]:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_INPUTS_METADATA) as f:
@@ -142,8 +143,8 @@ class FilesystemStorageImpl(Storage):
         except Exception as e:
             raise DataLoadError from e
 
-    def save_step_input_metadata(self, workflow_id: str, step_id: StepID,
-                                 metadata: Dict[str, Any]) -> None:
+    async def save_step_input_metadata(self, workflow_id: str, step_id: StepID,
+                                       metadata: Dict[str, Any]) -> None:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_INPUTS_METADATA, "w") as f:
@@ -151,8 +152,8 @@ class FilesystemStorageImpl(Storage):
         except Exception as e:
             raise DataSaveError from e
 
-    def load_step_output_metadata(self, workflow_id: str,
-                                  step_id: StepID) -> Dict[str, Any]:
+    async def load_step_output_metadata(self, workflow_id: str,
+                                        step_id: StepID) -> Dict[str, Any]:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_OUTPUTS_METADATA) as f:
@@ -160,8 +161,9 @@ class FilesystemStorageImpl(Storage):
         except Exception as e:
             raise DataLoadError from e
 
-    def save_step_output_metadata(self, workflow_id: str, step_id: StepID,
-                                  metadata: Dict[str, Any]) -> None:
+    async def save_step_output_metadata(self, workflow_id: str,
+                                        step_id: StepID,
+                                        metadata: Dict[str, Any]) -> None:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_OUTPUTS_METADATA, "w") as f:
@@ -169,7 +171,7 @@ class FilesystemStorageImpl(Storage):
         except Exception as e:
             raise DataSaveError from e
 
-    def load_step_output(self, workflow_id: str, step_id: StepID) -> Any:
+    async def load_step_output(self, workflow_id: str, step_id: StepID) -> Any:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_OUTPUT, "rb") as f:
@@ -177,8 +179,8 @@ class FilesystemStorageImpl(Storage):
         except Exception as e:
             raise DataLoadError from e
 
-    def save_step_output(self, workflow_id: str, step_id: StepID,
-                         output: Any) -> None:
+    async def save_step_output(self, workflow_id: str, step_id: StepID,
+                               output: Any) -> None:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_OUTPUT, "wb") as f:
@@ -186,8 +188,8 @@ class FilesystemStorageImpl(Storage):
         except Exception as e:
             raise DataSaveError from e
 
-    def load_step_func_body(self, workflow_id: str,
-                            step_id: StepID) -> Callable:
+    async def load_step_func_body(self, workflow_id: str,
+                                  step_id: StepID) -> Callable:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_FUNC_BODY, "rb") as f:
@@ -195,8 +197,8 @@ class FilesystemStorageImpl(Storage):
         except Exception as e:
             raise DataLoadError from e
 
-    def save_step_func_body(self, workflow_id: str, step_id: StepID,
-                            func_body: Callable) -> None:
+    async def save_step_func_body(self, workflow_id: str, step_id: StepID,
+                                  func_body: Callable) -> None:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_FUNC_BODY, "wb") as f:
@@ -204,7 +206,8 @@ class FilesystemStorageImpl(Storage):
         except Exception as e:
             raise DataSaveError from e
 
-    def load_step_args(self, workflow_id: str, step_id: StepID) -> ArgsType:
+    async def load_step_args(self, workflow_id: str,
+                             step_id: StepID) -> ArgsType:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_ARGS, "rb") as f:
@@ -212,8 +215,8 @@ class FilesystemStorageImpl(Storage):
         except Exception as e:
             raise DataLoadError from e
 
-    def save_step_args(self, workflow_id: str, step_id: StepID,
-                       args: ArgsType) -> None:
+    async def save_step_args(self, workflow_id: str, step_id: StepID,
+                             args: ArgsType) -> None:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         try:
             with _open_atomic(step_dir / STEP_ARGS, "wb") as f:
@@ -221,7 +224,8 @@ class FilesystemStorageImpl(Storage):
         except Exception as e:
             raise DataSaveError from e
 
-    def load_object_ref(self, workflow_id: str, object_id) -> ray.ObjectRef:
+    async def load_object_ref(self, workflow_id: str,
+                              object_id) -> ray.ObjectRef:
         objects_dir = self._workflow_root_dir / workflow_id / OBJECTS_DIR
         try:
             with _open_atomic(objects_dir / object_id, "rb") as f:
@@ -230,16 +234,18 @@ class FilesystemStorageImpl(Storage):
         except Exception as e:
             raise DataLoadError from e
 
-    def save_object_ref(self, workflow_id: str, rref: ray.ObjectRef) -> None:
+    async def save_object_ref(self, workflow_id: str,
+                              obj_ref: ray.ObjectRef) -> None:
         objects_dir = self._workflow_root_dir / workflow_id / OBJECTS_DIR
         try:
-            obj = ray.get(rref)
-            with _open_atomic(objects_dir / rref.hex(), "wb") as f:
+            obj = ray.get(obj_ref)
+            with _open_atomic(objects_dir / obj_ref.hex(), "wb") as f:
                 ray.cloudpickle.dump(obj, f)
         except Exception as e:
             raise DataSaveError from e
 
-    def get_step_status(self, workflow_id: str, step_id: StepID) -> StepStatus:
+    async def get_step_status(self, workflow_id: str,
+                              step_id: StepID) -> StepStatus:
         step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
         return StepStatus(
             output_object_exists=(step_dir / STEP_OUTPUT).exists(),
@@ -248,3 +254,26 @@ class FilesystemStorageImpl(Storage):
             args_exists=(step_dir / STEP_ARGS).exists(),
             func_body_exists=(step_dir / STEP_FUNC_BODY).exists(),
         )
+
+    @property
+    def storage_url(self) -> str:
+        return str(self._workflow_root_dir)
+
+    async def load_actor_class_body(self, workflow_id: str) -> type:
+        file_path = self._workflow_root_dir / workflow_id / CLASS_BODY
+        try:
+            with _open_atomic(file_path, "rb") as f:
+                return ray.cloudpickle.load(f)
+        except Exception as e:
+            raise DataLoadError from e
+
+    async def save_actor_class_body(self, workflow_id: str, cls: type) -> None:
+        file_path = self._workflow_root_dir / workflow_id / CLASS_BODY
+        try:
+            with _open_atomic(file_path, "wb") as f:
+                ray.cloudpickle.dump(cls, f)
+        except Exception as e:
+            raise DataSaveError from e
+
+    def __reduce__(self):
+        return FilesystemStorageImpl, (self._workflow_root_dir, )

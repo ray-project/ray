@@ -14,10 +14,9 @@
 
 #pragma once
 
-#include <algorithm>
+#include <cstdint>
 #include <sstream>
-#include <typeinfo>
-#include <unordered_map>
+#include <string>
 
 #include "absl/strings/escaping.h"
 #include "ray/util/logging.h"
@@ -69,47 +68,9 @@ class RayConfig {
 #undef RAY_CONFIG
 
  public:
-  static RayConfig &instance() {
-    static RayConfig config;
-    return config;
-  }
+  static RayConfig &instance();
 
-/// -----------Include ray_config_def.h to set config items.-------------------
-/// A helper macro that helps to set a value to a config item.
-#define RAY_CONFIG(type, name, default_value)                                           \
-  if (pair.first == #name) {                                                            \
-    if (typeid(type) == typeid(std::string)) {                                          \
-      RAY_CHECK(                                                                        \
-          absl::Base64Unescape(pair.second, reinterpret_cast<std::string *>(&name##_))) \
-          << "key: " << #name << ", value: " << pair.second;                            \
-    } else {                                                                            \
-      name##_ = ConvertValue<type>(#type, pair.second);                                 \
-    }                                                                                   \
-    continue;                                                                           \
-  }
-
-  void initialize(const std::string &config_list) {
-    // Parse the configuration list.
-    std::unordered_map<std::string, std::string> config_map;
-    std::istringstream config_string(config_list);
-    std::string config_name;
-    std::string config_value;
-
-    while (std::getline(config_string, config_name, ',')) {
-      RAY_CHECK(std::getline(config_string, config_value, ';'));
-      // TODO(rkn): The line below could throw an exception. What should we do about this?
-      config_map[config_name] = config_value;
-    }
-
-    for (auto const &pair : config_map) {
-      // We use a big chain of if else statements because C++ doesn't allow
-      // switch statements on strings.
-#include "ray/common/ray_config_def.h"
-      RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.first;
-    }
-  }
-  /// ---------------------------------------------------------------------
-#undef RAY_CONFIG
+  void initialize(const std::string &config_list);
 
  private:
   template <typename T>

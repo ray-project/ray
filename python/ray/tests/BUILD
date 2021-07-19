@@ -37,13 +37,13 @@ py_test_module_list(
     "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
-    "test_gcs_fault_tolerance.py",
     "test_global_gc.py",
     "test_iter.py",
     "test_joblib.py",
     "test_get_locations.py",
     "test_global_state.py",
     "test_healthcheck.py",
+    "test_kill_raylet_signal_log.py",
     "test_mldataset.py",
   ],
   size = "medium",
@@ -64,6 +64,7 @@ py_test_module_list(
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
     "test_output.py",
+    "test_ray_init.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
@@ -88,6 +89,7 @@ py_test_module_list(
     "test_asyncio_cluster.py",
     "test_asyncio.py",
     "test_autoscaler.py",
+    "test_autoscaler_gcp.py",
     "test_autoscaler_yaml.py",
     "test_cli_logger.py",
     "test_client_metadata.py",
@@ -108,9 +110,9 @@ py_test_module_list(
     "test_numba.py",
     "test_queue.py",
     "test_ray_debugger.py",
-    "test_ray_init.py",
     "test_unhandled_error.py",
     "test_top_level_api.py",
+    "test_list_actors.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -195,6 +197,16 @@ py_test_module_list(
 # Flaky tests only on Mac.
 py_test_module_list(
   files = [
+    "test_gcs_fault_tolerance.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky-mac"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_placement_group.py",
   ],
   size = "large",
@@ -268,6 +280,8 @@ py_test_module_list(
     "test_basic_2.py",
     "test_basic_3.py",
     "test_asyncio.py",
+    "test_multiprocessing.py",
+    "test_list_actors.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -285,7 +299,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "worker-nest-container"],
+  tags = ["exclusive", "worker-container"],
   # Now we run this test in a container which has installed ray
   deps = [],
 )
