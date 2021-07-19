@@ -1,5 +1,4 @@
-from typing import (List, Tuple, Union, Any, Dict, Callable, Optional,
-                    TYPE_CHECKING)
+from typing import (List, Tuple, Any, Dict, Callable, Optional, TYPE_CHECKING)
 
 import ray
 from ray import ObjectRef
@@ -9,7 +8,6 @@ from ray.experimental.workflow.common import Workflow
 from ray.experimental.workflow import workflow_storage
 
 if TYPE_CHECKING:
-    from ray.experimental.workflow.storage import Storage
     from ray.experimental.workflow.common import (StepID, WorkflowOutputType,
                                                   WorkflowInputTuple)
 
@@ -125,26 +123,6 @@ def execute_workflow(workflow: Workflow,
     # Passing down outer most step so inner nested steps would
     # access the same outer most step.
     return workflow.execute(outer_most_step_id)
-
-
-def commit_step(workflow_id: str,
-                step_id: "StepID",
-                storage: "Storage",
-                ret: Union[Workflow, Any],
-                outer_most_step_id: Optional[str] = None):
-    """Checkpoint the step output.
-
-    Args:
-        workflow_id: The ID of the workflow
-        ret: The returned object of the workflow step.
-        outer_most_step_id: The ID of the outer most workflow. None if it
-            does not exists. See "step_executor.execute_workflow" for detailed
-            explanation.
-    """
-    store = workflow_storage.WorkflowStorage(workflow_id, storage)
-    if isinstance(ret, Workflow):
-        store.save_subworkflow(ret)
-    store.save_step_output(step_id, ret, outer_most_step_id)
 
 
 @ray.remote
