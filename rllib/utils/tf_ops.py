@@ -48,9 +48,9 @@ def get_gpu_devices():
         return [x.name for x in local_device_protos if x.device_type == "GPU"]
     else:
         try:
-            gpus = [tf.config.list_physical_devices("GPU")]
+            gpus = tf.config.list_physical_devices("GPU")
         except Exception:
-            gpus = [tf.config.experimental.list_physical_devices("GPU")]
+            gpus = tf.config.experimental.list_physical_devices("GPU")
         return gpus
 
 
