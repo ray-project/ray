@@ -20,11 +20,16 @@ class WorkflowStepFunction:
                  func: Callable,
                  step_max_retries=1,
                  catch_exception=False,
-                 ray_options={}):
+                 ray_options=None):
+        if not isinstance(step_max_retries, int) or step_max_retries < 1:
+            raise ValueError("step_max_retries should be greater or equal to 1.")
+        if not isinstance(ray_options, dict):
+            raise ValueError("ray_options must be a dict.")
+
         self._func = func
         self._step_max_retries = step_max_retries
         self._catch_exception = catch_exception
-        self._ray_options = ray_options
+        self._ray_options = ray_options or {}
         self._func_signature = list(
             inspect.signature(func).parameters.values())
 

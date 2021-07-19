@@ -190,6 +190,9 @@ def test_step_failure(ray_start_regular_shared, tmp_path):
         return v
 
     with pytest.raises(Exception):
+        ray.get(workflow.run(unstable_step.options(step_max_retries=-1).step()))
+
+    with pytest.raises(Exception):
         ray.get(workflow.run(unstable_step.options(step_max_retries=3).step()))
     assert 10 == ray.get(
         workflow.run(unstable_step.options(step_max_retries=8).step()))
