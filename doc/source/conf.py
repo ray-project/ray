@@ -37,6 +37,7 @@ MOCK_MODULES = [
     "ax.service.ax_client",
     "blist",
     "ConfigSpace",
+    "dask.distributed",
     "gym",
     "gym.spaces",
     "horovod",
@@ -121,6 +122,59 @@ sys.modules["xgboost_ray"].RayXGBClassifier.fit.__doc__ = sys.modules[
 sys.modules["xgboost_ray"].RayXGBRegressor.fit.__doc__ = sys.modules[
     "xgboost_ray"].RayXGBRegressor.fit.__doc__.replace(":ref:`callback_api`",
                                                        "Callback API")
+
+# fix "more than one target found for cross-reference 'RayParams'"
+sys.modules["xgboost_ray"].train.__doc__ = sys.modules[
+    "xgboost_ray"].train.__doc__.replace("RayParams", "xgboost_ray.RayParams")
+sys.modules["xgboost_ray"].predict.__doc__ = sys.modules[
+    "xgboost_ray"].predict.__doc__.replace("RayParams",
+                                           "xgboost_ray.RayParams")
+sys.modules["xgboost_ray"].RayXGBClassifier.fit.__doc__ = sys.modules[
+    "xgboost_ray"].RayXGBClassifier.fit.__doc__.replace(
+        "RayParams", "xgboost_ray.RayParams")
+sys.modules["xgboost_ray"].RayXGBClassifier.predict.__doc__ = sys.modules[
+    "xgboost_ray"].RayXGBClassifier.predict.__doc__.replace(
+        "RayParams", "xgboost_ray.RayParams")
+sys.modules[
+    "xgboost_ray"].RayXGBClassifier.predict_proba.__doc__ = sys.modules[
+        "xgboost_ray"].RayXGBClassifier.predict_proba.__doc__.replace(
+            "RayParams", "xgboost_ray.RayParams")
+sys.modules["xgboost_ray"].RayXGBRegressor.fit.__doc__ = sys.modules[
+    "xgboost_ray"].RayXGBRegressor.fit.__doc__.replace(
+        "RayParams", "xgboost_ray.RayParams")
+sys.modules["xgboost_ray"].RayXGBRegressor.predict.__doc__ = sys.modules[
+    "xgboost_ray"].RayXGBRegressor.predict.__doc__.replace(
+        "RayParams", "xgboost_ray.RayParams")
+
+lgbm_modules = [
+    "lightgbm.main", "lightgbm.callback", "lightgbm.compat", "lightgbm_ray"
+]
+for lgbm_module in lgbm_modules:
+    import_or_mock(lgbm_module)
+
+# fix "more than one target found for cross-reference 'RayParams'"
+sys.modules["lightgbm_ray"].train.__doc__ = sys.modules[
+    "lightgbm_ray"].train.__doc__.replace("RayParams",
+                                          "lightgbm_ray.RayParams")
+sys.modules["lightgbm_ray"].predict.__doc__ = sys.modules[
+    "lightgbm_ray"].predict.__doc__.replace("RayParams",
+                                            "lightgbm_ray.RayParams")
+sys.modules["lightgbm_ray"].RayLGBMClassifier.fit.__doc__ = sys.modules[
+    "lightgbm_ray"].RayLGBMClassifier.fit.__doc__.replace(
+        "RayParams", "lightgbm_ray.RayParams")
+sys.modules["lightgbm_ray"].RayLGBMClassifier.predict.__doc__ = sys.modules[
+    "lightgbm_ray"].RayLGBMClassifier.predict.__doc__.replace(
+        "RayParams", "lightgbm_ray.RayParams")
+sys.modules[
+    "lightgbm_ray"].RayLGBMClassifier.predict_proba.__doc__ = sys.modules[
+        "lightgbm_ray"].RayLGBMClassifier.predict_proba.__doc__.replace(
+            "RayParams", "lightgbm_ray.RayParams")
+sys.modules["lightgbm_ray"].RayLGBMRegressor.fit.__doc__ = sys.modules[
+    "lightgbm_ray"].RayLGBMRegressor.fit.__doc__.replace(
+        "RayParams", "lightgbm_ray.RayParams")
+sys.modules["lightgbm_ray"].RayLGBMRegressor.predict.__doc__ = sys.modules[
+    "lightgbm_ray"].RayLGBMRegressor.predict.__doc__.replace(
+        "RayParams", "lightgbm_ray.RayParams")
 
 
 class SimpleClass(object):
