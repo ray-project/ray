@@ -6,9 +6,7 @@
   run:
     timeout: 7200
     long_running: False
-    script: python workloads/single_deployment_1k_noop_replica.py \
-      --run-locally=False \
-      --smoke-test=False
-
+    script: python workloads/single_deployment_1k_noop_replica.py --run-locally=False
+  
   smoke_test:
     timeout: 600
