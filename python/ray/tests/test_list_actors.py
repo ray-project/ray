@@ -56,6 +56,7 @@ def test_list_named_actors_basic_local_mode(ray_start_regular):
     assert "hi2" in ray.util.list_named_actors()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_list_named_actors_restarting_actor(ray_start_regular):
     @ray.remote(max_restarts=-1)
     class A:
@@ -111,6 +112,7 @@ assert "sad" in ray.util.list_named_actors()
     assert ray.util.list_named_actors() == ["hi"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 def test_list_named_actors_namespace(ray_start_regular):
     """Verify that actor names are filtered on namespace by default."""
     address = ray_start_regular["redis_address"]

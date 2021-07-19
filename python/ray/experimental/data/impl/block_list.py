@@ -1,6 +1,7 @@
 from typing import Iterable, List
 
-from ray.experimental.data.impl.block import Block, BlockMetadata, ObjectRef, T
+from ray.types import ObjectRef
+from ray.experimental.data.block import Block, BlockMetadata, T
 
 
 class BlockList(Iterable[ObjectRef[Block[T]]]):

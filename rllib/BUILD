@@ -2428,6 +2428,14 @@ py_test(
 )
 
 py_test(
+    name = "examples/pettingzoo_env",
+    main = "examples/pettingzoo_env.py",
+    tags = ["examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/pettingzoo_env.py"],
+)
+
+py_test(
     name = "examples/restore_1_of_n_agents_from_checkpoint",
     tags = ["examples", "examples_R"],
     size = "medium",

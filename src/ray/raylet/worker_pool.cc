@@ -201,7 +201,7 @@ Process WorkerPool::StartWorkerProcess(
   std::vector<std::string> options;
 
   // Append Ray-defined per-job options here
-  if (language == Language::JAVA) {
+  if (language == Language::JAVA || language == Language::CPP) {
     if (job_config) {
       std::string code_search_path_str;
       for (int i = 0; i < job_config->code_search_path_size(); i++) {
@@ -212,7 +212,13 @@ Process WorkerPool::StartWorkerProcess(
         code_search_path_str += path;
       }
       if (!code_search_path_str.empty()) {
-        code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
+        if (language == Language::JAVA) {
+          code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
+        } else if (language == Language::CPP) {
+          code_search_path_str = "--ray-code-search-path=" + code_search_path_str;
+        } else {
+          RAY_LOG(FATAL) << "Unknown language " << Language_Name(language);
+        }
         options.push_back(code_search_path_str);
       }
     }
@@ -443,6 +449,7 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
   // Currently we don't erase the job from `all_jobs_` , as a workaround for
   // https://github.com/ray-project/ray/issues/11437.
   // unfinished_jobs_.erase(job_id);
+  finished_jobs_.insert(job_id);
 }
 
 boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
@@ -683,7 +690,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   RAY_CHECK(worker->GetAssignedTaskId().IsNil())
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  auto it = state.dedicated_workers_to_tasks.find(worker->GetProcess());
+  auto it = state.dedicated_workers_to_tasks.find(worker->GetShimProcess());
   if (it != state.dedicated_workers_to_tasks.end()) {
     // The worker is used for the actor creation task with dynamic options.
     // Put it into idle dedicated worker pool.
@@ -715,11 +722,16 @@ void WorkerPool::TryKillingIdleWorkers() {
   running_size -= pending_exit_idle_workers_.size();
   // Kill idle workers in FIFO order.
   for (const auto &idle_pair : idle_of_all_languages_) {
+    const auto &idle_worker = idle_pair.first;
+    const auto &job_id = idle_worker->GetAssignedJobId();
     if (running_size <= static_cast<size_t>(num_workers_soft_limit_)) {
-      break;
+      if (!finished_jobs_.count(job_id)) {
+        // Ignore the soft limit for jobs that have already finished, as we
+        // should always clean up these workers.
+        break;
+      }
     }
 
-    const auto &idle_worker = idle_pair.first;
     if (pending_exit_idle_workers_.count(idle_worker->WorkerId())) {
       // If the worker is pending exit, just skip it.
       continue;
@@ -768,7 +780,11 @@ void WorkerPool::TryKillingIdleWorkers() {
         static_cast<size_t>(num_workers_soft_limit_)) {
       // A Java worker process may contain multiple workers. Killing more workers than we
       // expect may slow the job.
-      return;
+      if (!finished_jobs_.count(job_id)) {
+        // Ignore the soft limit for jobs that have already finished, as we
+        // should always clean up these workers.
+        return;
+      }
     }
 
     for (const auto &worker : workers_in_the_same_process) {

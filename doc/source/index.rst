@@ -1,8 +1,6 @@
 What is Ray?
 ============
 
-.. tip:: Please take 5 minutes to take the `Ray Pulse Community Survey <https://www.surveymonkey.com/r/ray-community-pulse-2021>`_!
-
 .. include:: ray-overview/basics.rst
 
 Getting Started with Ray
@@ -132,7 +130,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
     .. code-block:: shell
 
       ray stop
-      ./bazel-bin/example --ray-dynamic-library-path=bazel-bin/example.so
+      ./bazel-bin/example 
 
     | Option 2: connect to an existing Ray cluster with a known redis address (e.g. `127.0.0.1:6379`).
 
@@ -140,7 +138,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
       ray stop
       ray start --head
-      ./bazel-bin/example --ray-dynamic-library-path=bazel-bin/example.so --ray-address=127.0.0.1:6379
+      RAY_ADDRESS=127.0.0.1:6379 ./bazel-bin/example
 
     .. literalinclude:: ../../cpp/example/example.cc
        :language: cpp
@@ -279,6 +277,18 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
+   :caption: Ray Data Processing
+
+   data/dataset.rst
+   data/package-ref.rst
+   data/dask-on-ray.rst
+   data/mars-on-ray.rst
+   data/modin/index.rst
+   data/raydp.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
    :caption: Ray Tune
 
    tune/index.rst
@@ -315,20 +325,9 @@ Papers
    raysgd/raysgd.rst
    raysgd/raysgd_pytorch.rst
    raysgd/raysgd_tensorflow.rst
-   raysgd/raysgd_dataset.rst
    raysgd/raysgd_ptl.rst
    raysgd/raysgd_tune.rst
    raysgd/raysgd_ref.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Data Processing
-
-   modin/index.rst
-   dask-on-ray.rst
-   mars-on-ray.rst
-   raydp.rst
 
 .. toctree::
    :hidden:
@@ -337,7 +336,6 @@ Papers
 
    multiprocessing.rst
    joblib.rst
-   iter.rst
    xgboost-ray.rst
    ray-collective.rst
 
