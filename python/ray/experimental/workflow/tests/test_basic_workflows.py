@@ -190,23 +190,18 @@ def test_step_failure(ray_start_regular_shared, tmp_path):
         return v
 
     with pytest.raises(Exception):
-        ray.get(workflow.run(unstable_step.options(step_max_retries=-1).step()))
+        unstable_step.options(step_max_retries=-1).step().run()
 
     with pytest.raises(Exception):
-        ray.get(workflow.run(unstable_step.options(step_max_retries=3).step()))
-    assert 10 == ray.get(
-        workflow.run(unstable_step.options(step_max_retries=8).step()))
+        unstable_step.options(step_max_retries=3).step().run()
+    assert 10 == unstable_step.options(step_max_retries=8).step().run()
     (tmp_path / "test").write_text("0")
-    (ret, err) = ray.get(
-        workflow.run(
-            unstable_step.options(step_max_retries=3,
-                                  catch_exception=True).step()))
+    (ret, err) = unstable_step.options(step_max_retries=3,
+                                  catch_exception=True).step().run()
     assert ret is None
     assert isinstance(err, ValueError)
-    (ret, err) = ray.get(
-        workflow.run(
-            unstable_step.options(step_max_retries=8,
-                                  catch_exception=True).step()))
+    (ret, err) = unstable_step.options(step_max_retries=8,
+                                  catch_exception=True).step().run()
     assert ret == 10
     assert err is None
 
@@ -231,7 +226,7 @@ def test_step_resources(ray_start_regular_shared, tmp_path):
 
     lock = FileLock(lock_path)
     lock.acquire()
-    ret = workflow.run(step_run.options(num_cpus=2).step())
+    ret = step_run.options(num_cpus=2).step().run_async()
     obj = remote_run.remote()
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(obj, timeout=2)

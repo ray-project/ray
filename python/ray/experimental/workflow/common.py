@@ -1,7 +1,7 @@
 from collections import deque
 import re
-from typing import (Tuple, Dict, List, Optional, Callable, Set, Iterator, Any, Union,
-                    TYPE_CHECKING)
+from typing import (Tuple, Dict, List, Optional, Callable, Set, Iterator, Any,
+                    Union, TYPE_CHECKING)
 import unicodedata
 import uuid
 
