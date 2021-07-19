@@ -45,8 +45,8 @@ NUM_CPU_PER_NODE = 8
 DEFAULT_MAX_BATCH_SIZE = 16
 
 # Experiment configs - wrk specific
-DEFAULT_SMOKE_TEST_TRAIL_LENGTH = "1m"
-DEFAULT_FULL_TEST_TRAIL_LENGTH = "10m"
+DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "10s"
+DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
 
 def setup_local_single_node_cluster(num_nodes):
@@ -104,7 +104,7 @@ def warm_up_cluster(num_warmup_iterations: int) -> None:
         time.sleep(0.5)
 
 
-def run_one_trial(trail_length: str, num_connectionss) -> None:
+def run_one_trial(trial_length: str, num_connectionss) -> None:
     proc = subprocess.Popen(
         [
             "wrk",
@@ -113,7 +113,8 @@ def run_one_trial(trail_length: str, num_connectionss) -> None:
             "-t",
             str(NUM_CPU_PER_NODE),
             "-d",
-            trail_length,
+            trial_length,
+            "--latency",
             "http://127.0.0.1:8000/echo",
         ],
         stdout=PIPE,
@@ -137,25 +138,26 @@ def shutdown_cluster():
 @click.option("--trial-length", type=str)
 @click.option("--max-batch-size", type=int, default=DEFAULT_MAX_BATCH_SIZE)
 @click.option("--run-locally", type=bool, default=True)
-@click.option("--smoke-test", type=bool, default=True)
 def main(num_replicas: Optional[int], num_trials: Optional[int],
          trial_length: Optional[str], max_batch_size: Optional[int],
-         run_locally: Optional[bool], smoke_test: Optional[bool]):
+         run_locally: Optional[bool]):
 
     # Give default cluster parameter values based on smoke_test config
     # if user provided values explicitly, use them instead.
-    if not smoke_test:
+    # IS_SMOKE_TEST is set by args of releaser's e2e.py
+    smoke_test = os.environ.get("IS_SMOKE_TEST", "0")
+    if smoke_test == "0":
         num_replicas = num_replicas or DEFAULT_FULL_TEST_NUM_REPLICA
         num_trials = num_trials or DEFAULT_FULL_TEST_NUM_TRIALS
-        trial_length = trial_length or DEFAULT_FULL_TEST_TRAIL_LENGTH
+        trial_length = trial_length or DEFAULT_FULL_TEST_TRIAL_LENGTH
         print(f"\nRunning full test with {num_replicas} replicas, "
-              f"{num_trials} trails that lasts {trial_length} each.. \n")
+              f"{num_trials} trials that lasts {trial_length} each.. \n")
     else:
         num_replicas = num_replicas or DEFAULT_SMOKE_TEST_NUM_REPLICA
         num_trials = num_trials or DEFAULT_SMOKE_TEST_NUM_TRIALS
-        trial_length = trial_length or DEFAULT_SMOKE_TEST_TRAIL_LENGTH
+        trial_length = trial_length or DEFAULT_SMOKE_TEST_TRIAL_LENGTH
         print(f"\nRunning smoke test with {num_replicas} replicas, "
-              f"{num_trials} trails that lasts {trial_length} each.. \n")
+              f"{num_trials} trials that lasts {trial_length} each.. \n")
 
     # Choose cluster setup based on user config. Local test uses Cluster()
     # to mock actors that requires # of nodes to be specified, but ray
@@ -176,7 +178,7 @@ def main(num_replicas: Optional[int], num_trials: Optional[int],
 
     final_result = []
     for iteration in range(num_trials):
-        print(f"\nStarting wrk trail # {iteration + 1} ....\n")
+        print(f"\nStarting wrk trial # {iteration + 1} ....\n")
         # For detailed discussion, see https://github.com/wg/wrk/issues/205
         # TODO:(jiaodong) What's the best number to use here ?
         num_connections = int(num_replicas * DEFAULT_MAX_BATCH_SIZE * 0.75)
@@ -184,7 +186,7 @@ def main(num_replicas: Optional[int], num_trials: Optional[int],
         metrics_dict = parse_wrk_decoded_stdout(decoded_out)
         final_result.append(metrics_dict)
 
-    print(final_result)
+    print(f"\nFinal results: {final_result}\n")
 
     test_output_json = os.environ.get(
         "TEST_OUTPUT_JSON", "/tmp/single_deployment_1k_noop_replica.json")
