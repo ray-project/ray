@@ -37,6 +37,7 @@ from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.utils import (flatten_dict, get_pinned_object,
                             pin_in_object_store)
 from ray.tune.utils.mock import mock_storage_client, MOCK_REMOTE_DIR
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
@@ -704,7 +705,12 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 print(result)
                 return result
 
-        analysis = tune.run(TestTrainable, stop={TRAINING_ITERATION: 1})
+        analysis = tune.run(
+            TestTrainable,
+            stop={TRAINING_ITERATION: 1},
+            resources_per_trial=PlacementGroupFactory([{
+                "CPU": 1
+            }]))
         trial = analysis.trials[0]
         self.assertEqual(trial.last_result.get("name"), str(trial))
         self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
@@ -719,7 +725,12 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 trial_id=reporter.trial_id,
                 trial_resources=reporter.trial_resources)
 
-        analysis = tune.run(train, stop={TRAINING_ITERATION: 1})
+        analysis = tune.run(
+            train,
+            stop={TRAINING_ITERATION: 1},
+            resources_per_trial=PlacementGroupFactory([{
+                "CPU": 1
+            }]))
         trial = analysis.trials[0]
         self.assertEqual(trial.last_result.get("name"), str(trial))
         self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
@@ -733,7 +744,12 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 trial_id=tune.get_trial_id(),
                 trial_resources=tune.get_trial_resources())
 
-        analysis = tune.run(track_train, stop={TRAINING_ITERATION: 1})
+        analysis = tune.run(
+            track_train,
+            stop={TRAINING_ITERATION: 1},
+            resources_per_trial=PlacementGroupFactory([{
+                "CPU": 1
+            }]))
         trial = analysis.trials[0]
         self.assertEqual(trial.last_result.get("name"), str(trial))
         self.assertEqual(trial.last_result.get("trial_id"), trial.trial_id)
