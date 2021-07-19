@@ -9,15 +9,13 @@ from typing import Any, Dict, List, Optional
 import logging
 
 import boto3
-from botocore.config import Config
 import botocore
 
-from ray.autoscaler._private.constants import BOTO_MAX_RETRIES
 from ray.autoscaler._private.util import check_legacy_fields
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 from ray.autoscaler._private.providers import _PROVIDER_PRETTY_NAMES
 from ray.autoscaler._private.aws.utils import LazyDefaultDict, \
-    handle_boto_error
+    handle_boto_error, resource_cache
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.event_system import (CreateClusterEvent,
                                                   global_event_system)
@@ -207,6 +205,10 @@ def bootstrap_aws(config):
     check_legacy_fields(config)
     # Used internally to store head IAM role.
     config["head_node"] = {}
+
+    # If NetworkInterfaces are provided, extract the necessary fields for the
+    # config stages below.
+    config = _configure_from_network_interfaces(config)
 
     # The head node needs to have an IAM role that allows it to create further
     # EC2 instances.
@@ -468,7 +470,8 @@ def _get_vpc_id_of_sg(sg_ids: List[str], config: Dict[str, Any]) -> str:
     Errors if the provided security groups belong to multiple VPCs.
     Errors if no security group with any of the provided ids is identified.
     """
-    sg_ids = list(set(sg_ids))
+    # sort security group IDs to support deterministic unit test stubbing
+    sg_ids = sorted(set(sg_ids))
 
     ec2 = _resource("ec2", config)
     filters = [{"Name": "group-id", "Values": sg_ids}]
@@ -759,6 +762,54 @@ def _get_key(key_name, config):
         raise exc
 
 
+def _configure_from_network_interfaces(config):
+    for node_type in config["available_node_types"].values():
+        config = _configure_node_type_from_network_interface(config, node_type)
+    return config
+
+
+def _configure_node_type_from_network_interface(config, node_type):
+    node_cfg = node_type["node_config"]
+    if "NetworkInterfaces" not in node_cfg:
+        return config
+    _configure_subnets_and_groups_from_network_interfaces(node_cfg)
+    return config
+
+
+def _configure_subnets_and_groups_from_network_interfaces(node_cfg):
+    # If NetworkInterfaces are defined, SubnetId and SecurityGroupIds
+    # can't be specified in the same node type config.
+    conflict_keys = ["SubnetId", "SubnetIds", "SecurityGroupIds"]
+    if any(conflict in node_cfg for conflict in conflict_keys):
+        raise ValueError(
+            "If NetworkInterfaces are defined, subnets and security groups"
+            "must ONLY be given in each NetworkInterface.")
+    if not all(_subnets_in_network_config(node_cfg)):
+        raise ValueError(
+            "NetworkInterfaces are defined but at least one is missing a "
+            "subnet. Please ensure all interfaces have a subnet assigned.")
+    if not all(_security_groups_in_network_config(node_cfg)):
+        raise ValueError(
+            "NetworkInterfaces are defined but at least one is missing a "
+            "security group. Please ensure all interfaces have a security "
+            "group assigned.")
+    node_cfg["SubnetIds"] = _subnets_in_network_config(node_cfg)
+    node_cfg["SecurityGroupIds"] = _security_groups_in_network_config(node_cfg)
+
+
+def _subnets_in_network_config(config):
+    return [
+        ni.get("SubnetId", "") for ni in config.get("NetworkInterfaces", [])
+    ]
+
+
+def _security_groups_in_network_config(config):
+    lists = [
+        ni.get("Groups", []) for ni in config.get("NetworkInterfaces", [])
+    ]
+    return list(itertools.chain(*lists))
+
+
 def _client(name, config):
     return _resource(name, config).meta.client
 
@@ -766,15 +817,4 @@ def _client(name, config):
 def _resource(name, config):
     region = config["provider"]["region"]
     aws_credentials = config["provider"].get("aws_credentials", {})
-    return _resource_cache(name, region, **aws_credentials)
-
-
-@lru_cache()
-def _resource_cache(name, region, **kwargs):
-    boto_config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
-    return boto3.resource(
-        name,
-        region,
-        config=boto_config,
-        **kwargs,
-    )
+    return resource_cache(name, region, **aws_credentials)
