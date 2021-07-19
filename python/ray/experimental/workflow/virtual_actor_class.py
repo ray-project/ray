@@ -366,10 +366,10 @@ class VirtualActor:
         """Return a future. If 'ray.get()' it successfully, then the actor
         is fully initialized."""
         # TODO(suquark): should ray.get(xxx.ready()) always be true?
-        actor = get_or_create_management_actor()
+        workflow_manager = get_or_create_management_actor()
         return ray.get(
-            actor.actor_ready.remote(self._actor_id,
-                                     self._storage.storage_url))
+            workflow_manager.actor_ready.remote(self._actor_id,
+                                                self._storage.storage_url))
 
     def __getattr__(self, item):
         if item in self._metadata.signatures:
