@@ -47,7 +47,7 @@ def test_driver_dead(shutdown_only):
     """Make sure all ray workers are shutdown when driver is killed."""
     driver = """
 import ray
-ray.init()
+ray.init(_system_config={"ping_gcs_rpc_server_max_retries": 1})
 @ray.remote
 def f():
     import time
@@ -76,7 +76,8 @@ def test_node_killed(ray_start_cluster):
     """Make sure all ray workers when nodes are dead."""
     cluster = ray_start_cluster
     # head node.
-    cluster.add_node(num_cpus=0)
+    cluster.add_node(
+        num_cpus=0, _system_config={"ping_gcs_rpc_server_max_retries": 1})
     ray.init(address="auto")
 
     num_worker_nodes = 2
@@ -105,7 +106,8 @@ def test_head_node_down(ray_start_cluster):
     """Make sure all ray workers when head node is dead."""
     cluster = ray_start_cluster
     # head node.
-    head = cluster.add_node(num_cpus=2)
+    head = cluster.add_node(
+        num_cpus=2, _system_config={"ping_gcs_rpc_server_max_retries": 1})
 
     # worker nodes.
     num_worker_nodes = 2
