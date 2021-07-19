@@ -107,9 +107,20 @@ def import_or_mock(module):
         sys.modules[module] = ChildClassMock()
 
 
-xgb_modules = ["xgboost", "xgboost.core", "xgboost.callback", "xgboost_ray"]
+xgb_modules = [
+    "xgboost", "xgboost.core", "xgboost.callback", "xgboost.sklearn",
+    "xgboost_ray"
+]
 for xgb_mod in xgb_modules:
     import_or_mock(xgb_mod)
+
+# replace refs in XGBoost documentation XGBoost-Ray inherits from
+sys.modules["xgboost_ray"].RayXGBClassifier.fit.__doc__ = sys.modules[
+    "xgboost_ray"].RayXGBClassifier.fit.__doc__.replace(
+        ":ref:`callback_api`", "Callback API")
+sys.modules["xgboost_ray"].RayXGBRegressor.fit.__doc__ = sys.modules[
+    "xgboost_ray"].RayXGBRegressor.fit.__doc__.replace(":ref:`callback_api`",
+                                                       "Callback API")
 
 
 class SimpleClass(object):
