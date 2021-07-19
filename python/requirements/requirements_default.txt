@@ -1,0 +1,4 @@
+aiohttp
+aiohttp_cors
+aioredis
+colorful

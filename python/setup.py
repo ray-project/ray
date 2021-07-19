@@ -149,9 +149,13 @@ ray_files += [
 if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
         "default": [
+            "aiohttp",  # noqa
+            "aiohttp_cors",  # noqa
+            "aioredis",  # noqa
             "colorful",  # noqa
             "py-spy >= 0.2.0",  # noqa
             "jsonschema",  # noqa
+
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
@@ -185,9 +189,6 @@ if setup_spec.type == SetupType.RAY:
         # TODO(alex) Pin the version once this PR is
         # included in the stable release.
         # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
-        "aiohttp",
-        "aiohttp_cors",
-        "aioredis",
         "attrs",
         "click >= 7.0",
         "colorama",

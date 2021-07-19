@@ -10,7 +10,6 @@ aioredis
 click >= 7.0
 cloudpickle
 colorama
-colorful
 filelock
 gpustat
 grpcio >= 1.28.1
