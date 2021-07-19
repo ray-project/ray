@@ -155,6 +155,8 @@ if setup_spec.type == SetupType.RAY:
             "colorful",  # noqa
             "py-spy >= 0.2.0",  # noqa
             "jsonschema",  # noqa
+            "opencensus",  # noqa
+            "prometheus_client >= 0.7.1",  # noqa
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
@@ -202,8 +204,6 @@ if setup_spec.type == SetupType.RAY:
         "pyyaml",
         "requests",
         "redis >= 3.5.0",
-        "opencensus",
-        "prometheus_client >= 0.7.1",
     ]
 
 
