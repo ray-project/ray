@@ -77,6 +77,31 @@ def get_placeholder(*, space=None, value=None, name=None, time_axis=False):
         )
 
 
+def get_tf_eager_cls_if_necessary(orig_cls, config):
+    cls = orig_cls
+    framework = config.get("framework", "tf")
+    if framework in ["tf2", "tf", "tfe"]:
+        if not tf1:
+            raise ImportError("Could not import tensorflow!")
+        if framework in ["tf2", "tfe"]:
+            assert tf1.executing_eagerly()
+
+            from ray.rllib.policy.tf_policy import TFPolicy
+
+            # Create eager-class.
+            if hasattr(orig_cls, "as_eager"):
+                cls = orig_cls.as_eager()
+                if config.get("eager_tracing"):
+                    cls = cls.with_tracing()
+            # Could be some other type of policy.
+            elif not issubclass(orig_cls, TFPolicy):
+                pass
+            else:
+                raise ValueError("This policy does not support eager "
+                                 "execution: {}".format(orig_cls))
+    return cls
+
+
 def huber_loss(x, delta=1.0):
     """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
     return tf.where(

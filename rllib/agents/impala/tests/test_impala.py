@@ -68,7 +68,7 @@ class TestIMPALA(unittest.TestCase):
 
             try:
                 if fw == "tf":
-                    check(policy._sess.run(policy.cur_lr), 0.0005)
+                    check(policy.get_session().run(policy.cur_lr), 0.0005)
                 else:
                     check(policy.cur_lr, 0.0005)
                 r1 = trainer.train()

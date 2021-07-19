@@ -276,7 +276,8 @@ class TFPolicy(Policy):
             "`get_placeholder()` can be called"
         return self._loss_input_dict[name]
 
-    def get_session(self) -> "tf1.Session":
+    @override(Policy)
+    def get_session(self) -> Optional["tf1.Session"]:
         """Returns a reference to the TF session for this policy."""
         return self._sess
 
@@ -318,7 +319,7 @@ class TFPolicy(Policy):
 
         if self.model:
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
-                [], self._sess, self.variables())
+                [], self.get_session(), self.variables())
 
         # gather update ops for any batch norm layers
         if not self._update_ops:
@@ -336,12 +337,12 @@ class TFPolicy(Policy):
                 "These tensors were used in the loss_fn:\n\n{}\n".format(
                     summarize(self._loss_input_dict)))
 
-        self._sess.run(tf1.global_variables_initializer())
+        self.get_session().run(tf1.global_variables_initializer())
         self._optimizer_variables = None
         if self._optimizer:
             self._optimizer_variables = \
                 ray.experimental.tf_utils.TensorFlowVariables(
-                    self._optimizer.variables(), self._sess)
+                    self._optimizer.variables(), self.get_session())
 
     @override(Policy)
     def compute_actions(
@@ -359,7 +360,7 @@ class TFPolicy(Policy):
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
-        builder = TFRunBuilder(self._sess, "compute_actions")
+        builder = TFRunBuilder(self.get_session(), "compute_actions")
         to_fetch = self._build_compute_actions(
             builder,
             obs_batch=obs_batch,
@@ -391,7 +392,8 @@ class TFPolicy(Policy):
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
-        builder = TFRunBuilder(self._sess, "compute_actions_from_input_dict")
+        builder = TFRunBuilder(self.get_session(),
+                               "compute_actions_from_input_dict")
         obs_batch = input_dict[SampleBatch.OBS]
         to_fetch = self._build_compute_actions(
             builder, input_dict=input_dict, explore=explore, timestep=timestep)
@@ -426,7 +428,7 @@ class TFPolicy(Policy):
         self.exploration.before_compute_actions(
             explore=False, tf_sess=self.get_session())
 
-        builder = TFRunBuilder(self._sess, "compute_log_likelihoods")
+        builder = TFRunBuilder(self.get_session(), "compute_log_likelihoods")
 
         # Normalize actions if necessary.
         if actions_normalized is False and self.config["normalize_actions"]:
@@ -464,7 +466,7 @@ class TFPolicy(Policy):
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
         assert self.loss_initialized()
 
-        builder = TFRunBuilder(self._sess, "learn_on_batch")
+        builder = TFRunBuilder(self.get_session(), "learn_on_batch")
 
         # Callback handling.
         learn_stats = {}
@@ -483,7 +485,7 @@ class TFPolicy(Policy):
             postprocessed_batch: SampleBatch) -> \
             Tuple[ModelGradients, Dict[str, TensorType]]:
         assert self.loss_initialized()
-        builder = TFRunBuilder(self._sess, "compute_gradients")
+        builder = TFRunBuilder(self.get_session(), "compute_gradients")
         fetches = self._build_compute_gradients(builder, postprocessed_batch)
         return builder.get(fetches)
 
@@ -491,7 +493,7 @@ class TFPolicy(Policy):
     @DeveloperAPI
     def apply_gradients(self, gradients: ModelGradients) -> None:
         assert self.loss_initialized()
-        builder = TFRunBuilder(self._sess, "apply_gradients")
+        builder = TFRunBuilder(self.get_session(), "apply_gradients")
         fetches = self._build_apply_gradients(builder, gradients)
         builder.get(fetches)
 
@@ -523,7 +525,7 @@ class TFPolicy(Policy):
         if self._optimizer_variables and \
                 len(self._optimizer_variables.variables) > 0:
             state["_optimizer_variables"] = \
-                self._sess.run(self._optimizer_variables.variables)
+                self.get_session().run(self._optimizer_variables.variables)
         # Add exploration state.
         state["_exploration_state"] = \
             self.exploration.get_state(self.get_session())
@@ -559,7 +561,7 @@ class TFPolicy(Policy):
                     "`tf2onnx` to be installed. Install with "
                     "`pip install tf2onnx`.") from e
 
-            with self._sess.graph.as_default():
+            with self.get_session().graph.as_default():
                 signature_def_map = self._build_signature_def()
 
                 sd = signature_def_map[tf1.saved_model.signature_constants.
@@ -571,7 +573,7 @@ class TFPolicy(Policy):
                 frozen_graph_def = tf_loader.freeze_session(
                     self._sess, input_names=inputs, output_names=outputs)
 
-            with tf.compat.v1.Session(graph=tf.Graph()) as session:
+            with tf1.Session(graph=tf.Graph()) as session:
                 tf.import_graph_def(frozen_graph_def, name="")
 
                 g = tf2onnx.tfonnx.process_tf_graph(
@@ -587,14 +589,15 @@ class TFPolicy(Policy):
                     feed_dict={},
                     model_proto=model_proto)
         else:
-            with self._sess.graph.as_default():
+            with self.get_session().graph.as_default():
                 signature_def_map = self._build_signature_def()
                 builder = tf1.saved_model.builder.SavedModelBuilder(export_dir)
                 builder.add_meta_graph_and_variables(
-                    self._sess, [tf1.saved_model.tag_constants.SERVING],
+                    self.get_session(),
+                    [tf1.saved_model.tag_constants.SERVING],
                     signature_def_map=signature_def_map,
                     saver=tf1.summary.FileWriter(export_dir).add_graph(
-                        graph=self._sess.graph))
+                        graph=self.get_session().graph))
                 builder.save()
 
     # TODO: (sven) Deprecate this in favor of `save()`.
@@ -612,17 +615,17 @@ class TFPolicy(Policy):
             if e.errno != errno.EEXIST:
                 raise
         save_path = os.path.join(export_dir, filename_prefix)
-        with self._sess.graph.as_default():
+        with self.get_session().graph.as_default():
             saver = tf1.train.Saver()
-            saver.save(self._sess, save_path)
+            saver.save(self.get_session(), save_path)
 
     @override(Policy)
     @DeveloperAPI
     def import_model_from_h5(self, import_file: str) -> None:
         """Imports weights into tf model."""
         # Make sure the session is the right one (see issue #7046).
-        with self._sess.graph.as_default():
-            with self._sess.as_default():
+        with self.get_session().graph.as_default():
+            with self.get_session().as_default():
                 return self.model.import_from_h5(import_file)
 
     @DeveloperAPI
@@ -1039,7 +1042,7 @@ class LearningRateSchedule:
         if self._lr_schedule is not None:
             new_val = self._lr_schedule.value(global_vars["timestep"])
             if self.framework == "tf":
-                self._sess.run(
+                self.get_session().run(
                     self._lr_update, feed_dict={self._lr_placeholder: new_val})
             else:
                 self.cur_lr.assign(new_val, read_value=False)
@@ -1095,7 +1098,7 @@ class EntropyCoeffSchedule:
             new_val = self._entropy_coeff_schedule.value(
                 global_vars["timestep"])
             if self.framework == "tf":
-                self._sess.run(
+                self.get_session().run(
                     self._entropy_coeff_update,
                     feed_dict={self._entropy_coeff_placeholder: new_val})
             else:
