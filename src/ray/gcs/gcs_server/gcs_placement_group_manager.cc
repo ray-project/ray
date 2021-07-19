@@ -543,9 +543,8 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
 }
 
 void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
-  execute_after(
-      io_context_, [this] { SchedulePendingPlacementGroups(); },
-      RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
+  execute_after(io_context_, [this] { SchedulePendingPlacementGroups(); },
+                RayConfig::instance().gcs_create_placement_group_retry_interval_ms());
 }
 
 void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
@@ -605,8 +604,7 @@ void GcsPlacementGroupManager::CollectStats() const {
 
 void GcsPlacementGroupManager::Tick() {
   UpdatePlacementGroupLoad();
-  execute_after(
-      io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
+  execute_after(io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
 }
 
 void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
