@@ -46,7 +46,11 @@ win32_AssignProcessToJobObject = None
 
 
 def get_user_temp_dir():
-    if sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
+    if "RAY_TMPDIR" in os.environ:
+        return os.environ["RAY_TMPDIR"]
+    elif sys.platform.startswith("linux") and "TMPDIR" in os.environ:
+        return os.environ["TMPDIR"]
+    elif sys.platform.startswith("darwin") or sys.platform.startswith("linux"):
         # Ideally we wouldn't need this fallback, but keep it for now for
         # for compatibility
         tempdir = os.path.join(os.sep, "tmp")
