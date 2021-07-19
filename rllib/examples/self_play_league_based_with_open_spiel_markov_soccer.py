@@ -12,7 +12,7 @@ Our league consists of three groups of policies:
 
 We start with 1 policy from each group, setting all 3 of these to an initial
 PPO policy and allowing all 3 policies to be trained.
-After each train update - via our custom callback, we decide for each
+After each train update - via our custom callback - we decide for each
 trainable policy, whether to make a copy and freeze it. Frozen policies
 will not be altered anymore. However, they remain in the league for
 future matches against trainable policies.
@@ -33,9 +33,10 @@ be played by the user against the "main" agent on the command line.
 import argparse
 import numpy as np
 import os
-import pyspiel
 from open_spiel.python.rl_environment import Environment
+import pyspiel
 import random
+import re
 
 import ray
 from ray import tune
@@ -105,63 +106,72 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
         # Note that normally, one should set up a proper evaluation config,
         # such that evaluation always happens on the already updated policy,
         # instead of on the already used train_batch.
-        main_rew = result["hist_stats"].pop("policy_main_reward")
-        opponent_rew = list(result["hist_stats"].values())[0]
-        assert len(main_rew) == len(opponent_rew)
-        won = 0
-        for r_main, r_opponent in zip(main_rew, opponent_rew):
-            if r_main > r_opponent:
-                won += 1
-        win_rate = won / len(main_rew)
-        print(f"Iter={trainer.iteration} win-rate={win_rate} -> ", end="")
-        # If win rate is good -> Snapshot current policy and play against
-        # it next, keeping the snapshot fixed and only improving the "main"
-        # policy.
-        if win_rate > args.win_rate_threshold:
-            self.current_opponent += 1
-            new_pol_id = f"main_v{self.current_opponent}"
-            print(f"adding new opponent to the mix ({new_pol_id}).")
+        for policy_id, rew in result["hist_stats"].items():
+            mo = re.match("^policy_(.+)_reward", policy_id)
+            if mo is None:
+                continue
 
-            # Re-define the mapping function, such that "main" is forced
-            # to play against any of the previously played policies
-            # (excluding "random").
-            def policy_mapping_fn(agent_id, episode, **kwargs):
-                # agent_id = [0|1] -> policy depends on episode ID
-                # This way, we make sure that both policies sometimes play
-                # (start player) and sometimes agent1 (player to move 2nd).
-                return "main" if episode.episode_id % 2 == agent_id \
-                    else "main_v{}".format(np.random.choice(
-                        list(range(1, self.current_opponent + 1))))
+            policy_id = mo.group(1)
+            won = 0
+            for r in rew:
+                if r > 0.0:  # win = 1.0; loss = -1.0
+                    won += 1
+            win_rate = won / len(rew)
+            print(f"Iter={trainer.iteration} {policy_id}'s win-rate={win_rate} -> ", end="")
 
-            new_policy = trainer.add_policy(
-                policy_id=new_pol_id,
-                policy_cls=type(trainer.get_policy("main")),
-                observation_space=OBS_SPACE,
-                action_space=ACTION_SPACE,
-                config={},
-                policy_mapping_fn=policy_mapping_fn,
-            )
+            # If win rate is good -> Snapshot current policy and play against
+            # it next, keeping the snapshot fixed and only improving the "main"
+            # policy.
+            if win_rate > args.win_rate_threshold:
+                if policy_id in self.main_policies:
+                    new_pol_id = re.sub("_\\d+$", f"_{len(self.main_policies)}", policy_id)
+                elif policy_id in self.main_exploiters:
+                    new_pol_id = re.sub("_\\d+$", f"_{len(self.main_exploiters)}", policy_id)
+                else:
+                    new_pol_id = re.sub("_\\d+$", f"_{len(self.league_exploiters)}", policy_id)
+                print(f"Adding new opponent to the mix ({new_pol_id}).")
 
-            # Set the weights of the new policy to the main policy.
-            # We'll keep training the main policy, whereas `new_pol_id` will
-            # remain fixed.
-            main_state = trainer.get_policy("main").get_state()
-            new_policy.set_state(main_state)
-            # We need to sync the just copied local weights (from main policy)
-            # to all the remote workers as well.
-            trainer.workers.sync_weights()
-        else:
-            print("not good enough; will keep learning")
+                # Update our mapping function accordingly.
+                def policy_mapping_fn(agent_id, episode, **kwargs):
+                    # Pick, whether this is ...
+                    type_ = random.choice([1, 2])
+                    # 1) A league exploiter vs any match.
+                    if type_ == 1:
+                        # TODO: main_exploiters should not be updated when playing against league exploiters
+                        return "league_exploiter_0" if episode.episode_id % 2 == agent_id \
+                            else random.choice(["main_0", "main_exploiter_0"])
+                    # 2) Main exploiter vs main.
+                    else:
+                        return "main_0" if episode.episode_id % 2 == agent_id \
+                            else "main_exploiter_0"
+
+                new_policy = trainer.add_policy(
+                    policy_id=new_pol_id,
+                    policy_cls=type(trainer.get_policy(policy_id)),
+                    observation_space=OBS_SPACE,
+                    action_space=ACTION_SPACE,
+                    config={},
+                    policy_mapping_fn=policy_mapping_fn,
+                )
+
+                # Set the weights of the new policy to the main policy.
+                # We'll keep training the main policy, whereas `new_pol_id` will
+                # remain fixed.
+                main_state = trainer.get_policy(policy_id).get_state()
+                new_policy.set_state(main_state)
+                # We need to sync the just copied local weights to all the
+                # remote workers as well.
+                trainer.workers.sync_weights(policies=[new_pol_id])
+            else:
+                print("Not good enough; will keep learning ...")
 
 
 if __name__ == "__main__":
-    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False, local_mode=True)#TODO
-
-    # TODO: (sven) remove this once we support simplified multiagent configs.
-    #  PR in-flight.
-    dummy_env = OpenSpielEnv(pyspiel.load_game("markov_soccer"))
-    OBS_SPACE = dummy_env.observation_space
-    ACTION_SPACE = dummy_env.action_space
+    ray.init(
+        num_cpus=args.num_cpus or None,
+        include_dashboard=False,
+        local_mode=True,#TODO
+    )
 
     register_env("markov_soccer",
                  lambda _: OpenSpielEnv(pyspiel.load_game("markov_soccer")))
@@ -174,7 +184,7 @@ if __name__ == "__main__":
             #TODO: main_exploiters should not be updated when playing against league exploiters
             return "league_exploiter_0" if episode.episode_id % 2 == agent_id\
                 else random.choice(["main_0", "main_exploiter_0"])
-        # 2) A main exploiter vs main match.
+        # 2) Main exploiter vs main.
         else:
             return "main_0" if episode.episode_id % 2 == agent_id \
                 else "main_exploiter_0"
@@ -185,25 +195,18 @@ if __name__ == "__main__":
         "num_sgd_iter": 20,
         "num_envs_per_worker": 5,
         "multiagent": {
-            # Initial policy map: Random and PPO. This will be expanded
-            # to more policy snapshots taken from "main" against which "main"
-            # will then play (instead of "random"). This is done in the
-            # custom callback defined above (`SelfPlayCallback`).
+            # Initial policy map: All PPO. This will be expanded
+            # to more policy snapshots. This is done in the
+            # custom callback defined above (`LeagueBasedSelfPlayCallback`).
             "policies": {
                 # Our main policy, we'd like to optimize.
-                "main_0": (None, OBS_SPACE, ACTION_SPACE, {}),
+                "main_0",
                 # Initial main exploiter.
-                "main_exploiter_0": (None, OBS_SPACE, ACTION_SPACE, {}),
+                "main_exploiter_0",
                 # Initial league exploiter.
-                "league_exploiter_0": (None, OBS_SPACE, ACTION_SPACE, {}),
+                "league_exploiter_0",
             },
-            # Assign agent 0 and 1 randomly to the "main" policy or
-            # to the opponent ("random" at first). Make sure (via episode_id)
-            # that "main" always plays against "random" (and not against
-            # another "main").
             "policy_mapping_fn": policy_mapping_fn,
-            # Always just train the "main" policy.
-            "policies_to_train": ["main"],
         },
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),

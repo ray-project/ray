@@ -30,6 +30,7 @@ from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
+from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
 
 OBS_SPACE = ACTION_SPACE = None
@@ -159,10 +160,6 @@ class SelfPlayCallback(DefaultCallbacks):
 if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
 
-    dummy_env = OpenSpielEnv(pyspiel.load_game("connect_four"))
-    OBS_SPACE = dummy_env.observation_space
-    ACTION_SPACE = dummy_env.action_space
-
     register_env("connect_four",
                  lambda _: OpenSpielEnv(pyspiel.load_game("connect_four")))
 
@@ -187,9 +184,9 @@ if __name__ == "__main__":
             # custom callback defined above (`SelfPlayCallback`).
             "policies": {
                 # Our main policy, we'd like to optimize.
-                "main": (None, OBS_SPACE, ACTION_SPACE, {}),
+                "main": PolicySpec(),
                 # An initial random opponent to play against.
-                "random": (RandomPolicy, OBS_SPACE, ACTION_SPACE, {}),
+                "random": PolicySpec(policy_class=RandomPolicy),
             },
             # Assign agent 0 and 1 randomly to the "main" policy or
             # to the opponent ("random" at first). Make sure (via episode_id)

@@ -16,7 +16,7 @@ from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, EnvType
+from ray.rllib.utils.typing import EnvType, PolicyID, TrainerConfigDict
 from ray.tune.registry import registry_contains_input, registry_get_input
 
 tf1, tf, tfv = try_import_tf()
@@ -110,10 +110,10 @@ class WorkerSet:
         """Return a list of remote rollout workers."""
         return self._remote_workers
 
-    def sync_weights(self) -> None:
+    def sync_weights(self, policies: Optional[List[PolicyID]] = None) -> None:
         """Syncs weights from the local worker to all remote workers."""
         if self.remote_workers():
-            weights = ray.put(self.local_worker().get_weights())
+            weights = ray.put(self.local_worker().get_weights(policies))
             for e in self.remote_workers():
                 e.set_weights.remote(weights)
 

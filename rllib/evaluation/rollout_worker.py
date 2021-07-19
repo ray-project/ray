@@ -31,7 +31,7 @@ from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.utils import merge_dicts
+from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
@@ -780,19 +780,24 @@ class RolloutWorker(ParallelIteratorWorker):
         return batch, batch.count
 
     @DeveloperAPI
-    def get_weights(self,
-                    policies: List[PolicyID] = None) -> (ModelWeights, dict):
+    def get_weights(
+            self,
+            policies: Optional[List[PolicyID]] = None,
+    ) -> Dict[PolicyID, ModelWeights]:
         """Returns the model weights of this worker.
 
-        Returns:
-            object: weights that can be set on another worker.
-            info: dictionary of extra metadata.
+        Args:
+            policies (Optional[List[PolicyID]]): List of PolicyIDs to get
+                the weights from. Use None for all policies.
 
-        Examples:
-            >>> weights = worker.get_weights()
+        Returns:
+            Dict[PolicyID, ModelWeights]: Mapping from PolicyIDs to weights
+                dicts.
         """
         if policies is None:
-            policies = self.policy_map.keys()
+            policies = list(self.policy_map.keys())
+        policies = force_list(policies)
+
         return {
             pid: policy.get_weights()
             for pid, policy in self.policy_map.items() if pid in policies

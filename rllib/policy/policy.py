@@ -54,8 +54,9 @@ PolicySpec = namedtuple(
         # Overrides defined keys in the main Trainer config.
         # If None, use {}.
         "config",
-    ])
-# From 3.7 on, we could pass `defaults` into the above constructor.
+    ])  # defaults=(None, None, None, None)
+# TODO: From 3.7 on, we could pass `defaults` into the above constructor.
+#  We still support py3.6.
 PolicySpec.__new__.__defaults__ = (None, None, None, None)
 
 
