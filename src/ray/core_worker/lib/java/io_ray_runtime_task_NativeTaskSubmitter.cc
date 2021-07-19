@@ -172,14 +172,15 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   }
 
   auto full_name = GetFullName(global, name);
+  // TODO(suquark): support passing namespace for Java. Currently
+  // there is no use case.
+  std::string ray_namespace = "";
   ray::ActorCreationOptions actor_creation_options{
       max_restarts,
       0,  // TODO: Allow setting max_task_retries from Java.
       static_cast<int>(max_concurrency), resources, resources, dynamic_worker_options,
       /*is_detached=*/false, full_name,
-      // TODO(suquark): support passing namespace for Java. Currently
-      // there is no use case.
-      /*ray_namespace=*/"",
+      ray_namespace,
       /*is_asyncio=*/false, placement_options};
   return actor_creation_options;
 }
