@@ -173,7 +173,6 @@ if setup_spec.type == SetupType.RAY:
         "opencv-python-headless<=4.3.0.36",
         "pyyaml",
         "scipy",
-
     ]
 
     setup_spec.extras["all"] = list(
