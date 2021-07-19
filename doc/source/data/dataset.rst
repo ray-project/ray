@@ -314,11 +314,6 @@ Datasets can read and write in parallel to `custom datasources <package-ref.html
     # Write to a custom datasource.
     ds.write_datasource(YourCustomDatasource(), **write_args)
 
-Tensor-typed values
--------------------
-
-Currently Datasets does not have native support for tensor-typed values in records (e.g., TFRecord / Petastorm format / multi-dimensional arrays). This is planned for development.
-
 Pipelining data processing and ML computations
 ----------------------------------------------
 
