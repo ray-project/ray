@@ -524,8 +524,7 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     p = error_pubsub
     import ray.ray_constants as ray_constants
 
-    large_object = np.zeros(
-        2 * ray_constants.FUNCTION_SIZE_WARN_THRESHOLD, dtype=np.uint8)
+    large_object = np.zeros(2 * ray_constants.PICKLE_OBJECT_WARNING_SIZE)
 
     @ray.remote
     def f():
