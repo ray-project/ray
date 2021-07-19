@@ -608,8 +608,17 @@ class ActorClass:
                     f"name must be None or a string, got: '{type(name)}'.")
             elif name == "":
                 raise ValueError("Actor name cannot be an empty string.")
-            elif "/" in name:
+            split_names = name.split("/", maxsplit=1)
+            if len(split_names) <= 1:
+                name = split_names[0]
+                namespace = ""
+            else:
+                # must be length 2
+                namespace, name = split_names
+            if "/" in name:
                 raise ValueError("Actor name may not contain '/'.")
+        else:
+            namespace = ""
 
         # Check whether the name is already taken.
         # TODO(edoakes): this check has a race condition because two drivers
@@ -725,16 +734,6 @@ class ActorClass:
                            ".options(runtime_env={'env_vars': {...}}).remote()"
                            "instead.")
 
-        if name is None:
-            name = ""
-        split_names = name.split("/", maxsplit=1)
-        if len(split_names) <= 1:
-            name = split_names
-            namespace = ""
-        else:
-            # must be length 2
-            namespace, name = split_names
-
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
@@ -745,7 +744,7 @@ class ActorClass:
             actor_placement_resources,
             max_concurrency,
             detached,
-            name,
+            name if name is not None else "",
             namespace,
             is_asyncio,
             placement_group.id,

@@ -1731,7 +1731,7 @@ def get_actor(name):
     worker.check_connected()
     split_names = name.split("/", maxsplit=1)
     if len(split_names) <= 1:
-        name = split_names
+        name = split_names[0]
         namespace = ""
     else:
         # must be length 2
