@@ -21,23 +21,21 @@ import numpy as np
 
 import ray
 from ray.types import ObjectRef
-from ray.experimental.data.block import Block, BlockMetadata
+from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
 from ray.experimental.data.datasource import Datasource, WriteTask
 from ray.experimental.data.impl.batcher import Batcher
 from ray.experimental.data.impl.compute import get_compute, cache_wrapper, \
     CallableClass
 from ray.experimental.data.impl.progress_bar import ProgressBar
 from ray.experimental.data.impl.shuffle import simple_shuffle
-from ray.experimental.data.impl.block_builder import SimpleBlock
 from ray.experimental.data.impl.block_list import BlockList
-from ray.experimental.data.impl.arrow_block import (
-    DelegatingArrowBlockBuilder, ArrowBlock)
+from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
 
 T = TypeVar("T")
 U = TypeVar("U")
 
 # An output type of iter_batches() determined by the batch_format parameter.
-BatchType = Union["pandas.DataFrame", "pyarrow.Table", Block]
+BatchType = Union["pandas.DataFrame", "pyarrow.Table", list]
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +105,7 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
 
         def transform(block: Block[T]) -> Block[U]:
+            block = BlockAccessor.for_block(block)
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
                 builder.add(fn(row))
@@ -167,6 +166,7 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
 
         def transform(block: Block[T]) -> Block[U]:
+            block = BlockAccessor.for_block(block)
             total_rows = block.num_rows()
             max_batch_size = batch_size
             if max_batch_size is None:
@@ -179,9 +179,9 @@ class Dataset(Generic[T]):
                 end = min(total_rows, start + max_batch_size)
                 view = block.slice(start, end, copy=False)
                 if batch_format == "pandas":
-                    view = view.to_pandas()
+                    view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pyarrow":
-                    view = view.to_arrow_table()
+                    view = BlockAccessor.for_block(view).to_arrow_table()
                 else:
                     raise ValueError(
                         f"The given batch format: {batch_format} "
@@ -189,11 +189,11 @@ class Dataset(Generic[T]):
 
                 applied = fn(view)
                 if isinstance(applied, list):
-                    applied = SimpleBlock(applied)
-                elif isinstance(applied, pd.core.frame.DataFrame):
-                    applied = ArrowBlock(pa.Table.from_pandas(applied))
+                    applied = applied
                 elif isinstance(applied, pa.Table):
-                    applied = ArrowBlock(applied)
+                    applied = applied
+                elif isinstance(applied, pd.core.frame.DataFrame):
+                    applied = pa.Table.from_pandas(applied)
                 else:
                     raise ValueError("The map batch UDF returns a type "
                                      f"{type(applied)}, which is not allowed. "
@@ -233,6 +233,7 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
 
         def transform(block: Block[T]) -> Block[U]:
+            block = BlockAccessor.for_block(block)
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
                 for r2 in fn(row):
@@ -269,6 +270,7 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
 
         def transform(block: Block[T]) -> Block[T]:
+            block = BlockAccessor.for_block(block)
             builder = block.builder()
             for row in block.iter_rows():
                 if fn(row):
@@ -495,16 +497,19 @@ class Dataset(Generic[T]):
 
         @ray.remote
         def get_num_rows(block: Block[T]) -> int:
+            block = BlockAccessor.for_block(block)
             return block.num_rows()
 
         @ray.remote(num_returns=2)
         def truncate(block: Block[T], meta: BlockMetadata,
                      count: int) -> (Block[T], BlockMetadata):
+            block = BlockAccessor.for_block(block)
             logger.debug("Truncating last block to size: {}".format(count))
             new_block = block.slice(0, count, copy=True)
+            accessor = BlockAccessor.for_block(new_block)
             new_meta = BlockMetadata(
-                num_rows=new_block.num_rows(),
-                size_bytes=new_block.size_bytes(),
+                num_rows=accessor.num_rows(),
+                size_bytes=accessor.size_bytes(),
                 schema=meta.schema,
                 input_files=meta.input_files)
             return new_block, new_meta
@@ -578,6 +583,7 @@ class Dataset(Generic[T]):
 
         @ray.remote
         def count(block: Block[T]) -> int:
+            block = BlockAccessor.for_block(block)
             return block.num_rows()
 
         return sum(ray.get([count.remote(block) for block in self._blocks]))
@@ -593,6 +599,7 @@ class Dataset(Generic[T]):
 
         @ray.remote
         def agg(block: Block[T]) -> int:
+            block = BlockAccessor.for_block(block)
             return sum(block.iter_rows())
 
         return sum(ray.get([agg.remote(block) for block in self._blocks]))
@@ -680,6 +687,7 @@ class Dataset(Generic[T]):
 
         @ray.remote
         def parquet_write(write_path, block):
+            block = BlockAccessor.for_block(block)
             logger.debug(
                 f"Writing {block.num_rows()} records to {write_path}.")
             table = block.to_arrow_table()
@@ -712,7 +720,8 @@ class Dataset(Generic[T]):
         """
 
         @ray.remote
-        def json_write(write_path: str, block: ArrowBlock):
+        def json_write(write_path: str, block: Block):
+            block = BlockAccessor.for_block(block)
             logger.debug(
                 f"Writing {block.num_rows()} records to {write_path}.")
             block.to_pandas().to_json(write_path, orient="records")
@@ -743,7 +752,8 @@ class Dataset(Generic[T]):
         """
 
         @ray.remote
-        def csv_write(write_path: str, block: ArrowBlock):
+        def csv_write(write_path: str, block: Block):
+            block = BlockAccessor.for_block(block)
             logger.debug(
                 f"Writing {block.num_rows()} records to {write_path}.")
             block.to_pandas().to_csv(
@@ -810,6 +820,7 @@ class Dataset(Generic[T]):
         """
         for batch in self.iter_batches(
                 prefetch_blocks=prefetch_blocks, batch_format="_blocks"):
+            batch = BlockAccessor.for_block(batch)
             for row in batch.iter_rows():
                 yield row
 
@@ -861,8 +872,10 @@ class Dataset(Generic[T]):
 
         def format_batch(batch: Block, format: str) -> BatchType:
             if batch_format == "pandas":
+                batch = BlockAccessor.for_block(batch)
                 return batch.to_pandas()
             elif batch_format == "pyarrow":
+                batch = BlockAccessor.for_block(batch)
                 return batch.to_arrow_table()
             elif batch_format == "_blocks":
                 return batch
@@ -1045,7 +1058,8 @@ class Dataset(Generic[T]):
         dask.config.set(scheduler=ray_dask_get)
 
         @dask.delayed
-        def block_to_df(block: ArrowBlock):
+        def block_to_df(block: Block):
+            block = BlockAccessor.for_block(block)
             if isinstance(block, (ray.ObjectRef, ClientObjectRef)):
                 raise ValueError(
                     "Dataset.to_dask() must be used with Dask-on-Ray, please "
@@ -1102,7 +1116,8 @@ class Dataset(Generic[T]):
         """
 
         @ray.remote
-        def block_to_df(block: ArrowBlock):
+        def block_to_df(block: Block):
+            block = BlockAccessor.for_block(block)
             return block.to_pandas()
 
         return [block_to_df.remote(block) for block in self._blocks]
@@ -1121,7 +1136,8 @@ class Dataset(Generic[T]):
         """
 
         @ray.remote
-        def block_to_df(block: ArrowBlock):
+        def block_to_df(block: Block):
+            block = BlockAccessor.for_block(block)
             return block.to_arrow_table()
 
         return [block_to_df.remote(block) for block in self._blocks]
@@ -1164,6 +1180,7 @@ class Dataset(Generic[T]):
     def _block_sizes(self) -> List[int]:
         @ray.remote
         def query(block: Block[T]) -> int:
+            block = BlockAccessor.for_block(block)
             return block.num_rows()
 
         return ray.get([query.remote(b) for b in self._blocks])

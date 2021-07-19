@@ -16,7 +16,7 @@ import ray
 
 from ray.tests.conftest import *  # noqa
 from ray.experimental.data.datasource import DummyOutputDatasource
-from ray.experimental.data.block import Block
+from ray.experimental.data.block import Block, BlockAccessor
 import ray.experimental.data.tests.util as util
 
 
@@ -270,7 +270,7 @@ def test_get_blocks(ray_start_regular_shared):
     assert len(blocks) == 10
     out = []
     for b in ray.get(blocks):
-        out.extend(list(b.iter_rows()))
+        out.extend(list(BlockAccessor.for_block(b).iter_rows()))
     out = sorted(out)
     assert out == list(range(10)), out
 

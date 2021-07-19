@@ -1,6 +1,6 @@
 from typing import Optional
 
-from ray.experimental.data.block import Block
+from ray.experimental.data.block import Block, BlockAccessor
 from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
 
 
@@ -32,7 +32,8 @@ class Batcher:
         """Whether this Batcher has any full batches.
         """
         return self._buffer and (self._batch_size is None or sum(
-            b.num_rows() for b in self._buffer) >= self._batch_size)
+            BlockAccessor.for_block(b).num_rows()
+            for b in self._buffer) >= self._batch_size)
 
     def has_any(self) -> bool:
         """Whether this Batcher has any data.

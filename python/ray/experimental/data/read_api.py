@@ -14,12 +14,12 @@ if TYPE_CHECKING:
 
 import ray
 from ray.types import ObjectRef
-from ray.experimental.data.block import Block, BlockMetadata
+from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.datasource import Datasource, RangeDatasource, \
     JSONDatasource, CSVDatasource, ReadTask, _S3FileSystemWrapper
 from ray.experimental.data.impl import reader as _reader
-from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow, \
+from ray.experimental.data.impl.arrow_block import ArrowRow, \
     DelegatingArrowBlockBuilder
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.lazy_block_list import LazyBlockList
@@ -84,7 +84,8 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
             builder.add(item)
         block = builder.build()
         blocks.append(ray.put(block))
-        metadata.append(block.get_metadata(input_files=None))
+        metadata.append(
+            BlockAccessor.for_block(block).get_metadata(input_files=None))
         i += block_size
 
     return Dataset(BlockList(blocks, metadata))
@@ -205,7 +206,7 @@ def read_parquet(paths: Union[str, List[str]],
             table = pyarrow.concat_tables(tables)
         else:
             table = tables[0]
-        return ArrowBlock(table)
+        return table
 
     calls: List[Callable[[], ObjectRef[Block]]] = []
     metadata: List[BlockMetadata] = []
@@ -395,9 +396,10 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
     import pyarrow as pa
 
     @ray.remote(num_returns=2)
-    def df_to_block(df: "pandas.DataFrame") -> ArrowBlock:
-        block = ArrowBlock(pa.table(df))
-        return block, block.get_metadata(input_files=None)
+    def df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
+        block = pa.table(df)
+        return (block,
+                BlockAccessor.for_block(block).get_metadata(input_files=None))
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = zip(*res)
@@ -416,14 +418,12 @@ def from_arrow(tables: List[ObjectRef["pyarrow.Table"]],
         Dataset holding Arrow records from the tables.
     """
 
-    @ray.remote(num_returns=2)
-    def to_block(table: "pyarrow.Table") -> ArrowBlock:
-        block = ArrowBlock(table)
-        return block, block.get_metadata(input_files=None)
+    @ray.remote
+    def get_metadata(table: "pyarrow.Table") -> BlockMetadata:
+        return BlockAccessor.for_block(table).get_metadata(input_files=None)
 
-    res = [to_block.remote(t) for t in tables]
-    blocks, metadata = zip(*res)
-    return Dataset(BlockList(blocks, ray.get(list(metadata))))
+    metadata = [get_metadata.remote(t) for t in tables]
+    return Dataset(BlockList(tables, ray.get(metadata)))
 
 
 def from_spark(df: "pyspark.sql.DataFrame",

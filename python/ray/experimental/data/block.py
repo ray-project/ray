@@ -9,6 +9,19 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 
+class Block(Generic[T]):
+    """Represents a batch of rows to be stored in the Ray object store.
+
+    Blocks can be accessed in a uniform way via ``BlockAccessors`` such as
+    ``ListBlockAccessor`` and ``ArrowBlockAccessor``.
+
+    This class is a dummy type that cannot be constructed. It stands in for the
+    real type ``Union[pyarrow.Table, List[T]] (Generic[T])`` which cannot be
+    expressed with the current Python type rules.
+    """
+    pass
+
+
 class BlockMetadata:
     """Metadata about the block.
 
@@ -31,11 +44,16 @@ class BlockMetadata:
         self.input_files: List[str] = input_files
 
 
-class Block(Generic[T]):
-    """Represents a batch of rows to be stored in the Ray object store.
+class BlockAccessor(Generic[T]):
+    """Provides accessor methods for a specific block.
 
-    There are two types of blocks: ``SimpleBlock``, which is backed by a plain
-    Python list, and ``ArrowBlock``, which is backed by a ``pyarrow.Table``.
+    Ideally, we wouldn't need a separate accessor classes for blocks. However,
+    this is needed if we want to support storing ``pyarrow.Table`` directly
+    as a top-level Ray object, without a wrapping class (issue #17186).
+
+    There are two types of block accessors: ``ListBlockAccessor``, which
+    operates over a plain Python list, and ``ArrowBlockAccessor``, for
+    ``pyarrow.Table`` type blocks.
     """
 
     def num_rows(self) -> int:
@@ -87,3 +105,19 @@ class Block(Generic[T]):
     def builder() -> "BlockBuilder[T]":
         """Create a builder for this block type."""
         raise NotImplementedError
+
+    @staticmethod
+    def for_block(block: Block[T]) -> "BlockAccessor[T]":
+        """Create a block accessor for the given block."""
+        import pyarrow
+
+        if isinstance(block, pyarrow.Table):
+            from ray.experimental.data.impl.arrow_block import \
+                ArrowBlockAccessor
+            return ArrowBlockAccessor(block)
+        elif isinstance(block, list):
+            from ray.experimental.data.impl.block_builder import \
+                SimpleBlockAccessor
+            return SimpleBlockAccessor(block)
+        else:
+            raise TypeError("Not a block type: {}".format(block))
