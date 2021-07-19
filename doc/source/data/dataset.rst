@@ -1,3 +1,5 @@
+.. _datasets:
+
 Datasets: Distributed Arrow on Ray
 ==================================
 
@@ -231,16 +233,14 @@ By default, transformations are executed using Ray tasks. For transformations th
 .. code-block:: python
 
     # Example of GPU batch inference on an ImageNet model.
-    model = None
-
     def preprocess(image: bytes) -> bytes:
         return image
 
-    def batch_infer(batch: pandas.DataFrame) -> pandas.DataFrame:
-        global model
-        if model is None:
-            model = ImageNetModel()
-        return model(batch)
+    class BatchInferModel:
+        def __init__(self):
+            self.model = ImageNetModel()
+        def __call__(self, batch: pandas.DataFrame) -> pandas.DataFrame:
+            return self.model(batch)
 
     ds = ray.data.read_binary_files("s3://bucket/image-dir")
 
@@ -250,7 +250,7 @@ By default, transformations are executed using Ray tasks. For transformations th
 
     # Apply GPU batch inference with actors, and assign each actor a GPU using
     # ``num_gpus=1`` (any Ray remote decorator argument can be used here).
-    ds = ds.map_batches(batch_infer, compute="actors", batch_size=256, num_gpus=1)
+    ds = ds.map_batches(BatchInferModel, compute="actors", batch_size=256, num_gpus=1)
     # -> Map Progress (16 actors 4 pending): 100%|█████| 200/200 [00:07<00:00, 27.60it/s]
 
     # Save the results.
@@ -281,11 +281,11 @@ Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is
     @ray.remote(num_gpus=1)
     class Worker:
         def __init__(self, rank: int):
-            ...
+            pass
 
         def train(self, shard: Dataset[int]) -> int:
             for batch in shard.iter_batches(batch_size=256):
-                ...
+                pass
             return shard.count()
 
     workers = [Worker.remote(i) for i in range(16)]

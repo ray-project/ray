@@ -3,6 +3,7 @@ from typing import List
 import ray
 from ray._private.services import get_node_ip_address
 from ray.util import iter
+from ray.util.annotations import PublicAPI
 from ray.util.actor_pool import ActorPool
 from ray.util.check_serialize import inspect_serializability
 from ray.util.debug import log_once, disable_log_once_globally, \
@@ -17,6 +18,7 @@ from ray.util.client_connect import connect, disconnect
 from ray._private.client_mode_hook import client_mode_hook
 
 
+@PublicAPI(stability="beta")
 @client_mode_hook
 def list_named_actors(all_namespaces: bool = False) -> List[str]:
     """List all named actors in the system.

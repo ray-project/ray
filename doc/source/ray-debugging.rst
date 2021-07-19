@@ -114,9 +114,13 @@ following recursive function as an example:
             n_ref = fact.remote(n - 1)
             return n * ray.get(n_ref)
 
-    breakpoint()
-    result_ref = fact.remote(5)
-    result = ray.get(result_ref)
+    @ray.remote
+    def compute():
+        breakpoint()
+        result_ref = fact.remote(5)
+        result = ray.get(result_ref)
+
+    ray.get(compute.remote())
 
 
 After running the program by executing the Python file and calling
@@ -126,7 +130,7 @@ enter. This will result in the following output:
 .. code-block:: python
 
     Enter breakpoint index or press enter to refresh: 0
-    > /home/ubuntu/tmp/stepping.py(14)<module>()
+    > /home/ubuntu/tmp/stepping.py(16)<module>()
     -> result_ref = fact.remote(5)
     (Pdb)
 

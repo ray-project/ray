@@ -40,7 +40,7 @@ exe_suffix = ".exe" if sys.platform == "win32" else ""
 pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
 pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
-               "c0c1a158f59366696161e0dffdd10cfe17601372.tar.gz")
+               "e6117502435aba2901585cc6c692fb9582545f08.tar.gz")
 
 
 def find_version(*filepath):
@@ -152,6 +152,7 @@ if setup_spec.type == SetupType.RAY:
             "colorful",  # noqa
             "py-spy >= 0.2.0",  # noqa
             "jsonschema",  # noqa
+            "gpustat"  # noqa
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
@@ -188,17 +189,16 @@ if setup_spec.type == SetupType.RAY:
         "aiohttp",
         "aiohttp_cors",
         "aioredis",
+        "attrs",
         "click >= 7.0",
         "colorama",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "gpustat",
         "grpcio >= 1.28.1",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
         "protobuf >= 3.15.3",
-        "pydantic >= 1.8",
         "pyyaml",
         "requests",
         "redis >= 3.5.0",
