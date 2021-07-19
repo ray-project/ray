@@ -22,6 +22,28 @@
 #include "absl/strings/escaping.h"
 #include "ray/util/logging.h"
 
+template <typename T>
+T ConvertValue(const std::string &type_string, const std::string &value) {
+  std::istringstream stream(value);
+  T parsed_value;
+  stream >> parsed_value;
+  RAY_CHECK(!value.empty() && stream.eof())
+      << "Cannot parse \"" << value << "\" to " << type_string;
+  return parsed_value;
+}
+
+template <>
+inline std::string ConvertValue<std::string>(const std::string &type_string,
+                                             const std::string &value) {
+  return value;
+}
+
+template <>
+inline bool ConvertValue<bool>(const std::string &type_string, const std::string &value) {
+  auto new_value = absl::AsciiStrToLower(value);
+  return new_value == "true" || new_value == "1";
+}
+
 class RayConfig {
 /// -----------Include ray_config_def.h to define config items.----------------
 /// A helper macro that defines a config item.
@@ -90,28 +112,6 @@ class RayConfig {
 #undef RAY_CONFIG
 
  private:
-  template <typename T>
-  T ConvertValue(const std::string &type_string, const std::string &value) {
-    std::istringstream stream(value);
-    T parsed_value;
-    stream >> parsed_value;
-    RAY_CHECK(!value.empty() && stream.eof())
-        << "Cannot parse \"" << value << "\" to " << type_string;
-    return parsed_value;
-  }
-
-  template <>
-  std::string ConvertValue<std::string>(const std::string &type_string,
-                                        const std::string &value) {
-    return value;
-  }
-
-  template <>
-  bool ConvertValue<bool>(const std::string &type_string, const std::string &value) {
-    auto new_value = absl::AsciiStrToLower(value);
-    return new_value == "true" || new_value == "1";
-  }
-
   template <typename T>
   T ReadEnv(const std::string &name, const std::string &type_string, T default_value) {
     auto value = getenv(name.c_str());
