@@ -19,6 +19,7 @@ STEP_ARGS = "args.pkl"
 STEP_OUTPUT = "output.pkl"
 STEP_FUNC_BODY = "func_body.pkl"
 CLASS_BODY = "class_body.pkl"
+WORKFLOW_META = "workflow_meta.json"
 
 
 @contextlib.contextmanager
@@ -274,6 +275,29 @@ class FilesystemStorageImpl(Storage):
                 ray.cloudpickle.dump(cls, f)
         except Exception as e:
             raise DataSaveError from e
+
+    async def save_workflow_meta(self, workflow_id: str,
+                                 metadata: Dict[str, Any]) -> None:
+        file_path = self._workflow_root_dir / workflow_id / WORKFLOW_META
+        try:
+            with _open_atomic(file_path, "wb") as f:
+                json.dump(metadata, f)
+        except Exception as e:
+            raise DataSaveError from e
+
+    async def load_workflow_meta(self, workflow_id: str) -> Dict[str, Any]:
+        file_path = self._workflow_root_dir / workflow_id / WORKFLOW_META
+        try:
+            with _open_atomic(file_path, "wb") as f:
+                json.load(f)
+        except Exception as e:
+            raise DataLoadError from e
+
+    async def list_workflow(self) -> List[str]:
+        try:
+            return list(self._workflow_root_dir.iterdir())
+        except Exception as e:
+            raise DataLoadError from e
 
     def __reduce__(self):
         return FilesystemStorageImpl, (self._workflow_root_dir, )

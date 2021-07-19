@@ -185,7 +185,7 @@ class WorkflowManagementActor:
         self._workflow_outputs.pop(workflow_id, None)
 
     def report_success(self, workflow_id: str) -> None:
-        """Report the failure of a workflow_id.
+        """Report the success of a workflow_id.
 
         Args:
             workflow_id: The ID of the workflow.

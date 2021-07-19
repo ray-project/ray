@@ -1,7 +1,7 @@
 import logging
 import re
 import types
-from typing import Union, Optional, TYPE_CHECKING
+from typing import List, Tuple, Union, Optional, TYPE_CHECKING
 
 import ray
 
@@ -198,12 +198,24 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
 
 
 def list(status: Optional[WorkflowStatus]) -> List[Tuple[str, WorkflowStatus]]:
-    pass
+    return execution.list(status)
+
 
 def resume_all() -> List[Tuple[str, WorkflowStatus]]:
-    pass
+    return execution.resume_all(status)
+
 
 def get_status(workflow_id: str) -> WorkflowStatus:
-    pass
+    if not isinstance(workflow_id, str):
+        raise ValueError(f"workflow_id has to be a string type.")
+    return execution.get_status(workflow_id)
 
-__all__ = ("step", "actor", "run", "resume", "get_output", "list")
+
+def cancel(workflow_id: str) -> None:
+    if not isinstance(workflow_id, str):
+        raise ValueError(f"workflow_id has to be a string type.")
+    return execution.cancel(workflow_id)
+
+
+__all__ = ("step", "actor", "run", "resume", "get_output", "list",
+           "resume_all", "get_status", "cancel")

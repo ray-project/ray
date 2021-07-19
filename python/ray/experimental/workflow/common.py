@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import Enum, unique
 from collections import deque
 import re
 from typing import Tuple, List, Optional, Callable, Set, Iterator
@@ -18,11 +18,19 @@ StepExecutionFunction = Callable[
 SerializedStepFunction = str
 
 
-class WorkflowStatus(Enum):
-    RUNNING = 1
-    CANCELED = 2
-    FINISHED = 3
-    FAILED = 4
+@unique
+class WorkflowStatus(str, Enum):
+    # The workflow is created
+    CREATED = "CREATED"
+    # There is at least a remote task running in ray cluster
+    RUNNING = "RUNNING"
+    # It got canceled and can't be resumed later
+    CANCELED = "CANCELED"
+    # The step is finished. For virtual actor, it means that all
+    # writing steps has been finished
+    FINISHED = "FINISHED"
+    # There is an error during execution. It can be resumed
+    FAILED = "FAILED"
 
 
 @dataclass
@@ -35,6 +43,12 @@ class WorkflowInputs:
     object_refs: List[str]
     # The ID of workflows in the arguments.
     workflows: List[str]
+
+
+@dataclass
+class WorkflowMeta:
+    # The current status of the workflow
+    status: WorkflowStatus
 
 
 def slugify(value: str, allow_unicode=False) -> str:

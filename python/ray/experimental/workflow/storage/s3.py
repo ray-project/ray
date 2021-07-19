@@ -201,6 +201,18 @@ class S3StorageImpl(Storage):
             else:
                 return ray.cloudpickle.load(tmp_file)
 
+    async def _list_object(self, path: Optional[str] = None) -> List[str]:
+        workflow_ids = []
+        async with self._client() as s3:
+            paginator = s3.get_paginator("list_objects")
+            operation_parameters = {"Bucket": self._bucket}
+            if path is not None:
+                operation_parameters["Prefix"] = path
+            page_iterator = paginator.paginate(**operation_parameters)
+            async for page in page_iterator:
+                workflow_ids.append(page['Contents'])
+        return workflow_ids
+
     def _client(self):
         return self._session.client(
             "s3",
@@ -243,6 +255,23 @@ class S3StorageImpl(Storage):
     async def save_actor_class_body(self, workflow_id: str, cls: type) -> None:
         path = self._get_s3_path(workflow_id, CLASS_BODY)
         await self._put_object(path, cls)
+
+    @data_save_error
+    async def save_workflow_meta(self, workflow_id: str,
+                                 metadata: Dict[str, Any]) -> None:
+        path = self._get_s3_path(workflow_id, WORKFLOW_META)
+        await self._put_object(path, metadata, True)
+
+    @data_load_error
+    async def load_workflow_meta(self, workflow_id: str) -> Dict[str, Any]:
+        path = self._get_s3_path(workflow_id, WORKFLOW_META)
+        data = await self._get_object(path, True)
+        return data
+
+    @data_load_error
+    async def list_workflow(self) -> List[str]:
+        objs = await self._list_objects()
+        return objs
 
     def __reduce__(self):
         return S3StorageImpl, (self._bucket, self._s3_path, self._region_name,
