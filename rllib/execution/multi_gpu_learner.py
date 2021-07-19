@@ -78,13 +78,14 @@ class TFMultiGPULearner(LearnerThread):
         if set(self.local_worker.policy_map.keys()) != {DEFAULT_POLICY_ID}:
             raise NotImplementedError("Multi-gpu mode for multi-agent")
         self.policy = self.local_worker.policy_map[DEFAULT_POLICY_ID]
+        tf_session = self.policy.get_session()
 
         # per-GPU graph copies created below must share vars with the policy
         # reuse is set to AUTO_REUSE because Adam nodes are created after
         # all of the device copies are created.
         self.par_opt = []
-        with self.local_worker.tf_sess.graph.as_default():
-            with self.local_worker.tf_sess.as_default():
+        with tf_session.graph.as_default():
+            with tf_session.as_default():
                 with tf1.variable_scope(
                         DEFAULT_POLICY_ID, reuse=tf1.AUTO_REUSE):
                     if self.policy._state_inputs:
@@ -106,7 +107,7 @@ class TFMultiGPULearner(LearnerThread):
                                 999999,  # it will get rounded down
                                 self.policy.copy))
 
-                self.sess = self.local_worker.tf_sess
+                self.sess = tf_session
                 self.sess.run(tf1.global_variables_initializer())
 
         self.idle_optimizers = queue.Queue()
