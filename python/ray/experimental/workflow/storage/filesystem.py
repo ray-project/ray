@@ -1,7 +1,7 @@
 import contextlib
 import json
 import pathlib
-from typing import Any, Dict, Callable
+from typing import Any, Dict, Callable, List
 import uuid
 
 from ray.experimental.workflow.common import StepID

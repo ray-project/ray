@@ -5,11 +5,12 @@ workflows.
 
 import asyncio
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 import ray
 from ray.experimental.workflow import storage
-from ray.experimental.workflow.common import Workflow, WorkflowInputs, StepID, WorkflowMeta, WorkflowStatus
+from ray.experimental.workflow.common import (Workflow, WorkflowInputs, StepID,
+                                              WorkflowMeta, WorkflowStatus)
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 
@@ -308,7 +309,7 @@ class WorkflowStorage:
         """
         asyncio_run(
             self._storage.save_workflow_meta(self._workflow_id,
-                                             dataclasses.asdict(metadata)))
+                                             asdict(metadata)))
 
     def load_workflow_meta(self) -> WorkflowMeta:
         metadata = asyncio_run(

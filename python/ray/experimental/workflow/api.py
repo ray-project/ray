@@ -148,19 +148,20 @@ def list(status: Optional[WorkflowStatus]) -> List[Tuple[str, WorkflowStatus]]:
 
 
 def resume_all() -> List[Tuple[str, WorkflowStatus]]:
-    return execution.resume_all(status)
+    return execution.resume_all()
 
 
 def get_status(workflow_id: str) -> WorkflowStatus:
     if not isinstance(workflow_id, str):
-        raise ValueError(f"workflow_id has to be a string type.")
+        raise ValueError("workflow_id has to be a string type.")
     return execution.get_status(workflow_id)
 
 
 def cancel(workflow_id: str) -> None:
     if not isinstance(workflow_id, str):
-        raise ValueError(f"workflow_id has to be a string type.")
+        raise ValueError("workflow_id has to be a string type.")
     return execution.cancel(workflow_id)
 
 
-__all__ = ("step", "virtual_actor", "resume", "get_output", "get_actor", "resume_all", "get_status", "cancel")
+__all__ = ("step", "virtual_actor", "resume", "get_output", "get_actor",
+           "resume_all", "get_status", "cancel")

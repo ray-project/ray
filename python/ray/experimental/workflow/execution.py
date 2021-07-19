@@ -6,7 +6,8 @@ from typing import Union, Optional
 import ray
 
 from ray.experimental.workflow import workflow_context
-from ray.experimental.workflow.common import Workflow, WorkflowStatus, WorkflowMeta
+from ray.experimental.workflow.common import (Workflow, WorkflowStatus,
+                                              WorkflowMeta)
 from ray.experimental.workflow.step_executor import commit_step
 from ray.experimental.workflow.storage import (
     Storage, create_storage, get_global_storage, set_global_storage)
@@ -115,8 +116,8 @@ def cancel(workflow_id: str) -> None:
     output = None
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
-        ouptut = ray.get(workflow_manager.get_output.remote(workflow_id))
-    except ValueError as e:
+        output = ray.get(workflow_manager.get_output.remote(workflow_id))
+    except ValueError:
         pass
 
     if output is not None:
@@ -136,8 +137,8 @@ def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
     with workflow_context.workflow_step_context(workflow_id, storage_url):
         try:
             workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
-            ouptut = ray.get(workflow_manager.get_output.remote(workflow_id))
-        except ValueError as e:
+            output = ray.get(workflow_manager.get_output.remote(workflow_id))
+        except ValueError:
             pass
         if output is not None:
             return WorkflowStatus.RUNNING

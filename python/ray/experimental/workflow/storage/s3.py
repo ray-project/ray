@@ -5,7 +5,7 @@ import urllib.parse as parse
 import aioboto3
 import itertools
 import ray
-from typing import Any, Dict, Callable
+from typing import Any, Dict, Callable, Optional, List
 from ray.experimental.workflow.common import StepID
 from ray.experimental.workflow.storage.base import (
     Storage, ArgsType, StepStatus, DataLoadError, DataSaveError)
@@ -18,6 +18,7 @@ STEP_ARGS = "args.pkl"
 STEP_OUTPUT = "output.pkl"
 STEP_FUNC_BODY = "func_body.pkl"
 CLASS_BODY = "class_body.pkl"
+WORKFLOW_META = "workflow_meta.json"
 
 MAX_RECEIVED_DATA_MEMORY_SIZE = 25 * 1024 * 1024  # 25MB
 
@@ -210,7 +211,7 @@ class S3StorageImpl(Storage):
                 operation_parameters["Prefix"] = path
             page_iterator = paginator.paginate(**operation_parameters)
             async for page in page_iterator:
-                workflow_ids.append(page['Contents'])
+                workflow_ids.append(page["Contents"])
         return workflow_ids
 
     def _client(self):
