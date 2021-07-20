@@ -1,4 +1,6 @@
 import subprocess
+import shutil
+import tempfile
 import time
 
 from ray.tests.conftest import *  # noqa
@@ -68,8 +70,7 @@ def test_recovery_simple(ray_start_regular):
     workflow_id = "test_recovery_simple"
     with pytest.raises(RaySystemError):
         # internally we get WorkerCrashedError
-        output = workflow.run(simple.step("x"), workflow_id=workflow_id)
-        ray.get(output)
+        simple.step("x").run(workflow_id=workflow_id)
     utils.set_global_mark()
     output = workflow.resume(workflow_id)
     assert ray.get(output) == "foo(x[append1])[append2]"
@@ -88,8 +89,7 @@ def test_recovery_complex(ray_start_regular):
     workflow_id = "test_recovery_complex"
     with pytest.raises(RaySystemError):
         # internally we get WorkerCrashedError
-        output = workflow.run(complex.step("x"), workflow_id=workflow_id)
-        ray.get(output)
+        complex.step("x").run(workflow_id=workflow_id)
     utils.set_global_mark()
     output = workflow.resume(workflow_id)
     r = "join(join(foo(x[append1]), [source1][append2]), join(x, [source1]))"
@@ -128,8 +128,7 @@ def foo(x):
 
 if __name__ == "__main__":
     ray.init(address="auto", namespace="workflow")
-    wf = workflow.run(foo.step(0), workflow_id="cluster_failure")
-    assert ray.get(wf) == 20
+    assert foo.step(0).run(workflow_id="cluster_failure") == 20
 """
 
 
@@ -159,9 +158,31 @@ def recursive_chain(x):
         "namespace": "workflow"
     }], indirect=True)
 def test_shortcut(ray_start_regular):
-    output = workflow.run(recursive_chain.step(0), workflow_id="shortcut")
-    assert ray.get(output) == 100
+    assert recursive_chain.step(0).run(workflow_id="shortcut") == 100
     # the shortcut points to the step with output checkpoint
     store = workflow_storage.WorkflowStorage("shortcut")
     step_id = store.get_entrypoint_step_id()
     assert store.inspect_step(step_id).output_object_valid
+
+
+@workflow.step
+def constant_1():
+    return 271828
+
+
+@workflow.step
+def constant_2():
+    return 31416
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_resume_different_storage(ray_start_regular):
+    constant_1.step().run(workflow_id="const")
+    tmp_dir = tempfile.mkdtemp()
+    constant_2.step().run(workflow_id="const", storage=tmp_dir)
+    assert ray.get(workflow.resume(workflow_id="const",
+                                   storage=tmp_dir)) == 31416
+    shutil.rmtree(tmp_dir)

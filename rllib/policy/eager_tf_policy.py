@@ -255,7 +255,6 @@ def build_eager_tf_policy(
 
             self._is_training = False
             self._loss_initialized = False
-            self._sess = None
 
             self._loss = loss_fn
             self.batch_divisibility_req = get_batch_divisibility_req(self) if \
