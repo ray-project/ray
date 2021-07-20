@@ -2,8 +2,7 @@ from typing import List, Any, Union, Dict, Callable
 
 import ray
 from ray.experimental.workflow import workflow_context
-from ray.experimental.workflow.common import (Workflow, StepID, WorkflowMeta,
-                                              WorkflowStatus)
+from ray.experimental.workflow.common import Workflow, StepID
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.step_function import WorkflowStepFunction
@@ -113,9 +112,9 @@ def resume_workflow_job(workflow_id: str, store_url: str) -> ray.ObjectRef:
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
-    store = storage.create_storage(store_url)
-    wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
     try:
+        store = storage.create_storage(store_url)
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
         entrypoint_step_id: StepID = wf_store.get_entrypoint_step_id()
         r = _construct_resume_workflow_from_step(wf_store, entrypoint_step_id)
     except Exception as e:
@@ -124,7 +123,6 @@ def resume_workflow_job(workflow_id: str, store_url: str) -> ray.ObjectRef:
     if isinstance(r, Workflow):
         with workflow_context.workflow_step_context(workflow_id,
                                                     store.storage_url):
-            wf_store.save_workflow_meta(WorkflowMeta(WorkflowStatus.RUNNING))
             from ray.experimental.workflow.step_executor import (
                 execute_workflow)
             return execute_workflow(r)

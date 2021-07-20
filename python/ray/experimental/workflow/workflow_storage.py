@@ -308,7 +308,7 @@ class WorkflowStorage:
             DataSaveError: if we fail to save the class body.
         """
         metadata = {
-            "status": str(metadata.status),
+            "status": metadata.status.value,
         }
         asyncio_run(
             self._storage.save_workflow_meta(self._workflow_id, metadata))
@@ -320,11 +320,12 @@ class WorkflowStorage:
 
     async def _list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
         workflow_ids = await self._storage.list_workflow()
-        current_status = await asyncio.gather(*[
+        metadata = await asyncio.gather(*[
             self._storage.load_workflow_meta(workflow_id)
             for workflow_id in workflow_ids
         ])
-        return list(zip(workflow_ids, current_status))
+        return [(wid, WorkflowStatus(meta["status"]) if meta else None)
+                for (wid, meta) in zip(workflow_ids, metadata)]
 
     def list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
         return asyncio_run(self._list_workflow())

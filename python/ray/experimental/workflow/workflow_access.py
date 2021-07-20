@@ -114,6 +114,10 @@ class WorkflowManagementActor:
                              "already exists.")
         output = recovery.resume_workflow_job.remote(workflow_id, storage_url)
         self._workflow_outputs[workflow_id] = output
+        store = storage.create_storage(storage_url)
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
+        wf_store.save_workflow_meta(
+            common.WorkflowMeta(common.WorkflowStatus.RUNNING))
         logger.info(f"Workflow job [id={workflow_id}] started.")
         return output
 

@@ -289,7 +289,7 @@ class FilesystemStorageImpl(Storage):
         file_path = self._workflow_root_dir / workflow_id / WORKFLOW_META
         try:
             with _open_atomic(file_path) as f:
-                json.load(f)
+                return json.load(f)
         except FileNotFoundError:
             return None
         except Exception as e:
