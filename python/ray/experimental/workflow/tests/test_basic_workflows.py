@@ -201,7 +201,7 @@ def test_list_all(ray_start_regular_shared, tmp_path):
     for o in outputs:
         try:
             ray.get(o)
-        except:
+        except Exception:
             pass
     all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)
     assert len(all_tasks_running) == 0

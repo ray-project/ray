@@ -10,7 +10,7 @@ from ray.experimental.workflow.workflow_access import MANAGEMENT_ACTOR_NAME
 if TYPE_CHECKING:
     from ray.experimental.workflow.common import (StepID, WorkflowOutputType,
                                                   Workflow, WorkflowInputTuple,
-                                                  WorkflowMeta, WorkflowStatus)
+                                                  WorkflowStatus)
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 
@@ -201,7 +201,6 @@ def execute_workflow_step(
 
 
 def _record_step_status(step_id: "StepID", status: "WorkflowStatus") -> None:
-    from ray.experimental.workflow.common import WorkflowStatus
     storage_url = ray.experimental.workflow.storage.get_global_storage(
     ).storage_url
     workflow_id = workflow_context.get_current_workflow_id()

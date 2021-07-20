@@ -124,14 +124,15 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
 
 def cancel(workflow_id: str,
            storage: Optional[Union[str, Storage]] = None) -> None:
-    store = _get_storage(storage)
-    ws = workflow_storage.WorkflowStorage(workflow_id, store)
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
-        ray.get(workflow_manager.cancel_workflow.remote(workflow_id))
+        ray.get(
+            workflow_manager.cancel_workflow.remote(workflow_id,
+                                                    _get_storage_url()))
     except ValueError:
+        store = _get_storage(storage)
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
         wf_store.save_workflow_meta(WorkflowMeta(WorkflowStatus.CANCELED))
-
 
 
 def get_status(workflow_id: str, storage: Optional[Union[str, Storage]] = None
@@ -141,9 +142,10 @@ def get_status(workflow_id: str, storage: Optional[Union[str, Storage]] = None
         running = workflow_manager.is_workflow_running.remote(workflow_id)
     except Exception:
         running = False
-    if running == True:
+    if running:
         return WorkflowStatus.RUNNING
-    store = WorkflowStorage(_get_storage(storage), workflow_id)
+    store = workflow_storage.WorkflowStorage(
+        _get_storage(storage), workflow_id)
     meta = store.load_workflow_meta()
     if meta is None:
         return meta
@@ -172,6 +174,6 @@ def list_all(status: Optional[WorkflowStatus],
     for (k, s) in store.list_workflow():
         if s == WorkflowStatus.RUNNING and k not in runnings:
             s = WorkflowStatus.FAILED
-        if status == None or s == status:
+        if status is None or s == status:
             ret.append((k, s))
     return ret
