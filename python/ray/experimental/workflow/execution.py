@@ -148,6 +148,11 @@ def cancel(workflow_id: str,
 
 def get_status(workflow_id: str, storage: Optional[Union[str, Storage]] = None
                ) -> Optional[WorkflowStatus]:
+    running = False
+    try:
+        workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    except ValueError:
+        work
     pass
     # output = None
     # storage_url = get_global_storage().storage_url
@@ -164,19 +169,25 @@ def get_status(workflow_id: str, storage: Optional[Union[str, Storage]] = None
 def list_all(status: Optional[WorkflowStatus],
              storage: Optional[Union[str, Storage]] = None
              ) -> List[Tuple[str, WorkflowStatus]]:
-    runnings = []
-    if status in (WorkflowStatus.RUNNING, None):
-        try:
-            workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
-            wids = ray.get(workflow_manager.get_running_workflow.remote())
-            runnings = [(wid, WorkflowStatus.RUNNING) for wid in wids]
-        except ValueError:
-            pass
+    try:
+        workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    except ValueError:
+        workflow_manager = None
+
+    if workflow_manager is None:
+        runnings = []
+    else:
+        runnings = ray.get(workflow_manager.list_running_workflow.remote())
     if status == WorkflowStatus.RUNNING:
-        return runnings
-    runnings = dict(runnings)
+        return [(r, WorkflowStatus.RUNNING) for r in runnings]
+
     from ray.experimental.workflow.workflow_storage import WorkflowStorage
+    runnings = set(runnings)
     store = WorkflowStorage(get_global_storage())
-    all_workflow = [(wid, status) for wid in store.list_workflow()]
-    if status is None:
-        return all_workflow
+    ret = []
+    for (k, s) in store.list_workflow():
+        if s == WorkflowStatus.RUNNING and k not in runnings:
+            s = WorkflowStatus.FAILED
+        if status == None or s == status:
+            ret.append((k, s))
+    return ret

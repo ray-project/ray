@@ -118,19 +118,44 @@ class WorkflowManagementActor:
         wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
         wf_store.save_workflow_meta(
             common.WorkflowMeta(common.WorkflowStatus.RUNNING))
+        self._step_status[workflow_id] = {}
         logger.info(f"Workflow job [id={workflow_id}] started.")
         return output
 
     def update_step_status(self, workflow_id: str, step_id: str,
-                           status: common.WorkflowStatus) -> int:
+                           status: common.WorkflowStatus, storage_url: str):
         if status == common.WorkflowStatus.FINISHED:
             assert self._step_status[workflow_id].pop(step_id) is not None
         else:
             self._step_status.setdefault(workflow_id, {})[step_id] = status
         remaining = len(self._step_status[workflow_id])
-        if remaining == 0:
+
+        if status != common.WorkflowStatus.FAILED and remaining != 0:
+            return
+
+        store = storage.create_storage(storage_url)
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
+
+        if status == common.WorkflowStatus.FAILED:
+            if workflow_id in self._workflow_outputs:
+                ray.cancel(self._workflow_outputs[workflow_id])
+            wf_store.save_workflow_meta(
+                common.WorkflowMeta(common.WorkflowStatus.FAILED))
             self._step_status.pop(workflow_id)
-        return remaining
+        else:
+            # remaining = 0
+            wf_store.save_workflow_meta(
+                common.WorkflowMeta(common.WorkflowStatus.FINISHED))
+            self._step_status.pop(workflow_id)
+
+
+    def is_workflow_running(self, workflow_ids: List[str]) -> List[bool]:
+        return [wid in self._step_status for wid in workflow_ids]
+
+
+    def list_running_workflow(self) -> List[str]:
+        return list(self._step_status.keys())
+
 
     def init_actor(self, actor_id: str,
                    init_marker: List[ray.ObjectRef]) -> None:

@@ -184,13 +184,26 @@ def test_list_all(ray_start_regular_shared, tmp_path):
     lock.acquire()
 
     @workflow.step
-    def long_running():
+    def long_running(i):
         with FileLock(tmp_file):
-            return
+            if i % 2 == 0:
+                raise ValueError()
 
-    [long_running.step().run_async(workflow_id=str(i)) for i in range(100)]
+    outputs = [long_running.step(i).run_async(workflow_id=str(i)) for i in range(100)]
     all_tasks = workflow.list_all()
     assert len(all_tasks) == 100
-    print("!", all_tasks)
-    # all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)
-    # assert all_tasks == all_tasks_running
+    all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)
+    print(all_tasks_running)
+    assert dict(all_tasks) == dict(all_tasks_running)
+    lock.release()
+    for o in outputs:
+        try:
+            ray.get(o)
+        except:
+            pass
+    all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)
+    assert len(all_tasks_running) == 0
+    failed_jobs = workflow.list_all(workflow.WorkflowStatus.FAILED)
+    assert len(failed_jobs) == 50
+    finished_jobs = workflow.list_all(workflow.WorkflowStatus.FINISHED)
+    assert len(finished_jobs) == 50

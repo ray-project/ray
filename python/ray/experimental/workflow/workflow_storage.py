@@ -53,7 +53,8 @@ class WorkflowStorage:
                  store: Optional[storage.Storage] = None):
         if workflow_id is None:
             context = workflow_context.get_workflow_step_context()
-            workflow_id = context.workflow_id
+            if context is not None:
+                workflow_id = context.workflow_id
         if store is None:
             store = storage.get_global_storage()
         self._storage = store
