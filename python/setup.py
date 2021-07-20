@@ -185,9 +185,6 @@ if setup_spec.type == SetupType.RAY:
 # the change in the matching section of requirements/requirements.txt
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        # TODO(alex) Pin the version once this PR is
-        # included in the stable release.
-        # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
         "attrs",
         "click >= 7.0",
         "colorama",
