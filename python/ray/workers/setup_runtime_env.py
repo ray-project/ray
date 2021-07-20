@@ -6,6 +6,7 @@ import logging
 import yaml
 import hashlib
 import subprocess
+import site
 
 from filelock import FileLock
 from typing import Optional, List, Dict, Any
@@ -49,31 +50,6 @@ def setup_runtime_env(runtime_env: dict, session_dir):
             ray_pip = current_ray_pip_specifier()
             if ray_pip and not runtime_env.get("_skip_inject_ray"):
                 extra_pip_dependencies = [ray_pip, "ray[default]"]
-            elif runtime_env.get("_skip_inject_ray"):
-                extra_pip_dependencies = [
-                    "aiohttp",
-                    "aiohttp_cors",
-                    "aioredis",
-                    "attrs",
-                    "click >= 7.0",
-                    "colorama",
-                    "dataclasses; python_version < '3.7'",
-                    "filelock",
-                    "gpustat",
-                    "grpcio >= 1.28.1",
-                    "msgpack >= 1.0.0, < 2.0.0",
-                    "numpy >= 1.16; python_version < '3.9'",
-                    "numpy >= 1.19.3; python_version >= '3.9'",
-                    "protobuf >= 3.15.3",
-                    "pyyaml",
-                    "requests",
-                    "redis >= 3.5.0",
-                    "opencensus",
-                    "prometheus_client >= 0.7.1",
-                    "colorful",  # noqa
-                    "py-spy >= 0.2.0",  # noqa
-                    "jsonschema",  # noqa
-                ]
             else:
                 extra_pip_dependencies = []
             conda_dict = inject_dependencies(conda_dict, py_version,
@@ -97,18 +73,23 @@ def setup_runtime_env(runtime_env: dict, session_dir):
                     conda_yaml_path, conda_dir)
 
             if runtime_env.get("_skip_inject_ray"):
-                # ray.__file__ returns .../python/ray/__init__.py
-                # we want .../python path
-                ray_path = os.path.split(os.path.split(ray.__file__)[0])[0]
+                # In order for Ray to function, we will directly add current
+                # python site-package path to the new environment's path.
+                current_python_site = site.getsitepackages()[0]
+                # Get the site-package path of the new environment.
                 conda_path = os.path.join(conda_dir, conda_env_name)
                 python_binary = os.path.join(conda_path, "bin/python")
                 site_packages_path = subprocess.check_output([
                     python_binary, "-c",
                     "import site; print(site.getsitepackages()[0])"
                 ]).decode().strip()
+                # See usage of *.pth file at
+                # https://docs.python.org/3/library/site.html
                 with open(os.path.join(site_packages_path, "ray.pth"),
                           "w") as f:
-                    f.write(ray_path)
+                    f.write(
+                        f"import sys; sys.path.append('{current_python_site}')"
+                    )
 
         return RuntimeEnvContext(conda_env_name)
 

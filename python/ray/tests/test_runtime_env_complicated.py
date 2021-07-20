@@ -16,6 +16,10 @@ from ray.job_config import JobConfig
 from ray.test_utils import (run_string_as_driver,
                             run_string_as_driver_nonblocking)
 
+if not os.environ.get("CI"):
+    # This flags turns on
+    os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
+
 
 @pytest.fixture(scope="session")
 def conda_envs():
@@ -246,17 +250,6 @@ def test_get_conda_env_dir(tmp_path):
         assert (env_dir == str(tmp_path / "envs" / "tf2"))
 
 
-"""
-Note(architkulkarni):
-These tests only run on Buildkite in a special job that runs
-after the wheel is built, because the tests pass in the wheel as a dependency
-in the runtime env.  Buildkite only supports Linux for now.
-"""
-
-
-@pytest.mark.skipif(
-    os.environ.get("CI") is None,
-    reason="This test is only run on CI because it uses the built Ray wheel.")
 @pytest.mark.skipif(
     sys.platform != "linux", reason="This test is only run on Buildkite.")
 def test_conda_create_task(shutdown_only):
@@ -284,9 +277,6 @@ def test_conda_create_task(shutdown_only):
     assert ray.get(f.options(runtime_env=runtime_env).remote())
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") is None,
-    reason="This test is only run on CI because it uses the built Ray wheel.")
 @pytest.mark.skipif(
     sys.platform != "linux", reason="This test is only run on Buildkite.")
 def test_conda_create_job_config(shutdown_only):
@@ -355,8 +345,6 @@ def test_inject_dependencies():
         assert (output == outputs[i]), error_msg
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") is None, reason="This test is only run on CI.")
 @pytest.mark.skipif(
     sys.platform != "linux", reason="This test is only run for Linux.")
 @pytest.mark.parametrize(
@@ -658,10 +646,8 @@ def test_env_installation_nonblocking(shutdown_only):
 
 
 @pytest.mark.skipif(
-    os.environ.get("CI") is None,
-    reason="This test is only run on CI because it uses the built Ray wheel.")
-@pytest.mark.skipif(
-    sys.platform != "linux", reason="This test is only run on Buildkite.")
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.")
 def test_simultaneous_install(shutdown_only):
     """Test that two envs can be installed without affecting each other."""
     ray.init()
