@@ -880,11 +880,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// NOTE: The actor_handle obtained by this function should not be stored anywhere.
   ///
   /// \param[in] name The name of the actor whose handle to get.
+  /// \param[in] ray_namespace The namespace of the requested actor.
   /// \param[out] actor_handle A handle to the requested actor.
   /// \return The shared_ptr to the actor handle if found, nullptr otherwise.
   /// The second pair contains the status of getting a named actor handle.
   std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandle(
-      const std::string &name);
+      const std::string &name, const std::string &ray_namespace);
 
   /// Returns a list of the named actors currently in the system.
   ///

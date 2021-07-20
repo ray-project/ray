@@ -1328,6 +1328,7 @@ cdef class CoreWorker:
                      int32_t max_concurrency,
                      c_bool is_detached,
                      c_string name,
+                     c_string ray_namespace,
                      c_bool is_asyncio,
                      PlacementGroupID placement_group_id,
                      int64_t placement_group_bundle_index,
@@ -1365,7 +1366,9 @@ cdef class CoreWorker:
                     CActorCreationOptions(
                         max_restarts, max_task_retries, max_concurrency,
                         c_resources, c_placement_resources,
-                        dynamic_worker_options, is_detached, name, is_asyncio,
+                        dynamic_worker_options, is_detached, name,
+                        ray_namespace,
+                        is_asyncio,
                         c_pair[CPlacementGroupID, int64_t](
                             c_placement_group_id,
                             placement_group_bundle_index),
@@ -1585,7 +1588,8 @@ cdef class CoreWorker:
         return self.make_actor_handle(
             CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
 
-    def get_named_actor_handle(self, const c_string &name):
+    def get_named_actor_handle(self, const c_string &name,
+                               const c_string &ray_namespace):
         cdef:
             pair[ActorHandleSharedPtr, CRayStatus] named_actor_handle_pair
 
@@ -1593,7 +1597,8 @@ cdef class CoreWorker:
         # to call a method that holds the gil.
         with nogil:
             named_actor_handle_pair = (
-                CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))
+                CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(
+                    name, ray_namespace))
         check_status(named_actor_handle_pair.second)
 
         return self.make_actor_handle(named_actor_handle_pair.first)

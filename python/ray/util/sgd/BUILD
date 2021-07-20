@@ -11,6 +11,14 @@ py_test(
 )
 
 py_test(
+    name = "test_placement_groups",
+    size = "medium",
+    srcs = ["tests/test_placement_groups.py"],
+    tags = ["exclusive"],
+    deps = [":sgd_lib"]
+)
+
+py_test(
     name = "test_ptl",
     size = "large",
     srcs = ["tests/test_ptl.py"],

@@ -1,4 +1,6 @@
 import subprocess
+import shutil
+import tempfile
 import time
 
 from ray.tests.conftest import *  # noqa
@@ -161,3 +163,26 @@ def test_shortcut(ray_start_regular):
     store = workflow_storage.WorkflowStorage("shortcut")
     step_id = store.get_entrypoint_step_id()
     assert store.inspect_step(step_id).output_object_valid
+
+
+@workflow.step
+def constant_1():
+    return 271828
+
+
+@workflow.step
+def constant_2():
+    return 31416
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "namespace": "workflow"
+    }], indirect=True)
+def test_resume_different_storage(ray_start_regular):
+    constant_1.step().run(workflow_id="const")
+    tmp_dir = tempfile.mkdtemp()
+    constant_2.step().run(workflow_id="const", storage=tmp_dir)
+    assert ray.get(workflow.resume(workflow_id="const",
+                                   storage=tmp_dir)) == 31416
+    shutil.rmtree(tmp_dir)
