@@ -76,3 +76,6 @@ class SimpleBlockAccessor(BlockAccessor):
     @staticmethod
     def builder() -> SimpleBlockBuilder[T]:
         return SimpleBlockBuilder()
+
+    def to_block(self) -> List[T]:
+        return self._items

@@ -1,20 +1,21 @@
 import logging
-from typing import Optional, List, Tuple, Union, TYPE_CHECKING
+from typing import Optional, List, Tuple, Union, Any, TYPE_CHECKING
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.experimental.data.impl.arrow_block import ArrowRow
+from ray.experimental.data.impl.arrow_block import (
+    ArrowRow, DelegatingArrowBlockBuilder)
 from ray.experimental.data.impl.block_list import BlockMetadata
-from ray.experimental.data.datasource.datasource import (Datasource, ReadTask)
+from ray.experimental.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
+class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     """File-based datasource, for reading and writing files.
 
     This class should not be used directly, and should instead be subclassed
@@ -49,11 +50,15 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
             logger.debug(f"Reading {len(read_paths)} files.")
             if isinstance(fs, _S3FileSystemWrapper):
                 fs = fs.unwrap()
-            tables = []
+            builder = DelegatingArrowBlockBuilder()
             for read_path in read_paths:
                 with fs.open_input_file(read_path) as f:
-                    tables.append(read_file(f, **reader_args))
-            return pa.concat_tables(tables)
+                    data = read_file(f, **reader_args)
+                    if isinstance(data, pa.Table):
+                        builder.add_block(data)
+                    else:
+                        builder.add(data)
+            return builder.build()
 
         read_tasks = [
             ReadTask(
