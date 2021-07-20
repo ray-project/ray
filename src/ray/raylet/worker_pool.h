@@ -40,6 +40,9 @@ namespace raylet {
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
+using PopWorkerCallback =
+    std::function<void(const std::shared_ptr<WorkerInterface> worker)>;
+
 /// \class WorkerPoolInterface
 ///
 /// Used for new scheduler unit tests.
@@ -51,8 +54,8 @@ class WorkerPoolInterface {
   /// \param task_spec The returned worker must be able to execute this task.
   /// \return An idle worker with the requested task spec. Returns nullptr if no
   /// such worker exists.
-  virtual std::shared_ptr<WorkerInterface> PopWorker(
-      const TaskSpecification &task_spec) = 0;
+  virtual void PopWorker(const TaskSpecification &task_spec,
+                         const PopWorkerCallback callback) = 0;
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
@@ -179,7 +182,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// announces its port.
   ///
   /// \param[in] worker The worker which is started.
-  void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker);
+  /// \return True If the worker available.
+  bool OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Register a new driver.
   ///
@@ -277,7 +281,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param task_spec The returned worker must be able to execute this task.
   /// \return An idle worker with the requested task spec. Returns nullptr if no
   /// such worker exists.
-  std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec);
+  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback callback);
 
   /// Try to prestart a number of workers suitable the given task spec. Prestarting
   /// is needed since core workers request one lease at a time, if starting is slow,
@@ -350,16 +354,19 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///                             worker pool abstraction. Outside this class, workers
   ///                             will have rpc::WorkerType instead.
   /// \param job_id The ID of the job to which the started worker process belongs.
+  /// \param task_id The ID of the task which triggers the worker process starting.
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \param serialized_runtime_env The runtime environment for the started worker
   /// process. \return The id of the process that we started if it's positive, otherwise
   /// it means we didn't start a process.
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
+      const TaskID &task_id = TaskID::Nil(),
       const std::vector<std::string> &dynamic_options = {},
       const int runtime_env_hash = 0, const std::string &serialized_runtime_env = "{}",
       std::unordered_map<std::string, std::string> override_environment_variables = {},
-      const std::string &serialized_runtime_env_context = "{}");
+      const std::string &serialized_runtime_env_context = "{}",
+      const PopWorkerCallback callback = PopWorkerCallback());
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -395,6 +402,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     int num_starting_workers;
     /// The type of the worker.
     rpc::WorkerType worker_type;
+    /// The id of task which triggers this worker process starting.
+    TaskID task_id;
+    /// The callback function of PopWorker.
+    PopWorkerCallback callback;
   };
 
   /// An internal data structure that maintains the pool state per language.
@@ -431,6 +442,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::unordered_set<TaskID> tasks_with_dedicated_workers;
     /// All tasks that have pending runtime envs.
     std::unordered_set<TaskID> tasks_with_pending_runtime_envs;
+    /// All tasks that with callback functions.
+    std::unordered_map<TaskID, PopWorkerCallback> tasks_with_callbacks;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -512,6 +525,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Return true if the given worker type is IO worker type. Currently, there are 2 IO
   /// worker types (SPILL_WORKER and RESTORE_WORKER and UTIL_WORKER).
   bool IsIOWorkerType(const rpc::WorkerType &worker_type);
+
+  void PopWorkerCallbackAsync(const PopWorkerCallback callback,
+                              std::shared_ptr<WorkerInterface> worker = nullptr);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;

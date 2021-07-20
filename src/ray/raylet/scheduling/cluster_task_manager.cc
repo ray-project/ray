@@ -220,36 +220,66 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // scheduler will make the same decision.
           break;
         }
+        if (!spec.GetDependencies().empty()) {
+          task_dependency_manager_.RemoveTaskDependencies(
+              task.GetTaskSpecification().TaskId());
+        }
+        work_it = dispatch_queue.erase(work_it);
       } else {
         // The local node has the available resources to run the task, so we should run
         // it.
-        std::shared_ptr<WorkerInterface> worker = worker_pool_.PopWorker(spec);
-        if (!worker) {
-          RAY_LOG(DEBUG) << "This node has available resources, but no worker processes "
-                            "to grant the lease.";
-          // We've already acquired resources so we need to release them to avoid
-          // double-acquiring when the next invocation of this function tries to schedule
-          // this task.
-          cluster_resource_scheduler_->ReleaseWorkerResources(allocated_instances);
-          // No worker available, we won't be able to schedule any kind of task.
-          // Worker processes spin up pretty quickly, so it's not worth trying to spill
-          // this task.
-          ReleaseTaskArgs(task_id);
-          return;
+        if (tasks_waiting_workers_popped_.find(task_id) !=
+            tasks_waiting_workers_popped_.end()) {
+          // Skip the tasks that are waiting for workers popped.
+          continue;
         }
-
-        RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
-                       << worker->WorkerId();
-        auto reply = std::get<1>(*work_it);
-        auto callback = std::get<2>(*work_it);
-        Dispatch(worker, leased_workers_, allocated_instances, task, reply, callback);
+        tasks_waiting_workers_popped_.emplace(
+            task_id, std::make_tuple(false, shapes_it->first, work));
+        worker_pool_.PopWorker(spec, [this, allocated_instances, task_id](
+                                         const std::shared_ptr<WorkerInterface> worker) {
+          auto it = tasks_waiting_workers_popped_.find(task_id);
+          RAY_CHECK(it != tasks_waiting_workers_popped_.end());
+          auto canceled = std::get<0>(it->second);
+          auto schedulingClass = std::get<1>(it->second);
+          auto &work = std::get<2>(it->second);
+          auto reply = std::get<1>(work);
+          auto callback = std::get<2>(work);
+          if (canceled) {
+            RAY_LOG(WARNING) << "Task " << task_id
+                             << " not found yet when worker popped, maybe the task has "
+                                "been cancelled.";
+            reply->set_canceled(true);
+            callback();
+          } else if (!worker) {
+            RAY_LOG(DEBUG)
+                << "This node has available resources, but no worker processes "
+                   "to grant the lease "
+                << task_id << ".";
+            // We've already acquired resources so we need to release them to avoid
+            // double-acquiring when the next invocation of this function tries to
+            // schedule this task.
+            cluster_resource_scheduler_->ReleaseWorkerResources(allocated_instances);
+            // No worker available, we won't be able to schedule any kind of task.
+            // Worker processes spin up pretty quickly, so it's not worth trying to spill
+            // this task.
+            ReleaseTaskArgs(task_id);
+            // Push this task back to dispatch queue and make it can be re-dispatched.
+            tasks_to_dispatch_[schedulingClass].push_back(work);
+          } else {
+            RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
+                           << worker->WorkerId();
+            const auto &task = std::get<0>(work);
+            const auto &spec = task.GetTaskSpecification();
+            Dispatch(worker, leased_workers_, allocated_instances, task, reply, callback);
+            if (!spec.GetDependencies().empty()) {
+              task_dependency_manager_.RemoveTaskDependencies(
+                  task.GetTaskSpecification().TaskId());
+            }
+          }
+          tasks_waiting_workers_popped_.erase(task_id);
+        });
+        work_it = dispatch_queue.erase(work_it);
       }
-
-      if (!spec.GetDependencies().empty()) {
-        task_dependency_manager_.RemoveTaskDependencies(
-            task.GetTaskSpecification().TaskId());
-      }
-      work_it = dispatch_queue.erase(work_it);
     }
     if (is_infeasible) {
       infeasible_tasks_[shapes_it->first] = std::move(shapes_it->second);
@@ -486,6 +516,12 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
         return true;
       }
     }
+  }
+
+  auto it = tasks_waiting_workers_popped_.find(task_id);
+  if (it != tasks_waiting_workers_popped_.end()) {
+    std::get<0>(it->second) = true;
+    return true;
   }
 
   for (auto shapes_it = infeasible_tasks_.begin(); shapes_it != infeasible_tasks_.end();
@@ -845,7 +881,7 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
 void ClusterTaskManager::Dispatch(
     std::shared_ptr<WorkerInterface> worker,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
-    std::shared_ptr<TaskResourceInstances> &allocated_instances, const Task &task,
+    std::shared_ptr<TaskResourceInstances> allocated_instances, const Task &task,
     rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> send_reply_callback) {
   metric_tasks_dispatched_++;
   const auto &task_spec = task.GetTaskSpecification();

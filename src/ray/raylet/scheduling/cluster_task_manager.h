@@ -22,6 +22,9 @@ namespace raylet {
 /// dispatch/spillback and the callback to trigger it.
 typedef std::tuple<Task, rpc::RequestWorkerLeaseReply *, std::function<void(void)>> Work;
 
+// The information of Work instance which waiting worker popped.
+typedef std::tuple<bool, SchedulingClass, Work> WorkWaitingWorkerPopped;
+
 typedef std::function<boost::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
     NodeInfoGetter;
 
@@ -236,6 +239,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// is still queued.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
 
+  /// Map of lease requests that waiting for workers popped.
+  /// Tasks move from dispatch to this map.
+  /// Tasks can also move from this map to dispatch if workers can not be popped.
+  std::unordered_map<TaskID, WorkWaitingWorkerPopped> tasks_waiting_workers_popped_;
+
   /// Tasks waiting for arguments to be transferred locally.
   /// Tasks move from waiting -> dispatch.
   /// Tasks can also move from dispatch -> waiting if one of their arguments is
@@ -308,7 +316,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
-      std::shared_ptr<TaskResourceInstances> &allocated_instances, const Task &task,
+      std::shared_ptr<TaskResourceInstances> allocated_instances, const Task &task,
       rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> send_reply_callback);
 
   void Spillback(const NodeID &spillback_to, const Work &work);
