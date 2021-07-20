@@ -24,6 +24,7 @@ import time
 
 from ray import serve
 from ray.cluster_utils import Cluster
+from ray.serve.utils import logger
 from serve_test_utils import parse_wrk_decoded_stdout
 from subprocess import PIPE
 from typing import Optional
@@ -105,7 +106,7 @@ def warm_up_cluster(num_warmup_iterations: int, http_host: str,
                     http_port: str) -> None:
     for _ in range(num_warmup_iterations):
         resp = requests.get(f"http://{http_host}:{http_port}/echo").text
-        print(resp)
+        logger.info(resp)
         time.sleep(0.5)
 
 
@@ -128,8 +129,8 @@ def run_one_trial(trial_length: str, num_connections, http_host,
     )
     proc.wait()
     out, err = proc.communicate()
-    print(out.decode())
-    print(err.decode())
+    logger.info(out.decode())
+    logger.info(err.decode())
 
     return out.decode()
 
@@ -156,39 +157,40 @@ def main(num_replicas: Optional[int], num_trials: Optional[int],
         num_replicas = num_replicas or DEFAULT_FULL_TEST_NUM_REPLICA
         num_trials = num_trials or DEFAULT_FULL_TEST_NUM_TRIALS
         trial_length = trial_length or DEFAULT_FULL_TEST_TRIAL_LENGTH
-        print(f"\nRunning full test with {num_replicas} replicas, "
-              f"{num_trials} trials that lasts {trial_length} each.. \n")
+        logger.info(f"Running full test with {num_replicas} replicas, "
+                    f"{num_trials} trials that lasts {trial_length} each.. \n")
     else:
         num_replicas = num_replicas or DEFAULT_SMOKE_TEST_NUM_REPLICA
         num_trials = num_trials or DEFAULT_SMOKE_TEST_NUM_TRIALS
         trial_length = trial_length or DEFAULT_SMOKE_TEST_TRIAL_LENGTH
-        print(f"\nRunning smoke test with {num_replicas} replicas, "
-              f"{num_trials} trials that lasts {trial_length} each.. \n")
+        logger.info(f"Running smoke test with {num_replicas} replicas, "
+                    f"{num_trials} trials that lasts {trial_length} each.. \n")
 
     # Choose cluster setup based on user config. Local test uses Cluster()
     # to mock actors that requires # of nodes to be specified, but ray
     # client doesn't need to
     if run_locally:
         num_nodes = int(math.ceil(num_replicas / NUM_CPU_PER_NODE))
-        print(f"\nSetting up local ray cluster with {num_nodes} nodes ....\n")
+        logger.info(
+            f"Setting up local ray cluster with {num_nodes} nodes ....\n")
         serve_client = setup_local_single_node_cluster(num_nodes)
     else:
-        print("\nSetting up anyscale ray cluster .. \n")
+        logger.info("Setting up anyscale ray cluster .. \n")
         serve_client = setup_anyscale_cluster()
 
     http_host = str(serve_client._http_config.host)
     http_port = str(serve_client._http_config.port)
-    print(f"Ray serve http_host: {http_host}, http_port: {http_port}")
+    logger.info(f"Ray serve http_host: {http_host}, http_port: {http_port}")
 
-    print(f"\nDeploying with {num_replicas} target replicas ....\n")
+    logger.info(f"Deploying with {num_replicas} target replicas ....\n")
     deploy_replicas(num_replicas, max_batch_size)
 
-    print("\nWarming up cluster ....\n")
+    logger.info("Warming up cluster ....\n")
     warm_up_cluster(5, http_host, http_port)
 
     final_result = []
     for iteration in range(num_trials):
-        print(f"\nStarting wrk trial # {iteration + 1} ....\n")
+        logger.info(f"Starting wrk trial # {iteration + 1} ....\n")
         # For detailed discussion, see https://github.com/wg/wrk/issues/205
         # TODO:(jiaodong) What's the best number to use here ?
         num_connections = int(num_replicas * DEFAULT_MAX_BATCH_SIZE * 0.75)
@@ -197,7 +199,7 @@ def main(num_replicas: Optional[int], num_trials: Optional[int],
         metrics_dict = parse_wrk_decoded_stdout(decoded_out)
         final_result.append(metrics_dict)
 
-    print(f"\nFinal results: {final_result}\n")
+    logger.info(f"Final results: {final_result}\n")
 
     test_output_json = os.environ.get(
         "TEST_OUTPUT_JSON", "/tmp/single_deployment_1k_noop_replica.json")
