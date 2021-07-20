@@ -18,7 +18,10 @@ class ArrowTable(Generic[T]):
 
 
 # Represents a batch of rows to be stored in the Ray object store.
-Block = Union[List[T], ArrowTable[T]]
+#
+# Block data can be accessed in a uniform way via ``BlockAccessors`` such as
+# ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
+Block = Union[List[T], arrowTable[T]]
 
 
 @DeveloperAPI
