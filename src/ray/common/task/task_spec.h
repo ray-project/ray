@@ -17,7 +17,7 @@ extern "C" {
 }
 
 namespace ray {
-typedef ResourceSet SchedulingClassDescriptor;
+typedef std::pair<ResourceSet, /*runtime_env_hash=*/int64_t> SchedulingClassDescriptor;
 typedef int SchedulingClass;
 
 static inline rpc::ObjectReference GetReferenceForActorDummyObject(
@@ -79,7 +79,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool HasRuntimeEnv() const;
 
-  int GetRuntimeEnvHash() const;
+  int64_t GetRuntimeEnvHash() const;
 
   size_t NumArgs() const;
 
@@ -206,7 +206,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
 
   // Compute a static key that represents the given resource shape.
-  static SchedulingClass GetSchedulingClass(const ResourceSet &sched_cls);
+  static SchedulingClass GetSchedulingClass(const SchedulingClassDescriptor &desc);
 
   // Placement Group bundle that this task or actor creation is associated with.
   const BundleID PlacementGroupBundleId() const;
@@ -230,9 +230,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// multi-threading, we need a mutex to protect it.
   static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
-  static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
+  static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
       GUARDED_BY(mutex_);
-  static std::unordered_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
+  static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
       GUARDED_BY(mutex_);
   static int next_sched_id_ GUARDED_BY(mutex_);
 };
@@ -269,8 +269,8 @@ class WorkerCacheKey {
   /// Get the int-valued hash for this worker's environment, useful for portability in
   /// flatbuffers.
   ///
-  /// \return The hash truncated to an int.
-  int IntHash() const;
+  /// \return The hash truncated to an int64.
+  int64_t IntHash() const;
 
  private:
   /// The environment variable overrides for this worker.

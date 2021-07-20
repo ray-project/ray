@@ -8,9 +8,9 @@
 namespace ray {
 
 absl::Mutex TaskSpecification::mutex_;
-std::unordered_map<SchedulingClassDescriptor, SchedulingClass>
+absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass>
     TaskSpecification::sched_cls_to_id_;
-std::unordered_map<SchedulingClass, SchedulingClassDescriptor>
+absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor>
     TaskSpecification::sched_id_to_cls_;
 int TaskSpecification::next_sched_id_;
 
@@ -22,7 +22,7 @@ SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
   return it->second;
 }
 
-SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_cls) {
+SchedulingClass TaskSpecification::GetSchedulingClass(const SchedulingClassDescriptor &sched_cls) {
   SchedulingClass sched_cls_id;
   absl::MutexLock lock(&mutex_);
   auto it = sched_cls_to_id_.find(sched_cls);
@@ -80,7 +80,7 @@ void TaskSpecification::ComputeResources() {
 
     // Map the scheduling class descriptor to an integer for performance.
     auto sched_cls = GetRequiredPlacementResources();
-    sched_cls_id_ = GetSchedulingClass(sched_cls);
+    sched_cls_id_ = GetSchedulingClass({sched_cls, GetRuntimeEnvHash()});
   }
 }
 
@@ -125,7 +125,10 @@ bool TaskSpecification::HasRuntimeEnv() const {
   return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv() == "");
 }
 
-int TaskSpecification::GetRuntimeEnvHash() const {
+int64_t TaskSpecification::GetRuntimeEnvHash() const {
+  if (!HasRuntimeEnv()) {
+    return 0L;
+  }
   WorkerCacheKey env = {OverrideEnvironmentVariables(), SerializedRuntimeEnv()};
   return env.IntHash();
 }
@@ -412,6 +415,6 @@ std::size_t WorkerCacheKey::Hash() const {
   return hash_;
 }
 
-int WorkerCacheKey::IntHash() const { return (int)Hash(); }
+int64_t WorkerCacheKey::IntHash() const { return (int64_t)Hash(); }
 
 }  // namespace ray
