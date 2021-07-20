@@ -110,6 +110,7 @@ py_test_module_list(
     "test_queue.py",
     "test_ray_debugger.py",
     "test_ray_init.py",
+    "test_ray_shutdown.py",
     "test_unhandled_error.py",
     "test_top_level_api.py",
   ],
