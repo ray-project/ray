@@ -113,7 +113,7 @@ class TrialInfo:
     Attributes:
         trial_name (str): String name of the current trial.
         trial_id (str): trial_id of the trial
-        trial_resources (Resources|PlacementGroupFactor): resources used
+        trial_resources (Resources|PlacementGroupFactory): resources used
             by trial.
     """
 
