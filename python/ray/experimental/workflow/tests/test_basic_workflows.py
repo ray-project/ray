@@ -232,6 +232,7 @@ def test_manager(ray_start_regular_shared, tmp_path):
     # For sync between jobs
     flag_file = tmp_path / "flag"
     flag_file.touch()
+
     @workflow.step
     def long_running(i):
         lock = FileLock(tmp_file)
@@ -242,6 +243,7 @@ def test_manager(ray_start_regular_shared, tmp_path):
             if flag_file.exists():
                 raise ValueError()
         return 100
+
     outputs = [
         long_running.step(i).run_async(workflow_id=str(i)) for i in range(100)
     ]

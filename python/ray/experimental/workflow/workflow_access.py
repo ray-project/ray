@@ -98,7 +98,6 @@ class WorkflowManagementActor:
         self._actor_initialized: Dict[str, ray.ObjectRef] = {}
         self._step_status: Dict[str, Dict[str, common.WorkflowStatus]] = {}
 
-
     def run_or_resume(self, workflow_id: str,
                       storage_url: str) -> ray.ObjectRef:
         """Run or resume a workflow.
