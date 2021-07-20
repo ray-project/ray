@@ -152,9 +152,11 @@ if setup_spec.type == SetupType.RAY:
             "colorful",  # noqa
             "py-spy >= 0.2.0",  # noqa
             "jsonschema",  # noqa
+            "requests",  # noqa
+            "gpustat",  # noqa
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
-        "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
+        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes"],
         "observability": [
             "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
@@ -190,17 +192,14 @@ if setup_spec.type == SetupType.RAY:
         "aioredis",
         "attrs",
         "click >= 7.0",
-        "colorama",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "gpustat",
         "grpcio >= 1.28.1",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
         "protobuf >= 3.15.3",
         "pyyaml",
-        "requests",
         "redis >= 3.5.0",
         "opencensus",
         "prometheus_client >= 0.7.1",
@@ -328,7 +327,7 @@ def build(build_python, build_java, build_cpp):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
-        pip_packages = ["psutil", "setproctitle==1.2.2"]
+        pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
         subprocess.check_call(
             [
                 sys.executable, "-m", "pip", "install", "-q",
