@@ -838,7 +838,6 @@ def test_to_tf_feature_columns(ray_start_regular_shared):
 
 def test_to_torch(ray_start_regular_shared):
     import torch
-    from torch.utils.data import DataLoader
     df1 = pd.DataFrame({
         "one": [1, 2, 3],
         "two": [1.0, 2.0, 3.0],
@@ -853,14 +852,12 @@ def test_to_torch(ray_start_regular_shared):
     df = pd.concat([df1, df2, df3])
     ds = ray.experimental.data.from_pandas(
         [ray.put(df1), ray.put(df2), ray.put(df3)])
-    torchd = ds.to_torch(label_column="label")
-
-    dataloader = DataLoader(torchd, batch_size=3)
+    torchd = ds.to_torch(label_column="label", batch_size=3)
 
     num_epochs = 2
     for _ in range(num_epochs):
         iterations = []
-        for batch in iter(dataloader):
+        for batch in iter(torchd):
             iterations.append(torch.cat((*batch[0], batch[1]), axis=1).numpy())
         combined_iterations = np.concatenate(iterations)
         assert np.array_equal(np.sort(df.values), np.sort(combined_iterations))
@@ -868,7 +865,6 @@ def test_to_torch(ray_start_regular_shared):
 
 def test_to_torch_feature_columns(ray_start_regular_shared):
     import torch
-    from torch.utils.data import DataLoader
     df1 = pd.DataFrame({
         "one": [1, 2, 3],
         "two": [1.0, 2.0, 3.0],
@@ -883,12 +879,10 @@ def test_to_torch_feature_columns(ray_start_regular_shared):
     df = pd.concat([df1, df2, df3]).drop("two", axis=1)
     ds = ray.experimental.data.from_pandas(
         [ray.put(df1), ray.put(df2), ray.put(df3)])
-    torchd = ds.to_torch("label", feature_columns=["one"])
+    torchd = ds.to_torch("label", feature_columns=["one"], batch_size=3)
     iterations = []
 
-    dataloader = DataLoader(torchd, batch_size=3)
-
-    for batch in iter(dataloader):
+    for batch in iter(torchd):
         iterations.append(torch.cat((*batch[0], batch[1]), axis=1).numpy())
     combined_iterations = np.concatenate(iterations)
     assert np.array_equal(df.values, combined_iterations)
