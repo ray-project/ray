@@ -11,18 +11,14 @@ from ray.util.annotations import DeveloperAPI
 T = TypeVar("T")
 
 
-@DeveloperAPI
-class Block(Generic[T]):
-    """Represents a batch of rows to be stored in the Ray object store.
-
-    Blocks can be accessed in a uniform way via ``BlockAccessors`` such as
-    ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
-
-    This class is a dummy type that cannot be constructed. It stands in for the
-    real type ``Union[pyarrow.Table, List[T]] (Generic[T])`` which cannot be
-    expressed with the current Python type rules.
-    """
+# TODO(ekl) this is a dummy generic ref type for documentation purposes only.
+# It adds Generic[T] to pyarrow.Table so we can define Block[T] below.
+class ArrowTable(Generic[T]):
     pass
+
+
+# Represents a batch of rows to be stored in the Ray object store.
+Block = Union[List[T], ArrowTable[T]]
 
 
 @DeveloperAPI
