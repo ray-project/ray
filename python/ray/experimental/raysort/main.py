@@ -97,9 +97,8 @@ def get_args(*args, **kwargs):
         "tasks to run", "if no task is specified, will run all tasks")
     tasks = ["generate_input", "sort", "validate_output"]
     for task in tasks:
-        tasks_group.add_argument(f"--{task}",
-                                 action="store_true",
-                                 help=f"run task {task}")
+        tasks_group.add_argument(
+            f"--{task}", action="store_true", help=f"run task {task}")
 
     args = parser.parse_args(*args, **kwargs)
     # Derive additional arguments.
@@ -213,8 +212,8 @@ def mapper(args: Args, boundaries: List[int], path: Path) -> List[np.ndarray]:
     logging_utils.init()
 
     if args.skip_input:
-        part = np.frombuffer(np.random.bytes(args.input_part_size),
-                             dtype=np.uint8)
+        part = np.frombuffer(
+            np.random.bytes(args.input_part_size), dtype=np.uint8)
     else:
         part = _load_partition(path)
 
@@ -300,10 +299,11 @@ def final_merge(args: Args, reducer_id: PartId,
 
     @ray.remote(num_cpus=0, resources={"worker": 1e-3})
     def _load_block_chunk(pinfo: PartInfo, d: int) -> np.ndarray:
-        return np.fromfile(pinfo.path,
-                           dtype=np.uint8,
-                           count=args.reducer_input_chunk,
-                           offset=d * args.reducer_input_chunk)
+        return np.fromfile(
+            pinfo.path,
+            dtype=np.uint8,
+            count=args.reducer_input_chunk,
+            offset=d * args.reducer_input_chunk)
 
     block_chunks = [
         _load_block_chunk.remote(pinfo, 0) for pinfo in merged_parts
@@ -348,8 +348,8 @@ def sort_main(args: Args):
         "memory": args.input_part_size * 2,
     }
     mapper_results = None
-    merge_results = np.empty((args.num_merged_mappers, args.num_reducers),
-                             dtype=object)
+    merge_results = np.empty(
+        (args.num_merged_mappers, args.num_reducers), dtype=object)
     merge_concurrency = args.merge_concurrency * args.num_workers
     merge_count = 0
 
@@ -359,8 +359,9 @@ def sort_main(args: Args):
             return
         num_extra_tasks = merge_count * args.num_reducers - merge_concurrency
         if num_extra_tasks > 0:
-            ray.wait([f for f in merge_results.flatten() if f is not None],
-                     num_returns=num_extra_tasks)
+            ray.wait(
+                [f for f in merge_results.flatten() if f is not None],
+                num_returns=num_extra_tasks)
         merge_results[merge_count, :] = [
             merge_mapper_blocks.options(placement_group=pgs[r]).remote(
                 args, r, merge_count, *mapper_results[:, r].tolist())
@@ -372,8 +373,8 @@ def sort_main(args: Args):
         m = part_id % args.merge_factor
         if m == 0:
             submit_merge_tasks()
-            mapper_results = np.empty((args.merge_factor, args.num_reducers),
-                                      dtype=object)
+            mapper_results = np.empty(
+                (args.merge_factor, args.num_reducers), dtype=object)
         if not args.skip_input:
             opt.update(_node_res(node))
         mapper_results[m, :] = mapper.options(**opt).remote(
@@ -393,6 +394,8 @@ def sort_main(args: Args):
         with open(constants.OUTPUT_MANIFEST_FILE, "w") as fout:
             writer = csv.writer(fout)
             writer.writerows(reducer_results)
+
+    logging.info(ray.internal.internal_api.memory_summary(stats_only=True))
 
 
 # ------------------------------------------------------------
