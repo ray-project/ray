@@ -378,6 +378,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # Default policy mapping fn is to always return DEFAULT_POLICY_ID,
         # independent on the agent ID and the episode passed in.
         self.policy_mapping_fn = lambda aid, ep, **kwargs: DEFAULT_POLICY_ID
+        # If provided, set it here.
         self.set_policy_mapping_fn(policy_mapping_fn)
 
         self.env_creator: Callable[[EnvContext], EnvType] = env_creator

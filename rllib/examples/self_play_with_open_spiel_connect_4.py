@@ -11,7 +11,8 @@ callback. We simply measure the win rate of "main" vs the opponent
 achieved rewards in the episodes in the train batch. If this win rate
 reaches some configurable threshold, we add a new policy to
 the policy map (a frozen copy of the current "main" one) and change the
-policy_mapping_fn to make new matches of "main" vs the just added one.
+policy_mapping_fn to make new matches of "main" vs any of the previous
+versions of "main" (including the just added one).
 
 After training for n iterations, a configurable number of episodes can
 be played by the user against the "main" agent on the command line.
@@ -33,7 +34,6 @@ from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
 
-OBS_SPACE = ACTION_SPACE = None
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -139,9 +139,6 @@ class SelfPlayCallback(DefaultCallbacks):
             new_policy = trainer.add_policy(
                 policy_id=new_pol_id,
                 policy_cls=type(trainer.get_policy("main")),
-                observation_space=OBS_SPACE,
-                action_space=ACTION_SPACE,
-                config={},
                 policy_mapping_fn=policy_mapping_fn,
             )
 
@@ -154,7 +151,7 @@ class SelfPlayCallback(DefaultCallbacks):
             # to all the remote workers as well.
             trainer.workers.sync_weights()
         else:
-            print("not good enough; will keep learning")
+            print("not good enough; will keep learning ...")
 
 
 if __name__ == "__main__":

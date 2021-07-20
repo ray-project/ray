@@ -46,9 +46,9 @@ from ray.rllib.examples.self_play_with_open_spiel_connect_4 import \
     ask_user_for_action
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
+from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
 
-OBS_SPACE = ACTION_SPACE = None
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -76,7 +76,7 @@ parser.add_argument(
 parser.add_argument(
     "--win-rate-threshold",
     type=float,
-    default=0.95,
+    default=0.85,
     help="Win-rate at which we setup another opponent by freezing the "
     "current main policy and playing against a uniform distribution "
     "of previously frozen 'main's from here on.")
@@ -100,6 +100,7 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
         # Set of currently trainable policies in the league.
         self.trainable_policies = \
             self.main_policies | self.main_exploiters | self.league_exploiters
+        self.non_trainable_policies = set()
 
     def on_train_result(self, *, trainer, result, **kwargs):
         # Get the win rate for the train batch.
@@ -110,8 +111,11 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
             mo = re.match("^policy_(.+)_reward", policy_id)
             if mo is None:
                 continue
-
             policy_id = mo.group(1)
+            if policy_id == "random":
+                continue
+
+            # Calculate this policy's win rate.
             won = 0
             for r in rew:
                 if r > 0.0:  # win = 1.0; loss = -1.0
@@ -119,39 +123,63 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
             win_rate = won / len(rew)
             print(f"Iter={trainer.iteration} {policy_id}'s win-rate={win_rate} -> ", end="")
 
-            # If win rate is good -> Snapshot current policy and play against
-            # it next, keeping the snapshot fixed and only improving the "main"
-            # policy.
+            # If win rate is good -> Snapshot current policy and decide,
+            # whether to freeze the copy or not.
             if win_rate > args.win_rate_threshold:
+                is_main = re.match("^main_\\d+$", policy_id)
+                keep_training = False if is_main else np.random.choice([True, False], p=[0.3, 0.7])
                 if policy_id in self.main_policies:
                     new_pol_id = re.sub("_\\d+$", f"_{len(self.main_policies)}", policy_id)
+                    self.main_policies.add(new_pol_id)
                 elif policy_id in self.main_exploiters:
                     new_pol_id = re.sub("_\\d+$", f"_{len(self.main_exploiters)}", policy_id)
+                    self.main_exploiters.add(new_pol_id)
                 else:
                     new_pol_id = re.sub("_\\d+$", f"_{len(self.league_exploiters)}", policy_id)
+                    self.league_exploiters.add(new_pol_id)
+
+                if keep_training:
+                    self.trainable_policies.add(new_pol_id)
+                else:
+                    self.non_trainable_policies.add(new_pol_id)
+
                 print(f"Adding new opponent to the mix ({new_pol_id}).")
 
                 # Update our mapping function accordingly.
                 def policy_mapping_fn(agent_id, episode, **kwargs):
+
                     # Pick, whether this is ...
                     type_ = random.choice([1, 2])
+
                     # 1) A league exploiter vs any match.
                     if type_ == 1:
-                        # TODO: main_exploiters should not be updated when playing against league exploiters
-                        return "league_exploiter_0" if episode.episode_id % 2 == agent_id \
-                            else random.choice(["main_0", "main_exploiter_0"])
-                    # 2) Main exploiter vs main.
+                        league_exploiter = "league_exploiter_" + str(np.random.choice(list(range(len(self.league_exploiters)))))
+                        # League exploiter is frozen: Play against a trainable policy.
+                        if league_exploiter not in self.trainable_policies:
+                            opponent = np.random.choice(self.trainable_policies)
+                        # League exploiter is trainable: Play against any other policy.
+                        else:
+                            opponent = np.random.choice(list(self.non_trainable_policies | self.trainable_policies))
+                        return league_exploiter if episode.episode_id % 2 == agent_id \
+                            else opponent
+
+                    # 2) Main exploiter vs some main.
                     else:
-                        return "main_0" if episode.episode_id % 2 == agent_id \
-                            else "main_exploiter_0"
+                        main_exploiter = "main_exploiter_" + str(np.random.choice(list(range(len(self.main_exploiters)))))
+                        # Main exploiter is frozen: Play against the one main policy.
+                        if main_exploiter not in self.trainable_policies:
+                            main = np.random.choice([t for t in self.trainable_policies if re.match("^main_\\d+$", t)])
+                        # Main exploiter is trainable: Play against any main.
+                        else:
+                            main = np.random.choice([t for t in (self.non_trainable_policies | self.trainable_policies) if re.match("^main_\\d+$", t)])
+                        return main_exploiter if episode.episode_id % 2 == agent_id \
+                            else main
 
                 new_policy = trainer.add_policy(
                     policy_id=new_pol_id,
                     policy_cls=type(trainer.get_policy(policy_id)),
-                    observation_space=OBS_SPACE,
-                    action_space=ACTION_SPACE,
-                    config={},
                     policy_mapping_fn=policy_mapping_fn,
+                    policies_to_train=self.trainable_policies,
                 )
 
                 # Set the weights of the new policy to the main policy.
@@ -163,7 +191,7 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
                 # remote workers as well.
                 trainer.workers.sync_weights(policies=[new_pol_id])
             else:
-                print("Not good enough; will keep learning ...")
+                print("not good enough; will keep learning ...")
 
 
 if __name__ == "__main__":
@@ -177,17 +205,9 @@ if __name__ == "__main__":
                  lambda _: OpenSpielEnv(pyspiel.load_game("markov_soccer")))
 
     def policy_mapping_fn(agent_id, episode, **kwargs):
-        # Pick, whether this is ...
-        type_ = random.choice([1, 2])
-        # 1) A league exploiter vs any match.
-        if type_ == 1:
-            #TODO: main_exploiters should not be updated when playing against league exploiters
-            return "league_exploiter_0" if episode.episode_id % 2 == agent_id\
-                else random.choice(["main_0", "main_exploiter_0"])
-        # 2) Main exploiter vs main.
-        else:
-            return "main_0" if episode.episode_id % 2 == agent_id \
-                else "main_exploiter_0"
+        # Pick any learning policy vs random at first.
+        return random.choice(["league_exploiter_0", "main_exploiter_0", "main_0"]) if episode.episode_id % 2 == agent_id\
+            else "random"
 
     config = {
         "env": "markov_soccer",
@@ -200,13 +220,16 @@ if __name__ == "__main__":
             # custom callback defined above (`LeagueBasedSelfPlayCallback`).
             "policies": {
                 # Our main policy, we'd like to optimize.
-                "main_0",
+                "main_0": PolicySpec(),
                 # Initial main exploiter.
-                "main_exploiter_0",
+                "main_exploiter_0": PolicySpec(),
                 # Initial league exploiter.
-                "league_exploiter_0",
+                "league_exploiter_0": PolicySpec(),
+                # Random initial opponent.
+                "random": PolicySpec(policy_class=RandomPolicy),
             },
             "policy_mapping_fn": policy_mapping_fn,
+            "policies_to_train": ["main_0", "main_exploiter_0", "league_exploiter_0"],
         },
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
