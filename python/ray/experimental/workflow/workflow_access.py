@@ -12,7 +12,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
+# The name contains the namespace "workflow".
+MANAGEMENT_ACTOR_NAME = "workflow/WorkflowManagementActor"
 
 
 class WorkflowExecutionError(Exception):

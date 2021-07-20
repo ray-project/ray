@@ -42,8 +42,7 @@ def init_virtual_actor(x):
 @pytest.mark.parametrize(
     "ray_start_regular",
     [{
-        "namespace": "workflow",
-        "num_cpus": 4  # We need more CPUs for concurrency
+        "num_cpus": 4  # We need more CPUs, otherwise 'create()' blocks 'get()'
     }],
     indirect=True)
 def test_readonly_actor(ray_start_regular):
@@ -91,7 +90,6 @@ class SlowInit:
 @pytest.mark.parametrize(
     "ray_start_regular",
     [{
-        "namespace": "workflow",
         "num_cpus": 4  # We need more CPUs, otherwise 'create()' blocks 'get()'
     }],
     indirect=True)

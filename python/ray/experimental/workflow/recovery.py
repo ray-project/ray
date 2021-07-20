@@ -91,8 +91,11 @@ def _construct_resume_workflow_from_step(
         else:
             input_workflows.append(None)
             instant_workflow_outputs[i] = r
-    recovery_workflow: Workflow = _recover_workflow_step.step(
-        result.object_refs, input_workflows, instant_workflow_outputs)
+    recovery_workflow: Workflow = _recover_workflow_step.options(
+        step_max_retries=result.step_max_retries,
+        catch_exceptions=result.catch_exceptions,
+        **result.ray_options).step(result.object_refs, input_workflows,
+                                   instant_workflow_outputs)
     recovery_workflow._step_id = step_id
     return recovery_workflow
 
