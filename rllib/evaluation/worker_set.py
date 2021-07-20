@@ -87,6 +87,15 @@ class WorkerSet:
                     e[0]: (getattr(e[1], "original_space", e[1]), e[2])
                     for e in remote_spaces
                 }
+                # Try to add the actual env's obs/action spaces.
+                try:
+                    env_spaces = ray.get(self.remote_workers(
+                    )[0].foreach_env.remote(
+                        lambda env: (env.observation_space, env.action_space))
+                                         )[0]
+                    spaces["__env__"] = env_spaces
+                except Exception:
+                    pass
             else:
                 spaces = None
 

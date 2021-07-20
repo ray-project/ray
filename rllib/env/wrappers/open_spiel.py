@@ -48,17 +48,18 @@ class OpenSpielEnv(MultiAgentEnv):
 
             # Compile rewards dict.
             rewards = {ag: r for ag, r in enumerate(self.state.returns())}
-            rewards[curr_player] += penalty
         # Simultaneous game.
         else:
             assert self.state.current_player() == -2
             # Apparently, this works, even if one or more actions are invalid.
-            self.state.apply_actions([action[ag] for ag in range(self.num_agents)])
+            self.state.apply_actions(
+                [action[ag] for ag in range(self.num_agents)])
 
         # Now that we have applied all actions, get the next obs.
         obs = self._get_obs()
 
-        # Compile rewards dict.
+        # Compile rewards dict and add the accumulated penalties
+        # (for taking invalid actions).
         rewards = {ag: r for ag, r in enumerate(self.state.returns())}
         for ag, penalty in penalties.items():
             rewards[ag] += penalty

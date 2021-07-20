@@ -34,7 +34,6 @@ from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
@@ -48,6 +47,11 @@ parser.add_argument(
     default=None,
     help="Full path to a checkpoint file for restoring a previously saved "
     "Trainer state.")
+parser.add_argument(
+    "--env",
+    type=str,
+    default="connect_four",
+    choices=["markov_soccer", "connect_four"])
 parser.add_argument(
     "--stop-iters",
     type=int,
@@ -68,7 +72,7 @@ parser.add_argument(
 parser.add_argument(
     "--num-episodes-human-play",
     type=int,
-    default=2,
+    default=10,
     help="How many episodes to play against the user on the command "
     "line after training has finished.")
 args = parser.parse_args()
@@ -157,8 +161,8 @@ class SelfPlayCallback(DefaultCallbacks):
 if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
 
-    register_env("connect_four",
-                 lambda _: OpenSpielEnv(pyspiel.load_game("connect_four")))
+    register_env("open_spiel_env",
+                 lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
 
     def policy_mapping_fn(agent_id, episode, **kwargs):
         # agent_id = [0|1] -> policy depends on episode ID
@@ -167,7 +171,7 @@ if __name__ == "__main__":
         return "main" if episode.episode_id % 2 == agent_id else "random"
 
     config = {
-        "env": "connect_four",
+        "env": "open_spiel_env",
         "callbacks": SelfPlayCallback,
         "model": {
             "fcnet_hiddens": [512, 512],
@@ -222,12 +226,15 @@ if __name__ == "__main__":
         if args.from_checkpoint:
             trainer.restore(args.from_checkpoint)
         else:
-            trainer.restore(results.get_last_checkpoint())
+            checkpoint = results.get_last_checkpoint()
+            if not checkpoint:
+                raise ValueError("No last checkpoint found in results!")
+            trainer.restore(checkpoint)
 
         # Play from the command line against the trained agent
         # in an actual (non-RLlib-wrapped) open-spiel env.
         human_player = 1
-        env = Environment("connect_four")
+        env = Environment(args.env)
 
         while num_episodes < args.num_episodes_human_play:
             print("You play as {}".format("o" if human_player else "x"))
