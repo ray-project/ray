@@ -50,7 +50,7 @@ class StepInspectResult:
 
 
 class WorkflowStorage:
-    """Access workflow in storage. This is a high-level function,
+    """Access workflow in storage. This is a higher-level abstraction,
     which does not care about the underlining storage implementation."""
 
     def __init__(self,

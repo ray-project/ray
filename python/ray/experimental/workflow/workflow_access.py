@@ -193,6 +193,17 @@ class WorkflowManagementActor:
         self._workflow_outputs.pop(workflow_id, None)
 
 
+def init_management_actor() -> None:
+    """Initialize WorkflowManagementActor"""
+    try:
+        ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    except ValueError:
+        logger.info("Initializing workflow manager...")
+        # the actor does not exist
+        WorkflowManagementActor.options(
+            name=MANAGEMENT_ACTOR_NAME, lifetime="detached").remote()
+
+
 def get_or_create_management_actor() -> "ActorHandle":
     """Get or create WorkflowManagementActor"""
     # TODO(suquark): We should not get the actor everytime. We also need to
@@ -203,6 +214,9 @@ def get_or_create_management_actor() -> "ActorHandle":
         actor = ray.get_actor(MANAGEMENT_ACTOR_NAME)
     except ValueError:
         # the actor does not exist
+        logger.warning("Cannot access workflow manager. It could because "
+                       "the workflow manager exited unexpectedly. A new "
+                       "workflow manager is being created.")
         actor = WorkflowManagementActor.options(
             name=MANAGEMENT_ACTOR_NAME, lifetime="detached").remote()
     return actor
