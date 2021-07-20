@@ -211,9 +211,20 @@ def read_parquet(paths: Union[str, List[str]],
     metadata: List[BlockMetadata] = []
     for pieces in nonempty_tasks:
         calls.append(lambda pieces=pieces: gen_read.remote(pieces))
-        piece_metadata = [p.metadata for p in pieces]
-        metadata.append(
-            BlockMetadata(
+        input_files = [p.path for p in pieces]
+        piece_metadata = []
+        for p in pieces:
+            try:
+                piece_metadata.append(p.metadata)
+            except AttributeError:
+                block_metadata = BlockMetadata(
+                    num_rows=None,
+                    size_bytes=None,
+                    schema=None,
+                    input_files=input_files)
+                break
+        else:
+            block_metadata = BlockMetadata(
                 num_rows=sum(m.num_rows for m in piece_metadata),
                 size_bytes=sum(
                     sum(
@@ -221,7 +232,8 @@ def read_parquet(paths: Union[str, List[str]],
                         for i in builtins.range(m.num_row_groups))
                     for m in piece_metadata),
                 schema=piece_metadata[0].schema.to_arrow_schema(),
-                input_files=[p.path for p in pieces]))
+                input_files=[p.path for p in pieces])
+        metadata.append(block_metadata)
 
     return Dataset(LazyBlockList(calls, metadata))
 
