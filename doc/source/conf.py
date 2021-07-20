@@ -108,73 +108,49 @@ def import_or_mock(module):
         sys.modules[module] = ChildClassMock()
 
 
-xgb_modules = [
+xgb_lgbm_modules = [
     "xgboost", "xgboost.core", "xgboost.callback", "xgboost.sklearn",
-    "xgboost_ray"
+    "xgboost_ray", "lightgbm.main", "lightgbm.callback", "lightgbm.compat",
+    "lightgbm_ray"
 ]
-for xgb_mod in xgb_modules:
-    import_or_mock(xgb_mod)
+for module in xgb_lgbm_modules:
+    import_or_mock(module)
 
-# replace refs in XGBoost documentation XGBoost-Ray inherits from
-sys.modules["xgboost_ray"].RayXGBClassifier.fit.__doc__ = sys.modules[
-    "xgboost_ray"].RayXGBClassifier.fit.__doc__.replace(
-        ":ref:`callback_api`", "Callback API")
-sys.modules["xgboost_ray"].RayXGBRegressor.fit.__doc__ = sys.modules[
-    "xgboost_ray"].RayXGBRegressor.fit.__doc__.replace(":ref:`callback_api`",
-                                                       "Callback API")
+# replace docstring refs in XGBoost documentation XGBoost-Ray inherits from
+# if this is not done, an error during make will be thrown, as there is no
+# such ref in ray docs
+replaces_callback_api = [
+    sys.modules["xgboost_ray"].RayXGBClassifier.fit,
+    sys.modules["xgboost_ray"].RayXGBRegressor.fit
+]
+for m in replaces_callback_api:
+    m.__doc__ = m.__doc__.replace(":ref:`callback_api`", "Callback API")
 
 # fix "more than one target found for cross-reference 'RayParams'"
-sys.modules["xgboost_ray"].train.__doc__ = sys.modules[
-    "xgboost_ray"].train.__doc__.replace("RayParams", "xgboost_ray.RayParams")
-sys.modules["xgboost_ray"].predict.__doc__ = sys.modules[
-    "xgboost_ray"].predict.__doc__.replace("RayParams",
-                                           "xgboost_ray.RayParams")
-sys.modules["xgboost_ray"].RayXGBClassifier.fit.__doc__ = sys.modules[
-    "xgboost_ray"].RayXGBClassifier.fit.__doc__.replace(
-        "RayParams", "xgboost_ray.RayParams")
-sys.modules["xgboost_ray"].RayXGBClassifier.predict.__doc__ = sys.modules[
-    "xgboost_ray"].RayXGBClassifier.predict.__doc__.replace(
-        "RayParams", "xgboost_ray.RayParams")
-sys.modules[
-    "xgboost_ray"].RayXGBClassifier.predict_proba.__doc__ = sys.modules[
-        "xgboost_ray"].RayXGBClassifier.predict_proba.__doc__.replace(
-            "RayParams", "xgboost_ray.RayParams")
-sys.modules["xgboost_ray"].RayXGBRegressor.fit.__doc__ = sys.modules[
-    "xgboost_ray"].RayXGBRegressor.fit.__doc__.replace(
-        "RayParams", "xgboost_ray.RayParams")
-sys.modules["xgboost_ray"].RayXGBRegressor.predict.__doc__ = sys.modules[
-    "xgboost_ray"].RayXGBRegressor.predict.__doc__.replace(
-        "RayParams", "xgboost_ray.RayParams")
-
-lgbm_modules = [
-    "lightgbm.main", "lightgbm.callback", "lightgbm.compat", "lightgbm_ray"
+# as both lightgbm-ray and xgboost-ray have classes with the same
+# names, we need to refer to the explicitly in ray docs, otherwise
+# make will throw an error
+replaces_ray_params = [
+    sys.modules["xgboost_ray"].train, sys.modules["xgboost_ray"].predict,
+    sys.modules["xgboost_ray"].RayXGBClassifier.fit,
+    sys.modules["xgboost_ray"].RayXGBClassifier.predict,
+    sys.modules["xgboost_ray"].RayXGBClassifier.predict_proba,
+    sys.modules["xgboost_ray"].RayXGBRegressor.fit,
+    sys.modules["xgboost_ray"].RayXGBRegressor.predict
 ]
-for lgbm_module in lgbm_modules:
-    import_or_mock(lgbm_module)
+for m in replaces_ray_params:
+    m.__doc__ = m.__doc__.replace("RayParams", "xgboost_ray.RayParams")
 
-# fix "more than one target found for cross-reference 'RayParams'"
-sys.modules["lightgbm_ray"].train.__doc__ = sys.modules[
-    "lightgbm_ray"].train.__doc__.replace("RayParams",
-                                          "lightgbm_ray.RayParams")
-sys.modules["lightgbm_ray"].predict.__doc__ = sys.modules[
-    "lightgbm_ray"].predict.__doc__.replace("RayParams",
-                                            "lightgbm_ray.RayParams")
-sys.modules["lightgbm_ray"].RayLGBMClassifier.fit.__doc__ = sys.modules[
-    "lightgbm_ray"].RayLGBMClassifier.fit.__doc__.replace(
-        "RayParams", "lightgbm_ray.RayParams")
-sys.modules["lightgbm_ray"].RayLGBMClassifier.predict.__doc__ = sys.modules[
-    "lightgbm_ray"].RayLGBMClassifier.predict.__doc__.replace(
-        "RayParams", "lightgbm_ray.RayParams")
-sys.modules[
-    "lightgbm_ray"].RayLGBMClassifier.predict_proba.__doc__ = sys.modules[
-        "lightgbm_ray"].RayLGBMClassifier.predict_proba.__doc__.replace(
-            "RayParams", "lightgbm_ray.RayParams")
-sys.modules["lightgbm_ray"].RayLGBMRegressor.fit.__doc__ = sys.modules[
-    "lightgbm_ray"].RayLGBMRegressor.fit.__doc__.replace(
-        "RayParams", "lightgbm_ray.RayParams")
-sys.modules["lightgbm_ray"].RayLGBMRegressor.predict.__doc__ = sys.modules[
-    "lightgbm_ray"].RayLGBMRegressor.predict.__doc__.replace(
-        "RayParams", "lightgbm_ray.RayParams")
+replaces_ray_params = [
+    sys.modules["lightgbm_ray"].train, sys.modules["lightgbm_ray"].predict,
+    sys.modules["lightgbm_ray"].RayLGBMClassifier.fit,
+    sys.modules["lightgbm_ray"].RayLGBMClassifier.predict,
+    sys.modules["lightgbm_ray"].RayLGBMClassifier.predict_proba,
+    sys.modules["lightgbm_ray"].RayLGBMRegressor.fit,
+    sys.modules["lightgbm_ray"].RayLGBMRegressor.predict
+]
+for m in replaces_ray_params:
+    m.__doc__ = m.__doc__.replace("RayParams", "lightgbm_ray.RayParams")
 
 
 class SimpleClass(object):
