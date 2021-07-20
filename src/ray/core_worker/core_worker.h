@@ -186,7 +186,7 @@ struct CoreWorkerOptions {
   /// TODO(sang): Use this method for Java and cpp frontend too.
   bool connect_on_start;
   /// The hash of the runtime env for this worker.
-  int runtime_env_hash;
+  int64_t runtime_env_hash;
   /// The PID of the process for setup worker runtime env.
   pid_t worker_shim_pid;
 };

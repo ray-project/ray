@@ -49,7 +49,7 @@ class MockWorkerPool : public WorkerPoolInterface {
     num_pops++;
     const WorkerCacheKey env = {task_spec.OverrideEnvironmentVariables(),
                                 task_spec.SerializedRuntimeEnv()};
-    const int runtime_env_hash = env.IntHash();
+    const int64_t runtime_env_hash = env.IntHash();
     std::shared_ptr<WorkerInterface> worker = nullptr;
 
     for (auto it = workers.begin(); it != workers.end(); it++) {
@@ -322,7 +322,7 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
   // Push a worker that can only run task A.
   const WorkerCacheKey env_A = {/*override_environment_variables=*/{},
                                 serialized_runtime_env_A};
-  const int runtime_env_hash_A = env_A.IntHash();
+  const int64_t runtime_env_hash_A = env_A.IntHash();
   std::shared_ptr<MockWorker> worker_A =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash_A);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker_A));

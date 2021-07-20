@@ -191,7 +191,7 @@ class WorkerPoolTest : public ::testing::Test {
       Process proc, const Language &language = Language::PYTHON,
       const JobID &job_id = JOB_ID,
       const rpc::WorkerType worker_type = rpc::WorkerType::WORKER,
-      int runtime_env_hash = 0) {
+      int64_t runtime_env_hash = 0) {
     std::function<void(ClientConnection &)> client_handler =
         [this](ClientConnection &client) { HandleNewClient(client); };
     std::function<void(std::shared_ptr<ClientConnection>, int64_t,
@@ -308,7 +308,7 @@ class WorkerPoolTest : public ::testing::Test {
     for (auto it = processes.begin(); it != processes.end(); ++it) {
       auto pushed_it = pushedProcesses_.find(it->first);
       if (pushed_it == pushedProcesses_.end()) {
-        int runtime_env_hash = 0;
+        int64_t runtime_env_hash = 0;
         // Parses runtime env hash to make sure the pushed workers can be popped out.
         for (auto command_args : it->second) {
           std::string runtime_env_key = "--runtime-env-hash=";
@@ -1161,7 +1161,7 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
 
   const WorkerCacheKey env1 = {/*override_environment_variables=*/{},
                                "mock_runtime_env_1"};
-  const int runtime_env_hash_1 = env1.IntHash();
+  const int64_t runtime_env_hash_1 = env1.IntHash();
 
   // Try to pop worker for task with runtime env 1.
   auto popped_worker = worker_pool_->PopWorker(task_spec_1);

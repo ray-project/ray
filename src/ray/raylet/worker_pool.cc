@@ -153,7 +153,7 @@ void WorkerPool::SetAgentManager(std::shared_ptr<AgentManager> agent_manager) {
 
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
-    const std::vector<std::string> &dynamic_options, const int runtime_env_hash,
+    const std::vector<std::string> &dynamic_options, const int64_t runtime_env_hash,
     const std::string &serialized_runtime_env,
     std::unordered_map<std::string, std::string> override_environment_variables,
     const std::string &serialized_runtime_env_context) {
@@ -871,7 +871,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   auto start_worker_process_fn =
       [this](const TaskSpecification &task_spec, State &state,
              std::vector<std::string> dynamic_options, bool dedicated,
-             const int runtime_env_hash, const std::string &serialized_runtime_env,
+             const int64_t runtime_env_hash, const std::string &serialized_runtime_env,
              const std::string &serialized_runtime_env_context) -> Process {
     Process proc = StartWorkerProcess(
         task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(),
@@ -940,7 +940,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     // Find an available worker which is already assigned to this job and which has
     // the specified runtime env.
     // Try to pop the most recently pushed worker.
-    const int runtime_env_hash = GetRuntimeEnvHash(task_spec);
+    const int64_t runtime_env_hash = GetRuntimeEnvHash(task_spec);
     for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
          it++) {
       if (task_spec.GetLanguage() != it->first->GetLanguage() ||

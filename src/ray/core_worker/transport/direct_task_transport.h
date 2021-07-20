@@ -48,7 +48,7 @@ typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &i
 // be aware of the actor and is not able to manage it.  It is also keyed on
 // RuntimeEnvHash, because a worker can only run a task if the worker's RuntimeEnvHash
 // matches the RuntimeEnvHash required by the task spec.
-typedef int RuntimeEnvHash;
+typedef int64_t RuntimeEnvHash;
 using SchedulingKey =
     std::tuple<SchedulingClass, std::vector<ObjectID>, ActorID, RuntimeEnvHash>;
 
