@@ -1,7 +1,7 @@
 import logging
 import re
 import time
-from typing import Union, Optional
+from typing import List, Tuple, Union, Optional
 
 import ray
 
@@ -142,3 +142,21 @@ def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
             pass
         if output is not None:
             return WorkflowStatus.RUNNING
+
+def list_all(status: Optional[WorkflowStatus]) -> List[Tuple[str, WorkflowStatus]]:
+    runnings = []
+    if status in (WorkflowStatus.RUNNING, None):
+        try:
+            workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+            wids = ray.get(workflow_manager.get_running_workflow.remote())
+            runnings = [(wid, WorkflowStatus.RUNNING) for wid in wids]
+        except ValueError:
+            pass
+    if status == WorkflowStatus.RUNNING:
+        return runnings
+    runnings = dict(runnings)
+    from ray.experimental.workflow.workflow_storage import WorkflowStorage
+    store = WorkflowStorage(get_global_storage())
+    all_workflow = [(wid, status) for store.list_workflow()]
+    if status is None:
+        return all_workflow

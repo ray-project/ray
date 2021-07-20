@@ -25,8 +25,6 @@ if TYPE_CHECKING:
 
 @unique
 class WorkflowStatus(str, Enum):
-    # The workflow is created
-    CREATED = "CREATED"
     # There is at least a remote task running in ray cluster
     RUNNING = "RUNNING"
     # It got canceled and can't be resumed later
@@ -116,6 +114,7 @@ class Workflow:
         """
         if self.executed:
             return self._output
+
         workflow_outputs = [w.execute() for w in self._input_workflows]
         # NOTE: Input placeholder is only a placeholder. It only can be
         # deserialized under a proper serialization context. Directly

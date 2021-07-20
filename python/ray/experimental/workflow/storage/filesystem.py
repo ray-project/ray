@@ -288,14 +288,16 @@ class FilesystemStorageImpl(Storage):
     async def load_workflow_meta(self, workflow_id: str) -> Dict[str, Any]:
         file_path = self._workflow_root_dir / workflow_id / WORKFLOW_META
         try:
-            with _open_atomic(file_path, "wb") as f:
+            with _open_atomic(file_path) as f:
                 json.load(f)
+        except FileNotFoundError:
+            return None
         except Exception as e:
             raise DataLoadError from e
 
     async def list_workflow(self) -> List[str]:
         try:
-            return list(self._workflow_root_dir.iterdir())
+            return [path.name for path in self._workflow_root_dir.iterdir()]
         except Exception as e:
             raise DataLoadError from e
 

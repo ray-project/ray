@@ -113,22 +113,19 @@ def resume_workflow_job(workflow_id: str,
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
-    reader = workflow_storage.WorkflowStorage(workflow_id, store)
+    wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
     try:
-        entrypoint_step_id: StepID = reader.get_entrypoint_step_id()
-        r = _construct_resume_workflow_from_step(reader, entrypoint_step_id)
+        entrypoint_step_id: StepID = wf_store.get_entrypoint_step_id()
+        r = _construct_resume_workflow_from_step(wf_store, entrypoint_step_id)
     except Exception as e:
         raise WorkflowNotResumableError(workflow_id) from e
 
     if isinstance(r, Workflow):
-        try:
-            workflow_context.init_workflow_step_context(
-                workflow_id, store.storage_url)
+        with workflow_context.workflow_step_context(workflow_id, store.storage_url):
+            wf_store.save_workflow_meta(WorkflowMeta(WorkflowStatus.RUNNING))
             return execute_workflow(r)
-        finally:
-            workflow_context.set_workflow_step_context(None)
 
-    return ray.put(reader.load_step_output(r))
+    return ray.put(wf_store.load_step_output(r))
 
 
 def get_latest_output(workflow_id: str, store: storage.Storage) -> Any:

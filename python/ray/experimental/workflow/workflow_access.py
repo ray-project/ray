@@ -1,7 +1,8 @@
 import logging
-from typing import Any, Dict, List, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import ray
+from ray.experimental.workflow import common
 from ray.experimental.workflow import recovery
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
@@ -85,6 +86,9 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef) -> Any:
     return output
 
 
+
+
+
 # TODO(suquark): we may use an actor pool in the future if too much
 # concurrent workflow access blocks the actor.
 @ray.remote
@@ -94,6 +98,7 @@ class WorkflowManagementActor:
     def __init__(self):
         self._workflow_outputs: Dict[str, ray.ObjectRef] = {}
         self._actor_initialized: Dict[str, ray.ObjectRef] = {}
+        self._step_status: Dict[str, Dict[str, common.WorkflowStatus]] = {}
 
     def run_or_resume(self, workflow_id: str,
                       storage_url: str) -> ray.ObjectRef:
@@ -115,6 +120,16 @@ class WorkflowManagementActor:
         self._workflow_outputs[workflow_id] = output
         logger.info(f"Workflow job [id={workflow_id}] started.")
         return output
+
+    def update_step_status(self, workflow_id: str, step_id: str, status: common.WorkflowStatus) -> int:
+        if status == common.WorkflowStatus.FINISHED:
+            assert self._step_status[workflow_id].pop(step_id) is not None
+        else:
+            self._step_status.setdefault(workflow_id, {})[step_id] = status
+        remaining = len(self._step_status[workflow_id])
+        if remaining == 0:
+            self._step_status.pop(workflow_id)
+        return remaining
 
     def init_actor(self, actor_id: str,
                    init_marker: List[ray.ObjectRef]) -> None:
@@ -172,6 +187,9 @@ class WorkflowManagementActor:
                              "or finished. Use 'workflow.resume()' to access "
                              "the workflow result.")
         return self._workflow_outputs[workflow_id]
+
+    def get_running_workflow(self) -> List[str]:
+        return list(self._workflow_outputs.keys())
 
     def report_failure(self, workflow_id: str) -> None:
         """Report the failure of a workflow_id.

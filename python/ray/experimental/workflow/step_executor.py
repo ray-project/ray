@@ -5,7 +5,7 @@ from ray import ObjectRef
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow.common import (
-    Workflow, StepID, WorkflowOutputType, WorkflowInputTuple)
+    Workflow, StepID, WorkflowOutputType, WorkflowInputTuple, WorkflowMeta, WorkflowStatus)
 from ray.experimental.workflow import workflow_storage
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
@@ -161,21 +161,39 @@ def _workflow_step_executor(
     # 1. Setup the workflow context, so we have proper access to
     #    workflow storage.
     # 2. Decode step inputs to arguments and keyword-arguments.
-    workflow_context.update_workflow_step_context(context, step_id)
-    args, kwargs = _resolve_step_inputs(step_inputs)
-    # Running the actual step function
-    ret = func(*args, **kwargs)
-    # Save workflow output
-    commit_step(ret, outer_most_step_id)
-    if isinstance(ret, Workflow):
-        # execute sub-workflow
-        return execute_workflow(ret, outer_most_step_id)
-    return ret
+    try:
+        workflow_context.update_workflow_step_context(context, step_id)
+        args, kwargs = _resolve_step_inputs(step_inputs)
+        # Running the actual step function
+        ret = func(*args, **kwargs)
+        # Save workflow output
+        commit_step(ret, outer_most_step_id)
+        if isinstance(ret, Workflow):
+            # execute sub-workflow
+            ret = execute_workflow(ret, outer_most_step_id)
+        _record_step_status(step_id, WorkflowStatus.FINISHED)
+        return ret
+    except Exception as e:
+        _record_step_status(step_id, WorkflowStatus.FAILED)
+        raise e
 
 
 def execute_workflow_step(step_func: Callable, step_id: StepID,
                           step_inputs: WorkflowInputTuple,
                           outer_most_step_id: StepID) -> WorkflowOutputType:
+    _record_step_status(step_id, WorkflowStatus.RUNNING)
     return _workflow_step_executor.remote(
         step_func, workflow_context.get_workflow_step_context(), step_id,
         step_inputs, outer_most_step_id)
+
+
+def _record_step_status(step_id: StepID, status: WorkflowStatus) -> None:
+    workflow_id = workflow_context.get_current_workflow_id()
+    workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    remaining = ray.get(workflow_manager.update_step_status.remote(workflow_id, step_id, status))
+    store = workflow_storage.WorkflowStorage(workflow_id)
+    if status == WorkflowStatus.FINISHED and remaining == 0:
+        # TODO (yic): fix this once depending PR merged
+        store.save_workflow_meta(WorkflowMeta(WorkflowStatus.FINISHED))
+    elif status == WorkflowStatus.FAILED:
+        store.save_workflow_meta(WorkflowMeta(WorkflowStatus.FAILED))

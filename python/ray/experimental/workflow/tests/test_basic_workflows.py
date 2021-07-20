@@ -178,7 +178,7 @@ def test_run_or_resume_during_running(ray_start_regular_shared):
     "ray_start_regular_shared", [{
         "namespace": "workflow"
     }], indirect=True)
-def test_list(ray_start_regular_shared, tmp_path):
+def test_list_all(ray_start_regular_shared, tmp_path):
     tmp_file = str(tmp_path / "lock")
     lock = FileLock(tmp_file)
     lock.acquire()
@@ -189,4 +189,7 @@ def test_list(ray_start_regular_shared, tmp_path):
             return
 
     [long_running.step().run_async(workflow_id=str(i)) for i in range(100)]
-    workflow.list(workflow.WorkflowStatus.RUNNING)
+    all_tasks = workflow.list_all()
+    assert len(all_tasks) == 100
+    all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)
+    assert all_tasks == all_tasks_running

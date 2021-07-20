@@ -316,20 +316,13 @@ class WorkflowStorage:
             self._storage.load_workflow_meta(self._workflow_id))
         return WorkflowMeta(status=WorkflowStatus(metadata["status"]))
 
-    async def _list_workflow(self, status: Optional[WorkflowStatus]
-                             ) -> List[Tuple[str, WorkflowStatus]]:
+    async def _list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
         workflow_ids = await self._storage.list_workflow()
-        if status is None:
-            return workflow_ids
-        current_status = await asyncio.gather([
+        current_status = await asyncio.gather(*[
             self._storage.load_workflow_meta(workflow_id)
             for workflow_id in workflow_ids
         ])
-        return [
-            wid for (wid, s) in zip(current_status, workflow_ids)
-            if s == status
-        ]
+        return list(zip(workflow_ids, current_status))
 
-    def list_workflow(self, status: Optional[WorkflowStatus]
-                      ) -> List[Tuple[str, WorkflowStatus]]:
-        return asyncio_run(self._list_workflow(status))
+    def list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
+        return asyncio_run(self._list_workflow())
