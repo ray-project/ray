@@ -890,8 +890,7 @@ class Dataset(Generic[T]):
                  feature_column_dtypes: Optional[List["torch.dtype"]] = None,
                  batch_size: int = 1,
                  prefetch_blocks: int = 0,
-                 drop_last: bool = False,
-                 shuffle: bool = False) -> \
+                 drop_last: bool = False) -> \
             "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
 
@@ -929,18 +928,10 @@ class Dataset(Generic[T]):
                 If the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
-            shuffle (bool): Whether to have the data reshuffled at every epoch.
-                Defaults to False.
 
         Returns:
             A torch IterableDataset.
         """
-
-        if shuffle:
-            # TODO: Implement shuffle
-            raise NotImplementedError("Shuffle is not yet implemented. "
-                                      "Please set it to False.")
-
         import torch
 
         from ray.experimental.data.impl.torch_iterable_dataset import \
