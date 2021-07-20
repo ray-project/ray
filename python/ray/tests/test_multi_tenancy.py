@@ -234,7 +234,7 @@ ray.shutdown()
 
     # wait for a while to let workers register
     time.sleep(2)
-    wait_for_condition(lambda: len(get_workers()) == before)
+    wait_for_condition(lambda: len(get_workers()) <= before)
 
 
 def test_not_killing_workers_that_own_objects(shutdown_only):

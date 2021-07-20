@@ -92,7 +92,6 @@ define_java_module(
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_testng_testng",
         "@maven//:org_yaml_snakeyaml",
-        "@maven//:redis_clients_jedis",
     ],
 )
 
@@ -219,7 +218,7 @@ genrule(
         for f in $(locations //java:all_java_proto); do
             unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/runtime/src/main/java"
         done
-        rm -rf "$$WORK_DIR/java/runtime/src/main/java/io/ray/serve/generated"
+        rm -rf "$$WORK_DIR/java/serve/src/main/java/io/ray/serve/generated"
         for f in $(locations //java:serve_java_proto); do
             unzip "$$f" -x META-INF/MANIFEST.MF -d "$$WORK_DIR/java/serve/src/main/java"
         done

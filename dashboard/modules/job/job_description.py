@@ -1,42 +1,45 @@
-from enum import Enum
-from typing import Dict, Any
-from pydantic import BaseModel as PydanticBaseModel, Extra
+import attr
+from attr.validators import instance_of, in_, deep_mapping
 from ray.core.generated import common_pb2
 
 
-class BaseModel(PydanticBaseModel):
-    class Config:
-        arbitrary_types_allowed = True
-        extra = Extra.forbid
+@attr.s(repr=False, slots=True, hash=True)
+class _AnyValidator(object):
+    def __call__(self, inst, name, value):
+        pass
+
+    def __repr__(self):
+        return "<any validator for any type>"
 
 
-class Language(str, Enum):
-    PYTHON = common_pb2.Language.Name(common_pb2.PYTHON)
-    JAVA = common_pb2.Language.Name(common_pb2.JAVA)
-    CPP = common_pb2.Language.Name(common_pb2.CPP)
+def any_():
+    return _AnyValidator()
 
 
-class RuntimeEnv(BaseModel):
+@attr.s(kw_only=True, slots=True)
+class RuntimeEnv:
     # The url to download the job package archive. The archive format is
     # one of “zip”, “tar”, “gztar”, “bztar”, or “xztar”. Please refer to
     # https://docs.python.org/3/library/shutil.html#shutil.unpack_archive
-    working_dir: str
+    working_dir = attr.ib(type=str, validator=instance_of(str))
 
 
-class JobDescription(BaseModel):
+@attr.s(kw_only=True, slots=True)
+class JobDescription:
     # The job driver language, this field determines how to start the
     # driver. The value is one of the names of enum Language defined in
     # common.proto, e.g. PYTHON
-    language: Language
+    language = attr.ib(type=str, validator=in_(common_pb2.Language.keys()))
     # The runtime_env (RuntimeEnvDict) for the job config.
-    runtime_env: RuntimeEnv
+    runtime_env = attr.ib(
+        type=RuntimeEnv, converter=lambda kw: RuntimeEnv(**kw))
     # The entry to start the driver.
     # PYTHON:
     #   - The basename of driver filename without extension in the job
     #   package archive.
     # JAVA:
     #   - The driver class full name in the job package archive.
-    driver_entry: str
+    driver_entry = attr.ib(type=str, validator=instance_of(str))
     # The driver arguments in list.
     # PYTHON:
     #   -  The arguments to pass to the main() function in driver entry.
@@ -44,6 +47,12 @@ class JobDescription(BaseModel):
     # JAVA:
     #   - The arguments to pass to the driver command line.
     #   e.g. ["-custom-arg", "abc"]
-    driver_args: list = []
+    driver_args = attr.ib(type=list, validator=instance_of(list), default=[])
     # The environment vars to pass to job config, type of keys should be str.
-    env: Dict[str, Any] = {}
+    env = attr.ib(
+        type=dict,
+        validator=deep_mapping(
+            key_validator=instance_of(str),
+            value_validator=any_(),
+            mapping_validator=instance_of(dict)),
+        default={})

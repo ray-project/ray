@@ -1,8 +1,11 @@
 package io.ray.serve.util;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
 import com.google.protobuf.InvalidProtocolBufferException;
+import io.ray.serve.RayServeException;
 import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.BackendLanguage;
 
 public class BackendConfigUtil {
 
@@ -48,6 +51,19 @@ public class BackendConfigUtil {
           inputBackendConfig.getExperimentalGracefulShutdownTimeoutS());
     }
 
+    builder.setIsCrossLanguage(inputBackendConfig.getIsCrossLanguage());
+
+    if (inputBackendConfig.getBackendLanguage() == BackendLanguage.UNRECOGNIZED) {
+      throw new RayServeException(
+          LogUtil.format(
+              "Unrecognized backend language {}. Backend language must be in {}.",
+              inputBackendConfig.getBackendLanguageValue(),
+              Lists.newArrayList(BackendLanguage.values())));
+    } else {
+      builder.setBackendLanguage(inputBackendConfig.getBackendLanguage());
+    }
+
     return builder.build();
   }
+
 }

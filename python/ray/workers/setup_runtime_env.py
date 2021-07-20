@@ -52,12 +52,11 @@ def setup_runtime_env(runtime_env: dict, session_dir):
                 extra_pip_dependencies = []
             conda_dict = inject_dependencies(conda_dict, py_version,
                                              extra_pip_dependencies)
-            # Locking to avoid multiple processes installing concurrently
-            conda_hash = hashlib.sha1(
-                json.dumps(conda_dict,
-                           sort_keys=True).encode("utf-8")).hexdigest()
-            conda_hash_str = f"conda-generated-{conda_hash}"
-            file_lock_name = f"ray-{conda_hash_str}.lock"
+            # It is not safe for multiple processes to install conda envs
+            # concurrently, even if the envs are different, so use a global
+            # lock for all conda installs.
+            # See https://github.com/ray-project/ray/issues/17086
+            file_lock_name = "ray-conda-install.lock"
             with FileLock(os.path.join(session_dir, file_lock_name)):
                 conda_dir = os.path.join(session_dir, "runtime_resources",
                                          "conda")
@@ -80,9 +79,6 @@ def setup_worker(input_args):
     # remaining_args contains the arguments to the original worker command,
     # minus the python executable, e.g. default_worker.py --node-ip-address=...
     args, remaining_args = parser.parse_known_args(args=input_args)
-
-    # add worker-shim-pid argument
-    remaining_args.append("--worker-shim-pid={}".format(os.getpid()))
 
     commands = []
     py_executable: str = sys.executable
@@ -245,3 +241,7 @@ def inject_dependencies(
         deps.append({"pip": pip_dependencies})
 
     return conda_dict
+
+
+if __name__ == "__main__":
+    setup_worker(sys.argv[1:])

@@ -56,21 +56,18 @@ public class RayServeWrappedReplica {
   private Object[] parseInitArgs(byte[] initArgsbytes, BackendConfig backendConfig)
       throws IOException {
 
-    String sourceLanguage = "JAVA";
-    switch (sourceLanguage) {
-      case "JAVA":
-        Object result = Hessian2Seserializer.decode(initArgsbytes);
-        if (result == null) {
-          return new Object[0];
-        }
-        return (Object[]) result;
+    if (initArgsbytes == null || initArgsbytes.length == 0) {
+      return new Object[0];
+    }
 
-      case "PYTHON":
-        // TODO
-        return null;
-      default:
-        // not support.
-        return null;
+    if (!backendConfig.getIsCrossLanguage()) {
+      // If the construction request is from Java API, deserialize initArgsbytes to Object[]
+      // directly.
+      Object result = Hessian2Seserializer.decode(initArgsbytes);
+      return (Object[]) result;
+    } else {
+      // TODO
+      return new Object[0];
     }
   }
 

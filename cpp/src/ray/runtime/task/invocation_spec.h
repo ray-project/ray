@@ -17,7 +17,6 @@ class InvocationSpec {
   std::string name;
   ActorID actor_id;
   int actor_counter;
-  std::string lib_name;
   RemoteFunctionHolder remote_function_holder;
   std::vector<std::unique_ptr<::ray::TaskArg>> args;
 };

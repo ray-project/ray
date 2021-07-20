@@ -5,8 +5,7 @@ import tree  # pip install dm_tree
 from typing import List, Tuple, Any
 
 import ray
-from ray.rllib.evaluation.metrics import extract_stats, get_learner_stats, \
-    LEARNER_STATS_KEY
+from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import \
     AGENT_STEPS_TRAINED_COUNTER, APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, \
@@ -59,6 +58,8 @@ class TrainOneStep:
         metrics = _get_shared_metrics()
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
         with learn_timer:
+            # Subsample minibatches (size=`sgd_minibatch_size`) from the
+            # train batch and loop through train batch `num_sgd_iter` times.
             if self.num_sgd_iter > 1 or self.sgd_minibatch_size > 0:
                 lw = self.workers.local_worker()
                 info = do_minibatch_sgd(
@@ -67,16 +68,11 @@ class TrainOneStep:
                         for pid in self.policies
                         or self.local_worker.policies_to_train
                     }, lw, self.num_sgd_iter, self.sgd_minibatch_size, [])
-                # TODO(ekl) shouldn't be returning learner stats directly here
-                # TODO(sven): Skips `custom_metrics` key from on_learn_on_batch
-                #  callback (shouldn't).
-                metrics.info[LEARNER_INFO] = info
+            # Single update step using train batch.
             else:
                 info = self.workers.local_worker().learn_on_batch(batch)
-                metrics.info[LEARNER_INFO] = extract_stats(
-                    info, LEARNER_STATS_KEY)
-                metrics.info["custom_metrics"] = extract_stats(
-                    info, "custom_metrics")
+
+            metrics.info[LEARNER_INFO] = info
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
         if isinstance(batch, MultiAgentBatch):
@@ -156,20 +152,7 @@ class TrainTFMultiGPU:
             with self.workers.local_worker().tf_sess.as_default():
                 for policy_id in (self.policies
                                   or self.local_worker.policies_to_train):
-                    policy = self.workers.local_worker().get_policy(policy_id)
-                    with tf1.variable_scope(policy_id, reuse=tf1.AUTO_REUSE):
-                        if policy._state_inputs:
-                            rnn_inputs = policy._state_inputs + [
-                                policy._seq_lens
-                            ]
-                        else:
-                            rnn_inputs = []
-                        self.optimizers[policy_id] = (
-                            LocalSyncParallelOptimizer(
-                                policy._optimizer, self.devices,
-                                list(policy._loss_input_dict_no_rnn.values()),
-                                rnn_inputs, self.per_device_batch_size,
-                                policy.copy))
+                    self.add_optimizer(policy_id)
 
                 self.sess = self.workers.local_worker().tf_sess
                 self.sess.run(tf1.global_variables_initializer())
@@ -195,6 +178,13 @@ class TrainTFMultiGPU:
                 if policy_id not in (self.policies
                                      or self.local_worker.policies_to_train):
                     continue
+                # Policy seems to be new and doesn't have an optimizer yet.
+                # Add it here and continue.
+                elif policy_id not in self.optimizers:
+                    with self.workers.local_worker().tf_sess.graph.as_default(
+                    ):
+                        with self.workers.local_worker().tf_sess.as_default():
+                            self.add_optimizer(policy_id)
 
                 # Decompress SampleBatch, in case some columns are compressed.
                 batch.decompress_if_needed()
@@ -257,6 +247,18 @@ class TrainTFMultiGPU:
         # Also update global vars of the local worker.
         self.workers.local_worker().set_global_vars(_get_global_vars())
         return samples, fetches
+
+    def add_optimizer(self, policy_id):
+        policy = self.workers.local_worker().get_policy(policy_id)
+        with tf1.variable_scope(policy_id, reuse=tf1.AUTO_REUSE):
+            if policy._state_inputs:
+                rnn_inputs = policy._state_inputs + [policy._seq_lens]
+            else:
+                rnn_inputs = []
+            self.optimizers[policy_id] = (LocalSyncParallelOptimizer(
+                policy._optimizer, self.devices,
+                list(policy._loss_input_dict_no_rnn.values()), rnn_inputs,
+                self.per_device_batch_size, policy.copy))
 
 
 def all_tower_reduce(path, *tower_data):

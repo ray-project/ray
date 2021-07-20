@@ -11,6 +11,11 @@ We give two examples, one using a `FastAPI <https://fastapi.tiangolo.com/>`__ we
 Scaling Up a FastAPI Application
 --------------------------------
 
+.. warning::
+
+  With the introduction of the new Deployments API in Ray 1.4.0, this tutorial no longer describes the best practice for integrating Ray Serve with FastAPI, and will soon be removed.
+  For details on the new and improved FastAPI integration, please see :ref:`serve-fastapi-http`.
+
 For this example, you must have either `Pytorch <https://pytorch.org/>`_ or `Tensorflow <https://www.tensorflow.org/>`_ installed, as well as `Huggingface Transformers <https://github.com/huggingface/transformers>`_ and `FastAPI <https://fastapi.tiangolo.com/>`_.  For example:
 
 .. code-block:: bash
@@ -19,7 +24,7 @@ For this example, you must have either `Pytorch <https://pytorch.org/>`_ or `Ten
 
 Here’s a simple FastAPI web server. It uses Huggingface Transformers to auto-generate text based on a short initial input using `OpenAI’s GPT-2 model <https://openai.com/blog/better-language-models/>`_.
 
-.. literalinclude:: ../../../../python/ray/serve/examples/doc/fastapi/fastapi.py
+.. literalinclude:: ../../../../python/ray/serve/examples/doc/fastapi/fastapi_simple.py
 
 To scale this up, we define a Ray Serve backend containing our text model and call it from Python using a ServeHandle:
 

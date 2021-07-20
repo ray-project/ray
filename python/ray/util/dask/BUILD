@@ -101,15 +101,15 @@ py_test(
     deps = [":dask_lib"],
 )
 
-# This is currently failing.
-#py_test(
-#    name = "dask_ray_shuffle_optimization_client_mode",
-#    size = "medium",
-#    main = "dask_ray_shuffle_optimization.py",
-#    srcs = ["examples/dask_ray_shuffle_optimization.py"],
-#    tags = ["exclusive", "client"],
-#    deps = [":dask_lib"],
-#)
+
+py_test(
+    name = "dask_ray_shuffle_optimization_client_mode",
+    size = "medium",
+    main = "dask_ray_shuffle_optimization.py",
+    srcs = ["examples/dask_ray_shuffle_optimization.py"],
+    tags = ["exclusive", "client"],
+    deps = [":dask_lib"],
+)
 
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.

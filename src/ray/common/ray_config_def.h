@@ -252,6 +252,9 @@ RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // Feature flag to turn on resource report polling. Polling and raylet pushing are
 // mutually exlusive.
 RAY_CONFIG(bool, pull_based_resource_reporting, true)
+// Feature flag to use grpc instead of redis for resource broadcast.
+// TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
+RAY_CONFIG(bool, grpc_based_resource_broadcast, false)
 // Feature flag to enable grpc based pubsub in GCS.
 RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 
@@ -426,3 +429,28 @@ RAY_CONFIG(bool, gcs_task_scheduling_enabled,
                getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") == std::string("true"))
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
+
+/// If enabled, raylet will report resources only when resources are changed.
+RAY_CONFIG(bool, enable_light_weight_resource_report, true)
+
+// The number of seconds to wait for the Raylet to start. This is normally
+// fast, but when RAY_preallocate_plasma_memory=1 is set, it may take some time
+// (a few GB/s) to populate all the pages on Raylet startup.
+RAY_CONFIG(uint32_t, raylet_start_wait_time_s,
+           getenv("RAY_preallocate_plasma_memory") != nullptr &&
+                   getenv("RAY_preallocate_plasma_memory") == std::string("1")
+               ? 120
+               : 10)
+
+/// The scheduler will treat these predefined resource types as unit_instance.
+/// Default predefined_unit_instance_resources is "GPU".
+/// When set it to "CPU,GPU", we will also treat CPU as unit_instance.
+RAY_CONFIG(string_type, predefined_unit_instance_resources, "GPU")
+
+/// The scheduler will treat these custom resource types as unit_instance.
+/// Default custom_unit_instance_resources is empty.
+/// When set it to "FPGA", we will treat FPGA as unit_instance.
+RAY_CONFIG(string_type, custom_unit_instance_resources, "")
+
+// Maximum size of the batch size when broadcasting resources to raylet.
+RAY_CONFIG(uint64_t, resource_broadcast_batch_size_bytes, 1024 * 1024 * 5);

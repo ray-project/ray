@@ -168,6 +168,11 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
     return true;
   }
 
+  std::string DebugString() const override {
+    RAY_LOG(FATAL) << "No need to implement it for testing.";
+    return "";
+  }
+
   pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
@@ -193,6 +198,11 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
                             const std::string &key_id_binary) {
     RAY_CHECK(false) << "No need to implement it for testing.";
     return false;
+  }
+
+  void PublishFailure(const rpc::ChannelType channel_type,
+                      const std::string &key_id_binary) {
+    RAY_LOG(FATAL) << "No need to implement it for testing.";
   }
 
   void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
@@ -278,7 +288,9 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     for (const auto &it : subscription_failure_callback_map) {
       auto &callback_map = it.second;
       for (const auto &callback_it : callback_map) {
-        callback_it.second();
+        const auto object_id = callback_it.first;
+        const auto failure_callback = callback_it.second;
+        failure_callback(object_id.Binary());
       }
     }
     subscription_failure_callback_map.clear();

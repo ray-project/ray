@@ -442,14 +442,6 @@ py_test(
 )
 
 py_test(
-    name = "test_horovod_client",
-    size = "medium",
-    srcs = ["tests/test_horovod_client.py"],
-    tags = ["exclusive", "client", "py37"],
-    deps = [":tune_lib"],
-)
-
-py_test(
     name = "ddp_mnist_torch",
     size = "small",
     srcs = ["examples/ddp_mnist_torch.py"],
@@ -829,6 +821,14 @@ py_test(
     name = "xgboost_example",
     size = "small",
     srcs = ["examples/xgboost_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"]
+)
+
+py_test(
+    name = "xgboost_dynamic_resources_example",
+    size = "medium",
+    srcs = ["examples/xgboost_dynamic_resources_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example"]
 )

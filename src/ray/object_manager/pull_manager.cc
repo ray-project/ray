@@ -270,7 +270,6 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
   while (wait_requests_remaining) {
     int64_t margin_required =
         NextRequestBundleSize(wait_request_bundles_, highest_wait_req_id_being_pulled_);
-    RAY_LOG(ERROR) << "Margin required " << margin_required;
     DeactivateUntilMarginAvailable("task args request", task_argument_bundles_,
                                    /*retain_min=*/0, /*quota_margin=*/margin_required,
                                    &highest_task_req_id_being_pulled_,
@@ -483,7 +482,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   // disk of the remote node, it will be restored by PushManager prior to pushing.
   bool did_pull = PullFromRandomLocation(object_id);
   if (did_pull) {
-    UpdateRetryTimer(request);
+    UpdateRetryTimer(request, object_id);
     return;
   }
 
@@ -492,7 +491,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
       !request.spilled_url.empty() &&
       (request.spilled_node_id.IsNil() || request.spilled_node_id == self_node_id_);
   if (can_restore_directly) {
-    UpdateRetryTimer(request);
+    UpdateRetryTimer(request, object_id);
     restore_spilled_object_(object_id, request.spilled_url,
                             [object_id](const ray::Status &status) {
                               if (!status.ok()) {
@@ -504,7 +503,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   }
 
   // TODO(ekl) should we more directly mark the object as lost in this case?
-  RAY_LOG(DEBUG) << "Object neither in memory nor external storage " << object_id.Hex();
+  RAY_LOG(WARNING) << "Object neither in memory nor external storage " << object_id.Hex();
 }
 
 bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
@@ -572,10 +571,15 @@ void PullManager::ResetRetryTimer(const ObjectID &object_id) {
   }
 }
 
-void PullManager::UpdateRetryTimer(ObjectPullRequest &request) {
+void PullManager::UpdateRetryTimer(ObjectPullRequest &request,
+                                   const ObjectID &object_id) {
   const auto time = get_time_();
   auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
   request.next_pull_time = time + retry_timeout_len;
+  if (retry_timeout_len > max_timeout_) {
+    max_timeout_ = retry_timeout_len;
+    max_timeout_object_id_ = object_id;
+  }
 
   if (request.num_retries > 0) {
     // We've tried this object before.
@@ -747,6 +751,18 @@ std::string PullManager::DebugString() const {
   result << "\n- num objects actively pulled / pinned: " << pinned_objects_.size();
   result << "\n- num bundles being pulled: " << num_active_bundles_;
   result << "\n- num pull retries: " << num_retries_total_;
+  result << "\n- max timeout seconds: " << max_timeout_;
+  auto it = object_pull_requests_.find(max_timeout_object_id_);
+  if (it != object_pull_requests_.end()) {
+    result << "\n- max timeout object id: " << max_timeout_object_id_;
+    result << "\n- max timeout request location size: "
+           << it->second.client_locations.size();
+    result << "\n- max timeout request spilled url: " << it->second.spilled_url;
+    result << "\n- max timeout request object size set: " << it->second.object_size_set;
+    result << "\n- max timeout request object size: " << it->second.object_size;
+  } else {
+    result << "\n- max timeout request is already processed. No entry.";
+  }
   // Guard this more expensive debug message under event stats.
   if (RayConfig::instance().event_stats()) {
     for (const auto &entry : active_object_pull_requests_) {

@@ -38,4 +38,17 @@ message BackendConfig {
 
   // Controller waits for this duration to forcefully kill the replica for shutdown. Defaults to 20s.
   double experimental_graceful_shutdown_timeout_s = 5;
+
+  // Is the construction of backend is cross language?
+  bool is_cross_language = 6;
+
+  // The backend's programming language.
+  BackendLanguage backend_language = 7;
+}
+
+// Backend language.
+enum BackendLanguage {
+  PYTHON = 0;
+  JAVA = 1;
+  CPP = 2;
 }
