@@ -1,4 +1,3 @@
-import pytest
 from ray.tests.conftest import *  # noqa
 from ray.experimental import workflow
 
@@ -13,10 +12,6 @@ def projection(x, _):
     return x
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "namespace": "workflow"
-    }], indirect=True)
 def test_variable_mutable(ray_start_regular):
     x = []
     a = identity.step(x)
