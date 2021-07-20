@@ -12,7 +12,8 @@ from ray.experimental.data.impl.progress_bar import ProgressBar
 
 T = TypeVar("T")
 
-# TODO: comment
+# Data can be sorted by value (None), a column (str), multiple columns
+# (List[str]) or a custom transform function (lambda).
 SortKeyT = Union[None, str, List[str], Callable[[T], Any]]
 
 
@@ -46,64 +47,25 @@ def sample_boundaries(blocks: BlockList[T], num_reducers: int) -> List[T]:
     return ret
 
 
-def sort_simple_block(block: Block[T], boundaries: List[T],
-                      key: SortKeyT) -> List[Block[T]]:
-    items = block._items
-    items = sorted(items, key=key)
-    if len(boundaries) == 0:
-        return SimpleBlock(items)
-    parts = []
-    bound_i = 0
-    i = 0
-    prev_i = 0
-    part_offset = None
-    N = len(items)
-    while i < N and bound_i < len(boundaries):
-        bound = boundaries[bound_i]
-        while i < N and items[i] < bound:
-            i += 1
-        if part_offset is not None:
-            parts.append((part_offset, i - prev_i))
-        part_offset = i
-        bound_i += 1
-        prev_i = i
-    if part_offset is not None:
-        parts.append((part_offset, N - prev_i))
-    ret = [
-        SimpleBlock(items[offset:offset + count]) for offset, count in parts
-    ]
-    num_empty = len(boundaries) - len(ret)
-    ret.extend([SimpleBlock([])] * num_empty)
-    return ret
-
-
-def merge_simple_blocks(blocks: List[Block[T]], key=SortKeyT) -> Block[T]:
-    ret = [x for block in blocks for x in block._items]
-    ret.sort(key=key)
-    ret_block = SimpleBlock(ret)
-    return ret_block, ret_block.get_metadata(None)
-
-
-def sort_impl(blocks: BlockList[T],
-              key: SortKeyT,
+def sort_impl(blocks: BlockList[T], key: SortKeyT,
               descending: bool = False) -> BlockList[T]:
     num_mappers = len(blocks)
     num_reducers = num_mappers
 
     @ray.remote(num_returns=num_reducers)
     def sort_block(block, boundaries):
-        return sort_simple_block(block, boundaries, key)
+        return block.sort_and_partition(boundaries, key)
 
     @ray.remote(num_returns=2)
     def merge_sorted_blocks(*blocks: List[Block[T]]) -> Block[T]:
-        return merge_simple_blocks(blocks, key)
+        return blocks[0].merge_simple_blocks(blocks, key)
 
     boundaries = sample_boundaries(blocks, len(blocks))
     map_results = np.empty((num_mappers, num_reducers), dtype=object)
     for i, block in enumerate(blocks):
         map_results[i, :] = sort_block.remote(block, boundaries)
     map_bar = ProgressBar("Sort Map", len(map_results))
-    map_bar.block_until_complete(map_results)
+    map_bar.block_until_complete([ret[0] for ret in map_results])
     map_bar.close()
 
     reduce_results = []
@@ -111,7 +73,7 @@ def sort_impl(blocks: BlockList[T],
         ret = merge_sorted_blocks.remote(*map_results[:, j].tolist())
         reduce_results.append(ret)
     merge_bar = ProgressBar("Sort Merge", len(reduce_results))
-    merge_bar.block_until_complete(reduce_results)
+    merge_bar.block_until_complete([ret[0] for ret in reduce_results])
     merge_bar.close()
 
     blocks = [b for b, _ in reduce_results]

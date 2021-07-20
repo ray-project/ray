@@ -1,5 +1,5 @@
 import sys
-from typing import Iterator, Generic, Any, TYPE_CHECKING
+from typing import Iterator, List, Generic, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas
@@ -74,3 +74,40 @@ class SimpleBlock(Block):
     @staticmethod
     def builder() -> SimpleBlockBuilder[T]:
         return SimpleBlockBuilder()
+
+    def sort_and_partition(self, boundaries: List[T],
+                           key: Any) -> List["Block[T]"]:
+        items = sorted(self._items, key=key)
+        if len(boundaries) == 0:
+            return SimpleBlock(items)
+        parts = []
+        bound_i = 0
+        i = 0
+        prev_i = 0
+        part_offset = None
+        N = len(items)
+        while i < N and bound_i < len(boundaries):
+            bound = boundaries[bound_i]
+            while i < N and items[i] < bound:
+                i += 1
+            if part_offset is not None:
+                parts.append((part_offset, i - prev_i))
+            part_offset = i
+            bound_i += 1
+            prev_i = i
+        if part_offset is not None:
+            parts.append((part_offset, N - prev_i))
+        ret = [
+            SimpleBlock(items[offset:offset + count])
+            for offset, count in parts
+        ]
+        num_empty = len(boundaries) - len(ret)
+        ret.extend([SimpleBlock([])] * num_empty)
+        return ret
+
+    @staticmethod
+    def merge_simple_blocks(blocks: List[Block[T]], key=Any) -> Block[T]:
+        ret = [x for block in blocks for x in block._items]
+        ret.sort(key=key)
+        ret_block = SimpleBlock(ret)
+        return ret_block, ret_block.get_metadata(None)

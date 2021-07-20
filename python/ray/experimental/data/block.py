@@ -87,3 +87,13 @@ class Block(Generic[T]):
     def builder() -> "BlockBuilder[T]":
         """Create a builder for this block type."""
         raise NotImplementedError
+
+    def sort_and_partition(self, boundaries: List[T],
+                           key: Any) -> List["Block[T]"]:
+        """Sort and partition. TODO"""
+        raise NotImplementedError
+
+    @staticmethod
+    def merge_sorted_blocks(blocks: List["Block[T]"], key=Any) -> "Block[T]":
+        """TODO"""
+        raise NotImplementedError
