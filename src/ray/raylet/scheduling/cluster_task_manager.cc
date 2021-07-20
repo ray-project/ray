@@ -621,8 +621,8 @@ void ClusterTaskManager::FillResourceUsage(
       break;
     }
     const auto &resources =
-        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class).first
-            .GetResourceMap();
+        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
+            .first.GetResourceMap();
     const auto &queue = pair.second;
     const auto &count = queue.size();
 
@@ -661,8 +661,8 @@ void ClusterTaskManager::FillResourceUsage(
       break;
     }
     const auto &resources =
-        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class).first
-            .GetResourceMap();
+        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
+            .first.GetResourceMap();
     const auto &queue = pair.second;
     const auto &count = queue.size();
 
@@ -697,8 +697,8 @@ void ClusterTaskManager::FillResourceUsage(
       break;
     }
     const auto &resources =
-        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class).first
-            .GetResourceMap();
+        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
+            .first.GetResourceMap();
     const auto &queue = pair.second;
     const auto &count = queue.size();
 

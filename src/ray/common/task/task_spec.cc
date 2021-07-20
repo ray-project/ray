@@ -22,7 +22,8 @@ SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
   return it->second;
 }
 
-SchedulingClass TaskSpecification::GetSchedulingClass(const SchedulingClassDescriptor &sched_cls) {
+SchedulingClass TaskSpecification::GetSchedulingClass(
+    const SchedulingClassDescriptor &sched_cls) {
   SchedulingClass sched_cls_id;
   absl::MutexLock lock(&mutex_);
   auto it = sched_cls_to_id_.find(sched_cls);
