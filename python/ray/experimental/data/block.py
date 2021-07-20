@@ -6,9 +6,12 @@ if TYPE_CHECKING:
     import pyarrow
     from ray.experimental.data.impl.block_builder import BlockBuilder
 
+from ray.util.annotations import DeveloperAPI
+
 T = TypeVar("T")
 
 
+@DeveloperAPI
 class Block(Generic[T]):
     """Represents a batch of rows to be stored in the Ray object store.
 
@@ -22,6 +25,7 @@ class Block(Generic[T]):
     pass
 
 
+@DeveloperAPI
 class BlockMetadata:
     """Metadata about the block.
 
@@ -44,6 +48,7 @@ class BlockMetadata:
         self.input_files: List[str] = input_files
 
 
+@DeveloperAPI
 class BlockAccessor(Generic[T]):
     """Provides accessor methods for a specific block.
 

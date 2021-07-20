@@ -7,10 +7,12 @@ if TYPE_CHECKING:
 from ray.experimental.data.impl.arrow_block import ArrowRow
 from ray.experimental.data.impl.block_list import BlockMetadata
 from ray.experimental.data.datasource.datasource import (Datasource, ReadTask)
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
     """File-based datasource, for reading and writing files.
 

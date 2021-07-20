@@ -7,10 +7,12 @@ import ray
 from ray.types import ObjectRef
 from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata, T
 from ray.experimental.data.impl.arrow_block import ArrowRow
+from ray.util.annotations import PublicAPI
 
 WriteResult = Any
 
 
+@PublicAPI(stability="beta")
 class Datasource(Generic[T]):
     """Interface for defining a custom ``ray.data.Dataset`` datasource.
 
@@ -83,6 +85,7 @@ class Datasource(Generic[T]):
         pass
 
 
+@PublicAPI(stability="beta")
 class ReadTask(Callable[[], Block[T]]):
     """A function used to read a block of a dataset.
 
@@ -105,6 +108,7 @@ class ReadTask(Callable[[], Block[T]]):
         return self._read_fn()
 
 
+@PublicAPI(stability="beta")
 class WriteTask(Callable[[], WriteResult]):
     """A function used to write a chunk of a dataset.
 

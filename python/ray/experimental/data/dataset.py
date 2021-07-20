@@ -21,6 +21,7 @@ import numpy as np
 
 import ray
 from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
 from ray.experimental.data.datasource import Datasource, WriteTask
 from ray.experimental.data.impl.batcher import Batcher
@@ -40,6 +41,7 @@ BatchType = Union["pandas.DataFrame", "pyarrow.Table", list]
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 class Dataset(Generic[T]):
     """Implements a distributed Arrow dataset.
 
@@ -1152,6 +1154,7 @@ class Dataset(Generic[T]):
 
         return [block_to_df.remote(block) for block in self._blocks]
 
+    @DeveloperAPI
     def get_blocks(self) -> List[ObjectRef["Block"]]:
         """Get a list of references to the underlying blocks of this dataset.
 
