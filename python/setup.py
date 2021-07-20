@@ -152,10 +152,11 @@ if setup_spec.type == SetupType.RAY:
             "colorful",  # noqa
             "py-spy >= 0.2.0",  # noqa
             "jsonschema",  # noqa
-            "gpustat"  # noqa
+            "requests",  # noqa
+            "gpustat",  # noqa
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
-        "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
+        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes"],
         "observability": [
             "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
@@ -199,7 +200,6 @@ if setup_spec.type == SetupType.RAY:
         "numpy >= 1.19.3; python_version >= '3.9'",
         "protobuf >= 3.15.3",
         "pyyaml",
-        "requests",
         "redis >= 3.5.0",
         "opencensus",
         "prometheus_client >= 0.7.1",
