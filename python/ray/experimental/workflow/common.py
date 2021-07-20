@@ -218,6 +218,6 @@ class Workflow:
             storage: The external storage URL or a custom storage class. If not
                 specified, ``/tmp/ray/workflow_data`` will be used.
         """
-        # avoid cyclic importing
+        # TODO(suquark): avoid cyclic importing
         from ray.experimental.workflow.execution import run
         return run(self, storage, workflow_id)
