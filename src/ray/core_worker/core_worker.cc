@@ -1157,8 +1157,8 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
   } else {
     if (status.ok()) {
       status = plasma_store_provider_->Create(metadata, data_size, *object_id,
-                                                   /* owner_address = */ rpc_address_,
-                                                   data, created_by_worker);
+                                              /* owner_address = */ rpc_address_, data,
+                                              created_by_worker);
     }
     if (!status.ok() || !data) {
       if (owned_by_us) {
