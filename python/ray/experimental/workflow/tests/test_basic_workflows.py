@@ -7,7 +7,6 @@ import pytest
 import ray
 from ray.experimental import workflow
 from ray.experimental.workflow import workflow_access
-from filelock import FileLock
 
 
 @workflow.step
@@ -272,7 +271,7 @@ def test_manager(ray_start_regular_shared, tmp_path):
     # Test get_status
     assert workflow.get_status("0") == workflow.WorkflowStatus.FAILED
     assert workflow.get_status("1") == workflow.WorkflowStatus.FINISHED
-    assert workflow.get_status("X") == None
+    assert workflow.get_status("X") is None
     lock.acquire()
     r = workflow.resume("0")
     assert workflow.get_status("0") == workflow.WorkflowStatus.RUNNING

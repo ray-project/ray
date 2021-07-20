@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Tuple, List, TYPE_CHECKING
+from typing import Any, Dict, List, TYPE_CHECKING
 
 import ray
 from ray.experimental.workflow import common

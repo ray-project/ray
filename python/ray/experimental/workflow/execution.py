@@ -172,7 +172,7 @@ def resume_all(storage: Optional[Union[str, Storage]] = None
         try:
             obj = await workflow_manager.run_or_resume.remote(wid, storage_url)
             return (wid, flatten_workflow_output(wid, obj))
-        except Exception as e:
+        except Exception:
             logger.error(f"Failed to resume workflow {wid}")
             return (wid, None)
 
