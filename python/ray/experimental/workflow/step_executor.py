@@ -8,9 +8,9 @@ from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import workflow_storage
 
 if TYPE_CHECKING:
-    from ray.experimental.workflow.common import (
-        StepID, WorkflowOutputType, Workflow,
-        WorkflowInputTuple, WorkflowMeta, WorkflowStatus)
+    from ray.experimental.workflow.common import (StepID, WorkflowOutputType,
+                                                  Workflow, WorkflowInputTuple,
+                                                  WorkflowMeta, WorkflowStatus)
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 
@@ -197,7 +197,9 @@ def execute_workflow_step(
 def _record_step_status(step_id: StepID, status: WorkflowStatus) -> None:
     workflow_id = workflow_context.get_current_workflow_id()
     workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
-    remaining = ray.get(workflow_manager.update_step_status.remote(workflow_id, step_id, status))
+    remaining = ray.get(
+        workflow_manager.update_step_status.remote(workflow_id, step_id,
+                                                   status))
     store = workflow_storage.WorkflowStorage(workflow_id)
     if status == WorkflowStatus.FINISHED and remaining == 0:
         # TODO (yic): fix this once depending PR merged

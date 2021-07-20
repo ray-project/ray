@@ -169,6 +169,6 @@ def list_all(status: Optional[WorkflowStatus]) -> List[Tuple[str, WorkflowStatus
     runnings = dict(runnings)
     from ray.experimental.workflow.workflow_storage import WorkflowStorage
     store = WorkflowStorage(get_global_storage())
-    all_workflow = [(wid, status) for store.list_workflow()]
+    all_workflow = [(wid, status) for wid in store.list_workflow()]
     if status is None:
         return all_workflow

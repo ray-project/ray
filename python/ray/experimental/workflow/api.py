@@ -146,7 +146,8 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
     return execution.get_output(workflow_id)
 
 
-def list_all(status: Optional[WorkflowStatus]=None) -> List[Tuple[str, WorkflowStatus]]:
+def list_all(status: Optional[WorkflowStatus] = None
+             ) -> List[Tuple[str, WorkflowStatus]]:
     return execution.list_all(status)
 
 

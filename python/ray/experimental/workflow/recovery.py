@@ -121,7 +121,8 @@ def resume_workflow_job(workflow_id: str,
         raise WorkflowNotResumableError(workflow_id) from e
 
     if isinstance(r, Workflow):
-        with workflow_context.workflow_step_context(workflow_id, store.storage_url):
+        with workflow_context.workflow_step_context(workflow_id,
+                                                    store.storage_url):
             wf_store.save_workflow_meta(WorkflowMeta(WorkflowStatus.RUNNING))
             return execute_workflow(r)
 

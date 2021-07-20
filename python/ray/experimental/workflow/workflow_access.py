@@ -86,9 +86,6 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef) -> Any:
     return output
 
 
-
-
-
 # TODO(suquark): we may use an actor pool in the future if too much
 # concurrent workflow access blocks the actor.
 @ray.remote
@@ -121,7 +118,8 @@ class WorkflowManagementActor:
         logger.info(f"Workflow job [id={workflow_id}] started.")
         return output
 
-    def update_step_status(self, workflow_id: str, step_id: str, status: common.WorkflowStatus) -> int:
+    def update_step_status(self, workflow_id: str, step_id: str,
+                           status: common.WorkflowStatus) -> int:
         if status == common.WorkflowStatus.FINISHED:
             assert self._step_status[workflow_id].pop(step_id) is not None
         else:
