@@ -9,7 +9,7 @@ import ray
 from ray.util.inspect import (is_function_or_method, is_class_method,
                               is_static_method)
 from ray._private import signature
-from ray.experimental.workflow.common import slugify, actor_id_to_workflow_id
+from ray.experimental.workflow.common import slugify
 from ray.experimental.workflow.storage import Storage, get_global_storage
 from ray.experimental.workflow.workflow_storage import WorkflowStorage
 from ray.experimental.workflow.recovery import get_latest_output
@@ -32,10 +32,9 @@ class VirtualActorNotInitializedError(Exception):
 @ray.remote
 def _readonly_method_executor(actor_id: str, storage: Storage, cls: type,
                               method_name: str, flattened_args: List):
-    workflow_id = actor_id_to_workflow_id(actor_id)
     instance = cls.__new__(cls)
     try:
-        state = get_latest_output(workflow_id, storage)
+        state = get_latest_output(actor_id, storage)
     except Exception as e:
         raise VirtualActorNotInitializedError(
             f"Virtual actor '{actor_id}' has not been initialized. "
@@ -58,9 +57,17 @@ def _virtual_actor_init(cls: type, flattened_args: List) -> Any:
 
 
 class ActorMethodBase(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    def run(self, *args, **kwargs) -> "ObjectRef":
+    def run(self, *args, **kwargs) -> Any:
         """Execute the actor method.
+
+        Returns:
+            A future object represents the result.
+        """
+        return ray.get(self.run_async(*args, **kwargs))
+
+    @abc.abstractmethod
+    def run_async(self, *args, **kwargs) -> "ObjectRef":
+        """Execute the actor method asynchronously.
 
         Returns:
             A future object represents the result.
@@ -89,8 +96,8 @@ class ActorMethod(ActorMethodBase):
                         f"of running 'object.{self._method_name}()', try "
                         f"'object.{self._method_name}.remote()'.")
 
-    def run(self, *args, **kwargs) -> "ObjectRef":
-        """Execute the actor method.
+    def run_async(self, *args, **kwargs) -> "ObjectRef":
+        """Execute the actor method asynchronously.
 
         Returns:
             A future object represents the result.
@@ -105,28 +112,26 @@ class ActorMethod(ActorMethodBase):
 
         Examples:
             # The following two calls are equivalent.
-            >>> actor.my_method._run(args=[x, y], readonly=False)
-            >>> actor.my_method.options(readonly=False).run(x, y)
+            >>> actor.my_method._run(args=[x, y], num_cpus=2)
+            >>> actor.my_method.options(num_cpus=2).run(x, y)
         """
 
         func_cls = self
 
         class FuncWrapper(ActorMethodBase):
-            def run(self, *args, **kwargs):
+            def run_async(self, *args, **kwargs):
                 return func_cls._run(args=args, kwargs=kwargs, **options)
 
         return FuncWrapper()
 
-    def _run(self,
-             args: Tuple[Any],
-             kwargs: Dict[str, Any],
-             readonly: Optional[bool] = None) -> "ObjectRef":
+    def _run(self, args: Tuple[Any], kwargs: Dict[str, Any],
+             **options) -> "ObjectRef":
         actor = self._actor_ref()
         if actor is None:
             raise RuntimeError("Lost reference to actor")
         try:
             return actor._actor_method_call(
-                self._method_name, args=args, kwargs=kwargs, readonly=readonly)
+                self._method_name, args=args, kwargs=kwargs)
         except TypeError as exc:  # capture a friendlier stacktrace
             raise TypeError(
                 "Invalid input arguments for virtual actor "
@@ -196,10 +201,11 @@ class VirtualActorMetadata:
 
 class VirtualActorClassBase(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def create(self, *args, **kwargs) -> "VirtualActor":
-        """Create a virtual actor.
+    def get_or_create(self, actor_id: str, *args, **kwargs) -> "VirtualActor":
+        """Get or create a virtual actor.
 
         Args:
+            actor_id: The ID of the actor.
             args: These arguments are forwarded directly to the actor
                 constructor.
             kwargs: These arguments are forwarded directly to the actor
@@ -284,75 +290,53 @@ class VirtualActorClass(VirtualActorClassBase):
         self._metadata = metadata
         return self
 
-    def create(self, *args, **kwargs) -> "VirtualActor":
+    def get_or_create(self, actor_id: str, *args, **kwargs) -> "VirtualActor":
         """Create an actor. See `VirtualActorClassBase.create()`."""
-        return self._create(
-            args=args,
-            kwargs=kwargs,
-            actor_id=None,
-            storage=None,
-            readonly=False)
+        return self._get_or_create(
+            actor_id, args=args, kwargs=kwargs, storage=None)
 
     # TODO(suquark): support num_cpu etc in options
     def options(self,
-                actor_id: str,
-                storage: Optional[Storage] = None,
-                readonly: bool = False) -> VirtualActorClassBase:
-        """Configures and overrides the actor instantiation parameters.
-
-        Examples:
-
-        .. code-block:: python
-
-            @workflow.actor
-            class Foo:
-                def method(self):
-                    return 1
-            # By default class Foo will not be running in the readonly mode,
-            # and will use a randomly generated 'actor_id'.
-            # You can specify 'readonly' and 'actor_id' by
-            Bar = Foo.options(actor_id="my_actor_id", readonly=True)
-        """
+                storage: Optional[Storage] = None) -> VirtualActorClassBase:
+        """Configures and overrides the actor instantiation parameters."""
 
         actor_cls = self
 
         class ActorOptionWrapper(VirtualActorClassBase):
-            def create(self, *args, **kwargs):
-                return actor_cls._create(
+            def get_or_create(self, actor_id: str, *args, **kwargs):
+                return actor_cls._get_or_create(
                     args=args,
                     kwargs=kwargs,
                     actor_id=actor_id,
-                    storage=storage,
-                    readonly=readonly)
+                    storage=storage)
 
         return ActorOptionWrapper()
 
-    def _create(self, args, kwargs, actor_id: Optional[str],
-                storage: Optional[Storage], readonly: bool) -> "VirtualActor":
+    def _get_or_create(self, actor_id: str, args, kwargs,
+                       storage: Optional[Storage]) -> "VirtualActor":
         """Create a new virtual actor"""
-        if actor_id is None:
-            actor_id = self._metadata.generate_random_actor_id()
         if storage is None:
             storage = get_global_storage()
-        instance = self._construct(actor_id, storage, readonly)
-        instance._create(args, kwargs)
-        return instance
+        try:
+            return get_actor(actor_id, storage)
+        except Exception:
+            instance = self._construct(actor_id, storage)
+            instance._create(args, kwargs)
+            return instance
 
-    def _construct(self, actor_id: str, storage: Storage,
-                   readonly: bool) -> "VirtualActor":
+    def _construct(self, actor_id: str, storage: Storage) -> "VirtualActor":
         """Construct a blank virtual actor."""
-        return VirtualActor(self._metadata, actor_id, storage, readonly)
+        return VirtualActor(self._metadata, actor_id, storage)
 
 
 class VirtualActor:
     """The instance of a virtual actor class."""
 
     def __init__(self, metadata: VirtualActorMetadata, actor_id: str,
-                 storage: Storage, readonly: bool):
+                 storage: Storage):
         self._metadata = metadata
         self._actor_id = actor_id
         self._storage = storage
-        self._readonly = readonly
         for method_name in metadata.signatures:
             # TODO(suquark): Maybe we should avoid overriding class fields.
             # However, we did not do it in ActorHandle.
@@ -360,16 +344,15 @@ class VirtualActor:
             setattr(self, method_name, method)
 
     def _create(self, args: Tuple[Any], kwargs: Dict[str, Any]):
-        workflow_storage = WorkflowStorage(self.workflow_id, self._storage)
+        workflow_storage = WorkflowStorage(self._actor_id, self._storage)
         workflow_storage.save_actor_class_body(self._metadata.cls)
         # TODO(suquark): This is just a temporary solution.
         # A virtual actor writer should take place of this solution later.
-        from ray.experimental.workflow import run
         arg_list = self._metadata.flatten_args("__init__", args, kwargs)
         init_step = _virtual_actor_init.step(self._metadata.cls, arg_list)
         init_step._step_id = self._metadata.cls.__init__.__name__
-        ref = run(
-            init_step, storage=self._storage, workflow_id=self.workflow_id)
+        ref = init_step.run_async(
+            storage=self._storage, workflow_id=self._actor_id)
         workflow_manager = get_or_create_management_actor()
         # keep the ref in a list to prevent dereference
         ray.get(workflow_manager.init_actor.remote(self._actor_id, [ref]))
@@ -379,38 +362,29 @@ class VirtualActor:
         """The actor ID of the virtual actor."""
         return self._actor_id
 
-    @property
-    def workflow_id(self) -> str:
-        """The workflow ID associated with the actor."""
-        return actor_id_to_workflow_id(self._actor_id)
-
-    @property
-    def readonly(self) -> bool:
-        """If the actor is readonly or not."""
-        return self._readonly
-
     def ready(self) -> "ObjectRef":
         """Return a future. If 'ray.get()' it successfully, then the actor
         is fully initialized."""
         # TODO(suquark): should ray.get(xxx.ready()) always be true?
-        actor = get_or_create_management_actor()
+        workflow_manager = get_or_create_management_actor()
         return ray.get(
-            actor.actor_ready.remote(self._actor_id,
-                                     self._storage.storage_url))
+            workflow_manager.actor_ready.remote(self._actor_id,
+                                                self._storage.storage_url))
 
     def __getattr__(self, item):
-        if item in self._methods_metadata.signatures:
+        if item in self._metadata.signatures:
             return ActorMethod(self, item)
         raise AttributeError(f"No method with name '{item}'")
 
-    def _actor_method_call(self, method_name: str, args, kwargs,
-                           readonly: Optional[bool]) -> "ObjectRef":
+    def _actor_method_call(self, method_name: str, args,
+                           kwargs) -> "ObjectRef":
         flatten_args = self._metadata.flatten_args(method_name, args, kwargs)
-        if readonly is None:
-            # inherit the class setting by default
-            readonly = self._readonly
+        cls = self._metadata.cls
+        method = getattr(cls, method_name, None)
+        if method is None:
+            raise AttributeError(f"Method '{method}' does not exist.")
+        readonly = getattr(method, "__virtual_actor_readonly__", None)
         if readonly:
-            cls = self._metadata.cls
             return _readonly_method_executor.remote(
                 self._actor_id, self._storage, cls, method_name, flatten_args)
         raise NotImplementedError("Virtual actor writer mode has not been "
@@ -422,18 +396,17 @@ def decorate_actor(cls: type):
     return VirtualActorClass._from_class(cls)
 
 
-def get_actor(actor_id: str, storage: Storage, readonly) -> VirtualActor:
+def get_actor(actor_id: str, storage: Storage) -> VirtualActor:
     """Get an virtual actor.
 
     Args:
         actor_id: The ID of the actor.
         storage: The storage of the actor.
-        readonly: Turn the actor into readonly actor or not.
 
     Returns:
         A virtual actor.
     """
-    ws = WorkflowStorage(actor_id_to_workflow_id(actor_id), storage)
+    ws = WorkflowStorage(actor_id, storage)
     cls = ws.load_actor_class_body()
     v_cls = VirtualActorClass._from_class(cls)
-    return v_cls._construct(actor_id, storage, readonly=readonly)
+    return v_cls._construct(actor_id, storage)

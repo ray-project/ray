@@ -4,7 +4,7 @@ import random
 from typing import List, Dict, Callable, Any, TYPE_CHECKING
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
@@ -49,9 +49,8 @@ class MultiAgentEpisode:
         >>> episode.extra_batches.add(batch.build_and_reset())
     """
 
-    def __init__(self, policies: Dict[PolicyID, Policy],
-                 policy_mapping_fn: Callable[[AgentID, "MultiAgentEpisode"],
-                                             PolicyID],
+    def __init__(self, policies: PolicyMap, policy_mapping_fn: Callable[
+        [AgentID, "MultiAgentEpisode"], PolicyID],
                  batch_builder_factory: Callable[
                      [], "MultiAgentSampleBatchBuilder"],
                  extra_batch_callback: Callable[[SampleBatchType], None],
@@ -71,7 +70,7 @@ class MultiAgentEpisode:
         self.user_data: Dict[str, Any] = {}
         self.hist_data: Dict[str, List[float]] = {}
         self.media: Dict[str, Any] = {}
-        self.policy_map: Dict[PolicyID, Policy] = policies
+        self.policy_map: PolicyMap = policies
         self._policies = self.policy_map  # backward compatibility
         self._policy_mapping_fn: Callable[[AgentID, "MultiAgentEpisode"],
                                           PolicyID] = policy_mapping_fn
