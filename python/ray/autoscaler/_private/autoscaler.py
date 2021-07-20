@@ -110,7 +110,9 @@ class StandardAutoscaler:
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
 
-        # Disable NodeUpdater threads if true
+        # Disable NodeUpdater threads if true.
+        # Should be set to true in situations where another component, such as
+        # a Kubernetes operator, is responsible for Ray setup on nodes.
         self.disable_node_updaters = disable_node_updaters
 
         # Node launchers
