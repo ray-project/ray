@@ -35,7 +35,7 @@ class WorkflowInputs:
     # The num of retry for application exception
     step_max_retries: int
     # Whether the user want to handle the exception mannually
-    catch_exception: bool
+    catch_exceptions: bool
     # ray_remote options
     ray_options: Dict[str, Any]
 
@@ -63,7 +63,7 @@ class Workflow:
                  input_placeholder: ObjectRef,
                  input_workflows: List["Workflow"],
                  input_object_refs: List[ObjectRef], step_max_retries: int,
-                 catch_exception: bool, ray_options: Dict[str, Any]):
+                 catch_exceptions: bool, ray_options: Dict[str, Any]):
         self._input_placeholder: ObjectRef = input_placeholder
         self._input_workflows: List[Workflow] = input_workflows
         self._input_object_refs: List[ObjectRef] = input_object_refs
@@ -76,7 +76,7 @@ class Workflow:
         self._step_id: StepID = slugify(
             original_function.__qualname__) + "." + uuid.uuid4().hex
         self._step_max_retries: int = step_max_retries
-        self._catch_exception: bool = catch_exception
+        self._catch_exceptions: bool = catch_exceptions
         self._ray_options: Dict[str, Any] = ray_options
 
     @property
@@ -113,7 +113,7 @@ class Workflow:
         step_inputs = (self._input_placeholder, workflow_outputs,
                        self._input_object_refs)
         output = self._step_execution_function(
-            self._step_id, step_inputs, self._catch_exception,
+            self._step_id, step_inputs, self._catch_exceptions,
             self._step_max_retries, self._ray_options, outer_most_step_id)
         if not isinstance(output, WorkflowOutputType):
             raise TypeError("Unexpected return type of the workflow.")
@@ -144,7 +144,7 @@ class Workflow:
             object_refs=[r.hex() for r in self._input_object_refs],
             workflows=[w.id for w in self._input_workflows],
             step_max_retries=self._step_max_retries,
-            catch_exception=self._catch_exception,
+            catch_exceptions=self._catch_exceptions,
             ray_options=self._ray_options,
         )
 

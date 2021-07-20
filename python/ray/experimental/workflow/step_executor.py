@@ -143,7 +143,7 @@ def commit_step(ret: Union[Workflow, Any],
 def _workflow_step_executor(
         func: Callable, context: workflow_context.WorkflowStepContext,
         step_id: StepID, step_inputs: StepInputTupleToResolve,
-        outer_most_step_id: StepID, catch_exception: bool,
+        outer_most_step_id: StepID, catch_exceptions: bool,
         step_max_retries: int) -> Any:
     """Executor function for workflow step.
 
@@ -154,7 +154,7 @@ def _workflow_step_executor(
         step_inputs: The inputs tuple of the step.
         outer_most_step_id: See "step_executor.execute_workflow" for
             explanation.
-        catch_exception: If set to be true, return
+        catch_exceptions: If set to be true, return
             (Optional[Result], Optional[Error]) instead of Result.
         step_max_retries: Max number of retries encounter of a failure.
 
@@ -185,7 +185,7 @@ def _workflow_step_executor(
         except BaseException as e:
             err = e
 
-    if catch_exception:
+    if catch_exceptions:
         return (ret, err)
     else:
         if err is not None:
@@ -195,9 +195,9 @@ def _workflow_step_executor(
 
 def execute_workflow_step(step_func: Callable, step_id: StepID,
                           step_inputs: WorkflowInputTuple,
-                          catch_exception: bool, step_max_retries: int,
+                          catch_exceptions: bool, step_max_retries: int,
                           ray_options: Dict[str, Any],
                           outer_most_step_id: StepID) -> WorkflowOutputType:
     return _workflow_step_executor.options(**ray_options).remote(
         step_func, workflow_context.get_workflow_step_context(), step_id,
-        step_inputs, outer_most_step_id, catch_exception, step_max_retries)
+        step_inputs, outer_most_step_id, catch_exceptions, step_max_retries)
