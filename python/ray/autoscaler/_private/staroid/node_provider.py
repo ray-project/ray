@@ -1,7 +1,6 @@
 import os
 import logging
 import time
-import requests
 from staroid import Staroid
 from kubernetes import client, config
 import socket
@@ -16,6 +15,19 @@ from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
 
 logger = logging.getLogger(__name__)
+
+
+def _try_import_requests():
+    """Tries to import 'requests'. Raises exception if fails."""
+    try:
+        import requests  # `requests` is not part of stdlib.
+    except ImportError as exc:
+        raise type(exc)(
+            "'requests' was not found, which is needed for "
+            "this cluster configuration. "
+            "Download this dependency by running `pip install requests` "
+            "or `pip install 'ray[default]'`.") from None
+    return requests
 
 
 def find_free_port():
@@ -47,6 +59,8 @@ class StaroidNodeProvider(NodeProvider):
                                              "STAROID_SKE")
         self.__ske_region = self._get_config_or_env(
             provider_config, "ske_region", "STAROID_SKE_REGION")
+
+        self._requests_lib = _try_import_requests()
 
     def _get_config_or_env(self, config, config_key, env_name):
         value = None
@@ -136,12 +150,12 @@ class StaroidNodeProvider(NodeProvider):
         established = False
         while time.time() - start_time < timeout:
             try:
-                r = requests.get(
+                r = self._requests_lib.get(
                     "{}/version".format(local_kube_api_addr), timeout=(3, 5))
                 if r.status_code == 200:
                     established = True
                     break
-            except requests.exceptions.ConnectionError:
+            except self._requests_lib.exceptions.ConnectionError:
                 pass
             time.sleep(3)
 

@@ -1,5 +1,4 @@
 from contextlib import contextmanager
-import colorama
 import atexit
 import faulthandler
 import hashlib
@@ -33,6 +32,7 @@ import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 import ray
+import colorama
 import setproctitle
 import ray.state
 
@@ -53,7 +53,7 @@ from ray.exceptions import (
 from ray._private.function_manager import FunctionActorManager
 from ray._private.ray_logging import setup_logger
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
-from ray._private.utils import check_oversized_pickle
+from ray._private.utils import check_oversized_function
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
     _internal_kv_initialized
@@ -392,8 +392,8 @@ class Worker:
                 # we don't need to export it again.
                 return
 
-            check_oversized_pickle(pickled_function, function.__name__,
-                                   "function", self)
+            check_oversized_function(pickled_function, function.__name__,
+                                     "function", self)
 
             # Run the function on all workers.
             self.redis_client.hset(
@@ -1743,7 +1743,14 @@ def get_actor(name):
         raise ValueError("Please supply a non-empty value to get_actor")
     worker = global_worker
     worker.check_connected()
-    return worker.core_worker.get_named_actor_handle(name)
+    split_names = name.split("/", maxsplit=1)
+    if len(split_names) <= 1:
+        name = split_names[0]
+        namespace = ""
+    else:
+        # must be length 2
+        namespace, name = split_names
+    return worker.core_worker.get_named_actor_handle(name, namespace)
 
 
 @PublicAPI
