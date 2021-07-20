@@ -1,5 +1,4 @@
 from contextlib import contextmanager
-import colorama
 import atexit
 import faulthandler
 import hashlib
@@ -33,6 +32,7 @@ import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 import ray
+import colorama
 import setproctitle
 import ray.state
 
@@ -985,6 +985,7 @@ def shutdown(_exiting_interpreter=False):
     if hasattr(global_worker, "gcs_client"):
         del global_worker.gcs_client
     if hasattr(global_worker, "core_worker"):
+        global_worker.core_worker.shutdown()
         del global_worker.core_worker
 
     # Disconnect global state from GCS.
@@ -1743,7 +1744,14 @@ def get_actor(name):
         raise ValueError("Please supply a non-empty value to get_actor")
     worker = global_worker
     worker.check_connected()
-    return worker.core_worker.get_named_actor_handle(name)
+    split_names = name.split("/", maxsplit=1)
+    if len(split_names) <= 1:
+        name = split_names[0]
+        namespace = ""
+    else:
+        # must be length 2
+        namespace, name = split_names
+    return worker.core_worker.get_named_actor_handle(name, namespace)
 
 
 @PublicAPI

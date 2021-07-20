@@ -337,6 +337,7 @@ Papers
    multiprocessing.rst
    joblib.rst
    xgboost-ray.rst
+   lightgbm-ray.rst
    ray-collective.rst
 
 .. toctree::

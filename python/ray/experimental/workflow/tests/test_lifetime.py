@@ -23,7 +23,7 @@ def foo(x):
 
 if __name__ == "__main__":
     ray.init(address="auto", namespace="workflow")
-    wf = workflow.run(foo.step(0), workflow_id="driver_terminated")
+    output = foo.step(0).run_async(workflow_id="driver_terminated")
     time.sleep({})
 """
 
