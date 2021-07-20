@@ -280,7 +280,7 @@ class FilesystemStorageImpl(Storage):
                                  metadata: Dict[str, Any]) -> None:
         file_path = self._workflow_root_dir / workflow_id / WORKFLOW_META
         try:
-            with _open_atomic(file_path, "wb") as f:
+            with _open_atomic(file_path, "w") as f:
                 json.dump(metadata, f)
         except Exception as e:
             raise DataSaveError from e

@@ -75,7 +75,7 @@ def get_current_step_id() -> str:
     return s[-1] if s else ""
 
 
-def get_current_worflow_id() -> str:
+def get_current_workflow_id() -> str:
     assert _context is not None
     return _context.workflow_id
 

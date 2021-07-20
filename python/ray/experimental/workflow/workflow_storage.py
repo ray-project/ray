@@ -5,7 +5,7 @@ workflows.
 
 import asyncio
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 
 import ray
 from ray.experimental.workflow import storage
@@ -307,9 +307,12 @@ class WorkflowStorage:
         Raises:
             DataSaveError: if we fail to save the class body.
         """
+        metadata = {
+            "status": str(metadata.status),
+        }
         asyncio_run(
             self._storage.save_workflow_meta(self._workflow_id,
-                                             asdict(metadata)))
+                                             metadata))
 
     def load_workflow_meta(self) -> WorkflowMeta:
         metadata = asyncio_run(

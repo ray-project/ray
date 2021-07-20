@@ -112,8 +112,7 @@ class WorkflowManagementActor:
         if workflow_id in self._workflow_outputs:
             raise ValueError(f"The output of workflow[id={workflow_id}] "
                              "already exists.")
-        store = storage.create_storage(storage_url)
-        output = recovery.resume_workflow_job(workflow_id, store)
+        output = recovery.resume_workflow_job.remote(workflow_id, storage_url)
         self._workflow_outputs[workflow_id] = output
         logger.info(f"Workflow job [id={workflow_id}] started.")
         return output

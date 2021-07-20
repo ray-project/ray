@@ -7,7 +7,6 @@ from ray.experimental.workflow.common import (Workflow, StepID, WorkflowMeta,
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.step_function import WorkflowStepFunction
-from ray.experimental.workflow.step_executor import execute_workflow
 
 
 class WorkflowStepNotRecoverableError(Exception):
@@ -99,14 +98,15 @@ def _construct_resume_workflow_from_step(
     return recovery_workflow
 
 
+@ray.remote
 def resume_workflow_job(workflow_id: str,
-                        store: storage.Storage) -> ray.ObjectRef:
+                        store_url: str) -> ray.ObjectRef:
     """Resume a workflow job.
 
     Args:
         workflow_id: The ID of the workflow job. The ID is used to identify
             the workflow.
-        store: The storage to access the workflow.
+        store_url: The url of the storage to access the workflow.
 
     Raises:
         WorkflowNotResumableException: fail to resume the workflow.
@@ -114,6 +114,7 @@ def resume_workflow_job(workflow_id: str,
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
+    store = storage.create_storage(storage_url)
     wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
     try:
         entrypoint_step_id: StepID = wf_store.get_entrypoint_step_id()
@@ -125,9 +126,9 @@ def resume_workflow_job(workflow_id: str,
         with workflow_context.workflow_step_context(workflow_id,
                                                     store.storage_url):
             wf_store.save_workflow_meta(WorkflowMeta(WorkflowStatus.RUNNING))
+            from ray.experimental.workflow.step_executor import execute_workflow
             return execute_workflow(r)
-
-    return ray.put(wf_store.load_step_output(r))
+    return wf_store.load_step_output(r)
 
 
 def get_latest_output(workflow_id: str, store: storage.Storage) -> Any:
