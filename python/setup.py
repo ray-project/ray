@@ -355,9 +355,7 @@ def build(build_python, build_java, build_cpp):
         commands.append("--config=asan")
     commands.append("--")
     return bazel_invoke(
-        subprocess.check_call,
-        commands + bazel_targets,
-        env=bazel_env)
+        subprocess.check_call, commands + bazel_targets, env=bazel_env)
 
 
 def walk_directory(directory):
