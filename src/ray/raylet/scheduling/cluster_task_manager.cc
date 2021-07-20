@@ -139,10 +139,16 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
   return can_dispatch;
 }
 
-using job_id_runtime_env_hash_pair = std::pair<size_t, int>;
 void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     WorkerPoolInterface &worker_pool,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
+  using job_id_runtime_env_hash_pair = std::pair<size_t, int>;
+  // TODO(simon): blocked_runtime_env_to_skip is added as a hack to make sure tasks
+  // requiring different runtime env doesn't block each other. We need to find a
+  // long term solution for this, see #17154.
+  std::unordered_set<job_id_runtime_env_hash_pair,
+                     boost::hash<job_id_runtime_env_hash_pair>>
+      blocked_runtime_env_to_skip;
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
@@ -152,12 +158,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
        shapes_it != tasks_to_dispatch_.end();) {
     auto &dispatch_queue = shapes_it->second;
     bool is_infeasible = false;
-    // TODO(simon): blocked_runtime_env_to_skip is added as a hack to make sure tasks
-    // requiring different runtime env doesn't block each other. We need to find a
-    // long term solution for this, see #17154.
-    std::unordered_set<job_id_runtime_env_hash_pair,
-                       boost::hash<job_id_runtime_env_hash_pair>>
-        blocked_runtime_env_to_skip;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto &work = *work_it;
       const auto &task = std::get<0>(work);
