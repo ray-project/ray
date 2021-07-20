@@ -4,4 +4,5 @@ from ray.experimental.workflow.workflow_access import WorkflowExecutionError
 from ray.experimental.workflow.common import WorkflowStatus
 
 __all__ = ("step", "virtual_actor", "resume", "get_output", "get_actor",
-           "WorkflowExecutionError", "list", "resume_all", "get_status", "WorkflowStatus")
+           "WorkflowExecutionError", "list", "resume_all", "get_status",
+           "WorkflowStatus")

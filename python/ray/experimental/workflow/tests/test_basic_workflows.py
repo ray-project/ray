@@ -8,6 +8,7 @@ from ray.experimental import workflow
 from ray.experimental.workflow import workflow_access
 from filelock import FileLock
 
+
 @workflow.step
 def identity(x):
     return x
@@ -178,12 +179,14 @@ def test_run_or_resume_during_running(ray_start_regular_shared):
         "namespace": "workflow"
     }], indirect=True)
 def test_list(ray_start_regular_shared, tmp_path):
-    tmp_file = str(tmp_path/"lock")
+    tmp_file = str(tmp_path / "lock")
     lock = FileLock(tmp_file)
     lock.acquire()
+
     @workflow.step
     def long_running():
         with FileLock(tmp_file):
             return
-    outputs = [long_running.step().run_async(workflow_id=str(i)) for i in range(100)]
-    jobs = workflow.list(workflow.WorkflowStatus.RUNNING)
+
+    [long_running.step().run_async(workflow_id=str(i)) for i in range(100)]
+    workflow.list(workflow.WorkflowStatus.RUNNING)
