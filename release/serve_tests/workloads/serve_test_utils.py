@@ -6,7 +6,7 @@ def parse_time_to_ms(time_string: str) -> float:
     """Given a time string with various unit, convert
     to ms in float:
 
-    wrk unit reference
+    wrk time unit reference
     https://github.com/wg/wrk/blob/master/src/units.c#L17-L21
 
         Example:
@@ -24,9 +24,9 @@ def parse_time_to_ms(time_string: str) -> float:
     if values[1] == "ms":
         return float(values[0])
     elif values[1] == "us":
-        return float(values[0] / 1000)
+        return float(values[0]) / 1000
     elif values[1] == "s":
-        return float(values[0] * 1000)
+        return float(values[0]) * 1000
 
     # Should not return here in common benchmark
     return values[1]
@@ -36,8 +36,8 @@ def parse_size_to_KB(size_string: str) -> float:
     """Given a size string with various unit, convert
     to KB in float:
 
-    wrk unit reference
-    https://github.com/wg/wrk/blob/master/src/units.c#L17-L21
+    wrk binary unit reference
+    https://github.com/wg/wrk/blob/master/src/units.c#L29-L33
 
         Example:
             "200.56KB" -> 200.56
@@ -45,18 +45,45 @@ def parse_size_to_KB(size_string: str) -> float:
             "0.5GB" -> 524288
     """
     # Group 1 - (one or more digits + optional dot + one or more digits)
-    # 71.91 / 50 / 1.5
+    # 200.56 / 50 / 0.5
     # Group 2 - (All words)
-    # ms / us / s
+    # KB / MB / GB
     parsed = re.split(r"(\d+.?\d+)(\w+)", size_string)
     values = [val for val in parsed if val]
 
     if values[1] == "KB":
         return float(values[0])
     elif values[1] == "MB":
-        return float(values[0] * 1024)
+        return float(values[0]) * 1024
     elif values[1] == "GB":
-        return float(values[0] * 1024 * 1024)
+        return float(values[0]) * 1024 * 1024
+
+    # Should not return here in common benchmark
+    return values[1]
+
+
+def parse_metric_to_base(metric_string: str) -> float:
+    """Given a metric string with various unit, convert
+    to original base
+
+    wrk metric unit reference
+    https://github.com/wg/wrk/blob/master/src/units.c#L35-L39
+
+        Example:
+            "71.91" -> 71.91
+            "1.32k" -> 1320
+            "1.5M" -> 1500000
+    """
+
+    parsed = re.split(r"(\d+.?\d+)(\w+)", metric_string)
+    values = [val for val in parsed if val]
+
+    if len(values) == 1:
+        return float(values[0])
+    if values[1] == "k":
+        return float(values[0]) * 1000
+    elif values[1] == "M":
+        return float(values[0]) * 1000 * 1000
 
     # Should not return here in common benchmark
     return values[1]
@@ -104,9 +131,9 @@ def parse_wrk_decoded_stdout(decoded_out):
             metrics_dict["latency_max_ms"] = parse_time_to_ms(parsed[3])
             metrics_dict["latency_+/-_stdev %"] = float(parsed[4][:-1])
         elif parsed[0] == "Req/Sec" and len(parsed) == 5:
-            metrics_dict["req/sec_avg"] = float(parsed[1])
-            metrics_dict["req/sec_stdev"] = float(parsed[2])
-            metrics_dict["req/sec_max"] = float(parsed[3])
+            metrics_dict["req/sec_avg"] = parse_metric_to_base(parsed[1])
+            metrics_dict["req/sec_stdev"] = parse_metric_to_base(parsed[2])
+            metrics_dict["req/sec_max"] = parse_metric_to_base(parsed[3])
             metrics_dict["req/sec_+/-_stdev %"] = float(parsed[4][:-1])
         # Latency Distribution header, ignored
         elif parsed[0] == "Latency" and parsed[1] == "Distribution":
@@ -128,7 +155,7 @@ def parse_wrk_decoded_stdout(decoded_out):
         # Requests/sec:   1317.73
         # Transfer/sec:    198.19KB
         elif parsed[0] == "Requests/sec:":
-            metrics_dict["requests/sec"] = float(parsed[1])
+            metrics_dict["requests/sec"] = parse_metric_to_base(parsed[1])
         elif parsed[0] == "Transfer/sec:":
             metrics_dict["transfer/sec_KB"] = parse_size_to_KB(parsed[1])
 

@@ -68,7 +68,9 @@ def setup_local_single_node_cluster(num_nodes):
             dashboard_host="0.0.0.0",
         )
     ray.init(address=cluster.address, dashboard_host="0.0.0.0")
-    serve.start()
+    serve_client = serve.start()
+
+    return serve_client
 
 
 def setup_anyscale_cluster():
@@ -81,7 +83,9 @@ def setup_anyscale_cluster():
     # we cannot connect to anyscale cluster from its headnode
     # ray.client().env({}).connect()
     ray.init(address="auto")
-    serve.start()
+    serve_client = serve.start()
+
+    return serve_client
 
 
 def deploy_replicas(num_replicas, max_batch_size):
@@ -97,25 +101,27 @@ def deploy_replicas(num_replicas, max_batch_size):
     Echo.deploy()
 
 
-def warm_up_cluster(num_warmup_iterations: int) -> None:
+def warm_up_cluster(num_warmup_iterations: int, http_host: str,
+                    http_port: str) -> None:
     for _ in range(num_warmup_iterations):
-        resp = requests.get("http://127.0.0.1:8000/echo").text
+        resp = requests.get(f"http://{http_host}:{http_port}/echo").text
         print(resp)
         time.sleep(0.5)
 
 
-def run_one_trial(trial_length: str, num_connectionss) -> None:
+def run_one_trial(trial_length: str, num_connections, http_host,
+                  http_port) -> None:
     proc = subprocess.Popen(
         [
             "wrk",
             "-c",
-            str(num_connectionss),
+            str(num_connections),
             "-t",
             str(NUM_CPU_PER_NODE),
             "-d",
             trial_length,
             "--latency",
-            "http://127.0.0.1:8000/echo",
+            f"http://{http_host}:{http_port}/echo",
         ],
         stdout=PIPE,
         stderr=PIPE,
@@ -165,16 +171,20 @@ def main(num_replicas: Optional[int], num_trials: Optional[int],
     if run_locally:
         num_nodes = int(math.ceil(num_replicas / NUM_CPU_PER_NODE))
         print(f"\nSetting up local ray cluster with {num_nodes} nodes ....\n")
-        setup_local_single_node_cluster(num_nodes)
+        serve_client = setup_local_single_node_cluster(num_nodes)
     else:
         print("\nSetting up anyscale ray cluster .. \n")
-        setup_anyscale_cluster()
+        serve_client = setup_anyscale_cluster()
+
+    http_host = str(serve_client._http_config.host)
+    http_port = str(serve_client._http_config.port)
+    print(f"Ray serve http_host: {http_host}, http_port: {http_port}")
 
     print(f"\nDeploying with {num_replicas} target replicas ....\n")
     deploy_replicas(num_replicas, max_batch_size)
 
     print("\nWarming up cluster ....\n")
-    warm_up_cluster(5)
+    warm_up_cluster(5, http_host, http_port)
 
     final_result = []
     for iteration in range(num_trials):
@@ -182,7 +192,8 @@ def main(num_replicas: Optional[int], num_trials: Optional[int],
         # For detailed discussion, see https://github.com/wg/wrk/issues/205
         # TODO:(jiaodong) What's the best number to use here ?
         num_connections = int(num_replicas * DEFAULT_MAX_BATCH_SIZE * 0.75)
-        decoded_out = run_one_trial(trial_length, num_connections)
+        decoded_out = run_one_trial(trial_length, num_connections, http_host,
+                                    http_port)
         metrics_dict = parse_wrk_decoded_stdout(decoded_out)
         final_result.append(metrics_dict)
 
