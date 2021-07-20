@@ -1889,6 +1889,53 @@ class AutoscalingTest(unittest.TestCase):
                 "ray-legacy-worker-node-type (lost contact with raylet)." in
                 events), events
 
+    def testTerminateUnhealthyWorkers(self):
+        """Test termination of unhealthy workers, when
+        autoscaler.disable_node_updaters == True.
+
+        Modified copy-paste of testRecoverUnhealthyWorkers.
+        """
+        config_path = self.write_config(SMALL_CLUSTER)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
+        lm = LoadMetrics()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        assert not autoscaler.updaters
+
+        # Mark a node as unhealthy
+        for _ in range(5):
+            if autoscaler.updaters:
+                time.sleep(0.05)
+                autoscaler.update()
+        assert not autoscaler.updaters
+        mock_metrics.recovering_nodes.set.assert_called_with(0)
+        num_calls = len(runner.calls)
+        lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
+        autoscaler.update()
+        mock_metrics.recovering_nodes.set.assert_called_with(0)
+        self.waitFor(lambda: len(runner.calls) > num_calls, num_retries=150)
+
+        # Check the node removal event is generated.
+        autoscaler.update()
+        events = autoscaler.event_summarizer.summary()
+        assert ("Restarting 1 nodes of type "
+                "ray-legacy-worker-node-type (lost contact with raylet)." in
+                events), events
+
     def testExternalNodeScaler(self):
         config = SMALL_CLUSTER.copy()
         config["provider"] = {
