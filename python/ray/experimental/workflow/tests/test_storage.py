@@ -4,7 +4,6 @@ import ray
 from ray.tests.conftest import *  # noqa
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.workflow_storage import asyncio_run
-from pytest_lazyfixture import lazy_fixture
 
 
 def some_func(x):
@@ -16,10 +15,6 @@ def some_func2(x):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "raw_storage",
-    [lazy_fixture("filesystem_storage"),
-     lazy_fixture("s3_storage")])
 async def test_raw_storage(ray_start_regular, raw_storage):
     workflow_id = test_workflow_storage.__name__
     step_id = "some_step"
@@ -95,10 +90,6 @@ async def test_raw_storage(ray_start_regular, raw_storage):
     assert load_step_output == output
 
 
-@pytest.mark.parametrize(
-    "raw_storage",
-    [lazy_fixture("filesystem_storage"),
-     lazy_fixture("s3_storage")])
 def test_workflow_storage(ray_start_regular, raw_storage):
     workflow_id = test_workflow_storage.__name__
     step_id = "some_step"

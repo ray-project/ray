@@ -61,7 +61,7 @@ def simple(x):
     return z
 
 
-def test_recovery_simple(ray_start_regular):
+def test_recovery_simple(ray_start_regular, raw_storage):
     utils.unset_global_mark()
     workflow_id = "test_recovery_simple"
     with pytest.raises(RaySystemError):
@@ -76,7 +76,7 @@ def test_recovery_simple(ray_start_regular):
     assert ray.get(output) == "foo(x[append1])[append2]"
 
 
-def test_recovery_complex(ray_start_regular):
+def test_recovery_complex(ray_start_regular, raw_storage):
     utils.unset_global_mark()
     workflow_id = "test_recovery_complex"
     with pytest.raises(RaySystemError):
@@ -93,7 +93,7 @@ def test_recovery_complex(ray_start_regular):
     assert ray.get(output) == r
 
 
-def test_recovery_non_exists_workflow(ray_start_regular):
+def test_recovery_non_exists_workflow(ray_start_regular, raw_storage):
     with pytest.raises(RayTaskError):
         ray.get(workflow.resume("this_workflow_id_does_not_exist"))
 
@@ -120,28 +120,29 @@ if __name__ == "__main__":
 """
 
 
-def test_recovery_cluster_failure():
-    subprocess.run(["ray start --head"], shell=True)
-    time.sleep(1)
-    proc = run_string_as_driver_nonblocking(driver_script)
-    time.sleep(10)
-    subprocess.run(["ray stop"], shell=True)
-    proc.kill()
-    time.sleep(1)
-    ray.init()
-    assert ray.get(workflow.resume("cluster_failure")) == 20
-    ray.shutdown()
+# def test_recovery_cluster_failure():
+#     subprocess.run(["ray start --head"], shell=True)
+#     time.sleep(1)
+#     proc = run_string_as_driver_nonblocking(driver_script)
+#     time.sleep(10)
+#     subprocess.run(["ray stop"], shell=True)
+#     proc.kill()
+#     time.sleep(1)
+#     ray.init()
+#     assert ray.get(workflow.resume("cluster_failure")) == 20
+#     ray.shutdown()
 
 
 @workflow.step
 def recursive_chain(x):
     if x < 100:
+        print(x)
         return recursive_chain.step(x + 1)
     else:
         return 100
 
 
-def test_shortcut(ray_start_regular):
+def test_shortcut(ray_start_regular, raw_storage):
     assert recursive_chain.step(0).run(workflow_id="shortcut") == 100
     # the shortcut points to the step with output checkpoint
     store = workflow_storage.WorkflowStorage("shortcut")
@@ -159,10 +160,9 @@ def constant_2():
     return 31416
 
 
-def test_resume_different_storage(ray_start_regular):
+def test_resume_different_storage(ray_start_regular, tmp_path):
     constant_1.step().run(workflow_id="const")
-    tmp_dir = tempfile.mkdtemp()
-    constant_2.step().run(workflow_id="const", storage=tmp_dir)
+    tmp_dir = (tmp_path / "tempfile").mkdir()
+    constant_2.step().run(workflow_id="const", storage=str(tmp_dir))
     assert ray.get(workflow.resume(workflow_id="const",
-                                   storage=tmp_dir)) == 31416
-    shutil.rmtree(tmp_dir)
+                                   storage=str(tmp_dir))) == 31416
