@@ -17,12 +17,14 @@ import sys
 import time
 from typing import Optional
 
-import colorama
-import psutil
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
 import redis
+
+# Import psutil and colorama after ray so the packaged version is used.
+import colorama
+import psutil
 
 resource = None
 if sys.platform != "win32":
@@ -1643,8 +1645,10 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
         "--ray-node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--ray-address={redis_address}",
         f"--ray-redis-password={redis_password}",
-        f"--ray-session-dir={session_dir}", f"--ray-logs-dir={log_dir}",
-        f"--ray-node-ip-address={node_ip_address}"
+        f"--ray-session-dir={session_dir}",
+        f"--ray-logs-dir={log_dir}",
+        f"--ray-node-ip-address={node_ip_address}",
+        "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 
     return command

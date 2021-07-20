@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from collections import namedtuple
 import gym
 from gym.spaces import Box
 import logging
@@ -29,6 +30,33 @@ logger = logging.getLogger(__name__)
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
 LEARNER_STATS_KEY = "learner_stats"
+
+# A policy spec used in the "config.multiagent.policies" specification dict
+# as values (keys are the policy IDs (str)). E.g.:
+# config:
+#   multiagent:
+#     policies: {
+#       "pol1": PolicySpec(None, Box, Discrete(2), {"lr": 0.0001}),
+#       "pol2": PolicySpec(config={"lr": 0.001}),
+#     }
+PolicySpec = namedtuple(
+    "PolicySpec",
+    [
+        # If None, use the Trainer's default policy class stored under
+        # `Trainer._policy_class`.
+        "policy_class",
+        # If None, use the env's observation space. If None and there is no Env
+        # (e.g. offline RL), an error is thrown.
+        "observation_space",
+        # If None, use the env's action space. If None and there is no Env
+        # (e.g. offline RL), an error is thrown.
+        "action_space",
+        # Overrides defined keys in the main Trainer config.
+        # If None, use {}.
+        "config",
+    ])
+# From 3.7 on, we could pass `defaults` into the above constructor.
+PolicySpec.__new__.__defaults__ = (None, None, None, None)
 
 
 @DeveloperAPI
@@ -433,6 +461,9 @@ class Policy(metaclass=ABCMeta):
     def get_weights(self) -> ModelWeights:
         """Returns model weights.
 
+        Note: The return value of this method will reside under the "weights"
+        key in the return value of Policy.get_state().
+
         Returns:
             ModelWeights: Serializable copy or view of model weights.
         """
@@ -440,7 +471,7 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def set_weights(self, weights: ModelWeights) -> None:
-        """Sets model weights.
+        """Sets this Policy's model's weights.
 
         Args:
             weights (ModelWeights): Serializable copy or view of model weights.
@@ -495,12 +526,16 @@ class Policy(metaclass=ABCMeta):
     def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
         """Returns all local state.
 
+        Note: Not to be confused with an RNN model's internal state.
+
         Returns:
             Union[Dict[str, TensorType], List[TensorType]]: Serialized local
                 state.
         """
         state = {
+            # All the policy's weights.
             "weights": self.get_weights(),
+            # The current global timestep.
             "global_timestep": self.global_timestep,
         }
         return state
@@ -552,6 +587,16 @@ class Policy(metaclass=ABCMeta):
             import_file (str): Local readable file.
         """
         raise NotImplementedError
+
+    @DeveloperAPI
+    def get_session(self) -> Optional["tf1.Session"]:
+        """Returns tf.Session object to use for computing actions or None.
+
+        Returns:
+            Optional[tf1.Session]: The tf Session to use for computing actions
+                and losses with this policy.
+        """
+        return None
 
     def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.

@@ -536,7 +536,6 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
 )
 
-
 # TD3
 py_test(
     name = "run_regression_tests_pendulum_td3_tf",
@@ -2425,6 +2424,14 @@ py_test(
     size = "medium",
     srcs = ["examples/fractional_gpus.py"],
     args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
+)
+
+py_test(
+    name = "examples/pettingzoo_env",
+    main = "examples/pettingzoo_env.py",
+    tags = ["examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/pettingzoo_env.py"],
 )
 
 py_test(

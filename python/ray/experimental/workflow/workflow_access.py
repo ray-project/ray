@@ -1,12 +1,18 @@
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List, TYPE_CHECKING
 
 import ray
 from ray.experimental.workflow import recovery
 from ray.experimental.workflow import storage
+from ray.experimental.workflow import workflow_storage
+
+if TYPE_CHECKING:
+    from ray.actor import ActorHandle
+
 logger = logging.getLogger(__name__)
 
-MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
+# The name contains the namespace "workflow".
+MANAGEMENT_ACTOR_NAME = "workflow/WorkflowManagementActor"
 
 
 class WorkflowExecutionError(Exception):
@@ -88,6 +94,7 @@ class WorkflowManagementActor:
 
     def __init__(self):
         self._workflow_outputs: Dict[str, ray.ObjectRef] = {}
+        self._actor_initialized: Dict[str, ray.ObjectRef] = {}
 
     def run_or_resume(self, workflow_id: str,
                       storage_url: str) -> ray.ObjectRef:
@@ -109,6 +116,46 @@ class WorkflowManagementActor:
         self._workflow_outputs[workflow_id] = output
         logger.info(f"Workflow job [id={workflow_id}] started.")
         return output
+
+    def init_actor(self, actor_id: str,
+                   init_marker: List[ray.ObjectRef]) -> None:
+        """Initialize a workflow virtual actor.
+
+        Args:
+            actor_id: The ID of a workflow virtual actor.
+            init_marker: A future object (wrapped in a list) that represents
+                the state of the actor. "ray.get" the object successfully
+                indicates the actor is initialized successfully.
+        """
+        # TODO(suquark): Maybe we should raise an error if the actor_id
+        # already exists?
+        self._actor_initialized[actor_id] = init_marker[0]
+
+    def actor_ready(self, actor_id: str, storage_url: str) -> ray.ObjectRef:
+        """Check if a workflow virtual actor is fully initialized.
+
+        Args:
+            actor_id: The ID of a workflow virtual actor.
+            storage_url: A string that represents the storage.
+
+        Returns:
+            A future object that represents the state of the actor.
+            "ray.get" the object successfully indicates the actor is
+            initialized successfully.
+        """
+        store = storage.create_storage(storage_url)
+        ws = workflow_storage.WorkflowStorage(actor_id, store)
+        try:
+            step_id = ws.get_entrypoint_step_id()
+            output_exists = ws.inspect_step(step_id).output_object_valid
+            if output_exists:
+                return ray.put(None)
+        except Exception:
+            pass
+        if actor_id not in self._actor_initialized:
+            raise ValueError(f"Actor '{actor_id}' has not been created, or "
+                             "it has failed before initialization.")
+        return self._actor_initialized[actor_id]
 
     def get_output(self, workflow_id: str) -> ray.ObjectRef:
         """Get the output of a running workflow.
@@ -144,3 +191,18 @@ class WorkflowManagementActor:
         """
         logger.info(f"Workflow job [id={workflow_id}] succeeded.")
         self._workflow_outputs.pop(workflow_id, None)
+
+
+def get_or_create_management_actor() -> "ActorHandle":
+    """Get or create WorkflowManagementActor"""
+    # TODO(suquark): We should not get the actor everytime. We also need to
+    # resume the actor if it failed. Using a global variable to cache the
+    # actor seems not enough to resume the actor, because there is no
+    # aliveness detection for an actor.
+    try:
+        actor = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    except ValueError:
+        # the actor does not exist
+        actor = WorkflowManagementActor.options(
+            name=MANAGEMENT_ACTOR_NAME, lifetime="detached").remote()
+    return actor

@@ -780,7 +780,6 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
   if (nodes_.find(local_node_id_) == nodes_.end()) {
     return false;
   }
-
   task_allocation->predefined_resources.resize(PredefinedResources_MAX);
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (resource_request.predefined_resources[i] > 0) {

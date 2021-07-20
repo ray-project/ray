@@ -52,12 +52,11 @@ def setup_runtime_env(runtime_env: dict, session_dir):
                 extra_pip_dependencies = []
             conda_dict = inject_dependencies(conda_dict, py_version,
                                              extra_pip_dependencies)
-            # Locking to avoid multiple processes installing concurrently
-            conda_hash = hashlib.sha1(
-                json.dumps(conda_dict,
-                           sort_keys=True).encode("utf-8")).hexdigest()
-            conda_hash_str = f"conda-generated-{conda_hash}"
-            file_lock_name = f"ray-{conda_hash_str}.lock"
+            # It is not safe for multiple processes to install conda envs
+            # concurrently, even if the envs are different, so use a global
+            # lock for all conda installs.
+            # See https://github.com/ray-project/ray/issues/17086
+            file_lock_name = "ray-conda-install.lock"
             with FileLock(os.path.join(session_dir, file_lock_name)):
                 conda_dir = os.path.join(session_dir, "runtime_resources",
                                          "conda")

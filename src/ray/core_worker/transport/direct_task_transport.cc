@@ -205,9 +205,9 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
   // ids. In fact, if we allow stealing among workers with the same address/worker id, we
   // will also necessarily enable self-stealing.
   if ((victim_addr == thief_addr) || victim_addr.worker_id == thief_addr.worker_id) {
-    RAY_LOG(INFO) << "No victim available with address distinct from thief!";
-    RAY_LOG(INFO) << "victim_addr.worker_id: " << victim_addr.worker_id
-                  << " thief_addr.worker_id: " << thief_addr.worker_id;
+    RAY_LOG(DEBUG) << "No victim available with address distinct from thief!";
+    RAY_LOG(DEBUG) << "victim_addr.worker_id: " << victim_addr.worker_id
+                   << " thief_addr.worker_id: " << thief_addr.worker_id;
     return false;
   }
 
@@ -627,7 +627,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
                                                  bool force_kill, bool recursive) {
-  RAY_LOG(INFO) << "Killing task: " << task_spec.TaskId();
+  RAY_LOG(INFO) << "Cancelling a task: " << task_spec.TaskId()
+                << " force_kill: " << force_kill << " recursive: " << recursive;
   const SchedulingKey scheduling_key(
       task_spec.GetSchedulingClass(), task_spec.GetDependencyIds(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),

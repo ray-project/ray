@@ -1,11 +1,13 @@
 from collections import deque
 import re
-from typing import Tuple, List, Optional, Callable, Set, Iterator
+from typing import (Tuple, Dict, List, Optional, Callable, Set, Iterator, Any,
+                    Union, TYPE_CHECKING)
 import unicodedata
 import uuid
 
 from dataclasses import dataclass
 
+import ray
 from ray import ObjectRef
 
 # Alias types
@@ -15,6 +17,9 @@ WorkflowInputTuple = Tuple[ObjectRef, List["Workflow"], List[ObjectRef]]
 StepExecutionFunction = Callable[
     [StepID, WorkflowInputTuple, Optional[StepID]], WorkflowOutputType]
 SerializedStepFunction = str
+
+if TYPE_CHECKING:
+    from ray.experimental.workflow.storage import Storage
 
 
 @dataclass
@@ -27,9 +32,15 @@ class WorkflowInputs:
     object_refs: List[str]
     # The ID of workflows in the arguments.
     workflows: List[str]
+    # The num of retry for application exception
+    step_max_retries: int
+    # Whether the user want to handle the exception mannually
+    catch_exceptions: bool
+    # ray_remote options
+    ray_options: Dict[str, Any]
 
 
-def slugify(value: str, allow_unicode=False):
+def slugify(value: str, allow_unicode=False) -> str:
     """Adopted from
     https://github.com/django/django/blob/master/django/utils/text.py
     Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
@@ -51,7 +62,8 @@ class Workflow:
                  step_execution_function: StepExecutionFunction,
                  input_placeholder: ObjectRef,
                  input_workflows: List["Workflow"],
-                 input_object_refs: List[ObjectRef]):
+                 input_object_refs: List[ObjectRef], step_max_retries: int,
+                 catch_exceptions: bool, ray_options: Dict[str, Any]):
         self._input_placeholder: ObjectRef = input_placeholder
         self._input_workflows: List[Workflow] = input_workflows
         self._input_object_refs: List[ObjectRef] = input_object_refs
@@ -59,11 +71,13 @@ class Workflow:
         self._original_function: Callable = original_function
         self._step_execution_function: StepExecutionFunction = (
             step_execution_function)
-
         self._executed: bool = False
         self._output: Optional[WorkflowOutputType] = None
         self._step_id: StepID = slugify(
             original_function.__qualname__) + "." + uuid.uuid4().hex
+        self._step_max_retries: int = step_max_retries
+        self._catch_exceptions: bool = catch_exceptions
+        self._ray_options: Dict[str, Any] = ray_options
 
     @property
     def executed(self) -> bool:
@@ -98,8 +112,9 @@ class Workflow:
         # proper context. To prevent it, we put it inside a tuple.
         step_inputs = (self._input_placeholder, workflow_outputs,
                        self._input_object_refs)
-        output = self._step_execution_function(self._step_id, step_inputs,
-                                               outer_most_step_id)
+        output = self._step_execution_function(
+            self._step_id, step_inputs, self._catch_exceptions,
+            self._step_max_retries, self._ray_options, outer_most_step_id)
         if not isinstance(output, WorkflowOutputType):
             raise TypeError("Unexpected return type of the workflow.")
         self._output = output
@@ -128,6 +143,9 @@ class Workflow:
             args=self._input_placeholder,
             object_refs=[r.hex() for r in self._input_object_refs],
             workflows=[w.id for w in self._input_workflows],
+            step_max_retries=self._step_max_retries,
+            catch_exceptions=self._catch_exceptions,
+            ray_options=self._ray_options,
         )
 
     def __reduce__(self):
@@ -136,3 +154,70 @@ class Workflow:
             "Maybe you are passing it to a Ray remote function, "
             "returning it from a Ray remote function, or using "
             "'ray.put()' with it?")
+
+    def run(self,
+            workflow_id: Optional[str] = None,
+            storage: "Optional[Union[str, Storage]]" = None) -> Any:
+        """Run a workflow.
+
+        Examples:
+            >>> @workflow.step
+            ... def book_flight(origin: str, dest: str) -> Flight:
+            ...    return Flight(...)
+
+            >>> @workflow.step
+            ... def book_hotel(location: str) -> Reservation:
+            ...    return Reservation(...)
+
+            >>> @workflow.step
+            ... def finalize_trip(bookings: List[Any]) -> Trip:
+            ...    return Trip(...)
+
+            >>> flight1 = book_flight.step("OAK", "SAN")
+            >>> flight2 = book_flight.step("SAN", "OAK")
+            >>> hotel = book_hotel.step("SAN")
+            >>> trip = finalize_trip.step([flight1, flight2, hotel])
+            >>> result = trip.run()
+
+        Args:
+            workflow_id: A unique identifier that can be used to resume the
+                workflow. If not specified, a random id will be generated.
+            storage: The external storage URL or a custom storage class. If not
+                specified, ``/tmp/ray/workflow_data`` will be used.
+        """
+        return ray.get(self.run_async(workflow_id, storage))
+
+    def run_async(
+            self,
+            workflow_id: Optional[str] = None,
+            storage: "Optional[Union[str, Storage]]" = None) -> ObjectRef:
+        """Run a workflow asynchronously.
+
+        Examples:
+            >>> @workflow.step
+            ... def book_flight(origin: str, dest: str) -> Flight:
+            ...    return Flight(...)
+
+            >>> @workflow.step
+            ... def book_hotel(location: str) -> Reservation:
+            ...    return Reservation(...)
+
+            >>> @workflow.step
+            ... def finalize_trip(bookings: List[Any]) -> Trip:
+            ...    return Trip(...)
+
+            >>> flight1 = book_flight.step("OAK", "SAN")
+            >>> flight2 = book_flight.step("SAN", "OAK")
+            >>> hotel = book_hotel.step("SAN")
+            >>> trip = finalize_trip.step([flight1, flight2, hotel])
+            >>> result = ray.get(trip.run_async())
+
+        Args:
+            workflow_id: A unique identifier that can be used to resume the
+                workflow. If not specified, a random id will be generated.
+            storage: The external storage URL or a custom storage class. If not
+                specified, ``/tmp/ray/workflow_data`` will be used.
+        """
+        # TODO(suquark): avoid cyclic importing
+        from ray.experimental.workflow.execution import run
+        return run(self, storage, workflow_id)

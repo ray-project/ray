@@ -27,7 +27,8 @@ from ray.rllib.offline.off_policy_estimator import OffPolicyEstimator, \
 from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
 from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import merge_dicts
@@ -139,9 +140,7 @@ class RolloutWorker(ParallelIteratorWorker):
             env_creator: Callable[[EnvContext], EnvType],
             validate_env: Optional[Callable[[EnvType, EnvContext],
                                             None]] = None,
-            policy_spec: Union[type, Dict[
-                str, Tuple[Optional[type], gym.Space, gym.Space,
-                           PartialTrainerConfigDict]]] = None,
+            policy_spec: Union[type, Dict[PolicyID, PolicySpec]] = None,
             policy_mapping_fn: Optional[Callable[
                 [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
@@ -183,9 +182,7 @@ class RolloutWorker(ParallelIteratorWorker):
             fake_sampler: bool = False,
             spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
                                                   gym.spaces.Space]]] = None,
-            policy: Union[type, Dict[
-                str, Tuple[Optional[type], gym.Space, gym.Space,
-                           PartialTrainerConfigDict]]] = None,
+            policy=None,
             monitor_path=None,
     ):
         """Initialize a rollout worker.
@@ -196,11 +193,11 @@ class RolloutWorker(ParallelIteratorWorker):
             validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
                 Optional callable to validate the generated environment (only
                 on worker=0).
-            policy_spec (Union[type, Dict[str, Tuple[Type[Policy], gym.Space,
-                gym.Space, PartialTrainerConfigDict]]]): Either a Policy class
-                or a dict of policy id strings to
-                (Policy class, obs_space, action_space, config)-tuples. If a
-                dict is specified, then we are in multi-agent mode and a
+            policy_spec (Optional[Union[Type[Policy],
+                MultiAgentPolicyConfigDict]]): The MultiAgentPolicyConfigDict
+                mapping policy IDs (str) to PolicySpec's or a single policy
+                class to use.
+                If a dict is specified, then we are in multi-agent mode and a
                 policy_mapping_fn can also be set (if not, will map all agents
                 to DEFAULT_POLICY_ID).
             policy_mapping_fn (Optional[Callable[[AgentID, MultiAgentEpisode],
@@ -309,15 +306,26 @@ class RolloutWorker(ParallelIteratorWorker):
                 gym.spaces.Space]]]): An optional space dict mapping policy IDs
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
-            policy: Obsoleted arg. Use `policy_spec` instead.
             monitor_path: Obsoleted arg. Use `record_env` instead.
         """
+
         # Deprecated args.
         if policy is not None:
             deprecation_warning("policy", "policy_spec", error=False)
             policy_spec = policy
-        assert policy_spec is not None, "Must provide `policy_spec` when " \
-                                        "creating RolloutWorker!"
+        assert policy_spec is not None, \
+            "Must provide `policy_spec` when creating RolloutWorker!"
+
+        # Do quick translation into MultiAgentPolicyConfigDict.
+        if not isinstance(policy_spec, dict):
+            policy_spec = {
+                DEFAULT_POLICY_ID: PolicySpec(policy_class=policy_spec)
+            }
+        policy_spec = {
+            pid: spec if isinstance(spec, PolicySpec) else PolicySpec(*spec)
+            for pid, spec in policy_spec.copy().items()
+        }
+
         if monitor_path is not None:
             deprecation_warning("monitor_path", "record_env", error=False)
             record_env = monitor_path
@@ -482,8 +490,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         self.make_env_fn = make_env
 
-        self.tf_sess = None
-        policy_dict = _validate_and_canonicalize(
+        policy_dict = _determine_spaces_for_multi_agent_dict(
             policy_spec, self.env, spaces=spaces, policy_config=policy_config)
         # List of IDs of those policies, which should be trained.
         # By default, these are all policies found in the policy_dict.
@@ -491,7 +498,7 @@ class RolloutWorker(ParallelIteratorWorker):
             policy_dict.keys())
         self.set_policies_to_train(self.policies_to_train)
 
-        self.policy_map: Dict[PolicyID, Policy] = None
+        self.policy_map: PolicyMap = None
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
 
         # Set Python random, numpy, env, and torch/tf seeds.
@@ -534,26 +541,11 @@ class RolloutWorker(ParallelIteratorWorker):
             elif tf1 and policy_config.get("framework") == "tfe":
                 tf1.set_random_seed(seed)
 
-        if _has_tensorflow_graph(policy_dict) and not (
-                tf1 and tf1.executing_eagerly()):
-            if not tf1:
-                raise ImportError("Could not import tensorflow")
-            with tf1.Graph().as_default():
-                if tf_session_creator:
-                    self.tf_sess = tf_session_creator()
-                else:
-                    self.tf_sess = tf1.Session(
-                        config=tf1.ConfigProto(
-                            gpu_options=tf1.GPUOptions(allow_growth=True)))
-                with self.tf_sess.as_default():
-                    # set graph-level seed
-                    if seed is not None:
-                        tf1.set_random_seed(seed)
-                    self.policy_map, self.preprocessors = \
-                        self._build_policy_map(policy_dict, policy_config)
-        else:
-            self.policy_map, self.preprocessors = self._build_policy_map(
-                policy_dict, policy_config)
+        self._build_policy_map(
+            policy_dict,
+            policy_config,
+            session_creator=tf_session_creator,
+            seed=seed)
 
         # Update Policy's view requirements from Model, only if Policy directly
         # inherited from base `Policy` class. At this point here, the Policy
@@ -584,14 +576,13 @@ class RolloutWorker(ParallelIteratorWorker):
         self.multiagent: bool = set(
             self.policy_map.keys()) != {DEFAULT_POLICY_ID}
         if self.multiagent and self.env is not None:
-            if not ((isinstance(self.env, MultiAgentEnv)
-                     or isinstance(self.env, ExternalMultiAgentEnv))
-                    or isinstance(self.env, BaseEnv)):
+            if not isinstance(self.env,
+                              (BaseEnv, ExternalMultiAgentEnv, MultiAgentEnv,
+                               ray.actor.ActorHandle)):
                 raise ValueError(
-                    "Have multiple policies {}, but the env ".format(
-                        self.policy_map) +
-                    "{} is not a subclass of BaseEnv, MultiAgentEnv or "
-                    "ExternalMultiAgentEnv?".format(self.env))
+                    f"Have multiple policies {self.policy_map}, but the "
+                    f"env {self.env} is not a subclass of BaseEnv, "
+                    f"MultiAgentEnv, ActorHandle, or ExternalMultiAgentEnv!")
 
         self.filters: Dict[PolicyID, Filter] = {
             policy_id: get_filter(self.observation_filter,
@@ -671,7 +662,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
-                tf_sess=self.tf_sess,
                 normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
                 blackhole_outputs="simulation" in input_evaluation,
@@ -694,7 +684,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
-                tf_sess=self.tf_sess,
                 normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
@@ -916,23 +905,24 @@ class RolloutWorker(ParallelIteratorWorker):
                     summarize(samples)))
         if isinstance(samples, MultiAgentBatch):
             info_out = {}
+            builders = {}
             to_fetch = {}
-            if self.tf_sess is not None:
-                builder = TFRunBuilder(self.tf_sess, "learn_on_batch")
-            else:
-                builder = None
             for pid, batch in samples.policy_batches.items():
                 if pid not in self.policies_to_train:
                     continue
                 # Decompress SampleBatch, in case some columns are compressed.
                 batch.decompress_if_needed()
                 policy = self.policy_map[pid]
-                if builder and hasattr(policy, "_build_learn_on_batch"):
+                tf_session = policy.get_session()
+                if tf_session and hasattr(policy, "_build_learn_on_batch"):
+                    builders[pid] = TFRunBuilder(tf_session, "learn_on_batch")
                     to_fetch[pid] = policy._build_learn_on_batch(
-                        builder, batch)
+                        builders[pid], batch)
                 else:
                     info_out[pid] = policy.learn_on_batch(batch)
-            info_out.update({k: builder.get(v) for k, v in to_fetch.items()})
+            info_out.update(
+                {pid: builders[pid].get(v)
+                 for pid, v in to_fetch.items()})
         else:
             info_out = {
                 DEFAULT_POLICY_ID: self.policy_map[DEFAULT_POLICY_ID]
@@ -1017,12 +1007,15 @@ class RolloutWorker(ParallelIteratorWorker):
             return ret
 
     @DeveloperAPI
-    def get_policy(
-            self, policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID) -> Policy:
+    def get_policy(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> Policy:
         """Return policy for the specified id, or None.
 
         Args:
-            policy_id (str): id of policy to return.
+            policy_id (PolicyID): ID of the policy to return.
+
+        Returns:
+            Optional[Policy]: The policy under the given ID (or None if not
+                found).
         """
 
         return self.policy_map.get(policy_id)
@@ -1071,18 +1064,12 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_dict = {
             policy_id: (policy_cls, observation_space, action_space, config)
         }
-        if self.tf_sess is not None:
-            with self.tf_sess.graph.as_default():
-                with self.tf_sess.as_default():
-                    add_map, add_prep = self._build_policy_map(
-                        policy_dict, self.policy_config)
-        else:
-            add_map, add_prep = self._build_policy_map(policy_dict,
-                                                       self.policy_config)
-        new_policy = add_map[policy_id]
+        self._build_policy_map(
+            policy_dict,
+            self.policy_config,
+            seed=self.policy_config.get("seed"))
+        new_policy = self.policy_map[policy_id]
 
-        self.policy_map.update(add_map)
-        self.preprocessors.update(add_prep)
         self.filters[policy_id] = get_filter(
             self.observation_filter, new_policy.observation_space.shape)
 
@@ -1294,57 +1281,52 @@ class RolloutWorker(ParallelIteratorWorker):
         return func(self, *args)
 
     def _build_policy_map(
-            self, policy_dict: MultiAgentPolicyConfigDict,
-            policy_config: TrainerConfigDict
+            self,
+            policy_dict: MultiAgentPolicyConfigDict,
+            policy_config: TrainerConfigDict,
+            session_creator: Optional[Callable[[], "tf1.Session"]] = None,
+            seed: Optional[int] = None,
     ) -> Tuple[Dict[PolicyID, Policy], Dict[PolicyID, Preprocessor]]:
-        policy_map = {}
-        preprocessors = {}
-        for name, (cls, obs_space, act_space,
+
+        ma_config = policy_config.get("multiagent", {})
+
+        self.policy_map = self.policy_map or PolicyMap(
+            worker_index=self.worker_index,
+            num_workers=self.num_workers,
+            capacity=ma_config.get("policy_map_capacity"),
+            path=ma_config.get("policy_map_cache"),
+            policy_config=policy_config,
+            session_creator=session_creator,
+            seed=seed,
+        )
+        self.preprocessors = self.preprocessors or {}
+
+        for name, (orig_cls, obs_space, act_space,
                    conf) in sorted(policy_dict.items()):
             logger.debug("Creating policy for {}".format(name))
-            merged_conf = merge_dicts(policy_config, conf)
+            merged_conf = merge_dicts(policy_config, conf or {})
             merged_conf["num_workers"] = self.num_workers
             merged_conf["worker_index"] = self.worker_index
             if self.preprocessing_enabled:
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space, merged_conf.get("model"))
-                preprocessors[name] = preprocessor
+                self.preprocessors[name] = preprocessor
                 obs_space = preprocessor.observation_space
             else:
-                preprocessors[name] = NoPreprocessor(obs_space)
+                self.preprocessors[name] = NoPreprocessor(obs_space)
 
             if isinstance(obs_space, (gym.spaces.Dict, gym.spaces.Tuple)):
                 raise ValueError(
                     "Found raw Tuple|Dict space as input to policy. "
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
-            # Tf.
-            framework = policy_config.get("framework", "tf")
-            if framework in ["tf2", "tf", "tfe"]:
-                assert tf1
-                if framework in ["tf2", "tfe"]:
-                    assert tf1.executing_eagerly()
-                    if hasattr(cls, "as_eager"):
-                        cls = cls.as_eager()
-                        if policy_config.get("eager_tracing"):
-                            cls = cls.with_tracing()
-                    elif not issubclass(cls, TFPolicy):
-                        pass  # could be some other type of policy
-                    else:
-                        raise ValueError("This policy does not support eager "
-                                         "execution: {}".format(cls))
-                scope = name + (("_wk" + str(self.worker_index))
-                                if self.worker_index else "")
-                with tf1.variable_scope(scope):
-                    policy_map[name] = cls(obs_space, act_space, merged_conf)
-            # non-tf.
-            else:
-                policy_map[name] = cls(obs_space, act_space, merged_conf)
+
+            self.policy_map.create_policy(name, orig_cls, obs_space, act_space,
+                                          conf, merged_conf)
 
         if self.worker_index == 0:
-            logger.info("Built policy map: {}".format(policy_map))
-            logger.info("Built preprocessor map: {}".format(preprocessors))
-        return policy_map, preprocessors
+            logger.info(f"Built policy map: {self.policy_map}")
+            logger.info(f"Built preprocessor map: {self.preprocessors}")
 
     def setup_torch_data_parallel(self, url: str, world_rank: int,
                                   world_size: int, backend: str) -> None:
@@ -1379,74 +1361,57 @@ class RolloutWorker(ParallelIteratorWorker):
             self.sampler.shutdown = True
 
 
-def _validate_and_canonicalize(
-        policy: Union[Type[Policy], MultiAgentPolicyConfigDict],
-        env: Optional[EnvType],
+def _determine_spaces_for_multi_agent_dict(
+        multi_agent_dict: MultiAgentPolicyConfigDict,
+        env: Optional[EnvType] = None,
         spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
-                                              gym.spaces.Space]]],
-        policy_config: Optional[PartialTrainerConfigDict],
+                                              gym.spaces.Space]]] = None,
+        policy_config: Optional[PartialTrainerConfigDict] = None,
 ) -> MultiAgentPolicyConfigDict:
 
-    if isinstance(policy, dict):
-        _validate_multiagent_config(policy)
-        return policy
-    elif not issubclass(policy, Policy):
-        raise ValueError(f"`policy` ({policy}) must be a rllib.Policy class!")
-    else:
-        if (isinstance(env, MultiAgentEnv)
-                and not hasattr(env, "observation_space")):
-            raise ValueError(
-                "MultiAgentEnv must have observation_space defined if run "
-                "in a single-agent configuration.")
-        if env is not None:
-            return {
-                DEFAULT_POLICY_ID: (policy, env.observation_space,
-                                    env.action_space, {})
-            }
+    # Try extracting spaces from env.
+    env_obs_space = None
+    env_act_space = None
+    if env is not None and hasattr(env, "observation_space") and isinstance(
+            env.observation_space, gym.Space):
+        env_obs_space = env.observation_space
+    if env is not None and hasattr(env, "action_space") and isinstance(
+            env.action_space, gym.Space):
+        env_act_space = env.action_space
 
-        if spaces is None:
-            if "action_space" not in policy_config or \
-                    "observation_space" not in policy_config:
+    for pid, policy_spec in multi_agent_dict.copy().items():
+        if policy_spec.observation_space is None:
+            if spaces is not None:
+                obs_space = spaces[pid][0]
+            elif env_obs_space is not None:
+                obs_space = env_obs_space
+            elif "observation_space" in policy_config:
+                obs_space = policy_config["observation_space"]
+            else:
                 raise ValueError(
-                    "If no env given, must provide obs/action spaces either "
-                    "in the `multiagent.policies` dict or under "
-                    "`config.[observation|action]_space`!")
-            spaces = {
-                DEFAULT_POLICY_ID: (policy_config["observation_space"],
-                                    policy_config["action_space"])
-            }
-        return {
-            DEFAULT_POLICY_ID: (policy, spaces[DEFAULT_POLICY_ID][0],
-                                spaces[DEFAULT_POLICY_ID][1], {})
-        }
+                    "`observation_space` not provided in PolicySpec for "
+                    f"{pid} and env does not have an observation space OR "
+                    "no spaces received from other workers' env(s) OR no "
+                    "`observation_space` specified in config!")
+            multi_agent_dict[pid] = multi_agent_dict[pid]._replace(
+                observation_space=obs_space)
 
-
-def _validate_multiagent_config(policy: MultiAgentPolicyConfigDict,
-                                allow_none_graph: bool = False) -> None:
-    # Loop through all policy definitions in multi-agent policie
-    for k, v in policy.items():
-        if not isinstance(k, str):
-            raise ValueError("Policy key must be str, got {}!".format(k))
-        if not isinstance(v, (tuple, list)) or len(v) != 4:
-            raise ValueError(
-                "policy values must be tuples/lists of "
-                "(cls or None, obs_space, action_space, config), got {}".
-                format(v))
-        if allow_none_graph and v[0] is None:
-            pass
-        elif not issubclass(v[0], Policy):
-            raise ValueError("policy tuple value 0 must be a rllib.Policy "
-                             "class or None, got {}".format(v[0]))
-        if not isinstance(v[1], gym.Space):
-            raise ValueError(
-                "policy tuple value 1 (observation_space) must be a "
-                "gym.Space, got {}".format(type(v[1])))
-        if not isinstance(v[2], gym.Space):
-            raise ValueError("policy tuple value 2 (action_space) must be a "
-                             "gym.Space, got {}".format(type(v[2])))
-        if not isinstance(v[3], dict):
-            raise ValueError("policy tuple value 3 (config) must be a dict, "
-                             "got {}".format(type(v[3])))
+        if policy_spec.action_space is None:
+            if spaces is not None:
+                act_space = spaces[pid][1]
+            elif env_act_space is not None:
+                act_space = env_act_space
+            elif "action_space" in policy_config:
+                act_space = policy_config["action_space"]
+            else:
+                raise ValueError(
+                    "`action_space` not provided in PolicySpec for "
+                    f"{pid} and env does not have an action space OR "
+                    "no spaces received from other workers' env(s) OR no "
+                    "`action_space` specified in config!")
+            multi_agent_dict[pid] = multi_agent_dict[pid]._replace(
+                action_space=act_space)
+    return multi_agent_dict
 
 
 def _validate_env(env: Any) -> EnvType:

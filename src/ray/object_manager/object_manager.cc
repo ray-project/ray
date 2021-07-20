@@ -378,10 +378,8 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
 
 void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &node_id) {
   const ObjectInfo &object_info = local_objects_[object_id].object_info;
-  uint64_t total_data_size =
-      static_cast<uint64_t>(object_info.data_size + object_info.metadata_size);
+  uint64_t data_size = static_cast<uint64_t>(object_info.data_size);
   uint64_t metadata_size = static_cast<uint64_t>(object_info.metadata_size);
-  uint64_t num_chunks = buffer_pool_.GetNumChunks(total_data_size);
 
   rpc::Address owner_address;
   owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
@@ -389,88 +387,76 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
   owner_address.set_port(object_info.owner_port);
   owner_address.set_worker_id(object_info.owner_worker_id.Binary());
 
-  auto local_chunk_reader = [this, object_id, total_data_size, metadata_size](
-                                uint64_t chunk_index,
-                                rpc::PushRequest &push_request) -> Status {
-    std::pair<const ObjectBufferPool::ChunkInfo, ray::Status> chunk_status =
-        buffer_pool_.GetChunk(object_id, total_data_size, metadata_size, chunk_index);
-    // Fail on status not okay. The object is local, and there is
-    // no other anticipated error here.
-    Status status = chunk_status.second;
-    if (status.ok()) {
-      ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
-      push_request.set_data(chunk_info.data, chunk_info.buffer_length);
+  std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status> reader_status =
+      buffer_pool_.CreateObjectReader(object_id, owner_address);
+  Status status = reader_status.second;
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to read object " << object_id
+                   << "from Plasma store. It may have been evicted.";
+    return;
+  }
+
+  auto object_reader = std::move(reader_status.first);
+  RAY_CHECK(object_reader) << "object_reader can't be null";
+
+  if (object_reader->GetDataSize() != data_size ||
+      object_reader->GetMetadataSize() != metadata_size) {
+    if (object_reader->GetDataSize() == 0 && object_reader->GetMetadataSize() == 1) {
+      // TODO(scv119): handle object size changes in a more graceful way.
+      RAY_LOG(WARNING) << object_id
+                       << " is marked as failed but object_manager has stale info "
+                       << " with data size: " << data_size
+                       << ", metadata size: " << metadata_size
+                       << ". This is likely due to race condition."
+                       << " Update the info and proceed sending failed object.";
+      local_objects_[object_id].object_info.data_size = 0;
+      local_objects_[object_id].object_info.metadata_size = 1;
+    } else {
+      RAY_LOG(FATAL) << "Object id:" << object_id
+                     << "'s size mismatches our record. Expected data size: " << data_size
+                     << ", expected metadata size: " << metadata_size
+                     << ", actual data size: " << object_reader->GetDataSize()
+                     << ", actual metadata size: " << object_reader->GetMetadataSize();
     }
-    return status;
-  };
+  }
 
-  auto release_chunk_callback = [this, object_id](uint64_t chunk_index) {
-    buffer_pool_.ReleaseGetChunk(object_id, chunk_index);
-  };
-
-  PushObjectInternal(object_id, node_id, total_data_size, metadata_size, num_chunks,
-                     std::move(owner_address), std::move(local_chunk_reader),
-                     std::move(release_chunk_callback));
+  PushObjectInternal(object_id, node_id,
+                     std::make_shared<ChunkObjectReader>(std::move(object_reader),
+                                                         config_.object_chunk_size));
 }
 
 void ObjectManager::PushFromFilesystem(const ObjectID &object_id, const NodeID &node_id,
                                        const std::string &spilled_url) {
-  // SpilledObject::CreateSpilledObject does synchronous IO; schedule it off
+  // SpilledObjectReader::CreateSpilledObjectReader does synchronous IO; schedule it off
   // main thread.
   rpc_service_.post(
       [this, object_id, node_id, spilled_url, chunk_size = config_.object_chunk_size]() {
         auto optional_spilled_object =
-            SpilledObject::CreateSpilledObject(spilled_url, chunk_size);
+            SpilledObjectReader::CreateSpilledObjectReader(spilled_url);
         if (!optional_spilled_object.has_value()) {
           RAY_LOG(ERROR) << "Failed to load spilled object " << object_id
                          << ". It may have been evicted.";
           return;
         }
-
-        auto spilled_object =
-            std::make_shared<SpilledObject>(std::move(optional_spilled_object.value()));
-
-        uint64_t total_data_size =
-            spilled_object->GetDataSize() + spilled_object->GetMetadataSize();
-        uint64_t metadata_size = spilled_object->GetMetadataSize();
-        uint64_t num_chunks = spilled_object->GetNumChunks();
-        rpc::Address owner_address = spilled_object->GetOwnerAddress();
-
-        auto spilled_object_chunk_reader = [object_id, spilled_object](
-                                               uint64_t chunk_index,
-                                               rpc::PushRequest &push_request) -> Status {
-          auto optional_chunk = spilled_object->GetChunk(chunk_index);
-          if (!optional_chunk.has_value()) {
-            RAY_LOG(ERROR) << "Read chunk " << chunk_index << " of object " << object_id
-                           << " failed. "
-                           << " It may have been evicted.";
-            return Status::IOError("Failed to read spilled object");
-          }
-          push_request.set_data(std::move(optional_chunk.value()));
-          return Status::OK();
-        };
+        auto chunk_object_reader = std::make_shared<ChunkObjectReader>(
+            std::make_shared<SpilledObjectReader>(
+                std::move(optional_spilled_object.value())),
+            chunk_size);
 
         // Schedule PushObjectInternal back to main_service as PushObjectInternal access
         // thread unsafe datastructure.
         main_service_->post(
-            [this, object_id, node_id, total_data_size, metadata_size, num_chunks,
-             owner_address = std::move(owner_address),
-             spilled_object_chunk_reader = std::move(spilled_object_chunk_reader)]() {
-              PushObjectInternal(object_id, node_id, total_data_size, metadata_size,
-                                 num_chunks, std::move(owner_address),
-                                 std::move(spilled_object_chunk_reader),
-                                 [](uint64_t) { /* do nothing to release chunk */ });
+            [this, object_id, node_id,
+             chunk_object_reader = std::move(chunk_object_reader)]() {
+              PushObjectInternal(object_id, node_id, std::move(chunk_object_reader));
             },
             "ObjectManager.PushLocalSpilledObjectInternal");
       },
       "ObjectManager.CreateSpilledObject");
 }
 
-void ObjectManager::PushObjectInternal(
-    const ObjectID &object_id, const NodeID &node_id, uint64_t total_data_size,
-    uint64_t metadata_size, uint64_t num_chunks, rpc::Address owner_address,
-    std::function<ray::Status(uint64_t, rpc::PushRequest &)> chunk_reader,
-    std::function<void(uint64_t)> release_chunk_callback) {
+void ObjectManager::PushObjectInternal(const ObjectID &object_id, const NodeID &node_id,
+                                       std::shared_ptr<ChunkObjectReader> chunk_reader) {
   auto rpc_client = GetRpcClient(node_id);
   if (!rpc_client) {
     // Push is best effort, so do nothing here.
@@ -480,63 +466,63 @@ void ObjectManager::PushObjectInternal(
   }
 
   RAY_LOG(DEBUG) << "Sending object chunks of " << object_id << " to node " << node_id
-                 << ", number of chunks: " << num_chunks
-                 << ", total data size: " << total_data_size;
+                 << ", number of chunks: " << chunk_reader->GetNumChunks()
+                 << ", total data size: " << chunk_reader->GetObject().GetObjectSize();
 
   auto push_id = UniqueID::FromRandom();
-  push_manager_->StartPush(node_id, object_id, num_chunks, [=](int64_t chunk_id) {
-    rpc_service_.post(
-        [=]() {
-          // Post to the multithreaded RPC event loop so that data is copied
-          // off of the main thread.
-          SendObjectChunk(push_id, object_id, owner_address, node_id, total_data_size,
-                          metadata_size, chunk_id, rpc_client,
-                          [=](const Status &status) {
-                            // Post back to the main event loop because the
-                            // PushManager is thread-safe.
-                            main_service_->post(
-                                [this, node_id, object_id]() {
-                                  push_manager_->OnChunkComplete(node_id, object_id);
-                                },
-                                "ObjectManager.Push");
-                          },
-                          std::move(chunk_reader), std::move(release_chunk_callback));
-        },
-        "ObjectManager.Push");
-  });
+  push_manager_->StartPush(
+      node_id, object_id, chunk_reader->GetNumChunks(), [=](int64_t chunk_id) {
+        rpc_service_.post(
+            [=]() {
+              // Post to the multithreaded RPC event loop so that data is copied
+              // off of the main thread.
+              SendObjectChunk(push_id, object_id, node_id, chunk_id, rpc_client,
+                              [=](const Status &status) {
+                                // Post back to the main event loop because the
+                                // PushManager is thread-safe.
+                                main_service_->post(
+                                    [this, node_id, object_id]() {
+                                      push_manager_->OnChunkComplete(node_id, object_id);
+                                    },
+                                    "ObjectManager.Push");
+                              },
+                              std::move(chunk_reader));
+            },
+            "ObjectManager.Push");
+      });
 }
 
-void ObjectManager::SendObjectChunk(
-    const UniqueID &push_id, const ObjectID &object_id, const rpc::Address &owner_address,
-    const NodeID &node_id, uint64_t total_data_size, uint64_t metadata_size,
-    uint64_t chunk_index, std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
-    std::function<void(const Status &)> on_complete,
-    std::function<ray::Status(uint64_t, rpc::PushRequest &)> chunk_reader,
-    std::function<void(uint64_t)> release_chunk_callback) {
+void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
+                                    const NodeID &node_id, uint64_t chunk_index,
+                                    std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
+                                    std::function<void(const Status &)> on_complete,
+                                    std::shared_ptr<ChunkObjectReader> chunk_reader) {
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
   rpc::PushRequest push_request;
   // Set request header
   push_request.set_push_id(push_id.Binary());
   push_request.set_object_id(object_id.Binary());
-  push_request.mutable_owner_address()->CopyFrom(owner_address);
+  push_request.mutable_owner_address()->CopyFrom(
+      chunk_reader->GetObject().GetOwnerAddress());
   push_request.set_node_id(self_node_id_.Binary());
-  push_request.set_data_size(total_data_size);
-  push_request.set_metadata_size(metadata_size);
+  push_request.set_data_size(chunk_reader->GetObject().GetObjectSize());
+  push_request.set_metadata_size(chunk_reader->GetObject().GetMetadataSize());
   push_request.set_chunk_index(chunk_index);
 
   // read a chunk into push_request and handle errors.
-  auto status = chunk_reader(chunk_index, push_request);
-  if (!status.ok()) {
-    RAY_LOG(WARNING) << "Attempting to push object " << object_id
-                     << " which is not local. It may have been evicted.";
-    on_complete(status);
+  auto optional_chunk = chunk_reader->GetChunk(chunk_index);
+  if (!optional_chunk.has_value()) {
+    RAY_LOG(DEBUG) << "Read chunk " << chunk_index << " of object " << object_id
+                   << " failed. It may have been evicted.";
+    on_complete(Status::IOError("Failed to read spilled object"));
     return;
   }
+  push_request.set_data(std::move(optional_chunk.value()));
 
   // record the time cost between send chunk and receive reply
   rpc::ClientCallback<rpc::PushReply> callback =
-      [this, start_time, object_id, node_id, chunk_index, owner_address, rpc_client,
-       on_complete](const Status &status, const rpc::PushReply &reply) {
+      [this, start_time, object_id, node_id, chunk_index, on_complete](
+          const Status &status, const rpc::PushReply &reply) {
         // TODO: Just print warning here, should we try to resend this chunk?
         if (!status.ok()) {
           RAY_LOG(WARNING) << "Send object " << object_id << " chunk to node " << node_id
@@ -549,8 +535,6 @@ void ObjectManager::SendObjectChunk(
       };
 
   rpc_client->Push(push_request, callback);
-
-  release_chunk_callback(chunk_index);
 }
 
 ray::Status ObjectManager::Wait(

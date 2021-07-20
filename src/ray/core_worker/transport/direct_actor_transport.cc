@@ -138,7 +138,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   if (num_restarts < queue->second.num_restarts) {
     // This message is about an old version of the actor and the actor has
     // already restarted since then. Skip the connection.
-    RAY_LOG(INFO) << "Skip actor that has already been restarted, actor_id=" << actor_id;
+    RAY_LOG(INFO) << "Skip actor connection that has already been restarted, actor_id="
+                  << actor_id;
     return;
   }
 
@@ -174,6 +175,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
                  << queue->second.next_task_reply_position;
   queue->second.caller_starts_at = queue->second.next_task_reply_position;
 
+  RAY_LOG(INFO) << "Connecting to actor " << actor_id << " at worker "
+                << WorkerID::FromBinary(address.worker_id());
   ResendOutOfOrderTasks(actor_id);
   SendPendingTasks(actor_id);
 }
@@ -188,7 +191,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
   if (num_restarts <= queue->second.num_restarts && !dead) {
     // This message is about an old version of the actor that has already been
     // restarted successfully. Skip the message handling.
-    RAY_LOG(INFO) << "Skip actor that has already been restarted, actor_id=" << actor_id;
+    RAY_LOG(INFO) << "Skip actor disconnection that has already been restarted, actor_id="
+                  << actor_id;
     return;
   }
 
@@ -201,7 +205,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     queue->second.state = rpc::ActorTableData::DEAD;
     queue->second.creation_task_exception = creation_task_exception;
     // If there are pending requests, treat the pending tasks as failed.
-    RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id;
+    RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id
+                  << " because the actor is already dead.";
     auto &requests = queue->second.requests;
     auto head = requests.begin();
 

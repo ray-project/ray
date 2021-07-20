@@ -495,6 +495,19 @@ class Trainable:
         """
         return False
 
+    def update_resources(
+            self, new_resources: Union[PlacementGroupFactory, Resources]):
+        """Fires whenever Trainable resources are changed.
+
+        This method will be called before the checkpoint is loaded.
+
+        Args:
+            new_resources (PlacementGroupFactory|Resources):
+                Updated resources. Will be a PlacementGroupFactory if
+                trial uses placement groups and Resources otherwise.
+        """
+        return
+
     def _create_logger(self, config, logger_creator=None):
         """Create logger from logger creator.
 

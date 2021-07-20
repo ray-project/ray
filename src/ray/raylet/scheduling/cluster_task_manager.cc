@@ -2,6 +2,7 @@
 
 #include <google/protobuf/map.h>
 
+#include <boost/functional/hash.hpp>
 #include <boost/range/join.hpp>
 
 #include "ray/stats/stats.h"
@@ -143,6 +144,13 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
 void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     WorkerPoolInterface &worker_pool,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
+  using job_id_runtime_env_hash_pair = std::pair<size_t, int>;
+  // TODO(simon): blocked_runtime_env_to_skip is added as a hack to make sure tasks
+  // requiring different runtime env doesn't block each other. We need to find a
+  // long term solution for this, see #17154.
+  std::unordered_set<job_id_runtime_env_hash_pair,
+                     boost::hash<job_id_runtime_env_hash_pair>>
+      blocked_runtime_env_to_skip;
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
@@ -157,6 +165,15 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       const auto &task = std::get<0>(work);
       const auto &spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
+      const auto runtime_env_worker_key =
+          std::make_pair(spec.JobId().Hash(), spec.GetRuntimeEnvHash());
+
+      // Current task and runtime env combination doesn't have an available worker,
+      // therefore skipping the task.
+      if (blocked_runtime_env_to_skip.count(runtime_env_worker_key) > 0) {
+        work_it++;
+        continue;
+      }
 
       bool args_missing = false;
       bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
@@ -207,8 +224,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
       // Check if the node is still schedulable. It may not be if dependency resolution
       // took a long time.
-      std::shared_ptr<TaskResourceInstances> allocated_instances(
-          new TaskResourceInstances());
+      auto allocated_instances = std::make_shared<TaskResourceInstances>();
       bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
           spec.GetRequiredResources().GetResourceMap(), allocated_instances);
 
@@ -239,6 +255,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // correct job ID.  However, another task with a different env or job ID
           // might have a worker available, so continue iterating through the queue.
           work_it++;
+          // Keep track of runtime env that doesn't have workers available so we
+          // won't call PopWorker for subsequent tasks requiring the same runtime env.
+          blocked_runtime_env_to_skip.insert(runtime_env_worker_key);
           continue;
         }
 

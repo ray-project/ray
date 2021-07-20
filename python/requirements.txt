@@ -9,7 +9,6 @@ aiohttp==3.7
 aioredis
 click >= 7.0
 cloudpickle
-colorama
 colorful
 filelock
 gpustat
@@ -72,6 +71,7 @@ pytest==5.4.3
 pytest-asyncio
 pytest-rerunfailures
 pytest-sugar
+pytest-lazy-fixture
 pytest-timeout
 scikit-learn==0.22.2
 tensorflow

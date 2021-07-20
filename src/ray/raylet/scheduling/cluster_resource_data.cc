@@ -1,6 +1,8 @@
 #include "ray/raylet/scheduling/cluster_resource_data.h"
-
+#include "ray/common/bundle_spec.h"
 #include "ray/common/task/scheduling_resources.h"
+
+namespace ray {
 
 const std::string resource_labels[] = {
     ray::kCPU_ResourceLabel, ray::kMemory_ResourceLabel, ray::kGPU_ResourceLabel,
@@ -334,13 +336,6 @@ std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
   return buffer.str();
 }
 
-const std::string format_resource(std::string resource_name, double quantity) {
-  if (resource_name == "object_store_memory" || resource_name == "memory") {
-    return std::to_string(quantity / (1024 * 1024 * 1024)) + " GiB";
-  }
-  return std::to_string(quantity);
-}
-
 std::string NodeResources::DictString(StringIdMap string_to_in_map) const {
   std::stringstream buffer;
   bool first = true;
@@ -472,7 +467,6 @@ TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
   for (const auto &it : this->custom_resources) {
     task_resources.custom_resources.emplace(it.first, it.second.available);
   }
-
   return task_resources;
 };
 
@@ -572,3 +566,5 @@ bool TaskResourceInstances::operator==(const TaskResourceInstances &other) {
   }
   return true;
 }
+
+}  // namespace ray
