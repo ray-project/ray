@@ -895,6 +895,9 @@ class Dataset(Generic[T]):
             "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
 
+        It is recommended to use the returned ``IterableDataset`` directly
+        instead of passing it into a torch ``DataLoader``.
+
         Each element in IterableDataset will be a tuple consisting of 2
         elements. The first item is a list of the feature tensors. The
         second item is the label tensor. Each tensor will be of shape (N,
