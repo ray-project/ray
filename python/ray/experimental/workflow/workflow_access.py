@@ -87,6 +87,18 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef) -> Any:
     return output
 
 
+def cancel_job(obj: ray.ObjectRef):
+    return
+    # TODO (yic) Enable true canceling in ray.
+    #
+    # try:
+    #     while isinstance(obj, ray.ObjectRef):
+    #         ray.cancel(obj)
+    #         obj = ray.get(obj)
+    # except Exception:
+    #     pass
+
+
 # TODO(suquark): we may use an actor pool in the future if too much
 # concurrent workflow access blocks the actor.
 @ray.remote
@@ -139,7 +151,7 @@ class WorkflowManagementActor:
 
         if status == common.WorkflowStatus.FAILED:
             if workflow_id in self._workflow_outputs:
-                self._workflow_outputs.pop(workflow_id)
+                cancel_job(self._workflow_outputs.pop(workflow_id))
             wf_store.save_workflow_meta(
                 common.WorkflowMeta(common.WorkflowStatus.FAILED))
             self._step_status.pop(workflow_id)
@@ -151,7 +163,7 @@ class WorkflowManagementActor:
 
     def cancel_workflow(self, workflow_id: str, storage_url: str) -> None:
         self._step_status.pop(workflow_id)
-        self._workflow_outputs.pop(workflow_id)
+        cancel_job(self._workflow_outputs.pop(workflow_id))
         store = storage.create_storage(storage_url)
         wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
         wf_store.save_workflow_meta(

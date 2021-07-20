@@ -148,22 +148,48 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
 
 def list_all(status: Optional[WorkflowStatus] = None
              ) -> List[Tuple[str, WorkflowStatus]]:
+    """List the workflow status. If status is given, it'll filter by that.
+
+    Args:
+        status: If given, only return workflow with that status.
+
+    Returns:
+        A list of tuple with workflow id and workflow status
+    """
     return execution.list_all(status)
 
 
 def resume_all() -> List[Tuple[str, WorkflowStatus]]:
+    """Resume all failed workflow jobs.
+
+    Returns:
+        Workflow resumed.
+    """
     return execution.resume_all()
 
 
 def get_status(workflow_id: str) -> WorkflowStatus:
+    """Get the status for a given workflow.
+
+    Args:
+        workflow_id: The workflow id
+
+    Returns:
+        The status of that workflow
+    """
     if not isinstance(workflow_id, str):
-        raise ValueError("workflow_id has to be a string type.")
+        raise TypeError("workflow_id has to be a string type.")
     return execution.get_status(workflow_id)
 
 
 def cancel(workflow_id: str) -> None:
+    """Cancel a workflow.
+
+    Returns:
+        None
+    """
     if not isinstance(workflow_id, str):
-        raise ValueError("workflow_id has to be a string type.")
+        raise TypeError("workflow_id has to be a string type.")
     return execution.cancel(workflow_id)
 
 
