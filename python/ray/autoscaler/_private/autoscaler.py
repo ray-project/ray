@@ -150,15 +150,7 @@ class StandardAutoscaler:
     def update(self):
         try:
             self.reset(errors_fatal=False)
-
-            # Optional pre-update hook.
-            self.provider.before_autoscaler_update()
-
             self._update()
-
-            # Optional post-update hook.
-            self.provider.after_autoscaler_update(self.pending_launches)
-
         except Exception as e:
             self.prom_metrics.update_loop_exceptions.inc()
             logger.exception("StandardAutoscaler: "
