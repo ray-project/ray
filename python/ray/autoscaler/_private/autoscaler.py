@@ -689,7 +689,7 @@ class StandardAutoscaler:
                     " (lost contact with raylet).",
                     quantity=1,
                     aggregate=operator.add)
-            nodes_to_terminate.append(node_id)
+                nodes_to_terminate.append(node_id)
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
