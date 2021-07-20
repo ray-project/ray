@@ -348,8 +348,7 @@ class VirtualActor:
         arg_list = self._metadata.flatten_args("__init__", args, kwargs)
         init_step = _virtual_actor_init.step(self._metadata.cls, arg_list)
         init_step._step_id = self._metadata.cls.__init__.__name__
-        ref = init_step.run_async(
-            storage=self._storage, workflow_id=self._actor_id)
+        ref = init_step.run_async(workflow_id=self._actor_id)
         workflow_manager = get_or_create_management_actor()
         # keep the ref in a list to prevent dereference
         ray.get(workflow_manager.init_actor.remote(self._actor_id, [ref]))
