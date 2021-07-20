@@ -23,6 +23,9 @@
 # Java worker.
 #/java/ @ray-project/ray-core-java
 
+# Ray Client
+/src/ray/protobuf/ray_client.proto @ijrsvt
+
 # ==== Libraries and frameworks ====
 
 # Ray tune.
