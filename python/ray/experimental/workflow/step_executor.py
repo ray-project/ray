@@ -1,4 +1,5 @@
-from typing import (List, Tuple, Any, Dict, Callable, Optional, TYPE_CHECKING)
+from typing import (List, Tuple, Any, Dict, Callable, Optional, TYPE_CHECKING,
+                    Union)
 
 import ray
 from ray import ObjectRef
@@ -125,6 +126,24 @@ def execute_workflow(workflow: Workflow,
     return workflow.execute(outer_most_step_id)
 
 
+def commit_step(store: workflow_storage.WorkflowStorage,
+                step_id: "StepID",
+                ret: Union[Workflow, Any],
+                outer_most_step_id: Optional[str] = None):
+    """Checkpoint the step output.
+    Args:
+        store: The storage the current workflow is using.
+        step_id: The ID of the step.
+        ret: The returned object of the workflow step.
+        outer_most_step_id: The ID of the outer most workflow. None if it
+            does not exists. See "step_executor.execute_workflow" for detailed
+            explanation.
+    """
+    if isinstance(ret, Workflow):
+        store.save_subworkflow(ret)
+    store.save_step_output(step_id, ret, outer_most_step_id)
+
+
 @ray.remote
 def _workflow_step_executor(
         func: Callable, context: workflow_context.WorkflowStepContext,
@@ -153,10 +172,7 @@ def _workflow_step_executor(
     ret = func(*args, **kwargs)
     # Save workflow output
     store = workflow_storage.WorkflowStorage()
-    if isinstance(ret, Workflow):
-        store.save_subworkflow(ret)
-    step_id = workflow_context.get_current_step_id()
-    store.save_step_output(step_id, ret, outer_most_step_id)
+    commit_step(store, step_id, ret, outer_most_step_id)
     if isinstance(ret, Workflow):
         # execute sub-workflow
         return execute_workflow(ret, outer_most_step_id)

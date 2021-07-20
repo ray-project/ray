@@ -12,6 +12,7 @@ from ray.experimental.workflow.storage import (Storage, create_storage,
 from ray.experimental.workflow.workflow_access import (
     MANAGEMENT_ACTOR_NAME, flatten_workflow_output,
     get_or_create_management_actor)
+from ray.experimental.workflow.step_executor import commit_step
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +66,7 @@ def run(entry_workflow: Workflow,
 
     # checkpoint the workflow
     ws = workflow_storage.WorkflowStorage(workflow_id, store)
-    ws.save_subworkflow(entry_workflow)
-    ws.save_step_output("", entry_workflow, None)
-
+    commit_step(ws, "", entry_workflow)
     workflow_manager = get_or_create_management_actor()
     # NOTE: It is important to 'ray.get' the returned output. This
     # ensures caller of 'run()' holds the reference to the workflow
