@@ -24,7 +24,7 @@
 #/java/ @ray-project/ray-core-java
 
 # Ray Client
-/src/ray/protobuf/ray_client.proto @ijrsvt
+/src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali
 
 # ==== Libraries and frameworks ====
 
@@ -44,4 +44,3 @@
 # CI scripts.
 #/.travis.yml @ray-project/ray-core
 #/ci/travis/ @ray-project/ray-core
-
