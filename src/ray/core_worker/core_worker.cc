@@ -1710,7 +1710,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.max_task_retries,
       actor_creation_options.dynamic_worker_options,
       actor_creation_options.max_concurrency, actor_creation_options.is_detached,
-      actor_name, actor_creation_options.is_asyncio, extension_data);
+      actor_name, actor_creation_options.ray_namespace, actor_creation_options.is_asyncio,
+      extension_data);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
@@ -1722,6 +1723,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   TaskSpecification task_spec = builder.Build();
   Status status;
   if (options_.is_local_mode) {
+    // TODO(suquark): Should we consider namespace in local mode? Currently
+    // it looks like two actors with two different namespaces become the
+    // same actor in local mode. Maybe this is not an issue if we consider
+    // the actor name globally unique.
     if (!actor_name.empty()) {
       // Since local mode doesn't pass GCS actor management code path,
       // it just register actor names in memory.
@@ -1973,7 +1978,7 @@ std::shared_ptr<const ActorHandle> CoreWorker::GetActorHandle(
 }
 
 std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorHandle(
-    const std::string &name) {
+    const std::string &name, const std::string &ray_namespace) {
   RAY_CHECK(!name.empty());
   if (options_.is_local_mode) {
     return GetNamedActorHandleLocalMode(name);
@@ -1987,9 +1992,8 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
   ActorID actor_id;
   std::shared_ptr<std::promise<void>> ready_promise =
       std::make_shared<std::promise<void>>(std::promise<void>());
-  const auto &ray_namespace = job_config_->ray_namespace();
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
-      name, ray_namespace,
+      name, ray_namespace.empty() ? job_config_->ray_namespace() : ray_namespace,
       [this, &actor_id, name, ready_promise](
           Status status, const boost::optional<rpc::ActorTableData> &result) {
         if (status.ok() && result) {
@@ -2018,10 +2022,12 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
 
   if (actor_id.IsNil()) {
     std::ostringstream stream;
-    stream << "Failed to look up actor with name '" << name << "'. You are "
-           << "either trying to look up a named actor you didn't create, "
-           << "the named actor died, or the actor hasn't been created "
-           << "because named actor creation is asynchronous.";
+    stream << "Failed to look up actor with name '" << name << "'. This could "
+           << "because 1. You are trying to look up a named actor you "
+           << "didn't create. 2. The named actor died. 3. The actor hasn't "
+           << "been created because named actor creation is asynchronous. "
+           << "4. You did not use a namespace matching the namespace of the "
+           << "actor.";
     return std::make_pair(nullptr, Status::NotFound(stream.str()));
   }
 
