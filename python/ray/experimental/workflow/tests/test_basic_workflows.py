@@ -216,8 +216,6 @@ def test_step_resources(ray_start_regular_shared, tmp_path):
     assert ray.get(obj) is None
 
 
-
-
 @pytest.mark.parametrize(
     "ray_start_regular_shared", [{
         "namespace": "workflow"
