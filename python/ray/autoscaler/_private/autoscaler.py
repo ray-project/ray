@@ -339,7 +339,7 @@ class StandardAutoscaler:
                                        " Failed to update node."
                                        " Node has already been terminated.")
                 if nodes_to_terminate:
-                    self._terminate_nodes_and_cleanup()
+                    self._terminate_nodes_and_cleanup(nodes_to_terminate)
                     nodes = self.workers()
 
         # Update nodes with out-of-date files.

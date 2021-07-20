@@ -1914,7 +1914,6 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
-        assert not autoscaler.updaters
 
         # Mark a node as unhealthy
         for _ in range(5):
@@ -1922,19 +1921,29 @@ class AutoscalingTest(unittest.TestCase):
                 time.sleep(0.05)
                 autoscaler.update()
         assert not autoscaler.updaters
-        mock_metrics.recovering_nodes.set.assert_called_with(0)
         num_calls = len(runner.calls)
         lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
+        # Turn off updaters.
+        autoscaler.disable_node_updaters = True
+        # Reduce min_workers to 1
+        autoscaler.config["available_node_types"][NODE_TYPE_LEGACY_WORKER][
+            "min_workers"] = 1
         autoscaler.update()
-        mock_metrics.recovering_nodes.set.assert_called_with(0)
-        self.waitFor(lambda: len(runner.calls) > num_calls, num_retries=150)
+        # Stopped node metric incremented.
+        mock_metrics.stopped_nodes.inc.assert_called_once_with()
+        # One node left.
+        self.waitForNodes(1)
 
         # Check the node removal event is generated.
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
-        assert ("Restarting 1 nodes of type "
+        assert ("Terminating 1 nodes of type "
                 "ray-legacy-worker-node-type (lost contact with raylet)." in
                 events), events
+
+        # No additional runner calls, since updaters were disabled.
+        time.sleep(1)
+        assert len(runner.calls) == num_calls
 
     def testExternalNodeScaler(self):
         config = SMALL_CLUSTER.copy()
