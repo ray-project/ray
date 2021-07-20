@@ -678,17 +678,24 @@ class StandardAutoscaler:
         """
         nodes_to_terminate = []
         for node_id in nodes:
-            if not self.heartbeat_on_time(node_id, now):
-                logger.warning("StandardAutoscaler: "
-                               "{}: No recent heartbeat, "
-                               "terminating node.".format(node_id))
-                self.event_summarizer.add(
-                    "Terminating {} nodes of type " +
-                    self._get_node_type(node_id) +
-                    " (lost contact with raylet).",
-                    quantity=1,
-                    aggregate=operator.add)
-                nodes_to_terminate.append(node_id)
+            node_status = self.provider.node_tags(node_id)[TAG_RAY_NODE_STATUS]
+            # We're not responsible for taking down
+            # nodes with pending or failed status:
+            if not node_status == STATUS_UP_TO_DATE:
+                continue
+            # Heartbeat indicates node is healthy:
+            if self.heartbeat_on_time(node_id, now):
+                continue
+            # Node is unhealthy, terminate:
+            logger.warning("StandardAutoscaler: "
+                           "{}: No recent heartbeat, "
+                           "terminating node.".format(node_id))
+            self.event_summarizer.add(
+                "Terminating {} nodes of type " + self._get_node_type(node_id)
+                + " (lost contact with raylet).",
+                quantity=1,
+                aggregate=operator.add)
+            nodes_to_terminate.append(node_id)
 
         if nodes_to_terminate:
             self._terminate_nodes_and_cleanup(nodes_to_terminate)
