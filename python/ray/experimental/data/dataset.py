@@ -888,6 +888,7 @@ class Dataset(Generic[T]):
                  feature_columns: Optional[List[str]] = None,
                  label_column_dtype: Optional["torch.dtype"] = None,
                  feature_column_dtypes: Optional[List["torch.dtype"]] = None,
+                 batch_size: int = 1,
                  prefetch_blocks: int = 0) -> \
             "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
@@ -915,6 +916,8 @@ class Dataset(Generic[T]):
                 to use for the feature columns. The len of this list must
                 be equal to the len of ``feature_columns``. If None,
                 then automatically infer the dtype.
+            batch_size (int): How many samples per batch to yield at a time.
+                Defaults to 1.
             prefetch_blocks (int): The number of blocks to prefetch ahead of
                 the current block during the scan.
 
@@ -935,7 +938,8 @@ class Dataset(Generic[T]):
                                  "match!")
 
         def make_generator():
-            for batch in self.iter_batches(prefetch_blocks=prefetch_blocks):
+            for batch in self.iter_batches(
+                batch_size=batch_size, prefetch_blocks=prefetch_blocks):
                 label_vals = batch.pop(label_column).values
                 label_tensor = torch.as_tensor(
                     label_vals, dtype=label_column_dtype)
@@ -956,11 +960,13 @@ class Dataset(Generic[T]):
                     t = t.view(-1, 1)
                     feature_tensor.append(t)
 
-                num_rows = batch.shape[0]
-                for i in range(num_rows):
-                    features = [tensor[i] for tensor in feature_tensor]
-                    label = label_tensor[i]
-                    yield (features, label)
+                yield (feature_tensor, label_tensor)
+
+                # num_rows = batch.shape[0]
+                # for i in range(num_rows):
+                #     features = [tensor[i] for tensor in feature_tensor]
+                #     label = label_tensor[i]
+                #     yield (features, label)
 
         return TorchIterableDataset(make_generator)
 
