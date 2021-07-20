@@ -15,7 +15,6 @@ import aiohttp.web
 import aiohttp_cors
 from aiohttp import hdrs
 
-import psutil
 from grpc.experimental import aio as aiogrpc
 
 import ray
