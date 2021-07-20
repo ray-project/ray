@@ -218,36 +218,76 @@ def test_step_resources(ray_start_regular_shared, tmp_path):
 
 @pytest.mark.parametrize(
     "ray_start_regular_shared", [{
-        "namespace": "workflow"
+        "namespace": "workflow",
     }], indirect=True)
-def test_list_all(ray_start_regular_shared, tmp_path):
+def test_manager(ray_start_regular_shared, tmp_path):
+    workflow_dir = str(tmp_path / "workflow")
+    storage = workflow.storage
+    storage.set_global_storage(storage.create_storage(workflow_dir))
+    # For sync between jobs
     tmp_file = str(tmp_path / "lock")
     lock = FileLock(tmp_file)
     lock.acquire()
 
+    # For sync between jobs
+    flag_file = tmp_path / "flag"
+    flag_file.touch()
     @workflow.step
     def long_running(i):
-        with FileLock(tmp_file):
-            if i % 2 == 0:
-                raise ValueError()
+        lock = FileLock(tmp_file)
+        with lock.acquire():
+            pass
 
+        if i % 2 == 0:
+            if flag_file.exists():
+                raise ValueError()
+        return 100
     outputs = [
         long_running.step(i).run_async(workflow_id=str(i)) for i in range(100)
     ]
+    # Test list all, it should list all jobs running
     all_tasks = workflow.list_all()
     assert len(all_tasks) == 100
     all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)
-    print(all_tasks_running)
     assert dict(all_tasks) == dict(all_tasks_running)
+    assert workflow.get_status("0") == workflow.WorkflowStatus.RUNNING
+
+    # Release lock and make sure all tasks finished
     lock.release()
     for o in outputs:
         try:
-            ray.get(o)
+            r = ray.get(o)
         except Exception:
-            pass
+            continue
+        assert 100 == r
     all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)
     assert len(all_tasks_running) == 0
+    # Half of them failed and half succeed
     failed_jobs = workflow.list_all(workflow.WorkflowStatus.FAILED)
     assert len(failed_jobs) == 50
     finished_jobs = workflow.list_all(workflow.WorkflowStatus.FINISHED)
     assert len(finished_jobs) == 50
+    # Test get_status
+    assert workflow.get_status("0") == workflow.WorkflowStatus.FAILED
+    assert workflow.get_status("1") == workflow.WorkflowStatus.FINISHED
+    assert workflow.get_status("X") == None
+    lock.acquire()
+    r = workflow.resume("0")
+    assert workflow.get_status("0") == workflow.WorkflowStatus.RUNNING
+    flag_file.unlink()
+    lock.release()
+    assert 100 == ray.get(r)
+    assert workflow.get_status("0") == workflow.WorkflowStatus.FINISHED
+
+    # Test cancel
+    lock.acquire()
+    workflow.resume("2")
+    assert workflow.get_status("2") == workflow.WorkflowStatus.RUNNING
+    workflow.cancel("2")
+    assert workflow.get_status("2") == workflow.WorkflowStatus.CANCELED
+
+    # Now resume_all
+    resumed = workflow.resume_all()
+    assert len(resumed) == 48
+    lock.release()
+    assert [ray.get(o) for (_, o) in resumed] == [100] * 48

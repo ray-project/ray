@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from typing import List, Tuple, Union, Optional
@@ -106,7 +107,7 @@ def cancel(workflow_id: str,
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
         ray.get(
             workflow_manager.cancel_workflow.remote(workflow_id,
-                                                    _get_storage_url()))
+                                                    _get_storage_url(storage)))
     except ValueError:
         store = _get_storage(storage)
         wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
@@ -117,13 +118,12 @@ def get_status(workflow_id: str, storage: Optional[Union[str, Storage]] = None
                ) -> Optional[WorkflowStatus]:
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
-        running = workflow_manager.is_workflow_running.remote(workflow_id)
+        running = ray.get(workflow_manager.is_workflow_running.remote(workflow_id))
     except Exception:
         running = False
     if running:
         return WorkflowStatus.RUNNING
-    store = workflow_storage.WorkflowStorage(
-        _get_storage(storage), workflow_id)
+    store = workflow_storage.WorkflowStorage(workflow_id, _get_storage(storage))
     meta = store.load_workflow_meta()
     if meta is None:
         return meta
@@ -155,3 +155,22 @@ def list_all(status: Optional[WorkflowStatus],
         if status is None or s == status:
             ret.append((k, s))
     return ret
+
+
+
+def resume_all(storage: Optional[Union[str, Storage]]=None) -> List[Tuple[str, ray.ObjectRef]]:
+    all_failed = list_all(WorkflowStatus.FAILED)
+    try:
+        workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    except Exception as e:
+        raise RuntimeError("Failed to get management actor") from e
+    storage_url = _get_storage_url(storage)
+    async def _resume_one(wid: str) -> Tuple[str, Optional[ray.ObjectRef]]:
+        try:
+            obj = await workflow_manager.run_or_resume.remote(wid, storage_url)
+            return (wid, flatten_workflow_output(wid, obj))
+        except Exception as e:
+            logger.error(f"Failed to resume workflow {wid}")
+            return (wid, None)
+    ret = workflow_storage.asyncio_run(asyncio.gather(*[_resume_one(wid) for (wid, _) in all_failed]))
+    return [(wid, obj) for (wid, obj) in ret if obj is not None]

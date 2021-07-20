@@ -171,6 +171,8 @@ def _workflow_step_executor(
     err = None
     # step_max_retries are for application level failure.
     # For ray failure, we should use max_retries.
+    from ray.experimental.workflow.common import WorkflowStatus
+    from ray.experimental.workflow.common import Workflow
     for _ in range(step_max_retries):
         try:
             workflow_context.update_workflow_step_context(context, step_id)
@@ -194,6 +196,7 @@ def _workflow_step_executor(
         if err is not None:
             _record_step_status(step_id, WorkflowStatus.FAILED)
             raise err
+        _record_step_status(step_id, WorkflowStatus.FINISHED)
         return ret
 
 

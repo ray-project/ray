@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, TYPE_CHECKING
+from typing import Any, Dict, Tuple, List, TYPE_CHECKING
 
 import ray
 from ray.experimental.workflow import common
@@ -98,6 +98,7 @@ class WorkflowManagementActor:
         self._actor_initialized: Dict[str, ray.ObjectRef] = {}
         self._step_status: Dict[str, Dict[str, common.WorkflowStatus]] = {}
 
+
     def run_or_resume(self, workflow_id: str,
                       storage_url: str) -> ray.ObjectRef:
         """Run or resume a workflow.
@@ -139,7 +140,7 @@ class WorkflowManagementActor:
 
         if status == common.WorkflowStatus.FAILED:
             if workflow_id in self._workflow_outputs:
-                ray.cancel(self._workflow_outputs[workflow_id])
+                self._workflow_outputs.pop(workflow_id)
             wf_store.save_workflow_meta(
                 common.WorkflowMeta(common.WorkflowStatus.FAILED))
             self._step_status.pop(workflow_id)
@@ -151,8 +152,7 @@ class WorkflowManagementActor:
 
     def cancel_workflow(self, workflow_id: str, storage_url: str) -> None:
         self._step_status.pop(workflow_id)
-        if workflow_id in self._workflow_outputs:
-            ray.cancel(self._workflow_outputs[workflow_id])
+        self._workflow_outputs.pop(workflow_id)
         store = storage.create_storage(storage_url)
         wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
         wf_store.save_workflow_meta(
