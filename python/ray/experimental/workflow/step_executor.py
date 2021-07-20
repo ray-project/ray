@@ -178,7 +178,10 @@ def _workflow_step_executor(
         commit_step(store, step_id, ret, outer_most_step_id)
         if isinstance(ret, Workflow):
             # execute sub-workflow
-            ret = execute_workflow(ret, outer_most_step_id, )
+            ret = execute_workflow(
+                ret,
+                outer_most_step_id,
+            )
         _record_step_status(step_id, WorkflowStatus.FINISHED)
         return ret
     except Exception as e:
@@ -199,7 +202,10 @@ def execute_workflow_step(
 
 def _record_step_status(step_id: "StepID", status: "WorkflowStatus") -> None:
     from ray.experimental.workflow.common import WorkflowStatus
-    storage_url = ray.experimental.workflow.storage.get_global_storage().storage_url
+    storage_url = ray.experimental.workflow.storage.get_global_storage(
+    ).storage_url
     workflow_id = workflow_context.get_current_workflow_id()
     workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
-    ray.get(workflow_manager.update_step_status.remote(workflow_id, step_id, status, storage_url))
+    ray.get(
+        workflow_manager.update_step_status.remote(workflow_id, step_id,
+                                                   status, storage_url))

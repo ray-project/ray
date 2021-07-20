@@ -148,14 +148,20 @@ class WorkflowManagementActor:
                 common.WorkflowMeta(common.WorkflowStatus.FINISHED))
             self._step_status.pop(workflow_id)
 
+    def cancel_workflow(self, workflow_id: str, storage_url: str) -> None:
+        self._step_status.pop(workflow_id)
+        if workflow_id in self._workflow_outputs:
+            ray.cancel(self._workflow_outputs[workflow_id])
+        store = storage.create_storage(storage_url)
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
+        wf_store.save_workflow_meta(
+            common.WorkflowMeta(common.WorkflowStatus.CANCELED))
 
-    def is_workflow_running(self, workflow_ids: List[str]) -> List[bool]:
-        return [wid in self._step_status for wid in workflow_ids]
-
+    def is_workflow_running(self, workflow_id: str) -> bool:
+        return workflow_id in self._step_status
 
     def list_running_workflow(self) -> List[str]:
         return list(self._step_status.keys())
-
 
     def init_actor(self, actor_id: str,
                    init_marker: List[ray.ObjectRef]) -> None:

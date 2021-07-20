@@ -189,7 +189,9 @@ def test_list_all(ray_start_regular_shared, tmp_path):
             if i % 2 == 0:
                 raise ValueError()
 
-    outputs = [long_running.step(i).run_async(workflow_id=str(i)) for i in range(100)]
+    outputs = [
+        long_running.step(i).run_async(workflow_id=str(i)) for i in range(100)
+    ]
     all_tasks = workflow.list_all()
     assert len(all_tasks) == 100
     all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)

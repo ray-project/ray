@@ -314,9 +314,11 @@ class WorkflowStorage:
         asyncio_run(
             self._storage.save_workflow_meta(self._workflow_id, metadata))
 
-    def load_workflow_meta(self) -> WorkflowMeta:
+    def load_workflow_meta(self) -> Optional[WorkflowMeta]:
         metadata = asyncio_run(
             self._storage.load_workflow_meta(self._workflow_id))
+        if metadat is None:
+            return None
         return WorkflowMeta(status=WorkflowStatus(metadata["status"]))
 
     async def _list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
