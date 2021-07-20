@@ -1,11 +1,13 @@
 from collections import deque
 import re
-from typing import Tuple, List, Optional, Callable, Set, Iterator
+from typing import (Tuple, List, Optional, Callable, Set, Iterator, Any, Union,
+                    TYPE_CHECKING)
 import unicodedata
 import uuid
 
 from dataclasses import dataclass
 
+import ray
 from ray import ObjectRef
 
 # Alias types
@@ -15,6 +17,9 @@ WorkflowInputTuple = Tuple[ObjectRef, List["Workflow"], List[ObjectRef]]
 StepExecutionFunction = Callable[
     [StepID, WorkflowInputTuple, Optional[StepID]], WorkflowOutputType]
 SerializedStepFunction = str
+
+if TYPE_CHECKING:
+    from ray.experimental.workflow.storage import Storage
 
 
 @dataclass
@@ -29,7 +34,7 @@ class WorkflowInputs:
     workflows: List[str]
 
 
-def slugify(value: str, allow_unicode=False):
+def slugify(value: str, allow_unicode=False) -> str:
     """Adopted from
     https://github.com/django/django/blob/master/django/utils/text.py
     Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
@@ -136,3 +141,70 @@ class Workflow:
             "Maybe you are passing it to a Ray remote function, "
             "returning it from a Ray remote function, or using "
             "'ray.put()' with it?")
+
+    def run(self,
+            workflow_id: Optional[str] = None,
+            storage: "Optional[Union[str, Storage]]" = None) -> Any:
+        """Run a workflow.
+
+        Examples:
+            >>> @workflow.step
+            ... def book_flight(origin: str, dest: str) -> Flight:
+            ...    return Flight(...)
+
+            >>> @workflow.step
+            ... def book_hotel(location: str) -> Reservation:
+            ...    return Reservation(...)
+
+            >>> @workflow.step
+            ... def finalize_trip(bookings: List[Any]) -> Trip:
+            ...    return Trip(...)
+
+            >>> flight1 = book_flight.step("OAK", "SAN")
+            >>> flight2 = book_flight.step("SAN", "OAK")
+            >>> hotel = book_hotel.step("SAN")
+            >>> trip = finalize_trip.step([flight1, flight2, hotel])
+            >>> result = trip.run()
+
+        Args:
+            workflow_id: A unique identifier that can be used to resume the
+                workflow. If not specified, a random id will be generated.
+            storage: The external storage URL or a custom storage class. If not
+                specified, ``/tmp/ray/workflow_data`` will be used.
+        """
+        return ray.get(self.run_async(workflow_id, storage))
+
+    def run_async(
+            self,
+            workflow_id: Optional[str] = None,
+            storage: "Optional[Union[str, Storage]]" = None) -> ObjectRef:
+        """Run a workflow asynchronously.
+
+        Examples:
+            >>> @workflow.step
+            ... def book_flight(origin: str, dest: str) -> Flight:
+            ...    return Flight(...)
+
+            >>> @workflow.step
+            ... def book_hotel(location: str) -> Reservation:
+            ...    return Reservation(...)
+
+            >>> @workflow.step
+            ... def finalize_trip(bookings: List[Any]) -> Trip:
+            ...    return Trip(...)
+
+            >>> flight1 = book_flight.step("OAK", "SAN")
+            >>> flight2 = book_flight.step("SAN", "OAK")
+            >>> hotel = book_hotel.step("SAN")
+            >>> trip = finalize_trip.step([flight1, flight2, hotel])
+            >>> result = ray.get(trip.run_async())
+
+        Args:
+            workflow_id: A unique identifier that can be used to resume the
+                workflow. If not specified, a random id will be generated.
+            storage: The external storage URL or a custom storage class. If not
+                specified, ``/tmp/ray/workflow_data`` will be used.
+        """
+        # TODO(suquark): avoid cyclic importing
+        from ray.experimental.workflow.execution import run
+        return run(self, storage, workflow_id)

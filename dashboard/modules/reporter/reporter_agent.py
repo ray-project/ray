@@ -30,10 +30,12 @@ IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
 
 try:
     import gpustat.core as gpustat
-except ImportError:
+except (ModuleNotFoundError, ImportError):
     gpustat = None
-    logger.warning(
-        "Install gpustat with 'pip install gpustat' to enable GPU monitoring.")
+    logger.warning("`gpustat` package is not installed. GPU monitoring is "
+                   "not available. In Ray 1.4+, the Ray CLI, autoscaler, and "
+                   "dashboard will only be usable via `pip install 'ray["
+                   "default]'`. Please update your install command")
 
 
 def recursive_asdict(o):

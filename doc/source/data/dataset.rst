@@ -1,3 +1,5 @@
+.. _datasets:
+
 Datasets: Distributed Arrow on Ray
 ==================================
 
@@ -173,7 +175,7 @@ Finally, you can create a Dataset from existing data in the Ray object store or 
 
     # Create a Dataset from a list of Pandas DataFrame objects.
     pdf = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.experimental.data.from_pandas([ray.put(pdf)])
+    ds = ray.data.from_pandas([ray.put(pdf)])
 
     # Create a Dataset from a Dask-on-Ray DataFrame.
     dask_df = dd.from_pandas(pdf, npartitions=10)
@@ -187,11 +189,11 @@ Datasets can be written to local or remote storage using ``.write_csv()``, ``.wr
 .. code-block:: python
 
     # Write to csv files in /tmp/output.
-    ds = ray.data.range(10000).write_csv("/tmp/output")
+    ray.data.range(10000).write_csv("/tmp/output")
     # -> /tmp/output/data0.csv, /tmp/output/data1.csv, ...
 
     # Use repartition to control the number of output files:
-    ds = ray.data.range(10000).repartition(1).write_csv("/tmp/output2")
+    ray.data.range(10000).repartition(1).write_csv("/tmp/output2")
     # -> /tmp/output2/data0.csv
 
 Transforming Datasets
@@ -220,7 +222,7 @@ To take advantage of vectorized functions, use ``.map_batches()``. Note that you
 
 .. code-block:: python
 
-    ds = ray.data.range(10000)
+    ds = ray.data.range_arrow(10000)
     ds = ds.map_batches(lambda df: df.applymap(lambda x: x * 2), batch_format="pandas")
     # -> Map Progress: 100%|█████████████████████████| 200/200 [00:00<00:00, 1927.62it/s]
     ds.take(5)
@@ -231,16 +233,14 @@ By default, transformations are executed using Ray tasks. For transformations th
 .. code-block:: python
 
     # Example of GPU batch inference on an ImageNet model.
-    model = None
-
     def preprocess(image: bytes) -> bytes:
         return image
 
-    def batch_infer(batch: pandas.DataFrame) -> pandas.DataFrame:
-        global model
-        if model is None:
-            model = ImageNetModel()
-        return model(batch)
+    class BatchInferModel:
+        def __init__(self):
+            self.model = ImageNetModel()
+        def __call__(self, batch: pandas.DataFrame) -> pandas.DataFrame:
+            return self.model(batch)
 
     ds = ray.data.read_binary_files("s3://bucket/image-dir")
 
@@ -250,7 +250,7 @@ By default, transformations are executed using Ray tasks. For transformations th
 
     # Apply GPU batch inference with actors, and assign each actor a GPU using
     # ``num_gpus=1`` (any Ray remote decorator argument can be used here).
-    ds = ds.map_batches(batch_infer, compute="actors", batch_size=256, num_gpus=1)
+    ds = ds.map_batches(BatchInferModel, compute="actors", batch_size=256, num_gpus=1)
     # -> Map Progress (16 actors 4 pending): 100%|█████| 200/200 [00:07<00:00, 27.60it/s]
 
     # Save the results.
@@ -281,11 +281,11 @@ Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is
     @ray.remote(num_gpus=1)
     class Worker:
         def __init__(self, rank: int):
-            ...
+            pass
 
         def train(self, shard: Dataset[int]) -> int:
             for batch in shard.iter_batches(batch_size=256):
-                ...
+                pass
             return shard.count()
 
     workers = [Worker.remote(i) for i in range(16)]
@@ -313,6 +313,11 @@ Datasets can read and write in parallel to `custom datasources <package-ref.html
 
     # Write to a custom datasource.
     ds.write_datasource(YourCustomDatasource(), **write_args)
+
+Tensor-typed values
+-------------------
+
+Currently Datasets does not have native support for tensor-typed values in records (e.g., TFRecord / Petastorm format / multi-dimensional arrays). This is planned for development.
 
 Pipelining data processing and ML computations
 ----------------------------------------------

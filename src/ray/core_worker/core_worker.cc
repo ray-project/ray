@@ -299,7 +299,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
   auto worker = std::make_shared<CoreWorker>(
       options_,
       global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom());
-  RAY_LOG(INFO) << "Worker " << worker->GetWorkerID() << " is created.";
+  RAY_LOG(DEBUG) << "Worker " << worker->GetWorkerID() << " is created.";
   if (options_.num_workers == 1) {
     global_worker_ = worker;
   }
@@ -371,7 +371,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       task_execution_service_work_(task_execution_service_),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this) {
-  RAY_LOG(INFO) << "Constructing CoreWorker, worker_id: " << worker_id;
+  RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
 
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
@@ -826,7 +826,12 @@ void CoreWorker::RunIOService() {
 }
 
 void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
-  RAY_LOG(INFO) << "Node failure " << node_id;
+  // if (node_id == GetCurrentNodeId()) {
+  //   RAY_LOG(FATAL) << "The raylet for this worker has died. Killing itself...";
+  // }
+  RAY_LOG(INFO) << "Node failure from " << node_id
+                << ". All objects pinned on that node will be lost if object "
+                   "reconstruction is not enabled.";
   const auto lost_objects = reference_counter_->ResetObjectsOnRemovedNode(node_id);
   // Delete the objects from the in-memory store to indicate that they are not
   // available. The object recovery manager will guarantee that a new value
@@ -834,12 +839,14 @@ void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
   // UnreconstructableError or a value reconstructed from lineage).
   memory_store_->Delete(lost_objects);
   for (const auto &object_id : lost_objects) {
-    RAY_LOG(INFO) << "Object " << object_id << " lost due to node failure " << node_id;
     // NOTE(swang): There is a race condition where this can return false if
     // the reference went out of scope since the call to the ref counter to get
     // the lost objects. It's okay to not mark the object as failed or recover
     // the object since there are no reference holders.
-    static_cast<void>(object_recovery_manager_->RecoverObject(object_id));
+    auto recovered = object_recovery_manager_->RecoverObject(object_id);
+    if (!recovered) {
+      RAY_LOG(DEBUG) << "Object " << object_id << " lost due to node failure " << node_id;
+    }
   }
 }
 
@@ -1613,6 +1620,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                             worker_context_.GetCurrentTaskID(), next_task_index);
   auto constrained_resources = AddPlacementGroupConstraint(
       task_options.resources, placement_options.first, placement_options.second);
+
   const std::unordered_map<std::string, double> required_resources;
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
@@ -1705,7 +1713,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.max_task_retries,
       actor_creation_options.dynamic_worker_options,
       actor_creation_options.max_concurrency, actor_creation_options.is_detached,
-      actor_name, actor_creation_options.is_asyncio, extension_data);
+      actor_name, actor_creation_options.ray_namespace, actor_creation_options.is_asyncio,
+      extension_data);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
@@ -1717,6 +1726,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   TaskSpecification task_spec = builder.Build();
   Status status;
   if (options_.is_local_mode) {
+    // TODO(suquark): Should we consider namespace in local mode? Currently
+    // it looks like two actors with two different namespaces become the
+    // same actor in local mode. Maybe this is not an issue if we consider
+    // the actor name globally unique.
     if (!actor_name.empty()) {
       // Since local mode doesn't pass GCS actor management code path,
       // it just register actor names in memory.
@@ -1743,6 +1756,17 @@ Status CoreWorker::CreatePlacementGroup(
     PlacementGroupID *return_placement_group_id) {
   std::shared_ptr<std::promise<Status>> status_promise =
       std::make_shared<std::promise<Status>>();
+  const auto &bundles = placement_group_creation_options.bundles;
+  for (const auto &bundle : bundles) {
+    for (const auto &resource : bundle) {
+      if (resource.first == kBundle_ResourceLabel) {
+        std::ostringstream stream;
+        stream << kBundle_ResourceLabel << " is a system reserved resource, which is not "
+               << "allowed to be used in placement groupd ";
+        return Status::Invalid(stream.str());
+      }
+    }
+  }
   const PlacementGroupID placement_group_id = PlacementGroupID::FromRandom();
   PlacementGroupSpecBuilder builder;
   builder.SetPlacementGroupSpec(
@@ -1957,7 +1981,7 @@ std::shared_ptr<const ActorHandle> CoreWorker::GetActorHandle(
 }
 
 std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorHandle(
-    const std::string &name) {
+    const std::string &name, const std::string &ray_namespace) {
   RAY_CHECK(!name.empty());
   if (options_.is_local_mode) {
     return GetNamedActorHandleLocalMode(name);
@@ -1971,9 +1995,8 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
   ActorID actor_id;
   std::shared_ptr<std::promise<void>> ready_promise =
       std::make_shared<std::promise<void>>(std::promise<void>());
-  const auto &ray_namespace = job_config_->ray_namespace();
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
-      name, ray_namespace,
+      name, ray_namespace.empty() ? job_config_->ray_namespace() : ray_namespace,
       [this, &actor_id, name, ready_promise](
           Status status, const boost::optional<rpc::ActorTableData> &result) {
         if (status.ok() && result) {
@@ -2002,10 +2025,12 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
 
   if (actor_id.IsNil()) {
     std::ostringstream stream;
-    stream << "Failed to look up actor with name '" << name << "'. You are "
-           << "either trying to look up a named actor you didn't create, "
-           << "the named actor died, or the actor hasn't been created "
-           << "because named actor creation is asynchronous.";
+    stream << "Failed to look up actor with name '" << name << "'. This could "
+           << "because 1. You are trying to look up a named actor you "
+           << "didn't create. 2. The named actor died. 3. The actor hasn't "
+           << "been created because named actor creation is asynchronous. "
+           << "4. You did not use a namespace matching the namespace of the "
+           << "actor.";
     return std::make_pair(nullptr, Status::NotFound(stream.str()));
   }
 
@@ -2562,7 +2587,7 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
   if (intended_worker_id != worker_context_.GetWorkerID()) {
     RAY_LOG(INFO) << "The SubscribeForObjectEviction message for object id " << object_id
                   << " is for " << intended_worker_id << ", but the current worker id is "
-                  << worker_context_.GetWorkerID() << ".";
+                  << worker_context_.GetWorkerID() << ". The RPC will be no-op.";
     unpin_object(object_id);
     return;
   }
@@ -2677,7 +2702,7 @@ void CoreWorker::ProcessSubscribeObjectLocations(
   if (intended_worker_id != worker_context_.GetWorkerID()) {
     RAY_LOG(INFO) << "The ProcessSubscribeObjectLocations message is for "
                   << intended_worker_id << ", but the current worker id is "
-                  << worker_context_.GetWorkerID() << ". This will be no-op.";
+                  << worker_context_.GetWorkerID() << ". The RPC will be no-op.";
     object_info_publisher_->PublishFailure(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());
     return;
@@ -2716,7 +2741,7 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
   if (intended_worker_id != worker_context_.GetWorkerID()) {
     RAY_LOG(INFO) << "The ProcessSubscribeForRefRemoved message is for "
                   << intended_worker_id << ", but the current worker id is "
-                  << worker_context_.GetWorkerID() << ". This will be no-op.";
+                  << worker_context_.GetWorkerID() << ". The RPC will be no-op.";
     ref_removed_callback(object_id);
     return;
   }
@@ -2745,9 +2770,11 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
 
   // Try non-force kill
   if (requested_task_running && !request.force_kill()) {
-    RAY_LOG(INFO) << "Interrupting a running task " << main_thread_task_id_;
+    RAY_LOG(INFO) << "Cancelling a running task " << main_thread_task_id_;
     success = options_.kill_main();
   } else if (!requested_task_running) {
+    RAY_LOG(INFO) << "Cancelling a task " << main_thread_task_id_
+                  << " that's not running. Tasks will be removed from a queue.";
     // If the task is not currently running, check if it is in the worker's queue of
     // normal tasks, and remove it if found.
     success = direct_task_receiver_->CancelQueuedNormalTask(task_id);
@@ -2755,7 +2782,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   if (request.recursive()) {
     auto recursive_cancel = CancelChildren(task_id, request.force_kill());
     if (recursive_cancel.ok()) {
-      RAY_LOG(INFO) << "Recursive cancel failed!";
+      RAY_LOG(INFO) << "Recursive cancel failed for a task " << task_id;
     }
   }
 
@@ -2767,7 +2794,9 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
 
   // Do force kill after reply callback sent
   if (requested_task_running && request.force_kill()) {
-    RAY_LOG(INFO) << "Force killing a worker running " << main_thread_task_id_;
+    RAY_LOG(INFO) << "A task " << main_thread_task_id_
+                  << " has received a force kill request after the cancellation. Killing "
+                     "a worker...";
     Disconnect();
     if (options_.enable_logging) {
       RayLog::ShutDownRayLog();
@@ -2795,7 +2824,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
   }
 
   if (request.force_kill()) {
-    RAY_LOG(INFO) << "Got KillActor, exiting immediately...";
+    RAY_LOG(INFO) << "Force kill actor request has received. exiting immediately...";
     if (request.no_restart()) {
       Disconnect();
     }
