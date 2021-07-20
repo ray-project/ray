@@ -663,10 +663,20 @@ class StandardAutoscaler:
 
         Used when node updaters are not available for recovery.
         """
-        nodes_to_terminate = [
-            node_id for node_id in nodes
-            if self.heartbeat_on_time(node_id, now)
-        ]
+        nodes_to_terminate = []
+        for node_id in nodes:
+            if not self.heartbeat_on_time(node_id, now):
+                logger.warning("StandardAutoscaler: "
+                               "{}: No recent heartbeat, "
+                               "terminating node.".format(node_id))
+                self.event_summarizer.add(
+                    "Terminating {} nodes of type " +
+                    self._get_node_type(node_id) +
+                    " (lost contact with raylet).",
+                    quantity=1,
+                    aggregate=operator.add)
+            nodes_to_terminate.append(node_id)
+
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
 
