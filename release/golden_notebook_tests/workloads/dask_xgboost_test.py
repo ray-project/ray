@@ -1,6 +1,4 @@
 import argparse
-
-import os
 import json
 import os
 import time
@@ -11,14 +9,10 @@ import ray
 from ray.util.dask import ray_dask_get
 from xgboost_ray import RayDMatrix, RayParams, train
 
-FILE_S3_URI = "s3://ray-ci-higgs/simpleHIGGS.csv"
+from utils.utils import is_anyscale_connect
 
-def is_anyscale_connect():
-    """Returns whether or not the Ray Address points to an Anyscale cluster."""
-    address = os.environ.get("RAY_ADDRESS")
-    is_anyscale_connect = address is not None and address.startswith(
-        "anyscale://")
-    return is_anyscale_connect
+HIGGS_S3_URI = "s3://ray-ci-higgs/HIGGS.csv"
+SIMPLE_HIGGS_S3_URI = "s3://ray-ci-higgs/simpleHIGGS.csv"
 
 
 def main():
@@ -26,9 +20,11 @@ def main():
 
     dask.config.set(scheduler=ray_dask_get)
     colnames = ["label"] + ["feature-%02d" % i for i in range(1, 29)]
-    data = dd.read_csv(FILE_S3_URI, names=colnames)
+
     if args.smoke_test:
-        data = data.head(n=1000)
+        data = dd.read_csv(SIMPLE_HIGGS_S3_URI, names=colnames)
+    else:
+        data = dd.read_csv(HIGGS_S3_URI, names=colnames)
 
     print("Loaded HIGGS data.")
 

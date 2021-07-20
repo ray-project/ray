@@ -8,6 +8,7 @@ python:
     - pytest
     - dask
     - s3fs
+    - pandas
   conda_packages: [ ]
 
 post_build_cmds:
