@@ -194,11 +194,11 @@ def _workflow_step_executor(
         return ret
 
 
-def execute_workflow_step(step_func: Callable, step_id: "StepID",
-                          step_inputs: "WorkflowInputTuple",
-                          catch_exceptions: bool, step_max_retries: int,
-                          ray_options: Dict[str, Any],
-                          outer_most_step_id: "StepID") -> "WorkflowOutputType":
+def execute_workflow_step(
+        step_func: Callable, step_id: "StepID",
+        step_inputs: "WorkflowInputTuple", catch_exceptions: bool,
+        step_max_retries: int, ray_options: Dict[str, Any],
+        outer_most_step_id: "StepID") -> "WorkflowOutputType":
     return _workflow_step_executor.options(**ray_options).remote(
         step_func, workflow_context.get_workflow_step_context(), step_id,
         step_inputs, outer_most_step_id, catch_exceptions, step_max_retries)
