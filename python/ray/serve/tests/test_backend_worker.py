@@ -36,8 +36,8 @@ def setup_worker(name,
         async def handle_request(self, *args, **kwargs):
             return await self.worker.handle_request(*args, **kwargs)
 
-        def update_config(self, new_config):
-            return self.worker.update_config(new_config)
+        async def reconfigure(self, new_config):
+            return await self.worker.reconfigure(new_config)
 
         async def drain_pending_queries(self):
             return await self.worker.drain_pending_queries()
@@ -177,7 +177,7 @@ async def test_task_runner_perform_async(serve_instance,
 async def test_user_config_update(serve_instance, mock_controller_with_name):
     class Customizable:
         def __init__(self):
-            self.reval = ""
+            self.retval = ""
 
         def __call__(self, starlette_request):
             return self.retval

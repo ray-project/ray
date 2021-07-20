@@ -11,6 +11,13 @@ def enable_test_module():
 
 
 @pytest.fixture
+def enable_event_module():
+    os.environ["RAY_DASHBOARD_MODULE_EVENT"] = "true"
+    yield
+    os.environ.pop("RAY_DASHBOARD_MODULE_EVENT", None)
+
+
+@pytest.fixture
 def disable_aiohttp_cache():
     os.environ["RAY_DASHBOARD_NO_CACHE"] = "true"
     yield
@@ -38,3 +45,10 @@ def set_http_proxy():
         os.environ["https_proxy"] = https_proxy
     else:
         del os.environ["https_proxy"]
+
+
+@pytest.fixture
+def small_event_line_limit():
+    os.environ["EVENT_READ_LINE_LENGTH_LIMIT"] = "1024"
+    yield 1024
+    os.environ.pop("EVENT_READ_LINE_LENGTH_LIMIT", None)

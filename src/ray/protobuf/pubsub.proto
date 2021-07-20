@@ -26,6 +26,8 @@ enum ChannelType {
   WORKER_OBJECT_EVICTION = 0;
   /// A channel for ref removed.
   WORKER_REF_REMOVED_CHANNEL = 1;
+  /// A channel to subscribe object locations.
+  WORKER_OBJECT_LOCATIONS_CHANNEL = 2;
 }
 
 ///
@@ -41,6 +43,9 @@ message PubMessage {
   oneof pub_message_one_of {
     WorkerObjectEvictionMessage worker_object_eviction_message = 3;
     WorkerRefRemovedMessage worker_ref_removed_message = 4;
+    WorkerObjectLocationsPubMessage worker_object_locations_message = 5;
+    // The message that indicates the given key id is not available anymore.
+    FailureMessage failure_message = 6;
   }
 }
 
@@ -54,6 +59,26 @@ message WorkerRefRemovedMessage {
   // ID by the time it replies, but may have accumulated other borrowers or may
   // still be borrowing an object ID that was nested inside.
   repeated ObjectReferenceCount borrowed_refs = 1;
+}
+
+message WorkerObjectLocationsPubMessage {
+  // The IDs of the nodes that this object appeared on or was evicted by.
+  repeated bytes node_ids = 1;
+  // The size of the object in bytes.
+  uint64 object_size = 2;
+  // The object has been spilled to this URL. This should be set xor the above
+  // fields are set.
+  string spilled_url = 3;
+  // The ID of the node that spilled the object.
+  // This will be Nil if the object was spilled to distributed external storage.
+  bytes spilled_node_id = 4;
+  // The ID of the node that stores the primary copy in plasma.
+  // This could be Nil if the object has been evicted or inlined.
+  bytes primary_node_id = 6;
+}
+
+/// Indicating the subscriber needs to handle failure callback.
+message FailureMessage {
 }
 
 ///
@@ -93,6 +118,7 @@ message SubMessage {
   oneof sub_message_one_of {
     WorkerObjectEvictionSubMessage worker_object_eviction_message = 1;
     WorkerRefRemovedSubMessage worker_ref_removed_message = 2;
+    WorkerObjectLocationsSubMessage worker_object_locations_message = 3;
   }
 }
 
@@ -116,4 +142,42 @@ message WorkerRefRemovedSubMessage {
   bytes contained_in_id = 3;
   // The ID of the worker that waits for the ref removed message.
   bytes subscriber_worker_id = 4;
+}
+
+message WorkerObjectLocationsSubMessage {
+  bytes intended_worker_id = 1;
+  bytes object_id = 2;
+}
+
+///
+/// Events
+///
+
+message PubsubLongPollingRequest {
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
+}
+
+message PubsubLongPollingReply {
+  /// The object ids that are published.
+  repeated PubMessage pub_messages = 1;
+}
+
+message PubsubCommandBatchRequest {
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
+  /// Set of pubsub commands. Look at pubsub.proto for more details about the term.
+  repeated Command commands = 2;
+}
+
+message PubsubCommandBatchReply {
+}
+
+service PublisherService {
+  /// The long polling request sent to the publisher for pubsub operations.
+  /// It is replied once there are batch of objects that need to be published to
+  /// the caller (subscriber).
+  rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
+  /// The pubsub command batch request used by the subscriber.
+  rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
 }

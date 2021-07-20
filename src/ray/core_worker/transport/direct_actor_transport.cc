@@ -138,7 +138,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   if (num_restarts < queue->second.num_restarts) {
     // This message is about an old version of the actor and the actor has
     // already restarted since then. Skip the connection.
-    RAY_LOG(INFO) << "Skip actor that has already been restarted, actor_id=" << actor_id;
+    RAY_LOG(INFO) << "Skip actor connection that has already been restarted, actor_id="
+                  << actor_id;
     return;
   }
 
@@ -174,6 +175,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
                  << queue->second.next_task_reply_position;
   queue->second.caller_starts_at = queue->second.next_task_reply_position;
 
+  RAY_LOG(INFO) << "Connecting to actor " << actor_id << " at worker "
+                << WorkerID::FromBinary(address.worker_id());
   ResendOutOfOrderTasks(actor_id);
   SendPendingTasks(actor_id);
 }
@@ -188,7 +191,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
   if (num_restarts <= queue->second.num_restarts && !dead) {
     // This message is about an old version of the actor that has already been
     // restarted successfully. Skip the message handling.
-    RAY_LOG(INFO) << "Skip actor that has already been restarted, actor_id=" << actor_id;
+    RAY_LOG(INFO) << "Skip actor disconnection that has already been restarted, actor_id="
+                  << actor_id;
     return;
   }
 
@@ -201,7 +205,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     queue->second.state = rpc::ActorTableData::DEAD;
     queue->second.creation_task_exception = creation_task_exception;
     // If there are pending requests, treat the pending tasks as failed.
-    RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id;
+    RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id
+                  << " because the actor is already dead.";
     auto &requests = queue->second.requests;
     auto head = requests.begin();
 
@@ -530,6 +535,15 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
 
+  auto steal_callback = [this, task_spec,
+                         reply](rpc::SendReplyCallback send_reply_callback) {
+    RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " was stolen from "
+                   << worker_context_.GetWorkerID()
+                   << "'s non_actor_task_queue_! Setting reply->set_task_stolen(true)!";
+    reply->set_task_stolen(true);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  };
+
   auto dependencies = task_spec.GetDependencies(false);
 
   if (task_spec.IsActorTask()) {
@@ -544,13 +558,15 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
     it->second->Add(request.sequence_number(), request.client_processed_up_to(),
                     std::move(accept_callback), std::move(reject_callback),
-                    std::move(send_reply_callback), task_spec.TaskId(), dependencies);
+                    std::move(send_reply_callback), nullptr, task_spec.TaskId(),
+                    dependencies);
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
     normal_scheduling_queue_->Add(
         request.sequence_number(), request.client_processed_up_to(),
         std::move(accept_callback), std::move(reject_callback),
-        std::move(send_reply_callback), task_spec.TaskId(), dependencies);
+        std::move(send_reply_callback), std::move(steal_callback), task_spec.TaskId(),
+        dependencies);
   }
 }
 
@@ -562,6 +578,16 @@ void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
 
   // Execute as many tasks as there are in the queue, in sequential order.
   normal_scheduling_queue_->ScheduleRequests();
+}
+
+void CoreWorkerDirectTaskReceiver::HandleStealTasks(
+    const rpc::StealTasksRequest &request, rpc::StealTasksReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  size_t n_tasks_stolen = normal_scheduling_queue_->Steal(reply);
+  RAY_LOG(DEBUG) << "Number of tasks stolen is " << n_tasks_stolen;
+
+  // send reply back
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {

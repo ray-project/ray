@@ -13,7 +13,6 @@ import traceback
 import aiohttp
 import aiohttp.web
 import aiohttp_cors
-import psutil
 from aiohttp import hdrs
 from grpc.experimental import aio as aiogrpc
 
@@ -26,6 +25,9 @@ import ray._private.utils
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 try:
     create_task = asyncio.create_task
@@ -45,7 +47,9 @@ class DashboardAgent(object):
                  dashboard_agent_port,
                  redis_password=None,
                  temp_dir=None,
+                 session_dir=None,
                  runtime_env_dir=None,
+                 runtime_env_setup_hook=None,
                  log_dir=None,
                  metrics_export_port=None,
                  node_manager_port=None,
@@ -57,7 +61,9 @@ class DashboardAgent(object):
         self.redis_address = dashboard_utils.address_tuple(redis_address)
         self.redis_password = redis_password
         self.temp_dir = temp_dir
+        self.session_dir = session_dir
         self.runtime_env_dir = runtime_env_dir
+        self.runtime_env_setup_hook = runtime_env_setup_hook
         self.log_dir = log_dir
         self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
@@ -292,11 +298,24 @@ if __name__ == "__main__":
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
     parser.add_argument(
+        "--session-dir",
+        required=True,
+        type=str,
+        default=None,
+        help="Specify the path of this session.")
+    parser.add_argument(
         "--runtime-env-dir",
         required=True,
         type=str,
         default=None,
         help="Specify the path of the resource directory used by runtime_env.")
+    parser.add_argument(
+        "--runtime-env-setup-hook",
+        required=True,
+        type=str,
+        default=None,
+        help="The module path to a Python function that"
+        "will be imported and run to set up the runtime env.")
 
     args = parser.parse_args()
     try:
@@ -324,7 +343,9 @@ if __name__ == "__main__":
             args.dashboard_agent_port,
             redis_password=args.redis_password,
             temp_dir=args.temp_dir,
+            session_dir=args.session_dir,
             runtime_env_dir=args.runtime_env_dir,
+            runtime_env_setup_hook=args.runtime_env_setup_hook,
             log_dir=args.log_dir,
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,

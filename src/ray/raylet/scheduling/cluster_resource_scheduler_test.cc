@@ -46,24 +46,24 @@ using namespace std;
   }
 
 namespace ray {
-// Used to path empty vector argiuments.
+// Used to path empty vector arguments.
 vector<int64_t> EmptyIntVector;
 vector<bool> EmptyBoolVector;
 vector<FixedPoint> EmptyFixedPointVector;
 
-void initTaskRequest(TaskRequest &tr, vector<FixedPoint> &pred_demands,
-                     vector<int64_t> &cust_ids, vector<FixedPoint> &cust_demands) {
-  tr.predefined_resources.resize(PredefinedResources_MAX + pred_demands.size());
+void initResourceRequest(ResourceRequest &res_request, vector<FixedPoint> &pred_demands,
+                         vector<int64_t> &cust_ids, vector<FixedPoint> &cust_demands) {
+  res_request.predefined_resources.resize(PredefinedResources_MAX + pred_demands.size());
   for (size_t i = 0; i < pred_demands.size(); i++) {
-    tr.predefined_resources[i] = pred_demands[i];
+    res_request.predefined_resources[i] = pred_demands[i];
   }
 
   for (size_t i = pred_demands.size(); i < PredefinedResources_MAX; i++) {
-    tr.predefined_resources.push_back(0);
+    res_request.predefined_resources.push_back(0);
   }
 
   for (size_t i = 0; i < cust_ids.size(); i++) {
-    tr.custom_resources[cust_ids[i]] = cust_demands[i];
+    res_request.custom_resources[cust_ids[i]] = cust_demands[i];
   }
 };
 
@@ -181,7 +181,7 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
     // The legacy scheduling policy is easier to reason about for testing purposes. See
     // `scheduling_policy_test.cc` for comprehensive testing of the hybrid scheduling
     // policy.
-    RayConfig::instance().initialize("scheduler_hybrid_scheduling,false;");
+    RayConfig::instance().initialize(R"({"scheduler_hybrid_scheduling": false})");
   }
 
   void Shutdown() {}
@@ -235,18 +235,12 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingFixedPointTest) {
 TEST_F(ClusterResourceSchedulerTest, SchedulingIdTest) {
   StringIdMap ids;
   hash<string> hasher;
-  size_t num = 10;  // should be greater than 10.
+  const size_t num = 10;  // should be greater than 10.
 
   for (size_t i = 0; i < num; i++) {
     ids.Insert(to_string(i));
   }
   ASSERT_EQ(ids.Count(), num);
-
-  ids.Remove(to_string(1));
-  ASSERT_EQ(ids.Count(), num - 1);
-
-  ids.Remove(hasher(to_string(2)));
-  ASSERT_EQ(ids.Count(), num - 2);
 
   ASSERT_EQ(ids.Get(to_string(3)), static_cast<int64_t>(hasher(to_string(3))));
 
@@ -327,16 +321,16 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
   ClusterResourceScheduler resource_scheduler(1, node_resources);
 
   {
-    TaskRequest task_req;
+    ResourceRequest resource_request;
 #define PRED_CUSTOM_LEN 2
     vector<FixedPoint> pred_demands{7, 5};
     vector<int64_t> cust_ids{1, 2};
     vector<FixedPoint> cust_demands{3, 5};
-    initTaskRequest(task_req, pred_demands, cust_ids, cust_demands);
+    initResourceRequest(resource_request, pred_demands, cust_ids, cust_demands);
     int64_t violations;
     bool is_infeasible;
     int64_t node_id = resource_scheduler.GetBestSchedulableNode(
-        task_req, false, false, &violations, &is_infeasible);
+        resource_request, false, false, &violations, &is_infeasible);
     ASSERT_TRUE(node_id != -1);
     ASSERT_EQ(node_id, 1);
     ASSERT_TRUE(violations == 0);
@@ -344,11 +338,13 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
     NodeResources nr1, nr2;
     ASSERT_TRUE(resource_scheduler.GetNodeResources(node_id, &nr1));
     auto task_allocation = std::make_shared<TaskResourceInstances>();
-    ASSERT_TRUE(resource_scheduler.AllocateLocalTaskResources(task_req, task_allocation));
+    ASSERT_TRUE(
+        resource_scheduler.AllocateLocalTaskResources(resource_request, task_allocation));
     ASSERT_TRUE(resource_scheduler.GetNodeResources(node_id, &nr2));
 
     for (size_t i = 0; i < PRED_CUSTOM_LEN; i++) {
-      auto t = nr1.predefined_resources[i].available - task_req.predefined_resources[i];
+      auto t = nr1.predefined_resources[i].available -
+               resource_request.predefined_resources[i];
       if (t < 0) t = 0;
       ASSERT_EQ(nr2.predefined_resources[i].available, t);
     }
@@ -358,7 +354,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
       if (it1 != nr1.custom_resources.end()) {
         auto it2 = nr2.custom_resources.find(i);
         if (it2 != nr2.custom_resources.end()) {
-          auto t = it1->second.available - task_req.custom_resources[i];
+          auto t = it1->second.available - resource_request.custom_resources[i];
           if (t < 0) t = 0;
           ASSERT_EQ(it2->second.available, t);
         }
@@ -407,7 +403,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest) {
   }
 }
 
-TEST_F(ClusterResourceSchedulerTest, SchedulingTaskRequestTest) {
+TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
   // Create cluster resources containing local node.
   NodeResources node_resources;
   vector<FixedPoint> pred_capacities{5, 5};
@@ -426,85 +422,93 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingTaskRequestTest) {
   }
   // Predefined resources, hard constraint violation
   {
-    TaskRequest task_req;
+    ResourceRequest resource_request;
     vector<FixedPoint> pred_demands = {11};
-    initTaskRequest(task_req, pred_demands, EmptyIntVector, EmptyFixedPointVector);
+    initResourceRequest(resource_request, pred_demands, EmptyIntVector,
+                        EmptyFixedPointVector);
     int64_t violations;
     bool is_infeasible;
     int64_t node_id = resource_scheduler.GetBestSchedulableNode(
-        task_req, false, false, &violations, &is_infeasible);
+        resource_request, false, false, &violations, &is_infeasible);
     ASSERT_EQ(node_id, -1);
   }
 
   // Predefined resources, no constraint violation.
   {
-    TaskRequest task_req;
+    ResourceRequest resource_request;
     vector<FixedPoint> pred_demands = {5};
-    initTaskRequest(task_req, pred_demands, EmptyIntVector, EmptyFixedPointVector);
+    initResourceRequest(resource_request, pred_demands, EmptyIntVector,
+                        EmptyFixedPointVector);
     int64_t violations;
     bool is_infeasible;
     int64_t node_id = resource_scheduler.GetBestSchedulableNode(
-        task_req, false, false, &violations, &is_infeasible);
+        resource_request, false, false, &violations, &is_infeasible);
     ASSERT_TRUE(node_id != -1);
     ASSERT_TRUE(violations == 0);
   }
   // Custom resources, hard constraint violation.
   {
-    TaskRequest task_req;
+    ResourceRequest resource_request;
     vector<FixedPoint> pred_demands{5, 2};
     vector<int64_t> cust_ids{1};
     vector<FixedPoint> cust_demands{11};
-    initTaskRequest(task_req, pred_demands, cust_ids, cust_demands);
+    initResourceRequest(resource_request, pred_demands, cust_ids, cust_demands);
     int64_t violations;
     bool is_infeasible;
     int64_t node_id = resource_scheduler.GetBestSchedulableNode(
-        task_req, false, false, &violations, &is_infeasible);
+        resource_request, false, false, &violations, &is_infeasible);
     ASSERT_TRUE(node_id == -1);
   }
   // Custom resources, no constraint violation.
   {
-    TaskRequest task_req;
+    ResourceRequest resource_request;
     vector<FixedPoint> pred_demands{5, 2};
     vector<int64_t> cust_ids{1};
     vector<FixedPoint> cust_demands{5};
-    initTaskRequest(task_req, pred_demands, cust_ids, cust_demands);
+    initResourceRequest(resource_request, pred_demands, cust_ids, cust_demands);
     int64_t violations;
     bool is_infeasible;
     int64_t node_id = resource_scheduler.GetBestSchedulableNode(
-        task_req, false, false, &violations, &is_infeasible);
+        resource_request, false, false, &violations, &is_infeasible);
     ASSERT_TRUE(node_id != -1);
     ASSERT_TRUE(violations == 0);
   }
   // Custom resource missing, hard constraint violation.
   {
-    TaskRequest task_req;
+    ResourceRequest resource_request;
     vector<FixedPoint> pred_demands{5, 2};
     vector<int64_t> cust_ids{100};
     vector<FixedPoint> cust_demands{5};
-    initTaskRequest(task_req, pred_demands, cust_ids, cust_demands);
+    initResourceRequest(resource_request, pred_demands, cust_ids, cust_demands);
     int64_t violations;
     bool is_infeasible;
     int64_t node_id = resource_scheduler.GetBestSchedulableNode(
-        task_req, false, false, &violations, &is_infeasible);
+        resource_request, false, false, &violations, &is_infeasible);
     ASSERT_TRUE(node_id == -1);
   }
   // Placement hints, no constraint violation.
   {
-    TaskRequest task_req;
+    ResourceRequest resource_request;
     vector<FixedPoint> pred_demands{5, 2};
     vector<int64_t> cust_ids{1};
     vector<FixedPoint> cust_demands{5};
-    initTaskRequest(task_req, pred_demands, cust_ids, cust_demands);
+    initResourceRequest(resource_request, pred_demands, cust_ids, cust_demands);
     int64_t violations;
     bool is_infeasible;
     int64_t node_id = resource_scheduler.GetBestSchedulableNode(
-        task_req, false, false, &violations, &is_infeasible);
+        resource_request, false, false, &violations, &is_infeasible);
     ASSERT_TRUE(node_id != -1);
     ASSERT_TRUE(violations == 0);
   }
 }
 
-TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesTest) {
+TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesWithCpuUnitTest) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "predefined_unit_instance_resources": "CPU,GPU"
+}
+  )");
   // Create cluster resources containing local node.
   NodeResources node_resources;
   vector<FixedPoint> pred_capacities{3 /* CPU */, 4 /* MEM */, 5 /* GPU */};
@@ -518,6 +522,36 @@ TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesTest) {
 
   TaskResourceInstances expected_cluster_resources;
   addTaskResourceInstances(true, {1., 1., 1.}, 0, &expected_cluster_resources);
+  addTaskResourceInstances(true, {4.}, 1, &expected_cluster_resources);
+  addTaskResourceInstances(true, {1., 1., 1., 1., 1.}, 2, &expected_cluster_resources);
+
+  ASSERT_EQ(expected_cluster_resources == available_cluster_resources, false);
+
+  addTaskResourceInstances(false, {8.}, 1, &expected_cluster_resources);
+
+  ASSERT_EQ(expected_cluster_resources == available_cluster_resources, true);
+}
+
+TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesTest) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "predefined_unit_instance_resources": "GPU"
+}
+  )");
+  // Create cluster resources containing local node.
+  NodeResources node_resources;
+  vector<FixedPoint> pred_capacities{3 /* CPU */, 4 /* MEM */, 5 /* GPU */};
+  vector<int64_t> cust_ids{1};
+  vector<FixedPoint> cust_capacities{8};
+  initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
+  ClusterResourceScheduler resource_scheduler(0, node_resources);
+
+  TaskResourceInstances available_cluster_resources =
+      resource_scheduler.GetLocalResources().GetAvailableResourceInstances();
+
+  TaskResourceInstances expected_cluster_resources;
+  addTaskResourceInstances(true, {3.}, 0, &expected_cluster_resources);
   addTaskResourceInstances(true, {4.}, 1, &expected_cluster_resources);
   addTaskResourceInstances(true, {1., 1., 1., 1., 1.}, 2, &expected_cluster_resources);
 
@@ -580,16 +614,17 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
                       EmptyFixedPointVector);
     ClusterResourceScheduler resource_scheduler(0, node_resources);
 
-    TaskRequest task_req;
+    ResourceRequest resource_request;
     vector<FixedPoint> pred_demands = {3. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
-    initTaskRequest(task_req, pred_demands, EmptyIntVector, EmptyFixedPointVector);
+    initResourceRequest(resource_request, pred_demands, EmptyIntVector,
+                        EmptyFixedPointVector);
 
     NodeResourceInstances old_local_resources = resource_scheduler.GetLocalResources();
 
     std::shared_ptr<TaskResourceInstances> task_allocation =
         std::make_shared<TaskResourceInstances>();
-    bool success =
-        resource_scheduler.AllocateTaskResourceInstances(task_req, task_allocation);
+    bool success = resource_scheduler.AllocateTaskResourceInstances(resource_request,
+                                                                    task_allocation);
 
     ASSERT_EQ(success, true);
 
@@ -606,15 +641,16 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
                       EmptyFixedPointVector);
     ClusterResourceScheduler resource_scheduler(0, node_resources);
 
-    TaskRequest task_req;
+    ResourceRequest resource_request;
     vector<FixedPoint> pred_demands = {4. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
-    initTaskRequest(task_req, pred_demands, EmptyIntVector, EmptyFixedPointVector);
+    initResourceRequest(resource_request, pred_demands, EmptyIntVector,
+                        EmptyFixedPointVector);
 
     NodeResourceInstances old_local_resources = resource_scheduler.GetLocalResources();
     std::shared_ptr<TaskResourceInstances> task_allocation =
         std::make_shared<TaskResourceInstances>();
-    bool success =
-        resource_scheduler.AllocateTaskResourceInstances(task_req, task_allocation);
+    bool success = resource_scheduler.AllocateTaskResourceInstances(resource_request,
+                                                                    task_allocation);
 
     ASSERT_EQ(success, false);
     ASSERT_EQ((resource_scheduler.GetLocalResources() == old_local_resources), true);
@@ -629,16 +665,16 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
     initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
     ClusterResourceScheduler resource_scheduler(0, node_resources);
 
-    TaskRequest task_req;
+    ResourceRequest resource_request;
     vector<FixedPoint> pred_demands = {3. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
     vector<FixedPoint> cust_demands{3, 2};
-    initTaskRequest(task_req, pred_demands, cust_ids, cust_demands);
+    initResourceRequest(resource_request, pred_demands, cust_ids, cust_demands);
 
     NodeResourceInstances old_local_resources = resource_scheduler.GetLocalResources();
     std::shared_ptr<TaskResourceInstances> task_allocation =
         std::make_shared<TaskResourceInstances>();
-    bool success =
-        resource_scheduler.AllocateTaskResourceInstances(task_req, task_allocation);
+    bool success = resource_scheduler.AllocateTaskResourceInstances(resource_request,
+                                                                    task_allocation);
 
     ASSERT_EQ(success, true);
 
@@ -656,16 +692,16 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
     initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
     ClusterResourceScheduler resource_scheduler(0, node_resources);
 
-    TaskRequest task_req;
+    ResourceRequest resource_request;
     vector<FixedPoint> pred_demands = {3. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
     vector<FixedPoint> cust_demands{3, 10};
-    initTaskRequest(task_req, pred_demands, cust_ids, cust_demands);
+    initResourceRequest(resource_request, pred_demands, cust_ids, cust_demands);
 
     NodeResourceInstances old_local_resources = resource_scheduler.GetLocalResources();
     std::shared_ptr<TaskResourceInstances> task_allocation =
         std::make_shared<TaskResourceInstances>();
-    bool success =
-        resource_scheduler.AllocateTaskResourceInstances(task_req, task_allocation);
+    bool success = resource_scheduler.AllocateTaskResourceInstances(resource_request,
+                                                                    task_allocation);
 
     ASSERT_EQ(success, false);
     ASSERT_EQ((resource_scheduler.GetLocalResources() == old_local_resources), true);
@@ -681,15 +717,15 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest2) {
     initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
     ClusterResourceScheduler resource_scheduler(0, node_resources);
 
-    TaskRequest task_req;
+    ResourceRequest resource_request;
     vector<FixedPoint> pred_demands = {2. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
     vector<FixedPoint> cust_demands{3., 2.};
-    initTaskRequest(task_req, pred_demands, cust_ids, cust_demands);
+    initResourceRequest(resource_request, pred_demands, cust_ids, cust_demands);
 
     std::shared_ptr<TaskResourceInstances> task_allocation =
         std::make_shared<TaskResourceInstances>();
-    bool success =
-        resource_scheduler.AllocateTaskResourceInstances(task_req, task_allocation);
+    bool success = resource_scheduler.AllocateTaskResourceInstances(resource_request,
+                                                                    task_allocation);
 
     NodeResourceInstances old_local_resources = resource_scheduler.GetLocalResources();
     ASSERT_EQ(success, true);
@@ -809,19 +845,45 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
                     EmptyFixedPointVector);
   ClusterResourceScheduler resource_scheduler(0, node_resources);
 
-  TaskRequest task_req;
+  ResourceRequest resource_request;
   vector<FixedPoint> pred_demands = {2. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
-  initTaskRequest(task_req, pred_demands, EmptyIntVector, EmptyFixedPointVector);
+  initResourceRequest(resource_request, pred_demands, EmptyIntVector,
+                      EmptyFixedPointVector);
 
   std::shared_ptr<TaskResourceInstances> task_allocation =
       std::make_shared<TaskResourceInstances>();
   bool success =
-      resource_scheduler.AllocateTaskResourceInstances(task_req, task_allocation);
+      resource_scheduler.AllocateTaskResourceInstances(resource_request, task_allocation);
 
   ASSERT_EQ(success, true);
 
-  vector<FixedPoint> cpu_instances = task_allocation->GetGPUInstances();
-  vector<FixedPoint> expect_cpu_instance{1., 0.5, 0., 0.};
+  vector<FixedPoint> gpu_instances = task_allocation->GetGPUInstances();
+  vector<FixedPoint> expect_gpu_instance{1., 0.5, 0., 0.};
+
+  ASSERT_TRUE(EqualVectors(gpu_instances, expect_gpu_instance));
+}
+
+TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
+  NodeResources node_resources;
+  vector<FixedPoint> pred_capacities{4. /* CPU */, 2. /* MEM */, 4. /* GPU */};
+  initNodeResources(node_resources, pred_capacities, EmptyIntVector,
+                    EmptyFixedPointVector);
+  ClusterResourceScheduler resource_scheduler(0, node_resources);
+
+  ResourceRequest resource_request;
+  vector<FixedPoint> pred_demands = {2. /* CPU */, 2. /* MEM */, 1.5 /* GPU */};
+  initResourceRequest(resource_request, pred_demands, EmptyIntVector,
+                      EmptyFixedPointVector);
+
+  std::shared_ptr<TaskResourceInstances> task_allocation =
+      std::make_shared<TaskResourceInstances>();
+  bool success =
+      resource_scheduler.AllocateTaskResourceInstances(resource_request, task_allocation);
+
+  ASSERT_EQ(success, true);
+
+  vector<FixedPoint> cpu_instances = task_allocation->GetCPUInstances();
+  vector<FixedPoint> expect_cpu_instance{2};
 
   ASSERT_TRUE(EqualVectors(cpu_instances, expect_cpu_instance));
 }
@@ -1038,32 +1100,33 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
 TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
   ClusterResourceScheduler resource_scheduler("local", {{"CPU", 2}});
 
-  std::unordered_map<std::string, double> task_request = {{"CPU", 1}, {"custom123", 2}};
+  std::unordered_map<std::string, double> resource_request = {{"CPU", 1},
+                                                              {"custom123", 2}};
   int64_t t;
   bool is_infeasible;
 
   std::string result = resource_scheduler.GetBestSchedulableNode(
-      task_request, false, false, &t, &is_infeasible);
+      resource_request, false, false, &t, &is_infeasible);
   ASSERT_TRUE(result.empty());
 
   resource_scheduler.AddLocalResourceInstances("custom123", {0., 1.0, 1.0});
 
-  result = resource_scheduler.GetBestSchedulableNode(task_request, false, false, &t,
+  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false, &t,
                                                      &is_infeasible);
   ASSERT_FALSE(result.empty()) << resource_scheduler.DebugString();
 
-  task_request["custom123"] = 3;
-  result = resource_scheduler.GetBestSchedulableNode(task_request, false, false, &t,
+  resource_request["custom123"] = 3;
+  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false, &t,
                                                      &is_infeasible);
   ASSERT_TRUE(result.empty());
 
   resource_scheduler.AddLocalResourceInstances("custom123", {1.0});
-  result = resource_scheduler.GetBestSchedulableNode(task_request, false, false, &t,
+  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false, &t,
                                                      &is_infeasible);
   ASSERT_FALSE(result.empty());
 
   resource_scheduler.DeleteLocalResource("custom123");
-  result = resource_scheduler.GetBestSchedulableNode(task_request, false, false, &t,
+  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false, &t,
                                                      &is_infeasible);
   ASSERT_TRUE(result.empty());
 }
@@ -1072,9 +1135,9 @@ TEST_F(ClusterResourceSchedulerTest, AvailableResourceEmptyTest) {
   ClusterResourceScheduler resource_scheduler("local", {{"custom123", 5}});
   std::shared_ptr<TaskResourceInstances> resource_instances =
       std::make_shared<TaskResourceInstances>();
-  std::unordered_map<std::string, double> task_request = {{"custom123", 5}};
+  std::unordered_map<std::string, double> resource_request = {{"custom123", 5}};
   bool allocated =
-      resource_scheduler.AllocateLocalTaskResources(task_request, resource_instances);
+      resource_scheduler.AllocateLocalTaskResources(resource_request, resource_instances);
   ASSERT_TRUE(allocated);
   ASSERT_TRUE(resource_scheduler.IsAvailableResourceEmpty("custom123"));
 }
@@ -1111,6 +1174,42 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
                                                       /*force_spillback=*/true,
                                                       &total_violations, &is_infeasible),
             "51");
+}
+
+TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "custom_unit_instance_resources": "FPGA"
+}
+  )");
+  ClusterResourceScheduler resource_scheduler("local", {{"CPU", 4}, {"FPGA", 2}});
+
+  StringIdMap mock_string_to_int_map;
+  int64_t fpga_resource_id = mock_string_to_int_map.Insert("FPGA");
+
+  ResourceRequest resource_request;
+  vector<FixedPoint> pred_demands = {1. /* CPU */};
+  vector<FixedPoint> cust_demands{0.7};
+  vector<int64_t> cust_ids{fpga_resource_id};
+  initResourceRequest(resource_request, pred_demands, cust_ids, cust_demands);
+
+  std::shared_ptr<TaskResourceInstances> task_allocation =
+      std::make_shared<TaskResourceInstances>();
+  bool success =
+      resource_scheduler.AllocateTaskResourceInstances(resource_request, task_allocation);
+  ASSERT_TRUE(success) << resource_scheduler.DebugString();
+
+  success =
+      resource_scheduler.AllocateTaskResourceInstances(resource_request, task_allocation);
+  ASSERT_TRUE(success) << resource_scheduler.DebugString();
+
+  ResourceRequest fail_resource_request;
+  vector<FixedPoint> fail_cust_demands{0.5};
+  initResourceRequest(fail_resource_request, pred_demands, cust_ids, fail_cust_demands);
+  success = resource_scheduler.AllocateTaskResourceInstances(fail_resource_request,
+                                                             task_allocation);
+  ASSERT_FALSE(success) << resource_scheduler.DebugString();
 }
 
 }  // namespace ray

@@ -1,59 +1,148 @@
 import logging
-import time
 import types
-import uuid
+from typing import Union, Optional, TYPE_CHECKING
 
 import ray
-from ray.experimental.workflow.workflow_manager import (
-    WorkflowStepFunction, Workflow, resolve_object_ref)
-from ray.experimental.workflow import workflow_context
+from ray.experimental.workflow import execution
+from ray.experimental.workflow.step_function import WorkflowStepFunction
+# avoid collision with arguments & APIs
+from ray.experimental.workflow import virtual_actor_class
+from ray.experimental.workflow import storage as storage_base
+
+if TYPE_CHECKING:
+    from ray.experimental.workflow.storage import Storage
+    from ray.experimental.workflow.virtual_actor_class import (
+        VirtualActorClass, VirtualActor)
 
 logger = logging.getLogger(__name__)
 
+# TODO(suquark): Update the storage interface (e.g., passing it through
+# context instead of argument).
 
-def step(func) -> WorkflowStepFunction:
-    """
-    A decorator wraps over a function to turn it into a workflow step function.
+
+def step(func: types.FunctionType) -> WorkflowStepFunction:
+    """A decorator used for creating workflow steps.
+
+    Examples:
+        >>> @workflow.step
+        ... def book_flight(origin: str, dest: str) -> Flight:
+        ...    return Flight(...)
+
+    Args:
+        func: The function to turn into a workflow step.
     """
     if not isinstance(func, types.FunctionType):
-        raise TypeError("The @step decorator must wraps over a function.")
+        raise TypeError(
+            "The @workflow.step decorator can only wrap a function.")
     return WorkflowStepFunction(func)
 
 
-def run(entry_workflow: Workflow, workflow_root_dir=None,
-        workflow_id=None) -> ray.ObjectRef:
+class _VirtualActorDecorator:
+    """A decorator used for creating a virtual actor based on a class.
+    The class that is based on must have the "__getstate__" and
+     "__setstate__" method.
+
+    Examples:
+        >>> @workflow.virtual_actor
+        ... class Counter:
+        ... def __init__(self, x: int):
+        ...     self.x = x
+        ...
+        ... # Mark a method as a readonly method. It would not modify the
+        ... # state of the virtual actor.
+        ... @workflow.virtual_actor.readonly
+        ... def get(self):
+        ...     return self.x
+        ...
+        ... def incr(self):
+        ...     self.x += 1
+        ...     return self.x
+        ...
+        ... def __getstate__(self):
+        ...     return self.x
+        ...
+        ... def __setstate__(self, state):
+        ...     self.x = state
+        ...
+        ... # Create and run a virtual actor.
+        ... counter = Counter.get_or_create(actor_id="Counter", x=1)
+        ... assert ray.get(counter.run(incr)) == 2
     """
-    Run a workflow asynchronously.
+
+    @classmethod
+    def __call__(cls, _cls: type) -> "VirtualActorClass":
+        return virtual_actor_class.decorate_actor(_cls)
+
+    @classmethod
+    def readonly(cls, method: types.FunctionType) -> types.FunctionType:
+        if not isinstance(method, types.FunctionType):
+            raise TypeError("The @workflow.virtual_actor.readonly "
+                            "decorator can only wrap a method.")
+        method.__virtual_actor_readonly__ = True
+        return method
+
+
+virtual_actor = _VirtualActorDecorator()
+
+
+def get_actor(actor_id: str, storage: "Optional[Union[str, Storage]]" = None
+              ) -> "VirtualActor":
+    """Get an virtual actor.
 
     Args:
-        entry_workflow: The workflow to run.
-        workflow_root_dir: The path of an external storage used for
-            checkpointing.
-        workflow_id: The ID of the workflow. The ID is used to identify
-            the workflow.
+        actor_id: The ID of the actor.
+        storage: The storage of the actor.
 
     Returns:
-        The execution result of the workflow, represented by Ray ObjectRef.
+        A virtual actor.
     """
-    if workflow_id is None:
-        # TODO(suquark): include the name of the workflow in the default ID,
-        # this makes the ID more readable.
-        # Workflow ID format: {UUID}.{Unix time to nanoseconds}
-        workflow_id = f"{uuid.uuid4().hex}.{time.time():.9f}"
-    logger.info(f"Workflow job {workflow_id} created.")
-    try:
-        workflow_context.init_workflow_step_context(workflow_id,
-                                                    workflow_root_dir)
-        rref = entry_workflow.execute()
-        logger.info(f"Workflow job {workflow_id} started.")
-        # TODO(suquark): although we do not return the resolved object to user,
-        # the object was resolved temporarily to the driver script.
-        # We may need a helper step for storing the resolved object
-        # instead later.
-        output = resolve_object_ref(rref)[1]
-    finally:
-        workflow_context.set_workflow_step_context(None)
-    return output
+    if storage is None:
+        storage = storage_base.get_global_storage()
+    elif isinstance(storage, str):
+        storage = storage_base.create_storage(storage)
+    return virtual_actor_class.get_actor(actor_id, storage)
 
 
-__all__ = ("step", "run")
+def resume(workflow_id: str,
+           storage: "Optional[Union[str, Storage]]" = None) -> ray.ObjectRef:
+    """Resume a workflow.
+
+    Resume a workflow and retrieve its output. If the workflow was incomplete,
+    it will be re-executed from its checkpointed outputs. If the workflow was
+    complete, returns the result immediately.
+
+    Examples:
+        >>> res1 = workflow.run(trip, workflow_id="trip1")
+        >>> res2 = workflow.resume("trip1")
+        >>> assert ray.get(res1) == ray.get(res2)
+
+    Args:
+        workflow_id: The id of the workflow to resume.
+        storage: The external storage URL or a custom storage class. If not
+            specified, ``/tmp/ray/workflow_data`` will be used.
+
+    Returns:
+        An object reference that can be used to retrieve the workflow result.
+    """
+    return execution.resume(workflow_id, storage)
+
+
+def get_output(workflow_id: str) -> ray.ObjectRef:
+    """Get the output of a running workflow.
+
+    Args:
+        workflow_id: The ID of the running workflow job.
+
+    Examples:
+        >>> res1 = workflow.run(trip, workflow_id="trip1")
+        >>> # you could "get_output()" in another machine
+        >>> res2 = workflow.get_output("trip1")
+        >>> assert ray.get(res1) == ray.get(res2)
+
+    Returns:
+        An object reference that can be used to retrieve the workflow result.
+    """
+    return execution.get_output(workflow_id)
+
+
+__all__ = ("step", "virtual_actor", "resume", "get_output", "get_actor")

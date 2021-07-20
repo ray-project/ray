@@ -43,6 +43,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/object_manager/plasma/common.h"
@@ -133,6 +134,7 @@ GetRequest::GetRequest(instrumented_io_context &io_context,
 PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string directory,
                          std::string fallback_directory, bool hugepages_enabled,
                          const std::string &socket_name, uint32_t delay_on_oom_ms,
+                         float object_spilling_threshold,
                          ray::SpillObjectsCallback spill_objects_callback,
                          std::function<void()> object_store_full_callback,
                          ray::AddObjectCallback add_object_callback,
@@ -146,6 +148,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
       add_object_callback_(add_object_callback),
       delete_object_callback_(delete_object_callback),
       delay_on_oom_ms_(delay_on_oom_ms),
+      object_spilling_threshold_(object_spilling_threshold),
       usage_log_interval_ns_(RayConfig::instance().object_store_usage_log_interval_s() *
                              1e9),
       create_request_queue_(
@@ -206,16 +209,6 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
                                      const std::shared_ptr<Client> &client,
                                      bool is_create, bool fallback_allocator,
                                      PlasmaError *error) {
-  // First free up space from the client's LRU queue if quota enforcement is on.
-  std::vector<ObjectID> client_objects_to_evict;
-  bool quota_ok = eviction_policy_.EnforcePerClientQuota(client.get(), size, is_create,
-                                                         &client_objects_to_evict);
-  if (!quota_ok) {
-    *error = PlasmaError::OutOfMemory;
-    return nullptr;
-  }
-  EvictObjects(client_objects_to_evict);
-
   // Try to evict objects until there is enough space.
   uint8_t *pointer = nullptr;
   int num_tries = 0;
@@ -229,10 +222,8 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
     // 64-byte aligned, but in practice it often will be.
     pointer = reinterpret_cast<uint8_t *>(PlasmaAllocator::Memalign(kBlockSize, size));
     if (pointer) {
-      // If we manage to allocate the memory, return the pointer. If we cannot
-      // allocate the space, but we are also not allowed to evict anything to
-      // make more space, return an error to the client.
-      *error = PlasmaError::OutOfMemory;
+      // If we manage to allocate the memory, return the pointer.
+      *error = PlasmaError::OK;
       break;
     }
     // Tell the eviction policy how much space we need to create this object.
@@ -241,17 +232,9 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
     EvictObjects(objects_to_evict);
     // More space is still needed.
     if (space_needed > 0) {
-      RAY_LOG(DEBUG) << "attempt to allocate " << size << " failed, need " << space_needed
-                     << " num bytes unsealed: " << num_bytes_unsealed_;
-      space_needed -= num_bytes_unsealed_;
-      if (space_needed > 0) {
-        // Even if all unsealed objects were sealed and spilled, there would
-        // not be enough space.
-        *error = PlasmaError::OutOfMemory;
-      } else {
-        // There will be enough space once there are no more unsealed objects.
-        *error = PlasmaError::TransientOutOfMemory;
-      }
+      RAY_LOG(DEBUG) << "attempt to allocate " << size << " failed, need "
+                     << space_needed;
+      *error = PlasmaError::OutOfMemory;
       break;
     }
 
@@ -275,11 +258,14 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
     if (pointer == nullptr) {
       RAY_LOG(ERROR) << "Plasma fallback allocator failed, likely out of disk space.";
     }
+  } else if (!fallback_allocator) {
+    RAY_LOG(DEBUG) << "Fallback allocation not enabled for this request.";
   }
 
   if (pointer != nullptr) {
     GetMallocMapinfo(pointer, fd, map_size, offset);
-    RAY_CHECK(*fd != INVALID_FD);
+    RAY_CHECK(fd->first != INVALID_FD);
+    RAY_CHECK(fd->second != INVALID_UNIQUE_FD_ID);
     *error = PlasmaError::OK;
   }
 
@@ -295,7 +281,8 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
 PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                                    const std::vector<uint8_t> &message,
                                                    bool fallback_allocator,
-                                                   PlasmaObject *object) {
+                                                   PlasmaObject *object,
+                                                   bool *spilling_required) {
   uint8_t *input = (uint8_t *)message.data();
   size_t input_size = message.size();
   ObjectID object_id;
@@ -318,6 +305,21 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
     RAY_LOG(DEBUG) << "Not enough memory to create the object " << object_id
                    << ", data_size=" << data_size << ", metadata_size=" << metadata_size;
   }
+
+  // Trigger object spilling if current usage is above the specified threshold.
+  if (spilling_required != nullptr) {
+    const int64_t footprint_limit = PlasmaAllocator::GetFootprintLimit();
+    if (footprint_limit != 0) {
+      const float allocated_percentage =
+          static_cast<float>(PlasmaAllocator::Allocated()) / footprint_limit;
+      if (allocated_percentage > object_spilling_threshold_) {
+        RAY_LOG(DEBUG) << "Triggering object spilling because current usage "
+                       << allocated_percentage << "% is above threshold "
+                       << object_spilling_threshold_ << "%.";
+        *spilling_required = true;
+      }
+    }
+  }
   return error;
 }
 
@@ -338,7 +340,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
     return PlasmaError::ObjectExists;
   }
 
-  MEMFD_TYPE fd = INVALID_FD;
+  MEMFD_TYPE fd{INVALID_FD, INVALID_UNIQUE_FD_ID};
   int64_t map_size = 0;
   ptrdiff_t offset = 0;
   uint8_t *pointer = nullptr;
@@ -389,7 +391,7 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
   // Notify the eviction policy that this object was created. This must be done
   // immediately before the call to AddToClientObjectIds so that the
   // eviction policy does not have an opportunity to evict the object.
-  eviction_policy_.ObjectCreated(object_id, client.get(), true);
+  eviction_policy_.ObjectCreated(object_id, true);
   // Record that this client is using this object.
   AddToClientObjectIds(object_id, store_info_.objects[object_id].get(), client);
   num_objects_unsealed_++;
@@ -460,13 +462,13 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_req) {
   }
 
   // Figure out how many file descriptors we need to send.
-  std::unordered_set<MEMFD_TYPE> fds_to_send;
+  absl::flat_hash_set<MEMFD_TYPE> fds_to_send;
   std::vector<MEMFD_TYPE> store_fds;
   std::vector<int64_t> mmap_sizes;
   for (const auto &object_id : get_req->object_ids) {
     PlasmaObject &object = get_req->objects[object_id];
     MEMFD_TYPE fd = object.store_fd;
-    if (object.data_size != -1 && fds_to_send.count(fd) == 0 && fd != INVALID_FD) {
+    if (object.data_size != -1 && fds_to_send.count(fd) == 0 && fd.first != INVALID_FD) {
       fds_to_send.insert(fd);
       store_fds.push_back(fd);
       mmap_sizes.push_back(GetMmapSize(fd));
@@ -621,9 +623,16 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
 }
 
 void PlasmaStore::EraseFromObjectTable(const ObjectID &object_id) {
-  auto &object = store_info_.objects[object_id];
+  auto object = GetObjectTableEntry(&store_info_, object_id);
+  if (object == nullptr) {
+    RAY_LOG(WARNING) << object_id << " has already been deleted.";
+    return;
+  }
   auto buff_size = object->data_size + object->metadata_size;
   if (object->device_num == 0) {
+    RAY_LOG(DEBUG) << "Erasing object: " << object_id
+                   << ", address: " << static_cast<void *>(object->pointer)
+                   << ", size:" << buff_size;
     PlasmaAllocator::Free(object->pointer, buff_size);
   }
   if (object->state == ObjectState::PLASMA_CREATED) {
@@ -768,7 +777,6 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   client->Close();
   RAY_LOG(DEBUG) << "Disconnecting client on fd " << client;
   // Release all the objects that the client was using.
-  eviction_policy_.ClientDisconnected(client.get());
   std::unordered_map<ObjectID, ObjectTableEntry *> sealed_objects;
   for (const auto &object_id : client->object_ids) {
     auto it = store_info_.objects.find(object_id);
@@ -815,9 +823,11 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     const auto &request = flatbuffers::GetRoot<fb::PlasmaCreateRequest>(input);
     const size_t object_size = request->data_size() + request->metadata_size();
 
-    auto handle_create = [this, client, message](PlasmaObject *result,
-                                                 bool fallback_allocator) {
-      return HandleCreateObjectRequest(client, message, fallback_allocator, result);
+    auto handle_create = [this, client, message](bool fallback_allocator,
+                                                 PlasmaObject *result,
+                                                 bool *spilling_required) {
+      return HandleCreateObjectRequest(client, message, fallback_allocator, result,
+                                       spilling_required);
     };
 
     if (request->try_immediately()) {
@@ -907,16 +917,6 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     DisconnectClient(client);
     return Status::Disconnected("The Plasma Store client is disconnected.");
     break;
-  case fb::MessageType::PlasmaSetOptionsRequest: {
-    std::string client_name;
-    int64_t output_memory_quota;
-    RAY_RETURN_NOT_OK(
-        ReadSetOptionsRequest(input, input_size, &client_name, &output_memory_quota));
-    client->name = client_name;
-    bool success = eviction_policy_.SetClientQuota(client.get(), output_memory_quota);
-    RAY_RETURN_NOT_OK(SendSetOptionsReply(
-        client, success ? PlasmaError::OK : PlasmaError::OutOfMemory));
-  } break;
   case fb::MessageType::PlasmaGetDebugStringRequest: {
     RAY_RETURN_NOT_OK(SendGetDebugStringReply(client, eviction_policy_.DebugString()));
   } break;

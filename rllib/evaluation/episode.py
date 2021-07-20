@@ -4,11 +4,13 @@ import random
 from typing import List, Dict, Callable, Any, TYPE_CHECKING
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.typing import SampleBatchType, AgentID, PolicyID, \
     EnvActionType, EnvID, EnvInfoDict, EnvObsType
+from ray.util import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation.sample_batch_builder import \
@@ -47,8 +49,8 @@ class MultiAgentEpisode:
         >>> episode.extra_batches.add(batch.build_and_reset())
     """
 
-    def __init__(self, policies: Dict[PolicyID, Policy],
-                 policy_mapping_fn: Callable[[AgentID], PolicyID],
+    def __init__(self, policies: PolicyMap, policy_mapping_fn: Callable[
+        [AgentID, "MultiAgentEpisode"], PolicyID],
                  batch_builder_factory: Callable[
                      [], "MultiAgentSampleBatchBuilder"],
                  extra_batch_callback: Callable[[SampleBatchType], None],
@@ -68,15 +70,17 @@ class MultiAgentEpisode:
         self.user_data: Dict[str, Any] = {}
         self.hist_data: Dict[str, List[float]] = {}
         self.media: Dict[str, Any] = {}
-        self._policies: Dict[PolicyID, Policy] = policies
-        self._policy_mapping_fn: Callable[[AgentID], PolicyID] = \
-            policy_mapping_fn
+        self.policy_map: PolicyMap = policies
+        self._policies = self.policy_map  # backward compatibility
+        self._policy_mapping_fn: Callable[[AgentID, "MultiAgentEpisode"],
+                                          PolicyID] = policy_mapping_fn
         self._next_agent_index: int = 0
         self._agent_to_index: Dict[AgentID, int] = {}
         self._agent_to_policy: Dict[AgentID, PolicyID] = {}
         self._agent_to_rnn_state: Dict[AgentID, List[Any]] = {}
         self._agent_to_last_obs: Dict[AgentID, EnvObsType] = {}
         self._agent_to_last_raw_obs: Dict[AgentID, EnvObsType] = {}
+        self._agent_to_last_done: Dict[AgentID, bool] = {}
         self._agent_to_last_info: Dict[AgentID, EnvInfoDict] = {}
         self._agent_to_last_action: Dict[AgentID, EnvActionType] = {}
         self._agent_to_last_pi_info: Dict[AgentID, dict] = {}
@@ -112,8 +116,29 @@ class MultiAgentEpisode:
         """
 
         if agent_id not in self._agent_to_policy:
-            self._agent_to_policy[agent_id] = self._policy_mapping_fn(agent_id)
-        return self._agent_to_policy[agent_id]
+            # Try new API: pass in agent_id and episode as named args.
+            # New signature should be: (agent_id, episode, **kwargs)
+            try:
+                policy_id = self._agent_to_policy[agent_id] = \
+                    self._policy_mapping_fn(agent_id, self)
+            except TypeError as e:
+                if "positional argument" in e.args[0] or \
+                        "unexpected keyword argument" in e.args[0]:
+                    if log_once("policy_mapping_new_signature"):
+                        deprecation_warning(
+                            old="policy_mapping_fn(agent_id)",
+                            new="policy_mapping_fn(agent_id, episode, "
+                            "**kwargs)")
+                    policy_id = self._agent_to_policy[agent_id] = \
+                        self._policy_mapping_fn(agent_id)
+                else:
+                    raise e
+        else:
+            policy_id = self._agent_to_policy[agent_id]
+        if policy_id not in self.policy_map:
+            raise KeyError("policy_mapping_fn returned invalid policy id "
+                           f"'{policy_id}'!")
+        return policy_id
 
     @DeveloperAPI
     def last_observation_for(
@@ -145,7 +170,8 @@ class MultiAgentEpisode:
             return flatten_to_single_ndarray(
                 self._agent_to_last_action[agent_id])
         else:
-            policy = self._policies[self.policy_for(agent_id)]
+            policy_id = self.policy_for(agent_id)
+            policy = self.policy_map[policy_id]
             flat = flatten_to_single_ndarray(policy.action_space.sample())
             if hasattr(policy.action_space, "dtype"):
                 return np.zeros_like(flat, dtype=policy.action_space.dtype)
@@ -179,15 +205,33 @@ class MultiAgentEpisode:
         """Returns the last RNN state for the specified agent."""
 
         if agent_id not in self._agent_to_rnn_state:
-            policy = self._policies[self.policy_for(agent_id)]
+            policy_id = self.policy_for(agent_id)
+            policy = self.policy_map[policy_id]
             self._agent_to_rnn_state[agent_id] = policy.get_initial_state()
         return self._agent_to_rnn_state[agent_id]
+
+    @DeveloperAPI
+    def last_done_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> bool:
+        """Returns the last done flag received for the specified agent."""
+        if agent_id not in self._agent_to_last_done:
+            self._agent_to_last_done[agent_id] = False
+        return self._agent_to_last_done[agent_id]
 
     @DeveloperAPI
     def last_pi_info_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> dict:
         """Returns the last info object for the specified agent."""
 
         return self._agent_to_last_pi_info[agent_id]
+
+    @DeveloperAPI
+    def get_agents(self) -> List[AgentID]:
+        """Returns list of agent IDs that have appeared in this episode.
+
+        Returns:
+            List[AgentID]: The list of all agents that have appeared so
+                far in this episode.
+        """
+        return list(self._agent_to_index.keys())
 
     def _add_agent_rewards(self, reward_dict: Dict[AgentID, float]) -> None:
         for agent_id, reward in reward_dict.items():
@@ -205,6 +249,9 @@ class MultiAgentEpisode:
 
     def _set_last_raw_obs(self, agent_id, obs):
         self._agent_to_last_raw_obs[agent_id] = obs
+
+    def _set_last_done(self, agent_id, done):
+        self._agent_to_last_done[agent_id] = done
 
     def _set_last_info(self, agent_id, info):
         self._agent_to_last_info[agent_id] = info

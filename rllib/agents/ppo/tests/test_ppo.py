@@ -177,7 +177,7 @@ class TestPPO(unittest.TestCase):
             # Default Agent should be setup with StochasticSampling.
             trainer = ppo.PPOTrainer(config=config, env="FrozenLake-v0")
             # explore=False, always expect the same (deterministic) action.
-            a_ = trainer.compute_action(
+            a_ = trainer.compute_single_action(
                 obs,
                 explore=False,
                 prev_action=np.array(2),
@@ -190,7 +190,7 @@ class TestPPO(unittest.TestCase):
                 else:
                     check(a_, np.argmax(last_out.numpy(), 1)[0])
             for _ in range(50):
-                a = trainer.compute_action(
+                a = trainer.compute_single_action(
                     obs,
                     explore=False,
                     prev_action=np.array(2),
@@ -201,7 +201,7 @@ class TestPPO(unittest.TestCase):
             actions = []
             for _ in range(300):
                 actions.append(
-                    trainer.compute_action(
+                    trainer.compute_single_action(
                         obs,
                         prev_action=np.array(2),
                         prev_reward=np.array(1.0)))

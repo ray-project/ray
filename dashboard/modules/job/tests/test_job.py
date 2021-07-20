@@ -275,7 +275,7 @@ def test_submit_job_validation(ray_start_with_dashboard):
     result = resp.json()
     assert result["result"] is False
     msg = result["msg"]
-    assert "language" in msg and "value is not a valid" in msg, resp.text
+    assert "language" in msg and "Unsupported" in msg, resp.text
 
     # Missing required field.
     resp = requests.post(
@@ -323,7 +323,7 @@ def test_submit_job_validation(ray_start_with_dashboard):
     result = resp.json()
     assert result["result"] is False
     msg = result["msg"]
-    assert all(p in msg for p in ["not permitted", "invalid_key"]), resp.text
+    assert all(p in msg for p in ["unexpected", "invalid_key"]), resp.text
 
 
 if __name__ == "__main__":

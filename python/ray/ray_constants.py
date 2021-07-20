@@ -49,6 +49,8 @@ REQUIRE_SHM_SIZE_THRESHOLD = 10**10
 DEFAULT_PORT = 6379
 
 RAY_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_ADDRESS"
+RAY_NAMESPACE_ENVIRONMENT_VARIABLE = "RAY_NAMESPACE"
+RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
@@ -67,7 +69,9 @@ DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
-PICKLE_OBJECT_WARNING_SIZE = 10**7
+FUNCTION_SIZE_WARN_THRESHOLD = 10**7
+FUNCTION_SIZE_ERROR_THRESHOLD = env_integer("FUNCTION_SIZE_ERROR_THRESHOLD",
+                                            (10**8))
 
 # If remote functions with the same source are imported this many times, then
 # print a warning.
@@ -233,7 +237,11 @@ AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 REDIS_DEFAULT_PASSWORD = "5241590000000000"
 
 # The default module path to a Python function that sets up the worker env.
-DEFAULT_WORKER_SETUP_HOOK = "ray.workers.setup_runtime_env.setup"
+DEFAULT_WORKER_SETUP_HOOK = "ray.workers.setup_runtime_env.setup_worker"
+
+# The default module path to a Python function that sets up runtime envs.
+DEFAULT_RUNTIME_ENV_SETUP_HOOK = \
+    "ray.workers.setup_runtime_env.setup_runtime_env"
 
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"

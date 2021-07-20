@@ -1,5 +1,9 @@
 import argparse
+
 import os
+import json
+import os
+import time
 
 import dask
 import dask.dataframe as dd
@@ -17,7 +21,7 @@ def is_anyscale_connect():
     return is_anyscale_connect
 
 
-def test():
+def main():
     print("Loading HIGGS data.")
 
     dask.config.set(scheduler=ray_dask_get)
@@ -59,10 +63,23 @@ if __name__ == "__main__":
         help="Finish quickly for testing.")
     args = parser.parse_args()
 
+    start = time.time()
+
     client_builder = ray.client()
     if is_anyscale_connect():
         job_name = os.environ.get("RAY_JOB_NAME", "dask_xgboost_test")
         client_builder.job_name(job_name)
     client_builder.connect()
 
-    test()
+    main()
+
+    taken = time.time() - start
+    result = {
+        "time_taken": taken,
+    }
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/dask_xgboost_test.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
+
+    print("Test Successful!")

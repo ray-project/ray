@@ -8,7 +8,6 @@ This demonstrates running the following policies in competition:
 """
 
 import argparse
-from gym.spaces import Discrete
 import os
 import random
 
@@ -18,6 +17,7 @@ from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.examples.env.rock_paper_scissors import RockPaperScissors
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import \
     BeatLastHeuristic, AlwaysSameHeuristic
+from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
 
@@ -75,7 +75,7 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
     beat_last heuristics.
     """
 
-    def select_policy(agent_id):
+    def select_policy(agent_id, episode, **kwargs):
         if agent_id == "player1":
             return "learned"
         else:
@@ -93,10 +93,9 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         "multiagent": {
             "policies_to_train": ["learned"],
             "policies": {
-                "always_same": (AlwaysSameHeuristic, Discrete(3), Discrete(3),
-                                {}),
-                "beat_last": (BeatLastHeuristic, Discrete(3), Discrete(3), {}),
-                "learned": (None, Discrete(3), Discrete(3), {
+                "always_same": PolicySpec(policy_class=AlwaysSameHeuristic),
+                "beat_last": PolicySpec(policy_class=BeatLastHeuristic),
+                "learned": PolicySpec(config={
                     "model": {
                         "use_lstm": use_lstm
                     },
