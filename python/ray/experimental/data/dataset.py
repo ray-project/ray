@@ -924,8 +924,8 @@ class Dataset(Generic[T]):
                 Defaults to 1.
             prefetch_blocks (int): The number of blocks to prefetch ahead of
                 the current block during the scan.
-            drop_last (bool): Set to True to drop the last incomplete batch.
-                If the dataset size is not divisible by the batch size. If
+            drop_last (bool): Set to True to drop the last incomplete batch,
+                if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
 
