@@ -59,7 +59,8 @@ class WorkflowStepFunction:
             step_id: StepID,
             step_inputs: WorkflowInputTuple,
             outer_most_step_id: Optional[StepID] = None) -> WorkflowOutputType:
-        from ray.experimental.workflow.step_executor import execute_workflow_step
+        from ray.experimental.workflow.step_executor import (
+            execute_workflow_step)
         return execute_workflow_step(self._func, step_id, step_inputs,
                                      outer_most_step_id)
 

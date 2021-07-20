@@ -311,8 +311,7 @@ class WorkflowStorage:
             "status": str(metadata.status),
         }
         asyncio_run(
-            self._storage.save_workflow_meta(self._workflow_id,
-                                             metadata))
+            self._storage.save_workflow_meta(self._workflow_id, metadata))
 
     def load_workflow_meta(self) -> WorkflowMeta:
         metadata = asyncio_run(

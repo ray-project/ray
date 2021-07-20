@@ -99,8 +99,7 @@ def _construct_resume_workflow_from_step(
 
 
 @ray.remote
-def resume_workflow_job(workflow_id: str,
-                        store_url: str) -> ray.ObjectRef:
+def resume_workflow_job(workflow_id: str, store_url: str) -> ray.ObjectRef:
     """Resume a workflow job.
 
     Args:
@@ -114,7 +113,7 @@ def resume_workflow_job(workflow_id: str,
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
-    store = storage.create_storage(storage_url)
+    store = storage.create_storage(store_url)
     wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
     try:
         entrypoint_step_id: StepID = wf_store.get_entrypoint_step_id()
@@ -126,7 +125,8 @@ def resume_workflow_job(workflow_id: str,
         with workflow_context.workflow_step_context(workflow_id,
                                                     store.storage_url):
             wf_store.save_workflow_meta(WorkflowMeta(WorkflowStatus.RUNNING))
-            from ray.experimental.workflow.step_executor import execute_workflow
+            from ray.experimental.workflow.step_executor import (
+                execute_workflow)
             return execute_workflow(r)
     return wf_store.load_step_output(r)
 
