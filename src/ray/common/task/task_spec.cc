@@ -127,10 +127,11 @@ bool TaskSpecification::HasRuntimeEnv() const {
 }
 
 int64_t TaskSpecification::GetRuntimeEnvHash() const {
-  if (!HasRuntimeEnv()) {
+  auto vars = OverrideEnvironmentVariables();
+  if (!HasRuntimeEnv() && vars.size() == 0) {
     return 0L;
   }
-  WorkerCacheKey env = {OverrideEnvironmentVariables(), SerializedRuntimeEnv()};
+  WorkerCacheKey env = {vars, SerializedRuntimeEnv()};
   return env.IntHash();
 }
 
