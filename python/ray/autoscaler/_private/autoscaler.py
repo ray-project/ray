@@ -252,10 +252,7 @@ class StandardAutoscaler:
                 nodes_to_terminate.append(node_id)
 
         if nodes_to_terminate:
-            self.provider.terminate_nodes(nodes_to_terminate)
-            for node in nodes_to_terminate:
-                self.node_tracker.untrack(node)
-                self.prom_metrics.stopped_nodes.inc()
+            self._terminate_nodes_and_cleanup(nodes_to_terminate)
             nodes = self.workers()
 
         # Terminate nodes if there are too many
@@ -273,10 +270,7 @@ class StandardAutoscaler:
             nodes_to_terminate.append(to_terminate)
 
         if nodes_to_terminate:
-            self.provider.terminate_nodes(nodes_to_terminate)
-            for node in nodes_to_terminate:
-                self.node_tracker.untrack(node)
-                self.prom_metrics.stopped_nodes.inc()
+            self._terminate_nodes_and_cleanup(nodes_to_terminate)
             nodes = self.workers()
 
         to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
@@ -345,9 +339,7 @@ class StandardAutoscaler:
                                        " Failed to update node."
                                        " Node has already been terminated.")
                 if nodes_to_terminate:
-                    self.prom_metrics.stopped_nodes.inc(
-                        len(nodes_to_terminate))
-                    self.provider.terminate_nodes(nodes_to_terminate)
+                    self._terminate_nodes_and_cleanup()
                     nodes = self.workers()
 
         # Update nodes with out-of-date files.
@@ -386,6 +378,13 @@ class StandardAutoscaler:
         self.prom_metrics.recovering_nodes.set(num_recovering)
         logger.info(self.info_string())
         legacy_log_info_string(self, nodes)
+
+    def _terminate_nodes_and_cleanup(self, nodes_to_terminate: List[str]):
+        """Terminate specified nodes and clean associated autoscaler state."""
+        self.provider.terminate_nodes(nodes_to_terminate)
+        for node in nodes_to_terminate:
+            self.node_tracker.untrack(node)
+            self.prom_metrics.stopped_nodes.inc()
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:
@@ -692,7 +691,7 @@ class StandardAutoscaler:
                 nodes_to_terminate.append(node_id)
 
         if nodes_to_terminate:
-            self.provider.terminate_nodes(nodes_to_terminate)
+            self._terminate_nodes_and_cleanup(nodes_to_terminate)
 
     def recover_if_needed(self, node_id, now):
         if not self.can_update(node_id):
