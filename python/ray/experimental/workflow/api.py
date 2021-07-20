@@ -16,6 +16,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# TODO(suquark): Update the storage interface (e.g., passing it through
+# context instead of argument).
+
 
 def step(func: types.FunctionType) -> WorkflowStepFunction:
     """A decorator used for creating workflow steps.
