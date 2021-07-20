@@ -782,19 +782,21 @@ def _configure_subnets_and_groups_from_network_interfaces(node_cfg):
     conflict_keys = ["SubnetId", "SubnetIds", "SecurityGroupIds"]
     if any(conflict in node_cfg for conflict in conflict_keys):
         raise ValueError(
-            "If NetworkInterfaces are defined, subnets and security groups"
+            "If NetworkInterfaces are defined, subnets and security groups "
             "must ONLY be given in each NetworkInterface.")
-    if not all(_subnets_in_network_config(node_cfg)):
+    subnets = _subnets_in_network_config(node_cfg)
+    if not all(subnets):
         raise ValueError(
             "NetworkInterfaces are defined but at least one is missing a "
             "subnet. Please ensure all interfaces have a subnet assigned.")
-    if not all(_security_groups_in_network_config(node_cfg)):
+    security_groups = _security_groups_in_network_config(node_cfg)
+    if not all(security_groups):
         raise ValueError(
             "NetworkInterfaces are defined but at least one is missing a "
             "security group. Please ensure all interfaces have a security "
             "group assigned.")
-    node_cfg["SubnetIds"] = _subnets_in_network_config(node_cfg)
-    node_cfg["SecurityGroupIds"] = _security_groups_in_network_config(node_cfg)
+    node_cfg["SubnetIds"] = subnets
+    node_cfg["SecurityGroupIds"] = list(itertools.chain(*security_groups))
 
 
 def _subnets_in_network_config(config):
@@ -804,10 +806,7 @@ def _subnets_in_network_config(config):
 
 
 def _security_groups_in_network_config(config):
-    lists = [
-        ni.get("Groups", []) for ni in config.get("NetworkInterfaces", [])
-    ]
-    return list(itertools.chain(*lists))
+    return [ni.get("Groups", []) for ni in config.get("NetworkInterfaces", [])]
 
 
 def _client(name, config):
