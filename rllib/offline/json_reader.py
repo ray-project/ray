@@ -166,8 +166,7 @@ class JsonReader(InputReader):
                         self.ioctx.worker.policy_map[pid].action_space_struct)
         # Re-normalize actions (from env's bounds to 0.0 centered), if
         # necessary.
-        if "actions_in_input_normalized" in cfg and \
-                cfg["actions_in_input_normalized"] is False:
+        if cfg.get("actions_in_input_normalized") is False:
             if isinstance(batch, SampleBatch):
                 batch[SampleBatch.ACTIONS] = normalize_action(
                     batch[SampleBatch.ACTIONS], self.ioctx.worker.policy_map[

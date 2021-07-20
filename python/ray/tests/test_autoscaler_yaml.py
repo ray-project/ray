@@ -197,15 +197,14 @@ class AutoscalingConfigTest(unittest.TestCase):
                 }
             }]
         }
-        boto3_mock = Mock()
         describe_instance_types_mock = Mock()
         describe_instance_types_mock.describe_instance_types = MagicMock(
             return_value=boto3_dict)
-        boto3_mock.client = MagicMock(
+        client_cache_mock = MagicMock(
             return_value=describe_instance_types_mock)
         with patch.multiple(
                 "ray.autoscaler._private.aws.node_provider",
-                boto3=boto3_mock,
+                client_cache=client_cache_mock,
         ):
             new_config = prepare_config(new_config)
             importer = _NODE_PROVIDERS.get(new_config["provider"]["type"])
