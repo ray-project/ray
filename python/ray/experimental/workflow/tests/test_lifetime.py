@@ -22,7 +22,7 @@ def foo(x):
 
 
 if __name__ == "__main__":
-    ray.init(address="auto", namespace="workflow")
+    ray.init(address="auto")
     output = foo.step(0).run_async(workflow_id="driver_terminated")
     time.sleep({})
 """
@@ -31,7 +31,7 @@ if __name__ == "__main__":
 def test_workflow_lifetime_1(call_ray_start):
     # Case 1: driver exits normally
     run_string_as_driver(driver_script.format(5))
-    ray.init(address="auto", namespace="workflow")
+    ray.init(address="auto")
     output = workflow.get_output("driver_terminated")
     assert ray.get(output) == 20
 
@@ -42,6 +42,6 @@ def test_workflow_lifetime_2(call_ray_start):
     time.sleep(10)
     proc.kill()
     time.sleep(1)
-    ray.init(address="auto", namespace="workflow")
+    ray.init(address="auto")
     output = workflow.get_output("driver_terminated")
     assert ray.get(output) == 20

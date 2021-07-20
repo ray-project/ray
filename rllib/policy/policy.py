@@ -524,6 +524,61 @@ class Policy(metaclass=ABCMeta):
         return []
 
     @DeveloperAPI
+    def load_batch_into_buffer(self, batch: SampleBatch,
+                               buffer_index: int = 0) -> int:
+        """Bulk-loads the given SampleBatch into the devices' memories.
+
+        The data is split equally across all the devices. If the data is not
+        evenly divisible by the batch size, excess data should be discarded.
+
+        Args:
+            batch (SampleBatch): The SampleBatch to load.
+            buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
+                to use on the devices.
+
+        Returns:
+            int: The number of tuples loaded per device.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
+        """Returns the number of currently loaded samples in the given buffer.
+
+        Args:
+            batch (SampleBatch): The SampleBatch to load.
+            buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
+                to use on the devices.
+
+        Returns:
+            int: The number of tuples loaded per device.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
+        """Runs a single step of SGD on already loaded data in a buffer.
+
+        Runs an SGD step over a slice of the pre-loaded batch, offset by
+        the `offset` argument (useful for performing n minibatch SGD
+        updates repeatedly on the same, already pre-loaded data).
+
+        Updates shared model weights based on the averaged per-device
+        gradients.
+
+        Args:
+            offset (int): Offset into the preloaded data. Used for pre-loading
+                a train-batch once to a device, then iterating over
+                (subsampling through) this batch n times doing minibatch SGD.
+            buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
+                to take the already pre-loaded data from.
+
+        Returns:
+            The outputs of extra_ops evaluated over the batch.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
     def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
         """Returns all local state.
 

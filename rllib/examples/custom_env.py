@@ -144,7 +144,7 @@ if __name__ == "__main__":
         if args.framework == "torch" else CustomModel)
 
     config = {
-        "env": SimpleCorridor,  # or "corridor" if registered above
+        "env": "CartPole-v0",#SimpleCorridor,  # or "corridor" if registered above
         "env_config": {
             "corridor_length": 5,
         },
