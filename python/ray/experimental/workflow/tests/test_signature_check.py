@@ -9,10 +9,6 @@ def signature_check(a, b, c=1):
     pass
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "namespace": "workflow"
-    }], indirect=True)
 def test_signature_check(ray_start_regular):
     with pytest.raises(TypeError):
         signature_check(1, 2)
