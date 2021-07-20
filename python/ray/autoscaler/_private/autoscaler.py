@@ -356,9 +356,13 @@ class StandardAutoscaler:
         for t in T:
             t.join()
 
-        # Attempt to recover unhealthy nodes
-        for node_id in nodes:
-            self.recover_if_needed(node_id, now)
+        if self.disable_node_updaters:
+            # If updaters are unavailable, terminate unhealthy nodes.
+            self.terminate_unhealthy_nodes(nodes, now)
+        else:
+            # Attempt to recover unhealthy nodes
+            for node_id in nodes:
+                self.recover_if_needed(node_id, now)
 
         self.prom_metrics.updating_nodes.set(len(self.updaters))
         num_recovering = 0
@@ -640,9 +644,10 @@ class StandardAutoscaler:
             return False
         return True
 
-    def recover_if_needed(self, node_id, now):
-        if not self.can_update(node_id):
-            return
+    def heartbeat_on_time(self, node_id: NodeID, now: float) -> bool:
+        """Determine whether we've received a heartbeat from a node within the
+        last AUTOSCALER_HEARTBEAT_TIMEOUT_S seconds.
+        """
         key = self.provider.internal_ip(node_id)
 
         if key in self.load_metrics.last_heartbeat_time_by_ip:
@@ -650,7 +655,26 @@ class StandardAutoscaler:
                 key]
             delta = now - last_heartbeat_time
             if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
-                return
+                return True
+        return False
+
+    def terminate_unhealthy_nodes(self, nodes: List[NodeID], now: float):
+        """Terminate nodes for which we haven't received a heartbeat on time.
+
+        Used when node updaters are not available for recovery.
+        """
+        nodes_to_terminate = [
+            node_id for node_id in nodes
+            if self.heartbeat_on_time(node_id, now)
+        ]
+        if nodes_to_terminate:
+            self.provider.terminate_nodes(nodes_to_terminate)
+
+    def recover_if_needed(self, node_id, now):
+        if not self.can_update(node_id):
+            return
+        if self.heartbeat_on_time(node_id, now):
+            return
 
         logger.warning("StandardAutoscaler: "
                        "{}: No recent heartbeat, "
