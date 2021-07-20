@@ -1,11 +1,11 @@
 from typing import (List, Tuple, Any, Dict, Callable, Optional, TYPE_CHECKING,
                     Union)
-
 import ray
 from ray import ObjectRef
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import workflow_storage
+from ray.experimental.workflow.workflow_access import MANAGEMENT_ACTOR_NAME
 
 if TYPE_CHECKING:
     from ray.experimental.workflow.common import (StepID, WorkflowOutputType,

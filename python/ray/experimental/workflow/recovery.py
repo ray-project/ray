@@ -2,7 +2,8 @@ from typing import List, Any, Union, Dict, Callable
 
 import ray
 from ray.experimental.workflow import workflow_context
-from ray.experimental.workflow.common import Workflow, StepID
+from ray.experimental.workflow.common import (Workflow, StepID, WorkflowMeta,
+                                              WorkflowStatus)
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.step_function import WorkflowStepFunction

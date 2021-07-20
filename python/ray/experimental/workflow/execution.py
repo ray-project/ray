@@ -5,17 +5,15 @@ from typing import List, Tuple, Union, Optional
 
 import ray
 
-
 from ray.experimental.workflow import workflow_storage
-from ray.experimental.workflow.common import (Workflow, WorkflowStatus,
-                                              WorkflowMeta)
+from ray.experimental.workflow.common import (Workflow, WorkflowStatus)
+#                                              WorkflowMeta)
 from ray.experimental.workflow.step_executor import commit_step
 from ray.experimental.workflow.storage import (Storage, create_storage,
                                                get_global_storage)
 from ray.experimental.workflow.workflow_access import (
     MANAGEMENT_ACTOR_NAME, flatten_workflow_output,
     get_or_create_management_actor)
-from ray.experimental.workflow.step_executor import commit_step
 
 logger = logging.getLogger(__name__)
 
@@ -124,38 +122,48 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
     return flatten_workflow_output(workflow_id, output)
 
 
-def cancel(workflow_id: str) -> None:
-    output = None
-    try:
-        workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
-        output = ray.get(workflow_manager.get_output.remote(workflow_id))
-    except ValueError:
-        pass
+def cancel(workflow_id: str,
+           storage: Optional[Union[str, Storage]] = None) -> None:
+    pass
+    # store = _get_storage(storage)
+    # ws = workflow_storage.WorkflowStorage(workflow_id, store)
 
-    if output is not None:
-        # workflow is currently running
-        ray.cancel(output)
-    else:
-        status = get_status(workflow_id)
-        if status == WorkflowStatus.CANCELED:
-            raise RuntimeError(f"{workflow_id} has been canceled.")
-    meta = WorkflowMeta(status=WorkflowStatus.CANCELED)
-    get_global_storage().save_workflow_meta(meta)
+    # output = None
+    # try:
+    #     workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    #     output = ray.get(workflow_manager.get_output.remote(workflow_id))
+    # except ValueError:
+    #     pass
+
+    # if output is not None:
+    #     # workflow is currently running
+    #     ray.cancel(output)
+    # else:
+    #     status = get_status(workflow_id)
+    #     if status == WorkflowStatus.CANCELED:
+    #         raise RuntimeError(f"{workflow_id} has been canceled.")
+    # meta = WorkflowMeta(status=WorkflowStatus.CANCELED)
+    # get_global_storage().save_workflow_meta(meta)
 
 
-def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
-    output = None
-    storage_url = get_global_storage().storage_url
-    with workflow_context.workflow_step_context(workflow_id, storage_url):
-        try:
-            workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
-            output = ray.get(workflow_manager.get_output.remote(workflow_id))
-        except ValueError:
-            pass
-        if output is not None:
-            return WorkflowStatus.RUNNING
+def get_status(workflow_id: str, storage: Optional[Union[str, Storage]] = None
+               ) -> Optional[WorkflowStatus]:
+    pass
+    # output = None
+    # storage_url = get_global_storage().storage_url
+    # with workflow_context.workflow_step_context(workflow_id, storage_url):
+    #     try:
+    #         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    #         output = ray.get(workflow_manager.get_output.remote(workflow_id))
+    #     except ValueError:
+    #         pass
+    #     if output is not None:
+    #         return WorkflowStatus.RUNNING
 
-def list_all(status: Optional[WorkflowStatus]) -> List[Tuple[str, WorkflowStatus]]:
+
+def list_all(status: Optional[WorkflowStatus],
+             storage: Optional[Union[str, Storage]] = None
+             ) -> List[Tuple[str, WorkflowStatus]]:
     runnings = []
     if status in (WorkflowStatus.RUNNING, None):
         try:
