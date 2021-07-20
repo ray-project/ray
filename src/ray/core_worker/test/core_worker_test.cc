@@ -65,11 +65,12 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
       std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
   std::string name = "";
-  ActorCreationOptions actor_options{
-      max_restarts,
-      /*max_task_retries=*/0,
-      /*max_concurrency*/ 1,  resources, resources,           {},
-      /*is_detached=*/false,  name,      /*is_asyncio=*/false};
+  std::string ray_namespace = "";
+  ActorCreationOptions actor_options{max_restarts,
+                                     /*max_task_retries=*/0,
+                                     /*max_concurrency*/ 1,  resources, resources,     {},
+                                     /*is_detached=*/false,  name,      ray_namespace,
+                                     /*is_asyncio=*/false};
 
   // Create an actor.
   ActorID actor_id;
@@ -493,6 +494,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
 
   std::unordered_map<std::string, double> resources;
   std::string name = "";
+  std::string ray_namespace = "";
   ActorCreationOptions actor_options{0,
                                      0,
                                      1,
@@ -501,6 +503,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                                      {},
                                      /*is_detached=*/false,
                                      name,
+                                     ray_namespace,
                                      /*is_asyncio=*/false};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
