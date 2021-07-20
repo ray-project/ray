@@ -826,6 +826,9 @@ void CoreWorker::RunIOService() {
 }
 
 void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
+  // if (node_id == GetCurrentNodeId()) {
+  //   RAY_LOG(FATAL) << "The raylet for this worker has died. Killing itself...";
+  // }
   RAY_LOG(INFO) << "Node failure from " << node_id
                 << ". All objects pinned on that node will be lost if object "
                    "reconstruction is not enabled.";
