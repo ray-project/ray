@@ -7,7 +7,8 @@ namespace raylet {
 
 namespace internal {
 
-  using TaskQueueType = std::map<SchedulingClass, std::deque<Task>, internal::SchedulingPriorityComparator>;
+using TaskQueueType =
+    std::map<SchedulingClass, std::deque<Task>, internal::SchedulingPriorityComparator>;
 
 struct SchedulingPriorityComparator : public std::less<SchedulingClass> {
  public:
@@ -27,9 +28,8 @@ class FairSchedulingQueue {
  public:
   class iterator : public std::iterator<std::forward_iterator_tag, Task> {
    public:
-    explicit iterator(
-                      TaskQueueType::iterator &queues_iterator,
-        TaskQueueType::iterator &end);
+    explicit iterator(TaskQueueType::iterator &queues_iterator,
+                      TaskQueueType::iterator &end);
 
     iterator operator++();
 
@@ -92,7 +92,7 @@ class FairSchedulingQueue {
   /// A comparator that orders task_queue by priority.
   internal::SchedulingPriorityComparator comparator_;
   /// The set of task queues ordered by priority.
-      TaskQueueType task_queue_;
+  TaskQueueType task_queue_;
 };
 
 }  // namespace raylet

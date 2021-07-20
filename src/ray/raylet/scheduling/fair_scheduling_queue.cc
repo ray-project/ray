@@ -42,7 +42,8 @@ FairSchedulingQueue::iterator FairSchedulingQueue::end() const {
   return FairSchedulingQueue::iterator(task_queue_.end(), task_queue_.end());
 }
 
-FairSchedulingQueue::iterator FairSchedulingQueue::erase(FairSchedulingQueue::iterator &iter) {
+FairSchedulingQueue::iterator FairSchedulingQueue::erase(
+    FairSchedulingQueue::iterator &iter) {
   auto retval = iter;
   auto &deque = retval.queues_iterator_->second;
   retval.cur_deque_iter_ = deque.erase(iter.cur_deque_iter_);
@@ -53,8 +54,8 @@ FairSchedulingQueue::iterator FairSchedulingQueue::erase(FairSchedulingQueue::it
 }
 
 FairSchedulingQueue::iterator::iterator(
-                                      internal::TaskQueueType::iterator &queues_iterator,
-                                      internal::TaskQueueType::iterator &end)
+    internal::TaskQueueType::iterator &queues_iterator,
+    internal::TaskQueueType::iterator &end)
     : queues_iterator_(queues_iterator), end_(end) {
   UpdateCurDequeIter();
 }
@@ -95,8 +96,8 @@ inline void FairSchedulingQueue::iterator::UpdateCurDequeIter() {
   }
 }
 
-  namespace internal {
-    
+namespace internal {
+
 SchedulingPriorityComparator::SchedulingPriorityComparator(
     std::unordered_map<SchedulingClass, uint64_t> &priorities)
     : priorities_(priorities) {}
@@ -105,7 +106,7 @@ bool SchedulingPriorityComparator::operator()(const SchedulingClass &lhs,
                                               const SchedulingClass &rhs) const {
   return priorities_[lhs] < priorities_[rhs];
 }
-  }
+}  // namespace internal
 
 }  // namespace raylet
 }  // namespace ray
