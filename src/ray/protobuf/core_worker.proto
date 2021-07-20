@@ -335,6 +335,22 @@ message RunOnUtilWorkerRequest {
 message RunOnUtilWorkerReply {
 }
 
+message AssignObjectOwnerRequest {
+  // The ID of added object.
+  bytes object_id = 1;
+  // The size of the object in bytes.
+  uint64 object_size = 2;
+  // The IDs of contained objects.
+  repeated bytes contained_object_ids = 3;
+  // The borrower address.
+  Address borrower_address = 4;
+  // Description of the call site where the reference was created.
+  string call_site = 5;
+}
+
+message AssignObjectOwnerReply {
+}
+
 service CoreWorkerService {
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
@@ -392,4 +408,6 @@ service CoreWorkerService {
   rpc RunOnUtilWorker(RunOnUtilWorkerRequest) returns (RunOnUtilWorkerReply);
   // Request for a worker to exit.
   rpc Exit(ExitRequest) returns (ExitReply);
+  // Assign the owner of an object to the intended worker.
+  rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
 }

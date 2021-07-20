@@ -36,6 +36,12 @@ class StepInspectResult:
     object_refs: Optional[List[str]] = None
     # The workflows in the inputs of the workflow.
     workflows: Optional[List[str]] = None
+    # The num of retry for application exception
+    step_max_retries: int = 1
+    # Whether the user want to handle the exception mannually
+    catch_exceptions: Optional[bool] = None
+    # ray_remote options
+    ray_options: Dict[str, Any] = None
 
     def is_recoverable(self) -> bool:
         return (self.output_object_valid or self.output_step_id
@@ -231,14 +237,23 @@ class WorkflowStorage:
                 self._workflow_id, step_id)
             input_object_refs = metadata["object_refs"]
             input_workflows = metadata["workflows"]
+            step_max_retries = metadata.get("step_max_retries")
+            catch_exceptions = metadata.get("catch_exceptions")
+            ray_options = metadata.get("ray_options", {})
         except storage.DataLoadError:
             input_object_refs = None
             input_workflows = None
+            step_max_retries = None
+            catch_exceptions = None
+            ray_options = {}
         return StepInspectResult(
             args_valid=field_list.args_exists,
             func_body_valid=field_list.func_body_exists,
             object_refs=input_object_refs,
             workflows=input_workflows,
+            step_max_retries=step_max_retries,
+            catch_exceptions=catch_exceptions,
+            ray_options=ray_options,
         )
 
     async def _write_step_inputs(self, step_id: StepID,
@@ -249,6 +264,9 @@ class WorkflowStorage:
             "name": f.__module__ + "." + f.__qualname__,
             "object_refs": inputs.object_refs,
             "workflows": inputs.workflows,
+            "step_max_retries": inputs.step_max_retries,
+            "catch_exceptions": inputs.catch_exceptions,
+            "ray_options": inputs.ray_options,
         }
         with serialization_context.workflow_args_keeping_context():
             # TODO(suquark): in the future we should write to storage directly

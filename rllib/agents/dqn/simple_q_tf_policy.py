@@ -54,6 +54,10 @@ class TargetNetworkMixin:
 
     @override(TFPolicy)
     def variables(self):
+        if not hasattr(self, "q_func_vars"):
+            self.q_func_vars = self.model.variables()
+        if not hasattr(self, "target_q_func_vars"):
+            self.target_q_func_vars = self.target_q_model.variables()
         return self.q_func_vars + self.target_q_func_vars
 
 
@@ -114,7 +118,6 @@ def get_distribution_inputs_and_class(
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
-    policy.q_func_vars = q_model.variables()
     return policy.q_values, (TorchCategorical
                              if policy.config["framework"] == "torch" else
                              Categorical), []  # state-outs
@@ -144,7 +147,8 @@ def build_q_losses(policy: Policy, model: ModelV2,
         policy.target_q_model,
         train_batch[SampleBatch.NEXT_OBS],
         explore=False)
-    policy.target_q_func_vars = policy.target_q_model.variables()
+    if not hasattr(policy, "target_q_func_vars"):
+        policy.target_q_func_vars = policy.target_q_model.variables()
 
     # q scores for actions which we know were selected in the given state.
     one_hot_selection = tf.one_hot(

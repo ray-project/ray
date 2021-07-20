@@ -115,7 +115,9 @@ RAY_CONFIG(bool, pull_manager_pin_active_objects, true)
 RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
 RAY_CONFIG(float, scheduler_spread_threshold,
-           env_float("RAY_SCHEDULER_SPREAD_THRESHOLD", 0.5))
+           getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
+               ? std::stof(getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
+               : 0.5)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -356,7 +358,7 @@ RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
 /// JSON configuration that describes the external storage. This is passed to
 /// Python IO workers to determine how to store/restore an object to/from
 /// external storage.
-RAY_CONFIG(string_type, object_spilling_config, "")
+RAY_CONFIG(std::string, object_spilling_config, "")
 
 /// Whether to enable automatic object spilling. If enabled, then
 /// Ray will choose objects to spill when the object store is out of
@@ -445,12 +447,12 @@ RAY_CONFIG(uint32_t, raylet_start_wait_time_s,
 /// The scheduler will treat these predefined resource types as unit_instance.
 /// Default predefined_unit_instance_resources is "GPU".
 /// When set it to "CPU,GPU", we will also treat CPU as unit_instance.
-RAY_CONFIG(string_type, predefined_unit_instance_resources, "GPU")
+RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 
 /// The scheduler will treat these custom resource types as unit_instance.
 /// Default custom_unit_instance_resources is empty.
 /// When set it to "FPGA", we will treat FPGA as unit_instance.
-RAY_CONFIG(string_type, custom_unit_instance_resources, "")
+RAY_CONFIG(std::string, custom_unit_instance_resources, "")
 
 // Maximum size of the batch size when broadcasting resources to raylet.
 RAY_CONFIG(uint64_t, resource_broadcast_batch_size_bytes, 1024 * 1024 * 5);

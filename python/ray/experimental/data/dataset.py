@@ -889,11 +889,16 @@ class Dataset(Generic[T]):
                  feature_columns: Optional[List[str]] = None,
                  label_column_dtype: Optional["torch.dtype"] = None,
                  feature_column_dtypes: Optional[List["torch.dtype"]] = None,
-                 prefetch_blocks: int = 0) -> \
+                 batch_size: int = 1,
+                 prefetch_blocks: int = 0,
+                 drop_last: bool = False) -> \
             "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
 
-        Each element in IterableDataset will be a list consisting of 2
+        It is recommended to use the returned ``IterableDataset`` directly
+        instead of passing it into a torch ``DataLoader``.
+
+        Each element in IterableDataset will be a tuple consisting of 2
         elements. The first item is a list of the feature tensors. The
         second item is the label tensor. Each tensor will be of shape (N,
         1), where N is the ``batch_size`` used by the DataLoader.
@@ -916,8 +921,14 @@ class Dataset(Generic[T]):
                 to use for the feature columns. The len of this list must
                 be equal to the len of ``feature_columns``. If None,
                 then automatically infer the dtype.
+            batch_size (int): How many samples per batch to yield at a time.
+                Defaults to 1.
             prefetch_blocks (int): The number of blocks to prefetch ahead of
                 the current block during the scan.
+            drop_last (bool): Set to True to drop the last incomplete batch,
+                if the dataset size is not divisible by the batch size. If
+                False and the size of dataset is not divisible by the batch
+                size, then the last batch will be smaller. Defaults to False.
 
         Returns:
             A torch IterableDataset.
@@ -936,7 +947,10 @@ class Dataset(Generic[T]):
                                  "match!")
 
         def make_generator():
-            for batch in self.iter_batches(prefetch_blocks=prefetch_blocks):
+            for batch in self.iter_batches(
+                    batch_size=batch_size,
+                    prefetch_blocks=prefetch_blocks,
+                    drop_last=drop_last):
                 label_vals = batch.pop(label_column).values
                 label_tensor = torch.as_tensor(
                     label_vals, dtype=label_column_dtype)
@@ -957,11 +971,7 @@ class Dataset(Generic[T]):
                     t = t.view(-1, 1)
                     feature_tensor.append(t)
 
-                num_rows = batch.shape[0]
-                for i in range(num_rows):
-                    features = [tensor[i] for tensor in feature_tensor]
-                    label = label_tensor[i]
-                    yield (features, label)
+                yield (feature_tensor, label_tensor)
 
         return TorchIterableDataset(make_generator)
 
