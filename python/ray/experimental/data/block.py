@@ -13,7 +13,7 @@ T = TypeVar("T")
 
 # TODO(ekl) this is a dummy generic ref type for documentation purposes only.
 # It adds Generic[T] to pyarrow.Table so we can define Block[T] below.
-class ArrowTable(Generic[T]):
+class _ArrowTable(Generic[T]):
     pass
 
 
@@ -21,7 +21,7 @@ class ArrowTable(Generic[T]):
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
-Block = Union[List[T], arrowTable[T]]
+Block = Union[List[T], _ArrowTable[T]]
 
 
 @DeveloperAPI
