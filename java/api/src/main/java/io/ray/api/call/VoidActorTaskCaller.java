@@ -29,6 +29,6 @@ public class VoidActorTaskCaller {
 
   /** Execute a function remotely. */
   public void remote() {
-    Ray.internal().callActor(actor, func, args, null);
+    Ray.internal().callActor(actor, func, args, builder.build());
   }
 }
