@@ -1400,7 +1400,7 @@ def _determine_spaces_for_multi_agent_dict(
         env_act_space = env.action_space
     # Try getting the env's spaces from the spaces dict's special __env__ key.
     elif spaces is not None:
-        env_act_space = spaces.get("__env__", [None])[1]
+        env_act_space = spaces.get("__env__", [None, None])[1]
 
     for pid, policy_spec in multi_agent_dict.copy().items():
         if policy_spec.observation_space is None:
