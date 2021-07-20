@@ -144,7 +144,7 @@ def recursive_chain(x):
 def test_shortcut(ray_start_regular):
     assert recursive_chain.step(0).run(workflow_id="shortcut") == 100
     # the shortcut points to the step with output checkpoint
-    store = workflow_storage.WorkflowStorage("shortcut")
+    store = workflow_storage.get_workflow_storage("shortcut")
     step_id = store.get_entrypoint_step_id()
     assert store.inspect_step(step_id).output_object_valid
 

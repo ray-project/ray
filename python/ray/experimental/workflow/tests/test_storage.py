@@ -129,7 +129,7 @@ def test_workflow_storage(ray_start_regular, raw_storage):
                                               output_metadata))
     asyncio_run(raw_storage.save_step_output(workflow_id, step_id, output))
 
-    wf_storage = workflow_storage.WorkflowStorage(workflow_id)
+    wf_storage = workflow_storage.WorkflowStorage(workflow_id, raw_storage)
     assert wf_storage.load_step_output(step_id) == output
     assert wf_storage.load_step_args(step_id, [], []) == args
     assert wf_storage.load_step_func_body(step_id)(33) == 34
