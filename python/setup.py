@@ -350,9 +350,13 @@ def build(build_python, build_java, build_cpp):
     bazel_targets += ["//:ray_pkg"] if build_python else []
     bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
+    commands = ["build", "--verbose_failures"]
+    if os.getenv("RAY_ASAN") == "1":
+        commands.append("--config=asan")
+    commands.append("--")
     return bazel_invoke(
         subprocess.check_call,
-        ["build", "--config=asan", "--verbose_failures", "--"] + bazel_targets,
+        commands + bazel_targets,
         env=bazel_env)
 
 
