@@ -52,7 +52,7 @@ def conda_envs():
         ray_deps: List[str] = _resolve_install_from_source_ray_dependencies()
         ray_deps.append(f"requests=={package_version}")
         with tempfile.NamedTemporaryFile("w") as f:
-            f.writelines([l + "\n" for l in ray_deps])
+            f.writelines([line + "\n" for line in ray_deps])
             f.flush()
 
             commands = [
