@@ -156,7 +156,8 @@ Process WorkerPool::StartWorkerProcess(
     const std::vector<std::string> &dynamic_options, const int64_t runtime_env_hash,
     const std::string &serialized_runtime_env,
     std::unordered_map<std::string, std::string> override_environment_variables,
-    const std::string &serialized_runtime_env_context) {
+    const std::string &serialized_runtime_env_context,
+    const std::string &allocated_instances_serialized_json) {
   rpc::JobConfig *job_config = nullptr;
   if (!IsIOWorkerType(worker_type)) {
     RAY_CHECK(!job_id.IsNil());
@@ -300,6 +301,9 @@ Process WorkerPool::StartWorkerProcess(
   if (language == Language::PYTHON) {
     if (serialized_runtime_env != "{}" && serialized_runtime_env != "") {
       worker_command_args.push_back("--serialized-runtime-env=" + serialized_runtime_env);
+      // Allocated_resource_json is only used in "shim process".
+      worker_command_args.push_back("--allocated-instances-serialized-json=" +
+                                    allocated_instances_serialized_json);
     } else {
       // The "shim process" setup worker is not needed, so do not run it.
       // Check that the arg really is the path to the setup worker before erasing it, to
@@ -857,26 +861,35 @@ void WorkerPool::TryKillingIdleWorkers() {
 }
 
 int GetRuntimeEnvHash(const TaskSpecification &task_spec) {
+  // We add required_resource instead of allocated_instances because allocated_instances
+  // may contains resource ID.
+  std::unordered_map<std::string, double> required_resource{};
+  if (RayConfig::instance().worker_resource_limits_enabled()) {
+    required_resource = task_spec.GetRequiredResources().GetResourceMap();
+  }
   const WorkerCacheKey env = {task_spec.OverrideEnvironmentVariables(),
-                              task_spec.SerializedRuntimeEnv()};
+                              task_spec.SerializedRuntimeEnv(), required_resource};
   return env.IntHash();
 }
 
 std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
-    const TaskSpecification &task_spec) {
+    const TaskSpecification &task_spec,
+    const std::string &allocated_instances_serialized_json) {
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
   auto start_worker_process_fn =
-      [this](const TaskSpecification &task_spec, State &state,
-             std::vector<std::string> dynamic_options, bool dedicated,
-             const int64_t runtime_env_hash, const std::string &serialized_runtime_env,
-             const std::string &serialized_runtime_env_context) -> Process {
+      [this, allocated_instances_serialized_json](
+          const TaskSpecification &task_spec, State &state,
+          std::vector<std::string> dynamic_options, bool dedicated,
+          const int64_t runtime_env_hash, const std::string &serialized_runtime_env,
+          const std::string &serialized_runtime_env_context) -> Process {
     Process proc = StartWorkerProcess(
         task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(),
         dynamic_options, runtime_env_hash, serialized_runtime_env,
-        task_spec.OverrideEnvironmentVariables(), serialized_runtime_env_context);
+        task_spec.OverrideEnvironmentVariables(), serialized_runtime_env_context,
+        allocated_instances_serialized_json);
     if (proc.IsValid()) {
       WarnAboutSize();
       if (dedicated) {
@@ -890,8 +903,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   if (task_spec.IsActorTask()) {
     // Code path of actor task.
     RAY_CHECK(false) << "Direct call shouldn't reach here.";
-  } else if ((task_spec.IsActorCreationTask() &&
-              !task_spec.DynamicWorkerOptions().empty())) {
+  } else if (task_spec.IsActorCreationTask() &&
+             !task_spec.DynamicWorkerOptions().empty()) {
     // Code path of task that needs a dedicated worker: an actor creation task with
     // dynamic worker options.
     // Try to pop it from idle dedicated pool.
@@ -917,7 +930,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
         state.tasks_with_pending_runtime_envs.emplace(task_spec.TaskId());
         agent_manager_->CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, &state, task_spec, dynamic_options](
+            [start_worker_process_fn, &state, task_spec, dynamic_options,
+             allocated_instances_serialized_json](
                 bool done, const std::string &serialized_runtime_env_context) {
               state.tasks_with_pending_runtime_envs.erase(task_spec.TaskId());
               if (!done) {

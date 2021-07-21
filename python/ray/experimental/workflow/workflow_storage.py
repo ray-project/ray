@@ -50,17 +50,10 @@ class StepInspectResult:
 
 
 class WorkflowStorage:
-    """Access workflow in storage. This is a high-level function,
+    """Access workflow in storage. This is a higher-level abstraction,
     which does not care about the underlining storage implementation."""
 
-    def __init__(self,
-                 workflow_id: Optional[str] = None,
-                 store: Optional[storage.Storage] = None):
-        if workflow_id is None:
-            context = workflow_context.get_workflow_step_context()
-            workflow_id = context.workflow_id
-        if store is None:
-            store = storage.get_global_storage()
+    def __init__(self, workflow_id: str, store: storage.Storage):
         self._storage = store
         self._workflow_id = workflow_id
 
@@ -314,3 +307,18 @@ class WorkflowStorage:
         """
         asyncio_run(
             self._storage.save_actor_class_body(self._workflow_id, cls))
+
+
+def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
+    """Get the storage for the workflow.
+
+    Args:
+        workflow_id: The ID of the storage.
+
+    Returns:
+        A workflow storage.
+    """
+    store = storage.get_global_storage()
+    if workflow_id is None:
+        workflow_id = workflow_context.get_workflow_step_context().workflow_id
+    return WorkflowStorage(workflow_id, store)

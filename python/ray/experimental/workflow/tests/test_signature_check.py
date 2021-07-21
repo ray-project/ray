@@ -9,7 +9,7 @@ def signature_check(a, b, c=1):
     pass
 
 
-def test_signature_check(ray_start_regular):
+def test_signature_check(workflow_start_regular):
     with pytest.raises(TypeError):
         signature_check(1, 2)
 
