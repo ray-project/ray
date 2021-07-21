@@ -120,11 +120,11 @@ if __name__ == "__main__":
 
 
 def test_recovery_cluster_failure():
-    subprocess.run(["ray start --head"], shell=True)
+    subprocess.check_call(["ray", "start", "--head"])
     time.sleep(1)
     proc = run_string_as_driver_nonblocking(driver_script)
     time.sleep(10)
-    subprocess.run(["ray stop"], shell=True)
+    subprocess.check_call(["ray", "stop"])
     proc.kill()
     time.sleep(1)
     workflow.init()

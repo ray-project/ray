@@ -39,9 +39,9 @@ class StepInspectResult:
     # The num of retry for application exception
     step_max_retries: int = 1
     # Whether the user want to handle the exception mannually
-    catch_exceptions: Optional[bool] = None
+    catch_exceptions: bool = False
     # ray_remote options
-    ray_options: Dict[str, Any] = None
+    ray_options: Optional[Dict[str, Any]] = None
 
     def is_recoverable(self) -> bool:
         return (self.output_object_valid or self.output_step_id
@@ -234,11 +234,9 @@ class WorkflowStorage:
             catch_exceptions = metadata.get("catch_exceptions")
             ray_options = metadata.get("ray_options", {})
         except storage.DataLoadError:
-            input_object_refs = None
-            input_workflows = None
-            step_max_retries = None
-            catch_exceptions = None
-            ray_options = {}
+            return StepInspectResult(
+                args_valid=field_list.args_exists,
+                func_body_valid=field_list.func_body_exists)
         return StepInspectResult(
             args_valid=field_list.args_exists,
             func_body_valid=field_list.func_body_exists,
