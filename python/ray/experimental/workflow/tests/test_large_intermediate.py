@@ -28,7 +28,7 @@ def simple_large_intermediate():
     return average.step(y)
 
 
-def test_simple_large_intermediate(ray_start_regular_shared):
+def test_simple_large_intermediate(workflow_start_regular_shared):
     start = time.time()
     outputs = simple_large_intermediate.step().run()
     print(f"duration = {time.time() - start}")

@@ -46,7 +46,7 @@ def _recover_workflow_step(input_object_refs: List[str],
     Returns:
         The output of the recovered step.
     """
-    reader = workflow_storage.WorkflowStorage()
+    reader = workflow_storage.get_workflow_storage()
     for index, _step_id in instant_workflow_inputs.items():
         # override input workflows with instant workflows
         input_workflows[index] = reader.load_step_output(_step_id)
