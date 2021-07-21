@@ -178,8 +178,7 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
     return execution.get_output(workflow_id)
 
 
-def list_all(status: Optional[WorkflowStatus] = None
-             ) -> List[Tuple[str, WorkflowStatus]]:
+def list_all() -> List[Tuple[str, WorkflowStatus]]:
     """List the workflow status. If status is given, it'll filter by that.
 
     Args:
