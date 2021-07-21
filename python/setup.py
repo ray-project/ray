@@ -394,7 +394,8 @@ def copy_file(target_dir, filename, rootdir):
 def pip_run(build_ext):
     build(True, BUILD_JAVA, True)
 
-    if setup_spec.type == SetupType.RAY or setup_spec.type == SetupType.RAY_ASAN:
+    if (setup_spec.type == SetupType.RAY
+            or setup_spec.type == SetupType.RAY_ASAN):
         setup_spec.files_to_include += ray_files
         # We also need to install pickle5 along with Ray, so make sure that the
         # relevant non-Python pickle5 files get copied.
