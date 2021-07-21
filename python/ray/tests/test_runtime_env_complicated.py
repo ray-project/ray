@@ -657,6 +657,9 @@ def chdir(dir):
     os.chdir(old_dir)
 
 
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.")
 def test_runtime_env_inheritance_regression(shutdown_only):
     # https://github.com/ray-project/ray/issues/16479
     with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
