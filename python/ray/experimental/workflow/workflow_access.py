@@ -97,16 +97,9 @@ class WorkflowManagementActor:
         self._workflow_outputs: Dict[str, ray.ObjectRef] = {}
         self._actor_initialized: Dict[str, ray.ObjectRef] = {}
 
-    def validate_storage(self, storage_url: str) -> True:
-        """Validate if the storage is the same as the current storage.
-
-        Args:
-            storage_url: The URL of the storage.
-
-        Returns:
-            True if they are the same storage.
-        """
-        return self._store.storage_url == storage_url
+    def get_storage_url(self) -> str:
+        """Get hte storage URL."""
+        return self._store.storage_url
 
     def run_or_resume(self, workflow_id: str) -> ray.ObjectRef:
         """Run or resume a workflow.
@@ -205,8 +198,8 @@ def init_management_actor() -> None:
     store = storage.get_global_storage()
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
-        is_valid = workflow_manager.validate_storage.remote(store.storage_url)
-        if not is_valid:
+        storage_url = ray.get(workflow_manager.get_storage_url.remote())
+        if storage_url != store.storage_url:
             raise RuntimeError("The workflow is using a storage "
                                f"({store.storage_url}) different from the "
                                "workflow manager.")
