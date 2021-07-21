@@ -4,7 +4,7 @@ from typing import Optional, List, Union, TYPE_CHECKING
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.experimental.data.impl.arrow_block import ArrowRow, ArrowBlock
+from ray.experimental.data.impl.arrow_block import ArrowRow
 from ray.experimental.data.impl.block_list import BlockMetadata
 from ray.experimental.data.datasource.datasource import Datasource, ReadTask
 from ray.experimental.data.datasource.file_based_datasource import (
@@ -47,7 +47,7 @@ class ParquetDatasource(Datasource[ArrowRow]):
                 table = pa.concat_tables(tables)
             else:
                 table = tables[0]
-            return ArrowBlock(table)
+            return table
 
         read_tasks = [
             ReadTask(
