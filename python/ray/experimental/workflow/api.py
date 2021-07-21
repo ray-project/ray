@@ -26,10 +26,6 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
         storage: The external storage URL or a custom storage class. If not
             specified, ``/tmp/ray/workflow_data`` will be used.
     """
-    if not ray.is_initialized():
-        logger.info("Initializing Ray...")
-        ray.init(address="auto")
-    workflow_access.init_management_actor()
     if storage is None:
         storage = os.environ.get("RAY_WORKFLOW_STORAGE")
     if storage is None:
@@ -44,7 +40,21 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
         storage = storage_base.create_storage(storage)
     elif not isinstance(storage, Storage):
         raise TypeError("'storage' should be None, str, or Storage type.")
+    try:
+        _storage = storage_base.get_global_storage()
+    except RuntimeError:
+        pass
+    else:
+        # we have to use the 'else' branch because we would raise a
+        # runtime error, but we do not want to be captured by 'except'
+        if _storage.storage_url == storage.storage_url:
+            logger.warning("Calling 'workflow.init()' again with the same "
+                           "storage.")
+        else:
+            raise RuntimeError("Calling 'workflow.init()' again with a "
+                               "different storage")
     storage_base.set_global_storage(storage)
+    workflow_access.init_management_actor()
 
 
 def step(func: types.FunctionType) -> WorkflowStepFunction:

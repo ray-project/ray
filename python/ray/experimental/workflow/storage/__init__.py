@@ -51,8 +51,8 @@ _global_storage = None
 def get_global_storage() -> Storage:
     global _global_storage
     if _global_storage is None:
-        raise ValueError("There is no global storage. Maybe you forget to "
-                         "run 'workflow.init()'?")
+        raise RuntimeError("`workflow.init()` must be called prior to "
+                           "using the workflows API.")
     return _global_storage
 
 
