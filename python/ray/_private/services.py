@@ -1341,7 +1341,8 @@ def start_raylet(redis_address,
                  socket_to_use=None,
                  start_initial_python_workers_for_first_job=False,
                  max_bytes=0,
-                 backup_count=0):
+                 backup_count=0,
+                 ray_debugger_external=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1389,6 +1390,8 @@ def start_raylet(redis_address,
             RotatingFileHandler's maxBytes.
         backup_count (int): Log rotation parameter. Corresponding to
             RotatingFileHandler's backupCount.
+        ray_debugger_external (bool): True if the Ray debugger should be made
+            available externally to this node.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1527,6 +1530,7 @@ def start_raylet(redis_address,
         f"--metrics_export_port={metrics_export_port}",
         f"--object_store_memory={object_store_memory}",
         f"--plasma_directory={plasma_directory}",
+        f"--ray-debugger-external={1 if ray_debugger_external else 0}",
     ]
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")

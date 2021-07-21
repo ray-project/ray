@@ -121,6 +121,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// language.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
+  /// \param ray_debugger_external Ray debugger in workers will be started in a way
+  /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time.
   WorkerPool(instrumented_io_context &io_service, const NodeID node_id,
              const std::string node_address, int num_workers_soft_limit,
@@ -130,6 +132,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              std::function<void()> starting_worker_timeout_callback,
+             int ray_debugger_external,
              const std::function<double()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
@@ -532,6 +535,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The callback that will be triggered once it times out to start a worker.
   std::function<void()> starting_worker_timeout_callback_;
+  /// If 1, expose Ray debuggers started by the workers externally (to this node).
+  int ray_debugger_external;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
 
   /// The Job ID of the firstly received job.
