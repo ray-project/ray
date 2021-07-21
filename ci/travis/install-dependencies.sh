@@ -310,6 +310,9 @@ install_dependencies() {
     fi
   fi
 
+  # Default requirements
+  pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_default.txt
+
   if [ "${LINT-}" = 1 ]; then
     install_linters
     # readthedocs has an antiquated build env.

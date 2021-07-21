@@ -45,10 +45,12 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec) {
+  std::shared_ptr<WorkerInterface> PopWorker(
+      const TaskSpecification &task_spec,
+      const std::string &allocated_instances_serialized_json) {
     num_pops++;
-    const WorkerCacheKey env = {task_spec.OverrideEnvironmentVariables(),
-                                task_spec.SerializedRuntimeEnv()};
+    const WorkerCacheKey env = {
+        task_spec.OverrideEnvironmentVariables(), task_spec.SerializedRuntimeEnv(), {}};
     const int runtime_env_hash = env.IntHash();
     std::shared_ptr<WorkerInterface> worker = nullptr;
 
@@ -139,6 +141,8 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
   bool TaskDependenciesBlocked(const TaskID &task_id) const {
     return blocked_tasks.count(task_id);
   }
+
+  bool CheckObjectLocal(const ObjectID &object_id) const { return true; }
 
   std::unordered_set<ObjectID> &missing_objects_;
   std::unordered_set<TaskID> subscribed_tasks;
@@ -320,8 +324,8 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
   task_manager_.QueueAndScheduleTask(task_B_2, &reply_B_2, empty_callback);
 
   // Push a worker that can only run task A.
-  const WorkerCacheKey env_A = {/*override_environment_variables=*/{},
-                                serialized_runtime_env_A};
+  const WorkerCacheKey env_A = {
+      /*override_environment_variables=*/{}, serialized_runtime_env_A, {}};
   const int runtime_env_hash_A = env_A.IntHash();
   std::shared_ptr<MockWorker> worker_A =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash_A);

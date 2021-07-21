@@ -13,11 +13,8 @@ from ray.experimental.workflow.api import (
 from ray.experimental.workflow.workflow_access import WorkflowExecutionError
 from ray.experimental.workflow.common import WorkflowStatus
 
-
 __all__ = ["step", "virtual_actor", "resume", "get_output", "get_actor",
            "WorkflowExecutionError", "resume_all", "cancel", "get_status",
            "list_all", "init"]
 
 globals().update(WorkflowStatus.__members__)
-
-__all__ += list(WorkflowStatus.__members__.keys())

@@ -18,7 +18,6 @@ StepExecutionFunction = Callable[
     [StepID, WorkflowInputTuple, Optional[StepID]], WorkflowOutputType]
 SerializedStepFunction = str
 
-
 @unique
 class WorkflowStatus(str, Enum):
     # There is at least a remote task running in ray cluster
@@ -30,7 +29,6 @@ class WorkflowStatus(str, Enum):
     FINISHED = "FINISHED"
     # There is an error during execution. It can be resumed
     FAILED = "FAILED"
-
 
 @dataclass
 class WorkflowInputs:

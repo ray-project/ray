@@ -40,6 +40,7 @@ def run(entry_workflow: Workflow,
     return flatten_workflow_output(workflow_id, output)
 
 
+# TODO(suquark): support recovery with ObjectRef inputs.
 def resume(workflow_id: str) -> ray.ObjectRef:
     """Resume a workflow asynchronously. See "api.resume()" for details.
     """
