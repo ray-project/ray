@@ -363,9 +363,7 @@ class VirtualActor:
         is fully initialized."""
         # TODO(suquark): should ray.get(xxx.ready()) always be true?
         workflow_manager = get_or_create_management_actor()
-        return ray.get(
-            workflow_manager.actor_ready.remote(self._actor_id,
-                                                self._storage.storage_url))
+        return ray.get(workflow_manager.actor_ready.remote(self._actor_id))
 
     def __getattr__(self, item):
         if item in self._metadata.signatures:

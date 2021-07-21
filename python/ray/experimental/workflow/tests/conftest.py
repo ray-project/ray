@@ -49,12 +49,16 @@ def _workflow_start(storage_url, shared, **kwargs):
     if ray.is_initialized():
         ray.shutdown()
     # Clear it since we have s3/filesystem
-    workflow.storage.set_global_storage(None)
     address_info = ray.init(**init_kwargs)
+    # Sometimes pytest does not cleanup all global variables.
+    # we have to manually reset the workflow storage. This
+    # should not be an issue for normal use cases, because global variables
+    # are freed after the driver exits.
     workflow.init(storage_url)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    storage.set_global_storage(None)
 
 
 @pytest.fixture(scope="function")
