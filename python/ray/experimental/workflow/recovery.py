@@ -128,7 +128,7 @@ def resume_workflow_job(workflow_id: str, store_url: str) -> ray.ObjectRef:
                                                     store.storage_url):
             from ray.experimental.workflow.step_executor import (
                 execute_workflow)
-            return execute_workflow(r)
+            return execute_workflow(r, last_step_of_workflow=True)
     return wf_store.load_step_output(r)
 
 
@@ -146,7 +146,7 @@ def get_latest_output(workflow_id: str, store: storage.Storage) -> Any:
     """
     reader = workflow_storage.WorkflowStorage(workflow_id, store)
     try:
-        step_id: StepID = reader.get_entrypoint_step_id()
+        step_id: StepID = reader.get_latest_progress()
         while True:
             result: workflow_storage.StepInspectResult = reader.inspect_step(
                 step_id)
