@@ -38,8 +38,6 @@ class ConfigInternal {
 
   std::string node_ip_address = "";
 
-  int ray_debugger_external = 0;
-
   static ConfigInternal &Instance() {
     static ConfigInternal config;
     return config;
