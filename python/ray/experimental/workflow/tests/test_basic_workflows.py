@@ -93,7 +93,7 @@ def factorial(n):
         return mul.step(n, factorial.step(n - 1))
 
 
-def test_basic_workflows(ray_start_regular_shared):
+def test_basic_workflows(workflow_start_regular_shared):
     # This test also shows different "style" of running workflows.
     assert simple_sequential.step().run() == "[source1][append1][append2]"
 
@@ -112,7 +112,7 @@ def test_basic_workflows(ray_start_regular_shared):
     assert factorial.step(10).run() == 3628800
 
 
-def test_async_execution(ray_start_regular_shared):
+def test_async_execution(workflow_start_regular_shared):
     start = time.time()
     output = blocking.step().run_async()
     duration = time.time() - start
@@ -133,7 +133,7 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef):
     return output
 
 
-def test_workflow_output_resolving(ray_start_regular_shared):
+def test_workflow_output_resolving(workflow_start_regular_shared):
     # deep nested workflow
     nested_ref = deep_nested.remote(30)
     original_func = workflow_access._resolve_workflow_output
@@ -149,7 +149,7 @@ def test_workflow_output_resolving(ray_start_regular_shared):
     assert ray.get(ref) == 42
 
 
-def test_run_or_resume_during_running(ray_start_regular_shared):
+def test_run_or_resume_during_running(workflow_start_regular_shared):
     output = simple_sequential.step().run_async(workflow_id="running_workflow")
     with pytest.raises(ValueError):
         simple_sequential.step().run_async(workflow_id="running_workflow")
@@ -159,10 +159,11 @@ def test_run_or_resume_during_running(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular_shared", [{
+    "workflow_start_regular_shared", [{
         "namespace": "workflow"
-    }], indirect=True)
-def test_step_failure(ray_start_regular_shared, tmp_path):
+    }],
+    indirect=True)
+def test_step_failure(workflow_start_regular_shared, tmp_path):
     (tmp_path / "test").write_text("0")
 
     @workflow.step
@@ -191,12 +192,12 @@ def test_step_failure(ray_start_regular_shared, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular_shared", [{
+    "workflow_start_regular_shared", [{
         "namespace": "workflow",
         "num_cpus": 2,
     }],
     indirect=True)
-def test_step_resources(ray_start_regular_shared, tmp_path):
+def test_step_resources(workflow_start_regular_shared, tmp_path):
     lock_path = str(tmp_path / "lock")
 
     @workflow.step
