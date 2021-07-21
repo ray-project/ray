@@ -221,7 +221,7 @@ class WarpFrame(gym.ObservationWrapper):
 
     def observation(self, frame):
         frame = rgb2gray(frame)
-        frame = resize(frame, self.height, self.width)
+        frame = resize(frame, height=self.height, width=self.width)
         return frame[:, :, None]
 
 
