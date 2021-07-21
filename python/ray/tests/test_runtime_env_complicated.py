@@ -666,6 +666,9 @@ def test_runtime_env_inheritance_regression(shutdown_only):
         job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
         ray.init(job_config=job_config)
 
+        with open("hello", "w") as f:
+            f.write("file should already been cached")
+
         @ray.remote
         class Test:
             def f(self):
@@ -677,6 +680,9 @@ def test_runtime_env_inheritance_regression(shutdown_only):
         t = Test.options(runtime_env=env1).remote()
         assert ray.get(t.f.remote()) == "world"
 
+        # TODO(simon): This shows overriding working_dir has no effect.
+        # This tests the current behavior and the tests should change when
+        # we support per-task/actor runtime env.
         env2 = ray.get_runtime_context().runtime_env
         print("Using env:", env2)
         t = Test.options(runtime_env=env2).remote()
