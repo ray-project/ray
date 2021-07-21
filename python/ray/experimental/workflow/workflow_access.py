@@ -108,13 +108,11 @@ class WorkflowManagementActor:
         """
         return self._store.storage_url == storage_url
 
-    def run_or_resume(self, workflow_id: str,
-                      storage_url: str) -> ray.ObjectRef:
+    def run_or_resume(self, workflow_id: str) -> ray.ObjectRef:
         """Run or resume a workflow.
 
         Args:
             workflow_id: The ID of the workflow.
-            storage_url: A string that represents the storage.
 
         Returns:
             An object reference that can be used to retrieve the
@@ -142,12 +140,11 @@ class WorkflowManagementActor:
         # already exists?
         self._actor_initialized[actor_id] = init_marker[0]
 
-    def actor_ready(self, actor_id: str, storage_url: str) -> ray.ObjectRef:
+    def actor_ready(self, actor_id: str) -> ray.ObjectRef:
         """Check if a workflow virtual actor is fully initialized.
 
         Args:
             actor_id: The ID of a workflow virtual actor.
-            storage_url: A string that represents the storage.
 
         Returns:
             A future object that represents the state of the actor.

@@ -34,8 +34,7 @@ def run(entry_workflow: Workflow,
     # ensures caller of 'run()' holds the reference to the workflow
     # result. Otherwise if the actor removes the reference of the
     # workflow output, the caller may fail to resolve the result.
-    output = ray.get(
-        workflow_manager.run_or_resume.remote(workflow_id, store.storage_url))
+    output = ray.get(workflow_manager.run_or_resume.remote(workflow_id))
     return flatten_workflow_output(workflow_id, output)
 
 
@@ -53,9 +52,7 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     # ensures caller of 'run()' holds the reference to the workflow
     # result. Otherwise if the actor removes the reference of the
     # workflow output, the caller may fail to resolve the result.
-    output = ray.get(
-        workflow_manager.run_or_resume.remote(workflow_id,
-                                              storage.storage_url))
+    output = ray.get(workflow_manager.run_or_resume.remote(workflow_id))
     direct_output = flatten_workflow_output(workflow_id, output)
     logger.info(f"Workflow job {workflow_id} resumed.")
     return direct_output
