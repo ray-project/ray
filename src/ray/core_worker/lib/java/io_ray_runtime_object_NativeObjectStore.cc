@@ -23,7 +23,7 @@
 
 ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_id,
                                 ray::ObjectID *out_object_id, bool pin_object = true,
-                                const std::shared_ptr<ray::rpc::Address> owner_address = nullptr) {
+                                const std::unique_ptr<ray::rpc::Address> owner_address = nullptr) {
   auto native_ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
   RAY_CHECK(native_ray_object != nullptr);
 
@@ -36,7 +36,7 @@ ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_i
   if (object_id.IsNil()) {
     status = ray::CoreWorkerProcess::GetCoreWorker().CreateOwned(
         native_ray_object->GetMetadata(), data_size, native_ray_object->GetNestedIds(),
-        out_object_id, &data, /*created_by_worker=*/true, /*owner_address=*/owner_address);
+        out_object_id, &data, /*created_by_worker=*/true, /*owner_address=*/std::move(owner_address));
   } else {
     status = ray::CoreWorkerProcess::GetCoreWorker().CreateExisting(
         native_ray_object->GetMetadata(), data_size, object_id,
@@ -85,11 +85,11 @@ Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_N
     JNIEnv *env, jclass, jobject obj, jbyteArray java_actor_address) {
   ray::ObjectID object_id;
   auto address = JavaByteArrayToNativeString(env, java_actor_address);
-  ray::rpc::Address owner_address;
-  owner_address.ParseFromString(address);
+  std::unique_ptr<ray::rpc::Address> owner_address = make_unique<ray::rpc::Address>();
+  owner_address->ParseFromString(address);
   auto status = PutSerializedObject(env, obj, /*object_id=*/ray::ObjectID::Nil(),
                                     /*out_object_id=*/&object_id, /*pin_object=*/true,
-                                    /*owner_address=*/std::make_shared<ray::rpc::Address>(owner_address));
+                                    /*owner_address=*/std::move(owner_address));
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return IdToJavaByteArray<ray::ObjectID>(env, object_id);
 }
