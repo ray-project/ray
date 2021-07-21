@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 from typing import List, Any, Union, Optional, Tuple, Callable, TypeVar, \
     TYPE_CHECKING
 
@@ -384,34 +383,3 @@ def from_spark(df: "pyspark.sql.DataFrame",
         Dataset holding Arrow records read from the dataframe.
     """
     raise NotImplementedError  # P2
-
-
-def _parse_paths(paths: Union[str, List[str]]
-                 ) -> Tuple["pyarrow.fs.FileSystem", Union[str, List[str]]]:
-    from pyarrow import fs
-
-    def parse_single_path(path: str):
-        if Path(path).exists():
-            return fs.LocalFileSystem(), path
-        else:
-            return fs.FileSystem.from_uri(path)
-
-    if isinstance(paths, str):
-        return parse_single_path(paths)
-
-    if not isinstance(paths, list) or any(not isinstance(p, str)
-                                          for p in paths):
-        raise ValueError(
-            "paths must be a path string or a list of path strings.")
-    else:
-        if len(paths) == 0:
-            raise ValueError("No data provided")
-
-        parsed_results = [parse_single_path(path) for path in paths]
-        fses, paths = zip(*parsed_results)
-        unique_fses = set(map(type, fses))
-        if len(unique_fses) > 1:
-            raise ValueError(
-                f"When specifying multiple paths, each path must have the "
-                f"same filesystem, but found: {unique_fses}")
-        return fses[0], list(paths)

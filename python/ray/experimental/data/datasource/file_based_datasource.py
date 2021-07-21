@@ -116,6 +116,8 @@ def _expand_directory(path: str,
     return zip(*sorted(filtered_paths, key=lambda x: x[0]))
 
 
+# TODO(Clark): Add unit test coverage of _resolve_paths_and_filesystem.
+
 def _resolve_paths_and_filesystem(
         paths: Union[str, List[str]],
         filesystem: "pyarrow.fs.FileSystem" = None
