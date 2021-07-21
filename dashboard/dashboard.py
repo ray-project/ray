@@ -2,8 +2,14 @@ import sys
 
 try:
     import aiohttp.web
-except ImportError:
-    print("The dashboard requires aiohttp to run.")
+    import aiohttp
+    import aiohttp_cors  # noqa: F401
+    import aioredis  # noqa: F401
+except (ModuleNotFoundError, ImportError):
+    print("Not all Ray Dashboard dependencies were found. "
+          "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
+          "only be usable via `pip install 'ray[default]'`. Please "
+          "update your install command.")
     # Set an exit code different from throwing an exception.
     sys.exit(2)
 

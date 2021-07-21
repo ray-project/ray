@@ -475,7 +475,7 @@ class RayTrialExecutor(TrialExecutor):
                 with warn_if_slow("update_resources"):
                     try:
                         ray.get(
-                            trainable.update_resources.remote(
+                            trainable._update_resources.remote(
                                 trial.placement_group_factory if trial.
                                 uses_placement_groups else trial.resources),
                             timeout=DEFAULT_GET_TIMEOUT)
