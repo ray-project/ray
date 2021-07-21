@@ -495,11 +495,20 @@ class Trainable:
         """
         return False
 
+    def _update_resources(
+            self, new_resources: Union[PlacementGroupFactory, Resources]):
+        """Internal version of ``update_resources``."""
+        self._trial_info.trial_resources = new_resources
+        return self.update_resources(new_resources)
+
     def update_resources(
             self, new_resources: Union[PlacementGroupFactory, Resources]):
         """Fires whenever Trainable resources are changed.
 
         This method will be called before the checkpoint is loaded.
+
+        The current trial resources can also be obtained through
+        ``self.trial_resources``.
 
         Args:
             new_resources (PlacementGroupFactory|Resources):
@@ -623,6 +632,21 @@ class Trainable:
         """
         if self._trial_info:
             return self._trial_info.trial_id
+        else:
+            return "default"
+
+    @property
+    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+        """Resources currently assigned to the trial of this Trainable.
+
+        This is not set if not using Tune.
+
+        .. code-block:: python
+
+            trial_resources = self.trial_resources
+        """
+        if self._trial_info:
+            return self._trial_info.trial_resources
         else:
             return "default"
 

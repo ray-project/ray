@@ -14,12 +14,13 @@ if TYPE_CHECKING:
 
 import ray
 from ray.types import ObjectRef
-from ray.experimental.data.block import Block, BlockMetadata
+from ray.util.annotations import PublicAPI
+from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.datasource import Datasource, RangeDatasource, \
     JSONDatasource, CSVDatasource, ReadTask, _S3FileSystemWrapper
 from ray.experimental.data.impl import reader as _reader
-from ray.experimental.data.impl.arrow_block import ArrowBlock, ArrowRow, \
+from ray.experimental.data.impl.arrow_block import ArrowRow, \
     DelegatingArrowBlockBuilder
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.lazy_block_list import LazyBlockList
@@ -29,37 +30,7 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
-def _parse_paths(paths: Union[str, List[str]]
-                 ) -> Tuple["pyarrow.fs.FileSystem", Union[str, List[str]]]:
-    from pyarrow import fs
-
-    def parse_single_path(path: str):
-        if Path(path).exists():
-            return fs.LocalFileSystem(), path
-        else:
-            return fs.FileSystem.from_uri(path)
-
-    if isinstance(paths, str):
-        return parse_single_path(paths)
-
-    if not isinstance(paths, list) or any(not isinstance(p, str)
-                                          for p in paths):
-        raise ValueError(
-            "paths must be a path string or a list of path strings.")
-    else:
-        if len(paths) == 0:
-            raise ValueError("No data provided")
-
-        parsed_results = [parse_single_path(path) for path in paths]
-        fses, paths = zip(*parsed_results)
-        unique_fses = set(map(type, fses))
-        if len(unique_fses) > 1:
-            raise ValueError(
-                f"When specifying multiple paths, each path must have the "
-                f"same filesystem, but found: {unique_fses}")
-        return fses[0], list(paths)
-
-
+@PublicAPI(stability="beta")
 def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
     """Create a dataset from a list of local Python objects.
 
@@ -84,12 +55,14 @@ def from_items(items: List[Any], parallelism: int = 200) -> Dataset[Any]:
             builder.add(item)
         block = builder.build()
         blocks.append(ray.put(block))
-        metadata.append(block.get_metadata(input_files=None))
+        metadata.append(
+            BlockAccessor.for_block(block).get_metadata(input_files=None))
         i += block_size
 
     return Dataset(BlockList(blocks, metadata))
 
 
+@PublicAPI(stability="beta")
 def range(n: int, parallelism: int = 200) -> Dataset[int]:
     """Create a dataset from a range of integers [0..n).
 
@@ -107,6 +80,7 @@ def range(n: int, parallelism: int = 200) -> Dataset[int]:
         RangeDatasource(), parallelism=parallelism, n=n, use_arrow=False)
 
 
+@PublicAPI(stability="beta")
 def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from a range of integers [0..n).
 
@@ -128,6 +102,7 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
         RangeDatasource(), parallelism=parallelism, n=n, use_arrow=True)
 
 
+@PublicAPI(stability="beta")
 def read_datasource(datasource: Datasource[T],
                     parallelism: int = 200,
                     **read_args) -> Dataset[T]:
@@ -158,6 +133,7 @@ def read_datasource(datasource: Datasource[T],
     return Dataset(LazyBlockList(calls, metadata))
 
 
+@PublicAPI(stability="beta")
 def read_parquet(paths: Union[str, List[str]],
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                  columns: Optional[List[str]] = None,
@@ -205,15 +181,22 @@ def read_parquet(paths: Union[str, List[str]],
             table = pyarrow.concat_tables(tables)
         else:
             table = tables[0]
-        return ArrowBlock(table)
+        return table
 
     calls: List[Callable[[], ObjectRef[Block]]] = []
     metadata: List[BlockMetadata] = []
     for pieces in nonempty_tasks:
         calls.append(lambda pieces=pieces: gen_read.remote(pieces))
-        piece_metadata = [p.metadata for p in pieces]
-        metadata.append(
-            BlockMetadata(
+        piece_metadata = []
+        for p in pieces:
+            try:
+                piece_metadata.append(p.metadata)
+            except AttributeError:
+                break
+        input_files = [p.path for p in pieces]
+        if len(piece_metadata) == len(pieces):
+            # Piece metadata was available, constructo a normal BlockMetadata.
+            block_metadata = BlockMetadata(
                 num_rows=sum(m.num_rows for m in piece_metadata),
                 size_bytes=sum(
                     sum(
@@ -221,11 +204,21 @@ def read_parquet(paths: Union[str, List[str]],
                         for i in builtins.range(m.num_row_groups))
                     for m in piece_metadata),
                 schema=piece_metadata[0].schema.to_arrow_schema(),
-                input_files=[p.path for p in pieces]))
+                input_files=input_files)
+        else:
+            # Piece metadata was not available, construct an empty
+            # BlockMetadata.
+            block_metadata = BlockMetadata(
+                num_rows=None,
+                size_bytes=None,
+                schema=None,
+                input_files=input_files)
+        metadata.append(block_metadata)
 
     return Dataset(LazyBlockList(calls, metadata))
 
 
+@PublicAPI(stability="beta")
 def read_json(paths: Union[str, List[str]],
               filesystem: Optional["pyarrow.fs.FileSystem"] = None,
               parallelism: int = 200,
@@ -260,6 +253,7 @@ def read_json(paths: Union[str, List[str]],
         **arrow_json_args)
 
 
+@PublicAPI(stability="beta")
 def read_csv(paths: Union[str, List[str]],
              filesystem: Optional["pyarrow.fs.FileSystem"] = None,
              parallelism: int = 200,
@@ -294,6 +288,7 @@ def read_csv(paths: Union[str, List[str]],
         **arrow_csv_args)
 
 
+@PublicAPI(stability="beta")
 def read_binary_files(
         paths: Union[str, List[str]],
         include_paths: bool = False,
@@ -335,6 +330,7 @@ def read_binary_files(
             filesystem=filesystem))
 
 
+@PublicAPI(stability="beta")
 def from_dask(df: "dask.DataFrame",
               parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a Dask DataFrame.
@@ -354,6 +350,7 @@ def from_dask(df: "dask.DataFrame",
         [next(iter(part.dask.values())) for part in persisted_partitions])
 
 
+@PublicAPI(stability="beta")
 def from_mars(df: "mars.DataFrame",
               parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a MARS dataframe.
@@ -367,6 +364,7 @@ def from_mars(df: "mars.DataFrame",
     raise NotImplementedError  # P1
 
 
+@PublicAPI(stability="beta")
 def from_modin(df: "modin.DataFrame",
                parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a Modin dataframe.
@@ -381,6 +379,7 @@ def from_modin(df: "modin.DataFrame",
     raise NotImplementedError  # P1
 
 
+@PublicAPI(stability="beta")
 def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
                 parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Pandas dataframes.
@@ -395,15 +394,17 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
     import pyarrow as pa
 
     @ray.remote(num_returns=2)
-    def df_to_block(df: "pandas.DataFrame") -> ArrowBlock:
-        block = ArrowBlock(pa.table(df))
-        return block, block.get_metadata(input_files=None)
+    def df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
+        block = pa.table(df)
+        return (block,
+                BlockAccessor.for_block(block).get_metadata(input_files=None))
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = zip(*res)
     return Dataset(BlockList(blocks, ray.get(list(metadata))))
 
 
+@PublicAPI(stability="beta")
 def from_arrow(tables: List[ObjectRef["pyarrow.Table"]],
                parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
@@ -416,16 +417,15 @@ def from_arrow(tables: List[ObjectRef["pyarrow.Table"]],
         Dataset holding Arrow records from the tables.
     """
 
-    @ray.remote(num_returns=2)
-    def to_block(table: "pyarrow.Table") -> ArrowBlock:
-        block = ArrowBlock(table)
-        return block, block.get_metadata(input_files=None)
+    @ray.remote
+    def get_metadata(table: "pyarrow.Table") -> BlockMetadata:
+        return BlockAccessor.for_block(table).get_metadata(input_files=None)
 
-    res = [to_block.remote(t) for t in tables]
-    blocks, metadata = zip(*res)
-    return Dataset(BlockList(blocks, ray.get(list(metadata))))
+    metadata = [get_metadata.remote(t) for t in tables]
+    return Dataset(BlockList(tables, ray.get(metadata)))
 
 
+@PublicAPI(stability="beta")
 def from_spark(df: "pyspark.sql.DataFrame",
                parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a Spark dataframe.
@@ -440,6 +440,32 @@ def from_spark(df: "pyspark.sql.DataFrame",
     raise NotImplementedError  # P2
 
 
-def from_source(source: Any) -> Dataset[Any]:
-    """Create a dataset from a generic data source."""
-    raise NotImplementedError  # P0
+def _parse_paths(paths: Union[str, List[str]]
+                 ) -> Tuple["pyarrow.fs.FileSystem", Union[str, List[str]]]:
+    from pyarrow import fs
+
+    def parse_single_path(path: str):
+        if Path(path).exists():
+            return fs.LocalFileSystem(), path
+        else:
+            return fs.FileSystem.from_uri(path)
+
+    if isinstance(paths, str):
+        return parse_single_path(paths)
+
+    if not isinstance(paths, list) or any(not isinstance(p, str)
+                                          for p in paths):
+        raise ValueError(
+            "paths must be a path string or a list of path strings.")
+    else:
+        if len(paths) == 0:
+            raise ValueError("No data provided")
+
+        parsed_results = [parse_single_path(path) for path in paths]
+        fses, paths = zip(*parsed_results)
+        unique_fses = set(map(type, fses))
+        if len(unique_fses) > 1:
+            raise ValueError(
+                f"When specifying multiple paths, each path must have the "
+                f"same filesystem, but found: {unique_fses}")
+        return fses[0], list(paths)
