@@ -1002,43 +1002,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.4", pattern="rsync")
         runner.clear_history()
 
-    def testScaleUp(self):
-        config_path = self.write_config(SMALL_CLUSTER)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0,
-            prom_metrics=mock_metrics)
-        assert len(self.provider.non_terminated_nodes({})) == 0
-        autoscaler.update()
-        self.waitForNodes(2)
-
-        # started_nodes metric should have been incremented by 2
-        assert mock_metrics.started_nodes.inc.call_count == 1
-        mock_metrics.started_nodes.inc.assert_called_with(2)
-        assert mock_metrics.worker_create_node_time.observe.call_count == 2
-
-        autoscaler.update()
-        self.waitForNodes(2)
-
-        # running_workers metric should be set to 2
-        mock_metrics.running_workers.set.assert_called_with(2)
-
-        # Node Updaters have been invoked.
-        self.waitFor(lambda: len(runner.calls) > 0)
-        # The updates failed. Key thing is that the updates completed.
-        self.waitForNodes(
-            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
-
-    def testScaleUpNoUpdaters(self):
-        """Repeat of testScaleUp with disable_node_updaters=True.
-        Check at the end that no runner calls are made.
-        """
+    def ScaleUpHelper(self, disable_node_updaters):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -1050,7 +1014,7 @@ class AutoscalingTest(unittest.TestCase):
             process_runner=runner,
             update_interval_s=0,
             prom_metrics=mock_metrics,
-            disable_node_updaters=True)
+            disable_node_updaters=disable_node_updaters)
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
         self.waitForNodes(2)
@@ -1065,13 +1029,26 @@ class AutoscalingTest(unittest.TestCase):
         # running_workers metric should be set to 2
         mock_metrics.running_workers.set.assert_called_with(2)
 
-        # Node Updaters have NOT been invoked because they were explicitly
-        # disabled.
-        time.sleep(1)
-        assert len(runner.calls) == 0
-        # Nodes were create in uninitialized and not updated.
-        self.waitForNodes(
-            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED})
+        if disable_node_updaters:
+            # Node Updaters have NOT been invoked because they were explicitly
+            # disabled.
+            time.sleep(1)
+            assert len(runner.calls) == 0
+            # Nodes were create in uninitialized and not updated.
+            self.waitForNodes(
+                2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED})
+        else:
+            # Node Updaters have been invoked.
+            self.waitFor(lambda: len(runner.calls) > 0)
+            # The updates failed. Key thing is that the updates completed.
+            self.waitForNodes(
+                2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
+
+    def testScaleUp(self):
+        self.ScaleUpHelper(disable_node_updaters=False)
+
+    def testScaleUpNoUpdaters(self):
+        self.ScaleUpHelper(disable_node_updaters=True)
 
     def testTerminateOutdatedNodesGracefully(self):
         config = SMALL_CLUSTER.copy()
@@ -1937,7 +1914,7 @@ class AutoscalingTest(unittest.TestCase):
         """Test termination of unhealthy workers, when
         autoscaler.disable_node_updaters == True.
 
-        Modified copy-paste of testRecoverUnhealthyWorkers.
+        Similar to testRecoverUnhealthyWorkers.
         """
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
