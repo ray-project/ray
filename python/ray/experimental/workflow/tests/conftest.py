@@ -4,18 +4,17 @@ import pytest
 import ray
 from moto import mock_s3
 from mock_server import *  # noqa
-import ray
 from ray.experimental import workflow
 from ray.experimental.workflow import storage
 from pytest_lazyfixture import lazy_fixture
 import tempfile
 from ray.tests.conftest import get_default_fixture_ray_kwargs
 
+
 @pytest.fixture(scope="session")
 def filesystem_storage():
     with tempfile.TemporaryDirectory() as d:
-        storage.set_global_storage(
-            storage.create_storage(str(d)))
+        storage.set_global_storage(storage.create_storage(str(d)))
         yield storage.get_global_storage()
 
 
@@ -36,12 +35,12 @@ def aws_credentials():
 @pytest.fixture(scope="session")
 def s3_storage(aws_credentials, s3_server):
     with mock_s3():
-        import os
         client = boto3.client(
             "s3", region_name="us-west-2", endpoint_url=s3_server)
         client.create_bucket(Bucket="test_bucket")
         url = ("s3://test_bucket/workflow"
-               f"?region_name=us-west-2&endpoint_url={s3_server}&{aws_credentials}")
+               f"?region_name=us-west-2&endpoint_url={s3_server}"
+               f"&{aws_credentials}")
         storage.set_global_storage(storage.create_storage(url))
         yield storage.get_global_storage()
 
@@ -71,11 +70,11 @@ def workflow_start_regular_shared(raw_storage, request):
     with _workflow_start(**param) as res:
         yield res
 
-def workflow_start_regular_shared(request):
-    param = getattr(request, "param", {})
-    with _workflow_start(**param) as res:
-        yield res
 
 def pytest_generate_tests(metafunc):
     if "raw_storage" in metafunc.fixturenames:
-        metafunc.parametrize("raw_storage", [lazy_fixture("s3_storage"), lazy_fixture("filesystem_storage")], scope="session")
+        metafunc.parametrize(
+            "raw_storage",
+            [lazy_fixture("s3_storage"),
+             lazy_fixture("filesystem_storage")],
+            scope="session")

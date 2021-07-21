@@ -188,15 +188,8 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared", [{
-
-        "namespace": "workflow",
-        "num_cpus": 2,
-    }],
-    indirect=True)
-=======
         "num_cpus": 2,
     }], indirect=True)
->>>>>>> update_workflow_storage
 def test_step_resources(workflow_start_regular_shared, tmp_path):
     lock_path = str(tmp_path / "lock")
 

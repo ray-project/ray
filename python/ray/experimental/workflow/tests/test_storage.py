@@ -5,7 +5,6 @@ from ray.tests.conftest import *  # noqa
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow import storage
 from ray.experimental.workflow.workflow_storage import asyncio_run
-from pytest_lazyfixture import lazy_fixture
 
 
 def some_func(x):
