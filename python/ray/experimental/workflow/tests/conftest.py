@@ -4,6 +4,8 @@ import pytest
 import ray
 from moto import mock_s3
 from mock_server import *  # noqa
+import ray
+from ray.experimental import workflow
 from ray.experimental.workflow import storage
 from pytest_lazyfixture import lazy_fixture
 import tempfile
@@ -50,7 +52,7 @@ def _workflow_start(**kwargs):
     init_kwargs.update(kwargs)
     # Start the Ray processes.
     address_info = ray.init(**init_kwargs)
-    # workflow.init()
+    workflow.init()
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -65,6 +67,11 @@ def workflow_start_regular(raw_storage, request):
 
 @pytest.fixture(scope="module")
 def workflow_start_regular_shared(raw_storage, request):
+    param = getattr(request, "param", {})
+    with _workflow_start(**param) as res:
+        yield res
+
+def workflow_start_regular_shared(request):
     param = getattr(request, "param", {})
     with _workflow_start(**param) as res:
         yield res

@@ -114,7 +114,7 @@ def foo(x):
 
 
 if __name__ == "__main__":
-    ray.init(address="auto")
+    workflow.init()
     assert foo.step(0).run(workflow_id="cluster_failure") == 20
 """
 

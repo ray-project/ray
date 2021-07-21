@@ -177,7 +177,7 @@ def _workflow_step_executor(
             # Running the actual step function
             ret = func(*args, **kwargs)
             # Save workflow output
-            store = workflow_storage.WorkflowStorage()
+            store = workflow_storage.get_workflow_storage()
             commit_step(store, step_id, ret, outer_most_step_id)
             if isinstance(ret, Workflow):
                 # execute sub-workflow

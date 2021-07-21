@@ -1,7 +1,7 @@
 import abc
 import inspect
 import logging
-from typing import Optional, List, TYPE_CHECKING, Any, Tuple, Dict
+from typing import List, TYPE_CHECKING, Any, Tuple, Dict
 import uuid
 import weakref
 
@@ -293,11 +293,10 @@ class VirtualActorClass(VirtualActorClassBase):
     def get_or_create(self, actor_id: str, *args, **kwargs) -> "VirtualActor":
         """Create an actor. See `VirtualActorClassBase.create()`."""
         return self._get_or_create(
-            actor_id, args=args, kwargs=kwargs, storage=None)
+            actor_id, args=args, kwargs=kwargs, storage=get_global_storage())
 
     # TODO(suquark): support num_cpu etc in options
-    def options(self,
-                storage: Optional[Storage] = None) -> VirtualActorClassBase:
+    def options(self) -> VirtualActorClassBase:
         """Configures and overrides the actor instantiation parameters."""
 
         actor_cls = self
@@ -308,15 +307,13 @@ class VirtualActorClass(VirtualActorClassBase):
                     args=args,
                     kwargs=kwargs,
                     actor_id=actor_id,
-                    storage=storage)
+                    storage=get_global_storage())
 
         return ActorOptionWrapper()
 
     def _get_or_create(self, actor_id: str, args, kwargs,
-                       storage: Optional[Storage]) -> "VirtualActor":
+                       storage: Storage) -> "VirtualActor":
         """Create a new virtual actor"""
-        if storage is None:
-            storage = get_global_storage()
         try:
             return get_actor(actor_id, storage)
         except Exception:
@@ -351,8 +348,7 @@ class VirtualActor:
         arg_list = self._metadata.flatten_args("__init__", args, kwargs)
         init_step = _virtual_actor_init.step(self._metadata.cls, arg_list)
         init_step._step_id = self._metadata.cls.__init__.__name__
-        ref = init_step.run_async(
-            storage=self._storage, workflow_id=self._actor_id)
+        ref = init_step.run_async(workflow_id=self._actor_id)
         workflow_manager = get_or_create_management_actor()
         # keep the ref in a list to prevent dereference
         ray.get(workflow_manager.init_actor.remote(self._actor_id, [ref]))

@@ -1,4 +1,5 @@
 import logging
+import os
 import types
 from typing import Union, Optional, TYPE_CHECKING
 
@@ -8,16 +9,52 @@ from ray.experimental.workflow.step_function import WorkflowStepFunction
 # avoid collision with arguments & APIs
 from ray.experimental.workflow import virtual_actor_class
 from ray.experimental.workflow import storage as storage_base
+from ray.experimental.workflow.storage import Storage
+from ray.experimental.workflow import workflow_access
 
 if TYPE_CHECKING:
-    from ray.experimental.workflow.storage import Storage
     from ray.experimental.workflow.virtual_actor_class import (
         VirtualActorClass, VirtualActor)
 
 logger = logging.getLogger(__name__)
 
-# TODO(suquark): Update the storage interface (e.g., passing it through
-# context instead of argument).
+
+def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
+    """Initialize workflow.
+
+    Args:
+        storage: The external storage URL or a custom storage class. If not
+            specified, ``/tmp/ray/workflow_data`` will be used.
+    """
+    if storage is None:
+        storage = os.environ.get("RAY_WORKFLOW_STORAGE")
+    if storage is None:
+        # We should use get_temp_dir_path, but for ray client, we don't
+        # have this one. We need a flag to tell whether it's a client
+        # or a driver to use the right dir.
+        # For now, just use /tmp/ray/workflow_data
+        logger.warning("Using default local dir: `/tmp/ray/workflow_data`. "
+                       "This should only be used for testing purposes.")
+        storage = "file:///tmp/ray/workflow_data"
+    if isinstance(storage, str):
+        storage = storage_base.create_storage(storage)
+    elif not isinstance(storage, Storage):
+        raise TypeError("'storage' should be None, str, or Storage type.")
+    try:
+        _storage = storage_base.get_global_storage()
+    except RuntimeError:
+        pass
+    else:
+        # we have to use the 'else' branch because we would raise a
+        # runtime error, but we do not want to be captured by 'except'
+        if _storage.storage_url == storage.storage_url:
+            logger.warning("Calling 'workflow.init()' again with the same "
+                           "storage.")
+        else:
+            raise RuntimeError("Calling 'workflow.init()' again with a "
+                               "different storage")
+    storage_base.set_global_storage(storage)
+    workflow_access.init_management_actor()
 
 
 def step(func: types.FunctionType) -> WorkflowStepFunction:
@@ -85,26 +122,20 @@ class _VirtualActorDecorator:
 virtual_actor = _VirtualActorDecorator()
 
 
-def get_actor(actor_id: str, storage: "Optional[Union[str, Storage]]" = None
-              ) -> "VirtualActor":
+def get_actor(actor_id: str) -> "VirtualActor":
     """Get an virtual actor.
 
     Args:
         actor_id: The ID of the actor.
-        storage: The storage of the actor.
 
     Returns:
         A virtual actor.
     """
-    if storage is None:
-        storage = storage_base.get_global_storage()
-    elif isinstance(storage, str):
-        storage = storage_base.create_storage(storage)
-    return virtual_actor_class.get_actor(actor_id, storage)
+    return virtual_actor_class.get_actor(actor_id,
+                                         storage_base.get_global_storage())
 
 
-def resume(workflow_id: str,
-           storage: "Optional[Union[str, Storage]]" = None) -> ray.ObjectRef:
+def resume(workflow_id: str) -> ray.ObjectRef:
     """Resume a workflow.
 
     Resume a workflow and retrieve its output. If the workflow was incomplete,
@@ -118,13 +149,11 @@ def resume(workflow_id: str,
 
     Args:
         workflow_id: The id of the workflow to resume.
-        storage: The external storage URL or a custom storage class. If not
-            specified, ``/tmp/ray/workflow_data`` will be used.
 
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
-    return execution.resume(workflow_id, storage)
+    return execution.resume(workflow_id)
 
 
 def get_output(workflow_id: str) -> ray.ObjectRef:

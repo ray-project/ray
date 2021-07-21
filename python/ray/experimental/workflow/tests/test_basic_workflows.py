@@ -158,11 +158,6 @@ def test_run_or_resume_during_running(workflow_start_regular_shared):
     assert ray.get(output) == "[source1][append1][append2]"
 
 
-@pytest.mark.parametrize(
-    "workflow_start_regular_shared", [{
-        "namespace": "workflow"
-    }],
-    indirect=True)
 def test_step_failure(workflow_start_regular_shared, tmp_path):
     (tmp_path / "test").write_text("0")
 
@@ -193,10 +188,15 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
 
 @pytest.mark.parametrize(
     "workflow_start_regular_shared", [{
+
         "namespace": "workflow",
         "num_cpus": 2,
     }],
     indirect=True)
+=======
+        "num_cpus": 2,
+    }], indirect=True)
+>>>>>>> update_workflow_storage
 def test_step_resources(workflow_start_regular_shared, tmp_path):
     lock_path = str(tmp_path / "lock")
 
