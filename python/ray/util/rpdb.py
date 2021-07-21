@@ -190,11 +190,15 @@ def connect_ray_pdb(host=None,
                     port=None,
                     patch_stdstreams=False,
                     quiet=None,
-                    breakpoint_uuid=None):
+                    breakpoint_uuid=None,
+                    debugger_external=False):
     """
     Opens a remote PDB on first available port.
     """
-    if host is None:
+    if debugger_external:
+        assert not host, "Cannot specify both host and debugger_external"
+        host = "0.0.0.0"
+    elif host is None:
         host = os.environ.get("REMOTE_PDB_HOST", "127.0.0.1")
     if port is None:
         port = int(os.environ.get("REMOTE_PDB_PORT", "0"))
@@ -209,7 +213,11 @@ def connect_ray_pdb(host=None,
         patch_stdstreams=patch_stdstreams,
         quiet=quiet)
     sockname = rdb._listen_socket.getsockname()
-    pdb_address = "{}:{}".format(sockname[0], sockname[1])
+    if debugger_external:
+        node_ip_address = ray.worker.global_worker.node_ip_address
+        pdb_address = "{}:{}".format(node_ip_address, sockname[1])
+    else:
+        pdb_address = "{}:{}".format(sockname[0], sockname[1])
     parentframeinfo = inspect.getouterframes(inspect.currentframe())[2]
     data = {
         "proctitle": setproctitle.getproctitle(),
