@@ -8,11 +8,11 @@ import time
 
 import subprocess
 
+from pathlib import Path
 from unittest import mock
 import ray
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 from ray._private.runtime_env import RuntimeEnvDict
-from ray.job_config import JobConfig
 from ray.test_utils import (run_string_as_driver,
                             run_string_as_driver_nonblocking)
 
@@ -618,7 +618,7 @@ def test_env_installation_nonblocking(shutdown_only):
     """Test fix for https://github.com/ray-project/ray/issues/16226."""
     env1 = {"pip": ["pip-install-test==0.5"]}
 
-    ray.init(jruntime_env=env1)
+    ray.init(runtime_env=env1)
 
     @ray.remote
     def f():
@@ -686,6 +686,149 @@ def test_simultaneous_install(shutdown_only):
 
     assert ray.get(tf1.get_version.remote()) == "2.4.2"
     assert ray.get(tf2.get_version.remote()) == "2.5.0"
+
+
+CLIENT_SERVER_PORT = 24001
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.")
+@pytest.mark.parametrize(
+    "call_ray_start", [
+        f"ray start --head --ray-client-server-port {CLIENT_SERVER_PORT}"
+        " --port 0"
+    ],
+    indirect=True)
+def test_e2e_complex(call_ray_start, tmp_path):
+    """Test multiple runtime_env options across multiple client connections.
+    
+    1.  Run a Ray Client job with both working_dir and pip specified. Check the
+        environment using imports and file reads in tasks and actors.
+    2.  On the same cluster, run a job as above but using the Ray Summit
+        2021 demo's pip requirements.txt.  Also, check that per-task and
+        per-actor pip requirements work.
+    """
+    # Create a file to use to test working_dir
+    specific_path = tmp_path / "test"
+    specific_path.write_text("Hello")
+
+    with ray.client(f"localhost:{CLIENT_SERVER_PORT}").env({
+            "working_dir": str(tmp_path),
+            "pip": ["pip-install-test"]
+    }).connect():
+
+        # Test that a task is started in the working_dir.
+        @ray.remote
+        def test_read():
+            return Path("./test").read_text()
+
+        assert ray.get(test_read.remote()) == "Hello"
+
+        # Check a task has the job's pip requirements and working_dir.
+        @ray.remote
+        def test_pip():
+            import pip_install_test  # noqa
+            import ray  # noqa
+
+            return Path("./test").read_text()
+
+        assert ray.get(test_pip.remote()) == "Hello"
+
+        # Check an actor has the job's pip requirements and working_dir.
+        @ray.remote
+        class TestActor:
+            def test(self):
+                import pip_install_test  # noqa
+
+                return Path("./test").read_text()
+
+        a = TestActor.remote()
+        assert ray.get(a.test.remote()) == "Hello"
+
+    # pip requirements file from Ray Summit 2021 demo.
+    requirement_path = tmp_path / "requirements.txt"
+    requirement_path.write_text("\n".join([
+        "ray[serve, tune]",
+        "texthero",
+        "PyGithub",
+        "xgboost_ray",
+        "pandas==1.2.4",
+        "typer",
+        "aiofiles",
+    ]))
+
+    # Start a new job on the same cluster using the Summit 2021 requirements.
+    with ray.client(f"localhost:{CLIENT_SERVER_PORT}").env({
+            "working_dir": str(tmp_path),
+            "pip": "requirements.txt"
+    }).connect():
+
+        @ray.remote
+        def test_read():
+            return Path("./test").read_text()
+
+        assert ray.get(test_read.remote()) == "Hello"
+
+        # Check that a task has the job's pip requirements and working_dir.
+        @ray.remote
+        def test_import():
+            import ray  # noqa
+            from ray import serve  # noqa
+            from ray import tune  # noqa
+            import typer  # noqa
+            import xgboost_ray  # noqa
+
+            return Path("./test").read_text()
+
+        assert ray.get(test_import.remote() == "Hello")
+
+        # Check that an actor has the job's pip requirements and working_dir.
+        @ray.remote
+        class TestActor:
+            def test(self):
+                import ray  # noqa
+                from ray import serve  # noqa
+                from ray import tune  # noqa
+                import typer  # noqa
+                import xgboost_ray  # noqa
+
+                return Path("./test").read_text()
+
+        a = TestActor.options(runtime_env={"pip": "requirements.txt"}).remote()
+        assert ray.get(a.test.remote()) == "Hello"
+
+        # Check that per-task pip specification works and that the job's
+        # working_dir is still inherited.
+        @ray.remote
+        def test_pip():
+            import pip_install_test  # noqa
+
+            return Path("./test").read_text()
+
+        assert ray.get(
+            test_pip.options(runtime_env={
+                "pip": ["pip-install-test"]
+            }).remote()) == "Hello"
+
+        # Check that pip_install_test is not in the job's pip requirements.
+        with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+            ray.get(test_pip.remote())
+        assert "ModuleNotFoundError" in str(excinfo.value)
+
+        # Check that per-actor pip specification works and that the job's
+        # working_dir is still inherited.
+        @ray.remote
+        class TestActor:
+            def test(self):
+                import pip_install_test  # noqa
+
+                return Path("./test").read_text()
+
+        a = TestActor.options(runtime_env={
+            "pip": ["pip-install-test"]
+        }).remote()
+        assert ray.get(a.test.remote()) == "Hello"
 
 
 if __name__ == "__main__":
