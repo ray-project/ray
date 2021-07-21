@@ -84,7 +84,7 @@ raylet::RayletClient::RayletClient(
     instrumented_io_context &io_service,
     std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
     const std::string &raylet_socket, const WorkerID &worker_id,
-    rpc::WorkerType worker_type, const JobID &job_id, const int &runtime_env_hash,
+    rpc::WorkerType worker_type, const JobID &job_id, const int64_t &runtime_env_hash,
     const Language &language, const std::string &ip_address, Status *status,
     NodeID *raylet_id, int *port, std::string *serialized_job_config,
     pid_t worker_shim_pid)
