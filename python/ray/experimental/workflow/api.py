@@ -146,7 +146,8 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     complete, returns the result immediately.
 
     Examples:
-        >>> res1 = workflow.run(trip, workflow_id="trip1")
+        >>> trip = start_trip.step()
+        >>> res1 = trip.async_run(workflow_id="trip1")
         >>> res2 = workflow.resume("trip1")
         >>> assert ray.get(res1) == ray.get(res2)
 
@@ -166,7 +167,8 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
         workflow_id: The ID of the running workflow job.
 
     Examples:
-        >>> res1 = workflow.run(trip, workflow_id="trip1")
+        >>> trip = start_trip.step()
+        >>> res1 = trip.async_run(workflow_id="trip1")
         >>> # you could "get_output()" in another machine
         >>> res2 = workflow.get_output("trip1")
         >>> assert ray.get(res1) == ray.get(res2)
@@ -177,24 +179,57 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
     return execution.get_output(workflow_id)
 
 
-def list_all(status_filter: Optional[Set[WorkflowStatus]]
-             ) -> List[Tuple[str, WorkflowStatus]]:
+def list_all(
+    status_filter: Optional[Union[WorkflowStatus, Set[WorkflowStatus]]]
+    ) -> List[Tuple[str, WorkflowStatus]]:
     """List the workflow status. If status is given, it'll filter by that.
 
     Args:
         status: If given, only return workflow with that status.
 
+    Examples:
+        >>> workflow_step = long_running_job.step()
+        >>> wf = workflow_step.async_run(workflow_id="long_running_job")
+        >>> jobs = workflow.list_all()
+        >>> assert jobs == [("long_running_job", workflow.RUNNING)]
+        >>> ray.get(wf)
+        >>> jobs = workflow.list_all({workflow.RUNNING})
+        >>> assert jobs == []
+        >>> jobs = workflow.list_all(workflow.FINISHED)
+        >>> assert jobs == [("long_running_job", workflow.FINISHED)]
+
     Returns:
         A list of tuple with workflow id and workflow status
     """
+    if isinstance(status_filter, WorkflowStatus):
+        status_filter = set({status_filter})
+    elif isinstance(status_filter, set):
+        if not all([isinstance(s, WorkflowStatus) for s in status_filter]):
+            raise TypeError("status_filter contains element which is not"
+                            " a type of `WorkflowStatus`."
+                            f" {status_filter}")
+    elif status_filter is not None:
+        raise TypeError("status_filter must be WorkflowStatus or a set of WorkflowStatus.")
     return execution.list_all(status_filter)
 
 
-def resume_all() -> List[Tuple[str, WorkflowStatus]]:
-    """Resume all failed workflow jobs.
+def resume_all() -> List[Tuple[str, ray.ObjectRef]]:
+    """Resume all resumable workflow jobs.
+
+    Examples:
+        >>> workflow_step = failed_job.step()
+        >>> output = workflow_step.async_run(workflow_id="failed_job")
+        >>> try:
+        >>>     ray.get(output)
+        >>> except Exception:
+        >>>     print("JobFailed")
+        >>> jobs = workflow.list_all()
+        >>> assert jobs == [("failed_job", workflow.RESUMABLE)]
+        >>> (job_id, ret_obj) = workflow.resume_all()[0]
+        >>> assert job_id == "failed_job"
 
     Returns:
-        Workflow resumed.
+        Workflow resumed. It'll be a list of (workflow_id, returned_obj_ref).
     """
     return execution.resume_all()
 
@@ -204,6 +239,11 @@ def get_status(workflow_id: str) -> WorkflowStatus:
 
     Args:
         workflow_id: The workflow id
+
+    Examples:
+        >>> workflow_step = trip.step()
+        >>> output = workflow_step.run(workflow_id="trip")
+        >>> assert workflow.FINISHED == workflow.get_status("trip")
 
     Returns:
         The status of that workflow
@@ -215,6 +255,15 @@ def get_status(workflow_id: str) -> WorkflowStatus:
 
 def cancel(workflow_id: str) -> None:
     """Cancel a workflow.
+
+    Args:
+        workflow_id: The workflow to cancel
+
+    Examples:
+        >>> workflow_step = some_job.step()
+        >>> output = workflow_step.async_run(workflow_id="some_job")
+        >>> workflow.cancel(workflow_id="some_job")
+        >>> assert [("some_job", workflow.CANCELED)] == workflow.list_all()
 
     Returns:
         None
