@@ -366,6 +366,7 @@ class RolloutWorker(ParallelIteratorWorker):
         env_context = EnvContext(
             env_config or {}, worker_index, num_workers=num_workers)
         self.env_context = env_context
+        self.policy_config: TrainerConfigDict = policy_config
         if callbacks:
             self.callbacks: "DefaultCallbacks" = callbacks()
         else:
