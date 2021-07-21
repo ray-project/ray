@@ -391,8 +391,10 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
       buffer_pool_.CreateObjectReader(object_id, owner_address);
   Status status = reader_status.second;
   if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to read object " << object_id
-                   << "from Plasma store. It may have been evicted.";
+    RAY_LOG_EVERY_N(INFO, 100)
+        << "Ignoring stale read request for already deleted object: " << object_id;
+    RAY_LOG(DEBUG) << "Ignoring stale read request for already deleted object: "
+                   << object_id;
     return;
   }
 
@@ -434,8 +436,10 @@ void ObjectManager::PushFromFilesystem(const ObjectID &object_id, const NodeID &
         auto optional_spilled_object =
             SpilledObjectReader::CreateSpilledObjectReader(spilled_url);
         if (!optional_spilled_object.has_value()) {
-          RAY_LOG(ERROR) << "Failed to load spilled object " << object_id
-                         << ". It may have been evicted.";
+          RAY_LOG_EVERY_N(INFO, 100)
+              << "Ignoring stale read request for already deleted object: " << object_id;
+          RAY_LOG(DEBUG) << "Ignoring stale read request for already deleted object: "
+                         << object_id;
           return;
         }
         auto chunk_object_reader = std::make_shared<ChunkObjectReader>(
