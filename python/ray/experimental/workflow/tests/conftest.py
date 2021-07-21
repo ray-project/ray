@@ -5,11 +5,11 @@ import ray
 from moto import mock_s3
 from mock_server import *  # noqa
 from ray.experimental import workflow
-from ray.experimental.workflow import storage
 from pytest_lazyfixture import lazy_fixture
 import tempfile
 from ray.tests.conftest import get_default_fixture_ray_kwargs
 import os
+
 
 @pytest.fixture(scope="session")
 def filesystem_storage():
@@ -19,7 +19,6 @@ def filesystem_storage():
 
 @pytest.fixture(scope="session")
 def aws_credentials():
-    import os
     old_env = os.environ
     os.environ["AWS_ACCESS_KEY_ID"] = "testing"
     os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
