@@ -130,8 +130,7 @@ class WorkflowManagementActor:
                              "already exists.")
         output = recovery.resume_workflow_job(workflow_id, self._store)
         self._workflow_outputs[workflow_id] = output
-        store = storage.create_storage(storage_url)
-        wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         wf_store.save_workflow_meta(
             common.WorkflowMeta(common.WorkflowStatus.RUNNING))
         self._step_status[workflow_id] = {}

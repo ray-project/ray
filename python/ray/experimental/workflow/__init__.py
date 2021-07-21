@@ -1,7 +1,15 @@
-from ray.experimental.workflow.api import (step, virtual_actor, resume,
-                                           list_all, get_output, get_actor,
-                                           cancel, get_status, resume_all)
-                                           get_output, get_actor, init)
+from ray.experimental.workflow.api import (
+    step,
+    init,
+    virtual_actor,
+    get_output,
+    get_actor,
+    get_status,
+    resume,
+    cancel,
+    list_all,
+    resume_all,
+)
 from ray.experimental.workflow.workflow_access import WorkflowExecutionError
 from ray.experimental.workflow.common import WorkflowStatus
 

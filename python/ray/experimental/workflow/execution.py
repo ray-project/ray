@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import List, Tuple, Union, Optional
+from typing import List, Tuple, Optional
 
 import ray
 
@@ -9,8 +9,7 @@ from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.common import (Workflow, WorkflowStatus,
                                               WorkflowMeta)
 from ray.experimental.workflow.step_executor import commit_step
-from ray.experimental.workflow.storage import (Storage, create_storage,
-                                               get_global_storage)
+from ray.experimental.workflow.storage import get_global_storage
 from ray.experimental.workflow.workflow_access import (
     MANAGEMENT_ACTOR_NAME, flatten_workflow_output,
     get_or_create_management_actor)
@@ -30,7 +29,7 @@ def run(entry_workflow: Workflow,
                 f"\"{store.storage_url}\"].")
 
     # checkpoint the workflow
-    ws = workflow_storage.WorkflowStorage(workflow_id, store)
+    ws = workflow_storage.get_workflow_storage(workflow_id)
     commit_step(ws, "", entry_workflow)
     workflow_manager = get_or_create_management_actor()
     # NOTE: It is important to 'ray.get' the returned output. This
@@ -74,21 +73,16 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
     return flatten_workflow_output(workflow_id, output)
 
 
-def cancel(workflow_id: str,
-           storage: Optional[Union[str, Storage]] = None) -> None:
+def cancel(workflow_id: str) -> None:
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
-        ray.get(
-            workflow_manager.cancel_workflow.remote(workflow_id,
-                                                    _get_storage_url(storage)))
+        ray.get(workflow_manager.cancel_workflow.remote(workflow_id))
     except ValueError:
-        store = _get_storage(storage)
-        wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
+        wf_store = workflow_storage.get_workflow_storage(workflow_id)
         wf_store.save_workflow_meta(WorkflowMeta(WorkflowStatus.CANCELED))
 
 
-def get_status(workflow_id: str, storage: Optional[Union[str, Storage]] = None
-               ) -> Optional[WorkflowStatus]:
+def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
         running = ray.get(
@@ -97,17 +91,15 @@ def get_status(workflow_id: str, storage: Optional[Union[str, Storage]] = None
         running = False
     if running:
         return WorkflowStatus.RUNNING
-    store = workflow_storage.WorkflowStorage(workflow_id,
-                                             _get_storage(storage))
+    store = workflow_storage.get_workflow_storage(workflow_id)
     meta = store.load_workflow_meta()
     if meta is None:
         return meta
     return meta.status
 
 
-def list_all(status: Optional[WorkflowStatus],
-             storage: Optional[Union[str, Storage]] = None
-             ) -> List[Tuple[str, WorkflowStatus]]:
+def list_all(
+        status: Optional[WorkflowStatus]) -> List[Tuple[str, WorkflowStatus]]:
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
     except ValueError:
@@ -120,9 +112,9 @@ def list_all(status: Optional[WorkflowStatus],
     if status == WorkflowStatus.RUNNING:
         return [(r, WorkflowStatus.RUNNING) for r in runnings]
 
-    from ray.experimental.workflow.workflow_storage import WorkflowStorage
     runnings = set(runnings)
-    store = WorkflowStorage(_get_storage(storage))
+    # Here we don't have workflow id, so use empty one instead
+    store = workflow_storage.get_workflow_storage("")
     ret = []
     for (k, s) in store.list_workflow():
         if s == WorkflowStatus.RUNNING and k not in runnings:
@@ -132,18 +124,16 @@ def list_all(status: Optional[WorkflowStatus],
     return ret
 
 
-def resume_all(storage: Optional[Union[str, Storage]] = None
-               ) -> List[Tuple[str, ray.ObjectRef]]:
+def resume_all() -> List[Tuple[str, ray.ObjectRef]]:
     all_failed = list_all(WorkflowStatus.FAILED)
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
     except Exception as e:
         raise RuntimeError("Failed to get management actor") from e
-    storage_url = _get_storage_url(storage)
 
     async def _resume_one(wid: str) -> Tuple[str, Optional[ray.ObjectRef]]:
         try:
-            obj = await workflow_manager.run_or_resume.remote(wid, storage_url)
+            obj = await workflow_manager.run_or_resume.remote(wid)
             return (wid, flatten_workflow_output(wid, obj))
         except Exception:
             logger.error(f"Failed to resume workflow {wid}")

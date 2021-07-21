@@ -341,6 +341,7 @@ class WorkflowStorage:
     def list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
         return asyncio_run(self._list_workflow())
 
+
 def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
     """Get the storage for the workflow.
 

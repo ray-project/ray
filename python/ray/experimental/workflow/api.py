@@ -1,7 +1,7 @@
 import logging
 import os
 import types
-from typing import List, Tuple, Union, Optional, TYPE_CHECKING
+from typing import List, Set, Tuple, Union, Optional, TYPE_CHECKING
 
 import ray
 from ray.experimental.workflow import execution
@@ -178,7 +178,8 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
     return execution.get_output(workflow_id)
 
 
-def list_all() -> List[Tuple[str, WorkflowStatus]]:
+def list_all(status_filter: Optional[Set[WorkflowStatus]]
+             ) -> List[Tuple[str, WorkflowStatus]]:
     """List the workflow status. If status is given, it'll filter by that.
 
     Args:
@@ -187,7 +188,7 @@ def list_all() -> List[Tuple[str, WorkflowStatus]]:
     Returns:
         A list of tuple with workflow id and workflow status
     """
-    return execution.list_all(status)
+    return execution.list_all(status_filter)
 
 
 def resume_all() -> List[Tuple[str, WorkflowStatus]]:

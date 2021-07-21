@@ -5,6 +5,7 @@ import ray
 from moto import mock_s3
 from mock_server import *  # noqa
 from ray.experimental import workflow
+from ray.experimental.workflow import storage
 from pytest_lazyfixture import lazy_fixture
 import tempfile
 from ray.tests.conftest import get_default_fixture_ray_kwargs
