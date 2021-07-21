@@ -151,6 +151,7 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id, const uint64_t chun
                    << chunk_index << " could be sealed";
     return;
   }
+  RAY_CHECK(it->second.chunk_info.size() >= chunk_index);
   auto &chunk_info = it->second.chunk_info.at(chunk_index);
   RAY_CHECK(data.size() == chunk_info.buffer_length)
       << "size mismatch!  data size: " << data.size()
