@@ -58,7 +58,7 @@ def _workflow_start(storage_url, shared, **kwargs):
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
-    storage.set_global_storage(None)
+    workflow.storage.set_global_storage(None)
 
 
 @pytest.fixture(scope="function")
