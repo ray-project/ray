@@ -61,10 +61,6 @@ def simple(x):
     return z
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "namespace": "workflow"
-    }], indirect=True)
 def test_recovery_simple(ray_start_regular):
     utils.unset_global_mark()
     workflow_id = "test_recovery_simple"
@@ -80,10 +76,6 @@ def test_recovery_simple(ray_start_regular):
     assert ray.get(output) == "foo(x[append1])[append2]"
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "namespace": "workflow"
-    }], indirect=True)
 def test_recovery_complex(ray_start_regular):
     utils.unset_global_mark()
     workflow_id = "test_recovery_complex"
@@ -101,10 +93,6 @@ def test_recovery_complex(ray_start_regular):
     assert ray.get(output) == r
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "namespace": "workflow"
-    }], indirect=True)
 def test_recovery_non_exists_workflow(ray_start_regular):
     with pytest.raises(RayTaskError):
         ray.get(workflow.resume("this_workflow_id_does_not_exist"))
@@ -127,7 +115,7 @@ def foo(x):
 
 
 if __name__ == "__main__":
-    ray.init(address="auto", namespace="workflow")
+    ray.init(address="auto")
     assert foo.step(0).run(workflow_id="cluster_failure") == 20
 """
 
@@ -140,7 +128,7 @@ def test_recovery_cluster_failure():
     subprocess.run(["ray stop"], shell=True)
     proc.kill()
     time.sleep(1)
-    ray.init(namespace="workflow")
+    ray.init()
     assert ray.get(workflow.resume("cluster_failure")) == 20
     ray.shutdown()
 
@@ -153,10 +141,6 @@ def recursive_chain(x):
         return 100
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "namespace": "workflow"
-    }], indirect=True)
 def test_shortcut(ray_start_regular):
     assert recursive_chain.step(0).run(workflow_id="shortcut") == 100
     # the shortcut points to the step with output checkpoint
@@ -175,10 +159,6 @@ def constant_2():
     return 31416
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "namespace": "workflow"
-    }], indirect=True)
 def test_resume_different_storage(ray_start_regular):
     constant_1.step().run(workflow_id="const")
     tmp_dir = tempfile.mkdtemp()

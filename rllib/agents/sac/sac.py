@@ -174,9 +174,6 @@ def validate_config(config: TrainerConfigDict) -> None:
     Raises:
         ValueError: In case something is wrong with the config.
     """
-    if config["num_gpus"] > 1 and config["framework"] != "torch":
-        raise ValueError("`num_gpus` > 1 not yet supported for tf-SAC!")
-
     if config["use_state_preprocessor"] != DEPRECATED_VALUE:
         deprecation_warning(
             old="config['use_state_preprocessor']", error=False)

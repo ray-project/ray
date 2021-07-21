@@ -2,6 +2,7 @@
 
 #include <google/protobuf/map.h>
 
+#include <boost/functional/hash.hpp>
 #include <boost/range/join.hpp>
 
 #include "ray/stats/stats.h"
@@ -66,7 +67,9 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // This argument is used to set violation, which is an unsupported feature now.
       int64_t _unused;
       std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-          placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
+          placement_resources,
+          /*requires_object_store_memory=*/false,
+          task.GetTaskSpecification().IsActorCreationTask(),
           /*force_spillback=*/false, &_unused, &is_infeasible);
 
       // There is no node that has available resources to run the request.
@@ -141,6 +144,13 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
 void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     WorkerPoolInterface &worker_pool,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
+  using job_id_runtime_env_hash_pair = std::pair<size_t, int>;
+  // TODO(simon): blocked_runtime_env_to_skip is added as a hack to make sure tasks
+  // requiring different runtime env doesn't block each other. We need to find a
+  // long term solution for this, see #17154.
+  std::unordered_set<job_id_runtime_env_hash_pair,
+                     boost::hash<job_id_runtime_env_hash_pair>>
+      blocked_runtime_env_to_skip;
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
@@ -155,6 +165,15 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       const auto &task = std::get<0>(work);
       const auto &spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
+      const auto runtime_env_worker_key =
+          std::make_pair(spec.JobId().Hash(), spec.GetRuntimeEnvHash());
+
+      // Current task and runtime env combination doesn't have an available worker,
+      // therefore skipping the task.
+      if (blocked_runtime_env_to_skip.count(runtime_env_worker_key) > 0) {
+        work_it++;
+        continue;
+      }
 
       bool args_missing = false;
       bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
@@ -231,11 +250,15 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // double-acquiring when the next invocation of this function tries to schedule
           // this task.
           cluster_resource_scheduler_->ReleaseWorkerResources(allocated_instances);
-          // No worker available, we won't be able to schedule any kind of task.
-          // Worker processes spin up pretty quickly, so it's not worth trying to spill
-          // this task.
           ReleaseTaskArgs(task_id);
-          return;
+          // It may be that no worker was available with the correct runtime env or
+          // correct job ID.  However, another task with a different env or job ID
+          // might have a worker available, so continue iterating through the queue.
+          work_it++;
+          // Keep track of runtime env that doesn't have workers available so we
+          // won't call PopWorker for subsequent tasks requiring the same runtime env.
+          blocked_runtime_env_to_skip.insert(runtime_env_worker_key);
+          continue;
         }
 
         RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
@@ -267,8 +290,9 @@ bool ClusterTaskManager::TrySpillback(const Work &work, bool &is_infeasible) {
   int64_t _unused;
   auto placement_resources = spec.GetRequiredPlacementResources().GetResourceMap();
   std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-      placement_resources, spec.IsActorCreationTask(), /*force_spillback=*/false,
-      &_unused, &is_infeasible);
+      placement_resources,
+      /*requires_object_store_memory=*/false, spec.IsActorCreationTask(),
+      /*force_spillback=*/false, &_unused, &is_infeasible);
 
   if (is_infeasible || node_id_string == self_node_id_.Binary() ||
       node_id_string.empty()) {
@@ -823,7 +847,9 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
     int64_t _unused;
     bool is_infeasible;
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
+        placement_resources,
+        /*requires_object_store_memory=*/false,
+        task.GetTaskSpecification().IsActorCreationTask(),
         /*force_spillback=*/false, &_unused, &is_infeasible);
 
     // There is no node that has available resources to run the request.
@@ -1046,6 +1072,8 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 }
 
 void ClusterTaskManager::SpillWaitingTasks() {
+  RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue, num waiting: "
+                 << waiting_task_queue_.size();
   // Try to spill waiting tasks to a remote node, prioritizing those at the end
   // of the queue. Waiting tasks are spilled if there are enough remote
   // resources AND (we have no resources available locally OR their
@@ -1061,6 +1089,7 @@ void ClusterTaskManager::SpillWaitingTasks() {
     it--;
     const auto &task = std::get<0>(*it);
     const auto &task_id = task.GetTaskSpecification().TaskId();
+
     // Check whether this task's dependencies are blocked (not being actively
     // pulled).  If this is true, then we should force the task onto a remote
     // feasible node, even if we have enough resources available locally for
@@ -1072,11 +1101,13 @@ void ClusterTaskManager::SpillWaitingTasks() {
         task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
     int64_t _unused;
     bool is_infeasible;
-    // TODO(swang): The policy currently does not account for object store
-    // memory availability. Ideally, we should pick the node with the most
-    // memory availability.
+    // TODO(swang): The policy currently does not account for the amount of
+    // object store memory availability. Ideally, we should pick the node with
+    // the most memory availability.
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
+        placement_resources,
+        /*requires_object_store_memory=*/true,
+        task.GetTaskSpecification().IsActorCreationTask(),
         /*force_spillback=*/force_spillback, &_unused, &is_infeasible);
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);
