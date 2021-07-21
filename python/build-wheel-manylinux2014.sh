@@ -25,6 +25,7 @@ NUMPY_VERSIONS=("1.14.5"
 yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
 yum -y install openssl
+yum -y install libasan
 
 java -version
 java_bin=$(readlink -f "$(command -v java)")
@@ -87,7 +88,10 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
     # build ray wheel
     PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
     /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
-    # RAY_ASAN=1 /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
+    # Build ray ASAN wheel
+    LD_PRELOAD=/usr/lib64/libasan.so.0 \
+    PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
+    RAY_ASAN=1 /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     # build ray-cpp wheel
     PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
     RAY_INSTALL_CPP=1 /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
