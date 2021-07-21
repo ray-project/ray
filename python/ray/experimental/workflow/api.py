@@ -28,6 +28,7 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
     """
     if storage is None:
         storage = os.environ.get("RAY_WORKFLOW_STORAGE")
+
     if storage is None:
         # We should use get_temp_dir_path, but for ray client, we don't
         # have this one. We need a flag to tell whether it's a client
@@ -36,10 +37,12 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
         logger.warning("Using default local dir: `/tmp/ray/workflow_data`. "
                        "This should only be used for testing purposes.")
         storage = "file:///tmp/ray/workflow_data"
+
     if isinstance(storage, str):
         storage = storage_base.create_storage(storage)
     elif not isinstance(storage, Storage):
         raise TypeError("'storage' should be None, str, or Storage type.")
+
     try:
         _storage = storage_base.get_global_storage()
     except RuntimeError:
