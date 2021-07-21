@@ -1003,7 +1003,9 @@ class AutoscalingTest(unittest.TestCase):
         runner.clear_history()
 
     def ScaleUpHelper(self, disable_node_updaters):
-        config_path = self.write_config(SMALL_CLUSTER)
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["provider"]["disable_node_updaters"] = disable_node_updaters
+        config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
@@ -1013,8 +1015,7 @@ class AutoscalingTest(unittest.TestCase):
             max_failures=0,
             process_runner=runner,
             update_interval_s=0,
-            prom_metrics=mock_metrics,
-            disable_node_updaters=disable_node_updaters)
+            prom_metrics=mock_metrics)
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
         self.waitForNodes(2)

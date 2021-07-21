@@ -96,8 +96,7 @@ class Monitor:
                  redis_password=None,
                  prefix_cluster_info=False,
                  monitor_ip=None,
-                 stop_event: Optional[Event] = None,
-                 disable_node_updaters=False):
+                 stop_event: Optional[Event] = None):
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
             redis_address, redis_password=redis_password)

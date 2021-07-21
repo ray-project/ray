@@ -80,8 +80,7 @@ class StandardAutoscaler:
             update_interval_s: int = AUTOSCALER_UPDATE_INTERVAL_S,
             prefix_cluster_info: bool = False,
             event_summarizer: Optional[EventSummarizer] = None,
-            prom_metrics: Optional[AutoscalerPrometheusMetrics] = None,
-            disable_node_updaters: bool = False):
+            prom_metrics: Optional[AutoscalerPrometheusMetrics] = None):
         """Create a StandardAutoscaler.
 
         Args:
@@ -98,8 +97,6 @@ class StandardAutoscaler:
         prefix_cluster_info: Whether to add the cluster name to info strings.
         event_summarizer: Utility to consolidate duplicated messages.
         prom_metrics: Prometheus metrics for autoscaler-related operations.
-        disable_node_updaters: Disables node updaters if True.
-            (For Kubernetes operator usage.)
         """
 
         self.config_path = config_path
@@ -135,7 +132,8 @@ class StandardAutoscaler:
         # Disable NodeUpdater threads if true.
         # Should be set to true in situations where another component, such as
         # a Kubernetes operator, is responsible for Ray setup on nodes.
-        self.disable_node_updaters = disable_node_updaters
+        self.disable_node_updaters = self.config["provider"].get(
+            "disable_node_updaters", False)
 
         # Node launchers
         self.launch_queue = queue.Queue()
