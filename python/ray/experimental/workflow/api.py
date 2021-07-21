@@ -180,8 +180,8 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
 
 
 def list_all(
-    status_filter: Optional[Union[WorkflowStatus, Set[WorkflowStatus]]]
-    ) -> List[Tuple[str, WorkflowStatus]]:
+        status_filter: Optional[Union[WorkflowStatus, Set[WorkflowStatus]]]
+) -> List[Tuple[str, WorkflowStatus]]:
     """List the workflow status. If status is given, it'll filter by that.
 
     Args:
@@ -209,7 +209,8 @@ def list_all(
                             " a type of `WorkflowStatus`."
                             f" {status_filter}")
     elif status_filter is not None:
-        raise TypeError("status_filter must be WorkflowStatus or a set of WorkflowStatus.")
+        raise TypeError(
+            "status_filter must be WorkflowStatus or a set of WorkflowStatus.")
     return execution.list_all(status_filter)
 
 
