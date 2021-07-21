@@ -93,7 +93,7 @@ class ObjectBufferPool {
   /// chunk at chunk_index. Multiple threads attempting to create the same object
   /// chunk will result in one succeeding. The ObjectManager is responsible for
   /// handling create failures. This method will fail if it's invoked on a chunk_index
-  /// on which SealChunk has already been invoked.
+  /// on which WriteChunk has already been invoked.
   ///
   /// \param object_id The ObjectID.
   /// \param owner_address The address of the object's owner.
@@ -117,15 +117,17 @@ class ObjectBufferPool {
   /// \param chunk_index The index of the chunk.
   void AbortCreateChunk(const ObjectID &object_id, uint64_t chunk_index);
 
-  /// Seal the object associated with a create operation. This is invoked whenever
-  /// a chunk is successfully written to.
+  /// Write to a Chunk of an object.
+  ///
   /// This method will fail if it's invoked on a chunk_index on which
   /// CreateChunk was not first invoked, or a chunk_index on which
-  /// SealChunk or AbortCreateChunk has already been invoked.
+  /// WriteChunk has already been invoked.
   ///
   /// \param object_id The ObjectID.
   /// \param chunk_index The index of the chunk.
-  void SealChunk(const ObjectID &object_id, uint64_t chunk_index);
+  /// \param data The data to write into the chunk.
+  void WriteChunk(const ObjectID &object_id, uint64_t chunk_index,
+                  const std::string &data);
 
   /// Free a list of objects from object store.
   ///
