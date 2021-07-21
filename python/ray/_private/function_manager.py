@@ -19,7 +19,7 @@ from ray import ray_constants
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray._private.utils import (
-    check_oversized_pickle,
+    check_oversized_function,
     decode,
     ensure_str,
     format_error_message,
@@ -136,9 +136,9 @@ class FunctionActorManager:
         function = remote_function._function
         pickled_function = pickle.dumps(function)
 
-        check_oversized_pickle(pickled_function,
-                               remote_function._function_name,
-                               "remote function", self._worker)
+        check_oversized_function(pickled_function,
+                                 remote_function._function_name,
+                                 "remote function", self._worker)
         key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
                + remote_function._function_descriptor.function_id.binary())
         self._worker.redis_client.hset(
@@ -195,14 +195,11 @@ class FunctionActorManager:
                 # of the failure.
                 traceback_str = format_error_message(traceback.format_exc())
                 # Log the error message.
-                push_error_to_driver(
-                    self._worker,
-                    ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
-                    "Failed to unpickle the remote function "
-                    f"'{function_name}' with "
-                    f"function ID {function_id.hex()}. "
-                    f"Traceback:\n{traceback_str}",
-                    job_id=job_id)
+                logger.debug("Failed to unpickle the remote function "
+                             f"'{function_name}' with "
+                             f"function ID {function_id.hex()}. "
+                             f"Job ID:{job_id}."
+                             f"Traceback:\n{traceback_str}. ")
             else:
                 # The below line is necessary. Because in the driver process,
                 # if the function is defined in the file where the python
@@ -268,7 +265,11 @@ class FunctionActorManager:
         )
         try:
             module = importlib.import_module(module_name)
-            function = getattr(module, function_name)._function
+            parts = [part for part in function_name.split(".") if part]
+            object = module
+            for part in parts:
+                object = getattr(object, part)
+            function = object._function
             self._function_execution_info[job_id][function_id] = (
                 FunctionExecutionInfo(
                     function=function,
@@ -278,7 +279,8 @@ class FunctionActorManager:
             self._num_task_executions[job_id][function_id] = 0
         except Exception as e:
             raise RuntimeError(f"Function {function_descriptor} failed "
-                               "to be loaded from local code. "
+                               "to be loaded from local code.\n"
+                               f"sys.path: {sys.path}, "
                                f"Error message: {str(e)}")
 
     def _wait_for_function(self, function_descriptor, job_id, timeout=10):
@@ -356,7 +358,8 @@ class FunctionActorManager:
         key = (b"ActorClass:" + job_id.binary() + b":" +
                actor_creation_function_descriptor.function_id.binary())
         actor_class_info = {
-            "class_name": actor_creation_function_descriptor.class_name,
+            "class_name": actor_creation_function_descriptor.class_name.split(
+                ".")[-1],
             "module": actor_creation_function_descriptor.module_name,
             "class": pickle.dumps(Class),
             "job_id": job_id.binary(),
@@ -364,9 +367,9 @@ class FunctionActorManager:
             "actor_method_names": json.dumps(list(actor_method_names))
         }
 
-        check_oversized_pickle(actor_class_info["class"],
-                               actor_class_info["class_name"], "actor",
-                               self._worker)
+        check_oversized_function(actor_class_info["class"],
+                                 actor_class_info["class_name"], "actor",
+                                 self._worker)
 
         self._publish_actor_class_to_key(key, actor_class_info)
         # TODO(rkn): Currently we allow actor classes to be defined
@@ -443,14 +446,18 @@ class FunctionActorManager:
             actor_creation_function_descriptor.class_name)
         try:
             module = importlib.import_module(module_name)
-            actor_class = getattr(module, class_name)
-            if isinstance(actor_class, ray.actor.ActorClass):
-                return actor_class.__ray_metadata__.modified_class
+            parts = [part for part in class_name.split(".") if part]
+            object = module
+            for part in parts:
+                object = getattr(object, part)
+            if isinstance(object, ray.actor.ActorClass):
+                return object.__ray_metadata__.modified_class
             else:
-                return actor_class
+                return object
         except Exception as e:
             raise RuntimeError(
-                f"Actor {class_name} failed to be imported from local code."
+                f"Actor {class_name} failed to be imported from local code.\n"
+                f"sys.path: {sys.path}, "
                 f"Error Message: {str(e)}")
 
     def _create_fake_actor_class(self, actor_class_name, actor_method_names):

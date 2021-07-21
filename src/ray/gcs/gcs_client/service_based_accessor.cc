@@ -127,6 +127,20 @@ Status ServiceBasedJobInfoAccessor::AsyncGetAll(
   return Status::OK();
 }
 
+Status ServiceBasedJobInfoAccessor::AsyncGetNextJobID(
+    const ItemCallback<JobID> &callback) {
+  RAY_LOG(DEBUG) << "Getting next job id";
+  rpc::GetNextJobIDRequest request;
+  client_impl_->GetGcsRpcClient().GetNextJobID(
+      request, [callback](const Status &status, const rpc::GetNextJobIDReply &reply) {
+        RAY_CHECK_OK(status);
+        auto job_id = JobID::FromInt(reply.job_id());
+        callback(job_id);
+        RAY_LOG(DEBUG) << "Finished getting next job id = " << job_id;
+      });
+  return Status::OK();
+}
+
 ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
@@ -166,10 +180,12 @@ Status ServiceBasedActorInfoAccessor::AsyncGetAll(
 }
 
 Status ServiceBasedActorInfoAccessor::AsyncGetByName(
-    const std::string &name, const OptionalItemCallback<rpc::ActorTableData> &callback) {
+    const std::string &name, const std::string &ray_namespace,
+    const OptionalItemCallback<rpc::ActorTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting actor info, name = " << name;
   rpc::GetNamedActorInfoRequest request;
   request.set_name(name);
+  request.set_ray_namespace(ray_namespace);
   client_impl_->GetGcsRpcClient().GetNamedActorInfo(
       request,
       [name, callback](const Status &status, const rpc::GetNamedActorInfoReply &reply) {
@@ -180,6 +196,21 @@ Status ServiceBasedActorInfoAccessor::AsyncGetByName(
         }
         RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
                        << ", name = " << name;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedActorInfoAccessor::AsyncListNamedActors(
+    bool all_namespaces, const std::string &ray_namespace,
+    const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback) {
+  RAY_LOG(DEBUG) << "Listing actors";
+  rpc::ListNamedActorsRequest request;
+  request.set_all_namespaces(all_namespaces);
+  request.set_ray_namespace(ray_namespace);
+  client_impl_->GetGcsRpcClient().ListNamedActors(
+      request, [callback](const Status &status, const rpc::ListNamedActorsReply &reply) {
+        callback(VectorFromProtobuf(reply.named_actors_list()));
+        RAY_LOG(DEBUG) << "Finished getting named actor names, status = " << status;
       });
   return Status::OK();
 }
@@ -1483,11 +1514,12 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncGet(
 }
 
 Status ServiceBasedPlacementGroupInfoAccessor::AsyncGetByName(
-    const std::string &name,
+    const std::string &name, const std::string &ray_namespace,
     const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting named placement group info, name = " << name;
   rpc::GetNamedPlacementGroupRequest request;
   request.set_name(name);
+  request.set_ray_namespace(ray_namespace);
   client_impl_->GetGcsRpcClient().GetNamedPlacementGroup(
       request, [name, callback](const Status &status,
                                 const rpc::GetNamedPlacementGroupReply &reply) {
@@ -1530,6 +1562,77 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncWaitUntilReady(
         RAY_LOG(DEBUG)
             << "Finished waiting placement group until ready, placement group id = "
             << placement_group_id;
+      });
+  return Status::OK();
+}
+
+ServiceBasedInternalKVAccessor::ServiceBasedInternalKVAccessor(
+    ServiceBasedGcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVGet(
+    const std::string &key, const OptionalItemCallback<std::string> &callback) {
+  rpc::InternalKVGetRequest req;
+  req.set_key(key);
+  client_impl_->GetGcsRpcClient().InternalKVGet(
+      req, [callback](const Status &status, const rpc::InternalKVGetReply &reply) {
+        if (reply.status().code() == (int)StatusCode::NotFound) {
+          callback(status, boost::none);
+        } else {
+          callback(status, reply.value());
+        }
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVPut(
+    const std::string &key, const std::string &value, bool overwrite,
+    const OptionalItemCallback<int> &callback) {
+  rpc::InternalKVPutRequest req;
+  req.set_key(key);
+  req.set_value(value);
+  req.set_overwrite(overwrite);
+  client_impl_->GetGcsRpcClient().InternalKVPut(
+      req, [callback](const Status &status, const rpc::InternalKVPutReply &reply) {
+        callback(status, reply.added_num());
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVExists(
+    const std::string &key, const OptionalItemCallback<bool> &callback) {
+  rpc::InternalKVExistsRequest req;
+  req.set_key(key);
+  client_impl_->GetGcsRpcClient().InternalKVExists(
+      req, [callback](const Status &status, const rpc::InternalKVExistsReply &reply) {
+        callback(status, reply.exists());
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVDel(
+    const std::string &key, const StatusCallback &callback) {
+  rpc::InternalKVDelRequest req;
+  req.set_key(key);
+  client_impl_->GetGcsRpcClient().InternalKVDel(
+      req, [callback](const Status &status, const rpc::InternalKVDelReply &reply) {
+        callback(status);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedInternalKVAccessor::AsyncInternalKVKeys(
+    const std::string &prefix,
+    const OptionalItemCallback<std::vector<std::string>> &callback) {
+  rpc::InternalKVKeysRequest req;
+  req.set_prefix(prefix);
+  client_impl_->GetGcsRpcClient().InternalKVKeys(
+      req, [callback](const Status &status, const rpc::InternalKVKeysReply &reply) {
+        if (!status.ok()) {
+          callback(status, boost::none);
+        } else {
+          callback(status, VectorFromProtobuf(reply.results()));
+        }
       });
   return Status::OK();
 }

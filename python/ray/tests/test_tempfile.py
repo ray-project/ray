@@ -77,12 +77,11 @@ def test_raylet_tempfiles(shutdown_only):
     node = ray.worker._global_node
     top_levels = set(os.listdir(node.get_session_dir_path()))
     assert top_levels.issuperset({"sockets", "logs"})
-    log_files = set(os.listdir(node.get_logs_dir_path()))
     log_files_expected = {
-        "log_monitor.log", "plasma_store.out", "plasma_store.err",
-        "monitor.log", "redis-shard_0.out", "redis-shard_0.err", "redis.out",
-        "redis.err", "raylet.out", "raylet.err", "gcs_server.out",
-        "gcs_server.err", "dashboard.log", "dashboard_agent.log"
+        "log_monitor.log", "monitor.log", "redis-shard_0.out",
+        "redis-shard_0.err", "redis.out", "redis.err", "raylet.out",
+        "raylet.err", "gcs_server.out", "gcs_server.err", "dashboard.log",
+        "dashboard_agent.log"
     }
 
     def check_all_log_file_exists():
@@ -121,7 +120,9 @@ def test_raylet_tempfiles(shutdown_only):
 
 
 def test_tempdir_privilege(shutdown_only):
-    os.chmod(ray._private.utils.get_ray_temp_dir(), 0o000)
+    tmp_dir = ray._private.utils.get_ray_temp_dir()
+    os.makedirs(tmp_dir, exist_ok=True)
+    os.chmod(tmp_dir, 0o000)
     ray.init(num_cpus=1)
     session_dir = ray.worker._global_node.get_session_dir_path()
     assert os.path.exists(session_dir), "Specified socket path not found."

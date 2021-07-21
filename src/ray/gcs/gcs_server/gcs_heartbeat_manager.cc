@@ -51,7 +51,8 @@ void GcsHeartbeatManager::Start() {
         if (!is_started_) {
           periodical_runner_.RunFnPeriodically(
               [this] { DetectDeadNodes(); },
-              RayConfig::instance().raylet_heartbeat_period_milliseconds());
+              RayConfig::instance().raylet_heartbeat_period_milliseconds(),
+              "GcsHeartbeatManager.deadline_timer.detect_dead_nodes");
           is_started_ = true;
         }
       },

@@ -2,7 +2,7 @@ import numpy as np
 import time
 
 import ray
-from ray._private.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.internal.internal_api import memory_summary
 
 # Unique strings.
@@ -132,15 +132,16 @@ def test_actor_task_refs(ray_start_regular):
     x_id = actor.f.remote(np.zeros(100000))
     info = ray.get(x_id)
     print(info)
-    assert num_objects(info) == 4, info
+    # Note, the actor will always hold a handle to the actor itself.
+    assert num_objects(info) == 5, info
     # Actor handle, task argument id, task return id.
     assert count(info, ACTOR_TASK_CALL_OBJ) == 3, info
     assert count(info, DRIVER_PID) == 3, info
-    assert count(info, WORKER_PID) == 1, info
+    assert count(info, WORKER_PID) == 2, info
     assert count(info, LOCAL_REF) == 1, info
     assert count(info, PINNED_IN_MEMORY) == 1, info
     assert count(info, USED_BY_PENDING_TASK) == 1, info
-    assert count(info, ACTOR_HANDLE) == 1, info
+    assert count(info, ACTOR_HANDLE) == 2, info
     assert count(info, DESER_ACTOR_TASK_ARG) == 1, info
     del x_id
 
@@ -267,7 +268,7 @@ def test_memory_used_output(ray_start_regular):
     info = memory_summary(address)
     print(info)
     assert count(info, "Plasma memory usage 8 MiB") == 1, info
-    assert count(info, "8388861 B") == 2, info
+    assert count(info, "8388861.0 B") == 2, info
 
 
 if __name__ == "__main__":

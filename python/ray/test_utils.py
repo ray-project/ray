@@ -6,15 +6,18 @@ import os
 import subprocess
 import sys
 import time
+import timeit
 import socket
 import math
-
+import traceback
+from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
 
 import ray
 import ray._private.services
 import ray._private.utils
+from ray.util.queue import Queue, _QueueActor, Empty
 import requests
 from prometheus_client.parser import text_string_to_metric_families
 from ray.scripts.scripts import main as ray_main
@@ -178,11 +181,12 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
-def run_string_as_driver(driver_script):
+def run_string_as_driver(driver_script: str, env: Dict = None):
     """Run a driver as a separate process.
 
     Args:
-        driver_script: A string to run as a Python script.
+        driver_script (str): A string to run as a Python script.
+        env (dict): The environment variables for the driver.
 
     Returns:
         The script's output.
@@ -191,7 +195,9 @@ def run_string_as_driver(driver_script):
         [sys.executable, "-"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT)
+        stderr=subprocess.STDOUT,
+        env=env,
+    )
     with proc:
         output = proc.communicate(driver_script.encode("ascii"))[0]
         if proc.returncode:
@@ -202,7 +208,7 @@ def run_string_as_driver(driver_script):
     return out
 
 
-def run_string_as_driver_nonblocking(driver_script):
+def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
     """Start a driver as a separate process and return immediately.
 
     Args:
@@ -222,7 +228,8 @@ def run_string_as_driver_nonblocking(driver_script):
         [sys.executable, "-c", script],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE)
+        stderr=subprocess.PIPE,
+        env=env)
     proc.stdin.write(driver_script.encode("ascii"))
     proc.stdin.close()
     return proc
@@ -232,7 +239,7 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
         if len([
-                _ for _ in ray.actors().values()
+                _ for _ in ray.state.actors().values()
                 if state is None or _["State"] == state
         ]) >= num_actors:
             return
@@ -240,13 +247,41 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
+def wait_for_num_nodes(num_nodes: int, timeout_s: int):
+    curr_nodes = 0
+    start = time.time()
+    next_feedback = start
+    max_time = start + timeout_s
+    while not curr_nodes >= num_nodes:
+        now = time.time()
+
+        if now >= max_time:
+            raise RuntimeError(
+                f"Maximum wait time reached, but only "
+                f"{curr_nodes}/{num_nodes} nodes came up. Aborting.")
+
+        if now >= next_feedback:
+            passed = now - start
+            print(f"Waiting for more nodes to come up: "
+                  f"{curr_nodes}/{num_nodes} "
+                  f"({passed:.0f} seconds passed)")
+            next_feedback = now + 10
+
+        time.sleep(5)
+        curr_nodes = len(ray.nodes())
+
+    passed = time.time() - start
+    print(f"Cluster is up: {curr_nodes}/{num_nodes} nodes online after "
+          f"{passed:.0f} seconds")
+
+
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     actor_id = actor._actor_id.hex()
-    current_num_restarts = ray.actors(actor_id)["NumRestarts"]
+    current_num_restarts = ray.state.actors(actor_id)["NumRestarts"]
     ray.kill(actor)
     start = time.time()
     while time.time() - start <= timeout:
-        actor_status = ray.actors(actor_id)
+        actor_status = ray.state.actors(actor_id)
         if actor_status["State"] == ray.gcs_utils.ActorTableData.DEAD \
                 or actor_status["NumRestarts"] > current_num_restarts:
             return
@@ -278,7 +313,8 @@ def wait_until_succeeded_without_exception(func,
                                            exceptions,
                                            *args,
                                            timeout_ms=1000,
-                                           retry_interval_ms=100):
+                                           retry_interval_ms=100,
+                                           raise_last_ex=False):
     """A helper function that waits until a given function
         completes without exceptions.
 
@@ -288,6 +324,7 @@ def wait_until_succeeded_without_exception(func,
         args: arguments to pass for a given func
         timeout_ms: Maximum timeout in milliseconds.
         retry_interval_ms: Retry interval in milliseconds.
+        raise_last_ex: Raise the last exception when timeout.
 
     Return:
         Whether exception occurs within a timeout.
@@ -298,13 +335,20 @@ def wait_until_succeeded_without_exception(func,
 
     time_elapsed = 0
     start = time.time()
+    last_ex = None
     while time_elapsed <= timeout_ms:
         try:
             func(*args)
             return True
-        except exceptions:
+        except exceptions as ex:
+            last_ex = ex
             time_elapsed = (time.time() - start) * 1000
             time.sleep(retry_interval_ms / 1000.0)
+    if raise_last_ex:
+        ex_stack = traceback.format_exception(
+            type(last_ex), last_ex, last_ex.__traceback__) if last_ex else []
+        ex_stack = "".join(ex_stack)
+        raise Exception(f"Timed out while testing, {ex_stack}")
     return False
 
 
@@ -331,6 +375,7 @@ def generate_system_config_map(**kwargs):
 class SignalActor:
     def __init__(self):
         self.ready_event = asyncio.Event()
+        self.num_waiters = 0
 
     def send(self, clear=False):
         self.ready_event.set()
@@ -339,7 +384,12 @@ class SignalActor:
 
     async def wait(self, should_wait=True):
         if should_wait:
+            self.num_waiters += 1
             await self.ready_event.wait()
+            self.num_waiters -= 1
+
+    async def cur_num_waiters(self):
+        return self.num_waiters
 
 
 @ray.remote(num_cpus=0)
@@ -489,7 +539,14 @@ def new_scheduler_enabled():
 
 
 def client_test_enabled() -> bool:
-    return os.environ.get("RAY_CLIENT_MODE") == "1"
+    return os.environ.get("RAY_CLIENT_MODE") is not None
+
+
+def object_memory_usage() -> bool:
+    """Returns the number of bytes used in the object store."""
+    total = ray.cluster_resources().get("object_store_memory", 0)
+    avail = ray.available_resources().get("object_store_memory", 0)
+    return total - avail
 
 
 def fetch_prometheus(prom_addresses):
@@ -523,3 +580,72 @@ def load_test_config(config_file_name):
                                config_file_name)
     config = yaml.safe_load(open(config_path).read())
     return config
+
+
+def set_setup_func():
+    import ray._private.runtime_env as runtime_env
+    runtime_env.VAR = "hello world"
+
+
+class BatchQueue(Queue):
+    def __init__(self, maxsize: int = 0,
+                 actor_options: Optional[Dict] = None) -> None:
+        actor_options = actor_options or {}
+        self.maxsize = maxsize
+        self.actor = ray.remote(_BatchQueueActor).options(
+            **actor_options).remote(self.maxsize)
+
+    def get_batch(self,
+                  batch_size: int = None,
+                  total_timeout: Optional[float] = None,
+                  first_timeout: Optional[float] = None) -> List[Any]:
+        """Gets batch of items from the queue and returns them in a
+        list in order.
+
+        Raises:
+            Empty: if the queue does not contain the desired number of items
+        """
+        return ray.get(
+            self.actor.get_batch.remote(batch_size, total_timeout,
+                                        first_timeout))
+
+
+class _BatchQueueActor(_QueueActor):
+    async def get_batch(self,
+                        batch_size=None,
+                        total_timeout=None,
+                        first_timeout=None):
+        start = timeit.default_timer()
+        try:
+            first = await asyncio.wait_for(self.queue.get(), first_timeout)
+            batch = [first]
+            if total_timeout:
+                end = timeit.default_timer()
+                total_timeout = max(total_timeout - (end - start), 0)
+        except asyncio.TimeoutError:
+            raise Empty
+        if batch_size is None:
+            if total_timeout is None:
+                total_timeout = 0
+            while True:
+                try:
+                    start = timeit.default_timer()
+                    batch.append(await asyncio.wait_for(
+                        self.queue.get(), total_timeout))
+                    if total_timeout:
+                        end = timeit.default_timer()
+                        total_timeout = max(total_timeout - (end - start), 0)
+                except asyncio.TimeoutError:
+                    break
+        else:
+            for _ in range(batch_size - 1):
+                try:
+                    start = timeit.default_timer()
+                    batch.append(await asyncio.wait_for(
+                        self.queue.get(), total_timeout))
+                    if total_timeout:
+                        end = timeit.default_timer()
+                        total_timeout = max(total_timeout - (end - start), 0)
+                except asyncio.TimeoutError:
+                    break
+        return batch

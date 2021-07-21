@@ -1,5 +1,5 @@
 cartpole-r2d2:
-    env: CartPole-v0
+    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
     run: R2D2
     stop:
         episode_reward_mean: 150

@@ -1,5 +1,6 @@
 import gym
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union, \
+    TYPE_CHECKING
 
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -10,10 +11,13 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
     TrainerConfigDict
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode
 
 tf1, tf, tfv = try_import_tf()
 
@@ -36,7 +40,7 @@ def build_tf_policy(
         optimizer_fn: Optional[Callable[[
             Policy, TrainerConfigDict
         ], "tf.keras.optimizers.Optimizer"]] = None,
-        gradients_fn: Optional[Callable[[
+        compute_gradients_fn: Optional[Callable[[
             Policy, "tf.keras.optimizers.Optimizer", TensorType
         ], ModelGradients]] = None,
         apply_gradients_fn: Optional[Callable[[
@@ -67,11 +71,10 @@ def build_tf_policy(
         ], Tuple[TensorType, type, List[TensorType]]]] = None,
         mixins: Optional[List[type]] = None,
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
-        # TODO: (sven) deprecate once _use_trajectory_view_api is always True.
-        obs_include_prev_action_reward: bool = True,
         # Deprecated args.
-        extra_action_fetches_fn: Optional[Callable[[Policy], Dict[
-            str, TensorType]]] = None,
+        obs_include_prev_action_reward=DEPRECATED_VALUE,
+        extra_action_fetches_fn=None,  # Use `extra_action_out_fn`.
+        gradients_fn=None,  # Use `compute_gradients_fn`.
 ) -> Type[DynamicTFPolicy]:
     """Helper function for creating a dynamic tf policy at runtime.
 
@@ -115,7 +118,7 @@ def build_tf_policy(
             a tf.Optimizer given the policy and config. If None, will call
             the base class' `optimizer()` method instead (which returns a
             tf1.train.AdamOptimizer).
-        gradients_fn (Optional[Callable[[Policy,
+        compute_gradients_fn (Optional[Callable[[Policy,
             "tf.keras.optimizers.Optimizer", TensorType], ModelGradients]]):
             Optional callable that returns a list of gradients. If None,
             this defaults to optimizer.compute_gradients([loss]).
@@ -177,8 +180,6 @@ def build_tf_policy(
         get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
             Optional callable that returns the divisibility requirement for
             sample batches. If None, will assume a value of 1.
-        obs_include_prev_action_reward (bool): Whether to include the
-            previous action and reward in the model input.
 
     Returns:
         Type[DynamicTFPolicy]: A child class of DynamicTFPolicy based on the
@@ -187,12 +188,20 @@ def build_tf_policy(
     original_kwargs = locals().copy()
     base = add_mixins(DynamicTFPolicy, mixins)
 
+    if obs_include_prev_action_reward != DEPRECATED_VALUE:
+        deprecation_warning(old="obs_include_prev_action_reward", error=False)
+
     if extra_action_fetches_fn is not None:
         deprecation_warning(
             old="extra_action_fetches_fn",
             new="extra_action_out_fn",
             error=False)
         extra_action_out_fn = extra_action_fetches_fn
+
+    if gradients_fn is not None:
+        deprecation_warning(
+            old="gradients_fn", new="compute_gradients_fn", error=False)
+        compute_gradients_fn = gradients_fn
 
     class policy_cls(base):
         def __init__(self,
@@ -214,11 +223,16 @@ def build_tf_policy(
                                          config):
                 if before_loss_init:
                     before_loss_init(policy, obs_space, action_space, config)
-                if extra_action_out_fn is None:
-                    policy._extra_action_fetches = {}
+
+                if extra_action_out_fn is None or policy._is_tower:
+                    extra_action_fetches = {}
                 else:
-                    policy._extra_action_fetches = extra_action_out_fn(policy)
-                    policy._extra_action_fetches = extra_action_out_fn(policy)
+                    extra_action_fetches = extra_action_out_fn(policy)
+
+                if hasattr(policy, "_extra_action_fetches"):
+                    policy._extra_action_fetches.update(extra_action_fetches)
+                else:
+                    policy._extra_action_fetches = extra_action_fetches
 
             DynamicTFPolicy.__init__(
                 self,
@@ -235,7 +249,7 @@ def build_tf_policy(
                 existing_inputs=existing_inputs,
                 existing_model=existing_model,
                 get_batch_divisibility_req=get_batch_divisibility_req,
-                obs_include_prev_action_reward=obs_include_prev_action_reward)
+            )
 
             if after_init:
                 after_init(self, obs_space, action_space, config)
@@ -271,8 +285,8 @@ def build_tf_policy(
 
         @override(TFPolicy)
         def gradients(self, optimizer, loss):
-            if gradients_fn:
-                return gradients_fn(self, optimizer, loss)
+            if compute_gradients_fn:
+                return compute_gradients_fn(self, optimizer, loss)
             else:
                 return base.gradients(self, optimizer, loss)
 

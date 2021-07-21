@@ -16,8 +16,35 @@ from ray.util.placement_group import PlacementGroup, get_placement_group, \
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
 
-TUNE_MAX_PENDING_TRIALS_PG = int(os.getenv("TUNE_MAX_PENDING_TRIALS_PG", 1000))
 TUNE_PLACEMENT_GROUP_REMOVAL_DELAY = 2.
+
+_tune_pg_prefix = None
+
+
+def get_tune_pg_prefix():
+    """Get the tune placement group name prefix.
+
+    This will store the prefix in a global variable so that subsequent runs
+    can use this identifier to clean up placement groups before starting their
+    run.
+
+    Can be overwritten with the ``TUNE_PLACEMENT_GROUP_PREFIX`` env variable.
+    """
+    global _tune_pg_prefix
+
+    if _tune_pg_prefix:
+        return _tune_pg_prefix
+
+    # Else: check env variable
+    env_prefix = os.getenv("TUNE_PLACEMENT_GROUP_PREFIX", "")
+
+    if env_prefix:
+        _tune_pg_prefix = env_prefix
+        return _tune_pg_prefix
+
+    # Else: create and store unique prefix
+    _tune_pg_prefix = f"__tune_{uuid.uuid4().hex[:8]}__"
+    return _tune_pg_prefix
 
 
 class PlacementGroupFactory:
@@ -81,7 +108,8 @@ class PlacementGroupFactory:
                  strategy: str = "PACK",
                  *args,
                  **kwargs):
-        self._bundles = bundles
+        self._bundles = [{k: float(v)
+                          for k, v in bundle.items()} for bundle in bundles]
         self._strategy = strategy
         self._args = args
         self._kwargs = kwargs
@@ -90,6 +118,19 @@ class PlacementGroupFactory:
         self._bound = None
 
         self._bind()
+
+    @property
+    def head_cpus(self):
+        return self._bundles[0].get("CPU", None)
+
+    @property
+    def required_resources(self) -> Dict[str, float]:
+        """Returns a dict containing the sums of all resources"""
+        resources = {}
+        for bundle in self._bundles:
+            for k, v in bundle.items():
+                resources[k] = resources.get(k, 0) + v
+        return resources
 
     def _bind(self):
         sig = signature(placement_group)
@@ -187,7 +228,7 @@ class PlacementGroupManager:
         prefix (str): Prefix for the placement group names that are created.
     """
 
-    def __init__(self, prefix: str = "_tune__"):
+    def __init__(self, prefix: str = "__tune__", max_staging: int = 1000):
         self._prefix = prefix
 
         # Sets of staged placement groups by factory
@@ -219,6 +260,11 @@ class PlacementGroupManager:
         # to process events
         self._grace_period = float(
             os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.))
+
+        self._max_staging = max_staging
+
+    def set_max_staging(self, max_staging: int):
+        self._max_staging = max_staging
 
     def remove_pg(self, pg: PlacementGroup):
         """Schedule placement group for (delayed) removal.
@@ -314,7 +360,7 @@ class PlacementGroupManager:
 
     def can_stage(self):
         """Return True if we can stage another placement group."""
-        return len(self._staging_futures) < TUNE_MAX_PENDING_TRIALS_PG
+        return len(self._staging_futures) < self._max_staging
 
     def update_status(self):
         """Update placement group status.
@@ -367,6 +413,11 @@ class PlacementGroupManager:
 
         # Only custom resources remain in `first_bundle`
         resources = first_bundle or None
+
+        if num_cpus is None:
+            # If the placement group specifically set the number
+            # of CPUs to 0, use this.
+            num_cpus = pgf.head_cpus
 
         logger.debug(f"For trial {trial} use pg {pg.id}")
 
@@ -483,8 +534,14 @@ class PlacementGroupManager:
         self._ready[pgf].add(pg)
         return True
 
-    def return_pg(self, trial: "Trial"):
+    def return_pg(self,
+                  trial: "Trial",
+                  destroy_pg_if_cannot_replace: bool = True):
         """Return pg, making it available for other trials to use.
+
+        If destroy_pg_if_cannot_replace is True, this will only return
+        a placement group if a staged placement group can be replaced
+        by it. If not, it will destroy the placement group.
 
         Args:
             trial (Trial): Return placement group of this trial.
@@ -499,6 +556,16 @@ class PlacementGroupManager:
 
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
+
+        if destroy_pg_if_cannot_replace:
+            staged_pg = self._unstage_unused_pg(pgf)
+
+            # Could not replace
+            if not staged_pg:
+                self.remove_pg(pg)
+                return False
+
+            self.remove_pg(staged_pg)
         self._ready[pgf].add(pg)
 
         return True
@@ -609,6 +676,15 @@ class PlacementGroupManager:
 
             pgf_expected[trial.placement_group_factory] += \
                 1 if trial.status in ["PAUSED", "PENDING", "RUNNING"] else 0
+
+        # Ensure that unexpected placement groups are accounted for
+        for pgf in self._staging:
+            if pgf not in pgf_expected:
+                pgf_expected[pgf] = 0
+
+        for pgf in self._ready:
+            if pgf not in pgf_expected:
+                pgf_expected[pgf] = 0
 
         # Count cached placement groups
         for pg, pgf in self._cached_pgs.items():

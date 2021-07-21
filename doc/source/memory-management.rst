@@ -230,10 +230,16 @@ In this example, we first create an object via ``ray.put()``, then capture its `
 In the output of ``ray memory``, we see that the second object displays as a normal ``LOCAL_REFERENCE``, but the first object is listed as ``CAPTURED_IN_OBJECT``.
 
 Object Spilling
----------------
+~~~~~~~~~~~~~~~
 .. _object-spilling:
 
-Ray 1.3+ spills objects to external storage once the object store is full. By default, objects are spilled to the local filesystem.
+Ray 1.3+ spills objects to external storage once the object store is full. By default, objects are spilled to Ray's temporary directory in the local filesystem.
+
+Single node
+-----------
+
+Ray uses object spilling by default. Without any setting, objects are spilled to `[temp_folder]/spill`. `temp_folder` is `/tmp` for Linux and MacOS by default.
+
 To configure the directory where objects are placed, use:
 
 .. code-block:: python
@@ -267,6 +273,10 @@ usage across multiple physical devices if needed (e.g., SSD devices):
         },
     )
 
+.. note::
+  
+  To optimize the performance, it is recommended to use SSD instead of HD when using object spilling for memory intensive workloads.
+
 To enable object spilling to remote storage (any URI supported by `smart_open <https://pypi.org/project/smart-open/>`__):
 
 .. code-block:: python
@@ -281,6 +291,20 @@ To enable object spilling to remote storage (any URI supported by `smart_open <h
         },
     )
 
+Remote storage support is still experimental.
+
+Cluster mode
+------------
+To enable object spilling in multi node clusters:
+
+.. code-block:: bash
+  
+  # Note that `object_spilling_config`'s value should be json format.
+  ray start --head --system-config='{"object_spilling_config":"{\"type\":\"filesystem\",\"params\":{\"directory_path\":\"/tmp/spill\"}}"}'
+
+Stats
+-----
+
 When spilling is happening, the following INFO level messages will be printed to the raylet logs (e.g., ``/tmp/ray/session_latest/logs/raylet.out``)::
 
   local_object_manager.cc:166: Spilled 50 MiB, 1 objects, write throughput 230 MiB/s
@@ -293,7 +317,8 @@ You can also view cluster-wide spill stats by using the ``ray memory`` command::
   Spilled 200 MiB, 4 objects, avg write throughput 570 MiB/s
   Restored 150 MiB, 3 objects, avg read throughput 1361 MiB/s
 
-If you only want to display cluster-wide spill stats, use ``ray memory --stats-only=True``.
+If you only want to display cluster-wide spill stats, use ``ray memory --stats-only``.
+
 
 Memory Aware Scheduling
 ~~~~~~~~~~~~~~~~~~~~~~~

@@ -6,7 +6,6 @@ import shutil
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
 
 import skopt
 import numpy as np
@@ -25,6 +24,7 @@ from ray.tune.suggest import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.dragonfly import DragonflySearch
 from ray.tune.suggest.bayesopt import BayesOptSearch
+from ray.tune.suggest.flaml import CFO
 from ray.tune.suggest.skopt import SkOptSearch
 from ray.tune.suggest.nevergrad import NevergradSearch
 from ray.tune.suggest.optuna import OptunaSearch, param as ot_param
@@ -206,9 +206,9 @@ class TuneFailResumeGridTest(unittest.TestCase):
         shutil.rmtree(self.logdir)
         ray.shutdown()
 
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testFailResumeGridSearch(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         config = dict(
             num_samples=3,
             fail_fast=True,
@@ -237,9 +237,9 @@ class TuneFailResumeGridTest(unittest.TestCase):
         test2_counter = Counter([t.config["test2"] for t in analysis.trials])
         assert all(v == 9 for v in test2_counter.values())
 
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testFailResumeWithPreset(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         search_alg = BasicVariantGenerator(points_to_evaluate=[{
             "test": -1,
             "test2": -1
@@ -280,9 +280,9 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert test2_counter.pop(-1) == 4
         assert all(v == 10 for v in test2_counter.values())
 
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testFailResumeAfterPreset(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         search_alg = BasicVariantGenerator(points_to_evaluate=[{
             "test": -1,
             "test2": -1
@@ -324,9 +324,9 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert test2_counter.pop(-1) == 4
         assert all(v == 10 for v in test2_counter.values())
 
-    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 1)
-    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 1)
     def testMultiExperimentFail(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
         experiments = []
         for i in range(3):
             experiments.append(
@@ -391,12 +391,12 @@ class TuneExampleTest(unittest.TestCase):
         validate_save_restore(Cifar10Model)
         validate_save_restore(Cifar10Model, use_object_store=True)
 
-    # def testPyTorchMNIST(self):
-    #     from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
-    #     from torchvision import datasets
-    #     datasets.MNIST("~/data", train=True, download=True)
-    #     validate_save_restore(TrainMNIST)
-    #     validate_save_restore(TrainMNIST, use_object_store=True)
+    def testPyTorchMNIST(self):
+        from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
+        from torchvision import datasets
+        datasets.MNIST("~/data", train=True, download=True)
+        validate_save_restore(TrainMNIST)
+        validate_save_restore(TrainMNIST, use_object_store=True)
 
     def testHyperbandExample(self):
         from ray.tune.examples.hyperband_example import MyTrainableClass
@@ -536,6 +536,26 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         search_alg3, cost = self.set_basic_conf(analysis)
         search_alg3 = ConcurrencyLimiter(search_alg3, 1)
         tune.run(cost, num_samples=10, search_alg=search_alg3, verbose=0)
+
+
+class CFOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    def set_basic_conf(self):
+        space = {
+            "height": tune.uniform(-100, 100),
+            "width": tune.randint(0, 100),
+        }
+
+        def cost(param, reporter):
+            reporter(loss=(param["height"] - 14)**2 - abs(param["width"] - 3))
+
+        search_alg = CFO(
+            space=space,
+            metric="loss",
+            mode="min",
+            seed=20,
+        )
+
+        return search_alg, cost
 
 
 class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):

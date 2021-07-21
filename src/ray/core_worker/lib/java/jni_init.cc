@@ -276,7 +276,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_actor_creation_options_max_restarts =
       env->GetFieldID(java_actor_creation_options_class, "maxRestarts", "I");
   java_actor_creation_options_jvm_options = env->GetFieldID(
-      java_actor_creation_options_class, "jvmOptions", "Ljava/lang/String;");
+      java_actor_creation_options_class, "jvmOptions", "Ljava/util/List;");
   java_actor_creation_options_max_concurrency =
       env->GetFieldID(java_actor_creation_options_class, "maxConcurrency", "I");
   java_actor_creation_options_group =

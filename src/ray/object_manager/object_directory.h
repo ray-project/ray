@@ -24,7 +24,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client.h"
-#include "ray/object_manager/format/object_manager_generated.h"
+#include "ray/object_manager/common.h"
 
 namespace ray {
 
@@ -114,9 +114,8 @@ class ObjectDirectoryInterface {
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectAdded(
-      const ObjectID &object_id, const NodeID &node_id,
-      const object_manager::protocol::ObjectInfoT &object_info) = 0;
+  virtual ray::Status ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
+                                        const ObjectInfo &object_info) = 0;
 
   /// Report objects removed from this node's store to the object directory.
   ///
@@ -124,9 +123,12 @@ class ObjectDirectoryInterface {
   /// \param node_id The node id corresponding to this node.
   /// \param object_info Additional information about the object.
   /// \return Status of whether this method succeeded.
-  virtual ray::Status ReportObjectRemoved(
-      const ObjectID &object_id, const NodeID &node_id,
-      const object_manager::protocol::ObjectInfoT &object_info) = 0;
+  virtual ray::Status ReportObjectRemoved(const ObjectID &object_id,
+                                          const NodeID &node_id,
+                                          const ObjectInfo &object_info) = 0;
+
+  /// Record metrics.
+  virtual void RecordMetrics(uint64_t duration_ms) = 0;
 
   /// Returns debug string for class.
   ///
@@ -152,27 +154,7 @@ class ObjectDirectory : public ObjectDirectoryInterface {
 
   std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
 
-  ray::Status LookupLocations(const ObjectID &object_id,
-                              const rpc::Address &owner_address,
-                              const OnLocationsFound &callback) override;
-
   void HandleNodeRemoved(const NodeID &node_id) override;
-
-  ray::Status SubscribeObjectLocations(const UniqueID &callback_id,
-                                       const ObjectID &object_id,
-                                       const rpc::Address &owner_address,
-                                       const OnLocationsFound &callback) override;
-  ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
-                                         const ObjectID &object_id) override;
-
-  ray::Status ReportObjectAdded(
-      const ObjectID &object_id, const NodeID &node_id,
-      const object_manager::protocol::ObjectInfoT &object_info) override;
-  ray::Status ReportObjectRemoved(
-      const ObjectID &object_id, const NodeID &node_id,
-      const object_manager::protocol::ObjectInfoT &object_info) override;
-
-  std::string DebugString() const override;
 
   /// ObjectDirectory should not be copied.
   RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);
@@ -197,6 +179,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
     /// the current_object_locations is empty, then this means that the object
     /// does not exist on any nodes due to eviction or the object never getting created.
     bool subscribed;
+    /// The address of the owner.
+    rpc::Address owner_address;
   };
 
   /// Reference to the event loop.

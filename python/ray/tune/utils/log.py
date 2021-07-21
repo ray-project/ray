@@ -21,7 +21,7 @@ def set_verbosity(level: Union[int, Verbosity]):
     if isinstance(level, int):
         verbosity = Verbosity(level)
     else:
-        verbosity = verbosity
+        verbosity = level
 
 
 def has_verbosity(level: Union[int, Verbosity]) -> bool:
@@ -32,3 +32,12 @@ def has_verbosity(level: Union[int, Verbosity]) -> bool:
     verbosity_level = int(verbosity)
 
     return verbosity_level >= log_level
+
+
+def disable_ipython():
+    """Disable output of IPython HTML objects."""
+    try:
+        from IPython.core.interactiveshell import InteractiveShell
+        InteractiveShell.clear_instance()
+    except Exception:
+        pass

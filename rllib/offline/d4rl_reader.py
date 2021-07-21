@@ -27,14 +27,12 @@ class D4RLReader(InputReader):
         self.env = gym.make(inputs)
         self.dataset = convert_to_batch(d4rl.qlearning_dataset(self.env))
         assert self.dataset.count >= 1
-        self.dataset.shuffle()
         self.counter = 0
 
     @override(InputReader)
     def next(self) -> SampleBatchType:
         if self.counter >= self.dataset.count:
             self.counter = 0
-            self.dataset.shuffle()
 
         self.counter += 1
         return self.dataset.slice(start=self.counter, end=self.counter + 1)

@@ -3,15 +3,16 @@ import platform
 from typing import List, Dict, Any
 
 import ray
-from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    _get_shared_metrics
+from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
+    STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actors import create_colocated
+from ray.rllib.utils.typing import SampleBatchType, ModelWeights
 from ray.util.iter import ParallelIterator, ParallelIteratorWorker, \
     from_actors, LocalIterator
-from ray.rllib.utils.typing import SampleBatchType, ModelWeights
-from ray.rllib.evaluation.worker_set import WorkerSet
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +79,8 @@ def gather_experiences_tree_aggregation(workers: WorkerSet,
     # Divide up the workers between aggregators.
     worker_assignments = [[] for _ in range(config["num_aggregation_workers"])]
     i = 0
-    for w in range(len(workers.remote_workers())):
-        worker_assignments[i].append(w)
+    for worker_idx in range(len(workers.remote_workers())):
+        worker_assignments[i].append(worker_idx)
         i += 1
         i %= len(worker_assignments)
     logger.info("Worker assignments: {}".format(worker_assignments))
@@ -100,6 +101,11 @@ def gather_experiences_tree_aggregation(workers: WorkerSet,
     def record_steps_sampled(batch):
         metrics = _get_shared_metrics()
         metrics.counters[STEPS_SAMPLED_COUNTER] += batch.count
+        if isinstance(batch, MultiAgentBatch):
+            metrics.counters[AGENT_STEPS_SAMPLED_COUNTER] += \
+                batch.agent_steps()
+        else:
+            metrics.counters[AGENT_STEPS_SAMPLED_COUNTER] += batch.count
         return batch
 
     return train_batches.gather_async().for_each(record_steps_sampled)

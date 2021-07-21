@@ -88,12 +88,11 @@ Ray Serve was able to evaluate them in batches.
 
 What if you want to evaluate a whole batch in Python? Ray Serve allows you to send
 queries via the Python API. A batch of queries can either come from the web server
-or the Python API. Requests coming from the Python API will have a similar API
-to Starlette Request. See more on the API :ref:`here<serve-handle-explainer>`.
+or the Python API. Learn more :ref:`here<serve-handle-explainer>`.
 
-To query the backend via Python API, we can use ``serve.get_handle`` to receive
-a handle to the corresponding "endpoint". To enqueue a query, you can call
-``handle.remote(data)``. This call returns immediately
+To query the backend via the Python API, we can use ``Deployment.get_handle`` to receive
+a handle to the corresponding deployment. To enqueue a query, you can call
+``handle.method.remote(data)``. This call returns immediately
 with a :ref:`Ray ObjectRef<ray-object-refs>`. You can call `ray.get` to retrieve
 the result.
 

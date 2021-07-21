@@ -185,8 +185,8 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         Returns:
             The FunctionDescriptor instance created according to the function.
         """
-        module_name = function.__module__
-        function_name = function.__name__
+        module_name = cls._get_module_name(function)
+        function_name = function.__qualname__
         class_name = ""
 
         pickled_function_hash = hashlib.shake_128(pickled_function).hexdigest(
@@ -207,8 +207,8 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         Returns:
             The FunctionDescriptor instance created according to the class.
         """
-        module_name = target_class.__module__
-        class_name = target_class.__name__
+        module_name = cls._get_module_name(target_class)
+        class_name = target_class.__qualname__
         # Use a random uuid as function hash to solve actor name conflict.
         return cls(
           module_name, "__init__", class_name,
@@ -282,6 +282,25 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         # Compute the function ID.
         function_id = function_id_hash.digest(ray_constants.ID_SIZE)
         return ray.FunctionID(function_id)
+
+    @staticmethod
+    def _get_module_name(object):
+        """Get the module name from object. If the module is __main__,
+        get the module name from file.
+
+        Returns:
+            Module name of object.
+        """
+        module_name = object.__module__
+        if module_name == "__main__":
+            try:
+                file_path = inspect.getfile(object)
+                n = inspect.getmodulename(file_path)
+                if n:
+                    module_name = n
+            except TypeError:
+                pass
+        return module_name
 
     def is_actor_method(self):
         """Wether this function descriptor is an actor method.

@@ -3,6 +3,7 @@ package io.ray.api.call;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.function.RayFuncR;
+import java.util.List;
 
 /**
  * A helper to create java actor.
@@ -25,9 +26,9 @@ public class ActorCreator<A> extends BaseActorCreator<ActorCreator<A>> {
    *
    * @param jvmOptions JVM options for the Java worker that this actor is running in.
    * @return self
-   * @see io.ray.api.options.ActorCreationOptions.Builder#setJvmOptions(java.lang.String)
+   * @see io.ray.api.options.ActorCreationOptions.Builder#setJvmOptions(List)
    */
-  public ActorCreator<A> setJvmOptions(String jvmOptions) {
+  public ActorCreator<A> setJvmOptions(List<String> jvmOptions) {
     builder.setJvmOptions(jvmOptions);
     return this;
   }

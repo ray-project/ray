@@ -73,7 +73,7 @@ class _EventSystem:
             []).extend([callback] if type(callback) is not list else callback)
 
     def execute_callback(self,
-                         event: str,
+                         event: CreateClusterEvent,
                          event_data: Optional[Dict[str, Any]] = None):
         """Executes all callbacks for event.
 

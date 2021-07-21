@@ -8,6 +8,7 @@ import io.ray.api.id.UniqueId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.LocalModeWorkerContext;
+import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.task.LocalModeTaskExecutor;
 import io.ray.runtime.task.LocalModeTaskSubmitter;
@@ -78,12 +79,14 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   @Override
   public Object getAsyncContext() {
-    return null;
+    return new AsyncContext(((LocalModeWorkerContext) workerContext).getCurrentTask());
   }
 
   @Override
   public void setAsyncContext(Object asyncContext) {
-    Preconditions.checkArgument(asyncContext == null);
+    Preconditions.checkNotNull(asyncContext);
+    TaskSpec task = ((AsyncContext) asyncContext).task;
+    ((LocalModeWorkerContext) workerContext).setCurrentTask(task);
     super.setAsyncContext(asyncContext);
   }
 
@@ -106,5 +109,13 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   private JobId nextJobId() {
     return JobId.fromInt(jobCounter.getAndIncrement());
+  }
+
+  private static class AsyncContext {
+    private TaskSpec task;
+
+    private AsyncContext(TaskSpec task) {
+      this.task = task;
+    }
   }
 }

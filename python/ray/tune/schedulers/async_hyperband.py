@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Optional, Union
 
 import numpy as np
+import pickle
 
 from ray.tune import trial_runner
 from ray.tune.result import DEFAULT_METRIC
@@ -159,6 +160,16 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         out = "Using AsyncHyperBand: num_stopped={}".format(self._num_stopped)
         out += "\n" + "\n".join([b.debug_str() for b in self._brackets])
         return out
+
+    def save(self, checkpoint_path: str):
+        save_object = self.__dict__
+        with open(checkpoint_path, "wb") as outputFile:
+            pickle.dump(save_object, outputFile)
+
+    def restore(self, checkpoint_path: str):
+        with open(checkpoint_path, "rb") as inputFile:
+            save_object = pickle.load(inputFile)
+        self.__dict__.update(save_object)
 
 
 class _Bracket():

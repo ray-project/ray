@@ -1,7 +1,9 @@
 import logging
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.memory_utils as memory_utils
-from ray.new_dashboard.actor_utils import actor_classname_from_task_spec
+# TODO(fyrestone): Not import from dashboard module.
+from ray.new_dashboard.modules.actor.actor_utils import \
+    actor_classname_from_task_spec
 from ray.new_dashboard.utils import Dict, Signal, async_loop_forever
 
 logger = logging.getLogger(__name__)
@@ -43,6 +45,8 @@ class DataSource:
     job_actors = Dict()
     # {worker id(str): core worker stats}
     core_worker_stats = Dict()
+    # {job id hex(str): {event id(str): event dict}}
+    events = Dict()
     # {node ip (str): log entries by pid
     # (dict from pid to list of latest log entries)}
     ip_and_pid_to_logs = Dict()
@@ -168,8 +172,8 @@ class DataOrganizer:
 
         return node_info
 
-    @staticmethod
-    async def get_node_summary(node_id):
+    @classmethod
+    async def get_node_summary(cls, node_id):
         node_physical_stats = dict(
             DataSource.node_physical_stats.get(node_id, {}))
         node_stats = dict(DataSource.node_stats.get(node_id, {}))
@@ -177,11 +181,16 @@ class DataOrganizer:
 
         node_physical_stats.pop("workers", None)
         node_stats.pop("workersStats", None)
+        view_data = node_stats.get("viewData", [])
+        ray_stats = cls._extract_view_data(
+            view_data,
+            {"object_store_used_memory", "object_store_available_memory"})
         node_stats.pop("viewData", None)
 
         node_summary = node_physical_stats
         # Merge node stats to node physical stats
         node_summary["raylet"] = node_stats
+        node_summary["raylet"].update(ray_stats)
         # Merge GcsNodeInfo to node physical stats
         node_summary["raylet"].update(node)
 

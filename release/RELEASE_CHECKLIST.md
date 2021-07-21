@@ -8,7 +8,6 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
 
 ## Branch Cut
 - [ ] Release branch created
-- [ ] PR created to update “latest” version on master (do not merge yet)
 - [ ] Release branch versions updated
 	- [ ] Version keys have new version
 	- [ ] Update of “Latest” commits cherry-picked into release branch
@@ -59,15 +58,15 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
 - [ ] Scalability Envelope Tests
 - [ ] ASAN Test
 - [ ] K8s Test
-	- [ ] K8s cluster launcher test
-	- [ ] K8s operator test
+	- [ ] K8s operator and helm tests
 - [ ] Data processing tests
     - [ ] streaming_shuffle
+	- [ ] dask on ray test
 - [ ] Tune tests
     - [ ] test_bookkeeping_overhead
-    - [x] test_result_throughput_cluster (ignore final time)
-    - [x] test_result_throughput_single_node (ignore final time)
-    - [x] test_network_overhead (ignore final time)
+    - [ ] test_result_throughput_cluster
+    - [ ] test_result_throughput_single_node
+    - [ ] test_network_overhead
     - [ ] test_long_running_large_checkpoints
     - [ ] test_xgboost_sweep
     - [ ] test_durable_trainable
@@ -83,6 +82,7 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
     - [ ] ft_small_elastic
 
 ## Final Steps
+- [ ] ML Docker Image Updated
 - [ ] Wheels uploaded to Test PyPI
 - [ ] Wheel sanity checks with Test PyPI
 	- [ ] Windows

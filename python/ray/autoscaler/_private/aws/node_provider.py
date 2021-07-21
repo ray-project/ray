@@ -6,9 +6,7 @@ import logging
 import time
 from typing import Any, Dict, List
 
-import boto3
 import botocore
-from botocore.config import Config
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, \
@@ -18,7 +16,8 @@ from ray.autoscaler._private.constants import BOTO_MAX_RETRIES, \
 from ray.autoscaler._private.aws.config import bootstrap_aws
 from ray.autoscaler._private.log_timer import LogTimer
 
-from ray.autoscaler._private.aws.utils import boto_exception_handler
+from ray.autoscaler._private.aws.utils import boto_exception_handler, \
+    resource_cache, client_cache
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 import ray.ray_constants as ray_constants
 
@@ -47,10 +46,8 @@ def from_aws_format(tags):
 
 def make_ec2_client(region, max_retries, aws_credentials=None):
     """Make client, retrying requests up to `max_retries`."""
-    config = Config(retries={"max_attempts": max_retries})
     aws_credentials = aws_credentials or {}
-    return boto3.resource(
-        "ec2", region_name=region, config=config, **aws_credentials)
+    return resource_cache("ec2", region, max_retries, **aws_credentials)
 
 
 def list_ec2_instances(region: str, aws_credentials: Dict[str, Any] = None
@@ -70,10 +67,8 @@ def list_ec2_instances(region: str, aws_credentials: Dict[str, Any] = None
 
     """
     final_instance_types = []
-    config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
     aws_credentials = aws_credentials or {}
-    ec2 = boto3.client(
-        "ec2", region_name=region, config=config, **aws_credentials)
+    ec2 = client_cache("ec2", region, BOTO_MAX_RETRIES, **aws_credentials)
     instance_types = ec2.describe_instance_types()
     final_instance_types.extend(copy.deepcopy(instance_types["InstanceTypes"]))
     while "NextToken" in instance_types:
@@ -357,26 +352,35 @@ class AWSNodeProvider(NodeProvider):
         # single SubnetId before invoking the AWS API.
         subnet_ids = conf.pop("SubnetIds")
 
+        # update config with min/max node counts and tag specs
+        conf.update({
+            "MinCount": 1,
+            "MaxCount": count,
+            "TagSpecifications": tag_specs
+        })
+
+        cli_logger_tags = {}
         for attempt in range(1, BOTO_CREATE_MAX_RETRIES + 1):
             try:
-                subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
+                if "NetworkInterfaces" in conf:
+                    net_ifs = conf["NetworkInterfaces"]
+                    # remove security group IDs previously copied from network
+                    # interfaces (create_instances call fails otherwise)
+                    conf.pop("SecurityGroupIds", None)
+                    cli_logger_tags["network_interfaces"] = str(net_ifs)
+                else:
+                    subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
+                    self.subnet_idx += 1
+                    conf["SubnetId"] = subnet_id
+                    cli_logger_tags["subnet_id"] = subnet_id
 
-                self.subnet_idx += 1
-                conf.update({
-                    "MinCount": 1,
-                    "MaxCount": count,
-                    "SubnetId": subnet_id,
-                    "TagSpecifications": tag_specs
-                })
                 created = self.ec2_fail_fast.create_instances(**conf)
                 created_nodes_dict = {n.id: n for n in created}
 
                 # todo: timed?
                 # todo: handle plurality?
                 with cli_logger.group(
-                        "Launched {} nodes",
-                        count,
-                        _tags=dict(subnet_id=subnet_id)):
+                        "Launched {} nodes", count, _tags=cli_logger_tags):
                     for instance in created:
                         # NOTE(maximsmol): This is needed for mocking
                         # boto3 for tests. This is likely a bug in moto
@@ -399,12 +403,12 @@ class AWSNodeProvider(NodeProvider):
                 break
             except botocore.exceptions.ClientError as exc:
                 if attempt == BOTO_CREATE_MAX_RETRIES:
-                    # todo: err msg
                     cli_logger.abort(
-                        "Failed to launch instances. Max attempts exceeded.")
-                    raise exc
+                        "Failed to launch instances. Max attempts exceeded.",
+                        exc=exc,
+                    )
                 else:
-                    cli_logger.print(
+                    cli_logger.warning(
                         "create_instances: Attempt failed with {}, retrying.",
                         exc)
         return created_nodes_dict

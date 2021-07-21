@@ -20,17 +20,22 @@ def memory_summary(address=None,
                    redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
                    group_by="NODE_ADDRESS",
                    sort_by="OBJECT_SIZE",
+                   units="B",
                    line_wrap=True,
-                   stats_only=False):
+                   stats_only=False,
+                   num_entries=None):
     from ray.new_dashboard.memory_utils import memory_summary
     if not address:
         address = services.get_ray_address_to_use_or_die()
+    if address == "auto":
+        address = services.find_redis_address_or_die()
+
     state = GlobalState()
     state._initialize_global_state(address, redis_password)
     if stats_only:
         return get_store_stats(state)
-    return (memory_summary(state, group_by, sort_by, line_wrap) +
-            get_store_stats(state))
+    return (memory_summary(state, group_by, sort_by, line_wrap, units,
+                           num_entries) + get_store_stats(state))
 
 
 def get_store_stats(state, node_manager_address=None, node_manager_port=None):
@@ -43,7 +48,13 @@ def get_store_stats(state, node_manager_address=None, node_manager_port=None):
     # We can ask any Raylet for the global memory info, that Raylet internally
     # asks all nodes in the cluster for memory stats.
     if (node_manager_address is None or node_manager_port is None):
-        raylet = state.node_table()[0]
+        # We should ask for a raylet that is alive.
+        raylet = None
+        for node in state.node_table():
+            if node["Alive"]:
+                raylet = node
+                break
+        assert raylet is not None, "Every raylet is dead"
         raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                         raylet["NodeManagerPort"])
     else:
@@ -94,13 +105,23 @@ def node_stats(node_manager_address=None,
 def store_stats_summary(reply):
     """Returns formatted string describing object store stats in all nodes."""
     store_summary = "--- Aggregate object store stats across all nodes ---\n"
+    # TODO(ekl) it would be nice if we could provide a full memory usage
+    # breakdown by type (e.g., pinned by worker, primary, etc.)
     store_summary += (
-        "Plasma memory usage {} MiB, {} objects, {}% full\n".format(
+        "Plasma memory usage {} MiB, {} objects, {}% full, {}% "
+        "needed\n".format(
             int(reply.store_stats.object_store_bytes_used / (1024 * 1024)),
             reply.store_stats.num_local_objects,
             round(
                 100 * reply.store_stats.object_store_bytes_used /
+                reply.store_stats.object_store_bytes_avail, 2),
+            round(
+                100 * reply.store_stats.object_store_bytes_primary_copy /
                 reply.store_stats.object_store_bytes_avail, 2)))
+    if reply.store_stats.object_store_bytes_fallback > 0:
+        store_summary += ("Plasma filesystem mmap usage: {} MiB\n".format(
+            int(reply.store_stats.object_store_bytes_fallback /
+                (1024 * 1024))))
     if reply.store_stats.spill_time_total_s > 0:
         store_summary += (
             "Spilled {} MiB, {} objects, avg write throughput {} MiB/s\n".
@@ -118,8 +139,12 @@ def store_stats_summary(reply):
                 int(reply.store_stats.restored_bytes_total / (1024 * 1024) /
                     reply.store_stats.restore_time_total_s)))
     if reply.store_stats.consumed_bytes > 0:
-        store_summary += ("Objects consumed by Ray tasks: {} MiB.".format(
+        store_summary += ("Objects consumed by Ray tasks: {} MiB.\n".format(
             int(reply.store_stats.consumed_bytes / (1024 * 1024))))
+    if reply.store_stats.object_pulls_queued:
+        store_summary += (
+            "Object fetches queued, waiting for available memory.")
+
     return store_summary
 
 

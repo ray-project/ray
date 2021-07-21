@@ -18,7 +18,11 @@ from ray.rllib.utils.framework import try_import_tf
 tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--run", type=str, default="DQN")  # Try PG, PPO, DQN
+parser.add_argument(
+    "--run",
+    type=str,
+    default="DQN",
+    help="The RLlib-registered algorithm to use.")
 parser.add_argument("--stop", type=int, default=200)
 parser.add_argument("--use-vision-network", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
@@ -96,7 +100,7 @@ class MyKerasQModel(DistributionalQTFModel):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
+    ray.init(num_cpus=args.num_cpus or None)
     ModelCatalog.register_custom_model(
         "keras_model", MyVisionNetwork
         if args.use_vision_network else MyKerasModel)

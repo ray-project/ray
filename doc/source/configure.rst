@@ -101,8 +101,6 @@ start a new worker with the given *root temporary directory*.
           │   ├── log_monitor.out
           │   ├── monitor.err
           │   ├── monitor.out
-          │   ├── plasma_store.err  # outputs of the plasma store
-          │   ├── plasma_store.out
           │   ├── raylet.err  # outputs of the raylet process
           │   ├── raylet.out
           │   ├── redis-shard_0.err   # outputs of redis shards
@@ -133,7 +131,7 @@ The node manager and object manager run as separate processes with their own por
 
 The following options specify the range of ports used by worker processes across machines. All ports in the range should be open.
 
-- ``--min-worker-port``: Minimum port number worker can be bound to. Default: 10000.
+- ``--min-worker-port``: Minimum port number worker can be bound to. Default: 10002.
 - ``--max-worker-port``: Maximum port number worker can be bound to. Default: 10999.
 
 Port numbers are how Ray disambiguates input and output to and from multiple workers on a single node. Each worker will take input and give output on a single port number. Thus, for example, by default, there is a maximum of 1,000 workers on each node, irrespective of number of CPUs.
@@ -144,7 +142,8 @@ Head Node
 ~~~~~~~~~
 In addition to ports specified above, the head node needs to open several more ports.
 
-- ``--port``: Port of GCS. Default: 6379.
+- ``--port``: Port of Redis. If `--address` is not specified, the head node will start a redis instance listening on this port. Default: 6379.
+- ``--ray-client-server-port``: Listening port for Ray Client Server. Default: 10001.
 - ``--redis-shard-ports``: Comma-separated list of ports for non-primary Redis shards. Default: Random values.
 - ``--gcs-server-port``: GCS Server port. GCS server is a stateless service that is in charge of communicating with the GCS. Default: Random value.
 

@@ -1,6 +1,7 @@
+import inspect
 import logging
 import pickle
-from typing import Dict, Optional, Union, List, Sequence
+from typing import Dict, Optional, Type, Union, List, Sequence
 
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
@@ -108,7 +109,8 @@ class NevergradSearch(Searcher):
     """
 
     def __init__(self,
-                 optimizer: Union[None, Optimizer, ConfiguredOptimizer] = None,
+                 optimizer: Union[None, Optimizer, Type[Optimizer],
+                                  ConfiguredOptimizer] = None,
                  space: Optional[Union[Dict, Parameter]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
@@ -154,7 +156,9 @@ class NevergradSearch(Searcher):
                     "parameter.")
             self._parameters = space
             self._nevergrad_opt = optimizer
-        elif isinstance(optimizer, ConfiguredOptimizer):
+        elif (inspect.isclass(optimizer)
+              and issubclass(optimizer, Optimizer)) or isinstance(
+                  optimizer, ConfiguredOptimizer):
             self._opt_factory = optimizer
             self._parameters = None
             self._space = space
@@ -316,11 +320,12 @@ class NevergradSearch(Searcher):
                 if isinstance(sampler, LogUniform):
                     return ng.p.Log(
                         lower=domain.lower,
-                        upper=domain.upper,
+                        upper=domain.upper - 1,  # Upper bound exclusive
                         exponent=sampler.base).set_integer_casting()
                 return ng.p.Scalar(
                     lower=domain.lower,
-                    upper=domain.upper).set_integer_casting()
+                    upper=domain.upper - 1,  # Upper bound exclusive
+                ).set_integer_casting()
 
             elif isinstance(domain, Categorical):
                 return ng.p.Choice(choices=domain.categories)

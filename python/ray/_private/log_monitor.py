@@ -99,9 +99,10 @@ class LogMonitor:
                 # is still alive. Only applies to worker processes.
                 if (file_info.worker_pid != "raylet"
                         and file_info.worker_pid != "gcs_server"
-                        and file_info.worker_pid != "autoscaler"):
+                        and file_info.worker_pid != "autoscaler"
+                        and file_info.worker_pid is not None):
                     assert not isinstance(file_info.worker_pid, str), (
-                        f"PID should be an int type. "
+                        "PID should be an int type. "
                         "Given PID: {file_info.worker_pid}.")
                     os.kill(file_info.worker_pid, 0)
             except OSError:
@@ -243,7 +244,7 @@ class LogMonitor:
                     lines_to_publish.append(next_line)
                 except Exception:
                     logger.error(
-                        f"Error: Reading file: {file_info.full_path}, "
+                        f"Error: Reading file: {file_info.filename}, "
                         f"position: {file_info.file_info.file_handle.tell()} "
                         "failed.")
                     raise
@@ -286,7 +287,7 @@ class LogMonitor:
             # If nothing was published, then wait a little bit before checking
             # for logs to avoid using too much CPU.
             if not anything_published:
-                time.sleep(0.05)
+                time.sleep(0.1)
 
 
 if __name__ == "__main__":

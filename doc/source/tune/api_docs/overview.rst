@@ -27,3 +27,4 @@ on `Github`_.
    internals.rst
    client.rst
    cli.rst
+   scalability.rst

@@ -7,12 +7,12 @@ from multiprocessing.pool import ThreadPool
 import ray
 
 from dask.core import istask, ishashable, _execute_task
-from dask.local import get_async, apply_sync
 from dask.system import CPU_COUNT
 from dask.threaded import pack_exception, _thread_get_id
 
 from .callbacks import local_ray_callbacks, unpack_ray_callbacks
 from .common import unpack_object_refs
+from .scheduler_utils import get_async, apply_sync
 
 main_thread = threading.current_thread()
 default_pool = None

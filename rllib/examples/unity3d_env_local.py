@@ -17,7 +17,8 @@ To run this script against a local Unity3D engine:
 
 3) Then run this script (you will have to press Play in your Unity editor
    at some point to start the game and the learning process):
-$ python unity3d_env_local.py --env 3DBall --stop-reward [..] [--torch]?
+$ python unity3d_env_local.py --env 3DBall --stop-reward [..]
+  [--framework=torch]?
 """
 
 import argparse
@@ -61,17 +62,37 @@ parser.add_argument(
     help="Full path to a checkpoint file for restoring a previously saved "
     "Trainer state.")
 parser.add_argument("--num-workers", type=int, default=0)
-parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=9999)
-parser.add_argument("--stop-reward", type=float, default=9999.0)
-parser.add_argument("--stop-timesteps", type=int, default=10000000)
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=9999,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=10000000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=9999.0,
+    help="Reward at which we stop training.")
 parser.add_argument(
     "--horizon",
     type=int,
     default=3000,
     help="The max. number of `step()`s for any episode (per agent) before "
     "it'll be reset again automatically.")
-parser.add_argument("--torch", action="store_true")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 
 if __name__ == "__main__":
     ray.init()

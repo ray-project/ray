@@ -12,8 +12,6 @@
 
 namespace ray {
 namespace api {
-NativeObjectStore::NativeObjectStore(NativeRayRuntime &native_ray_tuntime)
-    : native_ray_tuntime_(native_ray_tuntime) {}
 
 void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
                                ObjectID *object_id) {
@@ -71,10 +69,31 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> NativeObjectStore::GetRaw(
   return result_sbuffers;
 }
 
-WaitResult NativeObjectStore::Wait(const std::vector<ObjectID> &ids, int num_objects,
-                                   int timeout_ms) {
-  native_ray_tuntime_.GetWorkerContext();
-  return WaitResult();
+std::vector<bool> NativeObjectStore::Wait(const std::vector<ObjectID> &ids,
+                                          int num_objects, int timeout_ms) {
+  std::vector<bool> results;
+  auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+  // TODO(guyang.sgy): Support `fetch_local` option in API.
+  // Simply set `fetch_local` to be true.
+  ::ray::Status status = core_worker.Wait(ids, num_objects, timeout_ms, &results, true);
+  if (!status.ok()) {
+    throw RayException("Wait object error: " + status.ToString());
+  }
+  return results;
+}
+
+void NativeObjectStore::AddLocalReference(const std::string &id) {
+  if (CoreWorkerProcess::IsInitialized()) {
+    auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+    core_worker.AddLocalReference(ObjectID::FromBinary(id));
+  }
+}
+
+void NativeObjectStore::RemoveLocalReference(const std::string &id) {
+  if (CoreWorkerProcess::IsInitialized()) {
+    auto &core_worker = CoreWorkerProcess::GetCoreWorker();
+    core_worker.RemoveLocalReference(ObjectID::FromBinary(id));
+  }
 }
 }  // namespace api
 }  // namespace ray

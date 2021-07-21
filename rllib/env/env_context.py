@@ -17,6 +17,7 @@ class EnvContext(dict):
     Attributes:
         worker_index (int): When there are multiple workers created, this
             uniquely identifies the worker the env is created in.
+        num_workers (int): The total number of (remote) workers in the set.
         vector_index (int): When there are multiple envs per worker, this
             uniquely identifies the env index within the worker.
         remote (bool): Whether environment should be remote or not.
@@ -39,7 +40,7 @@ class EnvContext(dict):
                             worker_index: int = None,
                             vector_index: int = None,
                             remote: bool = None,
-                            num_workers: Optional[int] = None):
+                            num_workers: Optional[int] = None) -> "EnvContext":
         return EnvContext(
             env_config if env_config is not None else self,
             worker_index if worker_index is not None else self.worker_index,

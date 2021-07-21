@@ -223,7 +223,11 @@ class _MockTrialExecutor(TrialExecutor):
         trial.status = Trial.RUNNING
         return True
 
-    def stop_trial(self, trial, error=False, error_msg=None):
+    def stop_trial(self,
+                   trial,
+                   error=False,
+                   error_msg=None,
+                   destroy_pg_if_cannot_replace=True):
         trial.status = Trial.ERROR if error else Trial.TERMINATED
 
     def restore(self, trial, checkpoint=None, block=False):
@@ -2048,6 +2052,51 @@ class AsyncHyperBandSuite(unittest.TestCase):
             TrialScheduler.STOP)
         self.assertEqual(
             scheduler.on_trial_result(None, t3, result(2, 260)),
+            TrialScheduler.STOP)
+
+    def testAsyncHBSaveRestore(self):
+        tmpfile = tempfile.mktemp()
+
+        scheduler = AsyncHyperBandScheduler(
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=1,
+            max_t=10,
+            reduction_factor=2,
+            brackets=1)
+
+        # Add some trials
+        trials = [Trial("PPO") for i in range(10)]
+        for t in trials:
+            scheduler.on_trial_add(None, t)
+
+        # Report some results
+        for t in trials[0:5]:
+            self.assertNotEqual(
+                scheduler.on_trial_result(None, t, result(1, 10)),
+                TrialScheduler.STOP)
+
+        # Report worse result: Trial should stop
+        self.assertEqual(
+            scheduler.on_trial_result(None, trials[5], result(1, 5)),
+            TrialScheduler.STOP)
+
+        scheduler.save(tmpfile)
+
+        scheduler2 = AsyncHyperBandScheduler()
+        scheduler2.restore(tmpfile)
+
+        # Report a new bad result: Trial should stop
+        self.assertEqual(
+            scheduler2.on_trial_result(None, trials[6], result(1, 4)),
+            TrialScheduler.STOP)
+
+        # Create a new trial and report bad result: Trial should stop
+        # Report a new bad result: Trial should stop
+        new_trial = Trial("PPO")
+        scheduler2.on_trial_add(None, new_trial)
+        self.assertEqual(
+            scheduler2.on_trial_result(None, new_trial, result(1, 2)),
             TrialScheduler.STOP)
 
     def testMedianStoppingNanInf(self):

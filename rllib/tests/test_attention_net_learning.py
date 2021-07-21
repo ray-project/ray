@@ -23,7 +23,7 @@ class TestAttentionNetLearning(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=5, ignore_reinit_error=True)
+        ray.init(num_cpus=5)
 
     @classmethod
     def tearDownClass(cls) -> None:

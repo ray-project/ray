@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 import numpy as np
 import json
@@ -64,7 +65,8 @@ class MockDurableTrainer(DurableTrainable, _MockTrainer):
     # TODO(ujvl): This class uses multiple inheritance; it should be cleaned
     #  up once the durable training API converges.
 
-    def __init__(self, remote_checkpoint_dir, *args, **kwargs):
+    def __init__(self, remote_checkpoint_dir, sync_function_tpl, *args,
+                 **kwargs):
         _MockTrainer.__init__(self, *args, **kwargs)
         DurableTrainable.__init__(self, remote_checkpoint_dir, *args, **kwargs)
 
@@ -108,14 +110,22 @@ class FailureInjectorCallback(Callback):
     def __init__(self,
                  config_path="~/ray_bootstrap_config.yaml",
                  probability=0.1,
+                 time_between_checks=0,
                  disable=False):
         self.probability = probability
         self.config_path = os.path.expanduser(config_path)
         self.disable = disable
 
+        self.time_between_checks = time_between_checks
+        # Initialize with current time so we don't fail right away
+        self.last_fail_check = time.monotonic()
+
     def on_step_begin(self, **info):
         if not os.path.exists(self.config_path):
             return
+        if time.monotonic() < self.last_fail_check + self.time_between_checks:
+            return
+        self.last_fail_check = time.monotonic()
         import click
         from ray.autoscaler._private.commands import kill_node
         failures = 0
@@ -131,6 +141,7 @@ class FailureInjectorCallback(Callback):
                         yes=True,
                         hard=should_terminate,
                         override_cluster_name=None)
+                    return
                 except click.exceptions.ClickException:
                     failures += 1
                     logger.exception("Killing random node failed in attempt "

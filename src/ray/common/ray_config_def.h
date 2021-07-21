@@ -18,6 +18,19 @@
 // Macro definition format: RAY_CONFIG(type, name, default_value).
 // NOTE: This file should NOT be included in any file other than ray_config.h.
 
+/// The duration between dumping debug info to logs, or 0 to disable.
+RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
+
+/// Whether to enable Ray event stats collection.
+/// TODO(ekl) this seems to segfault Java unit tests when on by default?
+RAY_CONFIG(bool, event_stats, false)
+
+/// The interval of periodic event loop stats print.
+/// -1 means the feature is disabled. In this case, stats are only available to
+/// debug_state.txt for raylets.
+/// NOTE: This requires event_stats=1.
+RAY_CONFIG(int64_t, event_stats_print_interval_ms, 10000)
+
 /// In theory, this is used to detect Ray cookie mismatches.
 /// This magic number (hex for "RAY") is used instead of zero, rationale is
 /// that it could still be possible that some random program sends an int64_t
@@ -30,11 +43,11 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 
 /// The duration between heartbeats sent by the raylets.
-RAY_CONFIG(uint64_t, raylet_heartbeat_period_milliseconds, 100)
+RAY_CONFIG(uint64_t, raylet_heartbeat_period_milliseconds, 1000)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
-RAY_CONFIG(int64_t, num_heartbeats_timeout, 300)
+RAY_CONFIG(int64_t, num_heartbeats_timeout, 30)
 /// For a raylet, if the last heartbeat was sent more than this many
 /// heartbeat periods ago, then a warning will be logged that the heartbeat
 /// handler is drifting.
@@ -46,31 +59,6 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 /// report periods ago, then a warning will be logged that the report
 /// handler is drifting.
 RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
-
-/// The duration between dumping debug info to logs, or 0 to disable.
-RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
-
-RAY_CONFIG(bool, asio_event_loop_stats_collection_enabled, false)
-
-/// Whether to enable fair queueing between task classes in raylet. When
-/// fair queueing is enabled, the raylet will try to balance the number
-/// of running tasks by class (i.e., function name). This prevents one
-/// type of task from starving other types (see issue #3664).
-RAY_CONFIG(bool, fair_queueing_enabled, true)
-
-/// Whether to enable distributed reference counting for objects. When this is
-/// enabled, an object's ref count will include any references held by other
-/// processes, such as when an ObjectID is serialized and passed as an argument
-/// to another task. It will also include any references due to nesting, i.e.
-/// if the object ID is nested inside another object that is still in scope.
-/// When this is disabled, an object's ref count will include only local
-/// information:
-///  1. Local Python references to the ObjectID.
-///  2. Pending tasks submitted by the local process that depend on the object.
-/// If both this flag is turned on, then an object
-/// will not be LRU evicted until it is out of scope in ALL processes in the
-/// cluster and all objects that contain it are also out of scope.
-RAY_CONFIG(bool, distributed_ref_counting_enabled, true)
 
 /// Whether to record the creation sites of object references. This adds more
 /// information to `ray memstat`, but introduces a little extra overhead when
@@ -101,12 +89,35 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
-/// Pick between 2 scheduling spillback strategies. Load balancing mode picks the node at
-/// uniform random from the valid options. The other mode is more likely to spill back
-/// many tasks to the same node.
-RAY_CONFIG(bool, scheduler_loadbalance_spillback,
-           getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != nullptr &&
-               getenv("RAY_SCHEDULER_LOADBALANCE_SPILLBACK") != std::string("1"))
+/// Whether to re-populate plasma memory. This avoids memory allocation failures
+/// at runtime (SIGBUS errors creating new objects), however it will use more memory
+/// upfront and can slow down Ray startup.
+/// See also: https://github.com/ray-project/ray/issues/14182
+RAY_CONFIG(bool, preallocate_plasma_memory, false)
+
+/// Whether to never raise OOM. Instead, we fallback to allocating from the filesystem
+/// in /tmp, creating a new file per object. This degrades performance since filesystem
+/// backed objects are written to disk, but allows Ray to operate with degraded
+/// performance instead of crashing. Note that memory admission control is still in play,
+/// so Ray will still do its best to avoid running out of memory (i.e., via throttling and
+/// spilling).
+RAY_CONFIG(bool, plasma_unlimited, true)
+
+/// DEBUG-ONLY: Min number of pulls to keep active. Only supports values {0, 1}.
+RAY_CONFIG(int, pull_manager_min_active_pulls, 1)
+
+/// DEBUG-ONLY: Whether to exclude actively pulled objects from spilling and eviction.
+RAY_CONFIG(bool, pull_manager_pin_active_objects, true)
+
+/// Whether to use the hybrid scheduling policy, or one of the legacy spillback
+/// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
+/// then spread via weighted (by critical resource usage).
+RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
+
+RAY_CONFIG(float, scheduler_spread_threshold,
+           getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
+               ? std::stof(getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
+               : 0.5)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -144,6 +155,13 @@ RAY_CONFIG(uint64_t, raylet_death_check_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, get_timeout_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_get_request_size, 10000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
+
+/// Temporary workaround for https://github.com/ray-project/ray/pull/16402.
+RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
+
+// Whether to inline object status in serialized references.
+// See https://github.com/ray-project/ray/issues/16025 for more details.
+RAY_CONFIG(bool, inline_object_status_in_refs, true)
 
 /// Number of times raylet client tries connecting to a raylet.
 RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
@@ -229,6 +247,18 @@ RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 /// The interval at which the gcs server will print debug info.
 RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
+// The interval at which the gcs server will pull a new resource.
+RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
+// The number of concurrent polls to polls to GCS.
+RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
+// Feature flag to turn on resource report polling. Polling and raylet pushing are
+// mutually exlusive.
+RAY_CONFIG(bool, pull_based_resource_reporting, true)
+// Feature flag to use grpc instead of redis for resource broadcast.
+// TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
+RAY_CONFIG(bool, grpc_based_resource_broadcast, false)
+// Feature flag to enable grpc based pubsub in GCS.
+RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
@@ -236,11 +266,18 @@ RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 /// The amount of time to wait between logging plasma space usage debug messages.
 RAY_CONFIG(uint64_t, object_store_usage_log_interval_s, 10 * 60)
 
+/// The threshold to trigger a global gc
+RAY_CONFIG(double, high_plasma_storage_usage, 0.7)
+
 /// The amount of time between automatic local Python GC triggers.
 RAY_CONFIG(uint64_t, local_gc_interval_s, 10 * 60)
 
 /// The min amount of time between local GCs (whether auto or mem pressure triggered).
 RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
+
+/// The min amount of time between triggering global_gc in raylet. This only applies
+/// to global GCs triggered due to high_plasma_storage_usage.
+RAY_CONFIG(uint64_t, global_gc_min_interval_s, 30)
 
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
@@ -252,17 +289,10 @@ RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
 
 /// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
-RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 1)
+RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
 
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
-
-/// Whether start the Plasma Store as a Raylet thread.
-RAY_CONFIG(bool, plasma_store_as_thread, false)
-
-/// Whether to release worker CPUs during plasma fetches.
-/// See https://github.com/ray-project/ray/issues/12912 for further discussion.
-RAY_CONFIG(bool, release_resources_during_plasma_fetch, false)
 
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.
@@ -288,6 +318,10 @@ RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
 /// Wait timeout for dashboard agent register.
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 
+/// If the agent manager fails to communicate with the dashboard agent, we will retry
+/// after this interval.
+RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000);
+
 /// The maximum number of resource shapes included in the resource
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
@@ -300,9 +334,7 @@ RAY_CONFIG(bool, report_worker_backlog, true)
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
 
 /// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
-RAY_CONFIG(bool, enable_worker_prestart,
-           getenv("RAY_ENABLE_WORKER_PRESTART") == nullptr ||
-               getenv("RAY_ENABLE_WORKER_PRESTART") == std::string("1"))
+RAY_CONFIG(bool, enable_worker_prestart, true)
 
 /// The interval of periodic idle worker killing. Value of 0 means worker capping is
 /// disabled.
@@ -310,9 +342,6 @@ RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 200)
 
 /// The idle time threshold for an idle worker to be killed.
 RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
-
-/// Whether start the Plasma Store as a Raylet thread.
-RAY_CONFIG(bool, ownership_based_object_directory_enabled, true)
 
 // The interval where metrics are exported in milliseconds.
 RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
@@ -345,13 +374,16 @@ RAY_CONFIG(int, max_io_workers, 4)
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
-/// Whether to enable automatic object deletion when refs are gone out of scope.
-/// When it is true, manual (force) spilling is not available.
-/// TODO(sang): Fix it.
-RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
+/// If set to less than 1.0, Ray will start spilling objects when existing objects
+/// take more than this percentage of the available memory.
+RAY_CONFIG(float, object_spilling_threshold, 1.0)
+
+/// Maximum number of objects that can be fused into a single file.
+RAY_CONFIG(int64_t, max_fused_object_count, 2000)
 
 /// Grace period until we throw the OOM error to the application in seconds.
-RAY_CONFIG(int64_t, oom_grace_period_s, 10)
+/// In unlimited allocation mode, this is the time delay prior to fallback allocating.
+RAY_CONFIG(int64_t, oom_grace_period_s, 2)
 
 /// Whether or not the external storage is file system.
 /// This is configured based on object_spilling_config.
@@ -375,3 +407,56 @@ RAY_CONFIG(int64_t, log_rotation_backup_count, 5)
 /// notification, in this case we'll wait for a fixed timeout value and then mark it
 /// as failed.
 RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
+
+/// Maximum amount of memory that will be used by running tasks' args.
+RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
+
+/// The maximum number of objects to publish for each publish calls.
+RAY_CONFIG(int, publish_batch_size, 5000)
+
+/// The maximum command batch size.
+RAY_CONFIG(int64_t, max_command_batch_size, 2000)
+
+/// The time where the subscriber connection is timed out in milliseconds.
+/// This is for the pubsub module.
+RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
+
+// This is the minimum time an actor will remain in the actor table before
+// being garbage collected when a job finishes
+RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
+
+/// Whether to enable GCS-based actor scheduling.
+RAY_CONFIG(bool, gcs_task_scheduling_enabled,
+           getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") != nullptr &&
+               getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") == std::string("true"))
+
+RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
+
+/// If enabled, raylet will report resources only when resources are changed.
+RAY_CONFIG(bool, enable_light_weight_resource_report, true)
+
+// The number of seconds to wait for the Raylet to start. This is normally
+// fast, but when RAY_preallocate_plasma_memory=1 is set, it may take some time
+// (a few GB/s) to populate all the pages on Raylet startup.
+RAY_CONFIG(uint32_t, raylet_start_wait_time_s,
+           getenv("RAY_preallocate_plasma_memory") != nullptr &&
+                   getenv("RAY_preallocate_plasma_memory") == std::string("1")
+               ? 120
+               : 10)
+
+/// The scheduler will treat these predefined resource types as unit_instance.
+/// Default predefined_unit_instance_resources is "GPU".
+/// When set it to "CPU,GPU", we will also treat CPU as unit_instance.
+RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
+
+/// The scheduler will treat these custom resource types as unit_instance.
+/// Default custom_unit_instance_resources is empty.
+/// When set it to "FPGA", we will treat FPGA as unit_instance.
+RAY_CONFIG(std::string, custom_unit_instance_resources, "")
+
+// Maximum size of the batch size when broadcasting resources to raylet.
+RAY_CONFIG(uint64_t, resource_broadcast_batch_size_bytes, 1024 * 1024 * 5);
+
+// If enabled and worker stated in container, the container will add
+// resource limit.
+RAY_CONFIG(bool, worker_resource_limits_enabled, false)

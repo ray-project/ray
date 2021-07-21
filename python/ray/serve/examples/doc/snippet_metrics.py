@@ -7,13 +7,13 @@ ray.init(address="auto")
 serve.start()
 
 
+@serve.deployment
 def f(request):
     time.sleep(1)
 
 
-serve.create_backend("f", f)
-serve.create_endpoint("f", backend="f")
+f.deploy()
 
-handle = serve.get_handle("f")
-while (True):
+handle = f.get_handle()
+while True:
     ray.get(handle.remote())

@@ -65,11 +65,12 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
       std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
   std::string name = "";
-  ActorCreationOptions actor_options{
-      max_restarts,
-      /*max_task_retries=*/0,
-      /*max_concurrency*/ 1,  resources, resources,           {},
-      /*is_detached=*/false,  name,      /*is_asyncio=*/false};
+  std::string ray_namespace = "";
+  ActorCreationOptions actor_options{max_restarts,
+                                     /*max_task_retries=*/0,
+                                     /*max_concurrency*/ 1,  resources, resources,     {},
+                                     /*is_detached=*/false,  name,      ray_namespace,
+                                     /*is_asyncio=*/false};
 
   // Create an actor.
   ActorID actor_id;
@@ -98,30 +99,22 @@ class CoreWorkerTest : public ::testing::Test {
       raylet_store_socket_names_.resize(num_nodes);
     }
 
-    // start plasma store.
-    for (auto &store_socket : raylet_store_socket_names_) {
-      store_socket = TestSetupUtil::StartObjectStore();
-    }
-
     // start gcs server
     gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("127.0.0.1");
 
     // start raylet on each node. Assign each node with different resources so that
     // a task can be scheduled to the desired node.
     for (int i = 0; i < num_nodes; i++) {
-      raylet_socket_names_[i] = TestSetupUtil::StartRaylet(
-          raylet_store_socket_names_[i], "127.0.0.1", node_manager_port + i, "127.0.0.1",
-          "\"CPU,4.0,resource" + std::to_string(i) + ",10\"");
+      raylet_socket_names_[i] =
+          TestSetupUtil::StartRaylet("127.0.0.1", node_manager_port + i, "127.0.0.1",
+                                     "\"CPU,4.0,resource" + std::to_string(i) + ",10\"",
+                                     &raylet_store_socket_names_[i]);
     }
   }
 
   ~CoreWorkerTest() {
     for (const auto &raylet_socket_name : raylet_socket_names_) {
       TestSetupUtil::StopRaylet(raylet_socket_name);
-    }
-
-    for (const auto &store_socket_name : raylet_store_socket_names_) {
-      TestSetupUtil::StopObjectStore(store_socket_name);
     }
 
     if (!gcs_server_socket_name_.empty()) {
@@ -501,6 +494,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
 
   std::unordered_map<std::string, double> resources;
   std::string name = "";
+  std::string ray_namespace = "";
   ActorCreationOptions actor_options{0,
                                      0,
                                      1,
@@ -509,6 +503,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                                      {},
                                      /*is_detached=*/false,
                                      name,
+                                     ray_namespace,
                                      /*is_asyncio=*/false};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
@@ -924,20 +919,19 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 8);
-  ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
-  ray::TEST_RAYLET_EXEC_PATH = std::string(argv[2]);
+  RAY_CHECK(argc == 7);
+  ray::TEST_RAYLET_EXEC_PATH = std::string(argv[1]);
 
   auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   std::mt19937 gen(seed);
   std::uniform_int_distribution<int> random_gen{2000, 2009};
   // Use random port to avoid port conflicts between UTs.
   node_manager_port = random_gen(gen);
-  ray::TEST_MOCK_WORKER_EXEC_PATH = std::string(argv[3]);
-  ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[4]);
+  ray::TEST_MOCK_WORKER_EXEC_PATH = std::string(argv[2]);
+  ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[3]);
 
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = std::string(argv[5]);
-  ray::TEST_REDIS_SERVER_EXEC_PATH = std::string(argv[6]);
-  ray::TEST_REDIS_MODULE_LIBRARY_PATH = std::string(argv[7]);
+  ray::TEST_REDIS_CLIENT_EXEC_PATH = std::string(argv[4]);
+  ray::TEST_REDIS_SERVER_EXEC_PATH = std::string(argv[5]);
+  ray::TEST_REDIS_MODULE_LIBRARY_PATH = std::string(argv[6]);
   return RUN_ALL_TESTS();
 }

@@ -3,7 +3,7 @@
 
 import gym
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 
 import ray
 import ray.experimental.tf_utils
@@ -30,12 +30,25 @@ class ARSTFPolicy(Policy):
         self.single_threaded = self.config.get("single_threaded", False)
         if self.config["framework"] == "tf":
             self.sess = make_session(single_threaded=self.single_threaded)
+
+            # Set graph-level seed.
+            if config.get("seed") is not None:
+                with self.sess.as_default():
+                    tf1.set_random_seed(config["seed"])
+
             self.inputs = tf1.placeholder(
                 tf.float32, [None] + list(self.preprocessor.shape))
         else:
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
             self.sess = self.inputs = None
+            if config.get("seed") is not None:
+                # Tf2.x.
+                if config.get("framework") == "tf2":
+                    tf.random.set_seed(config["seed"])
+                # Tf-eager.
+                elif tf1 and config.get("framework") == "tfe":
+                    tf1.set_random_seed(config["seed"])
 
         # Policy network.
         self.dist_class, dist_dim = ModelCatalog.get_action_dist(

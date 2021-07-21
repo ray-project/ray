@@ -1,5 +1,6 @@
 import glob
 import os
+import pickle
 import shutil
 import sys
 import tempfile
@@ -120,8 +121,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 }).trials
 
         with patch.object(CommandBasedClient, "_execute") as mock_fn:
-            with patch(
-                    "ray._private.services.get_node_ip_address") as mock_sync:
+            with patch("ray.util.get_node_ip_address") as mock_sync:
                 sync_config = tune.SyncConfig(
                     sync_to_driver="echo {source} {target}")
                 mock_sync.return_value = "0.0.0.0"
@@ -170,10 +170,16 @@ class TestSyncFunctionality(unittest.TestCase):
                 time.sleep(1)
                 tune.report(score=i)
 
-        mock = unittest.mock.Mock()
-
         def counter(local, remote):
-            mock()
+            count_file = os.path.join(tmpdir, "count.txt")
+            if not os.path.exists(count_file):
+                count = 0
+            else:
+                with open(count_file, "rb") as fp:
+                    count = pickle.load(fp)
+            count += 1
+            with open(count_file, "wb") as fp:
+                pickle.dump(count, fp)
 
         sync_config = tune.SyncConfig(
             upload_dir="test", sync_to_cloud=counter, cloud_sync_period=1)
@@ -192,7 +198,11 @@ class TestSyncFunctionality(unittest.TestCase):
             sync_config=sync_config,
         ).trials
 
-        self.assertEqual(mock.call_count, 12)
+        count_file = os.path.join(tmpdir, "count.txt")
+        with open(count_file, "rb") as fp:
+            count = pickle.load(fp)
+
+        self.assertEqual(count, 12)
         shutil.rmtree(tmpdir)
 
     def testClusterSyncFunction(self):
@@ -217,7 +227,7 @@ class TestSyncFunctionality(unittest.TestCase):
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertFalse(os.path.exists(test_file_path))
 
-        with patch("ray._private.services.get_node_ip_address") as mock_sync:
+        with patch("ray.util.get_node_ip_address") as mock_sync:
             mock_sync.return_value = "0.0.0.0"
             sync_config = tune.SyncConfig(sync_to_driver=sync_func_driver)
             [trial] = tune.run(

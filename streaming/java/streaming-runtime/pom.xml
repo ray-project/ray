@@ -62,12 +62,12 @@
 <dependency>
   <groupId>com.google.guava</groupId>
   <artifactId>guava</artifactId>
-  <version>27.0.1-jre</version>
+  <version>30.0-jre</version>
 </dependency>
 <dependency>
   <groupId>com.google.protobuf</groupId>
   <artifactId>protobuf-java</artifactId>
-  <version>3.8.0</version>
+  <version>3.16.0</version>
 </dependency>
 <dependency>
   <groupId>commons-collections</groupId>
@@ -77,7 +77,7 @@
 <dependency>
   <groupId>commons-io</groupId>
   <artifactId>commons-io</artifactId>
-  <version>2.5</version>
+  <version>2.7</version>
 </dependency>
 <dependency>
   <groupId>de.ruedigermoeller</groupId>
@@ -93,6 +93,21 @@
   <groupId>org.apache.commons</groupId>
   <artifactId>commons-lang3</artifactId>
   <version>3.4</version>
+</dependency>
+<dependency>
+  <groupId>org.apache.logging.log4j</groupId>
+  <artifactId>log4j-api</artifactId>
+  <version>2.14.0</version>
+</dependency>
+<dependency>
+  <groupId>org.apache.logging.log4j</groupId>
+  <artifactId>log4j-core</artifactId>
+  <version>2.14.0</version>
+</dependency>
+<dependency>
+  <groupId>org.apache.logging.log4j</groupId>
+  <artifactId>log4j-slf4j-impl</artifactId>
+  <version>2.14.0</version>
 </dependency>
 <dependency>
   <groupId>org.mockito</groupId>
@@ -120,14 +135,14 @@
   <version>1.7.25</version>
 </dependency>
 <dependency>
-  <groupId>org.slf4j</groupId>
-  <artifactId>slf4j-log4j12</artifactId>
-  <version>1.7.25</version>
-</dependency>
-<dependency>
   <groupId>org.testng</groupId>
   <artifactId>testng</artifactId>
   <version>7.3.0</version>
+</dependency>
+<dependency>
+  <groupId>org.yaml</groupId>
+  <artifactId>snakeyaml</artifactId>
+  <version>1.26</version>
 </dependency>
   </dependencies>
 

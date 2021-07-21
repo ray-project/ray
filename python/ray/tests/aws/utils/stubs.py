@@ -85,6 +85,18 @@ def describe_a_security_group(ec2_client_stub, security_group):
         service_response={"SecurityGroups": [security_group]})
 
 
+def describe_an_sg_2(ec2_client_stub, security_group):
+    """Same as last function, different input param format.
+
+    A call with this input parameter format is made when sg.ip_permissions is
+    accessed in aws/config.py.
+    """
+    ec2_client_stub.add_response(
+        "describe_security_groups",
+        expected_params={"GroupIds": [security_group["GroupId"]]},
+        service_response={"SecurityGroups": [security_group]})
+
+
 def create_sg_echo(ec2_client_stub, security_group):
     ec2_client_stub.add_response(
         "create_security_group",
@@ -94,6 +106,18 @@ def create_sg_echo(ec2_client_stub, security_group):
             "VpcId": security_group["VpcId"]
         },
         service_response={"GroupId": security_group["GroupId"]})
+
+
+def describe_sgs_by_id(ec2_client_stub, security_group_ids, security_groups):
+    ec2_client_stub.add_response(
+        "describe_security_groups",
+        expected_params={
+            "Filters": [{
+                "Name": "group-id",
+                "Values": security_group_ids
+            }]
+        },
+        service_response={"SecurityGroups": security_groups})
 
 
 def describe_sgs_on_vpc(ec2_client_stub, vpc_ids, security_groups):
@@ -121,3 +145,26 @@ def describe_sg_echo(ec2_client_stub, security_group):
         "describe_security_groups",
         expected_params={"GroupIds": [security_group["GroupId"]]},
         service_response={"SecurityGroups": [security_group]})
+
+
+def run_instances_with_network_interfaces_consumer(ec2_client_stub,
+                                                   network_interfaces):
+    ec2_client_stub.add_response(
+        "run_instances",
+        expected_params={
+            "NetworkInterfaces": network_interfaces,
+            "ImageId": ANY,
+            "InstanceType": ANY,
+            "KeyName": ANY,
+            "MinCount": ANY,
+            "MaxCount": ANY,
+            "TagSpecifications": ANY
+        },
+        service_response={})
+
+
+def describe_instances_with_any_filter_consumer(ec2_client_stub):
+    ec2_client_stub.add_response(
+        "describe_instances",
+        expected_params={"Filters": ANY},
+        service_response={})

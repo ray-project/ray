@@ -47,6 +47,12 @@ XGBoost Example
 - `xgboost_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/xgboost_example.py>`__: Trains a basic XGBoost model with Tune with the function-based API and a XGBoost callback.
 
 
+XGBoost with Dynamic Resources Example
+--------------------------------------
+
+- `xgboost_dynamic_resources_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/xgboost_dynamic_resources_example.py>`__: Trains a basic XGBoost model with Tune with the class-based API and a ResourceChangingScheduler, ensuring all resources are being used at all time.
+
+
 LightGBM Example
 ----------------
 

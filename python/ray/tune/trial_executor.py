@@ -93,7 +93,11 @@ class TrialExecutor:
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "start_trial() method")
 
-    def stop_trial(self, trial, error=False, error_msg=None):
+    def stop_trial(self,
+                   trial,
+                   error=False,
+                   error_msg=None,
+                   destroy_pg_if_cannot_replace=True):
         """Stops the trial.
 
         Stops this trial, releasing all allocating resources.
@@ -103,6 +107,8 @@ class TrialExecutor:
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
+            destroy_pg_if_cannot_replace (bool): Whether the trial's placement
+            group should be destroyed if it cannot replace any staged ones.
 
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
@@ -163,6 +169,9 @@ class TrialExecutor:
 
     def on_step_end(self, trial_runner):
         """A hook called after running one step of the trial event loop."""
+        pass
+
+    def force_reconcilation_on_next_step_end(self):
         pass
 
     def on_no_available_trials(self, trial_runner):
@@ -278,10 +287,14 @@ class TrialExecutor:
         """Returns True if GPUs are detected on the cluster."""
         return None
 
-    def cleanup(self, trial):
+    def cleanup(self, trial_runner):
         """Ensures that trials are cleaned up after stopping."""
         pass
 
     def in_staging_grace_period(self) -> bool:
         """Returns True if trials have recently been staged."""
         return False
+
+    def set_max_pending_trials(self, max_pending: int):
+        """Set the maximum number of allowed pending trials."""
+        pass
