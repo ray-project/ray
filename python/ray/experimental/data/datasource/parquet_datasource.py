@@ -25,6 +25,7 @@ class ParquetDatasource(Datasource[ArrowRow]):
                      parallelism: int,
                      paths: Union[str, List[str]],
                      filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                     columns: Optional[List[str]] = None,
                      **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
         """
@@ -35,14 +36,19 @@ class ParquetDatasource(Datasource[ArrowRow]):
             paths, filesystem)
         file_sizes = [file_info.size for file_info in file_infos]
 
+        dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         pq_ds = pq.ParquetDataset(
-            paths, **reader_args, filesystem=filesystem)
+            paths, **dataset_kwargs, filesystem=filesystem)
         pieces = pq_ds.pieces
 
         def read_pieces(pieces: List["pyarrow._dataset.ParquetFileFragment"]):
             import pyarrow as pa
             logger.debug(f"Reading {len(pieces)} parquet pieces")
-            tables = [piece.to_table() for piece in pieces]
+            use_threads = reader_args.pop("use_threads", False)
+            tables = [
+                piece.to_table(
+                    use_threads=use_threads, columns=columns, **reader_args)
+                for piece in pieces]
             if len(tables) > 1:
                 table = pa.concat_tables(tables)
             else:

@@ -135,6 +135,7 @@ def read_datasource(datasource: Datasource[T],
 @PublicAPI(stability="beta")
 def read_parquet(paths: Union[str, List[str]],
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                 columns: Optional[List[str]] = None,
                  parallelism: int = 200,
                  **arrow_parquet_args) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from parquet files.
@@ -149,6 +150,7 @@ def read_parquet(paths: Union[str, List[str]],
     Args:
         paths: A single file path or a list of file paths (or directories).
         filesystem: The filesystem implementation to read from.
+        columns: A list of column names to read.
         parallelism: The amount of parallelism to use for the dataset.
         arrow_parquet_args: Other parquet read options to pass to pyarrow.
 
@@ -160,6 +162,7 @@ def read_parquet(paths: Union[str, List[str]],
         parallelism=parallelism,
         paths=paths,
         filesystem=filesystem,
+        columns=columns,
         **arrow_parquet_args)
 
 
