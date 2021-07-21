@@ -933,7 +933,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
             task_spec.SerializedRuntimeEnv(),
             [this, start_worker_process_fn, &state, task_spec, dynamic_options,
              allocated_instances_serialized_json](
-                bool done, const std::string &serialized_runtime_env_context) {
+                bool success, const std::string &serialized_runtime_env_context) {
               state.tasks_with_pending_runtime_envs.erase(task_spec.TaskId());
               if (success) {
                 start_worker_process_fn(
