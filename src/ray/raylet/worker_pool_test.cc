@@ -1159,8 +1159,8 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
                       /*dynamic_options=*/{}, TaskID::Nil(), "mock_runtime_env_2");
 
-  const WorkerCacheKey env1 = {/*override_environment_variables=*/{},
-                               "mock_runtime_env_1"};
+  const WorkerCacheKey env1 = {
+      /*override_environment_variables=*/{}, "mock_runtime_env_1", {}};
   const int runtime_env_hash_1 = env1.IntHash();
 
   // Try to pop worker for task with runtime env 1.

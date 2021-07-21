@@ -242,7 +242,14 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       } else {
         // The local node has the available resources to run the task, so we should run
         // it.
-        std::shared_ptr<WorkerInterface> worker = worker_pool_.PopWorker(spec);
+        std::string allocated_instances_serialized_json = "{}";
+        if (RayConfig::instance().worker_resource_limits_enabled()) {
+          allocated_instances_serialized_json =
+              cluster_resource_scheduler_->SerializedTaskResourceInstances(
+                  allocated_instances);
+        }
+        std::shared_ptr<WorkerInterface> worker =
+            worker_pool_.PopWorker(spec, allocated_instances_serialized_json);
         if (!worker) {
           RAY_LOG(DEBUG) << "This node has available resources, but no worker processes "
                             "to grant the lease.";
