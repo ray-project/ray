@@ -197,6 +197,5 @@ def test_workflow_storage(workflow_start_regular):
 
     step_id = "some_step6"
     inspect_result = wf_storage.inspect_step(step_id)
-    print(inspect_result)
     assert inspect_result == workflow_storage.StepInspectResult()
     assert not inspect_result.is_recoverable()
