@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                       runtime_env_agent_pb2_grpc.RuntimeEnvServiceServicer):
-    """A rpc server to create or delete runtime envs.
+    """An RPC server to create and delete runtime envs.
 
     Attributes:
         dashboard_agent: The DashboardAgent object contains global config.
@@ -29,17 +29,25 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         self._runtime_env_dir = dashboard_agent.runtime_env_dir
         self._setup = import_attr(dashboard_agent.runtime_env_setup_hook)
         runtime_env.PKG_DIR = dashboard_agent.runtime_env_dir
+        self._failed_env_cache = dict()
 
     async def CreateRuntimeEnv(self, request, context):
-        async def _setup_runtime_env(serialized_runtime_env, session_dir):
+        async def _setup_runtime_env(serialized_env, session_dir):
             loop = asyncio.get_event_loop()
-            runtime_env: dict = json.loads(serialized_runtime_env or "{}")
+            runtime_env: dict = json.loads(serialized_env or "{}")
             return await loop.run_in_executor(None, self._setup, runtime_env,
                                               session_dir)
 
-        logger.info("Creating runtime env: %s.",
-                    request.serialized_runtime_env)
-        runtime_env_dict = json.loads(request.serialized_runtime_env or "{}")
+        serialized_env = request.serialized_runtime_env
+        if serialized_env in self._failed_env_cache:
+            error_message = self._failed_env_cache[serialized_env]
+            return runtime_env_agent_pb2.CreateRuntimeEnvReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message=error_message)
+
+        logger.info(f"Creating runtime env: {serialized_env}")
+
+        runtime_env_dict = json.loads(serialized_env or "{}")
         uris = runtime_env_dict.get("uris")
         runtime_env_context: RuntimeEnvContext = None
         error_message = None
@@ -51,7 +59,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     # But we don't initailize internal kv in agent now.
                     pass
                 runtime_env_context = await _setup_runtime_env(
-                    request.serialized_runtime_env, self._session_dir)
+                    serialized_env, self._session_dir)
                 break
             except Exception as ex:
                 logger.exception("Runtime env creation failed.")
@@ -63,13 +71,14 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 "Runtime env creation failed for %d times, "
                 "don't retry any more.",
                 runtime_env_consts.RUNTIME_ENV_RETRY_TIMES)
+            self._failed_env_cache[serialized_env] = error_message
             return runtime_env_agent_pb2.CreateRuntimeEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message=error_message)
 
         serialized_context = runtime_env_context.serialize()
         logger.info("Successfully created runtime env: %s, the context: %s",
-                    request.serialized_runtime_env, serialized_context)
+                    serialized_env, serialized_context)
         return runtime_env_agent_pb2.CreateRuntimeEnvReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
             serialized_runtime_env_context=serialized_context)

@@ -130,6 +130,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              std::function<void()> starting_worker_timeout_callback,
+             std::function<void(const TaskID &)> runtime_env_setup_failed_callback,
              const std::function<double()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
@@ -532,6 +533,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The callback that will be triggered once it times out to start a worker.
   std::function<void()> starting_worker_timeout_callback_;
+  /// The callback that will be triggered when a runtime_env setup for a task fails.
+  std::function<void(const TaskID &)> runtime_env_setup_failed_callback_;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
 
   /// The Job ID of the firstly received job.
