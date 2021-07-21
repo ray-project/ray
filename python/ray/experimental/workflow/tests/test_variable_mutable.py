@@ -12,7 +12,7 @@ def projection(x, _):
     return x
 
 
-def test_variable_mutable(ray_start_regular):
+def test_variable_mutable(workflow_start_regular):
     x = []
     a = identity.step(x)
     x.append(1)

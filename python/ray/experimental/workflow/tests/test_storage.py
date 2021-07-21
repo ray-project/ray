@@ -20,7 +20,7 @@ def some_func2(x):
     "raw_storage",
     [lazy_fixture("filesystem_storage"),
      lazy_fixture("s3_storage")])
-async def test_raw_storage(ray_start_regular, raw_storage):
+async def test_raw_storage(workflow_start_regular, raw_storage):
     workflow_id = test_workflow_storage.__name__
     step_id = "some_step"
     input_metadata = {"2": "c"}
@@ -99,7 +99,7 @@ async def test_raw_storage(ray_start_regular, raw_storage):
     "raw_storage",
     [lazy_fixture("filesystem_storage"),
      lazy_fixture("s3_storage")])
-def test_workflow_storage(ray_start_regular, raw_storage):
+def test_workflow_storage(workflow_start_regular, raw_storage):
     workflow_id = test_workflow_storage.__name__
     step_id = "some_step"
     input_metadata = {
@@ -129,7 +129,7 @@ def test_workflow_storage(ray_start_regular, raw_storage):
                                               output_metadata))
     asyncio_run(raw_storage.save_step_output(workflow_id, step_id, output))
 
-    wf_storage = workflow_storage.WorkflowStorage(workflow_id)
+    wf_storage = workflow_storage.WorkflowStorage(workflow_id, raw_storage)
     assert wf_storage.load_step_output(step_id) == output
     assert wf_storage.load_step_args(step_id, [], []) == args
     assert wf_storage.load_step_func_body(step_id)(33) == 34

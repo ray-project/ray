@@ -1,4 +1,3 @@
-import os
 import logging
 import urllib.parse as parse
 from ray.experimental.workflow.storage.base import Storage
@@ -52,17 +51,8 @@ _global_storage = None
 def get_global_storage() -> Storage:
     global _global_storage
     if _global_storage is None:
-        storage_url = os.environ.get("RAY_WORKFLOW_STORAGE")
-        if storage_url is None:
-            # We should use get_temp_dir_path, but for ray client, we don't
-            # have this one. We need a flag to tell whether it's a client
-            # or a driver to use the right dir.
-            # For now, just use /tmp/ray/workflow_data
-            logger.warning(
-                "Using default local dir: `/tmp/ray/workflow_data`. "
-                "This should only be used for testing purposes.")
-            storage_url = "file:///tmp/ray/workflow_data"
-        _global_storage = create_storage(storage_url)
+        raise RuntimeError("`workflow.init()` must be called prior to "
+                           "using the workflows API.")
     return _global_storage
 
 
