@@ -153,9 +153,10 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 void GcsServer::Stop() {
   if (!is_stopped_) {
     RAY_LOG(INFO) << "Stopping GCS server.";
-    // Shutdown the rpc server
-    rpc_server_.Shutdown();
-
+    // GcsHeartbeatManager should be stopped before RPCServer.
+    // Because when RPC server is stopping, GcsHeartbeatManager will still keep checking
+    // nodes' heartbeat timeout. Since RPC Server won't handle heartbeat calls anymore,
+    // all node will be mark as dead after timeout reached.
     gcs_heartbeat_manager_->Stop();
 
     if (config_.pull_based_resource_reporting) {
@@ -165,6 +166,9 @@ void GcsServer::Stop() {
     if (config_.grpc_based_resource_broadcast) {
       grpc_based_resource_broadcaster_->Stop();
     }
+
+    // Shutdown the rpc server
+    rpc_server_.Shutdown();
 
     is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";
