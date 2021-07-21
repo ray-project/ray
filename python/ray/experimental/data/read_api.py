@@ -315,12 +315,13 @@ def read_binary_files(
         Dataset holding Arrow records read from the specified paths.
     """
     import pyarrow as pa
+    from pyarrow.fs import S3FileSystem
 
     if isinstance(paths, str):
         paths = _reader.list_objects(paths)
 
     dataset = from_items(paths, parallelism=parallelism)
-    if isinstance(filesystem, pa.fs.S3FileSystem):
+    if isinstance(filesystem, S3FileSystem):
         filesystem = _S3FileSystemWrapper(filesystem)
 
     return dataset.map(
