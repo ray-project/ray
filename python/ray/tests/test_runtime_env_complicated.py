@@ -665,7 +665,7 @@ def test_e2e_complex(call_ray_start, tmp_path):
         environment using imports and file reads in tasks and actors.
     2.  On the same cluster, run a job as above but using the Ray Summit
         2021 demo's pip requirements.txt.  Also, check that per-task and
-        per-actor pip requirements work.
+        per-actor pip requirements work, all using the job's working_dir.
     """
     # Create a file to use to test working_dir
     specific_path = tmp_path / "test"
@@ -711,7 +711,7 @@ def test_e2e_complex(call_ray_start, tmp_path):
         "texthero",
         "PyGithub",
         "xgboost_ray",
-        "pandas==1.2.4",
+        "pandas==1.1",  # pandas 1.2.4 in the demo, but not supported on py36
         "typer",
         "aiofiles",
     ]))
@@ -739,7 +739,7 @@ def test_e2e_complex(call_ray_start, tmp_path):
 
             return Path("./test").read_text()
 
-        assert ray.get(test_import.remote() == "Hello")
+        assert ray.get(test_import.remote()) == "Hello"
 
         # Check that an actor has the job's pip requirements and working_dir.
         @ray.remote
