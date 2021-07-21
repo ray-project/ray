@@ -1,6 +1,7 @@
 from distutils.version import StrictVersion
 from functools import lru_cache
 from functools import partial
+import copy
 import itertools
 import json
 import os
@@ -205,6 +206,10 @@ def bootstrap_aws(config):
     check_legacy_fields(config)
     # Used internally to store head IAM role.
     config["head_node"] = {}
+
+    # If a LaunchTemplate is provided, extract the necessary fields for the
+    # config stages below.
+    config = _configure_from_launch_template(config)
 
     # If NetworkInterfaces are provided, extract the necessary fields for the
     # config stages below.
@@ -760,6 +765,37 @@ def _get_key(key_name, config):
         handle_boto_error(exc, "Failed to fetch EC2 key pair {} from AWS.",
                           cf.bold(key_name))
         raise exc
+
+
+def _configure_from_launch_template(config):
+    for node_type in config["available_node_types"].values():
+        config = _configure_node_type_from_launch_template(config, node_type)
+    return config
+
+
+def _configure_node_type_from_launch_template(config, node_type):
+    node_cfg = node_type["node_config"]
+    if "LaunchTemplate" not in node_cfg:
+        return config
+
+    ec2 = _client("ec2", config)
+    kwargs = copy.deepcopy(node_cfg["LaunchTemplate"])
+    template_version = kwargs.pop("Version", "$Default")
+    kwargs["Versions"] = [template_version] if template_version else []
+
+    template = ec2.describe_launch_template_versions(**kwargs)
+    lt_versions = template["LaunchTemplateVersions"]
+    if len(lt_versions) != 1:
+        raise ValueError(f"Expected to find 1 launch template but found "
+                         f"{len(lt_versions)}")
+
+    lt_data = template["LaunchTemplateVersions"][0]["LaunchTemplateData"]
+    # override launch template parameters with explicit node config parameters
+    lt_data.update(node_cfg)
+    # copy all new launch template parameters back to node config
+    node_cfg.update(lt_data)
+
+    return config
 
 
 def _configure_from_network_interfaces(config):
