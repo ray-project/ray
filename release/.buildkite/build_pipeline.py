@@ -55,8 +55,8 @@ CORE_NIGHTLY_TESTS = {
         "non_streaming_shuffle_50gb",
         "dask_on_ray_10gb_sort",
         "dask_on_ray_100gb_sort",
-        "dask_on_ray_large_scale_test_no_spilling",
-        "dask_on_ray_large_scale_test_spilling",
+        SmokeTest("dask_on_ray_large_scale_test_no_spilling"),
+        SmokeTest("dask_on_ray_large_scale_test_spilling"),
         "stress_test_placement_group",
         "shuffle_1tb_1000_partition",
         "non_streaming_shuffle_1tb_1000_partition",
@@ -66,11 +66,16 @@ CORE_NIGHTLY_TESTS = {
         "autoscaling_shuffle_1tb_1000_partitions",
         SmokeTest("stress_test_many_tasks"),
         SmokeTest("stress_test_dead_actors"),
+        "shuffle_data_loader",
+        "dask_on_ray_1tb_sort",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
         "object_store",
     ],
+    "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
+        "inference",
+    ]
 }
 
 NIGHTLY_TESTS = {
@@ -81,6 +86,10 @@ NIGHTLY_TESTS = {
         "dask_xgboost_test",
         "modin_xgboost_test",
         "torch_tune_serve_test",
+    ],
+    "~/ray/release/nightly_tests/nightly_tests.yaml": [
+        "dask_on_ray_large_scale_test_no_spilling",
+        "dask_on_ray_large_scale_test_spilling",
     ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),
@@ -122,6 +131,9 @@ NIGHTLY_TESTS = {
         "ft_small_non_elastic",
         "distributed_api_test",
     ],
+    "~/ray/release/serve_tests/serve_tests.yaml": [
+        "single_deployment_1k_noop_replica",
+    ],
 }
 
 WEEKLY_TESTS = {
@@ -151,8 +163,8 @@ WEEKLY_TESTS = {
         "many_tasks_serialized_ids",
         "node_failures",
         "pbt",
-        # "serve",
-        # "serve_failure",
+        "serve",
+        "serve_failure",
     ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
         "network_overhead",

@@ -17,6 +17,7 @@ STEP_OUTPUTS_METADATA = "outputs.json"
 STEP_ARGS = "args.pkl"
 STEP_OUTPUT = "output.pkl"
 STEP_FUNC_BODY = "func_body.pkl"
+CLASS_BODY = "class_body.pkl"
 
 MAX_RECEIVED_DATA_MEMORY_SIZE = 25 * 1024 * 1024  # 25MB
 
@@ -231,3 +232,20 @@ class S3StorageImpl(Storage):
 
     def _get_s3_path(self, *args) -> str:
         return "/".join(itertools.chain([self._s3_path], args))
+
+    @data_load_error
+    async def load_actor_class_body(self, workflow_id: str) -> type:
+        path = self._get_s3_path(workflow_id, CLASS_BODY)
+        data = await self._get_object(path)
+        return data
+
+    @data_save_error
+    async def save_actor_class_body(self, workflow_id: str, cls: type) -> None:
+        path = self._get_s3_path(workflow_id, CLASS_BODY)
+        await self._put_object(path, cls)
+
+    def __reduce__(self):
+        return S3StorageImpl, (self._bucket, self._s3_path, self._region_name,
+                               self._endpoint_url, self._aws_access_key_id,
+                               self._aws_secret_access_key,
+                               self._aws_session_token, self._config)

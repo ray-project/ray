@@ -49,7 +49,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, AddSpilledUrl)                  \
   RPC_SERVICE_HANDLER(CoreWorkerService, PlasmaObjectReady)              \
   RPC_SERVICE_HANDLER(CoreWorkerService, RunOnUtilWorker)                \
-  RPC_SERVICE_HANDLER(CoreWorkerService, Exit)
+  RPC_SERVICE_HANDLER(CoreWorkerService, Exit)                           \
+  RPC_SERVICE_HANDLER(CoreWorkerService, AssignObjectOwner)
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PushTask)                       \
@@ -73,7 +74,8 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddSpilledUrl)                  \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RunOnUtilWorker)                \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Exit)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Exit)                           \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AssignObjectOwner)
 
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.
 class CoreWorkerServiceHandler {

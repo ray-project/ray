@@ -20,6 +20,7 @@ namespace ray {
 
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
+  num_tasks_submitted_++;
 
   if (task_spec.IsActorCreationTask()) {
     // Synchronously register the actor to GCS server.
@@ -204,9 +205,9 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
   // ids. In fact, if we allow stealing among workers with the same address/worker id, we
   // will also necessarily enable self-stealing.
   if ((victim_addr == thief_addr) || victim_addr.worker_id == thief_addr.worker_id) {
-    RAY_LOG(INFO) << "No victim available with address distinct from thief!";
-    RAY_LOG(INFO) << "victim_addr.worker_id: " << victim_addr.worker_id
-                  << " thief_addr.worker_id: " << thief_addr.worker_id;
+    RAY_LOG(DEBUG) << "No victim available with address distinct from thief!";
+    RAY_LOG(DEBUG) << "victim_addr.worker_id: " << victim_addr.worker_id
+                   << " thief_addr.worker_id: " << thief_addr.worker_id;
     return false;
   }
 
@@ -475,6 +476,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
   // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
   // same TaskID to request a worker
+  num_leases_requested_++;
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
   resource_spec_msg.set_task_id(TaskID::ForFakeTask().Binary());
   TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
@@ -641,7 +643,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
                                                  bool force_kill, bool recursive) {
-  RAY_LOG(INFO) << "Killing task: " << task_spec.TaskId();
+  RAY_LOG(INFO) << "Cancelling a task: " << task_spec.TaskId()
+                << " force_kill: " << force_kill << " recursive: " << recursive;
   const SchedulingKey scheduling_key(
       task_spec.GetSchedulingClass(), task_spec.GetDependencyIds(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),

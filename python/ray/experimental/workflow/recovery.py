@@ -46,7 +46,7 @@ def _recover_workflow_step(input_object_refs: List[str],
     Returns:
         The output of the recovered step.
     """
-    reader = workflow_storage.WorkflowStorage()
+    reader = workflow_storage.get_workflow_storage()
     for index, _step_id in instant_workflow_inputs.items():
         # override input workflows with instant workflows
         input_workflows[index] = reader.load_step_output(_step_id)
@@ -92,8 +92,11 @@ def _construct_resume_workflow_from_step(
         else:
             input_workflows.append(None)
             instant_workflow_outputs[i] = r
-    recovery_workflow: Workflow = _recover_workflow_step.step(
-        result.object_refs, input_workflows, instant_workflow_outputs)
+    recovery_workflow: Workflow = _recover_workflow_step.options(
+        step_max_retries=result.step_max_retries,
+        catch_exceptions=result.catch_exceptions,
+        **result.ray_options).step(result.object_refs, input_workflows,
+                                   instant_workflow_outputs)
     recovery_workflow._step_id = step_id
     return recovery_workflow
 
@@ -129,3 +132,33 @@ def resume_workflow_job(workflow_id: str,
             workflow_context.set_workflow_step_context(None)
 
     return ray.put(reader.load_step_output(r))
+
+
+def get_latest_output(workflow_id: str, store: storage.Storage) -> Any:
+    """Get the latest output of a workflow. This function is intended to be
+    used by readonly virtual actors. To resume a workflow,
+    `resume_workflow_job` should be used instead.
+
+    Args:
+        workflow_id: The ID of the workflow.
+        store: The storage of the workflow.
+
+    Returns:
+        The output of the workflow.
+    """
+    reader = workflow_storage.WorkflowStorage(workflow_id, store)
+    try:
+        step_id: StepID = reader.get_entrypoint_step_id()
+        while True:
+            result: workflow_storage.StepInspectResult = reader.inspect_step(
+                step_id)
+            if result.output_object_valid:
+                # we already have the output
+                return reader.load_step_output(step_id)
+            if isinstance(result.output_step_id, str):
+                step_id = result.output_step_id
+            else:
+                raise ValueError(
+                    "Workflow output does not exists or not valid.")
+    except Exception as e:
+        raise WorkflowNotResumableError(workflow_id) from e

@@ -37,7 +37,7 @@ void RuntimeEnvManager::RemoveURIReference(const std::string &hex_id) {
     RAY_CHECK(ref_count >= 0);
     if (ref_count == 0) {
       uri_reference_.erase(uri);
-      RAY_LOG(INFO) << "Deleting uri: " << uri;
+      RAY_LOG(DEBUG) << "Deleting uri: " << uri;
       deleter_(uri, [this, uri](bool success) {
         if (!success) {
           unused_uris_.insert(uri);

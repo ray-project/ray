@@ -9,8 +9,10 @@ import secrets
 import uuid
 import traceback
 from abc import abstractmethod
-from typing import Union, Any
+from typing import Union
 
+import attr
+from attr.validators import instance_of
 import ray.new_dashboard.utils as dashboard_utils
 from ray.new_dashboard.utils import create_task
 from ray.new_dashboard.modules.job import job_consts
@@ -22,18 +24,19 @@ from ray.core.generated import agent_manager_pb2
 logger = logging.getLogger(__name__)
 
 
+@attr.s(kw_only=True, slots=True)
 class JobInfo(JobDescription):
     # TODO(fyrestone): We should use job id instead of unique id.
-    unique_id: str
+    unique_id = attr.ib(type=str, validator=instance_of(str))
     # The temp directory.
-    temp_dir: str
+    temp_dir = attr.ib(type=str, validator=instance_of(str))
     # The log directory.
-    log_dir: str
+    log_dir = attr.ib(type=str, validator=instance_of(str))
     # The driver process instance.
-    driver: Union[None, asyncio.subprocess.Process]
+    driver = attr.ib(
+        type=Union[None, asyncio.subprocess.Process], default=None)
 
-    def __init__(self, **data: Any):
-        super().__init__(**data)
+    def __attrs_post_init__(self):
         # Support json values for env.
         self.env = {
             k: v if isinstance(v, str) else json.dumps(v)

@@ -45,7 +45,7 @@ class TestParameterNoise(unittest.TestCase):
 
             trainer = trainer_cls(config=config, env=env)
             policy = trainer.get_policy()
-            pol_sess = getattr(policy, "_sess", None)
+            pol_sess = policy.get_session()
             # Remove noise that has been added during policy initialization
             # (exploration.postprocess_trajectory does add noise to measure
             # the delta).
@@ -110,7 +110,7 @@ class TestParameterNoise(unittest.TestCase):
             config["explore"] = False
             trainer = trainer_cls(config=config, env=env)
             policy = trainer.get_policy()
-            pol_sess = getattr(policy, "_sess", None)
+            pol_sess = policy.get_session()
             # Remove noise that has been added during policy initialization
             # (exploration.postprocess_trajectory does add noise to measure
             # the delta).

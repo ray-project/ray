@@ -1,5 +1,4 @@
 from contextlib import contextmanager
-import colorama
 import atexit
 import faulthandler
 import hashlib
@@ -31,7 +30,9 @@ import ray._private.services as services
 import ray._private.runtime_env as runtime_env_pkg
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
+from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 import ray
+import colorama
 import setproctitle
 import ray.state
 
@@ -52,7 +53,7 @@ from ray.exceptions import (
 from ray._private.function_manager import FunctionActorManager
 from ray._private.ray_logging import setup_logger
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
-from ray._private.utils import check_oversized_pickle
+from ray._private.utils import check_oversized_function
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
     _internal_kv_initialized
@@ -248,7 +249,7 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None):
+    def put_object(self, value, object_ref=None, owner_address=None):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -262,6 +263,7 @@ class Worker:
             value: The value to put in the object store.
             object_ref (ObjectRef): The object ref of the value to be
                 put. If None, one will be generated.
+            owner_address: The serialized address of object's owner.
 
         Returns:
             ObjectRef: The object ref the object was put under.
@@ -293,7 +295,9 @@ class Worker:
         # reference counter.
         return ray.ObjectRef(
             self.core_worker.put_serialized_object(
-                serialized_value, object_ref=object_ref))
+                serialized_value,
+                object_ref=object_ref,
+                owner_address=owner_address))
 
     def raise_errors(self, data_metadata_pairs, object_refs):
         out = self.deserialize_objects(data_metadata_pairs, object_refs)
@@ -391,8 +395,8 @@ class Worker:
                 # we don't need to export it again.
                 return
 
-            check_oversized_pickle(pickled_function, function.__name__,
-                                   "function", self)
+            check_oversized_function(pickled_function, function.__name__,
+                                     "function", self)
 
             # Run the function on all workers.
             self.redis_client.hset(
@@ -471,6 +475,7 @@ class Worker:
             pubsub_client.close()
 
 
+@PublicAPI
 @client_mode_hook
 def get_gpu_ids():
     """Get the IDs of the GPUs that are available to the worker.
@@ -511,6 +516,7 @@ def get_gpu_ids():
     return assigned_ids
 
 
+@Deprecated
 def get_resource_ids():
     """Get the IDs of the resources that are available to the worker.
 
@@ -530,6 +536,7 @@ def get_resource_ids():
     return global_worker.core_worker.resource_ids()
 
 
+@Deprecated
 def get_dashboard_url():
     """Get the URL to access the Ray dashboard.
 
@@ -554,6 +561,7 @@ _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
 
 
+@PublicAPI
 @client_mode_hook
 def init(
         address=None,
@@ -947,6 +955,7 @@ def init(
 _post_init_hooks = []
 
 
+@PublicAPI
 @client_mode_hook
 def shutdown(_exiting_interpreter=False):
     """Disconnect the worker, and terminate processes started by ray.init().
@@ -979,6 +988,7 @@ def shutdown(_exiting_interpreter=False):
     if hasattr(global_worker, "gcs_client"):
         del global_worker.gcs_client
     if hasattr(global_worker, "core_worker"):
+        global_worker.core_worker.shutdown()
         del global_worker.core_worker
 
     # Disconnect global state from GCS.
@@ -1193,6 +1203,7 @@ def listen_error_messages_raylet(worker, threads_stopped):
         worker.error_message_pubsub_client.close()
 
 
+@PublicAPI
 @client_mode_hook
 def is_initialized():
     """Check if ray.init has been called yet.
@@ -1322,8 +1333,10 @@ def connect(node,
         job_config.set_ray_namespace(namespace)
 
     # Make sure breakpoint() in the user's code will
-    # always invoke the Ray debugger.
-    os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
+    # invoke the Ray debugger if we are in a worker or actor process
+    # (but not on the driver).
+    if mode == WORKER_MODE:
+        os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
@@ -1468,6 +1481,7 @@ def _changeproctitle(title, next_title):
             setproctitle.setproctitle(next_title)
 
 
+@DeveloperAPI
 def show_in_dashboard(message, key="", dtype="text"):
     """Display message in dashboard.
 
@@ -1500,6 +1514,7 @@ def show_in_dashboard(message, key="", dtype="text"):
 blocking_get_inside_async_warned = False
 
 
+@PublicAPI
 @client_mode_hook
 def get(object_refs, *, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
@@ -1581,23 +1596,47 @@ def get(object_refs, *, timeout=None):
         return values
 
 
+@PublicAPI
 @client_mode_hook
-def put(value):
+def put(value, *, _owner=None):
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
 
     Args:
         value: The Python object to be stored.
+        _owner: The actor that should own this object. This allows creating
+            objects with lifetimes decoupled from that of the creating process.
+            Note that the owner actor must be passed a reference to the object
+            prior to the object creator exiting, otherwise the reference will
+            still be lost.
 
     Returns:
         The object ref assigned to this value.
     """
     worker = global_worker
     worker.check_connected()
+
+    if _owner is None:
+        serialize_owner_address = None
+    elif isinstance(_owner, ray.actor.ActorHandle):
+        # Ensure `ray.state.state.global_state_accessor` is not None
+        ray.state.state._check_connected()
+        owner_address = ray.gcs_utils.ActorTableData.FromString(
+            ray.state.state.global_state_accessor.get_actor_info(
+                _owner._actor_id)).address
+        if len(owner_address.worker_id) == 0:
+            raise RuntimeError(
+                f"{_owner} is not alive, it's worker_id is empty!")
+        serialize_owner_address = owner_address.SerializeToString()
+    else:
+        raise TypeError(
+            f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
+
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value)
+            object_ref = worker.put_object(
+                value, owner_address=serialize_owner_address)
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "
@@ -1610,6 +1649,7 @@ def put(value):
 blocking_wait_inside_async_warned = False
 
 
+@PublicAPI
 @client_mode_hook
 def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
     """Return a list of IDs that are ready and a list of IDs that are not.
@@ -1711,6 +1751,7 @@ def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
         return ready_ids, remaining_ids
 
 
+@PublicAPI
 @client_mode_hook
 def get_actor(name):
     """Get a handle to a named actor.
@@ -1729,9 +1770,17 @@ def get_actor(name):
         raise ValueError("Please supply a non-empty value to get_actor")
     worker = global_worker
     worker.check_connected()
-    return worker.core_worker.get_named_actor_handle(name)
+    split_names = name.split("/", maxsplit=1)
+    if len(split_names) <= 1:
+        name = split_names[0]
+        namespace = ""
+    else:
+        # must be length 2
+        namespace, name = split_names
+    return worker.core_worker.get_named_actor_handle(name, namespace)
 
 
+@PublicAPI
 @client_mode_hook
 def kill(actor, *, no_restart=True):
     """Kill an actor forcefully.
@@ -1760,6 +1809,7 @@ def kill(actor, *, no_restart=True):
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 
+@PublicAPI
 @client_mode_hook
 def cancel(object_ref, *, force=False, recursive=True):
     """Cancels a task according to the following conditions.
@@ -1878,6 +1928,7 @@ def make_decorator(num_returns=None,
     return decorator
 
 
+@PublicAPI
 def remote(*args, **kwargs):
     """Defines a remote function or an actor class.
 

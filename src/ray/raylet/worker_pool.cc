@@ -157,7 +157,8 @@ Process WorkerPool::StartWorkerProcess(
     const std::vector<std::string> &dynamic_options, const int runtime_env_hash,
     const std::string &serialized_runtime_env,
     std::unordered_map<std::string, std::string> override_environment_variables,
-    const std::string &serialized_runtime_env_context) {
+    const std::string &serialized_runtime_env_context,
+    const std::string &allocated_instances_serialized_json) {
   rpc::JobConfig *job_config = nullptr;
   if (!IsIOWorkerType(worker_type)) {
     RAY_CHECK(!job_id.IsNil());
@@ -202,7 +203,7 @@ Process WorkerPool::StartWorkerProcess(
   std::vector<std::string> options;
 
   // Append Ray-defined per-job options here
-  if (language == Language::JAVA) {
+  if (language == Language::JAVA || language == Language::CPP) {
     if (job_config) {
       std::string code_search_path_str;
       for (int i = 0; i < job_config->code_search_path_size(); i++) {
@@ -213,7 +214,13 @@ Process WorkerPool::StartWorkerProcess(
         code_search_path_str += path;
       }
       if (!code_search_path_str.empty()) {
-        code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
+        if (language == Language::JAVA) {
+          code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
+        } else if (language == Language::CPP) {
+          code_search_path_str = "--ray-code-search-path=" + code_search_path_str;
+        } else {
+          RAY_LOG(FATAL) << "Unknown language " << Language_Name(language);
+        }
         options.push_back(code_search_path_str);
       }
     }
@@ -295,6 +302,9 @@ Process WorkerPool::StartWorkerProcess(
   if (language == Language::PYTHON) {
     if (serialized_runtime_env != "{}" && serialized_runtime_env != "") {
       worker_command_args.push_back("--serialized-runtime-env=" + serialized_runtime_env);
+      // Allocated_resource_json is only used in "shim process".
+      worker_command_args.push_back("--allocated-instances-serialized-json=" +
+                                    allocated_instances_serialized_json);
     } else {
       // The "shim process" setup worker is not needed, so do not run it.
       // Check that the arg really is the path to the setup worker before erasing it, to
@@ -444,6 +454,7 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
   // Currently we don't erase the job from `all_jobs_` , as a workaround for
   // https://github.com/ray-project/ray/issues/11437.
   // unfinished_jobs_.erase(job_id);
+  finished_jobs_.insert(job_id);
 }
 
 boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
@@ -716,11 +727,16 @@ void WorkerPool::TryKillingIdleWorkers() {
   running_size -= pending_exit_idle_workers_.size();
   // Kill idle workers in FIFO order.
   for (const auto &idle_pair : idle_of_all_languages_) {
+    const auto &idle_worker = idle_pair.first;
+    const auto &job_id = idle_worker->GetAssignedJobId();
     if (running_size <= static_cast<size_t>(num_workers_soft_limit_)) {
-      break;
+      if (!finished_jobs_.count(job_id)) {
+        // Ignore the soft limit for jobs that have already finished, as we
+        // should always clean up these workers.
+        break;
+      }
     }
 
-    const auto &idle_worker = idle_pair.first;
     if (pending_exit_idle_workers_.count(idle_worker->WorkerId())) {
       // If the worker is pending exit, just skip it.
       continue;
@@ -769,7 +785,11 @@ void WorkerPool::TryKillingIdleWorkers() {
         static_cast<size_t>(num_workers_soft_limit_)) {
       // A Java worker process may contain multiple workers. Killing more workers than we
       // expect may slow the job.
-      return;
+      if (!finished_jobs_.count(job_id)) {
+        // Ignore the soft limit for jobs that have already finished, as we
+        // should always clean up these workers.
+        return;
+      }
     }
 
     for (const auto &worker : workers_in_the_same_process) {
@@ -842,26 +862,35 @@ void WorkerPool::TryKillingIdleWorkers() {
 }
 
 int GetRuntimeEnvHash(const TaskSpecification &task_spec) {
+  // We add required_resource instead of allocated_instances because allocated_instances
+  // may contains resource ID.
+  std::unordered_map<std::string, double> required_resource{};
+  if (RayConfig::instance().worker_resource_limits_enabled()) {
+    required_resource = task_spec.GetRequiredResources().GetResourceMap();
+  }
   const WorkerCacheKey env = {task_spec.OverrideEnvironmentVariables(),
-                              task_spec.SerializedRuntimeEnv()};
+                              task_spec.SerializedRuntimeEnv(), required_resource};
   return env.IntHash();
 }
 
 std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
-    const TaskSpecification &task_spec) {
+    const TaskSpecification &task_spec,
+    const std::string &allocated_instances_serialized_json) {
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
   auto start_worker_process_fn =
-      [this](const TaskSpecification &task_spec, State &state,
-             std::vector<std::string> dynamic_options, bool dedicated,
-             const int runtime_env_hash, const std::string &serialized_runtime_env,
-             const std::string &serialized_runtime_env_context) -> Process {
+      [this, allocated_instances_serialized_json](
+          const TaskSpecification &task_spec, State &state,
+          std::vector<std::string> dynamic_options, bool dedicated,
+          const int runtime_env_hash, const std::string &serialized_runtime_env,
+          const std::string &serialized_runtime_env_context) -> Process {
     Process proc = StartWorkerProcess(
         task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(),
         dynamic_options, runtime_env_hash, serialized_runtime_env,
-        task_spec.OverrideEnvironmentVariables(), serialized_runtime_env_context);
+        task_spec.OverrideEnvironmentVariables(), serialized_runtime_env_context,
+        allocated_instances_serialized_json);
     if (proc.IsValid()) {
       WarnAboutSize();
       if (dedicated) {
@@ -875,8 +904,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   if (task_spec.IsActorTask()) {
     // Code path of actor task.
     RAY_CHECK(false) << "Direct call shouldn't reach here.";
-  } else if ((task_spec.IsActorCreationTask() &&
-              !task_spec.DynamicWorkerOptions().empty())) {
+  } else if (task_spec.IsActorCreationTask() &&
+             !task_spec.DynamicWorkerOptions().empty()) {
     // Code path of task that needs a dedicated worker: an actor creation task with
     // dynamic worker options.
     // Try to pop it from idle dedicated pool.
@@ -902,8 +931,9 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
         state.tasks_with_pending_runtime_envs.emplace(task_spec.TaskId());
         agent_manager_->CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(),
-            [this, start_worker_process_fn, &state, task_spec, dynamic_options](
-                bool success, const std::string &serialized_runtime_env_context) {
+            [this, start_worker_process_fn, &state, task_spec, dynamic_options,
+             allocated_instances_serialized_json](
+                bool done, const std::string &serialized_runtime_env_context) {
               state.tasks_with_pending_runtime_envs.erase(task_spec.TaskId());
               if (success) {
                 start_worker_process_fn(

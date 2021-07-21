@@ -235,3 +235,30 @@ class Storage(metaclass=abc.ABCMeta):
     @abstractmethod
     def storage_url(self) -> str:
         """Get the URL of the storage."""
+
+    @abstractmethod
+    async def load_actor_class_body(self, workflow_id: str) -> type:
+        """Load the class body of the virtual actor.
+
+        Args:
+            workflow_id: ID of the workflow job.
+
+        Raises:
+            DataLoadError: if we fail to load the class body.
+        """
+
+    @abstractmethod
+    async def save_actor_class_body(self, workflow_id: str, cls: type) -> None:
+        """Save the class body of the virtual actor.
+
+        Args:
+            workflow_id: ID of the workflow job.
+            cls: The class body used by the virtual actor.
+
+        Raises:
+            DataSaveError: if we fail to save the class body.
+        """
+
+    @abstractmethod
+    def __reduce__(self):
+        """Reduce the storage to a serializable object."""

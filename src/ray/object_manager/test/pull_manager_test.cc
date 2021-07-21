@@ -396,6 +396,7 @@ TEST_P(PullManagerTest, TestBasic) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id = pull_manager_.Pull(refs, prio, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
+  ASSERT_TRUE(pull_manager_.HasPullsQueued());
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
@@ -409,6 +410,7 @@ TEST_P(PullManagerTest, TestBasic) {
   ASSERT_EQ(num_send_pull_request_calls_, oids.size());
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   AssertNumActiveRequestsEquals(oids.size());
+  ASSERT_FALSE(pull_manager_.HasPullsQueued());
 
   // Don't pull an object if it's local.
   object_is_local_ = true;
@@ -428,6 +430,7 @@ TEST_P(PullManagerTest, TestBasic) {
     ASSERT_EQ(num_abort_calls_[oid], 1);
     ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
   }
+  ASSERT_FALSE(pull_manager_.HasPullsQueued());
 
   // Don't pull a remote object if we've canceled.
   object_is_local_ = false;
@@ -437,6 +440,7 @@ TEST_P(PullManagerTest, TestBasic) {
     pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), 0);
   }
   ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_FALSE(pull_manager_.HasPullsQueued());
 
   AssertNoLeaks();
 }
@@ -634,6 +638,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id = pull_manager_.Pull(refs, prio, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
+  ASSERT_TRUE(pull_manager_.HasPullsQueued());
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
@@ -649,6 +654,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
     ASSERT_TRUE(pull_manager_.IsObjectActive(oids[i]));
   }
   ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
+  ASSERT_FALSE(pull_manager_.HasPullsQueued());
 
   // Reduce the available memory.
   ASSERT_TRUE(num_abort_calls_.empty());
@@ -657,6 +663,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
 
   // In unlimited mode, we fulfill all ray.gets using the fallback allocator.
   if (RayConfig::instance().plasma_unlimited() && GetParam()) {
+    ASSERT_FALSE(pull_manager_.HasPullsQueued());
     AssertNumActiveRequestsEquals(3);
     AssertNumActiveBundlesEquals(1);
     if (!RayConfig::instance().plasma_unlimited()) {
@@ -666,6 +673,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   }
 
   if (RayConfig::instance().pull_manager_min_active_pulls() == 0) {
+    ASSERT_TRUE(pull_manager_.HasPullsQueued());
     AssertNumActiveRequestsEquals(0);
     if (!RayConfig::instance().plasma_unlimited()) {
       ASSERT_EQ(num_object_store_full_calls_, 1);
@@ -676,6 +684,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
     }
     ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   } else {
+    ASSERT_FALSE(pull_manager_.HasPullsQueued());
     AssertNumActiveRequestsEquals(3);
     if (!RayConfig::instance().plasma_unlimited()) {
       ASSERT_EQ(num_object_store_full_calls_, 1);

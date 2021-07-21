@@ -2,7 +2,7 @@ import copy
 from six.moves import queue
 import threading
 import time
-from typing import Dict
+from typing import Dict, Optional
 
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -68,7 +68,7 @@ class LearnerThread(threading.Thread):
         while not self.stopped:
             self.step()
 
-    def step(self) -> None:
+    def step(self) -> Optional[_NextValueNotReady]:
         with self.queue_timer:
             try:
                 batch, _ = self.minibatch_buffer.get()
