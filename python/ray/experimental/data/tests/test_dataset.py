@@ -325,6 +325,11 @@ def test_parquet_read(ray_start_regular_shared, tmp_path):
     assert sorted(values) == [[1, "a"], [2, "b"], [3, "c"], [4, "e"], [5, "f"],
                               [6, "g"]]
 
+    # Test column selection.
+    ds = ray.experimental.data.read_parquet(str(tmp_path), columns=["one"])
+    values = [s["one"] for s in ds.take()]
+    assert sorted(values) == [1, 2, 3, 4, 5, 6]
+
 
 def test_parquet_write(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
