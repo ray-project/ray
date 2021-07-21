@@ -235,7 +235,7 @@ def test_init_twice_2(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular_shared", [{
+    "workflow_start_regular_shared", [{
         "namespace": "workflow",
     }], indirect=True)
 def test_manager(workflow_start_regular_shared, tmp_path):

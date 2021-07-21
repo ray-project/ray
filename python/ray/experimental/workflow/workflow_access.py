@@ -138,7 +138,7 @@ class WorkflowManagementActor:
         return output
 
     def update_step_status(self, workflow_id: str, step_id: str,
-                           status: common.WorkflowStatus, storage_url: str):
+                           status: common.WorkflowStatus):
         if status == common.WorkflowStatus.FINISHED:
             assert self._step_status[workflow_id].pop(step_id) is not None
         else:
@@ -148,8 +148,7 @@ class WorkflowManagementActor:
         if status != common.WorkflowStatus.FAILED and remaining != 0:
             return
 
-        store = storage.create_storage(storage_url)
-        wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
 
         if status == common.WorkflowStatus.FAILED:
             if workflow_id in self._workflow_outputs:
@@ -163,11 +162,10 @@ class WorkflowManagementActor:
                 common.WorkflowMetaData(common.WorkflowStatus.FINISHED))
             self._step_status.pop(workflow_id)
 
-    def cancel_workflow(self, workflow_id: str, storage_url: str) -> None:
+    def cancel_workflow(self, workflow_id: str) -> None:
         self._step_status.pop(workflow_id)
         cancel_job(self._workflow_outputs.pop(workflow_id))
-        store = storage.create_storage(storage_url)
-        wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         wf_store.save_workflow_meta(
             common.WorkflowMetaData(common.WorkflowStatus.CANCELED))
 
