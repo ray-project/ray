@@ -1,14 +1,15 @@
 import boto3
 from contextlib import contextmanager
 import pytest
-import ray
 from moto import mock_s3
 from mock_server import *  # noqa
-from ray.experimental import workflow
 from pytest_lazyfixture import lazy_fixture
 import tempfile
-from ray.tests.conftest import get_default_fixture_ray_kwargs
 import os
+
+import ray
+from ray.experimental import workflow
+from ray.tests.conftest import get_default_fixture_ray_kwargs
 
 
 @pytest.fixture(scope="session")
@@ -48,12 +49,12 @@ def _workflow_start(storage_url, shared, **kwargs):
     init_kwargs.update(kwargs)
     if ray.is_initialized():
         ray.shutdown()
-    # Clear it since we have s3/filesystem
-    address_info = ray.init(**init_kwargs)
+        workflow.storage.set_global_storage(None)
     # Sometimes pytest does not cleanup all global variables.
     # we have to manually reset the workflow storage. This
     # should not be an issue for normal use cases, because global variables
     # are freed after the driver exits.
+    address_info = ray.init(**init_kwargs)
     workflow.init(storage_url)
     yield address_info
     # The code after the yield will run as teardown code.

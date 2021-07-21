@@ -16,7 +16,7 @@ import ray
 
 from ray.tests.conftest import *  # noqa
 from ray.experimental.data.datasource import DummyOutputDatasource
-from ray.experimental.data.block import Block
+from ray.experimental.data.block import BlockAccessor
 import ray.experimental.data.tests.util as util
 
 
@@ -258,8 +258,17 @@ def test_to_pandas(ray_start_regular_shared):
 
 def test_to_arrow(ray_start_regular_shared):
     n = 5
+
+    # Zero-copy.
     df = pd.DataFrame({"value": list(range(n))})
     ds = ray.experimental.data.range_arrow(n)
+    dfds = pd.concat(
+        [t.to_pandas() for t in ray.get(ds.to_arrow())], ignore_index=True)
+    assert df.equals(dfds)
+
+    # Conversion.
+    df = pd.DataFrame({0: list(range(n))})
+    ds = ray.experimental.data.range(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow())], ignore_index=True)
     assert df.equals(dfds)
@@ -270,7 +279,7 @@ def test_get_blocks(ray_start_regular_shared):
     assert len(blocks) == 10
     out = []
     for b in ray.get(blocks):
-        out.extend(list(b.iter_rows()))
+        out.extend(list(BlockAccessor.for_block(b).iter_rows()))
     out = sorted(out)
     assert out == list(range(10)), out
 
@@ -352,31 +361,6 @@ def test_pyarrow(ray_start_regular_shared):
         .take() == [{"b": 2}, {"b": 20}]
 
 
-def test_uri_parser():
-    from ray.experimental.data.read_api import _parse_paths
-    fs, path = _parse_paths("/local/path")
-    assert path == "/local/path"
-    assert fs.type_name == "local"
-
-    fs, path = _parse_paths("./")
-    assert path == "./"
-    assert fs.type_name == "local"
-
-    fs, path = _parse_paths("s3://bucket/dir")
-    assert path == "bucket/dir"
-    assert fs.type_name == "s3"
-
-    fs, path = _parse_paths(["s3://bucket/dir_1", "s3://bucket/dir_2"])
-    assert path == ["bucket/dir_1", "bucket/dir_2"]
-    assert fs.type_name == "s3"
-
-    with pytest.raises(ValueError):
-        _parse_paths(["s3://bucket/dir_1", "/path/local"])
-
-    with pytest.raises(ValueError):
-        _parse_paths([])
-
-
 def test_read_binary_files(ray_start_regular_shared):
     with util.gen_bin_files(10) as (_, paths):
         ds = ray.experimental.data.read_binary_files(paths, parallelism=10)
@@ -442,7 +426,6 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # blocks format.
     for batch, df in zip(ds.iter_batches(batch_format="_blocks"), dfs):
-        assert isinstance(batch, Block)
         assert batch.to_pandas().equals(df)
 
     # Batch size.
@@ -909,7 +892,7 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     assert pd.concat([df1, df2]).equals(dsdf)
     # Test metadata ops.
     for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
-        ray.get(block).size_bytes() == meta.size_bytes
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
@@ -1019,7 +1002,7 @@ def test_csv_read(ray_start_regular_shared, tmp_path):
     assert df.equals(dsdf)
     # Test metadata ops.
     for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
-        ray.get(block).size_bytes() == meta.size_bytes
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
@@ -1104,6 +1087,32 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
         pd.concat([pd.read_csv(file_path),
                    pd.read_csv(file_path2)]))
     shutil.rmtree(path)
+
+
+# TODO: this shouldn't be making network calls
+def test_uri_parser():
+    from ray.experimental.data.read_api import _parse_paths
+    fs, path = _parse_paths("/local/path")
+    assert path == "/local/path"
+    assert fs.type_name == "local"
+
+    fs, path = _parse_paths("./")
+    assert path == "./"
+    assert fs.type_name == "local"
+
+    fs, path = _parse_paths("s3://bucket/dir")
+    assert path == "bucket/dir"
+    assert fs.type_name == "s3"
+
+    fs, path = _parse_paths(["s3://bucket/dir_1", "s3://bucket/dir_2"])
+    assert path == ["bucket/dir_1", "bucket/dir_2"]
+    assert fs.type_name == "s3"
+
+    with pytest.raises(ValueError):
+        _parse_paths(["s3://bucket/dir_1", "/path/local"])
+
+    with pytest.raises(ValueError):
+        _parse_paths([])
 
 
 if __name__ == "__main__":
