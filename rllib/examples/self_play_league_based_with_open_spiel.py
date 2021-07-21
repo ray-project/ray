@@ -99,7 +99,9 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
         self.main_exploiters = {"main_exploiter_0", "main_exploiter_1"}
         self.league_exploiters = {"league_exploiter_0", "league_exploiter_1"}
         # Set of currently trainable policies in the league.
-        self.trainable_policies = {"main", "main_exploiter_1", "league_exploiter_1"}
+        self.trainable_policies = {
+            "main", "main_exploiter_1", "league_exploiter_1"
+        }
         # Set of currently non-trainable (frozen) policies in the league.
         self.non_trainable_policies = {
             "main_0", "league_exploiter_0", "main_exploiter_0"
@@ -210,7 +212,8 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
                         # Main exploiter is trainable: Play against any
                         # frozen main.
                         else:
-                            main = np.random.choice(list(self.main_policies - {"main"}))
+                            main = np.random.choice(
+                                list(self.main_policies - {"main"}))
                         print(f"{main_exploiter} vs {main}")
                         return main_exploiter if \
                             episode.episode_id % 2 == agent_id else main
@@ -268,7 +271,7 @@ if __name__ == "__main__":
     ray.init(
         num_cpus=args.num_cpus or None,
         include_dashboard=False,
-        local_mode=True,#
+        local_mode=True,  #
     )
 
     register_env("open_spiel_env",
