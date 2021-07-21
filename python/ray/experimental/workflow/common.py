@@ -26,10 +26,11 @@ class WorkflowStatus(str, Enum):
     # It got canceled and can't be resumed later
     CANCELED = "CANCELED"
     # The step is finished. For virtual actor, it means that all
-    # writing steps has been finished
+    # writing steps has been finished.
     FINISHED = "FINISHED"
-    # There is an error during execution. It can be resumed
-    FAILED = "FAILED"
+    # The workflow that can be resumed. Usually it's because some
+    # internal or external errors.
+    RESUMABLE = "RESUMABLE"
 
 
 @dataclass
@@ -51,7 +52,7 @@ class WorkflowInputs:
 
 
 @dataclass
-class WorkflowMeta:
+class WorkflowMetaData:
     # The current status of the workflow
     status: WorkflowStatus
 

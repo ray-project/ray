@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import ray
 from ray.experimental.workflow import storage
 from ray.experimental.workflow.common import (Workflow, WorkflowInputs, StepID,
-                                              WorkflowMeta, WorkflowStatus)
+                                              WorkflowMetaData, WorkflowStatus)
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 
@@ -307,11 +307,11 @@ class WorkflowStorage:
         asyncio_run(
             self._storage.save_actor_class_body(self._workflow_id, cls))
 
-    def save_workflow_meta(self, metadata: WorkflowMeta) -> None:
+    def save_workflow_meta(self, metadata: WorkflowMetaData) -> None:
         """Save the metadata of the current workflow.
 
         Args:
-            metadata: WorkflowMeta of the current workflow.
+            metadata: WorkflowMetaData of the current workflow.
 
         Raises:
             DataSaveError: if we fail to save the class body.
@@ -322,12 +322,12 @@ class WorkflowStorage:
         asyncio_run(
             self._storage.save_workflow_meta(self._workflow_id, metadata))
 
-    def load_workflow_meta(self) -> Optional[WorkflowMeta]:
+    def load_workflow_meta(self) -> Optional[WorkflowMetaData]:
         metadata = asyncio_run(
             self._storage.load_workflow_meta(self._workflow_id))
         if metadata is None:
             return None
-        return WorkflowMeta(status=WorkflowStatus(metadata["status"]))
+        return WorkflowMetaData(status=WorkflowStatus(metadata["status"]))
 
     async def _list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
         workflow_ids = await self._storage.list_workflow()

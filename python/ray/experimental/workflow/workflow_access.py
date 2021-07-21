@@ -132,7 +132,7 @@ class WorkflowManagementActor:
         self._workflow_outputs[workflow_id] = output
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         wf_store.save_workflow_meta(
-            common.WorkflowMeta(common.WorkflowStatus.RUNNING))
+            common.WorkflowMetaData(common.WorkflowStatus.RUNNING))
         self._step_status[workflow_id] = {}
         logger.info(f"Workflow job [id={workflow_id}] started.")
         return output
@@ -155,12 +155,12 @@ class WorkflowManagementActor:
             if workflow_id in self._workflow_outputs:
                 cancel_job(self._workflow_outputs.pop(workflow_id))
             wf_store.save_workflow_meta(
-                common.WorkflowMeta(common.WorkflowStatus.FAILED))
+                common.WorkflowMetaData(common.WorkflowStatus.FAILED))
             self._step_status.pop(workflow_id)
         else:
             # remaining = 0
             wf_store.save_workflow_meta(
-                common.WorkflowMeta(common.WorkflowStatus.FINISHED))
+                common.WorkflowMetaData(common.WorkflowStatus.FINISHED))
             self._step_status.pop(workflow_id)
 
     def cancel_workflow(self, workflow_id: str, storage_url: str) -> None:
@@ -169,7 +169,7 @@ class WorkflowManagementActor:
         store = storage.create_storage(storage_url)
         wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
         wf_store.save_workflow_meta(
-            common.WorkflowMeta(common.WorkflowStatus.CANCELED))
+            common.WorkflowMetaData(common.WorkflowStatus.CANCELED))
 
     def is_workflow_running(self, workflow_id: str) -> bool:
         return workflow_id in self._step_status

@@ -7,7 +7,7 @@ import ray
 
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.common import (Workflow, WorkflowStatus,
-                                              WorkflowMeta)
+                                              WorkflowMetaData)
 from ray.experimental.workflow.step_executor import commit_step
 from ray.experimental.workflow.storage import get_global_storage
 from ray.experimental.workflow.workflow_access import (
@@ -80,7 +80,7 @@ def cancel(workflow_id: str) -> None:
         ray.get(workflow_manager.cancel_workflow.remote(workflow_id))
     except ValueError:
         wf_store = workflow_storage.get_workflow_storage(workflow_id)
-        wf_store.save_workflow_meta(WorkflowMeta(WorkflowStatus.CANCELED))
+        wf_store.save_workflow_meta(WorkflowMetaData(WorkflowStatus.CANCELED))
 
 
 def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
