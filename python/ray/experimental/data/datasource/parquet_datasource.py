@@ -21,6 +21,7 @@ class ParquetDatasource(Datasource[ArrowRow]):
         >>> ray.data.read_datasource(source, paths="/path/to/dir").take()
         ... {"a": 1, "b": "foo"}
     """
+
     def prepare_read(self,
                      parallelism: int,
                      paths: Union[str, List[str]],
@@ -48,7 +49,8 @@ class ParquetDatasource(Datasource[ArrowRow]):
             tables = [
                 piece.to_table(
                     use_threads=use_threads, columns=columns, **reader_args)
-                for piece in pieces]
+                for piece in pieces
+            ]
             if len(tables) > 1:
                 table = pa.concat_tables(tables)
             else:
@@ -60,16 +62,15 @@ class ParquetDatasource(Datasource[ArrowRow]):
                 lambda pieces=pieces: read_pieces(pieces),
                 _get_metadata(pieces, file_sizes))
             for pieces, file_sizes in zip(
-                    np.array_split(pieces, parallelism),
-                    np.array_split(file_sizes, parallelism))
-            if len(pieces) > 0]
+                np.array_split(pieces, parallelism),
+                np.array_split(file_sizes, parallelism)) if len(pieces) > 0
+        ]
 
         return read_tasks
 
 
-def _get_metadata(
-        pieces: List["pyarrow._dataset.ParquetFileFragment"],
-        file_sizes: List[int]):
+def _get_metadata(pieces: List["pyarrow._dataset.ParquetFileFragment"],
+                  file_sizes: List[int]):
     piece_metadata = []
     for p in pieces:
         try:
@@ -85,8 +86,7 @@ def _get_metadata(
             size_bytes=sum(
                 sum(
                     m.row_group(i).total_byte_size
-                    for i in range(m.num_row_groups))
-                for m in piece_metadata),
+                    for i in range(m.num_row_groups)) for m in piece_metadata),
             schema=piece_metadata[0].schema.to_arrow_schema(),
             input_files=input_files)
     else:
