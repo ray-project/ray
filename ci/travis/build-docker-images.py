@@ -120,8 +120,10 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
         for py_name, py_version in PY_MATRIX.items():
             # TODO(https://github.com/ray-project/ray/issues/16599):
             # remove below after supporting ray-ml images with Python 3.9
-            if image_name == "ray-ml" and py_version.startswith("3.9"):
-                print("ray-ml image is currently unsupported with Python 3.9")
+            if image_name in ["ray-ml", "autoscaler"
+                              ] and py_version.startswith("3.9"):
+                print(
+                    f"{image} image is currently unsupported with Python 3.9")
                 continue
 
             build_args = {}
@@ -314,8 +316,10 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
         for py_name, py_version in PY_MATRIX.items():
             # TODO(https://github.com/ray-project/ray/issues/16599):
             # remove below after supporting ray-ml images with Python 3.9
-            if image == "ray-ml" and py_version.startswith("3.9"):
-                print("ray-ml image is currently unsupported with Python 3.9")
+            if image in ["ray-ml", "autoscaler"
+                         ] and py_version.startswith("3.9"):
+                print(
+                    f"{image} image is currently unsupported with Python 3.9")
                 continue
 
             full_image = f"rayproject/{image}"
