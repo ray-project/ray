@@ -66,8 +66,8 @@ def deploy_replicas(num_replicas, max_batch_size):
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-    Echo.deploy()
-
+    deployment_handle = Echo.deploy()
+    return deployment_handle
 
 def save_results(final_result, default_name):
     test_output_json = os.environ.get(
@@ -111,10 +111,10 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
     logger.info(f"Ray serve http_host: {http_host}, http_port: {http_port}")
 
     logger.info(f"Deploying with {num_replicas} target replicas ....\n")
-    deploy_replicas(num_replicas, max_batch_size)
+    deployment_handle = deploy_replicas(num_replicas, max_batch_size)
 
     logger.info("Warming up cluster ....\n")
-    warm_up_cluster(5, http_host, http_port)
+    warm_up_cluster(5, deployment_handle, http_host, http_port)
 
     logger.info(f"Starting wrk trial for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
