@@ -3,9 +3,7 @@ import sys
 try:
     import aiohttp.web
     import aiohttp
-except ImportError:
     import aiohttp_cors  # noqa: F401
-    print("The dashboard requires aiohttp to run.")
     import aioredis  # noqa: F401
 except (ModuleNotFoundError, ImportError):
     print("Not all Ray Dashboard dependencies were found. "
