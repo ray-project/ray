@@ -41,7 +41,7 @@ class StepInspectResult:
     # Whether the user want to handle the exception mannually
     catch_exceptions: bool = False
     # ray_remote options
-    ray_options: Dict[str, Any] = None
+    ray_options: Optional[Dict[str, Any]] = None
 
     def is_recoverable(self) -> bool:
         return (self.output_object_valid or self.output_step_id

@@ -37,7 +37,6 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
         logger.warning("Using default local dir: `/tmp/ray/workflow_data`. "
                        "This should only be used for testing purposes.")
         storage = "file:///tmp/ray/workflow_data"
-
     if isinstance(storage, str):
         storage = storage_base.create_storage(storage)
     elif not isinstance(storage, Storage):
