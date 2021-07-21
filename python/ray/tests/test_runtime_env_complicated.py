@@ -33,7 +33,7 @@ REQUEST_VERSIONS = ["2.2.0", "2.3.0"]
 
 @pytest.fixture(scope="session")
 def conda_envs():
-    """Creates two copies of current conda env with different tf versions."""
+    """Creates two conda env with different requests versions."""
     conda_path = get_conda_bin_executable("conda")
     init_cmd = (f". {os.path.dirname(conda_path)}"
                 f"/../etc/profile.d/conda.sh")
@@ -630,21 +630,22 @@ def test_simultaneous_install(shutdown_only):
             self.key = key
 
         def get(self):
-            return self.key
+            import requests
+            return (self.key, requests.__version__)
 
     # Before we used a global lock on conda installs, these two envs would be
     # installed concurrently, leading to errors:
     # https://github.com/ray-project/ray/issues/17086
     # Now we use a global lock, so the envs are installed sequentially.
     worker_1 = VersionWorker.options(runtime_env={
-        "pip": ["pip_install_test==0.5"]
+        "pip": ["requests==2.2.0"]
     }).remote(key=1)
     worker_2 = VersionWorker.options(runtime_env={
-        "pip": ["pip_install_test==0.4"]
+        "pip": ["requests==2.3.0"]
     }).remote(key=2)
 
-    assert ray.get(worker_1.get.remote()) == 1
-    assert ray.get(worker_2.get.remote()) == 2
+    assert ray.get(worker_1.get.remote()) == (1, "2.2.0")
+    assert ray.get(worker_2.get.remote()) == (2, "2.3.0")
 
 
 if __name__ == "__main__":
