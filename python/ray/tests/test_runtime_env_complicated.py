@@ -702,7 +702,7 @@ CLIENT_SERVER_PORT = 24001
     indirect=True)
 def test_e2e_complex(call_ray_start, tmp_path):
     """Test multiple runtime_env options across multiple client connections.
-    
+
     1.  Run a Ray Client job with both working_dir and pip specified. Check the
         environment using imports and file reads in tasks and actors.
     2.  On the same cluster, run a job as above but using the Ray Summit
