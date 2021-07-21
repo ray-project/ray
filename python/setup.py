@@ -56,6 +56,7 @@ def find_version(*filepath):
 class SetupType(Enum):
     RAY = 1
     RAY_CPP = 2
+    RAY_ASAN = 3
 
 
 class SetupSpec:
@@ -79,6 +80,10 @@ if os.getenv("RAY_INSTALL_CPP") == "1":
     # "ray-cpp" wheel package.
     setup_spec = SetupSpec(SetupType.RAY_CPP, "ray-cpp",
                            "A subpackage of Ray which provide Ray C++ API.")
+elif os.getenv("RAY_ASAN") == "1":
+    # "ray-asan" wheel package.
+    setup_spec = SetupSpec(SetupType.RAY_ASAN, "ray-asan",
+                           "Ray package built for address sanitzer")
 else:
     # "ray" primary wheel package.
     setup_spec = SetupSpec(
@@ -146,7 +151,7 @@ ray_files += [
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements/requirements.txt
 # in this directory
-if setup_spec.type == SetupType.RAY:
+if setup_spec.type == SetupType.RAY or setup_spec.type == SetupType.RAY_ASAN:
     setup_spec.extras = {
         "default": [
             "colorful",  # noqa
@@ -182,7 +187,7 @@ if setup_spec.type == SetupType.RAY:
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
 # the change in the matching section of requirements/requirements.txt
-if setup_spec.type == SetupType.RAY:
+if setup_spec.type == SetupType.RAY or setup_spec.type == SetupType.RAY_ASAN:
     setup_spec.install_requires = [
         # TODO(alex) Pin the version once this PR is
         # included in the stable release.
@@ -389,7 +394,7 @@ def copy_file(target_dir, filename, rootdir):
 def pip_run(build_ext):
     build(True, BUILD_JAVA, True)
 
-    if setup_spec.type == SetupType.RAY:
+    if setup_spec.type == SetupType.RAY or setup_spec.type == SetupType.RAY_ASAN:
         setup_spec.files_to_include += ray_files
         # We also need to install pickle5 along with Ray, so make sure that the
         # relevant non-Python pickle5 files get copied.
