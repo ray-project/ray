@@ -92,9 +92,21 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef) -> Any:
 class WorkflowManagementActor:
     """Keep the ownership and manage the workflow output."""
 
-    def __init__(self):
+    def __init__(self, store: "storage.Storage"):
+        self._store = store
         self._workflow_outputs: Dict[str, ray.ObjectRef] = {}
         self._actor_initialized: Dict[str, ray.ObjectRef] = {}
+
+    def validate_storage(self, storage_url: str) -> True:
+        """Validate if the storage is the same as the current storage.
+
+        Args:
+            storage_url: The URL of the storage.
+
+        Returns:
+            True if they are the same storage.
+        """
+        return self._store.storage_url == storage_url
 
     def run_or_resume(self, workflow_id: str,
                       storage_url: str) -> ray.ObjectRef:
@@ -111,8 +123,7 @@ class WorkflowManagementActor:
         if workflow_id in self._workflow_outputs:
             raise ValueError(f"The output of workflow[id={workflow_id}] "
                              "already exists.")
-        store = storage.create_storage(storage_url)
-        output = recovery.resume_workflow_job(workflow_id, store)
+        output = recovery.resume_workflow_job(workflow_id, self._store)
         self._workflow_outputs[workflow_id] = output
         logger.info(f"Workflow job [id={workflow_id}] started.")
         return output
@@ -143,8 +154,7 @@ class WorkflowManagementActor:
             "ray.get" the object successfully indicates the actor is
             initialized successfully.
         """
-        store = storage.create_storage(storage_url)
-        ws = workflow_storage.WorkflowStorage(actor_id, store)
+        ws = workflow_storage.WorkflowStorage(actor_id, self._store)
         try:
             step_id = ws.get_entrypoint_step_id()
             output_exists = ws.inspect_step(step_id).output_object_valid
@@ -195,13 +205,19 @@ class WorkflowManagementActor:
 
 def init_management_actor() -> None:
     """Initialize WorkflowManagementActor"""
+    store = storage.get_global_storage()
     try:
-        ray.get_actor(MANAGEMENT_ACTOR_NAME)
+        workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+        is_valid = workflow_manager.validate_storage.remote(store.storage_url)
+        if not is_valid:
+            raise RuntimeError("The workflow is using a storage "
+                               f"({store.storage_url}) different from the "
+                               "workflow manager.")
     except ValueError:
         logger.info("Initializing workflow manager...")
         # the actor does not exist
         WorkflowManagementActor.options(
-            name=MANAGEMENT_ACTOR_NAME, lifetime="detached").remote()
+            name=MANAGEMENT_ACTOR_NAME, lifetime="detached").remote(store)
 
 
 def get_or_create_management_actor() -> "ActorHandle":
@@ -211,12 +227,14 @@ def get_or_create_management_actor() -> "ActorHandle":
     # actor seems not enough to resume the actor, because there is no
     # aliveness detection for an actor.
     try:
-        actor = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+        workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
     except ValueError:
+        store = storage.get_global_storage()
         # the actor does not exist
         logger.warning("Cannot access workflow manager. It could because "
                        "the workflow manager exited unexpectedly. A new "
-                       "workflow manager is being created.")
-        actor = WorkflowManagementActor.options(
-            name=MANAGEMENT_ACTOR_NAME, lifetime="detached").remote()
-    return actor
+                       "workflow manager is being created with storage "
+                       f"'{store}'.")
+        workflow_manager = WorkflowManagementActor.options(
+            name=MANAGEMENT_ACTOR_NAME, lifetime="detached").remote(store)
+    return workflow_manager

@@ -127,7 +127,7 @@ def test_recovery_cluster_failure():
     subprocess.run(["ray stop"], shell=True)
     proc.kill()
     time.sleep(1)
-    ray.init()
+    workflow.init()
     assert ray.get(workflow.resume("cluster_failure")) == 20
     ray.shutdown()
 
