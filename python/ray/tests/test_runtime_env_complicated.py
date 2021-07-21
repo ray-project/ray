@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from typing import List
 from ray.workers.setup_runtime_env import inject_dependencies
 import pytest
@@ -646,6 +647,40 @@ def test_simultaneous_install(shutdown_only):
 
     assert ray.get(worker_1.get.remote()) == (1, "2.2.0")
     assert ray.get(worker_2.get.remote()) == (2, "2.3.0")
+
+
+@contextmanager
+def chdir(dir):
+    old_dir = os.getcwd()
+    os.chdir(dir)
+    yield
+    os.chdir(old_dir)
+
+
+def test_runtime_env_inheritance_regression(shutdown_only):
+    # https://github.com/ray-project/ray/issues/16479
+    with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+        with open("hello", "w") as f:
+            f.write("world")
+
+        job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
+        ray.init(job_config=job_config)
+
+        @ray.remote
+        class Test:
+            def f(self):
+                return open("hello").read()
+
+        env1 = ray.get_runtime_context().runtime_env
+        del env1["working_dir"]
+        print("Using env:", env1)
+        t = Test.options(runtime_env=env1).remote()
+        assert ray.get(t.f.remote()) == "world"
+
+        env2 = ray.get_runtime_context().runtime_env
+        print("Using env:", env2)
+        t = Test.options(runtime_env=env2).remote()
+        assert ray.get(t.f.remote()) == "world"
 
 
 if __name__ == "__main__":
