@@ -40,7 +40,7 @@ class StepInspectResult:
     # The num of retry for application exception
     step_max_retries: int = 1
     # Whether the user want to handle the exception mannually
-    catch_exceptions: Optional[bool] = None
+    catch_exceptions: bool = False
     # ray_remote options
     ray_options: Dict[str, Any] = None
 
@@ -51,18 +51,10 @@ class StepInspectResult:
 
 
 class WorkflowStorage:
-    """Access workflow in storage. This is a high-level function,
+    """Access workflow in storage. This is a higher-level abstraction,
     which does not care about the underlining storage implementation."""
 
-    def __init__(self,
-                 workflow_id: Optional[str] = None,
-                 store: Optional[storage.Storage] = None):
-        if workflow_id is None:
-            context = workflow_context.get_workflow_step_context()
-            if context is not None:
-                workflow_id = context.workflow_id
-        if store is None:
-            store = storage.get_global_storage()
+    def __init__(self, workflow_id: str, store: storage.Storage):
         self._storage = store
         self._workflow_id = workflow_id
 
@@ -243,11 +235,9 @@ class WorkflowStorage:
             catch_exceptions = metadata.get("catch_exceptions")
             ray_options = metadata.get("ray_options", {})
         except storage.DataLoadError:
-            input_object_refs = None
-            input_workflows = None
-            step_max_retries = None
-            catch_exceptions = None
-            ray_options = {}
+            return StepInspectResult(
+                args_valid=field_list.args_exists,
+                func_body_valid=field_list.func_body_exists)
         return StepInspectResult(
             args_valid=field_list.args_exists,
             func_body_valid=field_list.func_body_exists,
@@ -350,3 +340,17 @@ class WorkflowStorage:
 
     def list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
         return asyncio_run(self._list_workflow())
+
+def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
+    """Get the storage for the workflow.
+
+    Args:
+        workflow_id: The ID of the storage.
+
+    Returns:
+        A workflow storage.
+    """
+    store = storage.get_global_storage()
+    if workflow_id is None:
+        workflow_id = workflow_context.get_workflow_step_context().workflow_id
+    return WorkflowStorage(workflow_id, store)

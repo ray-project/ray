@@ -18,37 +18,14 @@ from ray.experimental.workflow.workflow_access import (
 logger = logging.getLogger(__name__)
 
 
-def _get_storage(storage: Optional[Union[str, Storage]]) -> Storage:
-    if storage is None:
-        return get_global_storage()
-    elif isinstance(storage, str):
-        return create_storage(storage)
-    elif isinstance(storage, Storage):
-        return storage
-    else:
-        raise TypeError("'storage' should be None, str, or Storage type.")
-
-
-def _get_storage_url(storage: Optional[Union[str, Storage]]) -> str:
-    if storage is None:
-        return get_global_storage().storage_url
-    elif isinstance(storage, str):
-        return storage
-    elif isinstance(storage, Storage):
-        return storage.storage_url
-    else:
-        raise TypeError("'storage' should be None, str, or Storage type.")
-
-
 def run(entry_workflow: Workflow,
-        storage: Optional[Union[str, Storage]] = None,
         workflow_id: Optional[str] = None) -> ray.ObjectRef:
     """Run a workflow asynchronously. See "api.run()" for details."""
+    store = get_global_storage()
     assert ray.is_initialized()
     if workflow_id is None:
         # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
         workflow_id = f"{entry_workflow.id}.{time.time():.9f}"
-    store = _get_storage(storage)
     logger.info(f"Workflow job created. [id=\"{workflow_id}\", storage_url="
                 f"\"{store.storage_url}\"].")
 
@@ -60,26 +37,22 @@ def run(entry_workflow: Workflow,
     # ensures caller of 'run()' holds the reference to the workflow
     # result. Otherwise if the actor removes the reference of the
     # workflow output, the caller may fail to resolve the result.
-    output = ray.get(
-        workflow_manager.run_or_resume.remote(workflow_id, store.storage_url))
+    output = ray.get(workflow_manager.run_or_resume.remote(workflow_id))
     return flatten_workflow_output(workflow_id, output)
 
 
-def resume(workflow_id: str,
-           storage: Optional[Union[str, Storage]] = None) -> ray.ObjectRef:
+def resume(workflow_id: str) -> ray.ObjectRef:
     """Resume a workflow asynchronously. See "api.resume()" for details.
     """
-    assert ray.is_initialized()
-    storage_url = _get_storage_url(storage)
+    storage = get_global_storage()
     logger.info(f"Resuming workflow [id=\"{workflow_id}\", storage_url="
-                f"\"{storage_url}\"].")
+                f"\"{storage.storage_url}\"].")
     workflow_manager = get_or_create_management_actor()
     # NOTE: It is important to 'ray.get' the returned output. This
     # ensures caller of 'run()' holds the reference to the workflow
     # result. Otherwise if the actor removes the reference of the
     # workflow output, the caller may fail to resolve the result.
-    output = ray.get(
-        workflow_manager.run_or_resume.remote(workflow_id, storage_url))
+    output = ray.get(workflow_manager.run_or_resume.remote(workflow_id))
     direct_output = flatten_workflow_output(workflow_id, output)
     logger.info(f"Workflow job {workflow_id} resumed.")
     return direct_output

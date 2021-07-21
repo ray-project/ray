@@ -1,8 +1,7 @@
 from enum import Enum, unique
 from collections import deque
 import re
-from typing import (Tuple, Dict, List, Optional, Callable, Set, Iterator, Any,
-                    Union, TYPE_CHECKING)
+from typing import Tuple, Dict, List, Optional, Callable, Set, Iterator, Any
 import unicodedata
 import uuid
 
@@ -18,9 +17,6 @@ WorkflowInputTuple = Tuple[ObjectRef, List["Workflow"], List[ObjectRef]]
 StepExecutionFunction = Callable[
     [StepID, WorkflowInputTuple, Optional[StepID]], WorkflowOutputType]
 SerializedStepFunction = str
-
-if TYPE_CHECKING:
-    from ray.experimental.workflow.storage import Storage
 
 
 @unique
@@ -176,9 +172,7 @@ class Workflow:
             "returning it from a Ray remote function, or using "
             "'ray.put()' with it?")
 
-    def run(self,
-            workflow_id: Optional[str] = None,
-            storage: "Optional[Union[str, Storage]]" = None) -> Any:
+    def run(self, workflow_id: Optional[str] = None) -> Any:
         """Run a workflow.
 
         Examples:
@@ -203,15 +197,10 @@ class Workflow:
         Args:
             workflow_id: A unique identifier that can be used to resume the
                 workflow. If not specified, a random id will be generated.
-            storage: The external storage URL or a custom storage class. If not
-                specified, ``/tmp/ray/workflow_data`` will be used.
         """
-        return ray.get(self.run_async(workflow_id, storage))
+        return ray.get(self.run_async(workflow_id))
 
-    def run_async(
-            self,
-            workflow_id: Optional[str] = None,
-            storage: "Optional[Union[str, Storage]]" = None) -> ObjectRef:
+    def run_async(self, workflow_id: Optional[str] = None) -> ObjectRef:
         """Run a workflow asynchronously.
 
         Examples:
@@ -236,9 +225,7 @@ class Workflow:
         Args:
             workflow_id: A unique identifier that can be used to resume the
                 workflow. If not specified, a random id will be generated.
-            storage: The external storage URL or a custom storage class. If not
-                specified, ``/tmp/ray/workflow_data`` will be used.
         """
         # TODO(suquark): avoid cyclic importing
         from ray.experimental.workflow.execution import run
-        return run(self, storage, workflow_id)
+        return run(self, workflow_id)
