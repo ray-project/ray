@@ -39,7 +39,7 @@ class StepInspectResult:
     # The num of retry for application exception
     step_max_retries: int = 1
     # Whether the user want to handle the exception mannually
-    catch_exceptions: Optional[bool] = None
+    catch_exceptions: bool = False
     # ray_remote options
     ray_options: Dict[str, Any] = None
 
@@ -241,11 +241,9 @@ class WorkflowStorage:
             catch_exceptions = metadata.get("catch_exceptions")
             ray_options = metadata.get("ray_options", {})
         except storage.DataLoadError:
-            input_object_refs = None
-            input_workflows = None
-            step_max_retries = None
-            catch_exceptions = None
-            ray_options = {}
+            return StepInspectResult(
+                args_valid=field_list.args_exists,
+                func_body_valid=field_list.func_body_exists)
         return StepInspectResult(
             args_valid=field_list.args_exists,
             func_body_valid=field_list.func_body_exists,
@@ -314,3 +312,16 @@ class WorkflowStorage:
         """
         asyncio_run(
             self._storage.save_actor_class_body(self._workflow_id, cls))
+
+
+def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
+    """Get the storage for the workflow.
+    Args:
+        workflow_id: The ID of the storage.
+    Returns:
+        A workflow storage.
+    """
+    store = storage.get_global_storage()
+    if workflow_id is None:
+        workflow_id = workflow_context.get_workflow_step_context().workflow_id
+    return WorkflowStorage(workflow_id, store)

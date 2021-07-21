@@ -1,20 +1,23 @@
 import boto3
+from contextlib import contextmanager
 import pytest
+import ray
 from moto import mock_s3
 from mock_server import *  # noqa
 from ray.experimental.workflow import storage
 from pytest_lazyfixture import lazy_fixture
+import tempfile
+from ray.tests.conftest import get_default_fixture_ray_kwargs
 
-
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def filesystem_storage():
-    # TODO: use tmp path once fixed the path issues
-    storage.set_global_storage(
-        storage.create_storage("/tmp/ray/workflow_data/"))
-    yield storage.get_global_storage()
+    with tempfile.TemporaryDirectory() as d:
+        storage.set_global_storage(
+            storage.create_storage(str(d)))
+        yield storage.get_global_storage()
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def aws_credentials():
     import os
     old_env = os.environ
@@ -28,7 +31,7 @@ def aws_credentials():
     os.environ = old_env
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def s3_storage(aws_credentials, s3_server):
     with mock_s3():
         import os
@@ -53,7 +56,7 @@ def _workflow_start(**kwargs):
     ray.shutdown()
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def workflow_start_regular(raw_storage, request):
     param = getattr(request, "param", {})
     with _workflow_start(**param) as res:
@@ -68,4 +71,4 @@ def workflow_start_regular_shared(raw_storage, request):
 
 def pytest_generate_tests(metafunc):
     if "raw_storage" in metafunc.fixturenames:
-        metafunc.parametrize("raw_storage", [lazy_fixture("s3_storage"), lazy_fixture("filesystem_storage")])
+        metafunc.parametrize("raw_storage", [lazy_fixture("s3_storage"), lazy_fixture("filesystem_storage")], scope="session")
