@@ -100,13 +100,13 @@ class ObjectBufferPool {
   /// \param data_size The sum of the object size and metadata size.
   /// \param metadata_size The size of the metadata.
   /// \param chunk_index The index of the chunk.
-  /// \return A pair consisting of ChunkInfo and status of invoking this method.
+  /// \return status of invoking this method.
   /// An IOError status is returned if object creation on the store client fails,
   /// or if create is invoked consecutively on the same chunk
   /// (with no intermediate AbortCreateChunk).
-  std::pair<const ObjectBufferPool::ChunkInfo, ray::Status> CreateChunk(
-      const ObjectID &object_id, const rpc::Address &owner_address, uint64_t data_size,
-      uint64_t metadata_size, uint64_t chunk_index);
+  ray::Status CreateChunk(const ObjectID &object_id, const rpc::Address &owner_address,
+                          uint64_t data_size, uint64_t metadata_size,
+                          uint64_t chunk_index);
 
   /// Abort the create operation associated with a chunk at chunk_index.
   /// This method will fail if it's invoked on a chunk_index on which
@@ -117,7 +117,8 @@ class ObjectBufferPool {
   /// \param chunk_index The index of the chunk.
   void AbortCreateChunk(const ObjectID &object_id, uint64_t chunk_index);
 
-  /// Write to a Chunk of an object.
+  /// Write to a Chunk of an object. If all chunks of an object is written,
+  /// it seals the object.
   ///
   /// This method will fail if it's invoked on a chunk_index on which
   /// CreateChunk was not first invoked, or a chunk_index on which
