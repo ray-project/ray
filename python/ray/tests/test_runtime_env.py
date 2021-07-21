@@ -644,8 +644,7 @@ def test_init(shutdown_only):
         os.chdir(tmp_dir)
         with open("hello", "w") as f:
             f.write("world")
-        job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
-        ray.init(job_config=job_config)
+        ray.init(runtime_env={"working_dir": "."})
 
         @ray.remote
         class Test:

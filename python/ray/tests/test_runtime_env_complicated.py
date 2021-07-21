@@ -202,7 +202,7 @@ def test_job_config_conda_env(conda_envs, shutdown_only):
 
     for tf_version in ["2.2.0", "2.3.0"]:
         runtime_env = {"conda": f"tf-{tf_version}"}
-        ray.init(job_config=JobConfig(runtime_env=runtime_env))
+        ray.init(runtime_env=runtime_env)
         assert ray.get(get_conda_env.remote()) == tf_version
         ray.shutdown()
 
@@ -299,7 +299,7 @@ def test_conda_create_job_config(shutdown_only):
             }]
         }
     }
-    ray.init(job_config=JobConfig(runtime_env=runtime_env))
+    ray.init(runtime_env=runtime_env)
 
     @ray.remote
     def f():
@@ -473,7 +473,7 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
     else:
         runtime_env = {"pip": ["pip-install-test==0.5"]}
 
-    ray.init(job_config=JobConfig(runtime_env=runtime_env))
+    ray.init(runtime_env=runtime_env)
 
     @ray.remote
     def f():
@@ -599,8 +599,7 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
 install_env_script = """
 import ray
 import time
-job_config = ray.job_config.JobConfig(runtime_env={env})
-ray.init(address="auto", job_config=job_config)
+ray.init(address="auto", runtime_env={env})
 @ray.remote
 def f():
     return "hello"
@@ -618,9 +617,8 @@ time.sleep(5)
 def test_env_installation_nonblocking(shutdown_only):
     """Test fix for https://github.com/ray-project/ray/issues/16226."""
     env1 = {"pip": ["pip-install-test==0.5"]}
-    job_config = ray.job_config.JobConfig(runtime_env=env1)
 
-    ray.init(job_config=job_config)
+    ray.init(jruntime_env=env1)
 
     @ray.remote
     def f():
