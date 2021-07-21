@@ -156,12 +156,12 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
                     nocache=no_cache,
                     buildargs=build_args)
 
-                full_output = []
+                cmd_output = []
                 try:
                     start = datetime.datetime.now()
                     current_iter = start
                     for line in output:
-                        full_output.append(line.decode("utf-8"))
+                        cmd_output.append(line.decode("utf-8"))
                         if datetime.datetime.now(
                         ) - current_iter >= datetime.timedelta(minutes=5):
                             current_iter = datetime.datetime.now()
@@ -170,14 +170,16 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
                                   f"{elapsed.seconds} seconds")
                             if elapsed >= datetime.timedelta(minutes=15):
                                 print("Build output:")
-                                print(*full_output, sep="\n")
-                                full_output = []
+                                print(*cmd_output, sep="\n")
+                                # Clear cmd_output after printing, so the next
+                                # iteration will not print out the same lines.
+                                cmd_output = []
                 except Exception as e:
                     print(f"FAILURE with error {e}")
 
                 if len(DOCKER_CLIENT.api.images(tagged_name)) == 0:
                     print(f"ERROR building: {tagged_name}. Output below:")
-                    print(*full_output, sep="\n")
+                    print(*cmd_output, sep="\n")
                     if (i == 1):
                         raise Exception("FAILED TO BUILD IMAGE")
                     print("TRYING AGAIN")
