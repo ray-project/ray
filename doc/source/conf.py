@@ -98,12 +98,6 @@ for mod_name in MOCK_MODULES:
 sys.modules["tensorflow"].VERSION = "9.9.9"
 sys.modules["tensorflow.keras.callbacks"] = ChildClassMock()
 sys.modules["pytorch_lightning"] = ChildClassMock()
-sys.modules["xgboost"] = ChildClassMock()
-sys.modules["xgboost.core"] = ChildClassMock()
-sys.modules["xgboost.callback"] = ChildClassMock()
-sys.modules["xgboost_ray"] = ChildClassMock()
-sys.modules["lightgbm_ray"] = ChildClassMock()
-
 
 # # replace docstring refs in XGBoost documentation XGBoost-Ray inherits from
 # # if this is not done, an error during make will be thrown, as there is no
@@ -141,6 +135,8 @@ sys.modules["lightgbm_ray"] = ChildClassMock()
 # for m in replaces_ray_params:
 #     m.__doc__ = m.__doc__.replace("RayParams", "lightgbm_ray.RayParams")
 
+assert "ray" not in sys.modules, (
+    "If ray is already imported, we will not render documentation correctly!")
 
 class SimpleClass(object):
     pass
