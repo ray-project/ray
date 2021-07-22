@@ -349,6 +349,9 @@ class GCPCompute(GCPResource):
 class GCPTPU(GCPResource):
     """Abstraction around GCP TPU resource"""
 
+    # node names already contain the path, but this is required for `parent`
+    # arguments
+
     @property
     def path(self):
         return f"projects/{self.project_id}/locations/{self.availability_zone}"
@@ -425,6 +428,8 @@ class GCPTPU(GCPResource):
             "labels": dict(node["labels"], **labels),
         }
         update_mask = ",".join(_flatten_dict(body, delimiter=".").keys())
+        logger.info(f"tpu set_labels update_mask {update_mask}")
+        logger.info(f"tpu set_labels body {body}")
         operation = self.resource.projects().locations().nodes().patch(
             name=node["name"],
             updateMask=update_mask,
