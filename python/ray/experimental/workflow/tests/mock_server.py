@@ -84,5 +84,6 @@ def kms_server():
     port = 5003
     url = "http://{host}:{port}".format(host=host, port=port)
     process = start_service('kms', host, port)
+
     yield url
     stop_process(process)
