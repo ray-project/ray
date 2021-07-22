@@ -122,8 +122,7 @@ class NodeProvider:
         raise NotImplementedError
 
     def terminate_node(self, node_id: str) -> None:
-        """Terminates the specified node.
-        """
+        """Terminates the specified node."""
         raise NotImplementedError
 
     def terminate_nodes(self, node_ids: List[str]) -> Optional[Dict[str, Any]]:
