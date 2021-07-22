@@ -18,7 +18,7 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
     StandardizeFields, SelectExperiences
-from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
+from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -281,7 +281,7 @@ def execution_plan(workers: WorkerSet,
                 sgd_minibatch_size=config["sgd_minibatch_size"]))
     else:
         train_op = rollouts.for_each(
-            TrainTFMultiGPU(
+            MultiGPUTrainOneStep(
                 workers=workers,
                 sgd_minibatch_size=config["sgd_minibatch_size"],
                 num_sgd_iter=config["num_sgd_iter"],

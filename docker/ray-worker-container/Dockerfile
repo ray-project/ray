@@ -74,7 +74,7 @@ RUN apt-get update -y \
     && echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /" | tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list \
     && curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/Release.key | apt-key add - \
     && apt-get update \
-    && apt-get -y install podman \
+    && apt-get -y install podman runc \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 

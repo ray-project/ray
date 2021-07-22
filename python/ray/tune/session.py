@@ -211,4 +211,20 @@ def get_trial_id():
         return _session.trial_id
 
 
-__all__ = ["report", "get_trial_dir", "get_trial_name", "get_trial_id"]
+def get_trial_resources():
+    """Trial resources for the corresponding trial.
+
+    Will be a PlacementGroupFactory if trial uses those,
+    otherwise a Resources instance.
+
+    For function API use only.
+    """
+    _session = get_session()
+    if _session:
+        return _session.trial_resources
+
+
+__all__ = [
+    "report", "get_trial_dir", "get_trial_name", "get_trial_id",
+    "get_trial_resources"
+]

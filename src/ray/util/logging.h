@@ -48,6 +48,7 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
 #include <atomic>
 #include <chrono>
 #include <iostream>
@@ -127,11 +128,25 @@ enum class RayLogLevel {
 
 #define RAY_LOG_OCCURRENCES RAY_LOG_EVERY_N_VARNAME(occurrences_, __LINE__)
 
+// Occasional logging, log every n'th occurrence of an event.
 #define RAY_LOG_EVERY_N(level, n)                             \
   static std::atomic<uint64_t> RAY_LOG_OCCURRENCES(0);        \
   if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) && \
       RAY_LOG_OCCURRENCES.fetch_add(1) % n == 0)              \
-  RAY_LOG_INTERNAL(ray::RayLogLevel::level) << "[" << RAY_LOG_OCCURRENCES - 1 << "] "
+  RAY_LOG_INTERNAL(ray::RayLogLevel::level) << "[" << RAY_LOG_OCCURRENCES << "] "
+
+// Occasional logging with DEBUG fallback:
+// If DEBUG is not enabled, log every n'th occurrence of an event.
+// Otherwise, if DEBUG is enabled, always log as DEBUG events.
+#define RAY_LOG_EVERY_N_OR_DEBUG(level, n)                              \
+  static std::atomic<uint64_t> RAY_LOG_OCCURRENCES(0);                  \
+  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::DEBUG) ||           \
+      (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) &&          \
+       RAY_LOG_OCCURRENCES.fetch_add(1) % n == 0))                      \
+  RAY_LOG_INTERNAL(ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) \
+                       ? ray::RayLogLevel::level                        \
+                       : ray::RayLogLevel::DEBUG)                       \
+      << "[" << RAY_LOG_OCCURRENCES << "] "
 
 /// Macros for RAY_LOG_EVERY_MS
 #define RAY_LOG_TIME_PERIOD RAY_LOG_EVERY_N_VARNAME(timePeriod_, __LINE__)
@@ -225,6 +240,8 @@ class RayLog : public RayLogBase {
   static std::string GetLoggerName();
 
  private:
+  FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
+  FRIEND_TEST(PrintLogTest, TestRayLogEveryN);
   // Hide the implementation of log provider by void *.
   // Otherwise, lib user may define the same macro to use the correct header file.
   void *logging_provider_;
