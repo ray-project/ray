@@ -387,7 +387,9 @@ def _configure_subnet(config, compute):
     ]
     # Rationale: avoid subnet lookup if the network is already
     # completely manually configured
-    if all("networkInterfaces" in node_config for node_config in node_configs):
+
+    # networkInterfaces is compute, networkConfig is TPU
+    if all("networkInterfaces" in node_config or "networkConfig" in node_config for node_config in node_configs):
         return config
 
     subnets = _list_subnets(config, compute)
@@ -409,9 +411,16 @@ def _configure_subnet(config, compute):
     }]
 
     for node_config in node_configs:
+        # The one not applicable for the instance will be removed during creation
+        # compute
         if "networkInterfaces" not in node_config:
             node_config["networkInterfaces"] = copy.deepcopy(
                 default_interfaces)
+        # TPU
+        if "networkConfig" not in node_config:
+            node_config["networkConfig"] = copy.deepcopy(
+                default_interfaces)
+            node_config["networkConfig"].pop("accessConfigs")
 
     return config
 

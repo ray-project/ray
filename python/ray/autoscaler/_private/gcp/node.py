@@ -299,6 +299,8 @@ class GCPCompute(GCPResource):
                         wait_for_operation: bool = True) -> Tuple[dict, str]:
 
         config = base_config.copy()
+        # removing TPU-specific default key set in config.py
+        config.pop("networkConfig", None)
         name = _generate_node_name(labels, GCPNodeType.COMPUTE.value)
 
         machine_type = ("zones/{zone}/machineTypes/{machine_type}"
@@ -431,6 +433,8 @@ class GCPTPU(GCPResource):
                         labels: dict,
                         wait_for_operation: bool = True) -> Tuple[dict, str]:
         config = base_config.copy()
+        # removing Compute-specific default key set in config.py
+        config.pop("networkInterfaces", None)
         name = _generate_node_name(labels, GCPNodeType.TPU.value)
 
         labels = dict(config.get("labels", {}), **labels)
