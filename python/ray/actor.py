@@ -727,7 +727,7 @@ class ActorClass:
         if runtime_env:
             if runtime_env.get("working_dir"):
                 raise NotImplementedError(
-                    "Overriding working_dir for actor is not supported. "
+                    "Overriding working_dir for actors is not supported. "
                     "Please use ray.init(runtime_env={'working_dir': ...}) "
                     "to configure per-job environment instead.")
             runtime_env_dict = runtime_support.RuntimeEnvDict(
