@@ -174,15 +174,15 @@ class ArrowBlockAccessor(BlockAccessor):
 
     def sort_and_partition(self, boundaries: List[T],
                            key: Any) -> List["Block[T]"]:
-        indices = pyarrow.compute.sort_indices(self._table, sort_keys=key)
+        import pyarrow.compute as pac
+
+        indices = pac.sort_indices(self._table, sort_keys=key)
         table = self._table.take(indices)
         if len(boundaries) == 0:
             return [table]
         boundary_indices = [
-            sum(pyarrow.compute.less(table[key[0][0]], b)) for b in boundaries
-            for b in boundaries
+            pac.sum(pac.less(table[key[0][0]], b)).as_py() for b in boundaries
         ]
-        print(boundary_indices)
         ret = []
         prev_i = 0
         for i in boundary_indices:

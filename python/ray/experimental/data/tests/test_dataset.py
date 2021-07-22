@@ -1106,13 +1106,29 @@ def test_sort_simple(ray_start_regular_shared):
 
 
 def test_sort_arrow(ray_start_regular_shared):
-    num_items = 100
-    parallelism = 4
+    _test_sort_arrow()
+
+
+def test_sort_arrow_distributed(ray_start_regular_shared):
+    _test_sort_arrow(parallelism=4)
+
+
+def _test_sort_arrow(num_items=100, parallelism=1):
     a = list(reversed(range(num_items)))
     b = [str(x) for x in range(num_items)]
-    df = pd.DataFrame({"a": a, "b": b})
-    ds = ray.experimental.data.from_pandas(
-        [ray.put(df)], parallelism=parallelism)
+    shard = int(np.ceil(num_items / parallelism))
+    offset = 0
+    dfs = []
+    while offset < num_items:
+        dfs.append(
+            pd.DataFrame({
+                "a": a[offset:offset + shard],
+                "b": b[offset:offset + shard]
+            }))
+        offset += shard
+    if offset < num_items:
+        dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
+    ds = ray.experimental.data.from_pandas([ray.put(df) for df in dfs])
     assert [tuple(row.values())
             for row in ds.sort(key="a").iter_rows()] == list(
                 zip(reversed(a), reversed(b)))
@@ -1121,3 +1137,4 @@ def test_sort_arrow(ray_start_regular_shared):
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
+    # sys.exit(pytest.main(["-sv", __file__, "-k", "test_sort_arrow"]))

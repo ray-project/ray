@@ -55,9 +55,6 @@ def sample_boundaries(blocks: BlockList[T], key: SortKeyT,
         np.quantile(sample_items, q, interpolation="nearest")
         for q in np.arange(0, 1, 1 / num_reducers)
     ]
-    print(num_reducers)
-    print(ret)
-    print(ret[1:])
     return ret[1:]
 
 
