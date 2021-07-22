@@ -139,7 +139,7 @@ public class GlobalStateAccessor {
       return this.nativeGetNodeToConnectForDriver(globalStateAccessorNativePointer, nodeIpAddress);
     }
   }
-  
+
   /** Returns An actor address with Address protobuf schema. */
   public byte[] getActorAddress(ActorId actorId) {
     // Fetch an actor with protobuf bytes format from GCS.
