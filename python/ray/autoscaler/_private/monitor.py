@@ -129,7 +129,6 @@ class Monitor:
         self.prefix_cluster_info = prefix_cluster_info
         # Can be used to signal graceful exit from monitor loop.
         self.stop_event = stop_event  # type: Optional[Event]
-        self.disable_node_updaters = disable_node_updaters
         self.autoscaling_config = autoscaling_config
         self.autoscaler = None
 
