@@ -35,6 +35,7 @@ class WorkflowInputs:
     args: ObjectRef
     # The object refs in the arguments.
     object_refs: List[ObjectRef]
+    # TODO(suquark): maybe later we can replace it with WorkflowData.
     # The workflows in the arguments.
     workflows: "List[Workflow]"
 
