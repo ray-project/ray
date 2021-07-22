@@ -10,7 +10,6 @@ from ray.util.inspect import (is_function_or_method, is_class_method,
                               is_static_method)
 from ray._private import signature
 
-from ray.experimental import workflow
 from ray.experimental.workflow.common import slugify, WorkflowData, Workflow
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow.storage import Storage, get_global_storage
@@ -386,9 +385,8 @@ class VirtualActor:
         workflow_inputs = serialization_context.make_workflow_inputs(
             flattened_args)
         readonly = getattr(method, "__virtual_actor_readonly__", False)
-        try:
-            workflow_context.init_workflow_step_context(
-                self._actor_id, self._storage.storage_url)
+        with workflow_context.workflow_step_context(self._actor_id,
+                                                    self._storage.storage_url):
             if readonly:
                 _readonly_actor_method = _wrap_readonly_actor_method(
                     self._actor_id, cls, method_name)
@@ -405,8 +403,6 @@ class VirtualActor:
             else:
                 raise NotImplementedError(
                     "Virtual actor writer mode has not been supported yet.")
-        finally:
-            workflow_context.set_workflow_step_context(None)
 
 
 def decorate_actor(cls: type):

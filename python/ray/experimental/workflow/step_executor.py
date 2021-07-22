@@ -9,11 +9,11 @@ from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.workflow_access import MANAGEMENT_ACTOR_NAME
+from ray.experimental.workflow.common import Workflow
 
 if TYPE_CHECKING:
     from ray.experimental.workflow.common import (StepID, WorkflowOutputType,
-                                                  Workflow, WorkflowData,
-                                                  WorkflowStatus)
+                                                  WorkflowData, WorkflowStatus)
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 
@@ -273,10 +273,12 @@ def _workflow_step_executor(
             break
         except BaseException as e:
             ret.exception = e
-    if catch_exceptions or ret.exception is None:
-        _record_step_status(step_id, WorkflowStatus.FINISHED)
-    else:
-        _record_step_status(step_id, WorkflowStatus.RESUMABLE)
+
+    if step_type != StepType.READONLY_ACTOR_METHOD:
+        if catch_exceptions or ret.exception is None:
+            _record_step_status(step_id, WorkflowStatus.FINISHED)
+        else:
+            _record_step_status(step_id, WorkflowStatus.RESUMABLE)
     return ret.unpack()
 
 
@@ -305,7 +307,8 @@ def execute_virtual_actor_step(step_id: "StepID",
                                workflow_data: "WorkflowData",
                                readonly: bool) -> "WorkflowOutputType":
     from ray.experimental.workflow.common import WorkflowStatus
-    _record_step_status(step_id, WorkflowStatus.RUNNING)
+    if not readonly:
+        _record_step_status(step_id, WorkflowStatus.RUNNING)
     workflow_outputs = [w.execute() for w in workflow_data.inputs.workflows]
     step_inputs = (workflow_data.inputs.args, workflow_outputs,
                    workflow_data.inputs.object_refs)
