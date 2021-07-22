@@ -31,6 +31,7 @@ from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.client.server.dataservicer import DataServicer
 from ray.util.client.server.logservicer import LogstreamServicer
 from ray.util.client.server.server_stubs import current_server
+from ray.util.debug import log_once
 from ray.ray_constants import env_integer
 from ray.util.placement_group import PlacementGroup
 from ray._private.client_mode_hook import disable_client_hook
@@ -329,7 +330,16 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             return ray_client_pb2.GetResponse(
                 valid=False, error=cloudpickle.dumps(e))
         item_ser = dumps_from_server(item, client_id, self)
-        return ray_client_pb2.GetResponse(valid=True, data=item_ser)
+        response = ray_client_pb2.GetResponse(valid=True, data=item_ser)
+        if response.BytesSize() > 100 * 2**20 and log_once(): # 100 MiB
+            size_mib = response.BytesSize() / (2**20)
+            logger.warning(
+                "Ray client detected you are receiving more than 100MiB of "
+                "data from the cluster (ray.get). If transferring this data is"
+                "slow and you don't need the full result, consider wrap your "
+                "main processing function inside a @ray.remote call, see "
+                "TODO(ckw) add a design pattern doc-link for examples.")
+        return response
 
     def PutObject(self, request: ray_client_pb2.PutRequest,
                   context=None) -> ray_client_pb2.PutResponse:

@@ -4,12 +4,14 @@ back to the ray clientserver.
 import logging
 import queue
 import threading
+import warnings
 import grpc
 
 from typing import Any, Callable, Dict, Optional
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +189,15 @@ class DataClient:
 
     def PutObject(self, request: ray_client_pb2.PutRequest,
                   context=None) -> ray_client_pb2.PutResponse:
+        if request.BytesSize() >= 2 ** 30 and log_once("1gb_object_warning"):
+            size_gib = request.BytesSize() / (2**30)
+            warnings.warn(
+                "Ray Client has detected that you are submitting a  "
+                f"{size_gib:2f} GiB object to be written to the object store "
+                "(ray.put). This can be slow because Ray needs to upload this "
+                "object to a remote cluster. See TODO(ckw) write doc link "
+                "with potential alternatives", UserWarning)
+
         datareq = ray_client_pb2.DataRequest(put=request, )
         resp = self._blocking_send(datareq)
         return resp.put
