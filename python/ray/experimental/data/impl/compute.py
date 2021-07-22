@@ -15,7 +15,7 @@ CallableClass = type
 
 class ComputeStrategy:
     def apply(self, fn: Any,
-              blocks: Iterable[Block[T]]) -> Iterable[ObjectRef[Block]]:
+              blocks: Iterable[Block]) -> Iterable[ObjectRef[Block]]:
         raise NotImplementedError
 
 
@@ -51,7 +51,7 @@ class TaskPool(ComputeStrategy):
 
 class ActorPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
-              blocks: Iterable[Block[T]]) -> Iterable[ObjectRef[Block]]:
+              blocks: Iterable[Block]) -> Iterable[ObjectRef[Block]]:
 
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
@@ -60,8 +60,8 @@ class ActorPool(ComputeStrategy):
                 return "ok"
 
             @ray.method(num_returns=2)
-            def process_block(self, block: Block[T], meta: BlockMetadata
-                              ) -> (Block[U], BlockMetadata):
+            def process_block(self, block: Block,
+                              meta: BlockMetadata) -> (Block, BlockMetadata):
                 new_block = fn(block)
                 accessor = BlockAccessor.for_block(new_block)
                 new_metadata = BlockMetadata(

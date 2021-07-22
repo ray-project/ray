@@ -15,11 +15,11 @@ class BlockBuilder(Generic[T]):
         """Append a single row to the block being built."""
         raise NotImplementedError
 
-    def add_block(self, block: "Block[T]") -> None:
+    def add_block(self, block: "Block") -> None:
         """Append an entire block to the block being built."""
         raise NotImplementedError
 
-    def build(self) -> "Block[T]":
+    def build(self) -> "Block":
         """Build the block."""
         raise NotImplementedError
 
@@ -35,7 +35,7 @@ class SimpleBlockBuilder(BlockBuilder[T]):
         assert isinstance(block, list), block
         self._items.extend(block)
 
-    def build(self) -> "Block[T]":
+    def build(self) -> "Block":
         return list(self._items)
 
 
