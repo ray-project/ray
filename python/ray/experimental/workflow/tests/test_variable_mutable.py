@@ -1,5 +1,6 @@
 from ray.tests.conftest import *  # noqa
 from ray.experimental import workflow
+import pytest
 
 
 @workflow.step
