@@ -102,6 +102,7 @@ sys.modules["pytorch_lightning"] = ChildClassMock()
 assert "ray" not in sys.modules, (
     "If ray is already imported, we will not render documentation correctly!")
 
+
 class SimpleClass(object):
     pass
 
