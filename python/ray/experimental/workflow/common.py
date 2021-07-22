@@ -1,7 +1,7 @@
+from enum import Enum, unique
 from collections import deque
 import re
-from typing import (Tuple, Dict, List, Optional, Callable, Set, Iterator, Any,
-                    Union, TYPE_CHECKING)
+from typing import Tuple, Dict, List, Optional, Callable, Set, Iterator, Any
 import unicodedata
 import uuid
 
@@ -18,8 +18,19 @@ StepExecutionFunction = Callable[
     [StepID, WorkflowInputTuple, Optional[StepID]], WorkflowOutputType]
 SerializedStepFunction = str
 
-if TYPE_CHECKING:
-    from ray.experimental.workflow.storage import Storage
+
+@unique
+class WorkflowStatus(str, Enum):
+    # There is at least a remote task running in ray cluster
+    RUNNING = "RUNNING"
+    # It got canceled and can't be resumed later
+    CANCELED = "CANCELED"
+    # The step is finished. For virtual actor, it means that all
+    # writing steps has been finished.
+    FINISHED = "FINISHED"
+    # The workflow that can be resumed. Usually it's because some
+    # internal or external errors.
+    RESUMABLE = "RESUMABLE"
 
 
 @dataclass
@@ -38,6 +49,12 @@ class WorkflowInputs:
     catch_exceptions: bool
     # ray_remote options
     ray_options: Dict[str, Any]
+
+
+@dataclass
+class WorkflowMetaData:
+    # The current status of the workflow
+    status: WorkflowStatus
 
 
 def slugify(value: str, allow_unicode=False) -> str:
@@ -103,6 +120,7 @@ class Workflow:
         """
         if self.executed:
             return self._output
+
         workflow_outputs = [w.execute() for w in self._input_workflows]
         # NOTE: Input placeholder is only a placeholder. It only can be
         # deserialized under a proper serialization context. Directly
@@ -155,9 +173,7 @@ class Workflow:
             "returning it from a Ray remote function, or using "
             "'ray.put()' with it?")
 
-    def run(self,
-            workflow_id: Optional[str] = None,
-            storage: "Optional[Union[str, Storage]]" = None) -> Any:
+    def run(self, workflow_id: Optional[str] = None) -> Any:
         """Run a workflow.
 
         Examples:
@@ -182,15 +198,10 @@ class Workflow:
         Args:
             workflow_id: A unique identifier that can be used to resume the
                 workflow. If not specified, a random id will be generated.
-            storage: The external storage URL or a custom storage class. If not
-                specified, ``/tmp/ray/workflow_data`` will be used.
         """
-        return ray.get(self.run_async(workflow_id, storage))
+        return ray.get(self.run_async(workflow_id))
 
-    def run_async(
-            self,
-            workflow_id: Optional[str] = None,
-            storage: "Optional[Union[str, Storage]]" = None) -> ObjectRef:
+    def run_async(self, workflow_id: Optional[str] = None) -> ObjectRef:
         """Run a workflow asynchronously.
 
         Examples:
@@ -215,9 +226,7 @@ class Workflow:
         Args:
             workflow_id: A unique identifier that can be used to resume the
                 workflow. If not specified, a random id will be generated.
-            storage: The external storage URL or a custom storage class. If not
-                specified, ``/tmp/ray/workflow_data`` will be used.
         """
         # TODO(suquark): avoid cyclic importing
         from ray.experimental.workflow.execution import run
-        return run(self, storage, workflow_id)
+        return run(self, workflow_id)

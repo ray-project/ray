@@ -260,5 +260,43 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
+    async def save_workflow_meta(self, workflow_id: str,
+                                 metadata: Dict[str, Any]) -> None:
+        """Save the meta of the workflow.
+
+        Args:
+            workflow_id: ID of the workflow
+            metadata: A metadata dict
+
+        Raises:
+            DataSaveError: if we fail to save the metadata.
+        """
+
+    @abstractmethod
+    async def load_workflow_meta(self, workflow_id: str) -> Dict[str, Any]:
+        """Load the meta of the workflow.
+
+        Args:
+            workflow_id: ID of the workflow
+
+        Raises:
+            DataLoadError: if we fail to load the metadata.
+
+        Returns:
+            A metadata dict
+        """
+
+    @abstractmethod
+    async def list_workflow(self) -> List[str]:
+        """List all the workflows inside the storage.
+
+        Raises:
+            DataLoadError: if we fail to load the metadata.
+
+        Returns:
+            A list of workflow ids
+        """
+
+    @abstractmethod
     def __reduce__(self):
         """Reduce the storage to a serializable object."""
