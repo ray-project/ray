@@ -357,7 +357,7 @@ class GCPTPU(GCPResource):
 
         for _ in range(MAX_POLLS):
             result = self.resource.projects().locations().operations().get(
-                name=f"{self.path}/{operation['name']}").execute()
+                name=f"{operation['name']}").execute()
             if "error" in result:
                 raise Exception(result["error"])
 
