@@ -92,7 +92,6 @@ class GCPNodeProvider(NodeProvider):
 
             for resource in self.resources.values():
                 node_instances = resource.list_instances(tag_filters)
-                logger.info(f"{type(resource)}: {node_instances}")
                 instances += node_instances
 
             # Note: All the operations use "name" as the unique instance id

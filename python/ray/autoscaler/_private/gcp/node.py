@@ -388,8 +388,6 @@ class GCPTPU(GCPResource):
         instances = response.get("nodes", [])
         instances = [GCPTPUNode(i, self) for i in instances]
 
-        logger.info(f"tpu list_instances: {instances}")
-
         # filter_expr cannot be passed directly to API
         # so we need to filter the results ourselves
 
@@ -410,8 +408,6 @@ class GCPTPU(GCPResource):
 
         instances = list(filter(filter_instance, instances))
 
-        logger.info(f"tpu list_instances after filter: {instances}")
-
         return instances
 
     def get_instance(self, node_id: str) -> "GCPTPUNode":
@@ -428,8 +424,7 @@ class GCPTPU(GCPResource):
             "labels": dict(node["labels"], **labels),
         }
         update_mask = "labels"
-        logger.info(f"tpu set_labels update_mask {update_mask}")
-        logger.info(f"tpu set_labels body {body}")
+
         operation = self.resource.projects().locations().nodes().patch(
             name=node["name"],
             updateMask=update_mask,
