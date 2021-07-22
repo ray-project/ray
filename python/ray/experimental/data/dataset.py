@@ -30,7 +30,6 @@ from ray.experimental.data.impl.compute import get_compute, cache_wrapper, \
 from ray.experimental.data.impl.progress_bar import ProgressBar
 from ray.experimental.data.impl.shuffle import simple_shuffle
 from ray.experimental.data.impl.sort import sort_impl
-from ray.experimental.data.impl.block_builder import SimpleBlock
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
 

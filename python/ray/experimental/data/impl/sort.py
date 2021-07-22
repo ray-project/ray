@@ -5,8 +5,7 @@ from typing import List, Any, Callable, TypeVar, Tuple, Union
 
 import numpy as np
 import ray
-from ray.experimental.data.block import Block
-from ray.experimental.data.impl.block_builder import SimpleBlock
+from ray.experimental.data.block import Block, BlockAccessor
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.progress_bar import ProgressBar
 
@@ -21,10 +20,9 @@ def sample_boundaries(blocks: BlockList[T], num_reducers: int) -> List[T]:
     n_samples = int(num_reducers * 10 / len(blocks))
 
     @ray.remote
-    def sample_simple_block(block: Block[T]) -> Tuple[T, T, List[T]]:
-        items = block._items
-        min_item = min(block._items)
-        max_item = max(block._items)
+    def sample_simple_block(items: List[T]) -> Tuple[T, T, List[T]]:
+        min_item = min(items)
+        max_item = max(items)
         k = min(n_samples, len(items))
         samples = np.random.choice(items, k, replace=False)
         return (min_item, max_item, samples)
@@ -54,11 +52,13 @@ def sort_impl(blocks: BlockList[T], key: SortKeyT,
 
     @ray.remote(num_returns=num_reducers)
     def sort_block(block, boundaries):
-        return block.sort_and_partition(boundaries, key)
+        return BlockAccessor.for_block(block).sort_and_partition(
+            boundaries, key)
 
     @ray.remote(num_returns=2)
     def merge_sorted_blocks(*blocks: List[Block[T]]) -> Block[T]:
-        return blocks[0].merge_simple_blocks(blocks, key)
+        return BlockAccessor.for_block(blocks[0]).merge_simple_blocks(
+            blocks, key)
 
     boundaries = sample_boundaries(blocks, len(blocks))
     map_results = np.empty((num_mappers, num_reducers), dtype=object)
