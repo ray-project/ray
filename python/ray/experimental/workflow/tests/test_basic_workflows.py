@@ -2,6 +2,7 @@ import time
 from filelock import FileLock
 
 from ray.tests.conftest import *  # noqa
+from ray.test_utils import run_string_as_driver
 
 import pytest
 import ray
@@ -93,7 +94,7 @@ def factorial(n):
         return mul.step(n, factorial.step(n - 1))
 
 
-def test_basic_workflows(ray_start_regular_shared):
+def test_basic_workflows(workflow_start_regular_shared):
     # This test also shows different "style" of running workflows.
     assert simple_sequential.step().run() == "[source1][append1][append2]"
 
@@ -112,7 +113,7 @@ def test_basic_workflows(ray_start_regular_shared):
     assert factorial.step(10).run() == 3628800
 
 
-def test_async_execution(ray_start_regular_shared):
+def test_async_execution(workflow_start_regular_shared):
     start = time.time()
     output = blocking.step().run_async()
     duration = time.time() - start
@@ -133,7 +134,7 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef):
     return output
 
 
-def test_workflow_output_resolving(ray_start_regular_shared):
+def test_workflow_output_resolving(workflow_start_regular_shared):
     # deep nested workflow
     nested_ref = deep_nested.remote(30)
     original_func = workflow_access._resolve_workflow_output
@@ -149,7 +150,7 @@ def test_workflow_output_resolving(ray_start_regular_shared):
     assert ray.get(ref) == 42
 
 
-def test_run_or_resume_during_running(ray_start_regular_shared):
+def test_run_or_resume_during_running(workflow_start_regular_shared):
     output = simple_sequential.step().run_async(workflow_id="running_workflow")
     with pytest.raises(ValueError):
         simple_sequential.step().run_async(workflow_id="running_workflow")
@@ -158,11 +159,7 @@ def test_run_or_resume_during_running(ray_start_regular_shared):
     assert ray.get(output) == "[source1][append1][append2]"
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_shared", [{
-        "namespace": "workflow"
-    }], indirect=True)
-def test_step_failure(ray_start_regular_shared, tmp_path):
+def test_step_failure(workflow_start_regular_shared, tmp_path):
     (tmp_path / "test").write_text("0")
 
     @workflow.step
@@ -191,12 +188,10 @@ def test_step_failure(ray_start_regular_shared, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular_shared", [{
-        "namespace": "workflow",
+    "workflow_start_regular_shared", [{
         "num_cpus": 2,
-    }],
-    indirect=True)
-def test_step_resources(ray_start_regular_shared, tmp_path):
+    }], indirect=True)
+def test_step_resources(workflow_start_regular_shared, tmp_path):
     lock_path = str(tmp_path / "lock")
 
     @workflow.step
@@ -217,3 +212,117 @@ def test_step_resources(ray_start_regular_shared, tmp_path):
     lock.release()
     assert ray.get(ret) is None
     assert ray.get(obj) is None
+
+
+def test_init_twice(tmp_path):
+    workflow.init()
+    with pytest.raises(RuntimeError):
+        workflow.init(str(tmp_path))
+
+
+driver_script = """
+from ray.experimental import workflow
+
+if __name__ == "__main__":
+    workflow.init()
+"""
+
+
+def test_init_twice_2(tmp_path):
+    run_string_as_driver(driver_script)
+    with pytest.raises(RuntimeError):
+        workflow.init(str(tmp_path))
+
+
+@pytest.mark.parametrize(
+    "workflow_start_regular_shared", [{
+        "namespace": "workflow",
+    }],
+    indirect=True)
+def test_manager(workflow_start_regular_shared, tmp_path):
+    # For sync between jobs
+    tmp_file = str(tmp_path / "lock")
+    lock = FileLock(tmp_file)
+    lock.acquire()
+
+    # For sync between jobs
+    flag_file = tmp_path / "flag"
+    flag_file.touch()
+
+    @workflow.step
+    def long_running(i):
+        lock = FileLock(tmp_file)
+        with lock.acquire():
+            pass
+
+        if i % 2 == 0:
+            if flag_file.exists():
+                raise ValueError()
+        return 100
+
+    outputs = [
+        long_running.step(i).run_async(workflow_id=str(i)) for i in range(100)
+    ]
+    # Test list all, it should list all jobs running
+    all_tasks = workflow.list_all()
+    assert len(all_tasks) == 100
+    all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)
+    assert dict(all_tasks) == dict(all_tasks_running)
+    assert workflow.get_status("0") == workflow.WorkflowStatus.RUNNING
+
+    # Release lock and make sure all tasks finished
+    lock.release()
+    for o in outputs:
+        try:
+            r = ray.get(o)
+        except Exception:
+            continue
+        assert 100 == r
+    all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)
+    assert len(all_tasks_running) == 0
+    # Half of them failed and half succeed
+    failed_jobs = workflow.list_all(workflow.WorkflowStatus.RESUMABLE)
+    assert len(failed_jobs) == 50
+    finished_jobs = workflow.list_all(workflow.WorkflowStatus.FINISHED)
+    assert len(finished_jobs) == 50
+
+    all_tasks_status = workflow.list_all({
+        workflow.WorkflowStatus.FINISHED, workflow.WorkflowStatus.RESUMABLE,
+        workflow.WorkflowStatus.RUNNING
+    })
+    assert len(all_tasks_status) == 100
+    assert failed_jobs == {
+        k: v
+        for (k, v) in all_tasks_status.items()
+        if v == workflow.WorkflowStatus.RESUMABLE
+    }
+    assert finished_jobs == {
+        k: v
+        for (k, v) in all_tasks_status.items()
+        if v == workflow.WorkflowStatus.FINISHED
+    }
+
+    # Test get_status
+    assert workflow.get_status("0") == workflow.WorkflowStatus.RESUMABLE
+    assert workflow.get_status("1") == workflow.WorkflowStatus.FINISHED
+    assert workflow.get_status("X") is None
+    lock.acquire()
+    r = workflow.resume("0")
+    assert workflow.get_status("0") == workflow.WorkflowStatus.RUNNING
+    flag_file.unlink()
+    lock.release()
+    assert 100 == ray.get(r)
+    assert workflow.get_status("0") == workflow.WorkflowStatus.FINISHED
+
+    # Test cancel
+    lock.acquire()
+    workflow.resume("2")
+    assert workflow.get_status("2") == workflow.WorkflowStatus.RUNNING
+    workflow.cancel("2")
+    assert workflow.get_status("2") == workflow.WorkflowStatus.CANCELED
+
+    # Now resume_all
+    resumed = workflow.resume_all()
+    assert len(resumed) == 48
+    lock.release()
+    assert [ray.get(o) for o in resumed.values()] == [100] * 48
