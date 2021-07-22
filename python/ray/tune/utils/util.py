@@ -287,7 +287,8 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
     """Flatten dict.
 
     Output and input are of the same dict type.
-    Input dict remains the same after the operation."""
+    Input dict remains the same after the operation.
+    """
     dt = copy.copy(dt)
     if prevent_delimiter and any(delimiter in key for key in dt):
         # Raise if delimiter is any of the keys

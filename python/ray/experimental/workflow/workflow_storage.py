@@ -36,6 +36,12 @@ class StepInspectResult:
     object_refs: Optional[List[str]] = None
     # The workflows in the inputs of the workflow.
     workflows: Optional[List[str]] = None
+    # The num of retry for application exception
+    step_max_retries: int = 1
+    # Whether the user want to handle the exception mannually
+    catch_exceptions: bool = False
+    # ray_remote options
+    ray_options: Optional[Dict[str, Any]] = None
 
     def is_recoverable(self) -> bool:
         return (self.output_object_valid or self.output_step_id
@@ -44,17 +50,10 @@ class StepInspectResult:
 
 
 class WorkflowStorage:
-    """Access workflow in storage. This is a high-level function,
+    """Access workflow in storage. This is a higher-level abstraction,
     which does not care about the underlining storage implementation."""
 
-    def __init__(self,
-                 workflow_id: Optional[str] = None,
-                 store: Optional[storage.Storage] = None):
-        if workflow_id is None:
-            context = workflow_context.get_workflow_step_context()
-            workflow_id = context.workflow_id
-        if store is None:
-            store = storage.get_global_storage()
+    def __init__(self, workflow_id: str, store: storage.Storage):
         self._storage = store
         self._workflow_id = workflow_id
 
@@ -231,14 +230,21 @@ class WorkflowStorage:
                 self._workflow_id, step_id)
             input_object_refs = metadata["object_refs"]
             input_workflows = metadata["workflows"]
+            step_max_retries = metadata.get("step_max_retries")
+            catch_exceptions = metadata.get("catch_exceptions")
+            ray_options = metadata.get("ray_options", {})
         except storage.DataLoadError:
-            input_object_refs = None
-            input_workflows = None
+            return StepInspectResult(
+                args_valid=field_list.args_exists,
+                func_body_valid=field_list.func_body_exists)
         return StepInspectResult(
             args_valid=field_list.args_exists,
             func_body_valid=field_list.func_body_exists,
             object_refs=input_object_refs,
             workflows=input_workflows,
+            step_max_retries=step_max_retries,
+            catch_exceptions=catch_exceptions,
+            ray_options=ray_options,
         )
 
     async def _write_step_inputs(self, step_id: StepID,
@@ -249,6 +255,9 @@ class WorkflowStorage:
             "name": f.__module__ + "." + f.__qualname__,
             "object_refs": inputs.object_refs,
             "workflows": inputs.workflows,
+            "step_max_retries": inputs.step_max_retries,
+            "catch_exceptions": inputs.catch_exceptions,
+            "ray_options": inputs.ray_options,
         }
         with serialization_context.workflow_args_keeping_context():
             # TODO(suquark): in the future we should write to storage directly
@@ -296,3 +305,18 @@ class WorkflowStorage:
         """
         asyncio_run(
             self._storage.save_actor_class_body(self._workflow_id, cls))
+
+
+def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
+    """Get the storage for the workflow.
+
+    Args:
+        workflow_id: The ID of the storage.
+
+    Returns:
+        A workflow storage.
+    """
+    store = storage.get_global_storage()
+    if workflow_id is None:
+        workflow_id = workflow_context.get_workflow_step_context().workflow_id
+    return WorkflowStorage(workflow_id, store)

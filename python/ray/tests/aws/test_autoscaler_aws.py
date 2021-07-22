@@ -524,6 +524,56 @@ def test_network_interfaces(ec2_client_stub, iam_client_stub,
     ec2_client_stub_max_retries.assert_no_pending_responses()
 
 
+def test_network_interface_conflict_keys():
+    # If NetworkInterfaces are defined, SubnetId and SecurityGroupIds
+    # can't be specified in the same node type config.
+    conflict_kv_pairs = [("SubnetId", "subnet-0000000"),
+                         ("SubnetIds", ["subnet-0000000", "subnet-1111111"]),
+                         ("SecurityGroupIds", ["sg-1234abcd", "sg-dcba4321"])]
+    expected_error_msg = "If NetworkInterfaces are defined, subnets and " \
+                         "security groups must ONLY be given in each " \
+                         "NetworkInterface."
+    for conflict_kv_pair in conflict_kv_pairs:
+        config = helpers.load_aws_example_config_file(
+            "example-network-interfaces.yaml")
+        head_name = config["head_node_type"]
+        head_node_cfg = config["available_node_types"][head_name][
+            "node_config"]
+        head_node_cfg[conflict_kv_pair[0]] = conflict_kv_pair[1]
+        with pytest.raises(ValueError, match=expected_error_msg):
+            helpers.bootstrap_aws_config(config)
+
+
+def test_network_interface_missing_subnet():
+    # If NetworkInterfaces are defined, each must have a subnet ID
+    expected_error_msg = "NetworkInterfaces are defined but at least one is " \
+                         "missing a subnet. Please ensure all interfaces " \
+                         "have a subnet assigned."
+    config = helpers.load_aws_example_config_file(
+        "example-network-interfaces.yaml")
+    for name, node_type in config["available_node_types"].items():
+        node_cfg = node_type["node_config"]
+        for network_interface_cfg in node_cfg["NetworkInterfaces"]:
+            network_interface_cfg.pop("SubnetId")
+            with pytest.raises(ValueError, match=expected_error_msg):
+                helpers.bootstrap_aws_config(config)
+
+
+def test_network_interface_missing_security_group():
+    # If NetworkInterfaces are defined, each must have security groups
+    expected_error_msg = "NetworkInterfaces are defined but at least one is " \
+                         "missing a security group. Please ensure all " \
+                         "interfaces have a security group assigned."
+    config = helpers.load_aws_example_config_file(
+        "example-network-interfaces.yaml")
+    for name, node_type in config["available_node_types"].items():
+        node_cfg = node_type["node_config"]
+        for network_interface_cfg in node_cfg["NetworkInterfaces"]:
+            network_interface_cfg.pop("Groups")
+            with pytest.raises(ValueError, match=expected_error_msg):
+                helpers.bootstrap_aws_config(config)
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
