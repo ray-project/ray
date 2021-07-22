@@ -17,6 +17,7 @@ from ray.autoscaler._private.util import check_legacy_fields
 logger = logging.getLogger(__name__)
 
 VERSION = "v1"
+TPU_VERSION = "v2alpha"  # change once v2 is stable
 
 RAY = "ray-autoscaler"
 DEFAULT_SERVICE_ACCOUNT_ID = RAY + "-sa-" + VERSION
@@ -128,6 +129,15 @@ def _create_compute(gcp_credentials=None):
         "compute", "v1", credentials=gcp_credentials, cache_discovery=False)
 
 
+def _create_tpu(gcp_credentials=None):
+    return discovery.build(
+        "tpu",
+        TPU_VERSION,
+        credentials=gcp_credentials,
+        cache_discovery=False,
+        discoveryServiceUrl="https://tpu.googleapis.com/$discovery/rest")
+
+
 def construct_clients_from_provider_config(provider_config):
     """
     Attempt to fetch and parse the JSON GCP credentials from the provider
@@ -142,7 +152,8 @@ def construct_clients_from_provider_config(provider_config):
         # credentials in the local environment.
         return _create_crm(), \
             _create_iam(), \
-            _create_compute()
+            _create_compute(), \
+            _create_tpu()
 
     assert ("type" in gcp_credentials), \
         "gcp_credentials cluster yaml field missing 'type' field."
@@ -169,7 +180,8 @@ def construct_clients_from_provider_config(provider_config):
 
     return _create_crm(credentials), \
         _create_iam(credentials), \
-        _create_compute(credentials)
+        _create_compute(credentials), \
+        _create_tpu(credentials)
 
 
 def bootstrap_gcp(config):
@@ -178,7 +190,7 @@ def bootstrap_gcp(config):
     # Used internally to store head IAM role.
     config["head_node"] = {}
 
-    crm, iam, compute = \
+    crm, iam, compute, tpu = \
         construct_clients_from_provider_config(config["provider"])
 
     config = _configure_project(config, crm)
