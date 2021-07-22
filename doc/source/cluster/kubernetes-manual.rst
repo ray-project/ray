@@ -2,17 +2,12 @@
 
 .. _ray-k8s-static:
 
-Deploying a Static Cluster
-==========================
+Deploying a Static Ray Cluster on Kubernetes
+============================================
 
 This document gives an example of how to manually deploy a non-autoscaling Ray cluster on Kubernetes.
 
-To learn about deploying an autoscaling Ray cluster using :ref:`Ray's Kubernetes operator<k8s-operator>`, read
-:ref:`here<k8s-operator>`.
-
-To learn about deploying an autoscaling Ray cluster using the :ref:`Ray Cluster Launcher<k8s-cluster-launcher>`, read
-:ref:`here<k8s-cluster-launcher>`.
-
+- Learn about deploying an autoscaling Ray cluster using the :ref:`Ray Helm chart<ray-k8s-deploy>`.
 
 Creating a Ray Namespace
 ------------------------
@@ -136,7 +131,7 @@ and checking that they are restarted by Kubernetes:
   ray-worker-5c49b7cc57-6m4kp   1/1     Running   0          10s
   ray-worker-5c49b7cc57-jx2w2   1/1     Running   0          10s
 
-Now that we have a running cluster, :ref:`we can execute Ray programs <ray-k8s-run>`.
+Now that we have a running cluster, :ref:`we can execute Ray programs <ray-k8s-client>`.
 
 Cleaning Up
 -----------

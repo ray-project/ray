@@ -223,6 +223,15 @@ def enable_pickle_debug():
     del os.environ["RAY_PICKLE_VERBOSE_DEBUG"]
 
 
+@pytest.fixture
+def set_enable_auto_connect(enable_auto_connect: str = "0"):
+    try:
+        os.environ["RAY_ENABLE_AUTO_CONNECT"] = enable_auto_connect
+        yield enable_auto_connect
+    finally:
+        del os.environ["RAY_ENABLE_AUTO_CONNECT"]
+
+
 @pytest.fixture()
 def two_node_cluster():
     system_config = {
@@ -297,6 +306,12 @@ unstable_object_spilling_config = {
         "directory_path": spill_local_path,
     }
 }
+slow_object_spilling_config = {
+    "type": "slow_fs",
+    "params": {
+        "directory_path": spill_local_path,
+    }
+}
 
 
 def create_object_spilling_config(request, tmp_path):
@@ -334,4 +349,12 @@ def multi_node_object_spilling_config(request, tmp_path):
         unstable_object_spilling_config,
     ])
 def unstable_spilling_config(request, tmp_path):
+    yield create_object_spilling_config(request, tmp_path)
+
+
+@pytest.fixture(
+    scope="function", params=[
+        slow_object_spilling_config,
+    ])
+def slow_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)

@@ -50,10 +50,26 @@ parser.add_argument(
     help="Full path to a checkpoint file for restoring a previously saved "
     "Trainer state.")
 parser.add_argument("--num-workers", type=int, default=0)
-parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=10)
-parser.add_argument("--stop-reward", type=float, default=30000.0)
-parser.add_argument("--stop-timesteps", type=int, default=10000000)
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=10,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=1000000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=30000.0,
+    help="Reward at which we stop training.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -124,7 +140,8 @@ if __name__ == "__main__":
                            marl_env.get_action_space(agent),
                            agent_policy_params)
     config["multiagent"]["policies"] = policies
-    config["multiagent"]["policy_mapping_fn"] = lambda agent_id: agent_id
+    config["multiagent"][
+        "policy_mapping_fn"] = lambda agent_id, episode, **kwargs: agent_id
     config["multiagent"]["policies_to_train"] = ["ppo_policy"]
 
     config["env"] = "sumo_test_env"

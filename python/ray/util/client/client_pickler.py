@@ -40,7 +40,6 @@ from ray.util.client.common import ClientRemoteMethod
 from ray.util.client.common import OptionWrapper
 from ray.util.client.common import InProgressSentinel
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
-from ray._private.client_mode_hook import disable_client_hook
 
 if sys.version_info < (3, 8):
     try:
@@ -128,8 +127,8 @@ class ClientPickler(cloudpickle.CloudPickler):
             return PickleStub(
                 type="RemoteMethod",
                 client_id=self.client_id,
-                ref_id=obj.actor_handle.actor_ref.id,
-                name=obj.method_name,
+                ref_id=obj._actor_handle.actor_ref.id,
+                name=obj._method_name,
                 baseline_options=None,
             )
         elif isinstance(obj, OptionWrapper):
@@ -150,11 +149,10 @@ class ServerUnpickler(pickle.Unpickler):
 
 
 def dumps_from_client(obj: Any, client_id: str, protocol=None) -> bytes:
-    with disable_client_hook():
-        with io.BytesIO() as file:
-            cp = ClientPickler(client_id, file, protocol=protocol)
-            cp.dump(obj)
-            return file.getvalue()
+    with io.BytesIO() as file:
+        cp = ClientPickler(client_id, file, protocol=protocol)
+        cp.dump(obj)
+        return file.getvalue()
 
 
 def loads_from_server(data: bytes,

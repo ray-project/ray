@@ -1,20 +1,21 @@
 from abc import ABCMeta, abstractmethod
+from collections import namedtuple
 import gym
 from gym.spaces import Box
 import logging
 import numpy as np
-import tree  # pip install dm_tree
 from typing import Dict, List, Optional, TYPE_CHECKING
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
-    unbatch
+from ray.rllib.utils.spaces.space_utils import clip_action, \
+    get_base_struct_from_space, unbatch, unsquash_action
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
@@ -29,6 +30,34 @@ logger = logging.getLogger(__name__)
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
 LEARNER_STATS_KEY = "learner_stats"
+
+# A policy spec used in the "config.multiagent.policies" specification dict
+# as values (keys are the policy IDs (str)). E.g.:
+# config:
+#   multiagent:
+#     policies: {
+#       "pol1": PolicySpec(None, Box, Discrete(2), {"lr": 0.0001}),
+#       "pol2": PolicySpec(config={"lr": 0.001}),
+#     }
+PolicySpec = namedtuple(
+    "PolicySpec",
+    [
+        # If None, use the Trainer's default policy class stored under
+        # `Trainer._policy_class`.
+        "policy_class",
+        # If None, use the env's observation space. If None and there is no Env
+        # (e.g. offline RL), an error is thrown.
+        "observation_space",
+        # If None, use the env's action space. If None and there is no Env
+        # (e.g. offline RL), an error is thrown.
+        "action_space",
+        # Overrides defined keys in the main Trainer config.
+        # If None, use {}.
+        "config",
+    ])  # defaults=(None, None, None, None)
+# TODO: From 3.7 on, we could pass `defaults` into the above constructor.
+#  We still support py3.6.
+PolicySpec.__new__.__defaults__ = (None, None, None, None)
 
 
 @DeveloperAPI
@@ -158,9 +187,10 @@ class Policy(metaclass=ABCMeta):
             prev_reward: Optional[TensorType] = None,
             info: dict = None,
             episode: Optional["MultiAgentEpisode"] = None,
-            clip_actions: bool = False,
+            clip_actions: bool = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
+            unsquash_actions: bool = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Unbatched version of compute_actions.
@@ -175,7 +205,10 @@ class Policy(metaclass=ABCMeta):
             episode (Optional[MultiAgentEpisode]): this provides access to all
                 of the internal episode state, which may be useful for
                 model-based or multi-agent algorithms.
-            clip_actions (bool): Should actions be clipped?
+            unsquash_actions (bool): Should actions be unsquashed according to
+                the Policy's action space?
+            clip_actions (bool): Should actions be clipped according to the
+                Policy's action space?
             explore (Optional[bool]): Whether to pick an exploitation or
                 exploration action
                 (default: None -> use self.config["explore"]).
@@ -191,6 +224,14 @@ class Policy(metaclass=ABCMeta):
                     if any.
                 - info (dict): Dictionary of extra features, if any.
         """
+        # If policy works in normalized space, we should unsquash the action.
+        # Use value of config.normalize_actions, if None.
+        unsquash_actions = \
+            unsquash_actions if unsquash_actions is not None \
+            else self.config["normalize_actions"]
+        clip_actions = clip_actions if clip_actions is not None else \
+            self.config["clip_actions"]
+
         prev_action_batch = None
         prev_reward_batch = None
         info_batch = None
@@ -234,7 +275,13 @@ class Policy(metaclass=ABCMeta):
         assert len(single_action) == 1
         single_action = single_action[0]
 
-        if clip_actions:
+        # If we work in normalized action space (normalize_actions=True),
+        # we re-translate here into the env's action space.
+        if unsquash_actions:
+            single_action = unsquash_action(single_action,
+                                            self.action_space_struct)
+        # Clip, according to env's action space.
+        elif clip_actions:
             single_action = clip_action(single_action,
                                         self.action_space_struct)
 
@@ -301,8 +348,10 @@ class Policy(metaclass=ABCMeta):
             state_batches: Optional[List[TensorType]] = None,
             prev_action_batch: Optional[Union[List[TensorType],
                                               TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[
-                TensorType], TensorType]] = None) -> TensorType:
+            prev_reward_batch: Optional[Union[List[TensorType],
+                                              TensorType]] = None,
+            actions_normalized: bool = True,
+    ) -> TensorType:
         """Computes the log-prob/likelihood for a given action and observation.
 
         Args:
@@ -317,6 +366,10 @@ class Policy(metaclass=ABCMeta):
                 Batch of previous action values.
             prev_reward_batch (Optional[Union[List[TensorType], TensorType]]):
                 Batch of previous rewards.
+            actions_normalized (bool): Is the given `actions` already
+                 normalized (between -1.0 and 1.0) or not? If not and
+                 `normalize_actions=True`, we need to normalize the given
+                 actions first, before calculating log likelihoods.
 
         Returns:
             TensorType: Batch of log probs/likelihoods, with shape:
@@ -409,6 +462,9 @@ class Policy(metaclass=ABCMeta):
     def get_weights(self) -> ModelWeights:
         """Returns model weights.
 
+        Note: The return value of this method will reside under the "weights"
+        key in the return value of Policy.get_state().
+
         Returns:
             ModelWeights: Serializable copy or view of model weights.
         """
@@ -416,7 +472,7 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def set_weights(self, weights: ModelWeights) -> None:
-        """Sets model weights.
+        """Sets this Policy's model's weights.
 
         Args:
             weights (ModelWeights): Serializable copy or view of model weights.
@@ -424,7 +480,7 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def get_exploration_info(self) -> Dict[str, TensorType]:
+    def get_exploration_state(self) -> Dict[str, TensorType]:
         """Returns the current exploration information of this policy.
 
         This information depends on the policy's Exploration object.
@@ -433,7 +489,12 @@ class Policy(metaclass=ABCMeta):
             Dict[str, TensorType]: Serializable information on the
                 `self.exploration` object.
         """
-        return self.exploration.get_info()
+        return self.exploration.get_state()
+
+    # TODO: (sven) Deprecate this method.
+    def get_exploration_info(self) -> Dict[str, TensorType]:
+        deprecation_warning("get_exploration_info", "get_exploration_state")
+        return self.get_exploration_state()
 
     @DeveloperAPI
     def is_recurrent(self) -> bool:
@@ -463,23 +524,88 @@ class Policy(metaclass=ABCMeta):
         return []
 
     @DeveloperAPI
+    def load_batch_into_buffer(self, batch: SampleBatch,
+                               buffer_index: int = 0) -> int:
+        """Bulk-loads the given SampleBatch into the devices' memories.
+
+        The data is split equally across all the devices. If the data is not
+        evenly divisible by the batch size, excess data should be discarded.
+
+        Args:
+            batch (SampleBatch): The SampleBatch to load.
+            buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
+                to use on the devices.
+
+        Returns:
+            int: The number of tuples loaded per device.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
+        """Returns the number of currently loaded samples in the given buffer.
+
+        Args:
+            batch (SampleBatch): The SampleBatch to load.
+            buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
+                to use on the devices.
+
+        Returns:
+            int: The number of tuples loaded per device.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
+        """Runs a single step of SGD on already loaded data in a buffer.
+
+        Runs an SGD step over a slice of the pre-loaded batch, offset by
+        the `offset` argument (useful for performing n minibatch SGD
+        updates repeatedly on the same, already pre-loaded data).
+
+        Updates shared model weights based on the averaged per-device
+        gradients.
+
+        Args:
+            offset (int): Offset into the preloaded data. Used for pre-loading
+                a train-batch once to a device, then iterating over
+                (subsampling through) this batch n times doing minibatch SGD.
+            buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
+                to take the already pre-loaded data from.
+
+        Returns:
+            The outputs of extra_ops evaluated over the batch.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
     def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
-        """Saves all local state.
+        """Returns all local state.
+
+        Note: Not to be confused with an RNN model's internal state.
 
         Returns:
             Union[Dict[str, TensorType], List[TensorType]]: Serialized local
                 state.
         """
-        return self.get_weights()
+        state = {
+            # All the policy's weights.
+            "weights": self.get_weights(),
+            # The current global timestep.
+            "global_timestep": self.global_timestep,
+        }
+        return state
 
     @DeveloperAPI
     def set_state(self, state: object) -> None:
-        """Restores all local state.
+        """Restores all local state to the provided `state`.
 
         Args:
-            state (obj): Serialized local state.
+            state (object): The new state to set this policy to. Can be
+                obtained by calling `Policy.get_state()`.
         """
-        self.set_weights(state)
+        self.set_weights(state["weights"])
+        self.global_timestep = state["global_timestep"]
 
     @DeveloperAPI
     def on_global_var_update(self, global_vars: Dict[str, TensorType]) -> None:
@@ -494,7 +620,8 @@ class Policy(metaclass=ABCMeta):
         self.global_timestep = global_vars["timestep"]
 
     @DeveloperAPI
-    def export_model(self, export_dir: str) -> None:
+    def export_model(self, export_dir: str,
+                     onnx: Optional[int] = None) -> None:
         """Exports the Policy's Model to local directory for serving.
 
         Note: The file format will depend on the deep learning framework used.
@@ -503,15 +630,8 @@ class Policy(metaclass=ABCMeta):
 
         Args:
             export_dir (str): Local writable directory.
-        """
-        raise NotImplementedError
-
-    @DeveloperAPI
-    def export_checkpoint(self, export_dir: str) -> None:
-        """Export Policy checkpoint to local directory.
-
-        Args:
-            export_dir (str): Local writable directory.
+            onnx (int): If given, will export model in ONNX format. The
+                value of this parameter set the ONNX OpSet version to use.
         """
         raise NotImplementedError
 
@@ -523,6 +643,16 @@ class Policy(metaclass=ABCMeta):
             import_file (str): Local readable file.
         """
         raise NotImplementedError
+
+    @DeveloperAPI
+    def get_session(self) -> Optional["tf1.Session"]:
+        """Returns tf.Session object to use for computing actions or None.
+
+        Returns:
+            Optional[tf1.Session]: The tf Session to use for computing actions
+                and losses with this policy.
+        """
+        return None
 
     def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.
@@ -789,9 +919,17 @@ class Policy(metaclass=ABCMeta):
                 obj.get_initial_state = lambda: []
                 if "state_in_0" in view_reqs:
                     self.is_recurrent = lambda: True
+
         for i, state in enumerate(init_state):
-            space = Box(-1.0, 1.0, shape=state.shape) if \
-                hasattr(state, "shape") else state
+            # Allow `state` to be either a Space (use zeros as initial values)
+            # or any value (e.g. a dict or a non-zero tensor).
+            fw = np if isinstance(state, np.ndarray) else torch if \
+                torch and torch.is_tensor(state) else None
+            if fw:
+                space = Box(-1.0, 1.0, shape=state.shape) if \
+                    fw.all(state == 0.0) else state
+            else:
+                space = state
             view_reqs["state_in_{}".format(i)] = ViewRequirement(
                 "state_out_{}".format(i),
                 shift=-1,
@@ -802,23 +940,12 @@ class Policy(metaclass=ABCMeta):
             view_reqs["state_out_{}".format(i)] = ViewRequirement(
                 space=space, used_for_training=True)
 
+    # TODO: (sven) Deprecate this in favor of `save()`.
+    def export_checkpoint(self, export_dir: str) -> None:
+        """Export Policy checkpoint to local directory.
 
-def clip_action(action, action_space):
-    """Clips all actions in `flat_actions` according to the given Spaces.
-
-    Args:
-        flat_actions (List[np.ndarray]): The (flattened) list of single action
-            components. List will have len=1 for "primitive" action Spaces.
-        flat_space (List[Space]): The (flattened) list of single action Space
-            objects. Has to be of same length as `flat_actions`.
-
-    Returns:
-        List[np.ndarray]: Flattened list of single clipped "primitive" actions.
-    """
-
-    def map_(a, s):
-        if isinstance(s, gym.spaces.Box):
-            a = np.clip(a, s.low, s.high)
-        return a
-
-    return tree.map_structure(map_, action, action_space)
+        Args:
+            export_dir (str): Local writable directory.
+        """
+        deprecation_warning("export_checkpoint", "save")
+        raise NotImplementedError

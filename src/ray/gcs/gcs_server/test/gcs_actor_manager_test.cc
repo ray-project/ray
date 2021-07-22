@@ -85,7 +85,11 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
 class GcsActorManagerTest : public ::testing::Test {
  public:
-  GcsActorManagerTest() : mock_actor_scheduler_(new MockActorScheduler()) {
+  GcsActorManagerTest()
+      : mock_actor_scheduler_(new MockActorScheduler()),
+        delayed_to_run_(nullptr),
+        delay_(0),
+        skip_delay_(true) {
     std::promise<bool> promise;
     thread_io_service_.reset(new std::thread([this, &promise] {
       std::unique_ptr<boost::asio::io_service::work> work(
@@ -104,6 +108,14 @@ class GcsActorManagerTest : public ::testing::Test {
         mock_actor_scheduler_, gcs_table_storage_, gcs_pub_sub_, *runtime_env_mgr_,
         [](const ActorID &actor_id) {},
         [this](const JobID &job_id) { return job_namespace_table_[job_id]; },
+        [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
+          if (skip_delay_) {
+            fn();
+          } else {
+            delay_ = delay;
+            delayed_to_run_ = fn;
+          }
+        },
         [this](const rpc::Address &addr) { return worker_client_; }));
 
     for (int i = 1; i <= 10; i++) {
@@ -195,6 +207,9 @@ class GcsActorManagerTest : public ::testing::Test {
   std::shared_ptr<gcs::RedisClient> redis_client_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
   const std::chrono::milliseconds timeout_ms_{2000};
+  std::function<void(void)> delayed_to_run_;
+  boost::posix_time::milliseconds delay_;
+  bool skip_delay_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {
@@ -918,6 +933,59 @@ TEST_F(GcsActorManagerTest, TestRayNamespace) {
     ASSERT_TRUE(status.IsInvalid());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "").Binary(),
               request1.task_spec().actor_creation_task_spec().actor_id());
+  }
+}
+
+TEST_F(GcsActorManagerTest, TestActorTableDataDelayedGC) {
+  skip_delay_ = false;
+  auto job_id_1 = JobID::FromInt(1);
+  auto request1 = Mocker::GenRegisterActorRequest(job_id_1, /*max_restarts=*/0,
+                                                  /*detached=*/false, /*name=*/"actor");
+  Status status = gcs_actor_manager_->RegisterActor(
+      request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "").Binary(),
+            request1.task_spec().actor_creation_task_spec().actor_id());
+
+  // Simulate the reply of WaitForActorOutOfScope request to trigger actor destruction.
+  ASSERT_TRUE(worker_client_->Reply());
+  gcs_actor_manager_->OnJobFinished(job_id_1);
+  // OnJobFinished work occurs on another thread.
+  std::this_thread::sleep_for(std::chrono::seconds(1));
+
+  {
+    rpc::GetAllActorInfoRequest request;
+    rpc::GetAllActorInfoReply reply;
+    bool called = false;
+    auto callback = [&called](Status status, std::function<void()> success,
+                              std::function<void()> failure) { called = true; };
+    gcs_actor_manager_->HandleGetAllActorInfo(request, &reply, callback);
+
+    ASSERT_EQ(reply.actor_table_data().size(), 0);
+  }
+  {
+    rpc::GetAllActorInfoRequest request;
+    rpc::GetAllActorInfoReply reply;
+    request.set_show_dead_jobs(true);
+    std::promise<void> promise;
+    auto callback = [&promise](Status status, std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    gcs_actor_manager_->HandleGetAllActorInfo(request, &reply, callback);
+    promise.get_future().get();
+    ASSERT_EQ(reply.actor_table_data().size(), 1);
+  }
+  // Now the entry should be removed from "redis"
+  delayed_to_run_();
+  {
+    rpc::GetAllActorInfoRequest request;
+    rpc::GetAllActorInfoReply reply;
+    request.set_show_dead_jobs(true);
+    std::promise<void> promise;
+    auto callback = [&promise](Status status, std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    gcs_actor_manager_->HandleGetAllActorInfo(request, &reply, callback);
+    promise.get_future().get();
+    ASSERT_EQ(reply.actor_table_data().size(), 0);
   }
 }
 

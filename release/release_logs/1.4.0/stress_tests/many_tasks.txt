@@ -1,0 +1,17 @@
+Stage 0 results:
+        Total time: 36.21135091781616
+Stage 1 results:
+        Total time: 210.65460968017578
+        Average iteration time: 21.065443801879884
+        Max iteration time: 27.833787441253662
+        Min iteration time: 18.884577751159668
+Stage 2 results:
+        Total time: 270.4833490848541
+        Average iteration time: 54.0964364528656
+        Max iteration time: 55.11329627037048
+        Min iteration time: 52.94339346885681
+Stage 3 results:
+        Actor creation time: 0.5002284049987793
+        Total time: 2355.353306055069
+Stage 4 results:
+        Scheduling spread: 133.24447738480004.

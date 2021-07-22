@@ -1,9 +1,12 @@
 import logging
+from typing import Optional, Type
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -103,10 +106,21 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
     "compress_observations": False,
-    # If set, this will fix the ratio of replayed from a buffer and learned on
-    # timesteps to sampled from an environment and stored in the replay buffer
-    # timesteps. Otherwise, the replay will proceed at the native ratio
-    # determined by (train_batch_size / rollout_fragment_length).
+
+    # The intensity with which to update the model (vs collecting samples from
+    # the env). If None, uses the "natural" value of:
+    # `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
+    # `num_envs_per_worker`).
+    # If provided, will make sure that the ratio between ts inserted into and
+    # sampled from the buffer matches the given value.
+    # Example:
+    #   training_intensity=1000.0
+    #   train_batch_size=250 rollout_fragment_length=1
+    #   num_workers=1 (or 0) num_envs_per_worker=1
+    #   -> natural value = 250 / 1 = 250.0
+    #   -> will make sure that replay+train op will be executed 4x as
+    #      often as rollout+insert op (4 * 250 = 1000).
+    # See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
     "training_intensity": None,
 
     # === Optimization ===
@@ -151,7 +165,11 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def validate_config(config):
+def validate_config(config: TrainerConfigDict) -> None:
+    """Checks and updates the config based on settings.
+
+    Rewrites rollout_fragment_length to take into account n_step truncation.
+    """
     if config["num_gpus"] > 1:
         raise ValueError("`num_gpus` > 1 not yet supported for DDPG!")
     if config["model"]["custom_model"]:
@@ -176,7 +194,16 @@ def validate_config(config):
         config["simple_optimizer"] = True
 
 
-def get_policy_class(config):
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    """Policy class picker function. Class is chosen based on DL-framework.
+
+    Args:
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
     if config["framework"] == "torch":
         from ray.rllib.agents.ddpg.ddpg_torch_policy import DDPGTorchPolicy
         return DDPGTorchPolicy

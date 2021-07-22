@@ -18,6 +18,18 @@
 // Plasma protocol specification
 namespace plasma.flatbuf;
 
+enum ObjectSource:int {
+  // Object was created by a worker (either task returns or `ray.put`).
+  CreatedByWorker = 0,
+  // Object was spilled and restored from external storage.
+  RestoredFromStorage,
+  // Object was received from a remote raylet.
+  ReceivedFromRemoteRaylet,
+  // The object could not be created and the raylet stored an
+  // error as the value.
+  ErrorStoredByRaylet,
+}
+
 enum MessageType:long {
   // Message that gets send when a client hangs up.
   PlasmaDisconnectClient = 0,
@@ -48,9 +60,6 @@ enum MessageType:long {
   // Make room for new objects in the plasma store.
   PlasmaEvictRequest,
   PlasmaEvictReply,
-  // Set memory quota for a client.
-  PlasmaSetOptionsRequest,
-  PlasmaSetOptionsReply,
   // Get debugging information from the store.
   PlasmaGetDebugStringRequest,
   PlasmaGetDebugStringReply,
@@ -81,6 +90,8 @@ struct PlasmaObjectSpec {
   // Index of the memory segment (= memory mapped file) that
   // this object is allocated in.
   segment_index: int;
+  // The unique id of the segment fd in case of fd reuse.
+  unique_fd_id: long;
   // The offset in bytes in the memory mapped file of the data.
   data_offset: ulong;
   // The size in bytes of the data.
@@ -91,18 +102,6 @@ struct PlasmaObjectSpec {
   metadata_size: ulong;
   // Device to create buffer on.
   device_num: int;
-}
-
-table PlasmaSetOptionsRequest {
-  // The name of the client.
-  client_name: string;
-  // The size of the output memory limit in bytes.
-  output_memory_quota: long;
-}
-
-table PlasmaSetOptionsReply {
-  // Whether setting options succeeded.
-  error: PlasmaError;
 }
 
 table PlasmaGetDebugStringRequest {
@@ -128,6 +127,9 @@ table PlasmaCreateRequest {
   data_size: ulong;
   // The size of the object's metadata in bytes.
   metadata_size: ulong;
+  // The source of the object (worker, raylet, etc.). Used for
+  // debug purposes.
+  source: ObjectSource;
   // Device to create buffer on.
   device_num: int;
   // Try the creation request immediately. If this is not possible (due to
@@ -159,6 +161,8 @@ table PlasmaCreateReply {
   // The file descriptor in the store that corresponds to the file descriptor
   // being sent to the client right after this message.
   store_fd: int;
+  // The unique id of the store file descriptor in case of fd reuse.
+  unique_fd_id: long;
   // The size in bytes of the segment for the store file descriptor (needed to
   // call mmap).
   mmap_size: long;
@@ -211,6 +215,8 @@ table PlasmaGetReply {
   // of file descriptors that the store will send to the client after this
   // message.
   store_fds: [int];
+  // List of the unique ids for store_fds above.
+  unique_fd_ids: [long];
   // Size in bytes of the segment for each store file descriptor (needed to call
   // mmap). This list must have the same length as store_fds.
   mmap_sizes: [long];

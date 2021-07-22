@@ -1,16 +1,15 @@
-# Job to run a Ray program in its own pod. Assumes that a Ray cluster is already
-# running.
+# Job to submit a Ray program from a pod outside a running Ray cluster.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  generateName: ray-test-job-
+  name: ray-test-job
 spec:
   template:
     spec:
       restartPolicy: Never
       containers:
         - name: ray
-          image: rayproject/ray:nightly
+          image: rayproject/ray:latest
           imagePullPolicy: Always
           command: [ "/bin/bash", "-c", "--" ]
           args:

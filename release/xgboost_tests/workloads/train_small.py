@@ -11,13 +11,24 @@ import os
 import time
 
 import ray
+from ray.test_utils import wait_for_num_nodes
 from xgboost_ray import RayParams
 
-from _train import train_ray
+from ray.util.xgboost.release_test_util import train_ray
 
 if __name__ == "__main__":
-    ray.init(address="auto")
+    addr = os.environ.get("RAY_ADDRESS")
+    job_name = os.environ.get("RAY_JOB_NAME", "train_small")
+    if addr.startswith("anyscale://"):
+        ray.client(address=addr).job_name(job_name).connect()
+    else:
+        ray.init(address="auto")
 
+    wait_for_num_nodes(
+        int(os.environ.get("RAY_RELEASE_MIN_WORKERS", 0)) + 1, 600)
+
+    output = os.environ["TEST_OUTPUT_JSON"]
+    state = os.environ["TEST_STATE_JSON"]
     ray_params = RayParams(
         elastic_training=False,
         max_actor_restarts=2,
@@ -26,16 +37,23 @@ if __name__ == "__main__":
         gpus_per_actor=0)
 
     start = time.time()
-    train_ray(
-        path="/data/classification.parquet",
-        num_workers=4,
-        num_boost_rounds=100,
-        num_files=25,
-        regression=False,
-        use_gpu=False,
-        ray_params=ray_params,
-        xgboost_params=None,
-    )
+
+    @ray.remote
+    def train():
+        os.environ["TEST_OUTPUT_JSON"] = output
+        os.environ["TEST_STATE_JSON"] = state
+        train_ray(
+            path="/data/classification.parquet",
+            num_workers=4,
+            num_boost_rounds=100,
+            num_files=25,
+            regression=False,
+            use_gpu=False,
+            ray_params=ray_params,
+            xgboost_params=None,
+        )
+
+    ray.get(train.remote())
     taken = time.time() - start
 
     result = {

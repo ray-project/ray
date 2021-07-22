@@ -104,21 +104,9 @@ int64_t EvictionPolicy::ChooseObjectsToEvict(int64_t num_bytes_required,
   return bytes_evicted;
 }
 
-void EvictionPolicy::ObjectCreated(const ObjectID &object_id, Client *client,
-                                   bool is_create) {
+void EvictionPolicy::ObjectCreated(const ObjectID &object_id, bool is_create) {
   cache_.Add(object_id, GetObjectSize(object_id));
 }
-
-bool EvictionPolicy::SetClientQuota(Client *client, int64_t output_memory_quota) {
-  return false;
-}
-
-bool EvictionPolicy::EnforcePerClientQuota(Client *client, int64_t size, bool is_create,
-                                           std::vector<ObjectID> *objects_to_evict) {
-  return true;
-}
-
-void EvictionPolicy::ClientDisconnected(Client *client) {}
 
 int64_t EvictionPolicy::RequireSpace(int64_t size,
                                      std::vector<ObjectID> *objects_to_evict) {
@@ -129,7 +117,6 @@ int64_t EvictionPolicy::RequireSpace(int64_t size,
   // up to 20% of the total capacity.
   int64_t space_to_free =
       std::max(required_space, PlasmaAllocator::GetFootprintLimit() / 5);
-  RAY_LOG(DEBUG) << "not enough space to create this object, so evicting objects";
   // Choose some objects to evict, and update the return pointers.
   int64_t num_bytes_evicted = ChooseObjectsToEvict(space_to_free, objects_to_evict);
   RAY_LOG(DEBUG) << "There is not enough space to create this object, so evicting "

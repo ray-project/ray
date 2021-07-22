@@ -17,7 +17,10 @@ from ray import serve
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
 parser.add_argument("--train-iters", type=int, default=1)
 parser.add_argument("--no-render", action="store_true")
 
@@ -44,7 +47,7 @@ class ServeRLlibPolicy:
 
         # Compute and return the action for the given observation.
         obs = json_input["observation"]
-        action = self.trainer.compute_action(obs)
+        action = self.trainer.compute_single_action(obs)
 
         return {"action": int(action)}
 

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import pickle
 import traceback
 import inspect
 from typing import Any, Callable
@@ -86,16 +87,20 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
         @ray.method(num_returns=2)
         async def handle_request(
                 self,
-                request_metadata: RequestMetadata,
+                pickled_request_metadata: bytes,
                 *request_args,
                 **request_kwargs,
         ):
+            # The request metadata should be pickled for performance.
+            request_metadata: RequestMetadata = pickle.loads(
+                pickled_request_metadata)
+
             # Directly receive input because it might contain an ObjectRef.
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.backend.handle_request(query)
 
-        def ready(self):
-            pass
+        async def reconfigure(self, user_config: Any) -> None:
+            await self.backend.reconfigure(user_config)
 
         async def drain_pending_queries(self):
             return await self.backend.drain_pending_queries()
@@ -132,7 +137,6 @@ class RayServeReplica:
         self.is_function = is_function
 
         self.config = backend_config
-        self.reconfigure(self.config.user_config)
 
         self.num_ongoing_requests = 0
 
@@ -254,7 +258,7 @@ class RayServeReplica:
 
         return result
 
-    def reconfigure(self, user_config) -> None:
+    async def reconfigure(self, user_config) -> None:
         if user_config:
             if self.is_function:
                 raise ValueError(
@@ -263,13 +267,12 @@ class RayServeReplica:
                 raise RayServeException("user_config specified but backend " +
                                         self.backend_tag + " missing " +
                                         BACKEND_RECONFIGURE_METHOD + " method")
-            reconfigure_method = getattr(self.callable,
-                                         BACKEND_RECONFIGURE_METHOD)
-            reconfigure_method(user_config)
+            reconfigure_method = sync_to_async(
+                getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
+            await reconfigure_method(user_config)
 
     def _update_backend_configs(self, new_config: BackendConfig) -> None:
         self.config = new_config
-        self.reconfigure(self.config.user_config)
 
     async def handle_request(self, request: Query) -> asyncio.Future:
         request.tick_enter_replica = time.time()
@@ -305,5 +308,3 @@ class RayServeReplica:
                     f"Waiting for an additional {sleep_time}s to shut down "
                     f"because there are {self.num_ongoing_requests} "
                     "ongoing requests.")
-
-        ray.actor.exit_actor()

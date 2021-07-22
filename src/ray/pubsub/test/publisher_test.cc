@@ -204,6 +204,40 @@ TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
   ASSERT_TRUE(subscription_index.CheckNoLeaks());
 }
 
+TEST_F(PublisherTest, TestSubscriptionIndexIdempotency) {
+  ///
+  /// Test the subscription index is idempotent.
+  ///
+  auto node_id = NodeID::FromRandom();
+  auto oid = ObjectID::FromRandom();
+  SubscriptionIndex<ObjectID> subscription_index;
+
+  // Add the same entry many times.
+  for (int i = 0; i < 5; i++) {
+    subscription_index.AddEntry(oid.Binary(), node_id);
+  }
+  ASSERT_TRUE(subscription_index.HasKeyId(oid.Binary()));
+  ASSERT_TRUE(subscription_index.HasSubscriber(node_id));
+
+  // Erase it and make sure it is erased.
+  for (int i = 0; i < 5; i++) {
+    subscription_index.EraseEntry(oid.Binary(), node_id);
+  }
+  ASSERT_TRUE(subscription_index.CheckNoLeaks());
+
+  // Random mix.
+  subscription_index.AddEntry(oid.Binary(), node_id);
+  subscription_index.AddEntry(oid.Binary(), node_id);
+  subscription_index.EraseEntry(oid.Binary(), node_id);
+  subscription_index.EraseEntry(oid.Binary(), node_id);
+  ASSERT_TRUE(subscription_index.CheckNoLeaks());
+
+  subscription_index.AddEntry(oid.Binary(), node_id);
+  subscription_index.AddEntry(oid.Binary(), node_id);
+  ASSERT_TRUE(subscription_index.HasKeyId(oid.Binary()));
+  ASSERT_TRUE(subscription_index.HasSubscriber(node_id));
+}
+
 TEST_F(PublisherTest, TestSubscriber) {
   std::unordered_set<ObjectID> object_ids_published;
   rpc::PubsubLongPollingReply reply;
@@ -887,6 +921,63 @@ TEST_F(PublisherTest, TestUnregisterSubscriber) {
   ASSERT_TRUE(erased);
   ASSERT_EQ(long_polling_connection_replied, false);
   ASSERT_TRUE(object_status_publisher_->CheckNoLeaks());
+}
+
+// Test if registration / unregistration is idempotent.
+TEST_F(PublisherTest, TestRegistrationIdempotency) {
+  const auto subscriber_node_id = NodeID::FromRandom();
+  const auto oid = ObjectID::FromRandom();
+  ASSERT_TRUE(object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->CheckNoLeaks());
+  ASSERT_TRUE(object_status_publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_TRUE(object_status_publisher_->CheckNoLeaks());
+  ASSERT_TRUE(object_status_publisher_->RegisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+  ASSERT_FALSE(object_status_publisher_->CheckNoLeaks());
+  ASSERT_TRUE(object_status_publisher_->UnregisterSubscription(
+      rpc::ChannelType::WORKER_OBJECT_EVICTION, subscriber_node_id, oid.Binary()));
+}
+
+TEST_F(PublisherTest, TestPublishFailure) {
+  ///
+  /// Test the publish failure API.
+  ///
+  std::vector<ObjectID> failed_ids;
+  rpc::PubsubLongPollingReply reply;
+  rpc::SendReplyCallback send_reply_callback =
+      [&reply, &failed_ids](Status status, std::function<void()> success,
+                            std::function<void()> failure) {
+        for (int i = 0; i < reply.pub_messages_size(); i++) {
+          const auto &msg = reply.pub_messages(i);
+          RAY_LOG(ERROR) << "ha";
+          if (msg.has_failure_message()) {
+            const auto oid = ObjectID::FromBinary(msg.key_id());
+            failed_ids.push_back(oid);
+          }
+        }
+        reply = rpc::PubsubLongPollingReply();
+      };
+
+  const auto subscriber_node_id = NodeID::FromRandom();
+  const auto oid = ObjectID::FromRandom();
+
+  object_status_publisher_->ConnectToSubscriber(subscriber_node_id, &reply,
+                                                send_reply_callback);
+  object_status_publisher_->RegisterSubscription(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                                 subscriber_node_id, oid.Binary());
+  object_status_publisher_->PublishFailure(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                           oid.Binary());
+  ASSERT_EQ(failed_ids[0], oid);
 }
 
 }  // namespace pubsub

@@ -85,10 +85,10 @@ def _configure_human_version():
 
 def _get_wheel_name(minor_version_number):
     if minor_version_number:
-        matches = glob.glob(f"{_get_root_dir()}/.whl/*{PYTHON_WHL_VERSION}"
+        matches = glob.glob(f"{_get_root_dir()}/.whl/ray-*{PYTHON_WHL_VERSION}"
                             f"{minor_version_number}*-manylinux*")
         assert len(matches) == 1, (
-            f"Found ({len(matches)}) matches for '*{PYTHON_WHL_VERSION}"
+            f"Found ({len(matches)}) matches for 'ray-*{PYTHON_WHL_VERSION}"
             f"{minor_version_number}*-manylinux*' instead of 1")
         return os.path.basename(matches[0])
     else:
@@ -98,13 +98,11 @@ def _get_wheel_name(minor_version_number):
 
 
 def _check_if_docker_files_modified():
-    proc = subprocess.run(
-        [
-            sys.executable, f"{_get_curr_dir()}/determine_tests_to_run.py",
-            "--output=json"
-        ],
-        capture_output=True)
-    affected_env_var_list = json.loads(proc.stdout)
+    stdout = subprocess.check_output([
+        sys.executable, f"{_get_curr_dir()}/determine_tests_to_run.py",
+        "--output=json"
+    ])
+    affected_env_var_list = json.loads(stdout)
     affected = ("RAY_CI_DOCKER_AFFECTED" in affected_env_var_list or
                 "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED" in affected_env_var_list)
     print(f"Docker affected: {affected}")
@@ -122,15 +120,18 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
 
             if image_name == "base-deps":
                 build_args["BASE_IMAGE"] = (
-                    "nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04"
+                    "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04"
                     if gpu == "-gpu" else "ubuntu:focal")
             else:
                 # NOTE(ilr) This is a bit of an abuse of the name "GPU"
                 build_args["GPU"] = f"{py_name}{gpu}"
 
-            if image_name in ["ray", "ray-deps"]:
+            if image_name in ["ray", "ray-deps", "ray-worker-container"]:
                 wheel = _get_wheel_name(build_args["PYTHON_MINOR_VERSION"])
                 build_args["WHEEL_PATH"] = f".whl/{wheel}"
+                # Add pip option "--find-links .whl/" to ensure ray-cpp wheel
+                # can be found.
+                build_args["FIND_LINKS_PATH"] = ".whl"
 
             tagged_name = f"rayproject/{image_name}:nightly{py_name}{gpu}"
             for i in range(2):
@@ -183,10 +184,14 @@ def copy_wheels(human_build):
         source = os.path.join(root_dir, ".whl", wheel)
         ray_dst = os.path.join(root_dir, "docker/ray/.whl/")
         ray_dep_dst = os.path.join(root_dir, "docker/ray-deps/.whl/")
+        ray_worker_container_dst = os.path.join(
+            root_dir, "docker/ray-worker-container/.whl/")
         os.makedirs(ray_dst, exist_ok=True)
         shutil.copy(source, ray_dst)
         os.makedirs(ray_dep_dst, exist_ok=True)
         shutil.copy(source, ray_dep_dst)
+        os.makedirs(ray_worker_container_dst, exist_ok=True)
+        shutil.copy(source, ray_worker_container_dst)
 
 
 def build_or_pull_base_images(rebuild_base_images: bool = True) -> List[str]:
@@ -240,6 +245,10 @@ def _get_docker_creds() -> Tuple[str, str]:
     docker_password = os.environ.get("DOCKER_PASSWORD")
     assert docker_password, "DOCKER_PASSWORD not set."
     return DOCKER_USERNAME, docker_password
+
+
+def build_ray_worker_container():
+    return _build_cpu_gpu_images("ray-worker-container")
 
 
 # For non-release builds, push "nightly" & "sha"
@@ -392,6 +401,12 @@ if __name__ == "__main__":
         help="Whether to build base-deps & ray-deps")
     parser.add_argument("--no-build-base", dest="base", action="store_false")
     parser.set_defaults(base=True)
+    parser.add_argument(
+        "--only-build-worker-container",
+        dest="only_build_worker_container",
+        action="store_true",
+        help="Whether only to build ray-worker-container")
+    parser.set_defaults(only_build_worker_container=False)
 
     args = parser.parse_args()
     py_versions = args.py_versions
@@ -408,27 +423,45 @@ if __name__ == "__main__":
     print("Building base images: ", args.base)
 
     build_type = args.build_type
+    is_buildkite = build_type == BUILDKITE
+    if build_type == BUILDKITE:
+        if os.environ.get("BUILDKITE_PULL_REQUEST", "") == "false":
+            build_type = MERGE
+        else:
+            build_type = PR
     if build_type == HUMAN:
         _configure_human_version()
-    if build_type in {HUMAN, MERGE, BUILDKITE
-                      } or _check_if_docker_files_modified():
+    if (build_type in {HUMAN, MERGE} or is_buildkite
+            or _check_if_docker_files_modified()):
         DOCKER_CLIENT = docker.from_env()
         is_merge = build_type == MERGE
-        if is_merge:
+        # Buildkite is authenticated in the background.
+        if is_merge and not is_buildkite:
             # We do this here because we want to be authenticated for
             # Docker pulls as well as pushes (to avoid rate-limits).
             username, password = _get_docker_creds()
             DOCKER_CLIENT.api.login(username=username, password=password)
         copy_wheels(build_type == HUMAN)
         base_images_built = build_or_pull_base_images(args.base)
-        build_ray()
-        build_ray_ml()
+        if args.only_build_worker_container:
+            build_ray_worker_container()
+            # TODO Currently don't push ray_worker_container
+        else:
+            build_ray()
+            build_ray_ml()
+            if build_type in {MERGE, PR}:
+                valid_branch = _valid_branch()
+                if (not valid_branch) and is_merge:
+                    print(f"Invalid Branch found: {_get_branch()}")
+                push_and_tag_images(base_images_built, valid_branch
+                                    and is_merge)
 
-        if build_type in {MERGE, PR}:  # Skipping push on buildkite
-            valid_branch = _valid_branch()
-            if (not valid_branch) and is_merge:
-                print(f"Invalid Branch found: {_get_branch()}")
-            push_and_tag_images(base_images_built, valid_branch and is_merge)
+            if build_type in {MERGE, PR}:
+                valid_branch = _valid_branch()
+                if (not valid_branch) and is_merge:
+                    print(f"Invalid Branch found: {_get_branch()}")
+                push_and_tag_images(base_images_built, valid_branch
+                                    and is_merge)
 
         # TODO(ilr) Re-Enable Push READMEs by using a normal password
         # (not auth token :/)

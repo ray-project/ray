@@ -68,6 +68,24 @@ class GcsActor {
     actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
 
     actor_table_data_.set_ray_namespace(ray_namespace);
+
+    const auto &function_descriptor = task_spec.function_descriptor();
+    switch (function_descriptor.function_descriptor_case()) {
+    case rpc::FunctionDescriptor::FunctionDescriptorCase::kJavaFunctionDescriptor:
+      actor_table_data_.set_class_name(
+          function_descriptor.java_function_descriptor().class_name());
+      break;
+    case rpc::FunctionDescriptor::FunctionDescriptorCase::kPythonFunctionDescriptor:
+      actor_table_data_.set_class_name(
+          function_descriptor.python_function_descriptor().class_name());
+      break;
+    default:
+      // TODO (Alex): Handle the C++ case, which we currently don't have an
+      // easy equivalent to class_name for.
+      break;
+    }
+
+    actor_table_data_.set_serialized_runtime_env(task_spec.serialized_runtime_env());
   }
 
   /// Get the node id on which this actor is created.
@@ -172,6 +190,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub, RuntimeEnvManager &runtime_env_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
       std::function<std::string(const JobID &)> get_ray_namespace,
+      std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
+          run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
@@ -191,6 +211,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   void HandleGetNamedActorInfo(const rpc::GetNamedActorInfoRequest &request,
                                rpc::GetNamedActorInfoReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleListNamedActors(const rpc::ListNamedActorsRequest &request,
+                             rpc::ListNamedActorsReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
                              rpc::GetAllActorInfoReply *reply,
@@ -228,6 +252,14 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \returns ActorID The ID of the actor. Nil if the actor was not found.
   ActorID GetActorIDByName(const std::string &name,
                            const std::string &ray_namespace) const;
+
+  /// Get names of named actors.
+  //
+  /// \param[in] all_namespaces Whether to include actors from all Ray namespaces.
+  /// \param[in] namespace The namespace to filter to if all_namespaces is false.
+  /// \returns List of <namespace, name> pairs.
+  std::vector<std::pair<std::string, std::string>> ListNamedActors(
+      bool all_namespaces, const std::string &ray_namespace) const;
 
   /// Schedule actors in the `pending_actors_` queue.
   /// This method should be called when new nodes are registered or resources
@@ -453,8 +485,13 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// A callback to get the namespace an actor belongs to based on its job id. This is
   /// necessary for actor creation.
   std::function<std::string(const JobID &)> get_ray_namespace_;
-
   RuntimeEnvManager &runtime_env_manager_;
+  /// Run a function on a delay. This is useful for guaranteeing data will be
+  /// accessible for a minimum amount of time.
+  std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
+      run_delayed_;
+  const boost::posix_time::milliseconds actor_gc_delay_;
+
   // Debug info.
   enum CountType {
     REGISTER_ACTOR_REQUEST = 0,
@@ -463,7 +500,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     GET_NAMED_ACTOR_INFO_REQUEST = 3,
     GET_ALL_ACTOR_INFO_REQUEST = 4,
     KILL_ACTOR_REQUEST = 5,
-    CountType_MAX = 6,
+    LIST_NAMED_ACTORS_REQUEST = 6,
+    CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };

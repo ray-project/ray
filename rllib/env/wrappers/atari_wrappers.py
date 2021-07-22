@@ -1,10 +1,9 @@
 from collections import deque
-import cv2
 import gym
 from gym import spaces
 import numpy as np
 
-cv2.ocl.setUseOpenCL(False)
+from ray.rllib.utils.images import rgb2gray, resize
 
 
 def is_atari(env):
@@ -221,9 +220,8 @@ class WarpFrame(gym.ObservationWrapper):
             dtype=np.uint8)
 
     def observation(self, frame):
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-        frame = cv2.resize(
-            frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
+        frame = rgb2gray(frame)
+        frame = resize(frame, height=self.height, width=self.width)
         return frame[:, :, None]
 
 

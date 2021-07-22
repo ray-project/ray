@@ -50,6 +50,10 @@ class GcsJobManager : public rpc::JobInfoHandler {
                             rpc::ReportJobErrorReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetNextJobID(const rpc::GetNextJobIDRequest &request,
+                          rpc::GetNextJobIDReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
   void AddJobFinishedListener(
       std::function<void(std::shared_ptr<JobID>)> listener) override;
 
@@ -67,6 +71,9 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   ray::RuntimeEnvManager &runtime_env_manager_;
   void ClearJobInfos(const JobID &job_id);
+
+  void MarkJobAsFinished(rpc::JobTableData job_table_data,
+                         std::function<void(Status)> done_callback);
 };
 
 }  // namespace gcs

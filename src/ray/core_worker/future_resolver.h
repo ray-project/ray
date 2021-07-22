@@ -51,6 +51,15 @@ class FutureResolver {
   /// future.
   void ResolveFutureAsync(const ObjectID &object_id, const rpc::Address &owner_address);
 
+  /// Process a resolved future. This can be used if we already have the objec
+  /// status and don't need to ask the owner for it right away.
+  ///
+  /// \param[in] object_id The ID of the future to resolve.
+  /// \param[in] status Any error code from the owner obtaining the object status.
+  /// \param[in] object_status The object status.
+  void ProcessResolvedObject(const ObjectID &object_id, const Status &status,
+                             const rpc::GetObjectStatusReply &object_status);
+
  private:
   /// Used to store values of resolved futures.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;

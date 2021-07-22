@@ -1,3 +1,8 @@
+
+.. important:: The ML team at `Anyscale Inc. <https://anyscale.io>`__, the company behind Ray, is looking for interns and full-time **reinforcement learning engineers** to help advance and maintain RLlib.
+ If you have a background in ML/RL and are interested in making RLlib **the** industry-leading open-source RL library, `apply here today <https://jobs.lever.co/anyscale/186d9b8d-3fee-4e07-bb8e-49e85cf33d6b>`__.
+ We'd be thrilled to welcome you on the team!
+
 RLlib Training APIs
 ===================
 
@@ -14,7 +19,7 @@ You can train a simple DQN trainer with the following command:
 
 .. code-block:: bash
 
-    rllib train --run DQN --env CartPole-v0  # --eager [--trace] for eager execution
+    rllib train --run DQN --env CartPole-v0  # --config '{"framework": "tf2", "eager_tracing": True}' for eager execution
 
 By default, the results will be logged to a subdirectory of ``~/ray_results``.
 This subdirectory will contain a file ``params.json`` which contains the
@@ -96,6 +101,8 @@ For synchronous algorithms like PPO and A2C, the driver and workers can make use
 
 Scaling Guide
 ~~~~~~~~~~~~~
+
+.. _rllib-scaling-guide:
 
 Here are some rules of thumb for scaling training with RLlib.
 
@@ -558,6 +565,15 @@ User-defined state can be stored for the `episode <https://github.com/ray-projec
 .. autoclass:: ray.rllib.agents.callbacks.DefaultCallbacks
     :members:
 
+
+Chaining Callbacks
+~~~~~~~~~~~~~~~~~~
+
+Use the ``MultiCallbacks`` class to chaim multiple callbacks together.
+
+.. autoclass:: ray.rllib.agents.callbacks.MultiCallbacks
+
+
 Visualizing Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -906,7 +922,7 @@ Eager Mode
 Policies built with ``build_tf_policy`` (most of the reference algorithms are)
 can be run in eager mode by setting the
 ``"framework": "[tf2|tfe]"`` / ``"eager_tracing": True`` config options or using
-``rllib train --eager [--trace]``.
+``rllib train --config '{"framework": "tf2"}' [--trace]``.
 This will tell RLlib to execute the model forward pass, action distribution,
 loss, and stats functions in eager mode.
 

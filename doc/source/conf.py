@@ -17,6 +17,7 @@ import shutil
 import sys
 import os
 import urllib
+
 sys.path.insert(0, os.path.abspath('.'))
 from custom_directives import CustomGalleryItemDirective
 from datetime import datetime
@@ -36,12 +37,14 @@ MOCK_MODULES = [
     "ax.service.ax_client",
     "blist",
     "ConfigSpace",
+    "dask.distributed",
     "gym",
     "gym.spaces",
     "horovod",
     "horovod.ray",
     "kubernetes",
     "mlflow",
+    "modin",
     "mxnet",
     "mxnet.model",
     "psutil",
@@ -95,9 +98,59 @@ for mod_name in MOCK_MODULES:
 sys.modules["tensorflow"].VERSION = "9.9.9"
 sys.modules["tensorflow.keras.callbacks"] = ChildClassMock()
 sys.modules["pytorch_lightning"] = ChildClassMock()
-sys.modules["xgboost"] = ChildClassMock()
-sys.modules["xgboost.core"] = ChildClassMock()
-sys.modules["xgboost.callback"] = ChildClassMock()
+
+
+def import_or_mock(module):
+    try:
+        # Same as `import module`
+        __import__(module, globals(), locals(), [], 0)
+    except ImportError:
+        sys.modules[module] = ChildClassMock()
+
+
+xgb_lgbm_modules = [
+    "xgboost", "xgboost.core", "xgboost.callback", "xgboost.sklearn",
+    "xgboost_ray", "lightgbm.main", "lightgbm.callback", "lightgbm.compat",
+    "lightgbm_ray"
+]
+for module in xgb_lgbm_modules:
+    import_or_mock(module)
+
+# replace docstring refs in XGBoost documentation XGBoost-Ray inherits from
+# if this is not done, an error during make will be thrown, as there is no
+# such ref in ray docs
+replaces_callback_api = [
+    sys.modules["xgboost_ray"].RayXGBClassifier.fit,
+    sys.modules["xgboost_ray"].RayXGBRegressor.fit
+]
+for m in replaces_callback_api:
+    m.__doc__ = m.__doc__.replace(":ref:`callback_api`", "Callback API")
+
+# fix "more than one target found for cross-reference 'RayParams'"
+# as both lightgbm-ray and xgboost-ray have classes with the same
+# names, we need to refer to the explicitly in ray docs, otherwise
+# make will throw an error
+replaces_ray_params = [
+    sys.modules["xgboost_ray"].train, sys.modules["xgboost_ray"].predict,
+    sys.modules["xgboost_ray"].RayXGBClassifier.fit,
+    sys.modules["xgboost_ray"].RayXGBClassifier.predict,
+    sys.modules["xgboost_ray"].RayXGBClassifier.predict_proba,
+    sys.modules["xgboost_ray"].RayXGBRegressor.fit,
+    sys.modules["xgboost_ray"].RayXGBRegressor.predict
+]
+for m in replaces_ray_params:
+    m.__doc__ = m.__doc__.replace("RayParams", "xgboost_ray.RayParams")
+
+replaces_ray_params = [
+    sys.modules["lightgbm_ray"].train, sys.modules["lightgbm_ray"].predict,
+    sys.modules["lightgbm_ray"].RayLGBMClassifier.fit,
+    sys.modules["lightgbm_ray"].RayLGBMClassifier.predict,
+    sys.modules["lightgbm_ray"].RayLGBMClassifier.predict_proba,
+    sys.modules["lightgbm_ray"].RayLGBMRegressor.fit,
+    sys.modules["lightgbm_ray"].RayLGBMRegressor.predict
+]
+for m in replaces_ray_params:
+    m.__doc__ = m.__doc__.replace("RayParams", "lightgbm_ray.RayParams")
 
 
 class SimpleClass(object):
@@ -152,13 +205,22 @@ extensions = [
     'versionwarning.extension',
 ]
 
-versionwarning_admonition_type = "tip"
+versionwarning_admonition_type = "note"
+versionwarning_banner_title = "[Ray Summit 2021 | June 22-24 | Virtual & Free]"
+
+SUMMIT_LINK = ("https://www.anyscale.com/ray-summit-2021"
+               "?utm_source=anyscale&utm_medium=docs&utm_campaign=raysummit")
 
 versionwarning_messages = {
-    "latest": (
-        "This document is for the latest pip release. "
-        'Visit the <a href="/en/master/">master branch documentation here</a>.'
-    ),
+    # Re-enable this after Ray Summit.
+    # "latest": (
+    #     "This document is for the latest pip release. "
+    #     'Visit the <a href="/en/master/">master branch documentation here</a>.'
+    # ),
+    "master": (f'<a href="{SUMMIT_LINK}">Join the global Ray '
+               "community at Ray Summit 2021</a> "
+               "to learn about new Ray features and hear how "
+               "users are scaling machine learning applications with Ray!"),
 }
 
 versionwarning_body_selector = "#main-content"

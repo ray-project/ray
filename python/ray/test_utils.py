@@ -6,16 +6,18 @@ import os
 import subprocess
 import sys
 import time
+import timeit
 import socket
 import math
 import traceback
-from typing import Dict
+from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
 
 import ray
 import ray._private.services
 import ray._private.utils
+from ray.util.queue import Queue, _QueueActor, Empty
 import requests
 from prometheus_client.parser import text_string_to_metric_families
 from ray.scripts.scripts import main as ray_main
@@ -245,6 +247,34 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
+def wait_for_num_nodes(num_nodes: int, timeout_s: int):
+    curr_nodes = 0
+    start = time.time()
+    next_feedback = start
+    max_time = start + timeout_s
+    while not curr_nodes >= num_nodes:
+        now = time.time()
+
+        if now >= max_time:
+            raise RuntimeError(
+                f"Maximum wait time reached, but only "
+                f"{curr_nodes}/{num_nodes} nodes came up. Aborting.")
+
+        if now >= next_feedback:
+            passed = now - start
+            print(f"Waiting for more nodes to come up: "
+                  f"{curr_nodes}/{num_nodes} "
+                  f"({passed:.0f} seconds passed)")
+            next_feedback = now + 10
+
+        time.sleep(5)
+        curr_nodes = len(ray.nodes())
+
+    passed = time.time() - start
+    print(f"Cluster is up: {curr_nodes}/{num_nodes} nodes online after "
+          f"{passed:.0f} seconds")
+
+
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     actor_id = actor._actor_id.hex()
     current_num_restarts = ray.state.actors(actor_id)["NumRestarts"]
@@ -345,6 +375,7 @@ def generate_system_config_map(**kwargs):
 class SignalActor:
     def __init__(self):
         self.ready_event = asyncio.Event()
+        self.num_waiters = 0
 
     def send(self, clear=False):
         self.ready_event.set()
@@ -353,7 +384,12 @@ class SignalActor:
 
     async def wait(self, should_wait=True):
         if should_wait:
+            self.num_waiters += 1
             await self.ready_event.wait()
+            self.num_waiters -= 1
+
+    async def cur_num_waiters(self):
+        return self.num_waiters
 
 
 @ray.remote(num_cpus=0)
@@ -506,6 +542,13 @@ def client_test_enabled() -> bool:
     return os.environ.get("RAY_CLIENT_MODE") is not None
 
 
+def object_memory_usage() -> bool:
+    """Returns the number of bytes used in the object store."""
+    total = ray.cluster_resources().get("object_store_memory", 0)
+    avail = ray.available_resources().get("object_store_memory", 0)
+    return total - avail
+
+
 def fetch_prometheus(prom_addresses):
     components_dict = {}
     metric_names = set()
@@ -537,3 +580,72 @@ def load_test_config(config_file_name):
                                config_file_name)
     config = yaml.safe_load(open(config_path).read())
     return config
+
+
+def set_setup_func():
+    import ray._private.runtime_env as runtime_env
+    runtime_env.VAR = "hello world"
+
+
+class BatchQueue(Queue):
+    def __init__(self, maxsize: int = 0,
+                 actor_options: Optional[Dict] = None) -> None:
+        actor_options = actor_options or {}
+        self.maxsize = maxsize
+        self.actor = ray.remote(_BatchQueueActor).options(
+            **actor_options).remote(self.maxsize)
+
+    def get_batch(self,
+                  batch_size: int = None,
+                  total_timeout: Optional[float] = None,
+                  first_timeout: Optional[float] = None) -> List[Any]:
+        """Gets batch of items from the queue and returns them in a
+        list in order.
+
+        Raises:
+            Empty: if the queue does not contain the desired number of items
+        """
+        return ray.get(
+            self.actor.get_batch.remote(batch_size, total_timeout,
+                                        first_timeout))
+
+
+class _BatchQueueActor(_QueueActor):
+    async def get_batch(self,
+                        batch_size=None,
+                        total_timeout=None,
+                        first_timeout=None):
+        start = timeit.default_timer()
+        try:
+            first = await asyncio.wait_for(self.queue.get(), first_timeout)
+            batch = [first]
+            if total_timeout:
+                end = timeit.default_timer()
+                total_timeout = max(total_timeout - (end - start), 0)
+        except asyncio.TimeoutError:
+            raise Empty
+        if batch_size is None:
+            if total_timeout is None:
+                total_timeout = 0
+            while True:
+                try:
+                    start = timeit.default_timer()
+                    batch.append(await asyncio.wait_for(
+                        self.queue.get(), total_timeout))
+                    if total_timeout:
+                        end = timeit.default_timer()
+                        total_timeout = max(total_timeout - (end - start), 0)
+                except asyncio.TimeoutError:
+                    break
+        else:
+            for _ in range(batch_size - 1):
+                try:
+                    start = timeit.default_timer()
+                    batch.append(await asyncio.wait_for(
+                        self.queue.get(), total_timeout))
+                    if total_timeout:
+                        end = timeit.default_timer()
+                        total_timeout = max(total_timeout - (end - start), 0)
+                except asyncio.TimeoutError:
+                    break
+        return batch
