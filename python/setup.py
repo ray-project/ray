@@ -157,6 +157,8 @@ if setup_spec.type == SetupType.RAY:
             "jsonschema",  # noqa
             "requests",  # noqa
             "gpustat",  # noqa
+            "opencensus",  # noqa
+            "prometheus_client >= 0.7.1",  # noqa
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
@@ -198,8 +200,6 @@ if setup_spec.type == SetupType.RAY:
         "protobuf >= 3.15.3",
         "pyyaml",
         "redis >= 3.5.0",
-        "opencensus",
-        "prometheus_client >= 0.7.1",
     ]
 
 
