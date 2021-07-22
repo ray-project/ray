@@ -3,14 +3,13 @@ import logging
 import abc
 import time
 from uuid import uuid4
-from collections import UserDict
+from collections import UserDict, MutableMapping
 from enum import Enum, auto
 
 from googleapiclient.discovery import Resource
 
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 from ray.autoscaler._private.gcp.config import MAX_POLLS, POLL_INTERVAL
-from ray.tune.utils.util import flatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +23,17 @@ def _generate_node_name(labels: dict, node_suffix: str) -> str:
             (INSTANCE_NAME_MAX_LEN - INSTANCE_NAME_UUID_LEN - 1)), (
                 name_label, len(name_label))
     return f"{name_label}-{uuid4().hex[:INSTANCE_NAME_UUID_LEN]}-{node_suffix}"
+
+
+def _flatten_dict(d: dict, parent_key: str = "", sep: str = "."):
+    items = []
+    for k, v in d.items():
+        new_key = sep.join((parent_key, k)) if parent_key else k
+        if isinstance(v, MutableMapping):
+            items.extend(_flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
 
 
 class GCPNodeType(Enum):
@@ -402,7 +412,7 @@ class GCPTPU(GCPResource):
         body = {
             "labels": dict(node["labels"], **labels),
         }
-        update_mask = ",".join(flatten_dict(body, delimiter=".").keys())
+        update_mask = ",".join(_flatten_dict(body, delimiter=".").keys())
         operation = self.resource.projects().locations().nodes().patch(
             name=node["name"],
             updateMask=update_mask,
