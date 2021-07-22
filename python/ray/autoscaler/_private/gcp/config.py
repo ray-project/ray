@@ -419,7 +419,7 @@ def _configure_subnet(config, compute):
         # TPU
         if "networkConfig" not in node_config:
             node_config["networkConfig"] = copy.deepcopy(
-                default_interfaces)
+                default_interfaces)[0]
             node_config["networkConfig"].pop("accessConfigs")
 
     return config
