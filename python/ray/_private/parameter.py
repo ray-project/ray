@@ -115,8 +115,9 @@ class RayParams:
             failure.
         start_initial_python_workers_for_first_job (bool): If true, start
             initial Python workers for the first job on the node.
-        ray_debugger_external (bool): If true, make the Ray debugger for a worker
-            available externally to the node it is running on.
+        ray_debugger_external (bool): If true, make the Ray debugger for a
+            worker available externally to the node it is running on. This will
+            bind on 0.0.0.0 instead of localhost.
     """
 
     def __init__(self,

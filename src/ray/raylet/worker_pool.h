@@ -137,8 +137,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              std::function<void()> starting_worker_timeout_callback,
-             int ray_debugger_external,
-             const std::function<double()> get_time);
+             int ray_debugger_external, const std::function<double()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();

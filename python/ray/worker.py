@@ -1597,8 +1597,12 @@ def get(object_refs, *, timeout=None):
         if debugger_breakpoint != b"":
             frame = sys._getframe().f_back
             rdb = ray.util.pdb.connect_ray_pdb(
-                host=None, port=None, patch_stdstreams=False, quiet=None,
-                breakpoint_uuid=debugger_breakpoint.decode() if debugger_breakpoint else None,
+                host=None,
+                port=None,
+                patch_stdstreams=False,
+                quiet=None,
+                breakpoint_uuid=debugger_breakpoint.decode()
+                if debugger_breakpoint else None,
                 debugger_external=worker.ray_debugger_external)
             rdb.set_trace(frame=frame)
 

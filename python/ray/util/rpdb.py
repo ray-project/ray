@@ -93,7 +93,8 @@ class RemotePdb(Pdb):
     def listen(self):
         if not self._quiet:
             cry("RemotePdb session open at %s:%s, "
-                "use 'ray debug' to connect..." % (self._ip_address, self._listen_socket.getsockname()[1]))
+                "use 'ray debug' to connect..." %
+                (self._ip_address, self._listen_socket.getsockname()[1]))
         self._listen_socket.listen(1)
         connection, address = self._listen_socket.accept()
         if not self._quiet:
@@ -249,15 +250,22 @@ def set_trace(breakpoint_uuid=None):
     if ray.worker.global_worker.debugger_breakpoint == b"":
         frame = sys._getframe().f_back
         rdb = connect_ray_pdb(
-            host=None, port=None, patch_stdstreams=False, quiet=None,
-            breakpoint_uuid=breakpoint_uuid.decode() if breakpoint_uuid else None,
+            host=None,
+            port=None,
+            patch_stdstreams=False,
+            quiet=None,
+            breakpoint_uuid=breakpoint_uuid.decode()
+            if breakpoint_uuid else None,
             debugger_external=ray.worker.global_worker.ray_debugger_external)
         rdb.set_trace(frame=frame)
 
 
 def post_mortem():
     rdb = connect_ray_pdb(
-        host=None, port=None, patch_stdstreams=False, quet=None,
+        host=None,
+        port=None,
+        patch_stdstreams=False,
+        quet=None,
         debugger_external=ray.worker.global_worker.ray_debugger_external)
     rdb.post_mortem()
 

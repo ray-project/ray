@@ -65,8 +65,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
                        std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
                        std::function<void()> starting_worker_timeout_callback,
-                       int ray_debugger_external,
-                       const std::function<double()> get_time)
+                       int ray_debugger_external, const std::function<double()> get_time)
     : io_service_(&io_service),
       node_id_(node_id),
       node_address_(node_address),
