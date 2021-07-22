@@ -177,7 +177,7 @@ class ArrowBlockAccessor(BlockAccessor):
         indices = pyarrow.compute.sort_indices(self._table, sort_keys=key)
         table = self._table.take(indices)
         if len(boundaries) == 0:
-            return []
+            return [table]
         boundary_indices = [
             sum(pyarrow.compute.less(table[key[0][0]], b)) for b in boundaries
             for b in boundaries
@@ -193,7 +193,6 @@ class ArrowBlockAccessor(BlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(blocks: List[Block[T]], key=Any) -> Block[T]:
-        print(key)
         ret = pyarrow.concat_tables(blocks)
         indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
         ret = ret.take(indices)

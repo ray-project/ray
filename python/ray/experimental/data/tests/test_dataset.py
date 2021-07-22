@@ -1120,4 +1120,4 @@ def test_sort_arrow(ray_start_regular_shared):
 
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-sv", __file__, "-k", "test_sort_arrow"]))
+    sys.exit(pytest.main(["-v", __file__]))

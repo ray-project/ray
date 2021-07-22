@@ -81,7 +81,7 @@ class SimpleBlockAccessor(BlockAccessor):
                            key: Any) -> List["Block[T]"]:
         items = sorted(self._items, key=key)
         if len(boundaries) == 0:
-            return []
+            return [items]
         boundary_indices = [
             len([1 for x in items if (key(x) if key else x) < b])
             for b in boundaries

@@ -66,11 +66,6 @@ def sort_impl(blocks: BlockList[T], key: SortKeyT,
     if len(blocks) == 0:
         return BlockList([], [])
 
-    # TODO:
-    if len(blocks) == 1:
-        # single node sort
-        pass
-
     # first_block = next(iter(blocks))
     # if isinstance(first_block, list):
     #     if key is not None and not callable(key):
@@ -99,8 +94,10 @@ def sort_impl(blocks: BlockList[T], key: SortKeyT,
 
     @ray.remote(num_returns=2)
     def merge_sorted_blocks(*blocks: List[Block[T]]) -> Block[T]:
+        if len(blocks) == 1:
+            blocks = blocks[0]  # Python weirdness
         return BlockAccessor.for_block(blocks[0]).merge_sorted_blocks(
-            blocks, key)
+            list(blocks), key)
 
     map_results = np.empty((num_mappers, num_reducers), dtype=object)
     for i, block in enumerate(blocks):
