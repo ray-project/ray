@@ -160,8 +160,7 @@ class Monitor:
                 self.load_metrics,
                 prefix_cluster_info=self.prefix_cluster_info,
                 event_summarizer=self.event_summarizer,
-                prom_metrics=self.prom_metrics,
-                disable_node_updaters=self.disable_node_updaters)
+                prom_metrics=self.prom_metrics)
 
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
