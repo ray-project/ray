@@ -2,7 +2,7 @@
 
 #include <google/protobuf/map.h>
 
-#include <boost/range/join.hpp>
+// #include <boost/range/join.hpp>
 
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
@@ -295,7 +295,7 @@ void ClusterTaskManager::QueueAndScheduleTask(
   if (infeasible_tasks_.count(scheduling_class) > 0) {
     infeasible_tasks_[scheduling_class].push_back(work);
   } else {
-    tasks_to_schedule_[scheduling_class].push_back(work);
+    tasks_to_schedule_.Push(work);
   }
   AddToBacklogTracker(task);
   ScheduleAndDispatchTasks();
@@ -330,6 +330,7 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
   if (worker->GetAllocatedInstances() != nullptr) {
     ReleaseWorkerResources(worker);
   }
+  tasks_to_schedule_.MarkFinished(*task);
 }
 
 bool ClusterTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec,
@@ -539,21 +540,19 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
       }
     }
   }
-  // Report actors blocked on resources.
-  num_reported = 0;
-  for (const auto &shapes_it : boost::join(tasks_to_dispatch_, tasks_to_schedule_)) {
-    auto &work_queue = shapes_it.second;
-    for (const auto &work_it : work_queue) {
-      Task task = std::get<0>(work_it);
-      if (task.GetTaskSpecification().IsActorCreationTask()) {
-        if (num_reported++ > kMaxPendingActorsToReport) {
-          break;  // Protect the raylet from reporting too much data.
-        }
-        auto ready_task = reply->add_infeasible_tasks();
-        ready_task->CopyFrom(task.GetTaskSpecification().GetMessage());
+
+  std::function<void(const Work &work)> fn = [&num_reported, reply](const Work &work) {
+    Task task = std::get<0>(work);
+    if (task.GetTaskSpecification().IsActorCreationTask()) {
+      if (num_reported++ > kMaxPendingActorsToReport) {
+        return;  // Protect the raylet from reporting too much data.
       }
+      auto ready_task = reply->add_infeasible_tasks();
+      ready_task->CopyFrom(task.GetTaskSpecification().GetMessage());
     }
-  }
+  };
+
+  ForAllQueues(fn);
 }
 
 void ClusterTaskManager::FillResourceUsage(
@@ -576,13 +575,13 @@ void ClusterTaskManager::FillResourceUsage(
   {
     num_reported++;
     int count = 0;
-    auto it = tasks_to_schedule_.find(one_cpu_scheduling_cls);
-    if (it != tasks_to_schedule_.end()) {
-      count += it->second.size();
+    auto sched_it = tasks_to_schedule_.find(one_cpu_scheduling_cls);
+    if (sched_it != tasks_to_schedule_.end()) {
+      count += sched_it->second.size();
     }
-    it = tasks_to_dispatch_.find(one_cpu_scheduling_cls);
-    if (it != tasks_to_dispatch_.end()) {
-      count += it->second.size();
+    auto disp_it = tasks_to_dispatch_.find(one_cpu_scheduling_cls);
+    if (disp_it != tasks_to_dispatch_.end()) {
+      count += disp_it->second.size();
     }
 
     if (count > 0) {
@@ -686,9 +685,9 @@ void ClusterTaskManager::FillResourceUsage(
 
   for (const auto &pair : infeasible_tasks_) {
     const auto &scheduling_class = pair.first;
-    if (scheduling_class == one_cpu_scheduling_cls) {
-      continue;
-    }
+    // if (scheduling_class == one_cpu_scheduling_cls) {
+    //   continue;
+    // }
     if (num_reported++ >= max_resource_shapes_per_load_report_ &&
         max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
@@ -743,22 +742,20 @@ bool ClusterTaskManager::AnyPendingTasks(Task *exemplar, bool *any_pending,
   // We are guaranteed that these tasks are blocked waiting for resources after a
   // call to ScheduleAndDispatchTasks(). They may be waiting for workers as well, but
   // this should be a transient condition only.
-  for (const auto &shapes_it : boost::join(tasks_to_dispatch_, tasks_to_schedule_)) {
-    auto &work_queue = shapes_it.second;
-    for (const auto &work_it : work_queue) {
-      const auto &task = std::get<0>(work_it);
-      if (task.GetTaskSpecification().IsActorCreationTask()) {
-        *num_pending_actor_creation += 1;
-      } else {
-        *num_pending_tasks += 1;
-      }
-
-      if (!*any_pending) {
-        *exemplar = task;
-        *any_pending = true;
-      }
+  std::function<void(const Work &)> fn = [exemplar, any_pending, num_pending_actor_creation, num_pending_tasks](const Work &work) {
+    const auto &task = std::get<0>(work);
+    if (task.GetTaskSpecification().IsActorCreationTask()) {
+      *num_pending_actor_creation += 1;
+    } else {
+      *num_pending_tasks += 1;
     }
-  }
+
+    if (!*any_pending) {
+      *exemplar = task;
+      *any_pending = true;
+    }
+  };
+  ForAllQueues(fn);
   // If there's any pending task, at this point, there's no progress being made.
   return *any_pending;
 }
@@ -836,7 +833,7 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
       RAY_LOG(DEBUG) << "Infeasible task of task id "
                      << task.GetTaskSpecification().TaskId()
                      << " is now feasible. Move the entry back to tasks_to_schedule_";
-      tasks_to_schedule_[shapes_it->first] = shapes_it->second;
+      tasks_to_schedule_.Set(shapes_it->first, std::move(shapes_it->second));
       shapes_it = infeasible_tasks_.erase(shapes_it);
     }
   }
@@ -871,6 +868,7 @@ void ClusterTaskManager::Dispatch(
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;
   RemoveFromBacklogTracker(task);
+  tasks_to_schedule_.MarkRunning(task);
 
   // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;
@@ -1136,6 +1134,15 @@ ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
     }
   }
   return total_normal_task_resources;
+}
+
+void ClusterTaskManager::ForAllQueues(std::function<void(const Work &)> &fn) const {
+  for (const auto &class_deque_pair : tasks_to_schedule_) {
+    const auto &deque = class_deque_pair.second;
+    for (const auto &work : deque) {
+      fn(work);
+    }
+  }
 }
 
 }  // namespace raylet

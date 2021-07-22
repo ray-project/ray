@@ -8,7 +8,7 @@
 #include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
-#include "ray/raylet/scheduling/scheduling_queue.h"
+#include "ray/raylet/scheduling/fair_scheduling_queue.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
@@ -18,10 +18,6 @@
 namespace ray {
 namespace raylet {
 
-/// Work represents all the information needed to make a scheduling decision.
-/// This includes the task, the information we need to communicate to
-/// dispatch/spillback and the callback to trigger it.
-typedef std::tuple<Task, rpc::RequestWorkerLeaseReply *, std::function<void(void)>> Work;
 
 typedef std::function<boost::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
     NodeInfoGetter;
@@ -226,7 +222,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// through queues to cancel tasks, etc.
   /// Queue of lease requests that are waiting for resources to become available.
   /// Tasks move from scheduled -> dispatch | waiting.
-  std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
+  FairSchedulingQueue tasks_to_schedule_;
+  /* std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_; */
 
   /// Queue of lease requests that should be scheduled onto workers.
   /// Tasks move from scheduled | waiting -> dispatch.
@@ -327,6 +324,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void PinTaskArgs(const TaskSpecification &spec,
                    std::vector<std::unique_ptr<RayObject>> args);
   void ReleaseTaskArgs(const TaskID &task_id);
+
+  /// A helper function to loop through both the scheduling and dispatch queues.
+  void ForAllQueues(std::function<void(const Work &)> &fn) const;
 
   friend class ClusterTaskManagerTest;
   FRIEND_TEST(ClusterTaskManagerTest, FeasibleToNonFeasible);
