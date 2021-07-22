@@ -98,23 +98,11 @@ for mod_name in MOCK_MODULES:
 sys.modules["tensorflow"].VERSION = "9.9.9"
 sys.modules["tensorflow.keras.callbacks"] = ChildClassMock()
 sys.modules["pytorch_lightning"] = ChildClassMock()
+sys.modules["xgboost"] = ChildClassMock()
+sys.modules["xgboost.core"] = ChildClassMock()
+sys.modules["xgboost.callback"] = ChildClassMock()
+sys.modules["xgboost_ray"] = ChildClassMock()
 
-
-def import_or_mock(module):
-    try:
-        # Same as `import module`
-        __import__(module, globals(), locals(), [], 0)
-    except ImportError:
-        sys.modules[module] = ChildClassMock()
-
-
-xgb_lgbm_modules = [
-    "xgboost", "xgboost.core", "xgboost.callback", "xgboost.sklearn",
-    "xgboost_ray", "lightgbm.main", "lightgbm.callback", "lightgbm.compat",
-    "lightgbm_ray"
-]
-for module in xgb_lgbm_modules:
-    import_or_mock(module)
 
 # replace docstring refs in XGBoost documentation XGBoost-Ray inherits from
 # if this is not done, an error during make will be thrown, as there is no
