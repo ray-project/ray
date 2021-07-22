@@ -188,7 +188,7 @@ def main(num_replicas: Optional[int], num_trials: Optional[int],
     avg_latency = []
     p50_latency = []
     p75_latency = []
-    p95_latency = []
+    p90_latency = []
     p99_latency = []
     for iteration in range(num_trials):
         logger.info(f"Starting wrk trial # {iteration + 1} ....\n")
@@ -211,23 +211,21 @@ def main(num_replicas: Optional[int], num_trials: Optional[int],
                         }).remote(trial_length, num_connections, http_host,
                                   http_port))
 
-        trial_metrics = [
-            parse_wrk_decoded_stdout(out) for out in ray.get(refs)
-        ]
-        for trial in trial_metrics:
-            avg_throughput.append(trial["requests/sec"])
-            avg_latency.append(trial["latency_avg_ms"])
-            p50_latency.append(trial["P50_latency_ms"])
-            p75_latency.append(trial["P75_latency_ms"])
-            p95_latency.append(trial["P95_latency_ms"])
-            p99_latency.append(trial["P99_latency_ms"])
+        for decoded_output in ray.get(refs):
+            parsed = parse_wrk_decoded_stdout(decoded_output)
+            avg_throughput.append(float(parsed["requests/sec"]))
+            avg_latency.append(float(parsed["latency_avg_ms"]))
+            p50_latency.append(float(parsed["P50_latency_ms"]))
+            p75_latency.append(float(parsed["P75_latency_ms"]))
+            p90_latency.append(float(parsed["P90_latency_ms"]))
+            p99_latency.append(float(parsed["P99_latency_ms"]))
 
     final_results = {
         "avg_throughput_qps": sum(avg_throughput) / len(avg_throughput),
         "avg_latency_ms": sum(avg_latency) / len(avg_latency),
         "max_p50_latency_ms": max(p50_latency),
         "max_p75_latency_ms": max(p75_latency),
-        "max_p95_latency_ms": max(p95_latency),
+        "max_p90_latency_ms": max(p90_latency),
         "max_p99_latency_ms": max(p99_latency),
     }
 
