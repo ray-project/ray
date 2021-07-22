@@ -134,6 +134,6 @@ def test_manager(workflow_start_regular, tmp_path):
 
     assert {"counter": workflow.FINISHED} == workflow.list_all()
 
-    r = actor.val.run_async()
+    actor.val.run_async()
     # Readonly function won't make the workflow running
     assert {"counter": workflow.FINISHED} == workflow.list_all()
