@@ -110,16 +110,6 @@ class BlockAccessor(Generic[T]):
         """Create a builder for this block type."""
         raise NotImplementedError
 
-    def sort_and_partition(self, boundaries: List[T],
-                           key: Any) -> List["Block[T]"]:
-        """Sort and partition. TODO"""
-        raise NotImplementedError
-
-    @staticmethod
-    def merge_sorted_blocks(blocks: List["Block[T]"], key=Any) -> "Block[T]":
-        """TODO"""
-        raise NotImplementedError
-
     @staticmethod
     def for_block(block: Block[T]) -> "BlockAccessor[T]":
         """Create a block accessor for the given block."""
@@ -135,3 +125,13 @@ class BlockAccessor(Generic[T]):
             return SimpleBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {}".format(block))
+
+    def sort_and_partition(self, boundaries: List[T],
+                           key: Any) -> List["Block[T]"]:
+        """Sort and partition. TODO"""
+        raise NotImplementedError
+
+    @staticmethod
+    def merge_sorted_blocks(blocks: List["Block[T]"], key=Any) -> "Block[T]":
+        """TODO"""
+        raise NotImplementedError

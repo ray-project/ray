@@ -81,31 +81,21 @@ class SimpleBlockAccessor(BlockAccessor):
                            key: Any) -> List["Block[T]"]:
         items = sorted(self._items, key=key)
         if len(boundaries) == 0:
-            return items
-        parts = []
-        bound_i = 0
-        i = 0
+            return []
+        boundary_indices = [
+            len([1 for x in items if (key(x) if key else x) < b])
+            for b in boundaries
+        ]
+        ret = []
         prev_i = 0
-        part_offset = None
-        N = len(items)
-        while i < N and bound_i < len(boundaries):
-            bound = boundaries[bound_i]
-            while i < N and items[i] < bound:
-                i += 1
-            if part_offset is not None:
-                parts.append((part_offset, i - prev_i))
-            part_offset = i
-            bound_i += 1
+        for i in boundary_indices:
+            ret.append(items[prev_i:i])
             prev_i = i
-        if part_offset is not None:
-            parts.append((part_offset, N - prev_i))
-        ret = [items[offset:offset + count] for offset, count in parts]
-        num_empty = len(boundaries) - len(ret)
-        ret.extend([[]] * num_empty)
+        ret.append(items[prev_i:])
         return ret
 
     @staticmethod
-    def merge_simple_blocks(blocks: List[Block[T]], key=Any) -> Block[T]:
+    def merge_sorted_blocks(blocks: List[Block[T]], key=Any) -> Block[T]:
         ret = [x for block in blocks for x in block]
         ret.sort(key=key)
         return ret, SimpleBlockAccessor(ret).get_metadata(None)

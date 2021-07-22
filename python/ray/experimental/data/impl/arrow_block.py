@@ -171,3 +171,30 @@ class ArrowBlockAccessor(BlockAccessor):
     @staticmethod
     def builder() -> ArrowBlockBuilder[T]:
         return ArrowBlockBuilder()
+
+    def sort_and_partition(self, boundaries: List[T],
+                           key: Any) -> List["Block[T]"]:
+        indices = pyarrow.compute.sort_indices(self._table, sort_keys=key)
+        table = self._table.take(indices)
+        if len(boundaries) == 0:
+            return []
+        boundary_indices = [
+            sum(pyarrow.compute.less(table[key[0][0]], b)) for b in boundaries
+            for b in boundaries
+        ]
+        print(boundary_indices)
+        ret = []
+        prev_i = 0
+        for i in boundary_indices:
+            ret.append(table.slice(prev_i, i - prev_i))
+            prev_i = i
+        ret.append(table.slice(prev_i))
+        return ret
+
+    @staticmethod
+    def merge_sorted_blocks(blocks: List[Block[T]], key=Any) -> Block[T]:
+        print(key)
+        ret = pyarrow.concat_tables(blocks)
+        indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
+        ret = ret.take(indices)
+        return ret, ArrowBlockAccessor(ret).get_metadata(None)
