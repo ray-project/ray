@@ -531,8 +531,8 @@ the `examples folder <https://github.com/ray-project/lightgbm_ray/tree/master/ex
 API reference
 -------------
 
-.. autoclass:: lightgbm_ray.RayParams
-    :members:
+.. .. autoclass:: lightgbm_ray.RayParams
+..     :members:
 
 .. autoclass:: xgboost_ray.RayDMatrix
     :members:
