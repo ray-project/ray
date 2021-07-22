@@ -427,7 +427,7 @@ class GCPTPU(GCPResource):
         body = {
             "labels": dict(node["labels"], **labels),
         }
-        update_mask = ",".join(_flatten_dict(body, delimiter=".").keys())
+        update_mask = "labels"
         logger.info(f"tpu set_labels update_mask {update_mask}")
         logger.info(f"tpu set_labels body {body}")
         operation = self.resource.projects().locations().nodes().patch(
