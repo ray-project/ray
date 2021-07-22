@@ -78,6 +78,7 @@ class RemotePdb(Pdb):
                  breakpoint_uuid,
                  host,
                  port,
+                 ip_address,
                  patch_stdstreams=False,
                  quiet=False):
         self._breakpoint_uuid = breakpoint_uuid
@@ -87,12 +88,12 @@ class RemotePdb(Pdb):
         self._listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR,
                                        True)
         self._listen_socket.bind((host, port))
+        self._ip_address = ip_address
 
     def listen(self):
         if not self._quiet:
             cry("RemotePdb session open at %s:%s, "
-                "use 'ray debug' to connect..." %
-                self._listen_socket.getsockname())
+                "use 'ray debug' to connect..." % (self._ip_address, self._listen_socket.getsockname()[1]))
         self._listen_socket.listen(1)
         connection, address = self._listen_socket.accept()
         if not self._quiet:
@@ -206,18 +207,19 @@ def connect_ray_pdb(host=None,
         quiet = bool(os.environ.get("REMOTE_PDB_QUIET", ""))
     if not breakpoint_uuid:
         breakpoint_uuid = uuid.uuid4().hex
+    if debugger_external:
+        ip_address = ray.worker.global_worker.node_ip_address
+    else:
+        ip_address = "localhost"
     rdb = RemotePdb(
         breakpoint_uuid=breakpoint_uuid,
         host=host,
         port=port,
+        ip_address=ip_address,
         patch_stdstreams=patch_stdstreams,
         quiet=quiet)
     sockname = rdb._listen_socket.getsockname()
-    if debugger_external:
-        node_ip_address = ray.worker.global_worker.node_ip_address
-        pdb_address = "{}:{}".format(node_ip_address, sockname[1])
-    else:
-        pdb_address = "{}:{}".format(sockname[0], sockname[1])
+    pdb_address = "{}:{}".format(ip_address, sockname[1])
     parentframeinfo = inspect.getouterframes(inspect.currentframe())[2]
     data = {
         "proctitle": setproctitle.getproctitle(),
@@ -247,13 +249,16 @@ def set_trace(breakpoint_uuid=None):
     if ray.worker.global_worker.debugger_breakpoint == b"":
         frame = sys._getframe().f_back
         rdb = connect_ray_pdb(
-            None, None, False, None,
-            breakpoint_uuid.decode() if breakpoint_uuid else None)
+            host=None, port=None, patch_stdstreams=False, quiet=None,
+            breakpoint_uuid=breakpoint_uuid.decode() if breakpoint_uuid else None,
+            debugger_external=ray.worker.global_worker.ray_debugger_external)
         rdb.set_trace(frame=frame)
 
 
 def post_mortem():
-    rdb = connect_ray_pdb(None, None, False, None)
+    rdb = connect_ray_pdb(
+        host=None, port=None, patch_stdstreams=False, quet=None,
+        debugger_external=ray.worker.global_worker.ray_debugger_external)
     rdb.post_mortem()
 
 

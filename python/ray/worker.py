@@ -124,7 +124,7 @@ class Worker:
         self.debugger_get_breakpoint = b""
         # If True, make the debugger external to the node this worker is
         # running on.
-        self.debugger_external = False
+        self.ray_debugger_external = False
         self._load_code_from_local = False
         # Used to toggle whether or not logs should be filtered to only those
         # produced in the same job.
@@ -1344,7 +1344,7 @@ def connect(node,
     if mode == WORKER_MODE:
         os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
 
-    worker.debugger_external = ray_debugger_external
+    worker.ray_debugger_external = ray_debugger_external
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
@@ -1597,8 +1597,9 @@ def get(object_refs, *, timeout=None):
         if debugger_breakpoint != b"":
             frame = sys._getframe().f_back
             rdb = ray.util.pdb.connect_ray_pdb(
-                None, None, False, None,
-                debugger_breakpoint.decode() if debugger_breakpoint else None)
+                host=None, port=None, patch_stdstreams=False, quiet=None,
+                breakpoint_uuid=debugger_breakpoint.decode() if debugger_breakpoint else None,
+                debugger_external=worker.ray_debugger_external)
             rdb.set_trace(frame=frame)
 
         return values
