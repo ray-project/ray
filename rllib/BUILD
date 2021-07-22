@@ -2445,7 +2445,7 @@ py_test(
 py_test(
     name = "examples/rnnsac_stateless_cartpole",
     tags = ["examples", "examples_R"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/rnnsac_stateless_cartpole.py"]
 )
 

@@ -20,7 +20,7 @@ config = {
     "keep_checkpoints_num": 1,
     "checkpoint_score_attr": "episode_reward_mean",
     "stop": {
-        "episode_reward_mean": 75,
+        "episode_reward_mean": 65.0,
         "timesteps_total": 100000,
     },
     "metric": "episode_reward_mean",
