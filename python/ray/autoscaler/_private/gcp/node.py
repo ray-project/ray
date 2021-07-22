@@ -355,7 +355,10 @@ class GCPTPU(GCPResource):
         logger.info("wait_for_tpu_zone_operation: "
                     f"Waiting for operation {operation['name']} to finish...")
 
-        for _ in range(MAX_POLLS):
+        # TPUs take a long while to start, so we increase the MAX_POLLS
+        max_polls = MAX_POLLS * 8
+
+        for _ in range(max_polls):
             result = self.resource.projects().locations().operations().get(
                 name=f"{operation['name']}").execute()
             if "error" in result:
