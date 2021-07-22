@@ -283,12 +283,12 @@ def test_manager(workflow_start_regular_shared, tmp_path):
     all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)
     assert len(all_tasks_running) == 0
     # Half of them failed and half succeed
-    failed_jobs = workflow.list_all(workflow.WorkflowStatus.FAILED)
+    failed_jobs = workflow.list_all(workflow.WorkflowStatus.RESUMABLE)
     assert len(failed_jobs) == 50
     finished_jobs = workflow.list_all(workflow.WorkflowStatus.FINISHED)
     assert len(finished_jobs) == 50
     # Test get_status
-    assert workflow.get_status("0") == workflow.WorkflowStatus.FAILED
+    assert workflow.get_status("0") == workflow.WorkflowStatus.RESUMABLE
     assert workflow.get_status("1") == workflow.WorkflowStatus.FINISHED
     assert workflow.get_status("X") is None
     lock.acquire()

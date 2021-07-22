@@ -128,7 +128,7 @@ class WorkflowManagementActor:
         if workflow_id in self._workflow_outputs:
             raise ValueError(f"The output of workflow[id={workflow_id}] "
                              "already exists.")
-        output = recovery.resume_workflow_job(workflow_id, self._store)
+        output = recovery.resume_workflow_job.remote(workflow_id, self._store.storage_url)
         self._workflow_outputs[workflow_id] = output
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         wf_store.save_workflow_meta(
@@ -145,16 +145,16 @@ class WorkflowManagementActor:
             self._step_status.setdefault(workflow_id, {})[step_id] = status
         remaining = len(self._step_status[workflow_id])
 
-        if status != common.WorkflowStatus.FAILED and remaining != 0:
+        if status != common.WorkflowStatus.RESUMABLE and remaining != 0:
             return
 
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
 
-        if status == common.WorkflowStatus.FAILED:
+        if status == common.WorkflowStatus.RESUMABLE:
             if workflow_id in self._workflow_outputs:
                 cancel_job(self._workflow_outputs.pop(workflow_id))
             wf_store.save_workflow_meta(
-                common.WorkflowMetaData(common.WorkflowStatus.FAILED))
+                common.WorkflowMetaData(common.WorkflowStatus.RESUMABLE))
             self._step_status.pop(workflow_id)
         else:
             # remaining = 0

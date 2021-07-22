@@ -119,14 +119,14 @@ def list_all(
     ret = []
     for (k, s) in store.list_workflow():
         if s == WorkflowStatus.RUNNING and k not in runnings:
-            s = WorkflowStatus.FAILED
+            s = WorkflowStatus.RESUMABLE
         if status is None or s == status:
             ret.append((k, s))
     return ret
 
 
 def resume_all() -> List[Tuple[str, ray.ObjectRef]]:
-    all_failed = list_all(WorkflowStatus.FAILED)
+    all_failed = list_all(WorkflowStatus.RESUMABLE)
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
     except Exception as e:

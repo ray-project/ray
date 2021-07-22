@@ -180,7 +180,7 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
 
 
 def list_all(
-        status_filter: Optional[Union[WorkflowStatus, Set[WorkflowStatus]]]
+        status_filter: Optional[Union[WorkflowStatus, Set[WorkflowStatus]]]=None
 ) -> List[Tuple[str, WorkflowStatus]]:
     """List the workflow status. If status is given, it'll filter by that.
 
