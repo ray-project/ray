@@ -25,12 +25,12 @@ def _generate_node_name(labels: dict, node_suffix: str) -> str:
     return f"{name_label}-{uuid4().hex[:INSTANCE_NAME_UUID_LEN]}-{node_suffix}"
 
 
-def _flatten_dict(d: dict, parent_key: str = "", sep: str = "."):
+def _flatten_dict(d: dict, parent_key: str = "", delimiter: str = "."):
     items = []
     for k, v in d.items():
-        new_key = sep.join((parent_key, k)) if parent_key else k
+        new_key = delimiter.join((parent_key, k)) if parent_key else k
         if isinstance(v, MutableMapping):
-            items.extend(_flatten_dict(v, new_key, sep=sep).items())
+            items.extend(_flatten_dict(v, new_key, delimiter=delimiter).items())
         else:
             items.append((new_key, v))
     return dict(items)
@@ -390,7 +390,7 @@ class GCPTPU(GCPResource):
         # filter_expr cannot be passed directly to API
         # so we need to filter the results ourselves
 
-        # same logic as for GCPCompute
+        # same logic as in GCPCompute.list_instances
         def filter_instance(instance: GCPTPUNode) -> bool:
             if instance.is_terminated():
                 return False
@@ -413,7 +413,7 @@ class GCPTPU(GCPResource):
 
     def get_instance(self, node_id: str) -> "GCPTPUNode":
         instance = self.resource.projects().locations().nodes().get(
-            name=f"{self.path}/nodes/{node_id}").execute()
+            name=node_id).execute()
 
         return GCPTPUNode(instance, self)
 
@@ -469,14 +469,12 @@ class GCPTPU(GCPResource):
         else:
             result = operation
 
-        logger.info(str(result))
-
         return result, name
 
     def delete_instance(self, node_id: str,
                         wait_for_operation: bool = True) -> dict:
         operation = self.resource.projects().locations().nodes().delete(
-            name=f"{self.path}/nodes/{node_id}").execute()
+            name=node_id).execute()
 
         if wait_for_operation:
             result = self.wait_for_operation(operation)
