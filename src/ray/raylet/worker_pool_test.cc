@@ -315,7 +315,7 @@ class WorkerPoolTest : public ::testing::Test {
           auto pos = command_args.find(runtime_env_key);
           if (pos != std::string::npos) {
             runtime_env_hash =
-                std::stoi(command_args.substr(pos + runtime_env_key.size()));
+                std::stoll(command_args.substr(pos + runtime_env_key.size()));
           }
         }
         worker_pool_->PushWorker(CreateWorker(it->first, Language::PYTHON, JOB_ID,

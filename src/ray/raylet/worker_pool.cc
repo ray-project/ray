@@ -860,7 +860,7 @@ void WorkerPool::TryKillingIdleWorkers() {
   RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
 }
 
-int GetRuntimeEnvHash(const TaskSpecification &task_spec) {
+int64_t GetRuntimeEnvHash(const TaskSpecification &task_spec) {
   // We add required_resource instead of allocated_instances because allocated_instances
   // may contains resource ID.
   std::unordered_map<std::string, double> required_resource{};
