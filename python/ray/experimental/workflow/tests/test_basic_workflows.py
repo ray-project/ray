@@ -213,6 +213,106 @@ def test_step_resources(workflow_start_regular_shared, tmp_path):
     assert ray.get(obj) is None
 
 
+def test_init_twice_2(tmp_path):
+    run_string_as_driver(driver_script)
+    with pytest.raises(RuntimeError):
+        workflow.init(str(tmp_path))
+
+
+@pytest.mark.parametrize(
+    "workflow_start_regular_shared", [{
+        "namespace": "workflow",
+    }],
+    indirect=True)
+def test_manager(workflow_start_regular_shared, tmp_path):
+    # For sync between jobs
+    tmp_file = str(tmp_path / "lock")
+    lock = FileLock(tmp_file)
+    lock.acquire()
+
+    # For sync between jobs
+    flag_file = tmp_path / "flag"
+    flag_file.touch()
+
+    @workflow.step
+    def long_running(i):
+        lock = FileLock(tmp_file)
+        with lock.acquire():
+            pass
+
+        if i % 2 == 0:
+            if flag_file.exists():
+                raise ValueError()
+        return 100
+
+    outputs = [
+        long_running.step(i).run_async(workflow_id=str(i)) for i in range(100)
+    ]
+    # Test list all, it should list all jobs running
+    all_tasks = workflow.list_all()
+    assert len(all_tasks) == 100
+    all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)
+    assert dict(all_tasks) == dict(all_tasks_running)
+    assert workflow.get_status("0") == workflow.WorkflowStatus.RUNNING
+
+    # Release lock and make sure all tasks finished
+    lock.release()
+    for o in outputs:
+        try:
+            r = ray.get(o)
+        except Exception:
+            continue
+        assert 100 == r
+    all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)
+    assert len(all_tasks_running) == 0
+    # Half of them failed and half succeed
+    failed_jobs = workflow.list_all(workflow.WorkflowStatus.RESUMABLE)
+    assert len(failed_jobs) == 50
+    finished_jobs = workflow.list_all(workflow.WorkflowStatus.FINISHED)
+    assert len(finished_jobs) == 50
+
+    all_tasks_status = workflow.list_all({
+        workflow.WorkflowStatus.FINISHED, workflow.WorkflowStatus.RESUMABLE,
+        workflow.WorkflowStatus.RUNNING
+    })
+    assert len(all_tasks_status) == 100
+    assert failed_jobs == {
+        k: v
+        for (k, v) in all_tasks_status.items()
+        if v == workflow.WorkflowStatus.RESUMABLE
+    }
+    assert finished_jobs == {
+        k: v
+        for (k, v) in all_tasks_status.items()
+        if v == workflow.WorkflowStatus.FINISHED
+    }
+
+    # Test get_status
+    assert workflow.get_status("0") == workflow.WorkflowStatus.RESUMABLE
+    assert workflow.get_status("1") == workflow.WorkflowStatus.FINISHED
+    assert workflow.get_status("X") is None
+    lock.acquire()
+    r = workflow.resume("0")
+    assert workflow.get_status("0") == workflow.WorkflowStatus.RUNNING
+    flag_file.unlink()
+    lock.release()
+    assert 100 == ray.get(r)
+    assert workflow.get_status("0") == workflow.WorkflowStatus.FINISHED
+
+    # Test cancel
+    lock.acquire()
+    workflow.resume("2")
+    assert workflow.get_status("2") == workflow.WorkflowStatus.RUNNING
+    workflow.cancel("2")
+    assert workflow.get_status("2") == workflow.WorkflowStatus.CANCELED
+
+    # Now resume_all
+    resumed = workflow.resume_all()
+    assert len(resumed) == 48
+    lock.release()
+    assert [ray.get(o) for o in resumed.values()] == [100] * 48
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))

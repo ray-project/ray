@@ -2,6 +2,7 @@ import logging
 from typing import Any, Dict, List, TYPE_CHECKING
 
 import ray
+from ray.experimental.workflow import common
 from ray.experimental.workflow import recovery
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
@@ -86,6 +87,18 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef) -> Any:
     return output
 
 
+def cancel_job(obj: ray.ObjectRef):
+    return
+    # TODO (yic) Enable true canceling in ray.
+    #
+    # try:
+    #     while isinstance(obj, ray.ObjectRef):
+    #         ray.cancel(obj)
+    #         obj = ray.get(obj)
+    # except Exception:
+    #     pass
+
+
 # TODO(suquark): we may use an actor pool in the future if too much
 # concurrent workflow access blocks the actor.
 @ray.remote
@@ -96,6 +109,7 @@ class WorkflowManagementActor:
         self._store = store
         self._workflow_outputs: Dict[str, ray.ObjectRef] = {}
         self._actor_initialized: Dict[str, ray.ObjectRef] = {}
+        self._step_status: Dict[str, Dict[str, common.WorkflowStatus]] = {}
 
     def get_storage_url(self) -> str:
         """Get hte storage URL."""
@@ -114,10 +128,53 @@ class WorkflowManagementActor:
         if workflow_id in self._workflow_outputs:
             raise ValueError(f"The output of workflow[id={workflow_id}] "
                              "already exists.")
-        output = recovery.resume_workflow_job(workflow_id, self._store)
+        output = recovery.resume_workflow_job.remote(workflow_id,
+                                                     self._store.storage_url)
         self._workflow_outputs[workflow_id] = output
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
+        wf_store.save_workflow_meta(
+            common.WorkflowMetaData(common.WorkflowStatus.RUNNING))
+        self._step_status[workflow_id] = {}
         logger.info(f"Workflow job [id={workflow_id}] started.")
         return output
+
+    def update_step_status(self, workflow_id: str, step_id: str,
+                           status: common.WorkflowStatus):
+        if status == common.WorkflowStatus.FINISHED:
+            assert self._step_status[workflow_id].pop(step_id) is not None
+        else:
+            self._step_status.setdefault(workflow_id, {})[step_id] = status
+        remaining = len(self._step_status[workflow_id])
+
+        if status != common.WorkflowStatus.RESUMABLE and remaining != 0:
+            return
+
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
+
+        if status == common.WorkflowStatus.RESUMABLE:
+            if workflow_id in self._workflow_outputs:
+                cancel_job(self._workflow_outputs.pop(workflow_id))
+            wf_store.save_workflow_meta(
+                common.WorkflowMetaData(common.WorkflowStatus.RESUMABLE))
+            self._step_status.pop(workflow_id)
+        else:
+            # remaining = 0
+            wf_store.save_workflow_meta(
+                common.WorkflowMetaData(common.WorkflowStatus.FINISHED))
+            self._step_status.pop(workflow_id)
+
+    def cancel_workflow(self, workflow_id: str) -> None:
+        self._step_status.pop(workflow_id)
+        cancel_job(self._workflow_outputs.pop(workflow_id))
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
+        wf_store.save_workflow_meta(
+            common.WorkflowMetaData(common.WorkflowStatus.CANCELED))
+
+    def is_workflow_running(self, workflow_id: str) -> bool:
+        return workflow_id in self._step_status
+
+    def list_running_workflow(self) -> List[str]:
+        return list(self._step_status.keys())
 
     def init_actor(self, actor_id: str,
                    init_marker: List[ray.ObjectRef]) -> None:
@@ -174,6 +231,9 @@ class WorkflowManagementActor:
                              "the workflow result.")
         return self._workflow_outputs[workflow_id]
 
+    def get_running_workflow(self) -> List[str]:
+        return list(self._workflow_outputs.keys())
+
     def report_failure(self, workflow_id: str) -> None:
         """Report the failure of a workflow_id.
 
@@ -184,7 +244,7 @@ class WorkflowManagementActor:
         self._workflow_outputs.pop(workflow_id, None)
 
     def report_success(self, workflow_id: str) -> None:
-        """Report the failure of a workflow_id.
+        """Report the success of a workflow_id.
 
         Args:
             workflow_id: The ID of the workflow.

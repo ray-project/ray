@@ -391,8 +391,8 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
       buffer_pool_.CreateObjectReader(object_id, owner_address);
   Status status = reader_status.second;
   if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to read object " << object_id
-                   << "from Plasma store. It may have been evicted.";
+    RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
+        << "Ignoring stale read request for already deleted object: " << object_id;
     return;
   }
 
@@ -434,8 +434,8 @@ void ObjectManager::PushFromFilesystem(const ObjectID &object_id, const NodeID &
         auto optional_spilled_object =
             SpilledObjectReader::CreateSpilledObjectReader(spilled_url);
         if (!optional_spilled_object.has_value()) {
-          RAY_LOG(ERROR) << "Failed to load spilled object " << object_id
-                         << ". It may have been evicted.";
+          RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
+              << "Ignoring stale read request for already deleted object: " << object_id;
           return;
         }
         auto chunk_object_reader = std::make_shared<ChunkObjectReader>(
@@ -942,7 +942,6 @@ void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
   stats->set_object_store_bytes_avail(config_.object_store_memory);
   stats->set_num_local_objects(local_objects_.size());
   stats->set_consumed_bytes(plasma::plasma_store_runner->GetConsumedBytes());
-  stats->set_object_pulls_queued(pull_manager_->HasPullsQueued());
 }
 
 void ObjectManager::Tick(const boost::system::error_code &e) {
