@@ -68,4 +68,5 @@ You can start a ``TorchTrainer`` with the following:
     trainer1.shutdown()
     print("success!")
 
-.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+
+.. tip:: We are rolling out a lighter-weight version of RaySGD in a future version of Ray. See the documentation :ref:`here <sgd-v2-docs>`.

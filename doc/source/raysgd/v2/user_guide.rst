@@ -1,4 +1,6 @@
-.. _sgd-user-guide:
+:orphan:
+
+.. _sgd-v2-user-guide:
 
 RaySGD User Guide
 =================

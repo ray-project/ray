@@ -1,5 +1,7 @@
 :orphan:
 
+.. _sgd-v2-docs:
+
 RaySGD: Distributed Training Wrappers
 =====================================
 
@@ -54,7 +56,7 @@ Links
 -----
 
 * :ref:`API reference <TODO>`
-* :ref:`User guide <TODO>`
+* :ref:`User guide <sgd-v2-user-guide>`
 * :ref:`Architecture <TODO>`
 * :ref:`Examples <TODO>`
 
