@@ -1,3 +1,4 @@
+from enum import Enum, unique
 from collections import deque
 import re
 from typing import Tuple, Dict, List, Optional, Callable, Set, Iterator, Any
@@ -18,6 +19,20 @@ StepExecutionFunction = Callable[
 SerializedStepFunction = str
 
 
+@unique
+class WorkflowStatus(str, Enum):
+    # There is at least a remote task running in ray cluster
+    RUNNING = "RUNNING"
+    # It got canceled and can't be resumed later
+    CANCELED = "CANCELED"
+    # The step is finished. For virtual actor, it means that all
+    # writing steps has been finished.
+    FINISHED = "FINISHED"
+    # The workflow that can be resumed. Usually it's because some
+    # internal or external errors.
+    RESUMABLE = "RESUMABLE"
+
+
 @dataclass
 class WorkflowInputs:
     # The workflow step function body.
@@ -34,6 +49,12 @@ class WorkflowInputs:
     catch_exceptions: bool
     # ray_remote options
     ray_options: Dict[str, Any]
+
+
+@dataclass
+class WorkflowMetaData:
+    # The current status of the workflow
+    status: WorkflowStatus
 
 
 def slugify(value: str, allow_unicode=False) -> str:
@@ -99,6 +120,7 @@ class Workflow:
         """
         if self.executed:
             return self._output
+
         workflow_outputs = [w.execute() for w in self._input_workflows]
         # NOTE: Input placeholder is only a placeholder. It only can be
         # deserialized under a proper serialization context. Directly

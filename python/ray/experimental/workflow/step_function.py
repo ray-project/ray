@@ -8,7 +8,6 @@ from ray import ObjectRef
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow.common import (
     Workflow, StepID, WorkflowOutputType, WorkflowInputTuple)
-from ray.experimental.workflow.step_executor import execute_workflow_step
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 
@@ -77,6 +76,8 @@ class WorkflowStepFunction:
             step_max_retries: int,
             ray_options: Dict[str, Any],
             outer_most_step_id: Optional[StepID] = None) -> WorkflowOutputType:
+        from ray.experimental.workflow.step_executor import (
+            execute_workflow_step)
         return execute_workflow_step(self._func, step_id, step_inputs,
                                      catch_exceptions, step_max_retries,
                                      ray_options, outer_most_step_id)
