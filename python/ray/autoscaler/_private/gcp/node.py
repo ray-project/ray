@@ -3,8 +3,8 @@ import logging
 import abc
 import time
 from uuid import uuid4
-from collections import UserDict, MutableMapping
-from enum import Enum, auto
+from collections import UserDict
+from enum import Enum
 
 from googleapiclient.discovery import Resource
 
@@ -18,6 +18,9 @@ INSTANCE_NAME_UUID_LEN = 8
 
 
 def _generate_node_name(labels: dict, node_suffix: str) -> str:
+    """Generate node name from labels and suffix.
+
+    The suffix is expected to be one of 'compute' or 'tpu'."""
     name_label = labels[TAG_RAY_NODE_NAME]
     assert (len(name_label) <=
             (INSTANCE_NAME_MAX_LEN - INSTANCE_NAME_UUID_LEN - 1)), (
@@ -25,23 +28,15 @@ def _generate_node_name(labels: dict, node_suffix: str) -> str:
     return f"{name_label}-{uuid4().hex[:INSTANCE_NAME_UUID_LEN]}-{node_suffix}"
 
 
-def _flatten_dict(d: dict, parent_key: str = "", delimiter: str = "."):
-    items = []
-    for k, v in d.items():
-        new_key = delimiter.join((parent_key, k)) if parent_key else k
-        if isinstance(v, MutableMapping):
-            items.extend(_flatten_dict(v, new_key, delimiter=delimiter).items())
-        else:
-            items.append((new_key, v))
-    return dict(items)
-
-
 class GCPNodeType(Enum):
+    """Enum for GCP node types (compute & tpu)"""
+
     COMPUTE = "compute"
     TPU = "tpu"
 
     @staticmethod
     def from_gcp_node(node: "GCPNode"):
+        """Return GCPNodeType based on ``node``'s class"""
         if isinstance(node, GCPTPUNode):
             return GCPNodeType.TPU
         if isinstance(node, GCPComputeNode):
@@ -50,6 +45,10 @@ class GCPNodeType(Enum):
 
     @staticmethod
     def name_to_type(name: str):
+        """Provided a node name, determine the type.
+
+        This expects the name to be in format '[NAME]-[UUID]-[TYPE]',
+        where [TYPE] is either 'compute' or 'tpu'."""
         return GCPNodeType(name.split("-")[-1])
 
 
@@ -72,7 +71,7 @@ class GCPNode(UserDict, metaclass=abc.ABCMeta):
         return self.get(self.STATUS_FIELD) not in self.NON_TERMINATED_STATUSES
 
     @abc.abstractmethod
-    def get_tags(self) -> dict:
+    def get_labels(self) -> dict:
         return
 
     @abc.abstractmethod
@@ -94,7 +93,7 @@ class GCPComputeNode(GCPNode):
     RUNNING_STATUSES = {"RUNNING"}
     STATUS_FIELD = "status"
 
-    def get_tags(self) -> dict:
+    def get_labels(self) -> dict:
         return self.get("labels", {})
 
     def get_external_ip(self) -> str:
@@ -113,7 +112,7 @@ class GCPTPUNode(GCPNode):
     RUNNING_STATUSES = {"READY"}
     STATUS_FIELD = "state"
 
-    def get_tags(self) -> dict:
+    def get_labels(self) -> dict:
         return self.get("labels", {})
 
     def get_external_ip(self) -> str:
@@ -126,7 +125,7 @@ class GCPTPUNode(GCPNode):
 
 
 class GCPResource(metaclass=abc.ABCMeta):
-    """Abstraction around compute and tpu resources"""
+    """Abstraction around compute and TPU resources"""
 
     def __init__(self, resource: Resource, project_id: str,
                  availability_zone: str, cluster_name: str) -> None:
@@ -137,18 +136,23 @@ class GCPResource(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def wait_for_operation(self, operation: dict) -> dict:
-        """Waits a preset amount of time for operation to complete"""
+        """Waits a preset amount of time for operation to complete."""
         return None
 
     @abc.abstractmethod
-    def list_instances(self,
-                       tag_filters: Optional[dict] = None) -> List["GCPNode"]:
-        """Returns a list of instances"""
+    def list_instances(
+            self, label_filters: Optional[dict] = None) -> List["GCPNode"]:
+        """Returns a filtered list of all instances.
+
+        The filter removes all terminated instances and, if ``label_filters``
+        are provided, all instances which labels are not matching the
+        ones provided.
+        """
         return
 
     @abc.abstractmethod
     def get_instance(self, node_id: str) -> "GCPNode":
-        """Returns a single instance"""
+        """Returns a single instance."""
         return
 
     @abc.abstractmethod
@@ -156,7 +160,9 @@ class GCPResource(metaclass=abc.ABCMeta):
                    node: GCPNode,
                    labels: dict,
                    wait_for_operation: bool = True) -> dict:
-        """Sets labels on an instance and returns result"""
+        """Sets labels on an instance and returns result.
+
+        Completely replaces the labels dictionary."""
         return
 
     @abc.abstractmethod
@@ -165,8 +171,9 @@ class GCPResource(metaclass=abc.ABCMeta):
                         labels: dict,
                         wait_for_operation: bool = True) -> Tuple[dict, str]:
         """Creates a single instance and returns result.
-        
-        Returns a tuple of (result, node_name)."""
+
+        Returns a tuple of (result, node_name).
+        """
         return
 
     def create_instances(
@@ -176,8 +183,9 @@ class GCPResource(metaclass=abc.ABCMeta):
             count: int,
             wait_for_operation: bool = True) -> List[Tuple[dict, str]]:
         """Creates multiple instances and returns result.
-        
-        Returns a list of tuples of (result, node_name)."""
+
+        Returns a list of tuples of (result, node_name).
+        """
         operations = [
             self.create_instance(
                 base_config, labels, wait_for_operation=False)
@@ -195,7 +203,7 @@ class GCPResource(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def delete_instance(self, node_id: str,
                         wait_for_operation: bool = True) -> dict:
-        """Deletes an instance and returns result"""
+        """Deletes an instance and returns result."""
         return
 
 
@@ -224,14 +232,14 @@ class GCPCompute(GCPResource):
 
         return result
 
-    def list_instances(self, tag_filters: Optional[dict] = None
+    def list_instances(self, label_filters: Optional[dict] = None
                        ) -> List["GCPComputeNode"]:
-        tag_filters = tag_filters or {}
+        label_filters = label_filters or {}
 
-        if tag_filters:
+        if label_filters:
             label_filter_expr = "(" + " AND ".join([
                 "(labels.{key} = {value})".format(key=key, value=value)
-                for key, value in tag_filters.items()
+                for key, value in label_filters.items()
             ]) + ")"
         else:
             label_filter_expr = ""
@@ -351,7 +359,6 @@ class GCPTPU(GCPResource):
 
     # node names already contain the path, but this is required for `parent`
     # arguments
-
     @property
     def path(self):
         return f"projects/{self.project_id}/locations/{self.availability_zone}"
@@ -362,7 +369,7 @@ class GCPTPU(GCPResource):
                     f"Waiting for operation {operation['name']} to finish...")
 
         # TPUs take a long while to start, so we increase the MAX_POLLS
-        # considerably
+        # considerably - this probably could be smaller
         max_polls = MAX_POLLS * 8
 
         for _ in range(max_polls):
@@ -381,7 +388,7 @@ class GCPTPU(GCPResource):
         return result
 
     def list_instances(
-            self, tag_filters: Optional[dict] = None) -> List["GCPTPUNode"]:
+            self, label_filters: Optional[dict] = None) -> List["GCPTPUNode"]:
         response = self.resource.projects().locations().nodes().list(
             parent=self.path).execute()
 
@@ -396,9 +403,9 @@ class GCPTPU(GCPResource):
             if instance.is_terminated():
                 return False
 
-            labels = instance.get_tags()
-            if tag_filters:
-                for key, value in tag_filters.items():
+            labels = instance.get_labels()
+            if label_filters:
+                for key, value in label_filters.items():
                     if key not in labels:
                         return False
                     if value != labels[key]:
@@ -452,7 +459,7 @@ class GCPTPU(GCPResource):
         config.update({
             "labels": dict(labels,
                            **{TAG_RAY_CLUSTER_NAME: self.cluster_name}),
-            # this is required for SSH to work
+            # this is required for SSH to work, per google documentation
             "networkConfig": {
                 "enableExternalIps": True
             }

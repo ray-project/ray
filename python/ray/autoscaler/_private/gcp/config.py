@@ -27,8 +27,7 @@ DEFAULT_SERVICE_ACCOUNT_CONFIG = {
     "displayName": "Ray Autoscaler Service Account ({})".format(VERSION),
 }
 DEFAULT_SERVICE_ACCOUNT_ROLES = ("roles/storage.objectAdmin",
-                                 "roles/compute.admin",
-                                 "roles/tpu.admin",
+                                 "roles/compute.admin", "roles/tpu.admin",
                                  "roles/iam.serviceAccountUser")
 # NOTE: iam.serviceAccountUser allows the Head Node to create worker nodes
 # with ServiceAccounts.
@@ -389,7 +388,8 @@ def _configure_subnet(config, compute):
     # completely manually configured
 
     # networkInterfaces is compute, networkConfig is TPU
-    if all("networkInterfaces" in node_config or "networkConfig" in node_config for node_config in node_configs):
+    if all("networkInterfaces" in node_config or "networkConfig" in node_config
+           for node_config in node_configs):
         return config
 
     subnets = _list_subnets(config, compute)
@@ -411,15 +411,14 @@ def _configure_subnet(config, compute):
     }]
 
     for node_config in node_configs:
-        # The one not applicable for the instance will be removed during creation
+        # The not applicable key will be removed during creation
         # compute
         if "networkInterfaces" not in node_config:
             node_config["networkInterfaces"] = copy.deepcopy(
                 default_interfaces)
         # TPU
         if "networkConfig" not in node_config:
-            node_config["networkConfig"] = copy.deepcopy(
-                default_interfaces)[0]
+            node_config["networkConfig"] = copy.deepcopy(default_interfaces)[0]
             node_config["networkConfig"].pop("accessConfigs")
 
     return config
