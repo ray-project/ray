@@ -77,7 +77,7 @@ Install bazel manually from link: https://docs.bazel.build/versions/main/install
 For MacOS, run the following commands:
 
 .. tip:: Assuming you already have brew and bazel installed on your mac and you also have grpc and protobuf installed on your mac 
-consider removing those for smooth build through commands `brew uninstall grpc`, `brew uninstall protobuf`. If you have built 
+consider removing those (grpc and protobuf) for smooth build through commands `brew uninstall grpc`, `brew uninstall protobuf`. If you have built 
 the source code earlier and it still fails with error as `No such file or directory:`, try cleaning previous builds on your host 
 by running commands `brew uninstall binutils` and `bazel clean --expunge`
 
