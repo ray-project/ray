@@ -1,16 +1,16 @@
 from typing import (List, Tuple, Any, Dict, Callable, Optional, TYPE_CHECKING,
                     Union)
-
 import ray
 from ray import ObjectRef
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
-from ray.experimental.workflow.common import Workflow
 from ray.experimental.workflow import workflow_storage
+from ray.experimental.workflow.workflow_access import MANAGEMENT_ACTOR_NAME
 
 if TYPE_CHECKING:
     from ray.experimental.workflow.common import (StepID, WorkflowOutputType,
-                                                  WorkflowInputTuple)
+                                                  Workflow, WorkflowInputTuple,
+                                                  WorkflowStatus)
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 
@@ -87,7 +87,7 @@ def _resolve_step_inputs(
     return _args, _kwargs
 
 
-def execute_workflow(workflow: Workflow,
+def execute_workflow(workflow: "Workflow",
                      outer_most_step_id: Optional[str] = None
                      ) -> ray.ObjectRef:
     """Execute workflow.
@@ -128,7 +128,7 @@ def execute_workflow(workflow: Workflow,
 
 def commit_step(store: workflow_storage.WorkflowStorage,
                 step_id: "StepID",
-                ret: Union[Workflow, Any],
+                ret: Union["Workflow", Any],
                 outer_most_step_id: Optional[str] = None):
     """Checkpoint the step output.
     Args:
@@ -139,6 +139,7 @@ def commit_step(store: workflow_storage.WorkflowStorage,
             does not exists. See "step_executor.execute_workflow" for detailed
             explanation.
     """
+    from ray.experimental.workflow.common import Workflow
     if isinstance(ret, Workflow):
         store.save_subworkflow(ret)
     store.save_step_output(step_id, ret, outer_most_step_id)
@@ -170,6 +171,8 @@ def _workflow_step_executor(
     err = None
     # step_max_retries are for application level failure.
     # For ray failure, we should use max_retries.
+    from ray.experimental.workflow.common import WorkflowStatus
+    from ray.experimental.workflow.common import Workflow
     for _ in range(step_max_retries):
         try:
             workflow_context.update_workflow_step_context(context, step_id)
@@ -187,10 +190,13 @@ def _workflow_step_executor(
         except BaseException as e:
             err = e
     if catch_exceptions:
+        _record_step_status(step_id, WorkflowStatus.FINISHED)
         return (ret, err)
     else:
         if err is not None:
+            _record_step_status(step_id, WorkflowStatus.RESUMABLE)
             raise err
+        _record_step_status(step_id, WorkflowStatus.FINISHED)
         return ret
 
 
@@ -199,6 +205,16 @@ def execute_workflow_step(
         step_inputs: "WorkflowInputTuple", catch_exceptions: bool,
         step_max_retries: int, ray_options: Dict[str, Any],
         outer_most_step_id: "StepID") -> "WorkflowOutputType":
+    from ray.experimental.workflow.common import WorkflowStatus
+    _record_step_status(step_id, WorkflowStatus.RUNNING)
     return _workflow_step_executor.options(**ray_options).remote(
         step_func, workflow_context.get_workflow_step_context(), step_id,
         step_inputs, outer_most_step_id, catch_exceptions, step_max_retries)
+
+
+def _record_step_status(step_id: "StepID", status: "WorkflowStatus") -> None:
+    workflow_id = workflow_context.get_current_workflow_id()
+    workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    ray.get(
+        workflow_manager.update_step_status.remote(workflow_id, step_id,
+                                                   status))

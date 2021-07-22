@@ -1,4 +1,5 @@
 import time
+from filelock import FileLock
 
 import pytest
 import ray
@@ -99,3 +100,40 @@ def test_actor_ready(workflow_start_regular):
         actor.readonly_get.run()
     ray.get(actor.ready())
     assert actor.readonly_get.run() == 42
+
+
+@pytest.mark.parametrize(
+    "workflow_start_regular", [{
+        "num_cpus": 4
+    }], indirect=True)
+def test_manager(workflow_start_regular, tmp_path):
+    lock_file = tmp_path / "lock"
+
+    @workflow.virtual_actor
+    class LockCounter:
+        def __init__(self, lck):
+            self.counter = 0
+            self.lck = lck
+
+        @workflow.virtual_actor.readonly
+        def val(self):
+            with FileLock(self.lck):
+                return self.counter
+
+        def __getstate__(self):
+            return (self.lck, self.counter)
+
+        def __setstate__(self, state):
+            self.lck, self.counter = state
+
+    actor = LockCounter.get_or_create("counter", str(lock_file))
+    ray.get(actor.ready())
+
+    lock = FileLock(lock_file)
+    lock.acquire()
+
+    assert {"counter": workflow.FINISHED} == workflow.list_all()
+
+    actor.val.run_async()
+    # Readonly function won't make the workflow running
+    assert {"counter": workflow.FINISHED} == workflow.list_all()

@@ -292,8 +292,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   cluster_resource_scheduler_ =
       std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
           self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap(),
-          [this]() { return object_manager_.GetUsedMemory(); },
-          [this]() { return object_manager_.PullManagerHasPullsQueued(); }));
+          [this]() { return object_manager_.GetUsedMemory(); }));
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
@@ -2263,9 +2262,6 @@ rpc::ObjectStoreStats AccumulateStoreStats(
                                       cur_store.num_local_objects());
     store_stats.set_consumed_bytes(store_stats.consumed_bytes() +
                                    cur_store.consumed_bytes());
-    if (cur_store.object_pulls_queued()) {
-      store_stats.set_object_pulls_queued(true);
-    }
   }
   return store_stats;
 }
