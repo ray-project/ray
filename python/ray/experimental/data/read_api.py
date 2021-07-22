@@ -266,7 +266,8 @@ def read_binary_files(
         parallelism=parallelism,
         paths=paths,
         include_paths=include_paths,
-        filesystem=filesystem)
+        filesystem=filesystem,
+        schema=bytes)
 
 
 @PublicAPI(stability="beta")

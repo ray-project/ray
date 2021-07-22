@@ -374,6 +374,8 @@ def test_read_binary_files(ray_start_regular_shared):
             assert expected == item
         # Test metadata ops.
         assert ds.count() == 10
+        assert "bytes" in str(ds.schema()), ds
+        assert "bytes" in str(ds), ds
 
 
 def test_read_binary_files_with_fs(ray_start_regular_shared):

@@ -29,6 +29,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                      parallelism: int,
                      paths: Union[str, List[str]],
                      filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                     schema: Optional[Union[
+                         type, "pyarrow.lib.Schema"]] = None,
                      **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
         """
@@ -67,7 +69,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 BlockMetadata(
                     num_rows=None,
                     size_bytes=sum(file_sizes),
-                    schema=None,
+                    schema=schema,
                     input_files=read_paths)) for read_paths, file_sizes in zip(
                         np.array_split(paths, parallelism),
                         np.array_split(file_sizes, parallelism))
