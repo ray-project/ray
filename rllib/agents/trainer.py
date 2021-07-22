@@ -432,6 +432,13 @@ COMMON_CONFIG: TrainerConfigDict = {
         # of (policy_cls, obs_space, act_space, config). This defines the
         # observation and action spaces of the policies and any extra config.
         "policies": {},
+        # Keep this many policies in the "policy_map" (before writing
+        # least-recently used ones to disk/S3).
+        "policy_map_capacity": 100,
+        # Where to store overflowing (least-recently used) policies?
+        # Could be a directory (str) or an S3 location. None for using
+        # the default output dir.
+        "policy_map_cache": None,
         # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,
         # Optional list of policies to train, or None for all policies.
@@ -689,8 +696,7 @@ class Trainer(Trainable):
         # Merge the supplied config with the class default, but store the
         # user-provided one.
         self.raw_user_config = config
-        self.config = Trainer.merge_trainer_configs(self._default_config,
-                                                    config)
+        self.config = self.merge_trainer_configs(self._default_config, config)
 
         # Check and resolve DL framework settings.
         # Enable eager/tracing support.
@@ -1181,7 +1187,7 @@ class Trainer(Trainable):
                 local worker).
         """
 
-        def fn(worker):
+        def fn(worker: RolloutWorker):
             # `foreach_worker` function: Adds the policy the the worker (and
             # maybe changes its policy_mapping_fn - if provided here).
             worker.add_policy(
@@ -1405,7 +1411,7 @@ class Trainer(Trainable):
                     f"but got {type(policies[pid].config)}!")
 
         framework = config.get("framework")
-        # Multi-GPU setting: Must use TFMultiGPU if tf.
+        # Multi-GPU setting: Must use MultiGPUTrainOneStep if tf.
         if config.get("num_gpus", 0) > 1:
             if framework in ["tfe", "tf2"]:
                 raise ValueError("`num_gpus` > 1 not supported yet for "
@@ -1416,7 +1422,8 @@ class Trainer(Trainable):
                     "Consider `simple_optimizer=False`.")
             config["simple_optimizer"] = framework == "torch"
         # Auto-setting: Use simple-optimizer for torch/tfe or multiagent,
-        # otherwise: TFMultiGPU (if supported by the algo's execution plan).
+        # otherwise: MultiGPUTrainOneStep (if supported by the algo's execution
+        # plan).
         elif simple_optim_setting == DEPRECATED_VALUE:
             # Non-TF: Must use simple optimizer.
             if framework != "tf":

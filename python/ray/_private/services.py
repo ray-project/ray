@@ -17,12 +17,14 @@ import sys
 import time
 from typing import Optional
 
-import colorama
-import psutil
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
 import redis
+
+# Import psutil and colorama after ray so the packaged version is used.
+import colorama
+import psutil
 
 resource = None
 if sys.platform != "win32":
@@ -1173,11 +1175,15 @@ def start_dashboard(require_dashboard,
         # Make sure the process can start.
         try:
             import aiohttp  # noqa: F401
+            import aioredis  # noqa: F401
+            import aiohttp_cors  # noqa: F401
             import grpc  # noqa: F401
         except ImportError:
             warning_message = (
-                "Missing dependencies for dashboard. Please run "
-                "pip install aiohttp grpcio'.")
+                "Not all Ray Dashboard dependencies were found. "
+                "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
+                "only be usable via `pip install 'ray[default]'`. Please "
+                "update your install command.")
             raise ImportError(warning_message)
 
         # Start the dashboard process.

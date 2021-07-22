@@ -13,8 +13,8 @@ import traceback
 import aiohttp
 import aiohttp.web
 import aiohttp_cors
-import psutil
 from aiohttp import hdrs
+
 from grpc.experimental import aio as aiogrpc
 
 import ray
@@ -26,6 +26,9 @@ import ray._private.utils
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 try:
     create_task = asyncio.create_task

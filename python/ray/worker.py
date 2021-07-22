@@ -1,5 +1,4 @@
 from contextlib import contextmanager
-import colorama
 import atexit
 import faulthandler
 import hashlib
@@ -33,6 +32,7 @@ import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 import ray
+import colorama
 import setproctitle
 import ray.state
 
@@ -249,7 +249,7 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None):
+    def put_object(self, value, object_ref=None, owner_address=None):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -263,6 +263,7 @@ class Worker:
             value: The value to put in the object store.
             object_ref (ObjectRef): The object ref of the value to be
                 put. If None, one will be generated.
+            owner_address: The serialized address of object's owner.
 
         Returns:
             ObjectRef: The object ref the object was put under.
@@ -294,7 +295,9 @@ class Worker:
         # reference counter.
         return ray.ObjectRef(
             self.core_worker.put_serialized_object(
-                serialized_value, object_ref=object_ref))
+                serialized_value,
+                object_ref=object_ref,
+                owner_address=owner_address))
 
     def raise_errors(self, data_metadata_pairs, object_refs):
         out = self.deserialize_objects(data_metadata_pairs, object_refs)
@@ -985,6 +988,7 @@ def shutdown(_exiting_interpreter=False):
     if hasattr(global_worker, "gcs_client"):
         del global_worker.gcs_client
     if hasattr(global_worker, "core_worker"):
+        global_worker.core_worker.shutdown()
         del global_worker.core_worker
 
     # Disconnect global state from GCS.
@@ -1594,22 +1598,45 @@ def get(object_refs, *, timeout=None):
 
 @PublicAPI
 @client_mode_hook
-def put(value):
+def put(value, *, _owner=None):
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
 
     Args:
         value: The Python object to be stored.
+        _owner: The actor that should own this object. This allows creating
+            objects with lifetimes decoupled from that of the creating process.
+            Note that the owner actor must be passed a reference to the object
+            prior to the object creator exiting, otherwise the reference will
+            still be lost.
 
     Returns:
         The object ref assigned to this value.
     """
     worker = global_worker
     worker.check_connected()
+
+    if _owner is None:
+        serialize_owner_address = None
+    elif isinstance(_owner, ray.actor.ActorHandle):
+        # Ensure `ray.state.state.global_state_accessor` is not None
+        ray.state.state._check_connected()
+        owner_address = ray.gcs_utils.ActorTableData.FromString(
+            ray.state.state.global_state_accessor.get_actor_info(
+                _owner._actor_id)).address
+        if len(owner_address.worker_id) == 0:
+            raise RuntimeError(
+                f"{_owner} is not alive, it's worker_id is empty!")
+        serialize_owner_address = owner_address.SerializeToString()
+    else:
+        raise TypeError(
+            f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
+
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value)
+            object_ref = worker.put_object(
+                value, owner_address=serialize_owner_address)
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "
@@ -1743,7 +1770,14 @@ def get_actor(name):
         raise ValueError("Please supply a non-empty value to get_actor")
     worker = global_worker
     worker.check_connected()
-    return worker.core_worker.get_named_actor_handle(name)
+    split_names = name.split("/", maxsplit=1)
+    if len(split_names) <= 1:
+        name = split_names[0]
+        namespace = ""
+    else:
+        # must be length 2
+        namespace, name = split_names
+    return worker.core_worker.get_named_actor_handle(name, namespace)
 
 
 @PublicAPI
