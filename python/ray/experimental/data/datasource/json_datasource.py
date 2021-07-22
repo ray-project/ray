@@ -16,8 +16,8 @@ class JSONDatasource(FileBasedDatasource):
         ... {"a": 1, "b": "foo"}
     """
 
-    def _read_file(
-            self, f: "pyarrow.NativeFile", path: str, **arrow_reader_args):
+    def _read_file(self, f: "pyarrow.NativeFile", path: str,
+                   **arrow_reader_args):
         from pyarrow import json
 
         read_options = arrow_reader_args.pop(

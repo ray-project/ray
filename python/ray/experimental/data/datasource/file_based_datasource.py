@@ -25,13 +25,13 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     Current subclasses: JSONDatasource, CSVDatasource
     """
 
-    def prepare_read(self,
-                     parallelism: int,
-                     paths: Union[str, List[str]],
-                     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-                     schema: Optional[Union[
-                         type, "pyarrow.lib.Schema"]] = None,
-                     **reader_args) -> List[ReadTask]:
+    def prepare_read(
+            self,
+            parallelism: int,
+            paths: Union[str, List[str]],
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+            schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+            **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
         """
         import pyarrow as pa
