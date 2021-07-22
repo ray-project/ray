@@ -73,7 +73,7 @@ config = {
 
 if __name__ == "__main__":
     # INIT
-    ray.init(local_mode=True)
+    ray.init()
 
     # TRAIN
     results = tune.run("RNNSAC", **config)
