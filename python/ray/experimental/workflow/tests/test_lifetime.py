@@ -44,3 +44,8 @@ def test_workflow_lifetime_2(call_ray_start):
     workflow.init()
     output = workflow.get_output("driver_terminated")
     assert ray.get(output) == 20
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

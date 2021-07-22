@@ -159,3 +159,8 @@ def test_resume_different_storage(ray_start_regular):
     constant.step().run(workflow_id="const")
     assert ray.get(workflow.resume(workflow_id="const")) == 31416
     shutil.rmtree(tmp_dir)
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

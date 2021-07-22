@@ -232,3 +232,8 @@ def test_init_twice_2(tmp_path):
     run_string_as_driver(driver_script)
     with pytest.raises(RuntimeError):
         workflow.init(str(tmp_path))
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
