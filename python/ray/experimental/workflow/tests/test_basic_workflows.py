@@ -213,12 +213,6 @@ def test_step_resources(workflow_start_regular_shared, tmp_path):
     assert ray.get(obj) is None
 
 
-def test_init_twice_2(tmp_path):
-    run_string_as_driver(driver_script)
-    with pytest.raises(RuntimeError):
-        workflow.init(str(tmp_path))
-
-
 @pytest.mark.parametrize(
     "workflow_start_regular_shared", [{
         "namespace": "workflow",
