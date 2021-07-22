@@ -62,10 +62,6 @@ def env_creator(args):
 register_env("RockPaperScissors",
              lambda config: PettingZooEnv(env_creator(config)))
 
-env_for_spaces = PettingZooEnv(env_creator({}))
-obs_space = env_for_spaces.observation_space
-act_space = env_for_spaces.action_space
-
 
 def run_same_policy(args, stop):
     """Use the same policy for both agents (trivial case)."""
