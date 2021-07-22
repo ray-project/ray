@@ -22,9 +22,4 @@ class CSVDatasource(FileBasedDatasource):
 
         read_options = arrow_reader_args.pop(
             "read_options", csv.ReadOptions(use_threads=False))
-        include_paths = arrow_reader_args.pop("include_paths", False)
-        data = csv.read_csv(f, read_options=read_options, **arrow_reader_args)
-        if include_paths:
-            return path, data
-        else:
-            return data
+        return csv.read_csv(f, read_options=read_options, **arrow_reader_args)

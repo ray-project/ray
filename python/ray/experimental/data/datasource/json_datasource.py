@@ -22,10 +22,5 @@ class JSONDatasource(FileBasedDatasource):
 
         read_options = arrow_reader_args.pop(
             "read_options", json.ReadOptions(use_threads=False))
-        include_paths = arrow_reader_args.pop("include_paths", False)
-        data = json.read_json(
+        return json.read_json(
             f, read_options=read_options, **arrow_reader_args)
-        if include_paths:
-            return path, data
-        else:
-            return data
