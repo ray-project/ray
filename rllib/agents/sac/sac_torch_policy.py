@@ -3,7 +3,7 @@ PyTorch policy class used for SAC.
 """
 
 import gym
-from gym.spaces import Discrete
+from gym.spaces import Box, Discrete
 import logging
 from typing import Dict, List, Optional, Tuple, Type, Union
 
@@ -59,6 +59,7 @@ def _get_dist_class(policy: Policy,
     elif isinstance(action_space, Simplex):
         return TorchDirichlet
     else:
+        assert isinstance(action_space, Box)
         if config["normalize_actions"]:
             return TorchSquashedGaussian if \
                 not config["_use_beta_distribution"] else TorchBeta

@@ -434,7 +434,7 @@ Runtime Environments (Experimental)
 
 On Mac OS and Linux, Ray 1.4+ supports dynamically setting the runtime environment of tasks, actors, and jobs so that they can depend on different Python libraries (e.g., conda environments, pip dependencies) while all running on the same Ray cluster.
 
-The ``runtime_env`` is a (JSON-serializable) dictionary that can be passed as an option to tasks and actors, and can also be passed to ``ray.init()`` and ``ray.client().connect()``.
+The ``runtime_env`` is a (JSON-serializable) dictionary that can be passed as an option to tasks and actors, and can also be passed to ``ray.init()``.
 The runtime environment defines the dependencies required for your workload.
 
 You can specify a runtime environment for your whole job using ``ray.init()`` or Ray Client...
@@ -449,9 +449,10 @@ You can specify a runtime environment for your whole job using ``ray.init()`` or
 
 .. code-block:: python
 
-    ray.client("localhost:10001").env(runtime_env).connect()
+    # Using Ray Client
+    ray.init("ray://localhost:10001", runtime_env=runtime_env)
 
-...or specify per-actor or per-task using ``.options()``:
+...or specify per-actor or per-task in the ``@ray.remote()`` decorator or by using ``.options()``:
 
 .. literalinclude:: ../examples/doc_code/runtime_env_example.py
    :language: python
@@ -473,7 +474,7 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
   Note: Setting this option per-task or per-actor is currently unsupported.
 
 - ``pip`` (List[str] | str): Either a list of pip packages, or a string containing the path to a pip 
-  `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file.
+  `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file.  The path may be an absolute path or a relative path.  (Note: A relative path will be interpreted relative to ``working_dir`` if ``working_dir`` is specified.)
   This will be dynamically installed in the ``runtime_env``.
   To use a library like Ray Serve or Ray Tune, you will need to include ``"ray[serve]"`` or ``"ray[tune]"`` here.
 
@@ -481,9 +482,9 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``"./requirements.txt"``
 
-- ``conda`` (dict | str): Either a dict representing the conda environment YAML, a string containing the path to a 
+- ``conda`` (dict | str): Either (1) a dict representing the conda environment YAML, (2) a string containing the path to a 
   `conda “environment.yml” <https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually>`_ file,
-  or the name of a local conda env already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
+  or (3) the name of a local conda env already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
   In the first two cases, the Ray and Python dependencies will be automatically injected into the environment to ensure compatibility, so there is no need to manually include them.  
   Note that the ``conda`` and ``pip`` keys of ``runtime_env`` cannot both be specified at the same time---to use them together, please use ``conda`` and add your pip dependencies in the ``"pip"`` field in your conda ``environment.yaml``.
 
@@ -493,13 +494,18 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``"pytorch_p36"``
 
+  Note: if specifying the path to an "environment.yml" file, you may provide an absolute path or a relative path.  A relative path will be interpreted relative to ``working_dir`` if ``working_dir`` is specified.
+
 - ``env_vars`` (Dict[str, str]): Environment variables to set.
 
   - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
 
 The runtime env is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor, once set.
 
-If a child actor or task specifies a new ``runtime_env``, it will be merged with the parent’s ``runtime_env`` via a simple dict update.
+If a child actor or task specifies a new ``runtime_env``, it will be merged with the parent’s ``runtime_env`` via a simple dict update.  
+For example, if ``runtime_env["pip"]`` is specified, it will override the ``runtime_env["pip"]`` field of the parent.
+The one exception is the field ``runtime_env["env_vars"]``.  This field will be `merged` with the ```runtime_env["env_vars"]`` dict of the parent.  
+This allows for an environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
 
 Here are some examples of runtime envs combining multiple options:
 

@@ -169,6 +169,10 @@ class Tee(object):
         self.stream1 = stream1
         self.stream2 = stream2
 
+    def seek(self, *args, **kwargs):
+        self.stream1.seek(*args, **kwargs)
+        self.stream2.seek(*args, **kwargs)
+
     def write(self, *args, **kwargs):
         self.stream1.write(*args, **kwargs)
         self.stream2.write(*args, **kwargs)
@@ -176,6 +180,36 @@ class Tee(object):
     def flush(self, *args, **kwargs):
         self.stream1.flush(*args, **kwargs)
         self.stream2.flush(*args, **kwargs)
+
+    @property
+    def encoding(self):
+        if hasattr(self.stream1, "encoding"):
+            return self.stream1.encoding
+        return self.stream2.encoding
+
+    @property
+    def error(self):
+        if hasattr(self.stream1, "error"):
+            return self.stream1.error
+        return self.stream2.error
+
+    @property
+    def newlines(self):
+        if hasattr(self.stream1, "newlines"):
+            return self.stream1.newlines
+        return self.stream2.newlines
+
+    def detach(self):
+        raise NotImplementedError
+
+    def read(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def readline(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def tell(self, *args, **kwargs):
+        raise NotImplementedError
 
 
 def date_str():
@@ -250,7 +284,12 @@ def deep_update(original,
 
 
 def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
-    dt = copy.deepcopy(dt)
+    """Flatten dict.
+
+    Output and input are of the same dict type.
+    Input dict remains the same after the operation.
+    """
+    dt = copy.copy(dt)
     if prevent_delimiter and any(delimiter in key for key in dt):
         # Raise if delimiter is any of the keys
         raise ValueError(
@@ -263,7 +302,7 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
             if isinstance(value, dict):
                 for subkey, v in value.items():
                     if prevent_delimiter and delimiter in subkey:
-                        # Raise  if delimiter is in any of the subkeys
+                        # Raise if delimiter is in any of the subkeys
                         raise ValueError(
                             "Found delimiter `{}` in key when trying to "
                             "flatten array. Please avoid using the delimiter "

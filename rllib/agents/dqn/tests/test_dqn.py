@@ -106,14 +106,14 @@ class TestDQN(unittest.TestCase):
             # Default EpsilonGreedy setup.
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             # Setting explore=False should always return the same action.
-            a_ = trainer.compute_action(obs, explore=False)
+            a_ = trainer.compute_single_action(obs, explore=False)
             for _ in range(50):
-                a = trainer.compute_action(obs, explore=False)
+                a = trainer.compute_single_action(obs, explore=False)
                 check(a, a_)
             # explore=None (default: explore) should return different actions.
             actions = []
             for _ in range(50):
-                actions.append(trainer.compute_action(obs))
+                actions.append(trainer.compute_single_action(obs))
             check(np.std(actions), 0.0, false=True)
             trainer.stop()
 
@@ -125,9 +125,9 @@ class TestDQN(unittest.TestCase):
             }
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             # Due to the low temp, always expect the same action.
-            actions = [trainer.compute_action(obs)]
+            actions = [trainer.compute_single_action(obs)]
             for _ in range(50):
-                actions.append(trainer.compute_action(obs))
+                actions.append(trainer.compute_single_action(obs))
             check(np.std(actions), 0.0, decimals=3)
             trainer.stop()
 
@@ -137,16 +137,16 @@ class TestDQN(unittest.TestCase):
 
             # Even with the higher temperature, if we set explore=False, we
             # should expect the same actions always.
-            a_ = trainer.compute_action(obs, explore=False)
+            a_ = trainer.compute_single_action(obs, explore=False)
             for _ in range(50):
-                a = trainer.compute_action(obs, explore=False)
+                a = trainer.compute_single_action(obs, explore=False)
                 check(a, a_)
 
             # Due to the higher temp, expect different actions avg'ing
             # around 1.5.
             actions = []
             for _ in range(300):
-                actions.append(trainer.compute_action(obs))
+                actions.append(trainer.compute_single_action(obs))
             check(np.std(actions), 0.0, false=True)
             trainer.stop()
 
@@ -156,7 +156,7 @@ class TestDQN(unittest.TestCase):
             trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
             actions = []
             for _ in range(300):
-                actions.append(trainer.compute_action(obs))
+                actions.append(trainer.compute_single_action(obs))
             check(np.std(actions), 0.0, false=True)
             trainer.stop()
 

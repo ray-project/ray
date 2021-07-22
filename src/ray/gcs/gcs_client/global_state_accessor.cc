@@ -23,9 +23,11 @@ namespace gcs {
 GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
                                          const std::string &redis_password) {
   RAY_LOG(DEBUG) << "Redis server address = " << redis_address;
+  redis_address_ = redis_address;
   std::vector<std::string> address;
   boost::split(address, redis_address, boost::is_any_of(":"));
   RAY_CHECK(address.size() == 2);
+  redis_ip_address_ = address[0];
   GcsClientOptions options;
   options.server_ip_ = address[0];
   options.server_port_ = std::stoi(address[1]);
@@ -258,6 +260,114 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
           placement_group_table_data, promise)));
   promise.get_future().get();
   return placement_group_table_data;
+}
+
+std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::string &key) {
+  std::string value;
+  Status status = gcs_client_->InternalKV().Get(key, value);
+  return status.ok() ? std::make_unique<std::string>(value) : nullptr;
+}
+
+std::string GlobalStateAccessor::GetSystemConfig() {
+  std::promise<std::string> promise;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetInternalConfig(
+      [&promise](const Status &status,
+                 const boost::optional<std::string> &stored_raylet_config) {
+        RAY_CHECK_OK(status);
+        promise.set_value(*stored_raylet_config);
+      }));
+  auto future = promise.get_future();
+  if (future.wait_for(std::chrono::seconds(
+          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+      std::future_status::ready) {
+    RAY_LOG(FATAL) << "Failed to get system config within the timeout setting.";
+  }
+  return future.get();
+}
+
+ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
+    const std::string &node_ip_address, std::string *node_to_connect) {
+  auto start_ms = current_time_ms();
+  while (true) {
+    std::promise<std::pair<Status, std::vector<rpc::GcsNodeInfo>>> promise;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
+        [&promise](Status status, const std::vector<rpc::GcsNodeInfo> &nodes) {
+          promise.set_value(
+              std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, nodes));
+        }));
+    auto result = promise.get_future().get();
+    auto status = result.first;
+    if (!status.ok()) {
+      return status;
+    }
+
+    // Deal with alive nodes only
+    std::vector<rpc::GcsNodeInfo> nodes;
+    std::copy_if(result.second.begin(), result.second.end(), std::back_inserter(nodes),
+                 [](const rpc::GcsNodeInfo &node) {
+                   return node.state() == rpc::GcsNodeInfo::ALIVE;
+                 });
+
+    if (nodes.empty()) {
+      status = Status::NotFound("Redis has started but no raylets have registered yet.");
+    } else {
+      int relevant_client_index = -1;
+      int head_node_client_index = -1;
+      for (int i = 0; i < static_cast<int>(nodes.size()); i++) {
+        const auto &node = nodes[i];
+        std::string ip_address = node.node_manager_address();
+        if (ip_address == node_ip_address) {
+          relevant_client_index = i;
+          break;
+        }
+        // TODO(kfstorm): Do we need to replace `node_ip_address` with
+        // `get_node_ip_address()`?
+        if ((ip_address == "127.0.0.1" && redis_ip_address_ == node_ip_address) ||
+            ip_address == redis_ip_address_) {
+          head_node_client_index = i;
+        }
+      }
+
+      if (relevant_client_index < 0 && head_node_client_index >= 0) {
+        RAY_LOG(INFO) << "This node has an IP address of " << node_ip_address
+                      << ", while we can not found the matched Raylet address. "
+                      << "This maybe come from when you connect the Ray cluster "
+                      << "with a different IP address or connect a container.";
+        relevant_client_index = head_node_client_index;
+      }
+      if (relevant_client_index < 0) {
+        std::ostringstream oss;
+        oss << "This node has an IP address of " << node_ip_address << ", and Ray "
+            << "expects this IP address to be either the Redis address or one of"
+            << " the Raylet addresses. Connected to Redis at " << redis_address_
+            << " and found raylets at ";
+        for (size_t i = 0; i < nodes.size(); i++) {
+          if (i > 0) {
+            oss << ", ";
+          }
+          oss << nodes[i].node_manager_address();
+        }
+        oss << " but none of these match this node's IP " << node_ip_address
+            << ". Are any of these actually a different IP address for the same node?"
+            << "You might need to provide --node-ip-address to specify the IP "
+            << "address that the head should use when sending to this node.";
+        status = Status::NotFound(oss.str());
+      } else {
+        *node_to_connect = nodes[relevant_client_index].SerializeAsString();
+        return Status::OK();
+      }
+    }
+
+    if (current_time_ms() - start_ms >=
+        RayConfig::instance().raylet_start_wait_time_s() * 1000) {
+      return status;
+    }
+    RAY_LOG(WARNING) << "Some processes that the driver needs to connect to have "
+                        "not registered with Redis, so retrying. Have you run "
+                        "'ray start' on this node?";
+    // Some of the information may not be in Redis yet, so wait a little bit.
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+  }
 }
 
 }  // namespace gcs

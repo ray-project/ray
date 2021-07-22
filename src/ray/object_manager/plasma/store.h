@@ -31,10 +31,10 @@
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/create_request_queue.h"
+#include "ray/object_manager/plasma/eviction_policy.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
-#include "ray/object_manager/plasma/quota_aware_policy.h"
 
 namespace plasma {
 
@@ -54,6 +54,7 @@ class PlasmaStore {
   PlasmaStore(instrumented_io_context &main_service, std::string directory,
               std::string fallback_directory, bool hugepages_enabled,
               const std::string &socket_name, uint32_t delay_on_oom_ms,
+              float object_spilling_threshold,
               ray::SpillObjectsCallback spill_objects_callback,
               std::function<void()> object_store_full_callback,
               ray::AddObjectCallback add_object_callback,
@@ -219,7 +220,8 @@ class PlasmaStore {
  private:
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                         const std::vector<uint8_t> &message,
-                                        bool fallback_allocator, PlasmaObject *object);
+                                        bool fallback_allocator, PlasmaObject *object,
+                                        bool *spilling_required);
 
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
                            const ObjectID &object_id, uint64_t req_id);
@@ -266,7 +268,7 @@ class PlasmaStore {
   /// to the eviction policy.
   PlasmaStoreInfo store_info_;
   /// The state that is managed by the eviction policy.
-  QuotaAwarePolicy eviction_policy_;
+  EvictionPolicy eviction_policy_;
   /// A hash table mapping object IDs to a vector of the get requests that are
   /// waiting for the object to arrive.
   std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
@@ -294,6 +296,9 @@ class PlasmaStore {
   /// The amount of time to wait before retrying a creation request after an
   /// OOM error.
   const uint32_t delay_on_oom_ms_;
+
+  /// The percentage of object store memory used above which spilling is triggered.
+  const float object_spilling_threshold_;
 
   /// The amount of time to wait between logging space usage debug messages.
   const uint64_t usage_log_interval_ns_;

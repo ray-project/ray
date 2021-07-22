@@ -20,14 +20,19 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/id.h"
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
+
+namespace ray {
 
 /// List of predefined resources.
 enum PredefinedResources { CPU, MEM, GPU, OBJECT_STORE_MEM, PredefinedResources_MAX };
 
 const std::string ResourceEnumToString(PredefinedResources resource);
+
+const PredefinedResources ResourceStringToEnum(const std::string &resource);
 
 /// Helper function to compare two vectors with FixedPoint values.
 bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
@@ -54,7 +59,7 @@ struct ResourceInstanceCapacities {
 };
 
 // Data structure specifying the capacity of each resource requested by a task.
-class TaskRequest {
+class ResourceRequest {
  public:
   /// List of predefined resources required by the task.
   std::vector<FixedPoint> predefined_resources;
@@ -79,7 +84,7 @@ class TaskResourceInstances {
   const std::vector<FixedPoint> &Get(const std::string &resource_name,
                                      const StringIdMap &string_id_map) const;
   /// For each resource of this request aggregate its instances.
-  TaskRequest ToTaskRequest() const;
+  ResourceRequest ToResourceRequest() const;
   /// Get CPU instances only.
   std::vector<FixedPoint> GetCPUInstances() const {
     if (!this->predefined_resources.empty()) {
@@ -150,10 +155,10 @@ class NodeResources {
   float CalculateCriticalResourceUtilization() const;
   /// Returns true if the node has the available resources to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
-  bool IsAvailable(const TaskRequest &task_req) const;
+  bool IsAvailable(const ResourceRequest &resource_request) const;
   /// Returns true if the node's total resources are enough to run the task.
   /// Note: This doesn't account for the binpacking of unit resources.
-  bool IsFeasible(const TaskRequest &task_req) const;
+  bool IsFeasible(const ResourceRequest &resource_request) const;
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other);
   bool operator!=(const NodeResources &other);
@@ -206,13 +211,15 @@ struct Node {
   NodeResources local_view_;
 };
 
-/// \request Conversion result to a TaskRequest data structure.
+/// \request Conversion result to a ResourceRequest data structure.
 NodeResources ResourceMapToNodeResources(
     StringIdMap &string_to_int_map,
     const std::unordered_map<std::string, double> &resource_map_total,
     const std::unordered_map<std::string, double> &resource_map_available);
 
-/// Convert a map of resources to a TaskRequest data structure.
-TaskRequest ResourceMapToTaskRequest(
+/// Convert a map of resources to a ResourceRequest data structure.
+ResourceRequest ResourceMapToResourceRequest(
     StringIdMap &string_to_int_map,
     const std::unordered_map<std::string, double> &resource_map);
+
+}  // namespace ray
