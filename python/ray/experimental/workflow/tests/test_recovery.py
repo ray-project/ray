@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray.test_utils import run_string_as_driver_nonblocking
-from ray.exceptions import RaySystemError, RayTaskError
+from ray.exceptions import RaySystemError
 from ray.experimental import workflow
 from ray.experimental.workflow.tests import utils
 from ray.experimental.workflow import workflow_storage
