@@ -121,14 +121,19 @@ class NodeProvider:
         """Sets the tag values (string dict) for the specified node."""
         raise NotImplementedError
 
-    def terminate_node(self, node_id: str) -> None:
-        """Terminates the specified node."""
+    def terminate_node(self, node_id: str) -> Optional[Dict[str, Any]]:
+        """Terminates the specified node.
+
+        Optionally return a mapping from deleted node ids to node
+        metadata.
+        """
         raise NotImplementedError
 
     def terminate_nodes(self, node_ids: List[str]) -> Optional[Dict[str, Any]]:
-        """Terminates a set of nodes. May be overridden with a batch method,
-        which optionally may return a mapping from deleted node ids to node
-        metadata.
+        """Terminates a set of nodes.
+
+        May be overridden with a batch method, which optionally may return a
+        mapping from deleted node ids to node metadata.
         """
         for node_id in node_ids:
             logger.info("NodeProvider: "
