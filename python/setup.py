@@ -174,7 +174,7 @@ if setup_spec.type == SetupType.RAY:
         "dm_tree",
         "gym",
         "lz4",
-        "opencv-python-headless<=4.3.0.36",
+        "scikit-image",
         "pyyaml",
         "scipy",
     ]
