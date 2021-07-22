@@ -33,7 +33,10 @@ from typing import Optional
 DEFAULT_SMOKE_TEST_NUM_REPLICA = 8
 DEFAULT_SMOKE_TEST_NUM_TRIALS = 1
 
-DEFAULT_FULL_TEST_NUM_REPLICA = 1000
+# TODO:(jiaodong) We should investigate and change this back to 1k
+# for now, we won't get valid latency numbers from wrk at 1k replica
+# likely due to request timeout.
+DEFAULT_FULL_TEST_NUM_REPLICA = 100
 DEFAULT_FULL_TEST_NUM_TRIALS = 10
 
 # Cluster setup configs

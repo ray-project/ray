@@ -21,4 +21,4 @@ aws:
         - Key: anyscale-user
           Value: '{{env["ANYSCALE_USER"]}}'
         - Key: anyscale-expiration
-          Value: '{{env["EXPIRATION_1D"]}}'
+          Value: '{{env["EXPIRATION_2D"]}}'

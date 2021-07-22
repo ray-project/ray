@@ -149,6 +149,9 @@ ray_files += [
 if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
         "default": [
+            "aiohttp",  # noqa
+            "aiohttp_cors",  # noqa
+            "aioredis",  # noqa
             "colorful",  # noqa
             "py-spy >= 0.2.0",  # noqa
             "jsonschema",  # noqa
@@ -171,7 +174,7 @@ if setup_spec.type == SetupType.RAY:
         "dm_tree",
         "gym",
         "lz4",
-        "opencv-python-headless<=4.3.0.36",
+        "scikit-image",
         "pyyaml",
         "scipy",
     ]
@@ -184,12 +187,6 @@ if setup_spec.type == SetupType.RAY:
 # the change in the matching section of requirements/requirements.txt
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        # TODO(alex) Pin the version once this PR is
-        # included in the stable release.
-        # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
-        "aiohttp",
-        "aiohttp_cors",
-        "aioredis",
         "attrs",
         "click >= 7.0",
         "dataclasses; python_version < '3.7'",
