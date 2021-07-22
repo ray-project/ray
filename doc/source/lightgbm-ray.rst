@@ -1,9 +1,9 @@
-.. _xgboost-ray:
+.. _lightgbm-ray:
 
 ..
-  This part of the docs is generated from the XGBoost-Ray readme using m2r
+  This part of the docs is generated from the LightGBM-Ray readme using m2r
   To update:
-  - run `m2r /path/to/xgboost_ray/README.md`
+  - run `m2r /path/to/_lightgbm_ray/README.md`
   - copy the contents of README.rst here
   - Get rid of the badges in the top
   - Get rid of the references section at the bottom
@@ -12,48 +12,50 @@
     by adding a second underscore (use `target <link>`__)
   - Search for `\ **` and delete this from the links (bold links are not supported)
 
-Distributed XGBoost on Ray
-==========================
+Distributed LightGBM on Ray
+===========================
 
-XGBoost-Ray is a distributed backend for
-`XGBoost <https://xgboost.readthedocs.io/en/latest/>`_\ , built
+LightGBM-Ray is a distributed backend for
+`LightGBM <https://lightgbm.readthedocs.io/>`_\ , built
 on top of
 `distributed computing framework Ray <https://ray.io>`_.
 
-XGBoost-Ray
+LightGBM-Ray
 
 
 * enables `multi-node <#usage>`_ and `multi-GPU <#multi-gpu-training>`_ training
 * integrates seamlessly with distributed `hyperparameter optimization <#hyperparameter-tuning>`_ library `Ray Tune <http://tune.io>`__
-* comes with advanced `fault tolerance handling <#fault-tolerance>`_ mechanisms, and
+* comes with `fault tolerance handling <#fault-tolerance>`_ mechanisms, and
 * supports `distributed dataframes and distributed data loading <#distributed-data-loading>`_
 
 All releases are tested on large clusters and workloads.
 
+This package is based on :ref:`XGBoost-Ray <xgboost-ray>`. As of now, XGBoost-Ray is a dependency for LightGBM-Ray.
+
 Installation
 ------------
 
-You can install the latest XGBoost-Ray release from PIP:
+You can install the latest LightGBM-Ray release from PIP:
 
 .. code-block:: bash
 
-   pip install xgboost_ray
+   pip install lightgbm_ray
 
 If you'd like to install the latest master, use this command instead:
 
 .. code-block:: bash
 
-   pip install git+https://github.com/ray-project/xgboost_ray.git#xgboost_ray
+   pip install git+https://github.com/ray-project/lightgbm_ray.git#lightgbm_ray
 
 Usage
 -----
 
-XGBoost-Ray provides a drop-in replacement for XGBoost's ``train``
-function. To pass data, instead of using ``xgb.DMatrix`` you will
-have to use ``xgboost_ray.RayDMatrix``.
+LightGBM-Ray provides a drop-in replacement for LightGBM's ``train``
+function. To pass data, a ``RayDMatrix`` object is required, common
+with XGBoost-Ray.
 
 Distributed training parameters are configured with a
-``xgboost_ray.RayParams`` object. For instance, you can set
+``lightgbm_ray.RayParams`` object. For instance, you can set
 the ``num_actors`` property to specify how many distributed actors
 you would like to use.
 
@@ -63,7 +65,7 @@ Here is a simplified example (which requires ``sklearn``\ ):
 
 .. code-block:: python
 
-   from xgboost_ray import RayDMatrix, RayParams, train
+   from lightgbm_ray import RayDMatrix, RayParams, train
    from sklearn.datasets import load_breast_cancer
 
    train_x, train_y = load_breast_cancer(return_X_y=True)
@@ -72,59 +74,53 @@ Here is a simplified example (which requires ``sklearn``\ ):
    evals_result = {}
    bst = train(
        {
-           "objective": "binary:logistic",
-           "eval_metric": ["logloss", "error"],
+           "objective": "binary",
+           "metric": ["binary_logloss", "binary_error"],
        },
        train_set,
        evals_result=evals_result,
-       evals=[(train_set, "train")],
+       valid_sets=[train_set],
+       valid_names=["train"],
        verbose_eval=False,
-       ray_params=RayParams(
-           num_actors=2,  # Number of remote actors
-           cpus_per_actor=1))
+       ray_params=RayParams(num_actors=2, cpus_per_actor=2))
 
-   bst.save_model("model.xgb")
+   bst.booster_.save_model("model.lgbm")
    print("Final training error: {:.4f}".format(
-       evals_result["train"]["error"][-1]))
+       evals_result["train"]["binary_error"][-1]))
 
 **Prediction:**
 
 .. code-block:: python
 
-   from xgboost_ray import RayDMatrix, RayParams, predict
+   from lightgbm_ray import RayDMatrix, RayParams, predict
    from sklearn.datasets import load_breast_cancer
-   import xgboost as xgb
+   import lightgbm as lgbm
 
    data, labels = load_breast_cancer(return_X_y=True)
 
    dpred = RayDMatrix(data, labels)
 
-   bst = xgb.Booster(model_file="model.xgb")
+   bst = lgbm.Booster(model_file="model.lgbm")
    pred_ray = predict(bst, dpred, ray_params=RayParams(num_actors=2))
 
    print(pred_ray)
 
-<<<<<<< HEAD
-=======
 scikit-learn API
 ^^^^^^^^^^^^^^^^
 
-XGBoost-Ray also features a scikit-learn API fully mirroring pure
-XGBoost scikit-learn API, providing a completely drop-in
+LightGBM-Ray also features a scikit-learn API fully mirroring pure
+LightGBM scikit-learn API, providing a completely drop-in
 replacement. The following estimators are available:
 
 
-* ``RayXGBClassifier``
-* ``RayXGRegressor``
-* ``RayXGBRFClassifier``
-* ``RayXGBRFRegressor``
-* ``RayXGBRanker``
+* ``RayLGBMClassifier``
+* ``RayLGBMRegressor``
 
-Example usage of ``RayXGBClassifier``\ :
+Example usage of ``RayLGBMClassifier``\ :
 
 .. code-block:: python
 
-   from xgboost_ray import RayXGBClassifier, RayParams
+   from lightgbm_ray import RayLGBMClassifier, RayParams
    from sklearn.datasets import load_breast_cancer
    from sklearn.model_selection import train_test_split
 
@@ -132,13 +128,11 @@ Example usage of ``RayXGBClassifier``\ :
 
    X, y = load_breast_cancer(return_X_y=True)
    X_train, X_test, y_train, y_test = train_test_split(
-       X, y, train_size=0.25, random_state=42
-   )
+       X, y, train_size=0.25, random_state=42)
 
-   clf = RayXGBClassifier(
-       n_jobs=4,  # In XGBoost-Ray, n_jobs sets the number of actors
-       random_state=seed
-   )
+   clf = RayLGBMClassifier(
+       n_jobs=2,  # In LightGBM-Ray, n_jobs sets the number of actors
+       random_state=seed)
 
    # scikit-learn API will automatically conver the data
    # to RayDMatrix format as needed.
@@ -175,24 +169,24 @@ Things to keep in mind:
 * By default ``n_jobs`` is set to ``1``\ , which means the training
   will **not** be distributed. Make sure to either set ``n_jobs``
   to a higher value or pass a ``RayParams`` object as outlined above
-  in order to take advantage of XGBoost-Ray's functionality.
+  in order to take advantage of LightGBM-Ray's functionality.
 * After calling ``fit``\ , additional evaluation results (e.g. training time,
   number of rows, callback results) will be available under
   ``additional_results_`` attribute.
-* XGBoost-Ray's scikit-learn API is based on XGBoost 1.4.
-  While we try to support older XGBoost versions, please note that
-  this library is only fully tested and supported for XGBoost >= 1.4.
+* ``eval_`` arguments are supported, but early stopping is not.
+* LightGBM-Ray's scikit-learn API is based on LightGBM 3.2.1.
+  While we try to support older LightGBM versions, please note that
+  this library is only fully tested and supported for LightGBM >= 3.2.1.
 
-For more information on the scikit-learn API, refer to the `XGBoost documentation <https://xgboost.readthedocs.io/en/latest/python/python_api.html#module-xgboost.sklearn>`_.
+For more information on the scikit-learn API, refer to the `LightGBM documentation <https://lightgbm.readthedocs.io/en/latest/Python-API.html#scikit-learn-api>`_.
 
->>>>>>> 2ce73ce84 ([docs] Revert #16919 and fix documentation build (#17270))
 Data loading
 ------------
 
-Data is passed to XGBoost-Ray via a ``RayDMatrix`` object.
+Data is passed to LightGBM-Ray via a ``RayDMatrix`` object.
 
 The ``RayDMatrix`` lazy loads data and stores it sharded in the
-Ray object store. The Ray XGBoost actors then access these
+Ray object store. The Ray LightGBM actors then access these
 shards to run their training on.
 
 A ``RayDMatrix`` support various data and file types, like
@@ -203,7 +197,7 @@ Example loading multiple parquet files:
 .. code-block:: python
 
    import glob
-   from xgboost_ray import RayDMatrix, RayFileType
+   from lightgbm_ray import RayDMatrix, RayFileType
 
    # We can also pass a list of files
    path = list(sorted(glob.glob("/data/nyc-taxi/*/*/*.parquet")))
@@ -226,25 +220,24 @@ Example loading multiple parquet files:
 Hyperparameter Tuning
 ---------------------
 
-XGBoost-Ray integrates with `Ray Tune <https://tune.io>`__ to provide distributed hyperparameter tuning for your
-distributed XGBoost models. You can run multiple XGBoost-Ray training runs in parallel, each with a different
+LightGBM-Ray integrates with `Ray Tune <https://tune.io>`_ to provide distributed hyperparameter tuning for your
+distributed LightGBM models. You can run multiple LightGBM-Ray training runs in parallel, each with a different
 hyperparameter configuration, and each training run parallelized by itself. All you have to do is move your training
 code to a function, and pass the function to ``tune.run``. Internally, ``train`` will detect if ``tune`` is being used and will
 automatically report results to tune.
 
-Example using XGBoost-Ray with Ray Tune:
+Example using LightGBM-Ray with Ray Tune:
 
 .. code-block:: python
 
-   from xgboost_ray import RayDMatrix, RayParams, train
+   from lightgbm_ray import RayDMatrix, RayParams, train
    from sklearn.datasets import load_breast_cancer
 
-   num_actors = 4
-   num_cpus_per_actor = 1
+   num_actors = 2
+   num_cpus_per_actor = 2
 
    ray_params = RayParams(
-       num_actors=num_actors,
-       cpus_per_actor=num_cpus_per_actor)
+       num_actors=num_actors, cpus_per_actor=num_cpus_per_actor)
 
    def train_model(config):
        train_x, train_y = load_breast_cancer(return_X_y=True)
@@ -255,18 +248,18 @@ Example using XGBoost-Ray with Ray Tune:
            params=config,
            dtrain=train_set,
            evals_result=evals_result,
-           evals=[(train_set, "train")],
+           valid_sets=[train_set],
+           valid_names=["train"],
            verbose_eval=False,
            ray_params=ray_params)
-       bst.save_model("model.xgb")
+       bst.booster_.save_model("model.lgbm")
 
    from ray import tune
 
    # Specify the hyperparameter search space.
    config = {
-       "tree_method": "approx",
-       "objective": "binary:logistic",
-       "eval_metric": ["logloss", "error"],
+       "objective": "binary",
+       "metric": ["binary_logloss", "binary_error"],
        "eta": tune.loguniform(1e-4, 1e-1),
        "subsample": tune.uniform(0.5, 1.0),
        "max_depth": tune.randint(1, 9)
@@ -276,7 +269,7 @@ Example using XGBoost-Ray with Ray Tune:
    analysis = tune.run(
        train_model,
        config=config,
-       metric="train-error",
+       metric="train-binary_error",
        mode="min",
        num_samples=4,
        resources_per_trial=ray_params.get_tune_resources())
@@ -287,80 +280,57 @@ Also see examples/simple_tune.py for another example.
 Fault tolerance
 ---------------
 
-XGBoost-Ray leverages the stateful Ray actor model to
-enable fault tolerant training. There are currently
-two modes implemented.
+LightGBM-Ray leverages the stateful Ray actor model to
+enable fault tolerant training. Currently, only non-elastic
+training is supported.
 
 Non-elastic training (warm restart)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-When an actor or node dies, XGBoost-Ray will retain the
+When an actor or node dies, LightGBM-Ray will retain the
 state of the remaining actors. In non-elastic training,
 the failed actors will be replaced as soon as resources
 are available again. Only these actors will reload their
 parts of the data. Training will resume once all actors
 are ready for training again.
 
-You can set this mode in the ``RayParams``\ :
-
-.. code-block:: python
-
-   from xgboost_ray import RayParams
-
-   ray_params = RayParams(
-       elastic_training=False,  # Use non-elastic training
-       max_actor_restarts=2,    # How often are actors allowed to fail
-   )
-
-Elastic training
-^^^^^^^^^^^^^^^^
-
-In elastic training, XGBoost-Ray will continue training
-with fewer actors (and on fewer data) when a node or actor
-dies. The missing actors are staged in the background,
-and are reintegrated into training once they are back and
-loaded their data.
-
-This mode will train on fewer data for a period of time,
-which can impact accuracy. In practice, we found these
-effects to be minor, especially for large shuffled datasets.
-The immediate benefit is that training time is reduced
-significantly to almost the same level as if no actors died.
-Thus, especially when data loading takes a large part of
-the total training time, this setting can dramatically speed
-up training times for large distributed jobs.
-
 You can configure this mode in the ``RayParams``\ :
 
 .. code-block:: python
 
-   from xgboost_ray import RayParams
+   from lightgbm_ray import RayParams
 
    ray_params = RayParams(
-       elastic_training=True,  # Use elastic training
-       max_failed_actors=3,    # Only allow at most 3 actors to die at the same time
-       max_actor_restarts=2,   # How often are actors allowed to fail
+       max_actor_restarts=2,    # How often are actors allowed to fail, Default = 0
    )
 
 Resources
 ---------
 
-By default, XGBoost-Ray tries to determine the number of CPUs
+By default, LightGBM-Ray tries to determine the number of CPUs
 available and distributes them evenly across actors.
+
+It is important to note that distributed LightGBM needs at least
+two CPUs per actor to function efficiently (without blocking).
+Therefore, by default, at least two CPUs will be assigned to each actor,
+and an exception will be raised if an actor has less than two CPUs.
+It is possible to override this check by setting the
+``allow_less_than_two_cpus`` argument to ``True``\ , though it is not
+recommended, as it will negatively impact training performance.
 
 In the case of very large clusters or clusters with many different
 machine sizes, it makes sense to limit the number of CPUs per actor
 by setting the ``cpus_per_actor`` argument. Consider always
 setting this explicitly.
 
-The number of XGBoost actors always has to be set manually with
+The number of LightGBM actors always has to be set manually with
 the ``num_actors`` argument.
 
 Multi GPU training
 ^^^^^^^^^^^^^^^^^^
 
-XGBoost-Ray enables multi GPU training. The XGBoost core backend
-will automatically leverage NCCL2 for cross-device communication.
+LightGBM-Ray enables multi GPU training. The LightGBM core backend
+will automatically handle communication.
 All you have to do is to start one actor per GPU.
 
 For instance, if you have 2 machines with 4 GPUs each, you will want
@@ -373,7 +343,7 @@ machines have 16 CPUs in addition to the 4 GPUs, each actor should have
 
 .. code-block:: python
 
-   from xgboost_ray import RayParams
+   from lightgbm_ray import RayParams
 
    ray_params = RayParams(
        num_actors=8,
@@ -387,7 +357,7 @@ How many remote actors should I use?
 This depends on your workload and your cluster setup.
 Generally there is no inherent benefit of running more than
 one remote actor per node for CPU-only training. This is because
-XGBoost core can already leverage multiple CPUs via threading.
+LightGBM core can already leverage multiple CPUs via threading.
 
 However, there are some cases when you should consider starting
 more than one actor per node:
@@ -407,7 +377,7 @@ more than one actor per node:
 Distributed data loading
 ------------------------
 
-XGBoost-Ray can leverage both centralized and distributed data loading.
+LightGBM-Ray can leverage both centralized and distributed data loading.
 
 In **centralized data loading**\ , the data is partitioned by the head node
 and stored in the object store. Each remote actor then retrieves their
@@ -418,7 +388,7 @@ or Parquet file.
 
 .. code-block:: python
 
-   from xgboost_ray import RayDMatrix
+   from lightgbm_ray import RayDMatrix
 
    # This will use centralized data loading, as only one source file is specified
    # `label_col` is a column in the CSV, used as the target label
@@ -434,7 +404,7 @@ to make sure the data is evenly distributed across the source files.
 
 .. code-block:: python
 
-   from xgboost_ray import RayDMatrix
+   from lightgbm_ray import RayDMatrix
 
    # This will use distributed data loading, as four source files are specified
    # Please note that you cannot schedule more than four actors in this case.
@@ -446,18 +416,18 @@ to make sure the data is evenly distributed across the source files.
        "hdfs:///tmp/part4.parquet",
    ], label="label_col")
 
-Lastly, XGBoost-Ray supports **distributed dataframe** representations, such
+Lastly, LightGBM-Ray supports **distributed dataframe** representations, such
 as `Modin <https://modin.readthedocs.io/en/latest/>`_ and
 `Dask dataframes <https://docs.dask.org/en/latest/dataframe.html>`_
 (used with `Dask on Ray <https://docs.ray.io/en/master/dask-on-ray.html>`_\ ).
-Here, XGBoost-Ray will check on which nodes the distributed partitions
+Here, LightGBM-Ray will check on which nodes the distributed partitions
 are currently located, and will assign partitions to actors in order to
 minimize cross-node data transfer. Please note that we also assume here
 that partition sizes are uniform.
 
 .. code-block:: python
 
-   from xgboost_ray import RayDMatrix
+   from lightgbm_ray import RayDMatrix
 
    # This will try to allocate the existing Modin partitions
    # to co-located Ray actors. If this is not possible, data will
@@ -509,44 +479,7 @@ Data sources
 Memory usage
 ------------
 
-XGBoost uses a compute-optimized datastructure, the ``DMatrix``\ ,
-to hold training data. When converting a dataset to a ``DMatrix``\ ,
-XGBoost creates intermediate copies and ends up
-holding a complete copy of the full data. The data will be converted
-into the local dataformat (on a 64 bit system these are 64 bit floats.)
-Depending on the system and original dataset dtype, this matrix can
-thus occupy more memory than the original dataset.
-
-The **peak memory usage** for CPU-based training is at least
-**3x** the dataset size (assuming dtype ``float32`` on a 64bit system)
-plus about **400,000 KiB** for other resources,
-like operating system requirements and storing of intermediate
-results.
-
-**Example**
-
-
-* Machine type: AWS m5.xlarge (4 vCPUs, 16 GiB RAM)
-* Usable RAM: ~15,350,000 KiB
-* Dataset: 1,250,000 rows with 1024 features, dtype float32.
-  Total size: 5,000,000 KiB
-* XGBoost DMatrix size: ~10,000,000 KiB
-
-This dataset will fit exactly on this node for training.
-
-Note that the DMatrix size might be lower on a 32 bit system.
-
-**GPUs**
-
-Generally, the same memory requirements exist for GPU-based
-training. Additionally, the GPU must have enough memory
-to hold the dataset.
-
-In the example above, the GPU must have at least
-10,000,000 KiB (about 9.6 GiB) memory. However,
-empirically we found that using a ``DeviceQuantileDMatrix``
-seems to show more peak GPU memory usage, possibly
-for intermediate storage when loading data (about 10%).
+Details coming soon.
 
 **Best practices**
 
@@ -564,7 +497,7 @@ suggestions:
 Placement Strategies
 --------------------
 
-XGBoost-Ray leverages Ray's Placement Group API (https://docs.ray.io/en/master/placement-group.html)
+LightGBM-Ray leverages Ray's Placement Group API (https://docs.ray.io/en/master/placement-group.html)
 to implement placement strategies for better fault tolerance.
 
 By default, a SPREAD strategy is used for training, which attempts to spread all of the training workers
@@ -573,14 +506,12 @@ number of worker failures when a node goes down, but comes at a cost of increase
 To disable this strategy, set the ``USE_SPREAD_STRATEGY`` environment variable to 0. If disabled, no
 particular placement strategy will be used.
 
-Note that this strategy is used only when ``elastic_training`` is not used. If ``elastic_training`` is set to ``True``\ ,
-no placement strategy is used.
 
-When XGBoost-Ray is used with Ray Tune for hyperparameter tuning, a PACK strategy is used. This strategy
+When LightGBM-Ray is used with Ray Tune for hyperparameter tuning, a PACK strategy is used. This strategy
 attempts to place all workers for each trial on the same node on a best-effort basis. This means that if a node
 goes down, it will be less likely to impact multiple trials.
 
-When placement strategies are used, XGBoost-Ray will wait for 100 seconds for the required resources
+When placement strategies are used, LightGBM-Ray will wait for 100 seconds for the required resources
 to become available, and will fail if the required resources cannot be reserved and the cluster cannot autoscale
 to increase the number of resources. You can change the ``PLACEMENT_GROUP_TIMEOUT_S`` environment variable to modify
 how long this timeout should be.
@@ -588,43 +519,34 @@ how long this timeout should be.
 More examples
 -------------
 
-Fore complete end to end examples, please have a look at
-the `examples folder <https://github.com/ray-project/xgboost_ray/tree/master/examples/>`_\ :
+For complete end to end examples, please have a look at
+the `examples folder <https://github.com/ray-project/lightgbm_ray/tree/master/examples/>`_\ :
 
-
-* `Simple sklearn breastcancer dataset example <https://github.com/ray-project/xgboost_ray/tree/master/examples/simple.py>`_ (requires ``sklearn``\ )
-* `HIGGS classification example <https://github.com/ray-project/xgboost_ray/tree/master/examples/higgs.py>`_
+* `Simple sklearn breastcancer dataset example <https://github.com/ray-project/lightgbm_ray/tree/master/examples/simple.py>`_ (requires ``sklearn``\ )
+* `HIGGS classification example <https://github.com/ray-project/lightgbm_ray/tree/master/examples/higgs.py>`_
   (\ `download dataset (2.6 GB) <https://archive.ics.uci.edu/ml/machine-learning-databases/00280/HIGGS.csv.gz>`_\ )
-* `HIGGS classification example with Parquet <https://github.com/ray-project/xgboost_ray/tree/master/examples/higgs_parquet.py>`_ (uses the same dataset)
-* `Test data classification <https://github.com/ray-project/xgboost_ray/tree/master/examples/train_on_test_data.py>`_ (uses a self-generated dataset)
+* `HIGGS classification example with Parquet <https://github.com/ray-project/lightgbm_ray/tree/master/examples/higgs_parquet.py>`_ (uses the same dataset)
+* `Test data classification <https://github.com/ray-project/lightgbm_ray/tree/master/examples/train_on_test_data.py>`_ (uses a self-generated dataset)
 
 API reference
 -------------
 
-.. autoclass:: xgboost_ray.RayParams
-    :members:
+.. .. autoclass:: lightgbm_ray.RayParams
+..     :members:
 
 .. autoclass:: xgboost_ray.RayDMatrix
     :members:
+    :noindex:
 
-.. autofunction:: xgboost_ray.train
+.. autofunction:: lightgbm_ray.train
 
-.. autofunction:: xgboost_ray.predict
-<<<<<<< HEAD
-=======
+.. autofunction:: lightgbm_ray.predict
 
 scikit-learn API
 ^^^^^^^^^^^^^^^^
 
-.. .. autoclass:: xgboost_ray.RayXGBClassifier
-..     :members:
+.. autoclass:: lightgbm_ray.RayLGBMClassifier
+    :members:
 
-.. .. autoclass:: xgboost_ray.RayXGBRegressor
-..     :members:
-
-.. .. autoclass:: xgboost_ray.RayXGBRFClassifier
-..     :members:
-
-.. .. autoclass:: xgboost_ray.RayXGBRFRegressor
-..     :members:
->>>>>>> 2ce73ce84 ([docs] Revert #16919 and fix documentation build (#17270))
+.. autoclass:: lightgbm_ray.RayLGBMRegressor
+    :members:
