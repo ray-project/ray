@@ -34,19 +34,19 @@ def get_args(*args, **kwargs):
     )
     parser.add_argument(
         "--total_data_size",
-        default=4 * 1000 * 1024 * 1024 * 1024,
+        default=512 * 1000 * 1024 * 1024,
         type=ByteCount,
         help="partition size in bytes",
     )
     parser.add_argument(
         "--num_mappers",
-        default=1024,
+        default=128,
         type=int,
         help="number of map tasks",
     )
     parser.add_argument(
         "--num_reducers",
-        default=32,
+        default=16,
         type=int,
         help="number of reduce actors",
     )
@@ -58,7 +58,7 @@ def get_args(*args, **kwargs):
     )
     parser.add_argument(
         "--merge_factor",
-        default=32,
+        default=16,
         type=int,
         help="number of mapper results to buffer before merging",
     )
@@ -103,8 +103,7 @@ def get_args(*args, **kwargs):
     args = parser.parse_args(*args, **kwargs)
     # Derive additional arguments.
     args.input_part_size = ByteCount(args.total_data_size / args.num_mappers)
-    assert args.num_mappers % args.merge_factor == 0, (args.num_mappers,
-                                                       args.merge_factor)
+    assert args.num_mappers % args.merge_factor == 0
     args.num_merged_mappers = int(args.num_mappers / args.merge_factor)
     args.mount_points = _get_mount_points()
     # If no tasks are specified, run all tasks.
@@ -220,7 +219,8 @@ def mapper(args: Args, boundaries: List[int], path: Path) -> List[np.ndarray]:
     sort_fn = _dummy_sort_and_partition \
         if args.skip_sorting else sortlib.sort_and_partition
     blocks = sort_fn(part, boundaries)
-    return [ray.put(part[offset:offset + size]) for offset, size in blocks]
+    return [part[offset:offset + size] for offset, size in blocks]
+    # return [ray.put(part[offset:offset + size]) for offset, size in blocks]
 
 
 def _dummy_merge(
@@ -279,7 +279,7 @@ def merge_mapper_blocks(args: Args, reducer_id: PartId, mapper_id: PartId,
                         *blocks: List[np.ndarray]) -> PartInfo:
     part_id = constants.merge_part_ids(reducer_id, mapper_id)
     pinfo = _part_info(args, part_id, kind="temp")
-    blocks = ray.get(list(blocks))
+    # blocks = ray.get(list(blocks))
     M = len(blocks)
 
     def get_block(i, d):
