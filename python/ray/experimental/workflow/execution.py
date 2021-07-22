@@ -117,7 +117,6 @@ def list_all(
     # Here we don't have workflow id, so use empty one instead
     store = workflow_storage.get_workflow_storage("")
     ret = {}
-    print(store.list_workflow())
     for (k, s) in store.list_workflow():
         if s == WorkflowStatus.RUNNING and k not in runnings:
             s = WorkflowStatus.RESUMABLE
@@ -127,7 +126,7 @@ def list_all(
 
 
 def resume_all() -> Dict[str, ray.ObjectRef]:
-    all_failed = list_all(WorkflowStatus.RESUMABLE)
+    all_failed = list_all({WorkflowStatus.RESUMABLE})
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
     except Exception as e:
@@ -142,5 +141,5 @@ def resume_all() -> Dict[str, ray.ObjectRef]:
             return (wid, None)
 
     ret = workflow_storage.asyncio_run(
-        asyncio.gather(*[_resume_one(wid) for (wid, _) in all_failed]))
+        asyncio.gather(*[_resume_one(wid) for wid in all_failed.keys()]))
     return { wid: obj for (wid, obj) in ret if obj is not None }

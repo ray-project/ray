@@ -2,6 +2,7 @@ import functools
 import tempfile
 import json
 import urllib.parse as parse
+from botocore.exceptions import ClientError
 import aioboto3
 import itertools
 import ray
@@ -9,7 +10,7 @@ from typing import Any, Dict, Callable, Optional, List
 from ray.experimental.workflow.common import StepID
 from ray.experimental.workflow.storage.base import (
     Storage, ArgsType, StepStatus, DataLoadError, DataSaveError)
-S3.Client.exceptions.NoSuchKey
+
 # constants used in filesystem
 OBJECTS_DIR = "objects"
 STEPS_DIR = "steps"
@@ -274,8 +275,15 @@ class S3StorageImpl(Storage):
 
     @data_load_error
     async def load_workflow_meta(self, workflow_id: str) -> Dict[str, Any]:
-        path = self._get_s3_path(workflow_id, WORKFLOW_META)
-        data = await self._get_object(path, True)
+        try:
+            path = self._get_s3_path(workflow_id, WORKFLOW_META)
+            data = await self._get_object(path, True)
+        except ClientError as ex:
+            if ex.response["Error"]["Code"] == "NoSuchKey":
+                return None
+            else:
+                raise
+
         return data
 
     @data_load_error

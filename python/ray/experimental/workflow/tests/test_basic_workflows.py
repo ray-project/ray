@@ -307,4 +307,4 @@ def test_manager(workflow_start_regular_shared, tmp_path):
     resumed = workflow.resume_all()
     assert len(resumed) == 48
     lock.release()
-    assert [ray.get(o) for (_, o) in resumed] == [100] * 48
+    assert [ray.get(o) for o in resumed.values()] == [100] * 48
