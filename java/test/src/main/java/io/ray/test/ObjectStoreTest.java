@@ -16,6 +16,10 @@ public class ObjectStoreTest extends BaseTest {
     public ObjectRef<Integer> put(int value, ActorHandle owner) {
       return Ray.put(value, owner);
     }
+
+    public void exit() {
+      Ray.exitActor();
+    }
   }
 
   public static class Owner {
@@ -73,7 +77,7 @@ public class ObjectStoreTest extends BaseTest {
     Ray.get(owner.task(Owner::warmup).remote());
     ObjectRef<ObjectRef<Integer>> ref = creator.task(Creator::put, 1, owner).remote();
     Ray.get(owner.task(Owner::set, ref).remote());
-    creator.kill();
+    creator.task(Creator::exit).remote();
     Thread.sleep(10000);
     int data = Ray.get(borrower.task(Borrower::get, ref).remote());
     Assert.assertEquals(data, 1);
