@@ -119,7 +119,7 @@ if __name__ == "__main__":
 """
 
 
-def test_recovery_cluster_failure():
+def test_recovery_cluster_failure(reset_workflow):
     subprocess.check_call(["ray", "start", "--head"])
     time.sleep(1)
     proc = run_string_as_driver_nonblocking(driver_script)
@@ -129,6 +129,7 @@ def test_recovery_cluster_failure():
     time.sleep(1)
     workflow.init()
     assert ray.get(workflow.resume("cluster_failure")) == 20
+    workflow.storage.set_global_storage(None)
     ray.shutdown()
 
 
@@ -145,7 +146,6 @@ def test_shortcut(workflow_start_regular):
     # the shortcut points to the step with output checkpoint
     store = workflow_storage.get_workflow_storage("shortcut")
     step_id = store.get_entrypoint_step_id()
-    assert store.inspect_step(step_id).output_object_valid
 
 
 @workflow.step
@@ -153,12 +153,11 @@ def constant():
     return 31416
 
 
-def test_resume_different_storage(ray_start_regular):
-    tmp_dir = tempfile.mkdtemp()
-    workflow.init(storage=tmp_dir)
+def test_resume_different_storage(ray_start_regular, tmp_path, reset_workflow):
+    workflow.init(storage=str(tmp_path))
     constant.step().run(workflow_id="const")
     assert ray.get(workflow.resume(workflow_id="const")) == 31416
-    shutil.rmtree(tmp_dir)
+    workflow.storage.set_global_storage(None)
 
 
 if __name__ == "__main__":

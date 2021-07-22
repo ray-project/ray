@@ -70,6 +70,13 @@ def workflow_start_regular(storage_url, request):
         yield res
 
 
+@pytest.fixture
+def reset_workflow():
+    storage.set_global_storage(None)
+    yield
+    storage.set_global_storage(None)
+
+
 @pytest.fixture(scope="session")
 def workflow_start_regular_shared(storage_url, request):
     param = getattr(request, "param", {})
