@@ -83,6 +83,9 @@ class GCPNode(UserDict, metaclass=abc.ABCMeta):
     def get_internal_ip(self) -> str:
         return
 
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__}: {self.get('name')}>"
+
 
 class GCPComputeNode(GCPNode):
     """Abstraction around compute nodes"""
@@ -356,6 +359,7 @@ class GCPTPU(GCPResource):
                     f"Waiting for operation {operation['name']} to finish...")
 
         # TPUs take a long while to start, so we increase the MAX_POLLS
+        # considerably
         max_polls = MAX_POLLS * 8
 
         for _ in range(max_polls):
@@ -381,16 +385,17 @@ class GCPTPU(GCPResource):
         instances = response.get("nodes", [])
         instances = [GCPTPUNode(i, self) for i in instances]
 
+        logger.info(f"tpu list_instances: {instances}")
+
         # filter_expr cannot be passed directly to API
         # so we need to filter the results ourselves
 
         # same logic as for GCPCompute
         def filter_instance(instance: GCPTPUNode) -> bool:
-            if instance.is_terminated:
+            if instance.is_terminated():
                 return False
 
             labels = instance.get_tags()
-
             if tag_filters:
                 for key, value in tag_filters.items():
                     if key not in labels:
@@ -401,6 +406,8 @@ class GCPTPU(GCPResource):
             return True
 
         instances = list(filter(filter_instance, instances))
+
+        logger.info(f"tpu list_instances after filter: {instances}")
 
         return instances
 
@@ -461,6 +468,8 @@ class GCPTPU(GCPResource):
             result = self.wait_for_operation(operation)
         else:
             result = operation
+
+        logger.info(str(result))
 
         return result, name
 
