@@ -21,5 +21,4 @@ class JSONDatasource(FileBasedDatasource):
 
         read_options = reader_args.pop(
             "read_options", json.ReadOptions(use_threads=False))
-        return json.read_json(
-            f, read_options=read_options, **reader_args)
+        return json.read_json(f, read_options=read_options, **reader_args)
