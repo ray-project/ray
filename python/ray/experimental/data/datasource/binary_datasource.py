@@ -17,8 +17,8 @@ class BinaryDatasource(FileBasedDatasource):
     """
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str,
-                   **arrow_reader_args):
-        include_paths = arrow_reader_args.pop("include_paths", False)
+                   **reader_args):
+        include_paths = reader_args.pop("include_paths", False)
         data = f.readall()
         if include_paths:
             return path, data
