@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import List, Tuple, Optional
+from typing import Set, Dict, List, Tuple, Optional
 
 import ray
 
@@ -100,7 +100,7 @@ def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
 
 
 def list_all(
-        status: Optional[WorkflowStatus]) -> List[Tuple[str, WorkflowStatus]]:
+        status_filter: Set[WorkflowStatus]) -> Dict[str, WorkflowStatus]:
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
     except ValueError:
@@ -110,22 +110,23 @@ def list_all(
         runnings = []
     else:
         runnings = ray.get(workflow_manager.list_running_workflow.remote())
-    if status == WorkflowStatus.RUNNING:
-        return [(r, WorkflowStatus.RUNNING) for r in runnings]
+    if  WorkflowStatus.RUNNING in status_filter and len(status_filter) == 1:
+        return {r: WorkflowStatus.RUNNING for r in runnings}
 
     runnings = set(runnings)
     # Here we don't have workflow id, so use empty one instead
     store = workflow_storage.get_workflow_storage("")
-    ret = []
+    ret = {}
+    print(store.list_workflow())
     for (k, s) in store.list_workflow():
         if s == WorkflowStatus.RUNNING and k not in runnings:
             s = WorkflowStatus.RESUMABLE
-        if status is None or s == status:
-            ret.append((k, s))
+        if s in status_filter:
+            ret[k] = s
     return ret
 
 
-def resume_all() -> List[Tuple[str, ray.ObjectRef]]:
+def resume_all() -> Dict[str, ray.ObjectRef]:
     all_failed = list_all(WorkflowStatus.RESUMABLE)
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
@@ -142,4 +143,4 @@ def resume_all() -> List[Tuple[str, ray.ObjectRef]]:
 
     ret = workflow_storage.asyncio_run(
         asyncio.gather(*[_resume_one(wid) for (wid, _) in all_failed]))
-    return [(wid, obj) for (wid, obj) in ret if obj is not None]
+    return { wid: obj for (wid, obj) in ret if obj is not None }

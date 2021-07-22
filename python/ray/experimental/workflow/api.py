@@ -1,7 +1,7 @@
 import logging
 import os
 import types
-from typing import List, Set, Tuple, Union, Optional, TYPE_CHECKING
+from typing import Dict, List, Set, Union, Optional, TYPE_CHECKING
 
 import ray
 from ray.experimental.workflow import execution
@@ -181,7 +181,7 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
 
 def list_all(
         status_filter: Optional[Union[WorkflowStatus, Set[WorkflowStatus]]]=None
-) -> List[Tuple[str, WorkflowStatus]]:
+) -> Dict[str, WorkflowStatus]:
     """List the workflow status. If status is given, it'll filter by that.
 
     Args:
@@ -191,12 +191,12 @@ def list_all(
         >>> workflow_step = long_running_job.step()
         >>> wf = workflow_step.async_run(workflow_id="long_running_job")
         >>> jobs = workflow.list_all()
-        >>> assert jobs == [("long_running_job", workflow.RUNNING)]
+        >>> assert jobs == { "long_running_job": workflow.RUNNING }
         >>> ray.get(wf)
         >>> jobs = workflow.list_all({workflow.RUNNING})
         >>> assert jobs == []
         >>> jobs = workflow.list_all(workflow.FINISHED)
-        >>> assert jobs == [("long_running_job", workflow.FINISHED)]
+        >>> assert jobs == { "long_running_job": workflow.FINISHED }
 
     Returns:
         A list of tuple with workflow id and workflow status
@@ -208,13 +208,15 @@ def list_all(
             raise TypeError("status_filter contains element which is not"
                             " a type of `WorkflowStatus`."
                             f" {status_filter}")
-    elif status_filter is not None:
+    elif status_filter is None:
+        status_filter = set(WorkflowStatus.__members__.keys())
+    else:
         raise TypeError(
             "status_filter must be WorkflowStatus or a set of WorkflowStatus.")
     return execution.list_all(status_filter)
 
 
-def resume_all() -> List[Tuple[str, ray.ObjectRef]]:
+def resume_all() -> Dict[str, ray.ObjectRef]:
     """Resume all resumable workflow jobs.
 
     Examples:
@@ -225,9 +227,8 @@ def resume_all() -> List[Tuple[str, ray.ObjectRef]]:
         >>> except Exception:
         >>>     print("JobFailed")
         >>> jobs = workflow.list_all()
-        >>> assert jobs == [("failed_job", workflow.RESUMABLE)]
-        >>> (job_id, ret_obj) = workflow.resume_all()[0]
-        >>> assert job_id == "failed_job"
+        >>> assert jobs == {"failed_job": workflow.RESUMABLE}
+        >>> assert workflow.resume_all().get("failed_job") is not None
 
     Returns:
         Workflow resumed. It'll be a list of (workflow_id, returned_obj_ref).

@@ -239,9 +239,6 @@ def test_init_twice_2(tmp_path):
         "namespace": "workflow",
     }], indirect=True)
 def test_manager(workflow_start_regular_shared, tmp_path):
-    workflow_dir = str(tmp_path / "workflow")
-    storage = workflow.storage
-    storage.set_global_storage(storage.create_storage(workflow_dir))
     # For sync between jobs
     tmp_file = str(tmp_path / "lock")
     lock = FileLock(tmp_file)

@@ -9,6 +9,7 @@ from typing import Any, Dict, Callable, Optional, List
 from ray.experimental.workflow.common import StepID
 from ray.experimental.workflow.storage.base import (
     Storage, ArgsType, StepStatus, DataLoadError, DataSaveError)
+S3.Client.exceptions.NoSuchKey
 # constants used in filesystem
 OBJECTS_DIR = "objects"
 STEPS_DIR = "steps"
@@ -30,6 +31,7 @@ def data_load_error(func):
             ret = await func(*args, **kvargs)
             return ret
         except Exception as e:
+            print(">>>>>>", e, type(e))
             raise DataLoadError from e
 
     return _func
@@ -64,6 +66,9 @@ class S3StorageImpl(Storage):
 
         self._bucket = bucket
         self._s3_path = s3_path
+        self._s3_path.rstrip("/")
+        if len(self._s3_path) == 0:
+            raise ValueError(f"s3 invalid")
         self._session = aioboto3.Session()
         self._region_name = region_name
         self._endpoint_url = endpoint_url
@@ -202,16 +207,20 @@ class S3StorageImpl(Storage):
             else:
                 return ray.cloudpickle.load(tmp_file)
 
-    async def _list_object(self, path: Optional[str] = None) -> List[str]:
+    async def _list_objects(self, path: Optional[str] = None) -> List[str]:
         workflow_ids = []
         async with self._client() as s3:
             paginator = s3.get_paginator("list_objects")
-            operation_parameters = {"Bucket": self._bucket}
+            operation_parameters = {"Bucket": self._bucket, "Delimiter": "/"}
             if path is not None:
                 operation_parameters["Prefix"] = path
+            else:
+                operation_parameters["Prefix"] = self._s3_path + "/"
             page_iterator = paginator.paginate(**operation_parameters)
             async for page in page_iterator:
-                workflow_ids.append(page["Contents"])
+                for o in page.get("CommonPrefixes"):
+                    prefix = o.get("Prefix", "").rstrip("/").split("/")[-1]
+                    workflow_ids.append(prefix)
         return workflow_ids
 
     def _client(self):
