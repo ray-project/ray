@@ -22,6 +22,10 @@ public class ObjectStoreTest extends BaseTest {
 
     private ObjectRef<Integer> ref = null;
 
+    public int warmup() {
+      return 0;
+    }
+
     public int set(ObjectRef<Integer> ref) {
       this.ref = ref;
       return 0;
@@ -66,6 +70,7 @@ public class ObjectStoreTest extends BaseTest {
     ActorHandle<Creator> creator = Ray.actor(Creator::new).remote();
     ActorHandle<Owner> owner = Ray.actor(Owner::new).remote();
     ActorHandle<Borrower> borrower = Ray.actor(Borrower::new).remote();
+    Ray.get(owner.task(Owner::warmup).remote());
     ObjectRef<ObjectRef<Integer>> ref = creator.task(Creator::put, 1, owner).remote();
     Ray.get(owner.task(Owner::set, ref).remote());
     creator.kill();
