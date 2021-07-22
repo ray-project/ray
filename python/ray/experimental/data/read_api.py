@@ -1,6 +1,4 @@
 import logging
-from pathlib import Path
-import builtins
 from typing import List, Any, Union, Optional, Tuple, Callable, TypeVar, \
     TYPE_CHECKING
 
@@ -18,7 +16,8 @@ from ray.util.annotations import PublicAPI
 from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.datasource import Datasource, RangeDatasource, \
-    JSONDatasource, CSVDatasource, ReadTask, _S3FileSystemWrapper
+    JSONDatasource, CSVDatasource, ParquetDatasource, ReadTask, \
+    _S3FileSystemWrapper
 from ray.experimental.data.impl import reader as _reader
 from ray.experimental.data.impl.arrow_block import ArrowRow, \
     DelegatingArrowBlockBuilder
@@ -158,64 +157,13 @@ def read_parquet(paths: Union[str, List[str]],
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
-    import pyarrow.parquet as pq
-
-    if filesystem is None:
-        filesystem, paths = _parse_paths(paths)
-    pq_ds = pq.ParquetDataset(
-        paths, **arrow_parquet_args, filesystem=filesystem)
-    pieces = pq_ds.pieces
-
-    read_tasks = [[] for _ in builtins.range(parallelism)]
-    # TODO(ekl) support reading row groups (maybe as an option)
-    for i, piece in enumerate(pq_ds.pieces):
-        read_tasks[i % len(read_tasks)].append(piece)
-    nonempty_tasks = [r for r in read_tasks if r]
-
-    @ray.remote
-    def gen_read(pieces: List["pyarrow._dataset.ParquetFileFragment"]):
-        import pyarrow
-        logger.debug("Reading {} parquet pieces".format(len(pieces)))
-        tables = [piece.to_table() for piece in pieces]
-        if len(tables) > 1:
-            table = pyarrow.concat_tables(tables)
-        else:
-            table = tables[0]
-        return table
-
-    calls: List[Callable[[], ObjectRef[Block]]] = []
-    metadata: List[BlockMetadata] = []
-    for pieces in nonempty_tasks:
-        calls.append(lambda pieces=pieces: gen_read.remote(pieces))
-        piece_metadata = []
-        for p in pieces:
-            try:
-                piece_metadata.append(p.metadata)
-            except AttributeError:
-                break
-        input_files = [p.path for p in pieces]
-        if len(piece_metadata) == len(pieces):
-            # Piece metadata was available, constructo a normal BlockMetadata.
-            block_metadata = BlockMetadata(
-                num_rows=sum(m.num_rows for m in piece_metadata),
-                size_bytes=sum(
-                    sum(
-                        m.row_group(i).total_byte_size
-                        for i in builtins.range(m.num_row_groups))
-                    for m in piece_metadata),
-                schema=piece_metadata[0].schema.to_arrow_schema(),
-                input_files=input_files)
-        else:
-            # Piece metadata was not available, construct an empty
-            # BlockMetadata.
-            block_metadata = BlockMetadata(
-                num_rows=None,
-                size_bytes=None,
-                schema=None,
-                input_files=input_files)
-        metadata.append(block_metadata)
-
-    return Dataset(LazyBlockList(calls, metadata))
+    return read_datasource(
+        ParquetDatasource(),
+        parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
+        columns=columns,
+        **arrow_parquet_args)
 
 
 @PublicAPI(stability="beta")
@@ -438,34 +386,3 @@ def from_spark(df: "pyspark.sql.DataFrame",
         Dataset holding Arrow records read from the dataframe.
     """
     raise NotImplementedError  # P2
-
-
-def _parse_paths(paths: Union[str, List[str]]
-                 ) -> Tuple["pyarrow.fs.FileSystem", Union[str, List[str]]]:
-    from pyarrow import fs
-
-    def parse_single_path(path: str):
-        if Path(path).exists():
-            return fs.LocalFileSystem(), path
-        else:
-            return fs.FileSystem.from_uri(path)
-
-    if isinstance(paths, str):
-        return parse_single_path(paths)
-
-    if not isinstance(paths, list) or any(not isinstance(p, str)
-                                          for p in paths):
-        raise ValueError(
-            "paths must be a path string or a list of path strings.")
-    else:
-        if len(paths) == 0:
-            raise ValueError("No data provided")
-
-        parsed_results = [parse_single_path(path) for path in paths]
-        fses, paths = zip(*parsed_results)
-        unique_fses = set(map(type, fses))
-        if len(unique_fses) > 1:
-            raise ValueError(
-                f"When specifying multiple paths, each path must have the "
-                f"same filesystem, but found: {unique_fses}")
-        return fses[0], list(paths)

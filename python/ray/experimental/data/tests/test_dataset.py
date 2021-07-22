@@ -325,6 +325,11 @@ def test_parquet_read(ray_start_regular_shared, tmp_path):
     assert sorted(values) == [[1, "a"], [2, "b"], [3, "c"], [4, "e"], [5, "f"],
                               [6, "g"]]
 
+    # Test column selection.
+    ds = ray.experimental.data.read_parquet(str(tmp_path), columns=["one"])
+    values = [s["one"] for s in ds.take()]
+    assert sorted(values) == [1, 2, 3, 4, 5, 6]
+
 
 def test_parquet_write(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -1087,32 +1092,6 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
         pd.concat([pd.read_csv(file_path),
                    pd.read_csv(file_path2)]))
     shutil.rmtree(path)
-
-
-# TODO: this shouldn't be making network calls
-def test_uri_parser():
-    from ray.experimental.data.read_api import _parse_paths
-    fs, path = _parse_paths("/local/path")
-    assert path == "/local/path"
-    assert fs.type_name == "local"
-
-    fs, path = _parse_paths("./")
-    assert path == "./"
-    assert fs.type_name == "local"
-
-    fs, path = _parse_paths("s3://bucket/dir")
-    assert path == "bucket/dir"
-    assert fs.type_name == "s3"
-
-    fs, path = _parse_paths(["s3://bucket/dir_1", "s3://bucket/dir_2"])
-    assert path == ["bucket/dir_1", "bucket/dir_2"]
-    assert fs.type_name == "s3"
-
-    with pytest.raises(ValueError):
-        _parse_paths(["s3://bucket/dir_1", "/path/local"])
-
-    with pytest.raises(ValueError):
-        _parse_paths([])
 
 
 if __name__ == "__main__":
