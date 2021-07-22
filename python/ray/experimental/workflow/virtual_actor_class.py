@@ -1,4 +1,5 @@
 import abc
+import functools
 import inspect
 import logging
 from typing import List, TYPE_CHECKING, Any, Tuple, Dict
@@ -314,6 +315,8 @@ class VirtualActorClass(VirtualActorClassBase):
 
 
 def _wrap_readonly_actor_method(actor_id: str, cls: type, method_name: str):
+    # generate better step names
+    @functools.wraps(getattr(cls, method_name))
     def _readonly_actor_method(*args, **kwargs):
         storage = get_global_storage()
         instance = cls.__new__(cls)
