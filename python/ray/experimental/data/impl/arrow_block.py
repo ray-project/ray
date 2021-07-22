@@ -171,6 +171,3 @@ class ArrowBlockAccessor(BlockAccessor):
     @staticmethod
     def builder() -> ArrowBlockBuilder[T]:
         return ArrowBlockBuilder()
-
-    def to_block(self) -> "pyarrow.Table":
-        return self._table

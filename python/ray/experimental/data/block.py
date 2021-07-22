@@ -125,7 +125,3 @@ class BlockAccessor(Generic[T]):
             return SimpleBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {}".format(block))
-
-    def to_block(self) -> "Block[T]":
-        """Return the underlying block."""
-        raise NotImplementedError
