@@ -123,7 +123,8 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
             if image_name in ["ray-ml", "autoscaler"
                               ] and py_version.startswith("3.9"):
                 print(
-                    f"{image} image is currently unsupported with Python 3.9")
+                    f"{image_name} image is currently unsupported with Python 3.9"
+                )
                 continue
 
             build_args = {}
