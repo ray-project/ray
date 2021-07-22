@@ -22,6 +22,7 @@ py_test_module_list(
       "tests/test_lifetime.py",
       "tests/test_signature_check.py",
       "tests/test_virtual_actor.py",
+      "tests/test_basic_workflows_2.py",
   ],
   size = "small",
   extra_srcs = SRCS,
