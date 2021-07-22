@@ -2,10 +2,10 @@ import logging
 
 import ray
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
-from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.learner_thread import LearnerThread
-from ray.rllib.execution.multi_gpu_learner import TFMultiGPULearner
+from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.execution.common import STEPS_TRAINED_COUNTER, \
     _get_global_vars, _get_shared_metrics
@@ -14,6 +14,7 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently, Enqueue, Dequeue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.tune.trainable import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 
@@ -42,31 +43,41 @@ DEFAULT_CONFIG = with_common_config({
     "train_batch_size": 500,
     "min_iter_time_s": 10,
     "num_workers": 2,
-    # number of GPUs the learner should use.
+    # Number of GPUs the learner should use.
     "num_gpus": 1,
-    # set >1 to load data into GPUs in parallel. Increases GPU memory usage
-    # proportionally with the number of buffers.
-    "num_data_loader_buffers": 1,
-    # how many train batches should be retained for minibatching. This conf
+    # For each stack of multi-GPU towers, how many slots should we reserve for
+    # parallel data loading? Set this to >1 to load data into GPUs in
+    # parallel. This will increase GPU memory usage proportionally with the
+    # number of stacks.
+    # Example:
+    # 2 GPUs and `num_multi_gpu_tower_stacks=3`:
+    # - One tower stack consists of 2 GPUs, each with a copy of the
+    #   model/graph.
+    # - Each of the stacks will create 3 slots for batch data on each of its
+    #   GPUs, increasing memory requirements on each GPU by 3x.
+    # - This enables us to preload data into these stacks while another stack
+    #   is performing gradient calculations.
+    "num_multi_gpu_tower_stacks": 1,
+    # How many train batches should be retained for minibatching. This conf
     # only has an effect if `num_sgd_iter > 1`.
     "minibatch_buffer_size": 1,
-    # number of passes to make over each train batch
+    # Number of passes to make over each train batch.
     "num_sgd_iter": 1,
-    # set >0 to enable experience replay. Saved samples will be replayed with
+    # Set >0 to enable experience replay. Saved samples will be replayed with
     # a p:1 proportion to new data samples.
     "replay_proportion": 0.0,
-    # number of sample batches to store for replay. The number of transitions
+    # Number of sample batches to store for replay. The number of transitions
     # saved total will be (replay_buffer_num_slots * rollout_fragment_length).
     "replay_buffer_num_slots": 0,
-    # max queue size for train batches feeding into the learner
+    # Max queue size for train batches feeding into the learner.
     "learner_queue_size": 16,
-    # wait for train batches to be available in minibatch buffer queue
+    # Wait for train batches to be available in minibatch buffer queue
     # this many seconds. This may need to be increased e.g. when training
-    # with a slow environment
+    # with a slow environment.
     "learner_queue_timeout": 300,
-    # level of queuing for sampling.
+    # Level of queuing for sampling.
     "max_sample_requests_in_flight_per_worker": 2,
-    # max number of workers to broadcast one set of weights to
+    # Max number of workers to broadcast one set of weights to.
     "broadcast_interval": 1,
     # Use n (`num_aggregation_workers`) extra Actors for multi-level
     # aggregation of the data produced by the m RolloutWorkers
@@ -77,15 +88,15 @@ DEFAULT_CONFIG = with_common_config({
 
     # Learning params.
     "grad_clip": 40.0,
-    # either "adam" or "rmsprop"
+    # Either "adam" or "rmsprop".
     "opt_type": "adam",
     "lr": 0.0005,
     "lr_schedule": None,
-    # rmsprop considered
+    # `opt_type=rmsprop` settings.
     "decay": 0.99,
     "momentum": 0.0,
     "epsilon": 0.1,
-    # balancing the three losses
+    # Balancing the three losses.
     "vf_loss_coeff": 0.5,
     "entropy_coeff": 0.01,
     "entropy_coeff_schedule": None,
@@ -93,6 +104,9 @@ DEFAULT_CONFIG = with_common_config({
     # Callback for APPO to use to update KL, target network periodically.
     # The input to the callback is the learner fetches dict.
     "after_train_step": None,
+
+    # DEPRECATED:
+    "num_data_loader_buffers": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -103,7 +117,6 @@ class OverrideDefaultResourceRequest:
     @override(Trainable)
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
-        Trainer._validate_config(cf)
 
         eval_config = cf["evaluation_config"]
 
@@ -141,23 +154,23 @@ class OverrideDefaultResourceRequest:
 
 
 def make_learner_thread(local_worker, config):
-    if not config["simple_optimizer"] and (
-            config["num_gpus"] > 1 or config["num_data_loader_buffers"] > 1):
+    if not config["simple_optimizer"]:
         logger.info(
-            "Enabling multi-GPU mode, {} GPUs, {} parallel loaders".format(
-                config["num_gpus"], config["num_data_loader_buffers"]))
-        if config["num_data_loader_buffers"] < config["minibatch_buffer_size"]:
+            "Enabling multi-GPU mode, {} GPUs, {} parallel tower-stacks".
+            format(config["num_gpus"], config["num_multi_gpu_tower_stacks"]))
+        if config["num_multi_gpu_tower_stacks"] < \
+                config["minibatch_buffer_size"]:
             raise ValueError(
-                "In multi-gpu mode you must have at least as many "
-                "parallel data loader buffers as minibatch buffers: "
-                "{} vs {}".format(config["num_data_loader_buffers"],
+                "In multi-GPU mode you must have at least as many "
+                "parallel multi-GPU towers as minibatch buffers: "
+                "{} vs {}".format(config["num_multi_gpu_tower_stacks"],
                                   config["minibatch_buffer_size"]))
-        learner_thread = TFMultiGPULearner(
+        learner_thread = MultiGPULearnerThread(
             local_worker,
             num_gpus=config["num_gpus"],
             lr=config["lr"],
             train_batch_size=config["train_batch_size"],
-            num_data_loader_buffers=config["num_data_loader_buffers"],
+            num_multi_gpu_tower_stacks=config["num_multi_gpu_tower_stacks"],
             minibatch_buffer_size=config["minibatch_buffer_size"],
             num_sgd_iter=config["num_sgd_iter"],
             learner_queue_size=config["learner_queue_size"],
@@ -191,8 +204,16 @@ def get_policy_class(config):
 
 
 def validate_config(config):
+    if config["num_data_loader_buffers"] != DEPRECATED_VALUE:
+        deprecation_warning(
+            "num_data_loader_buffers",
+            "num_multi_gpu_tower_stacks",
+            error=False)
+        config["num_multi_gpu_tower_stacks"] = \
+            config["num_data_loader_buffers"]
+
     if config["entropy_coeff"] < 0.0:
-        raise DeprecationWarning("`entropy_coeff` must be >= 0.0!")
+        raise ValueError("`entropy_coeff` must be >= 0.0!")
 
     if config["vtrace"] and not config["in_evaluation"]:
         if config["batch_mode"] != "truncate_episodes":

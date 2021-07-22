@@ -1,5 +1,4 @@
 import pytest
-import platform
 import os
 import sys
 import time
@@ -27,6 +26,30 @@ from ray.util.client.ray_client_helpers import connect_to_client_or_not
 class Increase:
     def method(self, x):
         return x + 2
+
+
+@pytest.mark.parametrize("connect_to_client", [True, False])
+def test_placement_ready(ray_start_regular, connect_to_client):
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            pass
+
+        def v(self):
+            return 10
+
+    # bundle is placement group reserved resources and can't be used in bundles
+    with pytest.raises(Exception):
+        ray.util.placement_group(bundles=[{"bundle": 1}])
+    # This test is to test the case that even there all resource in the
+    # bundle got allocated, we are still able to return from ready[I
+    # since ready use 0 CPU
+    with connect_to_client_or_not(connect_to_client):
+        pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+        ray.get(pg.ready())
+        a = Actor.options(num_cpus=1, placement_group=pg).remote()
+        ray.get(a.v.remote())
+        ray.get(pg.ready())
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
@@ -1254,12 +1277,10 @@ ray.shutdown()
     wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
 
 
-@pytest.mark.skipif(
-    platform.system() in ["Darwin"], reason="Failing on MacOS.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_create_placement_group_after_gcs_server_restart(
@@ -1294,12 +1315,10 @@ def test_create_placement_group_after_gcs_server_restart(
     assert table["state"] == "PENDING"
 
 
-@pytest.mark.skipif(
-    platform.system() in ["Darwin"], reason="Failing on MacOS.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_create_actor_with_placement_group_after_gcs_server_restart(
@@ -1320,12 +1339,10 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
     assert ray.get(actor_2.method.remote(1)) == 3
 
 
-@pytest.mark.skipif(
-    platform.system() in ["Darwin"], reason="Failing on MacOS.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_create_placement_group_during_gcs_server_restart(
@@ -1347,12 +1364,10 @@ def test_create_placement_group_during_gcs_server_restart(
         ray.get(placement_groups[i].ready())
 
 
-@pytest.mark.skipif(
-    platform.system() in ["Darwin"], reason="Failing on MacOS.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=2, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_placement_group_wait_api(ray_start_cluster_head):

@@ -34,7 +34,11 @@ class ProgressCallback(tune.callback.Callback):
 
 
 class TestDurableTrainable(DurableTrainable):
-    def __init__(self, remote_checkpoint_dir, config, logger_creator=None):
+    def __init__(self,
+                 remote_checkpoint_dir,
+                 config,
+                 logger_creator=None,
+                 **kwargs):
         self.setup_env()
 
         super(TestDurableTrainable, self).__init__(
@@ -155,6 +159,16 @@ def timed_tune_run(name: str,
                         "AWS_SECRET_ACCESS_KEY"] = self.AWS_SECRET_ACCESS_KEY
                 if self.AWS_SESSION_TOKEN:
                     os.environ["AWS_SESSION_TOKEN"] = self.AWS_SESSION_TOKEN
+
+                if all(
+                        os.getenv(k, "") for k in [
+                            "AWS_ACCESS_KEY_ID",
+                            "AWS_SECRET_ACCESS_KEY",
+                            "AWS_SESSION_TOKEN",
+                        ]):
+                    print("Worker: AWS secrets found in env.")
+                else:
+                    print("Worker: No AWS secrets found in env!")
 
         _train = AwsDurableTrainable
         run_kwargs["checkpoint_freq"] = checkpoint_iters

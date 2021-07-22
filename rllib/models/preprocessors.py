@@ -1,5 +1,4 @@
 from collections import OrderedDict
-import cv2
 import logging
 import numpy as np
 import gym
@@ -8,6 +7,7 @@ from typing import Any, List
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.images import resize
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
@@ -115,11 +115,11 @@ class GenericPixelPreprocessor(Preprocessor):
         self.check_shape(observation)
         scaled = observation[25:-25, :, :]
         if self._dim < 84:
-            scaled = cv2.resize(scaled, (84, 84))
+            scaled = resize(scaled, height=84, width=84)
         # OpenAI: Resize by half, then down to 42x42 (essentially mipmapping).
         # If we resize directly we lose pixels that, when mapped to 42x42,
         # aren't close enough to the pixel boundary.
-        scaled = cv2.resize(scaled, (self._dim, self._dim))
+        scaled = resize(scaled, height=self._dim, width=self._dim)
         if self._grayscale:
             scaled = scaled.mean(2)
             scaled = scaled.astype(np.float32)

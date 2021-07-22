@@ -62,12 +62,12 @@ def workflow_args_serialization_context(
         serializer=workflow_serializer,
         deserializer=_resolve_workflow_outputs)
 
-    def objectref_serializer(rref):
-        if rref in objectref_deduplicator:
-            return objectref_deduplicator[rref]
+    def objectref_serializer(obj_ref):
+        if obj_ref in objectref_deduplicator:
+            return objectref_deduplicator[obj_ref]
         i = len(object_refs)
-        object_refs.append(rref)
-        objectref_deduplicator[rref] = i
+        object_refs.append(obj_ref)
+        objectref_deduplicator[obj_ref] = i
         return i
 
     # override the default ObjectRef serializer
@@ -108,6 +108,49 @@ def workflow_args_resolving_context(
 
     _resolve_workflow_outputs = workflow_output_mapping.__getitem__
     _resolve_objectrefs = objectref_mapping.__getitem__
+
+    try:
+        yield
+    finally:
+        _resolve_workflow_outputs = _resolve_workflow_outputs_bak
+        _resolve_objectrefs = _resolve_objectrefs_bak
+
+
+class _KeepWorkflowOutputs:
+    def __init__(self, index: int):
+        self._index = index
+
+    def __reduce__(self):
+        return _resolve_workflow_outputs, (self._index, )
+
+
+class _KeepObjectRefs:
+    def __init__(self, index: int):
+        self._index = index
+
+    def __reduce__(self):
+        return _resolve_objectrefs, (self._index, )
+
+
+@contextlib.contextmanager
+def workflow_args_keeping_context() -> None:
+    """
+    This context only read workflow arguments. Workflows and objectrefs inside
+    are untouched and can be serialized again properly.
+    """
+    global _resolve_workflow_outputs, _resolve_objectrefs
+    _resolve_workflow_outputs_bak = _resolve_workflow_outputs
+    _resolve_objectrefs_bak = _resolve_objectrefs
+
+    # we must capture the old functions to prevent self-referencing.
+    def _keep_workflow_outputs(index: int):
+        return _KeepWorkflowOutputs(index)
+
+    def _keep_objectrefs(index: int):
+        return _KeepObjectRefs(index)
+
+    _resolve_workflow_outputs = _keep_workflow_outputs
+    _resolve_objectrefs = _keep_objectrefs
 
     try:
         yield

@@ -22,6 +22,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
+from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
@@ -120,8 +121,8 @@ class TorchPolicy(Policy):
         worker_idx = worker.worker_index if worker else 0
 
         # Create multi-GPU model towers, if necessary.
-        # - The central main model will be stored under self.model, residing on
-        #   self.device.
+        # - The central main model will be stored under self.model, residing
+        #   on self.device.
         # - Each GPU will have a copy of that model under
         #   self.model_gpu_towers, matching the devices in self.devices.
         # - Parallelization is done by splitting the train batch and passing
@@ -130,6 +131,8 @@ class TorchPolicy(Policy):
         #   updating all towers' weights from the main model.
         # - In case of just one device (1 (fake) GPU or 1 CPU), no
         #   parallelization will be done.
+        # TODO: (sven) implement data pre-loading and n loader buffers for
+        #  torch.
         if config["_fake_gpus"] or config["num_gpus"] == 0 or \
                 not torch.cuda.is_available():
             logger.info("TorchPolicy (worker={}) running on {}.".format(
@@ -373,8 +376,10 @@ class TorchPolicy(Policy):
             state_batches: Optional[List[TensorType]] = None,
             prev_action_batch: Optional[Union[List[TensorType],
                                               TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[
-                TensorType], TensorType]] = None) -> TensorType:
+            prev_reward_batch: Optional[Union[List[TensorType],
+                                              TensorType]] = None,
+            actions_normalized: bool = True,
+    ) -> TensorType:
 
         if self.action_sampler_fn and self.action_distribution_fn is None:
             raise ValueError("Cannot compute log-prob/likelihood w/o an "
@@ -436,7 +441,13 @@ class TorchPolicy(Policy):
                                             seq_lens)
 
             action_dist = dist_class(dist_inputs, self.model)
-            log_likelihoods = action_dist.logp(input_dict[SampleBatch.ACTIONS])
+
+            # Normalize actions if necessary.
+            actions = input_dict[SampleBatch.ACTIONS]
+            if not actions_normalized and self.config["normalize_actions"]:
+                actions = normalize_action(actions, self.action_space_struct)
+
+            log_likelihoods = action_dist.logp(actions)
 
             return log_likelihoods
 
@@ -536,7 +547,7 @@ class TorchPolicy(Policy):
             all_grads, grad_info = tower_outputs[0]
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
-        grad_info.update(self.extra_grad_info(postprocessed_batch))
+        grad_info.update(self.extra_grad_info(batches[0]))
 
         fetches = self.extra_compute_grad_fetches()
 
@@ -703,7 +714,8 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def export_model(self, export_dir: str) -> None:
+    def export_model(self, export_dir: str,
+                     onnx: Optional[int] = None) -> None:
         """Exports the Policy's Model to local directory for serving.
 
         Creates a TorchScript model and saves it.
@@ -717,7 +729,6 @@ class TorchPolicy(Policy):
         if "state_in_0" not in self._dummy_batch:
             self._dummy_batch["state_in_0"] = \
                 self._dummy_batch["seq_lens"] = np.array([1.0])
-        seq_lens = self._dummy_batch["seq_lens"]
 
         state_ins = []
         i = 0
@@ -728,12 +739,34 @@ class TorchPolicy(Policy):
             k: self._dummy_batch[k]
             for k in self._dummy_batch.keys() if k != "is_training"
         }
-        traced = torch.jit.trace(self.model,
-                                 (dummy_inputs, state_ins, seq_lens))
+
         if not os.path.exists(export_dir):
             os.makedirs(export_dir)
-        file_name = os.path.join(export_dir, "model.pt")
-        traced.save(file_name)
+
+        seq_lens = self._dummy_batch["seq_lens"]
+        if onnx:
+            file_name = os.path.join(export_dir, "model.onnx")
+            torch.onnx.export(
+                self.model, (dummy_inputs, state_ins, seq_lens),
+                file_name,
+                export_params=True,
+                opset_version=onnx,
+                do_constant_folding=True,
+                input_names=list(dummy_inputs.keys()) +
+                ["state_ins", "seq_lens"],
+                output_names=["output", "state_outs"],
+                dynamic_axes={
+                    k: {
+                        0: "batch_size"
+                    }
+                    for k in list(dummy_inputs.keys()) +
+                    ["state_ins", "seq_lens"]
+                })
+        else:
+            traced = torch.jit.trace(self.model,
+                                     (dummy_inputs, state_ins, seq_lens))
+            file_name = os.path.join(export_dir, "model.pt")
+            traced.save(file_name)
 
     # TODO: (sven) Deprecate this in favor of `save()`.
     @override(Policy)

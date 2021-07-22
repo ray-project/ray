@@ -337,6 +337,7 @@
                        "min_workers": {"type": "integer"},
                        "max_workers": {"type": "integer"},
                        "resources": {
+						   "type": "object",
 						   "patternProperties": {
 							   ".*":{
 								   "type": "integer",

@@ -18,7 +18,6 @@
 
 #include <algorithm>
 #include <boost/asio/io_service.hpp>
-#include <boost/functional/hash.hpp>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -41,51 +40,6 @@ namespace raylet {
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
-/// \class WorkerCacheKey
-///
-/// Class used to cache workers, keyed by runtime_env.
-class WorkerCacheKey {
- public:
-  /// Create a cache key with the given environment variable overrides and serialized
-  /// runtime_env.
-  ///
-  /// \param override_environment_variables The environment variable overrides set in this
-  /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
-  /// worker.
-  WorkerCacheKey(
-      const std::unordered_map<std::string, std::string> override_environment_variables,
-      const std::string serialized_runtime_env);
-
-  bool operator==(const WorkerCacheKey &k) const;
-
-  /// Check if this worker's environment is empty (the default).
-  ///
-  /// \return true if there are no environment variables set and the runtime env is the
-  /// empty string (protobuf default) or a JSON-serialized empty dict.
-  bool EnvIsEmpty() const;
-
-  /// Get the hash for this worker's environment.
-  ///
-  /// \return The hash of the override_environment_variables and the serialized
-  /// runtime_env.
-  std::size_t Hash() const;
-
-  /// Get the int-valued hash for this worker's environment, useful for portability in
-  /// flatbuffers.
-  ///
-  /// \return The hash truncated to an int.
-  int IntHash() const;
-
- private:
-  /// The environment variable overrides for this worker.
-  const std::unordered_map<std::string, std::string> override_environment_variables;
-  /// The JSON-serialized runtime env for this worker.
-  const std::string serialized_runtime_env;
-  /// The cached hash of the worker's environment.  This is set to 0
-  /// for unspecified or empty environments.
-  mutable std::size_t hash_ = 0;
-};
-
 /// \class WorkerPoolInterface
 ///
 /// Used for new scheduler unit tests.
@@ -95,10 +49,15 @@ class WorkerPoolInterface {
   /// the worker back onto the pool once the worker has completed its work.
   ///
   /// \param task_spec The returned worker must be able to execute this task.
-  /// \return An idle worker with the requested task spec. Returns nullptr if no
+  /// \param allocated_instances_serialized_json The allocated resouce instances
+  /// json string, it contains resource ID which assigned to this worker.
+  /// Instance resource value will be like {"GPU":[10000,0,10000]}, non-instance
+  /// resource value will be {"CPU":20000}.
+  /// \return An idle worker with tit he requested task spec. Returns nullptr if no
   /// such worker exists.
   virtual std::shared_ptr<WorkerInterface> PopWorker(
-      const TaskSpecification &task_spec) = 0;
+      const TaskSpecification &task_spec,
+      const std::string &allocated_instances_serialized_json = "{}") = 0;
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
@@ -212,11 +171,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param[in] worker The worker to be registered.
   /// \param[in] pid The PID of the worker.
+  /// \param[in] worker_shim_pid The PID of the process for setup worker runtime env.
   /// \param[in] send_reply_callback The callback to invoke after registration is
   /// finished/failed.
   /// Returns 0 if the worker should bind on a random port.
   /// \return If the registration is successful.
   Status RegisterWorker(const std::shared_ptr<WorkerInterface> &worker, pid_t pid,
+                        pid_t worker_shim_pid,
                         std::function<void(Status, int)> send_reply_callback);
 
   /// To be invoked when a worker is started. This method should be called when the worker
@@ -319,9 +280,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// the worker back onto the pool once the worker has completed its work.
   ///
   /// \param task_spec The returned worker must be able to execute this task.
+  /// \param allocated_instances_serialized_json The allocated resouce instances
+  /// json string.
   /// \return An idle worker with the requested task spec. Returns nullptr if no
   /// such worker exists.
-  std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec);
+  std::shared_ptr<WorkerInterface> PopWorker(
+      const TaskSpecification &task_spec,
+      const std::string &allocated_instances_serialized_json = "{}");
 
   /// Try to prestart a number of workers suitable the given task spec. Prestarting
   /// is needed since core workers request one lease at a time, if starting is slow,
@@ -396,13 +361,17 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param job_id The ID of the job to which the started worker process belongs.
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \param serialized_runtime_env The runtime environment for the started worker
+  /// \param allocated_instances_serialized_json The allocated resource instances
+  //  json string.
   /// process. \return The id of the process that we started if it's positive, otherwise
   /// it means we didn't start a process.
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
       const std::vector<std::string> &dynamic_options = {},
-      const std::string &serialized_runtime_env = "{}",
-      std::unordered_map<std::string, std::string> override_environment_variables = {});
+      const int runtime_env_hash = 0, const std::string &serialized_runtime_env = "{}",
+      std::unordered_map<std::string, std::string> override_environment_variables = {},
+      const std::string &serialized_runtime_env_context = "{}",
+      const std::string &allocated_instances_serialized_json = "{}");
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -463,8 +432,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// All workers that have registered but is about to disconnect. They shouldn't be
     /// popped anymore.
     std::unordered_set<std::shared_ptr<WorkerInterface>> pending_disconnection_workers;
-    /// A map from the pids of starting worker processes to the extra information
-    /// of the process.
+    /// A map from the pids of this shim processes to the extra information of
+    /// the process. The shim process PID is the same with worker process PID, except
+    /// starting worker process in container.
     std::unordered_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
     /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
@@ -594,6 +564,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// This map tracks the latest infos of unfinished jobs.
   absl::flat_hash_map<JobID, rpc::JobConfig> all_jobs_;
+
+  /// Set of jobs whose drivers have exited.
+  absl::flat_hash_set<JobID> finished_jobs_;
 
   /// This map stores the same data as `idle_of_all_languages_`, but in a map structure
   /// for lookup performance.
