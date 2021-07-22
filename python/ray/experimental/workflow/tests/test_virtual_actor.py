@@ -105,40 +105,35 @@ def test_actor_ready(workflow_start_regular):
 @pytest.mark.parametrize(
     "workflow_start_regular", [{
         "num_cpus": 4
-    }],
-    indirect=True)
+    }], indirect=True)
 def test_manager(workflow_start_regular, tmp_path):
-    succ_flag = tmp_path / "succ_flag"
     lock_file = tmp_path / "lock"
+
     @workflow.virtual_actor
     class LockCounter:
-        def __init__(self, l, succ):
+        def __init__(self, lck):
             self.counter = 0
-            self.succ = succ
-            self.l = l
+            self.lck = lck
 
         @workflow.virtual_actor.readonly
         def val(self):
-            with FileLock(lock_file):
-                print("!!!")
-                if not succ.exists():
-                    raise ValueError()
+            with FileLock(self.lck):
                 return self.counter
 
         def __getstate__(self):
-            return (self.l, self.counter)
+            return (self.lck, self.counter)
 
         def __setstate__(self, state):
-            self.l, self.counter = state
+            self.lck, self.counter = state
 
-    actor = LockCounter.get_or_create("counter", str(lock_file), succ_flag)
+    actor = LockCounter.get_or_create("counter", str(lock_file))
     ray.get(actor.ready())
 
     lock = FileLock(lock_file)
     lock.acquire()
 
-    assert { 'counter': workflow.FINISHED } == workflow.list_all()
+    assert {"counter": workflow.FINISHED} == workflow.list_all()
 
     r = actor.val.run_async()
     # Readonly function won't make the workflow running
-    assert { 'counter': workflow.FINISHED } == workflow.list_all()
+    assert {"counter": workflow.FINISHED} == workflow.list_all()
