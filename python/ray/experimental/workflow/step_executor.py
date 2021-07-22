@@ -171,7 +171,7 @@ class ExecutionResult:
         self.catch_exceptions = catch_exceptions
         self.exception = None
 
-    def warp_run(self, func: Callable, *args, **kwargs) -> "ExecutionResult":
+    def wrap_run(self, func: Callable, *args, **kwargs) -> "ExecutionResult":
         """Wrap the function and execute it."""
         if self.step_type == StepType.FUNCTION:
             ret = func(*args, **kwargs)
@@ -267,7 +267,7 @@ def _workflow_step_executor(
             workflow_context.update_workflow_step_context(context, step_id)
             args, kwargs = _resolve_step_inputs(step_inputs)
             # Running the actual step function
-            ret = ret.warp_run(func, *args, **kwargs)
+            ret = ret.wrap_run(func, *args, **kwargs)
             # Save workflow output
             ret.commit(step_id, outer_most_step_id, last_step_of_workflow)
             break

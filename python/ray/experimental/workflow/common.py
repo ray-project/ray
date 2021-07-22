@@ -33,9 +33,9 @@ class WorkflowStatus(str, Enum):
 class WorkflowInputs:
     # The object ref of the input arguments.
     args: ObjectRef
-    # The hex string of object refs in the arguments.
+    # The object refs in the arguments.
     object_refs: List[ObjectRef]
-    # The ID of workflows in the arguments.
+    # The workflows in the arguments.
     workflows: "List[Workflow]"
 
 
