@@ -216,4 +216,5 @@ def _record_step_status(step_id: "StepID", status: "WorkflowStatus") -> None:
     workflow_id = workflow_context.get_current_workflow_id()
     workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
     ray.get(
-        workflow_manager.update_step_status.remote(workflow_id, step_id, status))
+        workflow_manager.update_step_status.remote(workflow_id, step_id,
+                                                   status))

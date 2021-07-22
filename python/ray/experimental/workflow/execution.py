@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import Set, Dict, List, Tuple, Optional
+from typing import Set, Dict, Tuple, Optional
 
 import ray
 
@@ -99,8 +99,7 @@ def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
     return meta.status
 
 
-def list_all(
-        status_filter: Set[WorkflowStatus]) -> Dict[str, WorkflowStatus]:
+def list_all(status_filter: Set[WorkflowStatus]) -> Dict[str, WorkflowStatus]:
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
     except ValueError:
@@ -110,7 +109,7 @@ def list_all(
         runnings = []
     else:
         runnings = ray.get(workflow_manager.list_running_workflow.remote())
-    if  WorkflowStatus.RUNNING in status_filter and len(status_filter) == 1:
+    if WorkflowStatus.RUNNING in status_filter and len(status_filter) == 1:
         return {r: WorkflowStatus.RUNNING for r in runnings}
 
     runnings = set(runnings)
@@ -142,4 +141,4 @@ def resume_all() -> Dict[str, ray.ObjectRef]:
 
     ret = workflow_storage.asyncio_run(
         asyncio.gather(*[_resume_one(wid) for wid in all_failed.keys()]))
-    return { wid: obj for (wid, obj) in ret if obj is not None }
+    return {wid: obj for (wid, obj) in ret if obj is not None}

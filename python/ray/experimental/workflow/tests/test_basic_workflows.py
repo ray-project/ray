@@ -237,7 +237,8 @@ def test_init_twice_2(tmp_path):
 @pytest.mark.parametrize(
     "workflow_start_regular_shared", [{
         "namespace": "workflow",
-    }], indirect=True)
+    }],
+    indirect=True)
 def test_manager(workflow_start_regular_shared, tmp_path):
     # For sync between jobs
     tmp_file = str(tmp_path / "lock")

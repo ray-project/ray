@@ -69,7 +69,7 @@ class S3StorageImpl(Storage):
         self._s3_path = s3_path
         self._s3_path.rstrip("/")
         if len(self._s3_path) == 0:
-            raise ValueError(f"s3 invalid")
+            raise ValueError(f"s3 path {self._s3_path} invalid")
         self._session = aioboto3.Session()
         self._region_name = region_name
         self._endpoint_url = endpoint_url

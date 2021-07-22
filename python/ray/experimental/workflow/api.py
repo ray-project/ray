@@ -1,7 +1,7 @@
 import logging
 import os
 import types
-from typing import Dict, List, Set, Union, Optional, TYPE_CHECKING
+from typing import Dict, Set, Union, Optional, TYPE_CHECKING
 
 import ray
 from ray.experimental.workflow import execution
@@ -179,9 +179,8 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
     return execution.get_output(workflow_id)
 
 
-def list_all(
-        status_filter: Optional[Union[WorkflowStatus, Set[WorkflowStatus]]]=None
-) -> Dict[str, WorkflowStatus]:
+def list_all(status_filter: Optional[Union[WorkflowStatus, Set[
+        WorkflowStatus]]] = None) -> Dict[str, WorkflowStatus]:
     """List the workflow status. If status is given, it'll filter by that.
 
     Args:
