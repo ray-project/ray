@@ -285,6 +285,23 @@ def test_manager(workflow_start_regular_shared, tmp_path):
     assert len(failed_jobs) == 50
     finished_jobs = workflow.list_all(workflow.WorkflowStatus.FINISHED)
     assert len(finished_jobs) == 50
+
+    all_tasks_status = workflow.list_all({
+        workflow.WorkflowStatus.FINISHED, workflow.WorkflowStatus.RESUMABLE,
+        workflow.WorkflowStatus.RUNNING
+    })
+    assert len(all_tasks_status) == 100
+    assert failed_jobs == {
+        k: v
+        for (k, v) in all_tasks_status.items()
+        if v == workflow.WorkflowStatus.RESUMABLE
+    }
+    assert finished_jobs == {
+        k: v
+        for (k, v) in all_tasks_status.items()
+        if v == workflow.WorkflowStatus.FINISHED
+    }
+
     # Test get_status
     assert workflow.get_status("0") == workflow.WorkflowStatus.RESUMABLE
     assert workflow.get_status("1") == workflow.WorkflowStatus.FINISHED
