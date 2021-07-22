@@ -53,7 +53,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             builder = DelegatingArrowBlockBuilder()
             for read_path in read_paths:
                 with fs.open_input_file(read_path) as f:
-                    data = read_file(f, **reader_args)
+                    data = read_file(f, read_path, **reader_args)
                     if isinstance(data, pa.Table):
                         builder.add_block(data)
                     else:
@@ -76,7 +76,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         return read_tasks
 
-    def _read_file(self, f, **reader_args):
+    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         """Reads a single file, passing all kwargs to the reader.
 
         This method should be implemented by subclasses.

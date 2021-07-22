@@ -238,6 +238,7 @@ def read_csv(paths: Union[str, List[str]],
 @PublicAPI(stability="beta")
 def read_binary_files(
         paths: Union[str, List[str]],
+        include_paths: bool = False,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         parallelism: int = 200) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
@@ -264,6 +265,7 @@ def read_binary_files(
         BinaryDatasource(),
         parallelism=parallelism,
         paths=paths,
+        include_paths=include_paths,
         filesystem=filesystem)
 
 

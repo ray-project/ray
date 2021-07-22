@@ -387,6 +387,16 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
             assert expected == item
 
 
+def test_read_binary_files_with_paths(ray_start_regular_shared):
+    with util.gen_bin_files(10) as (_, paths):
+        ds = ray.experimental.data.read_binary_files(
+            paths, include_paths=True, parallelism=10)
+        for i, (path, item) in enumerate(ds.iter_rows()):
+            assert path == paths[i]
+            expected = open(paths[i], "rb").read()
+            assert expected == item
+
+
 def test_read_binary_files_s3(ray_start_regular_shared):
     ds = ray.experimental.data.read_binary_files(
         ["s3://anyscale-data/small-files/0.dat"])

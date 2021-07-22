@@ -16,9 +16,15 @@ class CSVDatasource(FileBasedDatasource):
         ... {"a": 1, "b": "foo"}
     """
 
-    def _read_file(self, f: "pyarrow.NativeFile", **arrow_reader_args):
+    def _read_file(
+            self, f: "pyarrow.NativeFile", path: str, **arrow_reader_args):
         from pyarrow import csv
 
         read_options = arrow_reader_args.pop(
             "read_options", csv.ReadOptions(use_threads=False))
-        return csv.read_csv(f, read_options=read_options, **arrow_reader_args)
+        include_paths = arrow_reader_args.pop("include_paths", False)
+        data = csv.read_csv(f, read_options=read_options, **arrow_reader_args)
+        if include_paths:
+            return path, data
+        else:
+            return data
