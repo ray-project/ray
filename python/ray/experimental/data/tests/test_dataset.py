@@ -399,6 +399,9 @@ def test_read_binary_files_with_paths(ray_start_regular_shared):
             assert expected == item
 
 
+# TODO(Clark): Hitting S3 in CI is currently broken due to some AWS
+# credentials issue, unskip this test once that's fixed or once ported to moto.
+@pytest.mark.skip(reason="Shouldn't hit S3 in CI")
 def test_read_binary_files_s3(ray_start_regular_shared):
     ds = ray.experimental.data.read_binary_files(
         ["s3://anyscale-data/small-files/0.dat"])
