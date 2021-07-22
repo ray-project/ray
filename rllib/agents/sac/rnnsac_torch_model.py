@@ -1,13 +1,15 @@
+import gym
 from typing import Optional, List, Dict
 
-import gym
-import torch
 from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import override, force_list
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
+
+torch, _ = try_import_torch()
 
 
 class RNNSACTorchModel(SACTorchModel):
@@ -123,7 +125,7 @@ class RNNSACTorchModel(SACTorchModel):
 
     def select_state(self, state_batch: List[TensorType],
                      net: List[str]) -> Dict[str, List[TensorType]]:
-        assert all([n in ["policy", "q", "twin_q"] for n in net]), \
+        assert all(n in ["policy", "q", "twin_q"] for n in net), \
             "Selected state must be either for policy, q or twin_q network"
         policy_state_len = len(self.action_model.get_initial_state())
         q_state_len = len(self.q_net.get_initial_state())

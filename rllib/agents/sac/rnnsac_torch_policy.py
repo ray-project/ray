@@ -1,9 +1,8 @@
-from typing import List, Optional, Tuple, Type, Union
-
 import gym
 import numpy as np
+from typing import List, Optional, Tuple, Type, Union
+
 import ray
-import torch
 from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
 from ray.rllib.agents.sac import SACTorchPolicy
 from ray.rllib.agents.sac.rnnsac_torch_model import RNNSACTorchModel
@@ -13,10 +12,15 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import huber_loss, sequence_mask
 from ray.rllib.utils.typing import \
     ModelInputDict, TensorType, TrainerConfigDict
-from torch.nn import functional as F
+
+torch, nn = try_import_torch()
+F = None
+if nn:
+    F = nn.functional
 
 
 def build_rnnsac_model(policy: Policy, obs_space: gym.spaces.Space,
