@@ -145,7 +145,7 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
 
                 # First time, main manages a decent win-rate against random:
                 # Add league_exploiter_0 and main_exploiter_0 to the mix.
-                if is_main and len(self.trainable_policies) == 1:
+                if is_main and len(self.trainable_policies) == 3:
                     initializing_exploiters = True
                     self.trainable_policies.add("league_exploiter_1")
                     self.trainable_policies.add("main_exploiter_1")
@@ -214,7 +214,7 @@ class LeagueBasedSelfPlayCallback(DefaultCallbacks):
                         else:
                             main = np.random.choice(
                                 list(self.main_policies - {"main"}))
-                        print(f"{main_exploiter} vs {main}")
+                        # print(f"{main_exploiter} vs {main}")
                         return main_exploiter if \
                             episode.episode_id % 2 == agent_id else main
 
@@ -271,7 +271,6 @@ if __name__ == "__main__":
     ray.init(
         num_cpus=args.num_cpus or None,
         include_dashboard=False,
-        local_mode=True,  #
     )
 
     register_env("open_spiel_env",
