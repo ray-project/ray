@@ -1,6 +1,4 @@
 import subprocess
-import shutil
-import tempfile
 import time
 
 from ray.tests.conftest import *  # noqa
@@ -146,6 +144,7 @@ def test_shortcut(workflow_start_regular):
     # the shortcut points to the step with output checkpoint
     store = workflow_storage.get_workflow_storage("shortcut")
     step_id = store.get_entrypoint_step_id()
+    assert store.inspect_step(step_id).output_object_valid
 
 
 @workflow.step
