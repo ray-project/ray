@@ -108,15 +108,6 @@ class ObjectBufferPool {
                           uint64_t data_size, uint64_t metadata_size,
                           uint64_t chunk_index);
 
-  /// Abort the create operation associated with a chunk at chunk_index.
-  /// This method will fail if it's invoked on a chunk_index on which
-  /// CreateChunk was not first invoked, or a chunk_index on which
-  /// SealChunk has already been invoked.
-  ///
-  /// \param object_id The ObjectID.
-  /// \param chunk_index The index of the chunk.
-  void AbortCreateChunk(const ObjectID &object_id, uint64_t chunk_index);
-
   /// Write to a Chunk of an object. If all chunks of an object is written,
   /// it seals the object.
   ///
