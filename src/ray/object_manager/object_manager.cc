@@ -772,9 +772,8 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &ob
     // This object is no longer being actively pulled. Do not create the object.
     return false;
   }
-  std::pair<const ObjectBufferPool::ChunkInfo, ray::Status> chunk_status =
-      buffer_pool_.CreateChunk(object_id, owner_address, data_size, metadata_size,
-                               chunk_index);
+  auto chunk_status = buffer_pool_.CreateChunk(object_id, owner_address, data_size,
+                                               metadata_size, chunk_index);
   if (!pull_manager_->IsObjectActive(object_id)) {
     num_chunks_received_cancelled_++;
     // This object is no longer being actively pulled. Abort the object. We
@@ -785,15 +784,13 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &ob
     return false;
   }
 
-  ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
-  if (chunk_status.second.ok()) {
+  if (chunk_status.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
-    std::memcpy(chunk_info.data, data.data(), chunk_info.buffer_length);
-    buffer_pool_.SealChunk(object_id, chunk_index);
+    buffer_pool_.WriteChunk(object_id, chunk_index, data);
     return true;
   } else {
     num_chunks_received_failed_due_to_plasma_++;
-    RAY_LOG(INFO) << "Error receiving chunk:" << chunk_status.second.message();
+    RAY_LOG(INFO) << "Error receiving chunk:" << chunk_status.message();
     return false;
   }
 }
