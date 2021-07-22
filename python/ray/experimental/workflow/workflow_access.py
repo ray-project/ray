@@ -141,7 +141,7 @@ class WorkflowManagementActor:
     def update_step_status(self, workflow_id: str, step_id: str,
                            status: common.WorkflowStatus):
         if status == common.WorkflowStatus.FINISHED:
-            assert self._step_status[workflow_id].pop(step_id) is not None
+            self._step_status[workflow_id].pop(step_id, None)
         else:
             self._step_status.setdefault(workflow_id, {})[step_id] = status
         remaining = len(self._step_status[workflow_id])
