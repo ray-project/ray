@@ -73,7 +73,7 @@ config = {
 
 if __name__ == "__main__":
     # INIT
-    ray.init()
+    ray.init(num_cpus=5)
 
     # TRAIN
     results = tune.run("RNNSAC", **config)
