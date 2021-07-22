@@ -33,7 +33,7 @@ PY_MATRIX = {
     "-py36": "3.6.12",
     "-py37": "3.7.7",
     "-py38": "3.8.5",
-    "-py39": "3.9.6"
+    "-py39": "3.9.5"
 }
 
 
@@ -171,7 +171,7 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
                             print(f"Still building {tagged_name} after "
                                   f"{elapsed.seconds} seconds")
                             if elapsed >= datetime.timedelta(minutes=15):
-                                print("Build output:")
+                                print("Additional build output:")
                                 print(*cmd_output, sep="\n")
                                 # Clear cmd_output after printing, so the next
                                 # iteration will not print out the same lines.
