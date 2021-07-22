@@ -6,11 +6,25 @@ if TYPE_CHECKING:
     import pyarrow
     from ray.experimental.data.impl.block_builder import BlockBuilder
 
-# TODO(ekl) shouldn't Ray provide an ObjectRef type natively?
-ObjectRef = List
+from ray.util.annotations import DeveloperAPI
+
 T = TypeVar("T")
 
 
+# TODO(ekl) this is a dummy generic ref type for documentation purposes only.
+# It adds Generic[T] to pyarrow.Table so we can define Block[T] below.
+class _ArrowTable(Generic[T]):
+    pass
+
+
+# Represents a batch of rows to be stored in the Ray object store.
+#
+# Block data can be accessed in a uniform way via ``BlockAccessors`` such as
+# ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
+Block = Union[List[T], _ArrowTable[T]]
+
+
+@DeveloperAPI
 class BlockMetadata:
     """Metadata about the block.
 
@@ -33,11 +47,17 @@ class BlockMetadata:
         self.input_files: List[str] = input_files
 
 
-class Block(Generic[T]):
-    """Represents a batch of rows to be stored in the Ray object store.
+@DeveloperAPI
+class BlockAccessor(Generic[T]):
+    """Provides accessor methods for a specific block.
 
-    There are two types of blocks: ``SimpleBlock``, which is backed by a plain
-    Python list, and ``ArrowBlock``, which is backed by a ``pyarrow.Table``.
+    Ideally, we wouldn't need a separate accessor classes for blocks. However,
+    this is needed if we want to support storing ``pyarrow.Table`` directly
+    as a top-level Ray object, without a wrapping class (issue #17186).
+
+    There are two types of block accessors: ``SimpleBlockAccessor``, which
+    operates over a plain Python list, and ``ArrowBlockAccessor``, for
+    ``pyarrow.Table`` type blocks.
     """
 
     def num_rows(self) -> int:
@@ -89,3 +109,19 @@ class Block(Generic[T]):
     def builder() -> "BlockBuilder[T]":
         """Create a builder for this block type."""
         raise NotImplementedError
+
+    @staticmethod
+    def for_block(block: Block[T]) -> "BlockAccessor[T]":
+        """Create a block accessor for the given block."""
+        import pyarrow
+
+        if isinstance(block, pyarrow.Table):
+            from ray.experimental.data.impl.arrow_block import \
+                ArrowBlockAccessor
+            return ArrowBlockAccessor(block)
+        elif isinstance(block, list):
+            from ray.experimental.data.impl.block_builder import \
+                SimpleBlockAccessor
+            return SimpleBlockAccessor(block)
+        else:
+            raise TypeError("Not a block type: {}".format(block))

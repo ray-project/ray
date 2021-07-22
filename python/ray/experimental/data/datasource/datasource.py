@@ -4,13 +4,15 @@ from typing import Any, Generic, List, Callable, Union
 import numpy as np
 
 import ray
-from ray.experimental.data.block import Block, BlockMetadata, ObjectRef, T
-from ray.experimental.data.impl.block_builder import SimpleBlock
-from ray.experimental.data.impl.arrow_block import ArrowRow, ArrowBlock
+from ray.types import ObjectRef
+from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata, T
+from ray.experimental.data.impl.arrow_block import ArrowRow
+from ray.util.annotations import PublicAPI
 
 WriteResult = Any
 
 
+@PublicAPI(stability="beta")
 class Datasource(Generic[T]):
     """Interface for defining a custom ``ray.data.Dataset`` datasource.
 
@@ -83,6 +85,7 @@ class Datasource(Generic[T]):
         pass
 
 
+@PublicAPI(stability="beta")
 class ReadTask(Callable[[], Block[T]]):
     """A function used to read a block of a dataset.
 
@@ -105,6 +108,7 @@ class ReadTask(Callable[[], Block[T]]):
         return self._read_fn()
 
 
+@PublicAPI(stability="beta")
 class WriteTask(Callable[[], WriteResult]):
     """A function used to write a chunk of a dataset.
 
@@ -140,11 +144,10 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
         # from an external system instead of generating dummy data.
         def make_block(start: int, count: int) -> Block[Union[ArrowRow, int]]:
             if use_arrow:
-                return ArrowBlock(
-                    pyarrow.Table.from_arrays(
-                        [np.arange(start, start + count)], names=["value"]))
+                return pyarrow.Table.from_arrays(
+                    [np.arange(start, start + count)], names=["value"])
             else:
-                return SimpleBlock(list(builtins.range(start, start + count)))
+                return list(builtins.range(start, start + count))
 
         i = 0
         while i < n:
@@ -186,6 +189,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
                 self.enabled = True
 
             def write(self, block: Block[T]) -> str:
+                block = BlockAccessor.for_block(block)
                 if not self.enabled:
                     raise ValueError("disabled")
                 self.rows_written += block.num_rows()

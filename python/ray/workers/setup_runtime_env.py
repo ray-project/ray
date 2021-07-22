@@ -5,6 +5,9 @@ import json
 import logging
 import yaml
 import hashlib
+import subprocess
+import runpy
+import shutil
 
 from filelock import FileLock
 from typing import Optional, List, Dict, Any
@@ -36,6 +39,49 @@ parser.add_argument(
     "--session-dir", type=str, help="the directory for the current session")
 
 
+def _resolve_current_ray_path():
+    # When ray is built from source with pip install -e,
+    # ray.__file__ returns .../python/ray/__init__.py.
+    # When ray is installed from a prebuilt binary, it returns
+    # .../site-packages/ray/__init__.py
+    return os.path.split(os.path.split(ray.__file__)[0])[0]
+
+
+def _resolve_install_from_source_ray_dependencies():
+    """Find the ray dependencies when Ray is install from source"""
+    ray_source_python_path = _resolve_current_ray_path()
+    setup_py_path = os.path.join(ray_source_python_path, "setup.py")
+    ray_install_requires = runpy.run_path(setup_py_path)[
+        "setup_spec"].install_requires
+    return ray_install_requires
+
+
+def _inject_ray_to_conda_site(conda_path):
+    """Write the current Ray site package directory to a new site"""
+    python_binary = os.path.join(conda_path, "bin/python")
+    site_packages_path = subprocess.check_output(
+        [python_binary, "-c",
+         "import site; print(site.getsitepackages()[0])"]).decode().strip()
+
+    ray_path = _resolve_current_ray_path()
+    logger.warning(f"Injecting {ray_path} to environment {conda_path} "
+                   "because _inject_current_ray flag is on.")
+
+    maybe_ray_dir = os.path.join(site_packages_path, "ray")
+    if os.path.isdir(maybe_ray_dir):
+        logger.warning(f"Replacing existing ray installation with {ray_path}")
+        shutil.rmtree(maybe_ray_dir)
+
+    # See usage of *.pth file at
+    # https://docs.python.org/3/library/site.html
+    with open(os.path.join(site_packages_path, "ray.pth"), "w") as f:
+        f.write(ray_path)
+
+
+def _current_py_version():
+    return ".".join(map(str, sys.version_info[:3]))  # like 3.6.10
+
+
 def setup_runtime_env(runtime_env: dict, session_dir):
     if runtime_env.get("conda") or runtime_env.get("pip"):
         conda_dict = get_conda_dict(runtime_env, session_dir)
@@ -43,21 +89,22 @@ def setup_runtime_env(runtime_env: dict, session_dir):
             conda_env_name = runtime_env["conda"]
         else:
             assert conda_dict is not None
-            py_version = ".".join(map(str,
-                                      sys.version_info[:3]))  # like 3.6.10
             ray_pip = current_ray_pip_specifier()
-            if ray_pip and not runtime_env.get("_skip_inject_ray"):
+            if ray_pip:
                 extra_pip_dependencies = [ray_pip, "ray[default]"]
+            elif runtime_env.get("_inject_current_ray"):
+                extra_pip_dependencies = (
+                    _resolve_install_from_source_ray_dependencies())
+                print(extra_pip_dependencies)
             else:
                 extra_pip_dependencies = []
-            conda_dict = inject_dependencies(conda_dict, py_version,
+            conda_dict = inject_dependencies(conda_dict, _current_py_version(),
                                              extra_pip_dependencies)
-            # Locking to avoid multiple processes installing concurrently
-            conda_hash = hashlib.sha1(
-                json.dumps(conda_dict,
-                           sort_keys=True).encode("utf-8")).hexdigest()
-            conda_hash_str = f"conda-generated-{conda_hash}"
-            file_lock_name = f"ray-{conda_hash_str}.lock"
+            # It is not safe for multiple processes to install conda envs
+            # concurrently, even if the envs are different, so use a global
+            # lock for all conda installs.
+            # See https://github.com/ray-project/ray/issues/17086
+            file_lock_name = "ray-conda-install.lock"
             with FileLock(os.path.join(session_dir, file_lock_name)):
                 conda_dir = os.path.join(session_dir, "runtime_resources",
                                          "conda")
@@ -70,6 +117,10 @@ def setup_runtime_env(runtime_env: dict, session_dir):
                     yaml.dump(conda_dict, file, sort_keys=True)
                 conda_env_name = get_or_create_conda_env(
                     conda_yaml_path, conda_dir)
+
+            if runtime_env.get("_inject_current_ray"):
+                conda_path = os.path.join(conda_dir, conda_env_name)
+                _inject_ray_to_conda_site(conda_path)
 
         return RuntimeEnvContext(conda_env_name)
 

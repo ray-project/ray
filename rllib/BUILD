@@ -536,7 +536,6 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
 )
 
-
 # TD3
 py_test(
     name = "run_regression_tests_pendulum_td3_tf",
@@ -990,7 +989,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_data_loader_buffers\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'",
+        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -1004,7 +1003,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_data_loader_buffers\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'",
+        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -2425,6 +2424,14 @@ py_test(
     size = "medium",
     srcs = ["examples/fractional_gpus.py"],
     args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
+)
+
+py_test(
+    name = "examples/pettingzoo_env",
+    main = "examples/pettingzoo_env.py",
+    tags = ["examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/pettingzoo_env.py"],
 )
 
 py_test(

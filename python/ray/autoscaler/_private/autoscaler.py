@@ -1,5 +1,4 @@
 from collections import defaultdict, namedtuple, Counter
-from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from typing import Any, Optional, Dict, List, Tuple
 from urllib3.exceptions import MaxRetryError
 import copy
@@ -21,9 +20,11 @@ from ray.autoscaler.tags import (
     NODE_KIND_WORKER, NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
+from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider
 from ray.autoscaler._private.local.node_provider import \
     record_local_head_state_if_needed
+from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
@@ -69,17 +70,36 @@ class StandardAutoscaler:
     until the cluster size that can handle the resource demand is met).
     """
 
-    def __init__(self,
-                 config_path,
-                 load_metrics,
-                 max_launch_batch=AUTOSCALER_MAX_LAUNCH_BATCH,
-                 max_concurrent_launches=AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
-                 max_failures=AUTOSCALER_MAX_NUM_FAILURES,
-                 process_runner=subprocess,
-                 update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S,
-                 prefix_cluster_info=False,
-                 event_summarizer=None,
-                 prom_metrics=None):
+    def __init__(
+            self,
+            config_path: str,
+            load_metrics: LoadMetrics,
+            max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
+            max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+            max_failures: int = AUTOSCALER_MAX_NUM_FAILURES,
+            process_runner: Any = subprocess,
+            update_interval_s: int = AUTOSCALER_UPDATE_INTERVAL_S,
+            prefix_cluster_info: bool = False,
+            event_summarizer: Optional[EventSummarizer] = None,
+            prom_metrics: Optional[AutoscalerPrometheusMetrics] = None):
+        """Create a StandardAutoscaler.
+
+        Args:
+        config_path: Path to a Ray Autoscaler YAML.
+        load_metrics: Provides metrics for the Ray cluster.
+        max_launch_batch: Max number of nodes to launch in one request.
+        max_concurrent_launches: Max number of nodes that can be concurrently
+            launched. This value and `max_launch_batch` determine the number
+            of batches that are used to launch nodes.
+        max_failures: Number of failures that the autoscaler will tolerate
+            before exiting.
+        process_runner: Subprocess-like interface used by the CommandRunner.
+        update_interval_s: Seconds between running the autoscaling loop.
+        prefix_cluster_info: Whether to add the cluster name to info strings.
+        event_summarizer: Utility to consolidate duplicated messages.
+        prom_metrics: Prometheus metrics for autoscaler-related operations.
+        """
+
         self.config_path = config_path
         # Prefix each line of info string with cluster name if True
         self.prefix_cluster_info = prefix_cluster_info
