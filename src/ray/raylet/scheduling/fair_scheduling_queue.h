@@ -27,10 +27,11 @@ struct SchedulingPriorityComparator : public std::less<SchedulingClass> {
 };
 
 using WorkQueueType =
-  std::map<SchedulingClass, std::deque<Work>, internal::SchedulingPriorityComparator>;
+    std::map<SchedulingClass, std::deque<Work>, internal::SchedulingPriorityComparator>;
 }  // namespace internal
 
-/* using WorkQueueIterator = std::iterator<std::forward_iterator_tag, const std::pair<const SchedulingClass, std::deque<Work>>>; */
+/* using WorkQueueIterator = std::iterator<std::forward_iterator_tag, const
+ * std::pair<const SchedulingClass, std::deque<Work>>>; */
 using WorkQueueIterator = internal::WorkQueueType::iterator;
 using ConstWorkQueueIterator = internal::WorkQueueType::const_iterator;
 

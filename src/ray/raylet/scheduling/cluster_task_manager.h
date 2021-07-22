@@ -18,7 +18,6 @@
 namespace ray {
 namespace raylet {
 
-
 typedef std::function<boost::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
     NodeInfoGetter;
 

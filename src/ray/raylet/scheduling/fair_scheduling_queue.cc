@@ -9,11 +9,13 @@ FairSchedulingQueue::FairSchedulingQueue()
     : comparator_(active_tasks_), work_queue_(comparator_) {}
 
 void FairSchedulingQueue::Push(const Work &work) {
-  const auto scheduling_class = std::get<0>(work).GetTaskSpecification().GetSchedulingClass();
+  const auto scheduling_class =
+      std::get<0>(work).GetTaskSpecification().GetSchedulingClass();
   work_queue_[scheduling_class].push_back(work);
 }
 
-void FairSchedulingQueue::Set(const SchedulingClass scheduling_class, std::deque<Work> works) {
+void FairSchedulingQueue::Set(const SchedulingClass scheduling_class,
+                              std::deque<Work> works) {
   // TODO (Alex): We may want to do an O(1) move here if this gets too
   // inefficient.
 
@@ -42,27 +44,20 @@ void FairSchedulingQueue::MarkFinished(const Task &task) {
   work_queue_.emplace(scheduling_class, queue);
 }
 
-WorkQueueIterator FairSchedulingQueue::begin() {
-  return work_queue_.begin();
-}
+WorkQueueIterator FairSchedulingQueue::begin() { return work_queue_.begin(); }
 
-ConstWorkQueueIterator FairSchedulingQueue::begin() const {
-  return work_queue_.begin();
-}
+ConstWorkQueueIterator FairSchedulingQueue::begin() const { return work_queue_.begin(); }
 
-WorkQueueIterator FairSchedulingQueue::end() {
-  return work_queue_.end();
-}
+WorkQueueIterator FairSchedulingQueue::end() { return work_queue_.end(); }
 
-ConstWorkQueueIterator FairSchedulingQueue::end() const {
-  return work_queue_.end();
-}
+ConstWorkQueueIterator FairSchedulingQueue::end() const { return work_queue_.end(); }
 
 WorkQueueIterator FairSchedulingQueue::find(const SchedulingClass scheduling_class) {
   return work_queue_.find(scheduling_class);
 }
 
-ConstWorkQueueIterator FairSchedulingQueue::find(const SchedulingClass scheduling_class) const {
+ConstWorkQueueIterator FairSchedulingQueue::find(
+    const SchedulingClass scheduling_class) const {
   return work_queue_.find(scheduling_class);
 }
 

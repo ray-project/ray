@@ -742,7 +742,9 @@ bool ClusterTaskManager::AnyPendingTasks(Task *exemplar, bool *any_pending,
   // We are guaranteed that these tasks are blocked waiting for resources after a
   // call to ScheduleAndDispatchTasks(). They may be waiting for workers as well, but
   // this should be a transient condition only.
-  std::function<void(const Work &)> fn = [exemplar, any_pending, num_pending_actor_creation, num_pending_tasks](const Work &work) {
+  std::function<void(const Work &)> fn = [exemplar, any_pending,
+                                          num_pending_actor_creation,
+                                          num_pending_tasks](const Work &work) {
     const auto &task = std::get<0>(work);
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       *num_pending_actor_creation += 1;
