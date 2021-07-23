@@ -89,7 +89,6 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
     PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
     /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     # Build ray ASAN wheel
-    LD_PRELOAD=/usr/lib64/libasan.so.0 \
     PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
     RAY_ASAN=1 /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     # build ray-cpp wheel
