@@ -1,9 +1,18 @@
-from typing import Any, Callable, List, Iterator, Optional, Generic, Union
+import functools
+from typing import Any, Callable, List, Iterator, Generic, Union, TYPE_CHECKING
 
 import ray
 from ray.experimental.data.dataset import Dataset, T, U, BatchType
-from ray.experimental.data.impl.compute import CallableClass
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+if TYPE_CHECKING:
+    import pyarrow
+
+PER_DATASET_OPS = [
+    "map", "map_batches", "flat_map", "filter", "repartition", "sort", "limit"
+]
+
+OUTPUT_ITER_OPS = ["take", "show", "iter_rows", "to_tf", "to_torch"]
 
 
 # TODO(ekl) make this serializable [initial version]
@@ -15,16 +24,6 @@ class DatasetPipeline(Generic[T]):
         self._next_dataset = None
         self._generated_datasets = []
 
-    def map(self,
-            fn: Union[CallableClass, Callable[[T], U]],
-            compute: Optional[str] = None,
-            **ray_remote_args) -> "DatasetPipeline[U]":
-        return self.foreach_dataset(
-            lambda ds: ds.map(fn, compute, **ray_remote_args))
-
-    def repartition(self, num_blocks: int) -> "DatasetPipeline[T]":
-        return self.foreach_dataset(lambda ds: ds.repartition(num_blocks))
-
     def split(self, n: int,
               locality_hints: List[Any] = None) -> List["DatasetPipeline[T]"]:
         # TODO(ekl) this should return serializable pipeline readers, probably
@@ -32,14 +31,8 @@ class DatasetPipeline(Generic[T]):
         # (not in initial version)
         raise NotImplementedError
 
-    def iter_rows(self, prefetch_blocks: int = 0) -> Iterator[T]:
-        return Dataset.iter_rows(self, prefetch_blocks)
-
-    def take(self, limit: int = 20) -> List[T]:
-        return Dataset.take(self, limit)
-
-    def show(self, limit: int = 20) -> None:
-        return Dataset.show(self, limit)
+    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+        return next(self.iter_datasets()).schema()
 
     def iter_batches(self,
                      prefetch_blocks: int = 0,
@@ -94,3 +87,23 @@ class DatasetPipeline(Generic[T]):
                 yield lambda item=item: fn(item())
 
         return DatasetPipeline(make_dataset_generator())
+
+
+for method in PER_DATASET_OPS:
+    delegate = getattr(Dataset, method)
+
+    @functools.wraps(delegate)
+    def impl(self, *args, **kwargs):
+        return self.foreach_dataset(
+            lambda ds: getattr(ds, method)(*args, **kwargs))
+
+    setattr(DatasetPipeline, method, impl)
+
+for method in OUTPUT_ITER_OPS:
+    delegate = getattr(Dataset, method)
+
+    @functools.wraps(delegate)
+    def impl(self, *args, **kwargs):
+        return delegate(self, *args, **kwargs)
+
+    setattr(DatasetPipeline, method, impl)

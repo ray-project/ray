@@ -2,10 +2,12 @@ import ray
 
 ray.init(num_cpus=2)
 
+
 def compute(i):
     import time
     time.sleep(1)
     return {"value": i**2}
+
 
 print("start")
 pipeline = ray.data.range(1).repeat()

@@ -84,8 +84,8 @@ class Dataset(Generic[T]):
         from ray.experimental.data.dataset_pipeline import DatasetPipeline
 
         class Iterator:
-            def __init__(self, blocks)
-                self._splits = blocks.split(split_size = blocks_per_stage)
+            def __init__(self, blocks):
+                self._splits = blocks.split(split_size=blocks_per_stage)
                 self._i = 0
 
             def __next__(self) -> "Dataset[T]":
