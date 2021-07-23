@@ -140,7 +140,7 @@ class WorkflowManagementActor:
     def update_step_status(self, workflow_id: str, step_id: str,
                            status: common.WorkflowStatus):
         if status == common.WorkflowStatus.FINISHED:
-            assert self._step_status[workflow_id].pop(step_id) is not None
+            self._step_status[workflow_id].pop(step_id, None)
         else:
             self._step_status.setdefault(workflow_id, {})[step_id] = status
         remaining = len(self._step_status[workflow_id])
@@ -261,7 +261,7 @@ def init_management_actor() -> None:
         if storage_url != store.storage_url:
             raise RuntimeError("The workflow is using a storage "
                                f"({store.storage_url}) different from the "
-                               "workflow manager.")
+                               f"workflow manager({storage_url}).")
     except ValueError:
         logger.info("Initializing workflow manager...")
         # the actor does not exist

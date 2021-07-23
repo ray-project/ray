@@ -200,3 +200,8 @@ def test_workflow_storage(workflow_start_regular):
     print(inspect_result)
     assert inspect_result == workflow_storage.StepInspectResult()
     assert not inspect_result.is_recoverable()
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
