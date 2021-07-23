@@ -83,7 +83,6 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef) -> Any:
         # the actor does not exist
         logger.warning("Could not inform the workflow management actor "
                        "about the success of the workflow.")
-    logger.info(f"Get the output of workflow {workflow_id} successfully.")
     return output
 
 

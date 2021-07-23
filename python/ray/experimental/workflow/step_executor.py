@@ -1,3 +1,4 @@
+import logging
 from typing import (List, Tuple, Any, Dict, Callable, Optional, TYPE_CHECKING,
                     Union)
 import ray
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 
+logger = logging.getLogger(__name__)
 
 def _resolve_object_ref(ref: ObjectRef) -> Tuple[Any, ObjectRef]:
     """
@@ -215,6 +217,7 @@ def execute_workflow_step(
 def _record_step_status(step_id: "StepID", status: "WorkflowStatus") -> None:
     workflow_id = workflow_context.get_current_workflow_id()
     workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    logger.info(f"Start to execute: {workflow_id} - {step_id}")
     ray.get(
         workflow_manager.update_step_status.remote(workflow_id, step_id,
                                                    status))

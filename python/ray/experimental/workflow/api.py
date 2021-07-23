@@ -35,10 +35,9 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
         # have this one. We need a flag to tell whether it's a client
         # or a driver to use the right dir.
         # For now, just use /tmp/ray/workflow_data
-        logger.warning("Using default local dir: `/tmp/ray/workflow_data`. "
-                       "This should only be used for testing purposes.")
         storage = "file:///tmp/ray/workflow_data"
     if isinstance(storage, str):
+        logger.info(f"Using storage: {storage}")
         storage = storage_base.create_storage(storage)
     elif not isinstance(storage, Storage):
         raise TypeError("'storage' should be None, str, or Storage type.")
@@ -179,8 +178,8 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
     return execution.get_output(workflow_id)
 
 
-def list_all(status_filter: Optional[Union[WorkflowStatus, Set[
-        WorkflowStatus]]] = None) -> Dict[str, WorkflowStatus]:
+def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
+        Union[WorkflowStatus, str]]]] = None) -> List[Tuple[str, WorkflowStatus]]:
     """List the workflow status. If status is given, it'll filter by that.
 
     Args:
@@ -200,12 +199,16 @@ def list_all(status_filter: Optional[Union[WorkflowStatus, Set[
     Returns:
         A list of tuple with workflow id and workflow status
     """
-    if isinstance(status_filter, WorkflowStatus):
+    if isinstance(status_filter, str):
+        status_filter = set({WorkflowStatus(status_filter)})
+    elif isinstance(status_filter, WorkflowStatus):
         status_filter = set({status_filter})
     elif isinstance(status_filter, set):
-        if not all([isinstance(s, WorkflowStatus) for s in status_filter]):
+        if all([isinstance(s, str) for s in status_filter]):
+            status_filter = {WorkflowStatus(s) for s in status_filter}
+        elif not all([isinstance(s, WorkflowStatus) for s in status_filter]):
             raise TypeError("status_filter contains element which is not"
-                            " a type of `WorkflowStatus`."
+                            " a type of `WorkflowStatus or str`."
                             f" {status_filter}")
     elif status_filter is None:
         status_filter = set(WorkflowStatus.__members__.keys())
