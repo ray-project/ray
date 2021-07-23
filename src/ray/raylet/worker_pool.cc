@@ -65,7 +65,7 @@ WorkerPool::WorkerPool(
     std::shared_ptr<gcs::GcsClient> gcs_client, const WorkerCommandMap &worker_commands,
     std::function<void()> starting_worker_timeout_callback,
     std::function<void(const TaskID &)> runtime_env_setup_failed_callback,
-    const std::function<double()> get_time)
+    int ray_debugger_external, const std::function<double()> get_time)
     : io_service_(&io_service),
       node_id_(node_id),
       node_address_(node_address),
@@ -74,6 +74,7 @@ WorkerPool::WorkerPool(
       gcs_client_(std::move(gcs_client)),
       starting_worker_timeout_callback_(starting_worker_timeout_callback),
       runtime_env_setup_failed_callback_(runtime_env_setup_failed_callback),
+      ray_debugger_external(ray_debugger_external),
       first_job_registered_python_worker_count_(0),
       first_job_driver_wait_num_python_workers_(std::min(
           num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
@@ -322,6 +323,10 @@ Process WorkerPool::StartWorkerProcess(
     if (serialized_runtime_env_context != "{}" && serialized_runtime_env_context != "") {
       worker_command_args.push_back("--serialized-runtime-env-context=" +
                                     serialized_runtime_env_context);
+    }
+
+    if (ray_debugger_external) {
+      worker_command_args.push_back("--ray-debugger-external");
     }
   }
 

@@ -15,8 +15,7 @@ import collections
 from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
-    TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
-    STATUS_SYNCING_FILES, STATUS_SETTING_UP, STATUS_UP_TO_DATE,
+    TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED,
     NODE_KIND_WORKER, NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
@@ -122,13 +121,19 @@ class StandardAutoscaler:
         self.process_runner = process_runner
         self.event_summarizer = event_summarizer or EventSummarizer()
 
-        # Map from node_id to NodeUpdater processes
+        # Map from node_id to NodeUpdater threads
         self.updaters = {}
         self.num_failed_updates = defaultdict(int)
         self.num_successful_updates = defaultdict(int)
         self.num_failures = 0
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
+
+        # Disable NodeUpdater threads if true.
+        # Should be set to true in situations where another component, such as
+        # a Kubernetes operator, is responsible for Ray setup on nodes.
+        self.disable_node_updaters = self.config["provider"].get(
+            "disable_node_updaters", False)
 
         # Node launchers
         self.launch_queue = queue.Queue()
@@ -245,10 +250,7 @@ class StandardAutoscaler:
                 nodes_to_terminate.append(node_id)
 
         if nodes_to_terminate:
-            self.provider.terminate_nodes(nodes_to_terminate)
-            for node in nodes_to_terminate:
-                self.node_tracker.untrack(node)
-                self.prom_metrics.stopped_nodes.inc()
+            self._terminate_nodes_and_cleanup(nodes_to_terminate)
             nodes = self.workers()
 
         # Terminate nodes if there are too many
@@ -266,10 +268,7 @@ class StandardAutoscaler:
             nodes_to_terminate.append(to_terminate)
 
         if nodes_to_terminate:
-            self.provider.terminate_nodes(nodes_to_terminate)
-            for node in nodes_to_terminate:
-                self.node_tracker.untrack(node)
-                self.prom_metrics.stopped_nodes.inc()
+            self._terminate_nodes_and_cleanup(nodes_to_terminate)
             nodes = self.workers()
 
         to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
@@ -338,9 +337,7 @@ class StandardAutoscaler:
                                        " Failed to update node."
                                        " Node has already been terminated.")
                 if nodes_to_terminate:
-                    self.prom_metrics.stopped_nodes.inc(
-                        len(nodes_to_terminate))
-                    self.provider.terminate_nodes(nodes_to_terminate)
+                    self._terminate_nodes_and_cleanup(nodes_to_terminate)
                     nodes = self.workers()
 
         # Update nodes with out-of-date files.
@@ -363,9 +360,13 @@ class StandardAutoscaler:
         for t in T:
             t.join()
 
-        # Attempt to recover unhealthy nodes
-        for node_id in nodes:
-            self.recover_if_needed(node_id, now)
+        if self.disable_node_updaters:
+            # If updaters are unavailable, terminate unhealthy nodes.
+            self.terminate_unhealthy_nodes(nodes, now)
+        else:
+            # Attempt to recover unhealthy nodes
+            for node_id in nodes:
+                self.recover_if_needed(node_id, now)
 
         self.prom_metrics.updating_nodes.set(len(self.updaters))
         num_recovering = 0
@@ -375,6 +376,13 @@ class StandardAutoscaler:
         self.prom_metrics.recovering_nodes.set(num_recovering)
         logger.info(self.info_string())
         legacy_log_info_string(self, nodes)
+
+    def _terminate_nodes_and_cleanup(self, nodes_to_terminate: List[str]):
+        """Terminate specified nodes and clean associated autoscaler state."""
+        self.provider.terminate_nodes(nodes_to_terminate)
+        for node in nodes_to_terminate:
+            self.node_tracker.untrack(node)
+            self.prom_metrics.stopped_nodes.inc()
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:
@@ -647,9 +655,10 @@ class StandardAutoscaler:
             return False
         return True
 
-    def recover_if_needed(self, node_id, now):
-        if not self.can_update(node_id):
-            return
+    def heartbeat_on_time(self, node_id: NodeID, now: float) -> bool:
+        """Determine whether we've received a heartbeat from a node within the
+        last AUTOSCALER_HEARTBEAT_TIMEOUT_S seconds.
+        """
         key = self.provider.internal_ip(node_id)
 
         if key in self.load_metrics.last_heartbeat_time_by_ip:
@@ -657,7 +666,43 @@ class StandardAutoscaler:
                 key]
             delta = now - last_heartbeat_time
             if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
-                return
+                return True
+        return False
+
+    def terminate_unhealthy_nodes(self, nodes: List[NodeID], now: float):
+        """Terminate nodes for which we haven't received a heartbeat on time.
+
+        Used when node updaters are not available for recovery.
+        """
+        nodes_to_terminate = []
+        for node_id in nodes:
+            node_status = self.provider.node_tags(node_id)[TAG_RAY_NODE_STATUS]
+            # We're not responsible for taking down
+            # nodes with pending or failed status:
+            if not node_status == STATUS_UP_TO_DATE:
+                continue
+            # Heartbeat indicates node is healthy:
+            if self.heartbeat_on_time(node_id, now):
+                continue
+            # Node is unhealthy, terminate:
+            logger.warning("StandardAutoscaler: "
+                           "{}: No recent heartbeat, "
+                           "terminating node.".format(node_id))
+            self.event_summarizer.add(
+                "Terminating {} nodes of type " + self._get_node_type(node_id)
+                + " (lost contact with raylet).",
+                quantity=1,
+                aggregate=operator.add)
+            nodes_to_terminate.append(node_id)
+
+        if nodes_to_terminate:
+            self._terminate_nodes_and_cleanup(nodes_to_terminate)
+
+    def recover_if_needed(self, node_id, now):
+        if not self.can_update(node_id):
+            return
+        if self.heartbeat_on_time(node_id, now):
+            return
 
         logger.warning("StandardAutoscaler: "
                        "{}: No recent heartbeat, "
@@ -783,6 +828,8 @@ class StandardAutoscaler:
         self.updaters[node_id] = updater
 
     def can_update(self, node_id):
+        if self.disable_node_updaters:
+            return False
         if node_id in self.updaters:
             return False
         if not self.launch_config_ok(node_id):
@@ -876,11 +923,8 @@ class StandardAutoscaler:
                 non_failed.add(node_id)
             else:
                 status = node_tags[TAG_RAY_NODE_STATUS]
-                pending_states = [
-                    STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
-                    STATUS_SYNCING_FILES, STATUS_SETTING_UP
-                ]
-                is_pending = status in pending_states
+                completed_states = [STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED]
+                is_pending = status not in completed_states
                 if is_pending:
                     pending_nodes.append((ip, node_type, status))
                     non_failed.add(node_id)
