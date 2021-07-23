@@ -219,8 +219,11 @@ Test = serve.get_deployment("Test")
 Test.options(num_replicas=2).deploy()
 handle = Test.get_handle()
 results = ray.get([handle.remote() for _ in range(1000)])
-assert all(r[1] == "world" for r in results)
-assert len(set(r[0] for r in results)) == 2
+print(set(results))
+assert all(r[1] == "world" for r in results), (
+    "results should still come from the first env")
+assert len(set(r[0] for r in results)) == 2, (
+    "make sure there are two replicas")
 Test.delete()
 """.format(
         use_ray_client=use_ray_client, client_addr=ray_start)

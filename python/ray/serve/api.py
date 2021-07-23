@@ -377,7 +377,8 @@ class Client:
 
         curr_job_env = ray.get_runtime_context().runtime_env
         if "runtime_env" in ray_actor_options:
-            ray_actor_options["runtime_env"]["uris"] = curr_job_env.get("uris")
+            ray_actor_options["runtime_env"].setdefault(
+                "uris", curr_job_env.get("uris"))
         else:
             ray_actor_options[
                 "runtime_env"] = ray.get_runtime_context().runtime_env
