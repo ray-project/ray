@@ -49,6 +49,11 @@ DEFAULT_MAX_BATCH_SIZE = 16
 DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "10s"
 DEFAULT_FULL_TEST_TRIAL_LENGTH = "1m"
 
+# wrk config.
+# For more discussion, see https://github.com/wg/wrk/issues/205
+WRK_NUM_CONNECTIONS = 100
+WRK_NUM_THREADS = 10
+
 
 def setup_local_single_node_cluster(num_nodes):
     """Setup ray cluster locally via ray.init() and Cluster()
@@ -106,15 +111,14 @@ def warm_up_cluster(num_warmup_iterations: int, http_host: str,
         time.sleep(0.5)
 
 
-def run_one_trial(trial_length: str, num_connections, http_host,
-                  http_port) -> None:
+def run_one_trial(trial_length: str, http_host, http_port) -> None:
     proc = subprocess.Popen(
         [
             "wrk",
             "-c",
-            str(num_connections),
+            str(WRK_NUM_CONNECTIONS),
             "-t",
-            str(NUM_CPU_PER_NODE),
+            str(WRK_NUM_THREADS),
             "-d",
             trial_length,
             "--latency",
@@ -198,18 +202,12 @@ def main(num_replicas: Optional[int], num_trials: Optional[int],
         refs = []
         for node in ray.nodes():
             if node["Alive"]:
-                # For more discussion, see https://github.com/wg/wrk/issues/205
-                # TODO:(jiaodong) What's the best number to use here ?
-                num_connections = int(
-                    num_replicas * DEFAULT_MAX_BATCH_SIZE * 0.75)
-
                 node_resource = f"node:{node['NodeManagerAddress']}"
                 refs.append(
                     run_one_trial_remote.options(
                         num_cpus=0, resources={
                             node_resource: 0.01
-                        }).remote(trial_length, num_connections, http_host,
-                                  http_port))
+                        }).remote(trial_length, http_host, http_port))
 
         for decoded_output in ray.get(refs):
             parsed = parse_wrk_decoded_stdout(decoded_output)
