@@ -161,7 +161,7 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
     SpillObjectsInternal(objects_to_spill, [this, bytes_to_spill, objects_to_spill,
                                             start_time](const Status &status) {
       if (!status.ok()) {
-        RAY_LOG(INFO) << "Failed to spill objects: " << status.ToString();
+        RAY_LOG(DEBUG) << "Failed to spill objects: " << status.ToString();
       } else {
         auto now = absl::GetCurrentTimeNanos();
         RAY_LOG(DEBUG) << "Spilled " << bytes_to_spill << " bytes in "
@@ -216,8 +216,13 @@ void LocalObjectManager::SpillObjectsInternal(
     if (it != pinned_objects_.end()) {
       RAY_LOG(DEBUG) << "Spilling object " << id;
       objects_to_spill.push_back(id);
-      num_bytes_pending_spill_ += it->second.first->GetSize();
+
+      // Move a pinned object to the pending spill object.
+      auto object_size = it->second.first->GetSize();
+      num_bytes_pending_spill_ += object_size;
       objects_pending_spill_[id] = std::move(it->second);
+
+      pinned_objects_size_ -= object_size;
       pinned_objects_.erase(it);
     }
   }
@@ -278,9 +283,9 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
     std::shared_ptr<size_t> num_remaining,
     std::function<void(const ray::Status &)> callback, ray::Status status) {
   if (!status.ok()) {
-    RAY_LOG(INFO) << "Failed to send spilled url for object " << object_id
-                  << " to object directory, considering the object to have been freed: "
-                  << status.ToString();
+    RAY_LOG(DEBUG) << "Failed to send spilled url for object " << object_id
+                   << " to object directory, considering the object to have been freed: "
+                   << status.ToString();
   } else {
     RAY_LOG(DEBUG) << "Object " << object_id << " spilled to " << object_url
                    << " and object directory has been informed";
@@ -454,6 +459,8 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
       // If there's no more refs, delete the object.
       if (url_ref_count_it->second == 0) {
         url_ref_count_.erase(url_ref_count_it);
+        RAY_LOG(DEBUG) << "The URL " << object_url
+                       << " is deleted because the references are out of scope.";
         object_urls_to_delete.emplace_back(object_url);
       }
       spilled_objects_url_.erase(spilled_objects_url_it);
@@ -516,6 +523,8 @@ std::string LocalObjectManager::DebugString() const {
   result << "- num objects pending restore: " << objects_pending_restore_.size() << "\n";
   result << "- num objects pending spill: " << objects_pending_spill_.size() << "\n";
   result << "- num bytes pending spill: " << num_bytes_pending_spill_ << "\n";
+  result << "- cumulative spill requests: " << spilled_objects_total_ << "\n";
+  result << "- cumulative restore requests: " << restored_objects_total_ << "\n";
   return result.str();
 }
 

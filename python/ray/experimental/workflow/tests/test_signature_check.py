@@ -1,6 +1,6 @@
 import pytest
 
-import ray
+from ray.tests.conftest import *  # noqa
 from ray.experimental import workflow
 
 
@@ -9,9 +9,7 @@ def signature_check(a, b, c=1):
     pass
 
 
-def test_signature_check():
-    ray.init()
-
+def test_signature_check(workflow_start_regular):
     with pytest.raises(TypeError):
         signature_check(1, 2)
 
@@ -32,4 +30,7 @@ def test_signature_check():
     signature_check.step(1, b=2, c=3)
     signature_check.step(a=1, b=2, c=3)
 
-    ray.shutdown()
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

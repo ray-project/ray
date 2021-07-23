@@ -133,6 +133,8 @@ To view autoscaling logs, run a ``kubectl logs`` command on the operator pod:
     $(kubectl get pod -l cluster.ray.io/component=operator -o custom-columns=:metadata.name) \
     | tail -n 100
 
+.. _ray-k8s-dashboard:
+
 The :ref:`Ray dashboard<ray-dashboard>` can be accessed on the Ray head node at port ``8265``.
 
 .. code-block:: shell
@@ -174,7 +176,7 @@ Then open a new shell and try out a `sample Ray program`_:
 
   $ python ray/doc/kubernetes/example_scripts/run_local_example.py
 
-The program in this example uses ``ray.util.connect(127.0.0.1:10001)`` to connect to the Ray cluster.
+The program in this example uses ``ray.client(127.0.0.1:10001).connect()`` to connect to the Ray cluster.
 The program waits for three Ray nodes to connect and then tests object transfer
 between the nodes.
 
@@ -195,7 +197,7 @@ The following command submits a Job which executes an `example Ray program`_.
   job.batch/ray-test-job created
 
 The program executed by the job uses the name of the Ray cluster's head Service to connect:
-``ray.util.connect("example-cluster-ray-head:10001")``.
+``ray.client("example-cluster-ray-head:10001").connect()``.
 The program waits for three Ray nodes to connect and then tests object transfer
 between the nodes.
 
@@ -218,6 +220,13 @@ then fetch its logs:
   # Cleanup
   $ kubectl -n ray delete job ray-test-job
   job.batch "ray-test-job" deleted
+
+.. tip::
+
+  Code dependencies for a given Ray task or actor must be installed on each Ray node that might run the task or actor.
+  Typically, this means that all Ray nodes need to have the same dependencies installed.
+  To achieve this, you can build a custom container image, using one of the `official Ray images <https://hub.docker.com/r/rayproject/ray>`_ as the base.
+  Alternatively, try out the experimental :ref:`Runtime Environments<runtime-environments>` API (latest Ray release version recommended.)
 
 .. _k8s-cleanup-basic:
 
@@ -277,3 +286,5 @@ Questions or Issues?
 .. _`Pods`: https://kubernetes.io/docs/concepts/workloads/pods/
 .. _`example Ray program`: https://github.com/ray-project/ray/tree/master/doc/kubernetes/example_scripts/job_example.py
 .. _`sample Ray program`: https://github.com/ray-project/ray/tree/master/doc/kubernetes/example_scripts/run_local_example.py
+.. _`official Ray images`: https://hub.docker.com/r/rayproject/ray
+.. _`Ray Docker Hub`: https://hub.docker.com/r/rayproject/ray

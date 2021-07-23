@@ -400,17 +400,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
   absl::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
       const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
-  /// Subscribe to object location changes that are more recent than the given version.
-  /// The provided callback will be invoked when new locations become available.
+  /// Publish the snapshot of the object location for the given object id.
+  /// Publish the empty locations if object is already evicted or not owned by this
+  /// worker.
   ///
   /// \param[in] object_id The object whose locations we want.
-  /// \param[in] last_location_version The version of the last location update the
-  /// caller received. Only more recent location updates will be returned.
-  /// \return The status of the location get.
-  Status SubscribeObjectLocations(const ObjectID &object_id,
-                                  int64_t last_location_version) LOCKS_EXCLUDED(mutex_);
+  void PublishObjectLocationSnapshot(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
-  /// Fill up the object information to the given reply.
+  /// Fill up the object information.
   ///
   /// \param[in] object_id The object id
   /// \param[out] The object information that will be filled by a given object id.
@@ -457,6 +454,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool ReportLocalityData(const ObjectID &object_id,
                           const absl::flat_hash_set<NodeID> &locations,
                           uint64_t object_size);
+
+  /// Add borrower address in owner's worker. This function will add borrower address
+  /// to the `object_id_refs_`, then call WaitForRefRemoved() to monitor borrowed
+  /// object in borrower's worker.
+  ///
+  /// \param[in] object_id The ID of Object whose been borrowed.
+  /// \param[in] borrower_address The address of borrower.
+  void AddBorrowerAddress(const ObjectID &object_id, const rpc::Address &borrower_address)
+      LOCKS_EXCLUDED(mutex_);
 
  private:
   struct Reference {
@@ -545,10 +551,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
-    /// A logical counter for object location updates, used for object location
-    /// subscriptions. Subscribers use -1 to indicate that they want us to
-    /// immediately send them the current location data.
-    int64_t location_version = 0;
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage.
@@ -753,12 +755,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddObjectLocationInternal(ReferenceTable::iterator it, const NodeID &node_id)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Pushes location updates to subscribers of a particular reference, invoking all
-  /// callbacks registered for the reference by GetLocationsAsync calls. This method
-  /// also increments the reference's location version counter.
+  /// Publish object locations to all subscribers.
   ///
   /// \param[in] it The reference iterator for the object.
   void PushToLocationSubscribers(ReferenceTable::iterator it)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Fill up the object information for the given iterator.
+  void FillObjectInformationInternal(ReferenceTable::iterator it,
+                                     rpc::WorkerObjectLocationsPubMessage *object_info)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Clean up borrowers and references when the reference is removed from borrowers.
@@ -766,13 +771,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void CleanupBorrowersOnRefRemoved(const ReferenceTable &new_borrower_refs,
                                     const ObjectID &object_id,
                                     const rpc::WorkerAddress &borrower_addr);
-
-  /// Publish object locations to all subscribers.
-  void PublishObjectLocations(const ObjectID &object_id,
-                              const absl::flat_hash_set<NodeID> &locations,
-                              int64_t object_size, const std::string &spilled_url,
-                              const NodeID &spilled_node_id, int64_t current_version,
-                              const absl::optional<NodeID> &optional_primary_node_id);
 
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the

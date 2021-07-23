@@ -7,6 +7,7 @@ import ray._raylet
 import ray._private.signature as signature
 import ray._private.runtime_env as runtime_support
 import ray.worker
+from ray.util.annotations import PublicAPI
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
 
@@ -29,6 +30,7 @@ from ray.util.tracing.tracing_helper import (_tracing_actor_creation,
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 @client_mode_hook
 def method(*args, **kwargs):
     """Annotate an actor method.
@@ -267,6 +269,9 @@ class ActorClassMetadata:
         memory: The heap memory quota for this actor.
         object_store_memory: The object store memory quota for this actor.
         resources: The default resources required by the actor creation task.
+        accelerator_type: The specified type of accelerator required for the
+            node on which this actor runs.
+        runtime_env: The runtime environment for this actor.
         last_export_session_and_job: A pair of the last exported session
             and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
@@ -279,7 +284,8 @@ class ActorClassMetadata:
     def __init__(self, language, modified_class,
                  actor_creation_function_descriptor, class_id, max_restarts,
                  max_task_retries, num_cpus, num_gpus, memory,
-                 object_store_memory, resources, accelerator_type):
+                 object_store_memory, resources, accelerator_type,
+                 runtime_env):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
@@ -295,6 +301,7 @@ class ActorClassMetadata:
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.accelerator_type = accelerator_type
+        self.runtime_env = runtime_env
         self.last_export_session_and_job = None
         self.method_meta = ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor)
@@ -353,7 +360,7 @@ class ActorClass:
     def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
                                  max_task_retries, num_cpus, num_gpus, memory,
                                  object_store_memory, resources,
-                                 accelerator_type):
+                                 accelerator_type, runtime_env):
         for attribute in [
                 "remote",
                 "_remote",
@@ -385,7 +392,7 @@ class ActorClass:
             Language.PYTHON, modified_class,
             actor_creation_function_descriptor, class_id, max_restarts,
             max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
-            resources, accelerator_type)
+            resources, accelerator_type, runtime_env)
 
         return self
 
@@ -393,13 +400,13 @@ class ActorClass:
     def _ray_from_function_descriptor(
             cls, language, actor_creation_function_descriptor, max_restarts,
             max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
-            resources, accelerator_type):
+            resources, accelerator_type, runtime_env):
         self = ActorClass.__new__(ActorClass)
 
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
             max_restarts, max_task_retries, num_cpus, num_gpus, memory,
-            object_store_memory, resources, accelerator_type)
+            object_store_memory, resources, accelerator_type, runtime_env)
 
         return self
 
@@ -525,7 +532,7 @@ class ActorClass:
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor, which can be used
                 to retrieve the actor via ray.get_actor(name) as long as the
-                actor is still alive.
+                actor is still alive. Names may not contain '/'.
             lifetime: Either `None`, which defaults to the actor will fate
                 share with its creator and will be deleted once its refcount
                 drops to zero, or "detached", which means the actor will live
@@ -601,8 +608,19 @@ class ActorClass:
             if not isinstance(name, str):
                 raise TypeError(
                     f"name must be None or a string, got: '{type(name)}'.")
-            if name == "":
+            elif name == "":
                 raise ValueError("Actor name cannot be an empty string.")
+            split_names = name.split("/", maxsplit=1)
+            if len(split_names) <= 1:
+                name = split_names[0]
+                namespace = ""
+            else:
+                # must be length 2
+                namespace, name = split_names
+            if "/" in name:
+                raise ValueError("Actor name may not contain '/'.")
+        else:
+            namespace = ""
 
         # Check whether the name is already taken.
         # TODO(edoakes): this check has a race condition because two drivers
@@ -704,7 +722,14 @@ class ActorClass:
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
+        if runtime_env is None:
+            runtime_env = meta.runtime_env
         if runtime_env:
+            if runtime_env.get("working_dir"):
+                raise NotImplementedError(
+                    "Overriding working_dir for actors is not supported. "
+                    "Please use ray.init(runtime_env={'working_dir': ...}) "
+                    "to configure per-job environment instead.")
             runtime_env_dict = runtime_support.RuntimeEnvDict(
                 runtime_env).get_parsed_dict()
         else:
@@ -712,7 +737,7 @@ class ActorClass:
 
         if override_environment_variables:
             logger.warning("override_environment_variables is deprecated and "
-                           "will be removed in Ray 1.5.  Please use "
+                           "will be removed in Ray 1.6.  Please use "
                            ".options(runtime_env={'env_vars': {...}}).remote()"
                            "instead.")
 
@@ -727,6 +752,7 @@ class ActorClass:
             max_concurrency,
             detached,
             name if name is not None else "",
+            namespace,
             is_asyncio,
             placement_group.id,
             placement_group_bundle_index,
@@ -824,10 +850,11 @@ class ActorHandle:
     def __del__(self):
         # Mark that this actor handle has gone out of scope. Once all actor
         # handles are out of scope, the actor will exit.
-        worker = ray.worker.global_worker
-        if worker.connected and hasattr(worker, "core_worker"):
-            worker.core_worker.remove_actor_handle_reference(
-                self._ray_actor_id)
+        if ray.worker:
+            worker = ray.worker.global_worker
+            if worker.connected and hasattr(worker, "core_worker"):
+                worker.core_worker.remove_actor_handle_reference(
+                    self._ray_actor_id)
 
     def _actor_method_call(self,
                            method_name,
@@ -1035,7 +1062,7 @@ def modify_class(cls):
 
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
-               accelerator_type, max_restarts, max_task_retries):
+               accelerator_type, max_restarts, max_task_retries, runtime_env):
     Class = modify_class(cls)
     _inject_tracing_into_class(Class)
 
@@ -1061,7 +1088,7 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
     return ActorClass._ray_from_modified_class(
         Class, ActorClassID.from_random(), max_restarts, max_task_retries,
         num_cpus, num_gpus, memory, object_store_memory, resources,
-        accelerator_type)
+        accelerator_type, runtime_env)
 
 
 def exit_actor():

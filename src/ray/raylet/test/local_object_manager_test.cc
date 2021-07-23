@@ -66,6 +66,8 @@ class MockSubscriber : public pubsub::SubscriberInterface {
                                  const rpc::Address &publisher_address,
                                  const std::string &key_id_binary));
 
+  MOCK_CONST_METHOD0(DebugString, std::string());
+
   rpc::ChannelType channel_type_ = rpc::ChannelType::WORKER_OBJECT_EVICTION;
   std::deque<std::pair<ObjectID, pubsub::SubscriptionCallback>> callbacks;
 };
@@ -325,7 +327,7 @@ class LocalObjectManagerTest : public ::testing::Test {
                 },
                 /*core_worker_subscriber=*/subscriber_.get()),
         unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
-    RayConfig::instance().initialize("object_spilling_config,YQ==");
+    RayConfig::instance().initialize(R"({"object_spilling_config": "dummy"})");
   }
 
   void TearDown() { unevictable_objects_.clear(); }

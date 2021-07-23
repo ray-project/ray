@@ -9,6 +9,7 @@ from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
@@ -292,7 +293,7 @@ class _PolicyCollector:
     appended to this policy's buffers.
     """
 
-    def __init__(self, policy):
+    def __init__(self, policy: Policy):
         """Initializes a _PolicyCollector instance.
 
         Args:
@@ -382,7 +383,7 @@ class SimpleListCollector(SampleCollector):
     """
 
     def __init__(self,
-                 policy_map: Dict[PolicyID, Policy],
+                 policy_map: PolicyMap,
                  clip_rewards: Union[bool, float],
                  callbacks: "DefaultCallbacks",
                  multiple_episodes_in_batch: bool = True,
@@ -627,7 +628,7 @@ class SimpleListCollector(SampleCollector):
             if is_done and check_dones and \
                     not pre_batch[SampleBatch.DONES][-1]:
                 raise ValueError(
-                    "Episode {} terminated for all agents, but we still"
+                    "Episode {} terminated for all agents, but we still "
                     "don't have a last observation for agent {} (policy "
                     "{}). ".format(
                         episode_id, agent_id, self.agent_key_to_policy_id[(
@@ -650,8 +651,7 @@ class SimpleListCollector(SampleCollector):
             post_batches[agent_id] = pre_batch
             if getattr(policy, "exploration", None) is not None:
                 policy.exploration.postprocess_trajectory(
-                    policy, post_batches[agent_id],
-                    getattr(policy, "_sess", None))
+                    policy, post_batches[agent_id], policy.get_session())
             post_batches[agent_id] = policy.postprocess_trajectory(
                 post_batches[agent_id], other_batches, episode)
 
@@ -674,8 +674,16 @@ class SimpleListCollector(SampleCollector):
                 policies=self.policy_map,
                 postprocessed_batch=post_batch,
                 original_batches=pre_batches)
+
             # Add the postprocessed SampleBatch to the policy collectors for
             # training.
+            # PID may be a newly added policy. Just confirm we have it in our
+            # policy map before proceeding with adding a new _PolicyCollector()
+            # to the group.
+            if pid not in policy_collector_group.policy_collectors:
+                assert pid in self.policy_map
+                policy_collector_group.policy_collectors[
+                    pid] = _PolicyCollector(policy)
             policy_collector_group.policy_collectors[
                 pid].add_postprocessed_batch_for_training(
                     post_batch, policy.view_requirements)
@@ -780,9 +788,18 @@ class SimpleListCollector(SampleCollector):
                 vectorized environments).
         """
         pid = self.agent_key_to_policy_id[agent_key]
+
+        # PID may be a newly added policy. Just confirm we have it in our
+        # policy map before proceeding with forward_pass_size=0.
+        if pid not in self.forward_pass_size:
+            assert pid in self.policy_map
+            self.forward_pass_size[pid] = 0
+            self.forward_pass_agent_keys[pid] = []
+
         idx = self.forward_pass_size[pid]
         if idx == 0:
             self.forward_pass_agent_keys[pid].clear()
+
         self.forward_pass_agent_keys[pid].append(agent_key)
         self.forward_pass_size[pid] += 1
 

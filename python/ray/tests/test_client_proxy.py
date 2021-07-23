@@ -1,6 +1,8 @@
+from glob import glob
 import os
 import pickle
 import pytest
+import random
 import sys
 import time
 from unittest.mock import patch
@@ -21,16 +23,19 @@ def test_proxy_manager_lifecycle(shutdown_only):
     Creates a ProxyManager and tests basic handling of the lifetime of a
     specific RayClient Server. It checks the following properties:
     1. The SpecificServer is created using the first port.
-    2. The SpecificServer comes alive.
+    2. The SpecificServer comes alive and has a log associated with it.
     3. The SpecificServer destructs itself when no client connects.
     4. The ProxyManager returns the port of the destructed SpecificServer.
     """
     ray_instance = ray.init()
     proxier.CHECK_PROCESS_INTERVAL_S = 1
     os.environ["TIMEOUT_FOR_SPECIFIC_SERVER_S"] = "5"
-    pm = proxier.ProxyManager(ray_instance["redis_address"],
-                              ray_instance["session_dir"])
-    pm._free_ports = [45000, 45001]
+    pm = proxier.ProxyManager(
+        ray_instance["redis_address"], session_dir=ray_instance["session_dir"])
+    # NOTE: We use different ports between runs because sometimes the port is
+    # not released, introducing flakiness.
+    port_one, port_two = random.choices(range(45000, 45100), k=2)
+    pm._free_ports = [port_one, port_two]
     client = "client1"
 
     pm.create_specific_server(client)
@@ -39,14 +44,19 @@ def test_proxy_manager_lifecycle(shutdown_only):
     grpc.channel_ready_future(pm.get_channel(client)).result(timeout=5)
 
     proc = pm._get_server_for_client(client)
-    assert proc.port == 45000
+    assert proc.port == port_one, f"Free Ports are: [{port_one}, {port_two}]"
+
+    log_files_path = os.path.join(pm.node.get_session_dir_path(), "logs",
+                                  "ray_client_server*")
+    files = glob(log_files_path)
+    assert any(str(port_one) in f for f in files)
 
     proc.process_handle_future.result().process.wait(10)
     # Wait for reconcile loop
     time.sleep(2)
 
     assert len(pm._free_ports) == 2
-    assert pm._get_unused_port() == 45001
+    assert pm._get_unused_port() == port_two
 
 
 @pytest.mark.skipif(
@@ -60,8 +70,8 @@ def test_proxy_manager_bad_startup(shutdown_only):
     ray_instance = ray.init()
     proxier.CHECK_PROCESS_INTERVAL_S = 1
     proxier.CHECK_CHANNEL_TIMEOUT_S = 1
-    pm = proxier.ProxyManager(ray_instance["redis_address"],
-                              ray_instance["session_dir"])
+    pm = proxier.ProxyManager(
+        ray_instance["redis_address"], session_dir=ray_instance["session_dir"])
     pm._free_ports = [46000, 46001]
     client = "client1"
 
@@ -110,8 +120,10 @@ assert info._num_clients == {num_clients}
     sys.platform == "win32",
     reason="PSUtil does not work the same on windows.")
 @pytest.mark.parametrize(
-    "call_ray_start",
-    ["ray start --head --ray-client-server-port 25005 --port 0"],
+    "call_ray_start", [
+        "ray start --head --ray-client-server-port 25005 "
+        "--port 0 --redis-password=password"
+    ],
     indirect=True)
 def test_correct_num_clients(call_ray_start):
     """
@@ -149,9 +161,10 @@ def test_delay_in_rewriting_environment(shutdown_only):
         time.sleep(6)
         return input
 
-    server = proxier.serve_proxier("localhost:25010",
-                                   ray_instance["redis_address"],
-                                   ray_instance["session_dir"])
+    server = proxier.serve_proxier(
+        "localhost:25010",
+        ray_instance["redis_address"],
+        session_dir=ray_instance["session_dir"])
 
     with patch.object(proxier, "ray_client_server_env_prep", delay_in_rewrite):
         run_string_as_driver(check_connection)
@@ -185,9 +198,10 @@ def test_startup_error_yields_clean_result(shutdown_only):
     def raise_not_rewrite(input: JobConfig):
         raise RuntimeError("WEIRD_ERROR")
 
-    server = proxier.serve_proxier("localhost:25030",
-                                   ray_instance["redis_address"],
-                                   ray_instance["session_dir"])
+    server = proxier.serve_proxier(
+        "localhost:25030",
+        ray_instance["redis_address"],
+        session_dir=ray_instance["session_dir"])
 
     with patch.object(proxier, "ray_client_server_env_prep",
                       raise_not_rewrite):

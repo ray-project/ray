@@ -72,8 +72,6 @@ message WorkerObjectLocationsPubMessage {
   // The ID of the node that spilled the object.
   // This will be Nil if the object was spilled to distributed external storage.
   bytes spilled_node_id = 4;
-  // The version of the returned location updates.
-  int64 current_version = 5;
   // The ID of the node that stores the primary copy in plasma.
   // This could be Nil if the object has been evicted or inlined.
   bytes primary_node_id = 6;
@@ -149,8 +147,37 @@ message WorkerRefRemovedSubMessage {
 message WorkerObjectLocationsSubMessage {
   bytes intended_worker_id = 1;
   bytes object_id = 2;
-  // The version of the last location update. Only updates more recent than this version
-  // will be returned. -1 indicates that the current location data should
-  // always be returned.
-  int64 last_version = 3;
+}
+
+///
+/// Events
+///
+
+message PubsubLongPollingRequest {
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
+}
+
+message PubsubLongPollingReply {
+  /// The object ids that are published.
+  repeated PubMessage pub_messages = 1;
+}
+
+message PubsubCommandBatchRequest {
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
+  /// Set of pubsub commands. Look at pubsub.proto for more details about the term.
+  repeated Command commands = 2;
+}
+
+message PubsubCommandBatchReply {
+}
+
+service PublisherService {
+  /// The long polling request sent to the publisher for pubsub operations.
+  /// It is replied once there are batch of objects that need to be published to
+  /// the caller (subscriber).
+  rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
+  /// The pubsub command batch request used by the subscriber.
+  rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
 }

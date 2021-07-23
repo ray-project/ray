@@ -1,6 +1,5 @@
 from collections import defaultdict, namedtuple, Counter
-from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict, List, Tuple
 from urllib3.exceptions import MaxRetryError
 import copy
 import logging
@@ -16,14 +15,15 @@ import collections
 from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
-    TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
-    STATUS_SYNCING_FILES, STATUS_SETTING_UP, STATUS_UP_TO_DATE,
+    TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED,
     NODE_KIND_WORKER, NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
+from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.local.node_provider import LocalNodeProvider
 from ray.autoscaler._private.local.node_provider import \
     record_local_head_state_if_needed
+from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
@@ -69,17 +69,36 @@ class StandardAutoscaler:
     until the cluster size that can handle the resource demand is met).
     """
 
-    def __init__(self,
-                 config_path,
-                 load_metrics,
-                 max_launch_batch=AUTOSCALER_MAX_LAUNCH_BATCH,
-                 max_concurrent_launches=AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
-                 max_failures=AUTOSCALER_MAX_NUM_FAILURES,
-                 process_runner=subprocess,
-                 update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S,
-                 prefix_cluster_info=False,
-                 event_summarizer=None,
-                 prom_metrics=None):
+    def __init__(
+            self,
+            config_path: str,
+            load_metrics: LoadMetrics,
+            max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
+            max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+            max_failures: int = AUTOSCALER_MAX_NUM_FAILURES,
+            process_runner: Any = subprocess,
+            update_interval_s: int = AUTOSCALER_UPDATE_INTERVAL_S,
+            prefix_cluster_info: bool = False,
+            event_summarizer: Optional[EventSummarizer] = None,
+            prom_metrics: Optional[AutoscalerPrometheusMetrics] = None):
+        """Create a StandardAutoscaler.
+
+        Args:
+        config_path: Path to a Ray Autoscaler YAML.
+        load_metrics: Provides metrics for the Ray cluster.
+        max_launch_batch: Max number of nodes to launch in one request.
+        max_concurrent_launches: Max number of nodes that can be concurrently
+            launched. This value and `max_launch_batch` determine the number
+            of batches that are used to launch nodes.
+        max_failures: Number of failures that the autoscaler will tolerate
+            before exiting.
+        process_runner: Subprocess-like interface used by the CommandRunner.
+        update_interval_s: Seconds between running the autoscaling loop.
+        prefix_cluster_info: Whether to add the cluster name to info strings.
+        event_summarizer: Utility to consolidate duplicated messages.
+        prom_metrics: Prometheus metrics for autoscaler-related operations.
+        """
+
         self.config_path = config_path
         # Prefix each line of info string with cluster name if True
         self.prefix_cluster_info = prefix_cluster_info
@@ -102,13 +121,19 @@ class StandardAutoscaler:
         self.process_runner = process_runner
         self.event_summarizer = event_summarizer or EventSummarizer()
 
-        # Map from node_id to NodeUpdater processes
+        # Map from node_id to NodeUpdater threads
         self.updaters = {}
         self.num_failed_updates = defaultdict(int)
         self.num_successful_updates = defaultdict(int)
         self.num_failures = 0
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
+
+        # Disable NodeUpdater threads if true.
+        # Should be set to true in situations where another component, such as
+        # a Kubernetes operator, is responsible for Ray setup on nodes.
+        self.disable_node_updaters = self.config["provider"].get(
+            "disable_node_updaters", False)
 
         # Node launchers
         self.launch_queue = queue.Queue()
@@ -197,9 +222,11 @@ class StandardAutoscaler:
             # Make sure to not kill idle node types if the number of workers
             # of that type is lower/equal to the min_workers of that type
             # or it is needed for request_resources().
-            if (self._keep_min_worker_of_node_type(node_id, node_type_counts)
-                    or not nodes_allowed_to_terminate.get(
-                        node_id, True)) and self.launch_config_ok(node_id):
+            should_keep_worker_of_node_type, node_type_counts = \
+                self._keep_worker_of_node_type(node_id, node_type_counts)
+            if ((should_keep_worker_of_node_type
+                 or not nodes_allowed_to_terminate.get(node_id, True))
+                    and self.launch_config_ok(node_id)):
                 continue
 
             node_ip = self.provider.internal_ip(node_id)
@@ -223,10 +250,7 @@ class StandardAutoscaler:
                 nodes_to_terminate.append(node_id)
 
         if nodes_to_terminate:
-            self.provider.terminate_nodes(nodes_to_terminate)
-            for node in nodes_to_terminate:
-                self.node_tracker.untrack(node)
-                self.prom_metrics.stopped_nodes.inc()
+            self._terminate_nodes_and_cleanup(nodes_to_terminate)
             nodes = self.workers()
 
         # Terminate nodes if there are too many
@@ -244,10 +268,7 @@ class StandardAutoscaler:
             nodes_to_terminate.append(to_terminate)
 
         if nodes_to_terminate:
-            self.provider.terminate_nodes(nodes_to_terminate)
-            for node in nodes_to_terminate:
-                self.node_tracker.untrack(node)
-                self.prom_metrics.stopped_nodes.inc()
+            self._terminate_nodes_and_cleanup(nodes_to_terminate)
             nodes = self.workers()
 
         to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
@@ -316,9 +337,7 @@ class StandardAutoscaler:
                                        " Failed to update node."
                                        " Node has already been terminated.")
                 if nodes_to_terminate:
-                    self.prom_metrics.stopped_nodes.inc(
-                        len(nodes_to_terminate))
-                    self.provider.terminate_nodes(nodes_to_terminate)
+                    self._terminate_nodes_and_cleanup(nodes_to_terminate)
                     nodes = self.workers()
 
         # Update nodes with out-of-date files.
@@ -341,9 +360,13 @@ class StandardAutoscaler:
         for t in T:
             t.join()
 
-        # Attempt to recover unhealthy nodes
-        for node_id in nodes:
-            self.recover_if_needed(node_id, now)
+        if self.disable_node_updaters:
+            # If updaters are unavailable, terminate unhealthy nodes.
+            self.terminate_unhealthy_nodes(nodes, now)
+        else:
+            # Attempt to recover unhealthy nodes
+            for node_id in nodes:
+                self.recover_if_needed(node_id, now)
 
         self.prom_metrics.updating_nodes.set(len(self.updaters))
         num_recovering = 0
@@ -353,6 +376,13 @@ class StandardAutoscaler:
         self.prom_metrics.recovering_nodes.set(num_recovering)
         logger.info(self.info_string())
         legacy_log_info_string(self, nodes)
+
+    def _terminate_nodes_and_cleanup(self, nodes_to_terminate: List[str]):
+        """Terminate specified nodes and clean associated autoscaler state."""
+        self.provider.terminate_nodes(nodes_to_terminate)
+        for node in nodes_to_terminate:
+            self.node_tracker.untrack(node)
+            self.prom_metrics.stopped_nodes.inc()
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:
@@ -449,34 +479,45 @@ class StandardAutoscaler:
                 nodes_allowed_to_terminate[node_id] = False
         return nodes_allowed_to_terminate
 
-    def _keep_min_worker_of_node_type(
-            self, node_id: NodeID,
-            node_type_counts: Dict[NodeType, int]) -> bool:
-        """Returns if workers of node_type can be terminated.
-        The worker cannot be terminated to respect min_workers constraint.
+    def _keep_worker_of_node_type(self, node_id: NodeID,
+                                  node_type_counts: Dict[NodeType, int]
+                                  ) -> Tuple[bool, Dict[NodeType, int]]:
+        """Determines if a worker should be kept based on the min_workers
+        constraint of the worker's node_type.
 
-        Receives the counters of running nodes so far and determines if idle
-        node_id should be terminated or not. It also updates the counters
-        (node_type_counts), which is returned by reference.
+        Returns True exactly when both of the following hold:
+        (a) The worker's node_type is present among the keys of the current
+            config's available_node_types dict.
+        (b) Deleting the node would violate the min_workers constraint for that
+            worker's node_type.
+
+        Also updates and returns the dictionary of node type counts.
 
         Args:
             node_type_counts(Dict[NodeType, int]): The non_terminated node
                 types counted so far.
         Returns:
-            bool: if workers of node_types can be terminated or not.
+            bool: True if the node should be kept. False otherwise.
+            Dict[NodeType, int]: Updated node type counts
         """
+        new_node_type_counts = copy.deepcopy(node_type_counts)
         tags = self.provider.node_tags(node_id)
         if TAG_RAY_USER_NODE_TYPE in tags:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
-            node_type_counts[node_type] += 1
+            if node_type not in self.available_node_types:
+                # The node type has been deleted from the cluster config.
+                # Don't keep the node.
+                return False, new_node_type_counts
+            new_node_type_counts[node_type] += 1
             min_workers = self.available_node_types[node_type].get(
                 "min_workers", 0)
             max_workers = self.available_node_types[node_type].get(
                 "max_workers", 0)
-            if node_type_counts[node_type] <= min(min_workers, max_workers):
-                return True
+            if new_node_type_counts[node_type] <= min(min_workers,
+                                                      max_workers):
+                return True, new_node_type_counts
 
-        return False
+        return False, new_node_type_counts
 
     def _node_resources(self, node_id):
         node_type = self.provider.node_tags(node_id).get(
@@ -579,6 +620,10 @@ class StandardAutoscaler:
         node_tags = self.provider.node_tags(node_id)
         tag_launch_conf = node_tags.get(TAG_RAY_LAUNCH_CONFIG)
         node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE)
+        if node_type not in self.available_node_types:
+            # The node type has been deleted from the cluster config.
+            # Don't keep the node.
+            return False
 
         # The `worker_nodes` field is deprecated in favor of per-node-type
         # node_configs. We allow it for backwards-compatibility.
@@ -610,9 +655,10 @@ class StandardAutoscaler:
             return False
         return True
 
-    def recover_if_needed(self, node_id, now):
-        if not self.can_update(node_id):
-            return
+    def heartbeat_on_time(self, node_id: NodeID, now: float) -> bool:
+        """Determine whether we've received a heartbeat from a node within the
+        last AUTOSCALER_HEARTBEAT_TIMEOUT_S seconds.
+        """
         key = self.provider.internal_ip(node_id)
 
         if key in self.load_metrics.last_heartbeat_time_by_ip:
@@ -620,7 +666,43 @@ class StandardAutoscaler:
                 key]
             delta = now - last_heartbeat_time
             if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
-                return
+                return True
+        return False
+
+    def terminate_unhealthy_nodes(self, nodes: List[NodeID], now: float):
+        """Terminate nodes for which we haven't received a heartbeat on time.
+
+        Used when node updaters are not available for recovery.
+        """
+        nodes_to_terminate = []
+        for node_id in nodes:
+            node_status = self.provider.node_tags(node_id)[TAG_RAY_NODE_STATUS]
+            # We're not responsible for taking down
+            # nodes with pending or failed status:
+            if not node_status == STATUS_UP_TO_DATE:
+                continue
+            # Heartbeat indicates node is healthy:
+            if self.heartbeat_on_time(node_id, now):
+                continue
+            # Node is unhealthy, terminate:
+            logger.warning("StandardAutoscaler: "
+                           "{}: No recent heartbeat, "
+                           "terminating node.".format(node_id))
+            self.event_summarizer.add(
+                "Terminating {} nodes of type " + self._get_node_type(node_id)
+                + " (lost contact with raylet).",
+                quantity=1,
+                aggregate=operator.add)
+            nodes_to_terminate.append(node_id)
+
+        if nodes_to_terminate:
+            self._terminate_nodes_and_cleanup(nodes_to_terminate)
+
+    def recover_if_needed(self, node_id, now):
+        if not self.can_update(node_id):
+            return
+        if self.heartbeat_on_time(node_id, now):
+            return
 
         logger.warning("StandardAutoscaler: "
                        "{}: No recent heartbeat, "
@@ -746,6 +828,8 @@ class StandardAutoscaler:
         self.updaters[node_id] = updater
 
     def can_update(self, node_id):
+        if self.disable_node_updaters:
+            return False
         if node_id in self.updaters:
             return False
         if not self.launch_config_ok(node_id):
@@ -839,11 +923,8 @@ class StandardAutoscaler:
                 non_failed.add(node_id)
             else:
                 status = node_tags[TAG_RAY_NODE_STATUS]
-                pending_states = [
-                    STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
-                    STATUS_SYNCING_FILES, STATUS_SETTING_UP
-                ]
-                is_pending = status in pending_states
+                completed_states = [STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED]
+                is_pending = status not in completed_states
                 if is_pending:
                     pending_nodes.append((ip, node_type, status))
                     non_failed.add(node_id)

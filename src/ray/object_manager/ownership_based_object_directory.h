@@ -28,6 +28,7 @@
 #include "ray/object_manager/object_directory.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "ray/util/sequencer.h"
 
 namespace ray {
 
@@ -40,10 +41,10 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   /// usually be the same event loop that the given gcs_client runs on.
   /// \param gcs_client A Ray GCS client to request object and node
   /// information from.
-  OwnershipBasedObjectDirectory(instrumented_io_context &io_service,
-                                std::shared_ptr<gcs::GcsClient> &gcs_client,
-                                pubsub::SubscriberInterface *object_location_subscriber,
-                                std::function<void(const ObjectID &)> mark_as_failed);
+  OwnershipBasedObjectDirectory(
+      instrumented_io_context &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client,
+      pubsub::SubscriberInterface *object_location_subscriber,
+      std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed);
 
   virtual ~OwnershipBasedObjectDirectory() {}
 
@@ -76,20 +77,24 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   /// The object location subscriber.
   pubsub::SubscriberInterface *object_location_subscriber_;
   /// The callback used to mark an object as failed.
-  std::function<void(const ObjectID &)> mark_as_failed_;
+  std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed_;
   /// Cache of gRPC clients to workers (not necessarily running on this node).
   /// Also includes the number of inflight requests to each worker - when this
   /// reaches zero, the client will be deleted and a new one will need to be created
   /// for any subsequent requests.
   absl::flat_hash_map<WorkerID, std::shared_ptr<rpc::CoreWorkerClient>>
       worker_rpc_clients_;
+  /// Used to order add/remove updates for a single ObjectID,
+  /// so we don't lose updates at the directory.
+  Sequencer<ObjectID> sequencer_;
 
   /// Get or create the rpc client in the worker_rpc_clients.
   std::shared_ptr<rpc::CoreWorkerClient> GetClient(const rpc::Address &owner_address);
 
   /// Internal callback function used by object location subscription.
-  void ObjectLocationSubscriptionCallback(const rpc::PubMessage &pub_message,
-                                          const ObjectID &object_id);
+  void ObjectLocationSubscriptionCallback(
+      const rpc::WorkerObjectLocationsPubMessage &location_info,
+      const ObjectID &object_id, bool location_lookup_failed);
 
   /// Metrics
 
@@ -108,6 +113,8 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   /// Number of object location updates.
   uint64_t metrics_num_object_location_updates_;
   double metrics_num_object_location_updates_per_second_;
+
+  uint64_t cum_metrics_num_object_location_updates_;
 };
 
 }  // namespace ray
