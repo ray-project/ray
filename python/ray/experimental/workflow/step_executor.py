@@ -17,6 +17,7 @@ StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 
 logger = logging.getLogger(__name__)
 
+
 def _resolve_object_ref(ref: ObjectRef) -> Tuple[Any, ObjectRef]:
     """
     Resolves the ObjectRef into the object instance.

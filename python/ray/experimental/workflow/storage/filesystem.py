@@ -139,8 +139,7 @@ class FilesystemStorageImpl(Storage):
                 raise ValueError(f"storage path {workflow_root_dir} must be"
                                  " a directory.")
         else:
-           self._workflow_root_dir.mkdir()
-
+            self._workflow_root_dir.mkdir()
 
     async def load_step_input_metadata(self, workflow_id: str,
                                        step_id: StepID) -> Dict[str, Any]:

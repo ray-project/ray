@@ -31,9 +31,9 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     # Test list all, it should list all jobs running
     all_tasks = workflow.list_all()
     assert len(all_tasks) == 100
-    all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)
+    all_tasks_running = workflow.list_all(workflow.RUNNING)
     assert dict(all_tasks) == dict(all_tasks_running)
-    assert workflow.get_status("0") == workflow.WorkflowStatus.RUNNING
+    assert workflow.get_status("0") == "RUNNING"
 
     # Release lock and make sure all tasks finished
     lock.release()
@@ -46,9 +46,9 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)
     assert len(all_tasks_running) == 0
     # Half of them failed and half succeed
-    failed_jobs = workflow.list_all(workflow.WorkflowStatus.RESUMABLE)
+    failed_jobs = workflow.list_all("RESUMABLE")
     assert len(failed_jobs) == 50
-    finished_jobs = workflow.list_all(workflow.WorkflowStatus.FINISHED)
+    finished_jobs = workflow.list_all("FINISHED")
     assert len(finished_jobs) == 50
 
     all_tasks_status = workflow.list_all({
@@ -56,41 +56,42 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
         workflow.WorkflowStatus.RUNNING
     })
     assert len(all_tasks_status) == 100
-    assert failed_jobs == {
-        k: v
-        for (k, v) in all_tasks_status.items()
+    assert failed_jobs == [
+        (k, v)
+        for (k, v) in all_tasks_status
         if v == workflow.WorkflowStatus.RESUMABLE
-    }
-    assert finished_jobs == {
-        k: v
-        for (k, v) in all_tasks_status.items()
+    ]
+    assert finished_jobs == [
+        (k, v)
+        for (k, v) in all_tasks_status
         if v == workflow.WorkflowStatus.FINISHED
-    }
+    ]
 
     # Test get_status
-    assert workflow.get_status("0") == workflow.WorkflowStatus.RESUMABLE
-    assert workflow.get_status("1") == workflow.WorkflowStatus.FINISHED
-    assert workflow.get_status("X") is None
+    assert workflow.get_status("0") == "RESUMABLE"
+    assert workflow.get_status("1") == "FINISHED"
+    with pytest.raises(ValueError):
+        workflow.get_status("X")
     lock.acquire()
     r = workflow.resume("0")
-    assert workflow.get_status("0") == workflow.WorkflowStatus.RUNNING
+    assert workflow.get_status("0") == workflow.RUNNING
     flag_file.unlink()
     lock.release()
     assert 100 == ray.get(r)
-    assert workflow.get_status("0") == workflow.WorkflowStatus.FINISHED
+    assert workflow.get_status("0") == workflow.FINISHED
 
     # Test cancel
     lock.acquire()
     workflow.resume("2")
-    assert workflow.get_status("2") == workflow.WorkflowStatus.RUNNING
+    assert workflow.get_status("2") == workflow.RUNNING
     workflow.cancel("2")
-    assert workflow.get_status("2") == workflow.WorkflowStatus.CANCELED
+    assert workflow.get_status("2") == workflow.CANCELED
 
     # Now resume_all
     resumed = workflow.resume_all()
     assert len(resumed) == 48
     lock.release()
-    assert [ray.get(o) for o in resumed.values()] == [100] * 48
+    assert [ray.get(o) for (_, o) in resumed] == [100] * 48
 
 
 @pytest.mark.parametrize(
@@ -123,11 +124,11 @@ def test_actor_manager(workflow_start_regular, tmp_path):
     lock = FileLock(lock_file)
     lock.acquire()
 
-    assert {"counter": workflow.FINISHED} == workflow.list_all()
+    assert [("counter", workflow.FINISHED)] == workflow.list_all()
 
     actor.val.run_async()
     # Readonly function won't make the workflow running
-    assert {"counter": workflow.FINISHED} == workflow.list_all()
+    assert [("counter", workflow.FINISHED)] == workflow.list_all()
 
 
 if __name__ == "__main__":

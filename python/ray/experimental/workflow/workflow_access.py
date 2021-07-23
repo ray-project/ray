@@ -164,13 +164,15 @@ class WorkflowManagementActor:
 
     def cancel_workflow(self, workflow_id: str) -> None:
         self._step_status.pop(workflow_id)
+        print("CANCEL>>>>", workflow_id)
         cancel_job(self._workflow_outputs.pop(workflow_id))
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         wf_store.save_workflow_meta(
             common.WorkflowMetaData(common.WorkflowStatus.CANCELED))
 
     def is_workflow_running(self, workflow_id: str) -> bool:
-        return workflow_id in self._step_status
+        return workflow_id in self._step_status and \
+          workflow_id in self._workflow_outputs
 
     def list_running_workflow(self) -> List[str]:
         return list(self._step_status.keys())

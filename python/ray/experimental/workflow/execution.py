@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import Set, Dict, Tuple, Optional
+from typing import Set, Dict, List, Tuple, Optional
 
 import ray
 
@@ -95,11 +95,11 @@ def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
     store = workflow_storage.get_workflow_storage(workflow_id)
     meta = store.load_workflow_meta()
     if meta is None:
-        return meta
+        raise ValueError(f"No such workflow_id {workflow_id}")
     return meta.status
 
 
-def list_all(status_filter: Set[WorkflowStatus]) -> Dict[str, WorkflowStatus]:
+def list_all(status_filter: Set[WorkflowStatus]) -> List[Tuple[str, WorkflowStatus]]:
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
     except ValueError:
@@ -110,21 +110,21 @@ def list_all(status_filter: Set[WorkflowStatus]) -> Dict[str, WorkflowStatus]:
     else:
         runnings = ray.get(workflow_manager.list_running_workflow.remote())
     if WorkflowStatus.RUNNING in status_filter and len(status_filter) == 1:
-        return {r: WorkflowStatus.RUNNING for r in runnings}
+        return [(r, WorkflowStatus.RUNNING) for r in runnings]
 
     runnings = set(runnings)
     # Here we don't have workflow id, so use empty one instead
     store = workflow_storage.get_workflow_storage("")
-    ret = {}
+    ret = []
     for (k, s) in store.list_workflow():
         if s == WorkflowStatus.RUNNING and k not in runnings:
             s = WorkflowStatus.RESUMABLE
         if s in status_filter:
-            ret[k] = s
+            ret.append((k, s))
     return ret
 
 
-def resume_all() -> Dict[str, ray.ObjectRef]:
+def resume_all() -> List[Tuple[str, ray.ObjectRef]]:
     all_failed = list_all({WorkflowStatus.RESUMABLE})
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
@@ -140,5 +140,5 @@ def resume_all() -> Dict[str, ray.ObjectRef]:
             return (wid, None)
 
     ret = workflow_storage.asyncio_run(
-        asyncio.gather(*[_resume_one(wid) for wid in all_failed.keys()]))
-    return {wid: obj for (wid, obj) in ret if obj is not None}
+        asyncio.gather(*[_resume_one(wid) for (wid, _) in all_failed]))
+    return [(wid, obj) for (wid, obj) in ret if obj is not None]
