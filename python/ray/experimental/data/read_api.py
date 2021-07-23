@@ -16,9 +16,8 @@ from ray.util.annotations import PublicAPI
 from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.datasource import Datasource, RangeDatasource, \
-    JSONDatasource, CSVDatasource, ParquetDatasource, ReadTask, \
-    _S3FileSystemWrapper
-from ray.experimental.data.impl import reader as _reader
+    JSONDatasource, CSVDatasource, ParquetDatasource, BinaryDatasource, \
+    ReadTask
 from ray.experimental.data.impl.arrow_block import ArrowRow, \
     DelegatingArrowBlockBuilder
 from ray.experimental.data.impl.block_list import BlockList
@@ -262,20 +261,13 @@ def read_binary_files(
     Returns:
         Dataset holding Arrow records read from the specified paths.
     """
-    import pyarrow as pa
-
-    if isinstance(paths, str):
-        paths = _reader.list_objects(paths)
-
-    dataset = from_items(paths, parallelism=parallelism)
-    if isinstance(filesystem, pa.fs.S3FileSystem):
-        filesystem = _S3FileSystemWrapper(filesystem)
-
-    return dataset.map(
-        lambda path: _reader.read_file(
-            path,
-            include_paths=include_paths,
-            filesystem=filesystem))
+    return read_datasource(
+        BinaryDatasource(),
+        parallelism=parallelism,
+        paths=paths,
+        include_paths=include_paths,
+        filesystem=filesystem,
+        schema=bytes)
 
 
 @PublicAPI(stability="beta")
