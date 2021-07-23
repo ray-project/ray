@@ -90,20 +90,32 @@ class DatasetPipeline(Generic[T]):
 
 
 for method in PER_DATASET_OPS:
-    delegate = getattr(Dataset, method)
 
-    @functools.wraps(delegate)
-    def impl(self, *args, **kwargs):
-        return self.foreach_dataset(
-            lambda ds: getattr(ds, method)(*args, **kwargs))
+    def make_impl(method):
+        delegate = getattr(Dataset, method)
 
-    setattr(DatasetPipeline, method, impl)
+        @functools.wraps(delegate)
+        def impl(self, *args, **kwargs):
+            return self.foreach_dataset(
+                lambda ds: getattr(ds, method)(*args, **kwargs))
+
+        if "return" in impl.__annotations__:
+            impl.__annotations__["return"] = impl.__annotations__[
+                "return"].replace("Dataset", "DatasetPipeline")
+
+        return impl
+
+    setattr(DatasetPipeline, method, make_impl(method))
 
 for method in OUTPUT_ITER_OPS:
-    delegate = getattr(Dataset, method)
 
-    @functools.wraps(delegate)
-    def impl(self, *args, **kwargs):
-        return delegate(self, *args, **kwargs)
+    def make_impl(method):
+        delegate = getattr(Dataset, method)
 
-    setattr(DatasetPipeline, method, impl)
+        @functools.wraps(delegate)
+        def impl(self, *args, **kwargs):
+            return delegate(self, *args, **kwargs)
+
+        return impl
+
+    setattr(DatasetPipeline, method, make_impl(method))
