@@ -21,9 +21,6 @@ case $key in
     --no-cache-build)
     NO_CACHE="--no-cache"
     ;;
-    --build-development-image)
-    BUILD_DEV=YES
-    ;;
     --build-examples)
     BUILD_EXAMPLES=YES
     ;;
@@ -59,7 +56,7 @@ do
   git rev-parse HEAD > ./docker/${IMAGE}/git-rev
   git archive -o ./docker/${IMAGE}/ray.tar "$(git rev-parse HEAD)"
   cp ./python/requirements.txt ./docker/${IMAGE}/requirements.txt
-    IMAGE_SHA=$(docker buildx build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg PYTHON_VERSION="$PYTHON_VERSION" --build-arg DOCKER_PREFIX="$DOCKER_PREFIX"  -t ${DOCKER_PREFIX}$IMAGE:nightly$GPU --platform linux/arm64,linux/amd64 --push docker/$IMAGE )
+    IMAGE_SHA=$(docker buildx build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg PYTHON_VERSION="$PYTHON_VERSION" --build-arg DOCKER_PREFIX="$DOCKER_PREFIX"  -t "${DOCKER_PREFIX}$IMAGE:nightly$GPU" --platform linux/arm64,linux/amd64 --push docker/$IMAGE )
     if [ $OUTPUT_SHA ]; then
 	echo "rayproject/$IMAGE:nightly$GPU SHA:$IMAGE_SHA"
     fi
@@ -72,7 +69,7 @@ if [ $BUILD_EXAMPLES ]; then
 	IMAGE_SHA=$(docker build $NO_CACHE -q -t rayproject/examples docker/examples)
 	echo "rayproject/examples:latest SHA:$IMAGE_SHA"
     else
-	docker buildx build $NO_CACHE -t ${DOCKER_PREFIX}examples --platform linux/arm64,linux/amd64 --push docker/examples
+	docker buildx build $NO_CACHE -t "${DOCKER_PREFIX}examples" --platform linux/arm64,linux/amd64 --push docker/examples
     fi
 fi
 
