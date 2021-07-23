@@ -129,7 +129,13 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
           result = rayFunction.getConstructor().newInstance(args);
         }
       } catch (InvocationTargetException e) {
-        LOGGER.error("Execute rayFunction {} failed. actor {}, args {}", rayFunction, actor, args);
+        final boolean isIntentionalSystemExit =
+            e.getCause() != null && e.getCause() instanceof RayIntentionalSystemExitException;
+        if (!isIntentionalSystemExit) {
+          LOGGER.error(
+              "Execute rayFunction {} failed. actor {}, args {}", rayFunction, actor, args);
+        }
+
         if (e.getCause() != null) {
           throw e.getCause();
         } else {
