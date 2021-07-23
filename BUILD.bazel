@@ -1960,16 +1960,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
-    name = "ray_redis_module",
-    hdrs = [
-        "src/ray/gcs/redis_module/redis_string.h",
-        "src/ray/gcs/redis_module/redismodule.h",
-    ],
-    copts = COPTS,
-    strip_include_prefix = "src",
-)
-
 filegroup(
     name = "all_py_proto",
     srcs = [
