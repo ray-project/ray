@@ -1,7 +1,7 @@
 import logging
 import os
 import types
-from typing import Dict, Set, List, Tuple, Union, Optional, TYPE_CHECKING
+from typing import Dict, Set, List, Tuple, Union, Optional, Any, TYPE_CHECKING
 
 import ray
 from ray.experimental.workflow import execution
@@ -59,7 +59,13 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
     workflow_access.init_management_actor()
 
 
-def step(func: types.FunctionType) -> WorkflowStepFunction:
+def make_step_decorator(step_options: Dict[str, Any]):
+    def decorator(func):
+        return WorkflowStepFunction(func, **step_options)
+    return decorator
+
+
+def step(*args, **kwargs):
     """A decorator used for creating workflow steps.
 
     Examples:
@@ -67,13 +73,25 @@ def step(func: types.FunctionType) -> WorkflowStepFunction:
         ... def book_flight(origin: str, dest: str) -> Flight:
         ...    return Flight(...)
 
-    Args:
-        func: The function to turn into a workflow step.
+        >>> @workflow.step(max_retries=3, catch_exceptions=True)
+        ... def book_hotel(dest: str) -> Hotel:
+        ...    return Hotel(...)
+
     """
-    if not isinstance(func, types.FunctionType):
-        raise TypeError(
-            "The @workflow.step decorator can only wrap a function.")
-    return WorkflowStepFunction(func)
+    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+        return make_step_decorator({})(args[0])
+    if len(args) != 0:
+        raise ValueError(f"Invalid arguments for step decorator {args}")
+    step_options = {}
+    max_retries = kwargs.pop("max_retries", None)
+    if max_retries is not None:
+        step_options["max_retries"] = max_retries
+    catch_exceptions = kwargs.pop("catch_exceptions", None)
+    if catch_exceptions is not None:
+        step_options["catch_exceptions"] = catch_exceptions
+    if len(kwargs) != 0:
+        step_options["ray_options"] = kwargs
+    return make_step_decorator(step_options)
 
 
 class _VirtualActorDecorator:

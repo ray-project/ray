@@ -153,7 +153,7 @@ def _workflow_step_executor(
         func: Callable, context: workflow_context.WorkflowStepContext,
         step_id: "StepID", step_inputs: "StepInputTupleToResolve",
         outer_most_step_id: "StepID", catch_exceptions: bool,
-        step_max_retries: int) -> Any:
+        max_retries: int) -> Any:
     """Executor function for workflow step.
 
     Args:
@@ -165,18 +165,18 @@ def _workflow_step_executor(
             explanation.
         catch_exceptions: If set to be true, return
             (Optional[Result], Optional[Error]) instead of Result.
-        step_max_retries: Max number of retries encounter of a failure.
+        max_retries: Max number of retries encounter of a failure.
 
     Returns:
         Workflow step output.
     """
     ret = None
     err = None
-    # step_max_retries are for application level failure.
+    # max_retries are for application level failure.
     # For ray failure, we should use max_retries.
     from ray.experimental.workflow.common import WorkflowStatus
     from ray.experimental.workflow.common import Workflow
-    for _ in range(step_max_retries):
+    for _ in range(max_retries):
         try:
             workflow_context.update_workflow_step_context(context, step_id)
             args, kwargs = _resolve_step_inputs(step_inputs)
@@ -206,13 +206,13 @@ def _workflow_step_executor(
 def execute_workflow_step(
         step_func: Callable, step_id: "StepID",
         step_inputs: "WorkflowInputTuple", catch_exceptions: bool,
-        step_max_retries: int, ray_options: Dict[str, Any],
+        max_retries: int, ray_options: Dict[str, Any],
         outer_most_step_id: "StepID") -> "WorkflowOutputType":
     from ray.experimental.workflow.common import WorkflowStatus
     _record_step_status(step_id, WorkflowStatus.RUNNING)
     return _workflow_step_executor.options(**ray_options).remote(
         step_func, workflow_context.get_workflow_step_context(), step_id,
-        step_inputs, outer_most_step_id, catch_exceptions, step_max_retries)
+        step_inputs, outer_most_step_id, catch_exceptions, max_retries)
 
 
 def _record_step_status(step_id: "StepID", status: "WorkflowStatus") -> None:

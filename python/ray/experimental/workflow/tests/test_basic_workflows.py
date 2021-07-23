@@ -170,20 +170,62 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
         return v
 
     with pytest.raises(Exception):
-        unstable_step.options(step_max_retries=-1).step().run()
+        unstable_step.options(max_retries=-1).step().run()
 
     with pytest.raises(Exception):
-        unstable_step.options(step_max_retries=3).step().run()
-    assert 10 == unstable_step.options(step_max_retries=8).step().run()
+        unstable_step.options(max_retries=3).step().run()
+    assert 10 == unstable_step.options(max_retries=8).step().run()
     (tmp_path / "test").write_text("0")
     (ret, err) = unstable_step.options(
-        step_max_retries=3, catch_exceptions=True).step().run()
+        max_retries=3, catch_exceptions=True).step().run()
     assert ret is None
     assert isinstance(err, ValueError)
     (ret, err) = unstable_step.options(
-        step_max_retries=8, catch_exceptions=True).step().run()
+        max_retries=8, catch_exceptions=True).step().run()
     assert ret == 10
     assert err is None
+
+
+def test_step_failure_decorator(
+    workflow_start_regular_shared, tmp_path):
+    (tmp_path / "test").write_text("0")
+
+    @workflow.step(max_retries=11)
+    def unstable_step():
+        v = int((tmp_path / "test").read_text())
+        (tmp_path / "test").write_text(f"{v + 1}")
+        if v < 10:
+            raise ValueError("Invalid")
+        return v
+    assert unstable_step.step().run() == 10
+
+
+    (tmp_path / "test").write_text("0")
+    @workflow.step(catch_exceptions=True)
+    def unstable_step_exception():
+        v = int((tmp_path / "test").read_text())
+        (tmp_path / "test").write_text(f"{v + 1}")
+        if v < 10:
+            raise ValueError("Invalid")
+        return v
+    (ret, err) = unstable_step_exception.step().run()
+    assert ret is None
+    assert err is not None
+
+
+
+    (tmp_path / "test").write_text("0")
+    @workflow.step(catch_exceptions=True, max_retries=4)
+    def unstable_step_exception():
+        v = int((tmp_path / "test").read_text())
+        (tmp_path / "test").write_text(f"{v + 1}")
+        if v < 10:
+            raise ValueError("Invalid")
+        return v
+    (ret, err) = unstable_step_exception.step().run()
+    assert ret is None
+    assert err is not None
+    assert (tmp_path / "test").read_text() == "4"
 
 
 @pytest.mark.parametrize(

@@ -38,7 +38,7 @@ class StepInspectResult:
     # The workflows in the inputs of the workflow.
     workflows: Optional[List[str]] = None
     # The num of retry for application exception
-    step_max_retries: int = 1
+    max_retries: int = 1
     # Whether the user want to handle the exception mannually
     catch_exceptions: bool = False
     # ray_remote options
@@ -231,7 +231,7 @@ class WorkflowStorage:
                 self._workflow_id, step_id)
             input_object_refs = metadata["object_refs"]
             input_workflows = metadata["workflows"]
-            step_max_retries = metadata.get("step_max_retries")
+            max_retries = metadata.get("max_retries")
             catch_exceptions = metadata.get("catch_exceptions")
             ray_options = metadata.get("ray_options", {})
         except storage.DataLoadError:
@@ -243,7 +243,7 @@ class WorkflowStorage:
             func_body_valid=field_list.func_body_exists,
             object_refs=input_object_refs,
             workflows=input_workflows,
-            step_max_retries=step_max_retries,
+            max_retries=max_retries,
             catch_exceptions=catch_exceptions,
             ray_options=ray_options,
         )
@@ -256,7 +256,7 @@ class WorkflowStorage:
             "name": f.__module__ + "." + f.__qualname__,
             "object_refs": inputs.object_refs,
             "workflows": inputs.workflows,
-            "step_max_retries": inputs.step_max_retries,
+            "max_retries": inputs.max_retries,
             "catch_exceptions": inputs.catch_exceptions,
             "ray_options": inputs.ray_options,
         }

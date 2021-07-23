@@ -100,7 +100,7 @@ def test_workflow_storage(workflow_start_regular):
         "name": "test_basic_workflows.append1",
         "object_refs": ["abc"],
         "workflows": ["def"],
-        "step_max_retries": 1,
+        "max_retries": 1,
         "catch_exceptions": False,
         "ray_options": {},
     }
