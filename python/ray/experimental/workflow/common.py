@@ -47,7 +47,7 @@ class WorkflowData:
     # The arguments of a workflow.
     inputs: WorkflowInputs
     # The num of retry for application exception
-    step_max_retries: int
+    max_retries: int
     # Whether the user want to handle the exception mannually
     catch_exceptions: bool
     # ray_remote options
@@ -59,7 +59,7 @@ class WorkflowData:
             "name": f.__module__ + "." + f.__qualname__,
             "object_refs": [r.hex() for r in self.inputs.object_refs],
             "workflows": [w.id for w in self.inputs.workflows],
-            "step_max_retries": self.step_max_retries,
+            "max_retries": self.max_retries,
             "catch_exceptions": self.catch_exceptions,
             "ray_options": self.ray_options,
         }
