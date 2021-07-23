@@ -46,7 +46,7 @@ public class LocalModeObjectStore extends ObjectStore {
   @Override
   public ObjectId putRaw(NativeRayObject obj, byte[] address) {
     throw new UnsupportedOperationException(
-      "Assigning owner in Put is not implemented in local mode");
+        "Assigning owner in Put is not implemented in local mode");
   }
 
   @Override
