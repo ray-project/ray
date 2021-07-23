@@ -240,7 +240,7 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
     return execution.list_all(status_filter)
 
 
-def resume_all(with_failed: bool=False) -> Dict[str, ray.ObjectRef]:
+def resume_all(with_failed: bool = False) -> Dict[str, ray.ObjectRef]:
     """Resume all resumable workflow jobs.
 
     Examples:

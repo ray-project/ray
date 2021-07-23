@@ -1,9 +1,9 @@
 import logging
 from typing import Optional, List
 from contextlib import contextmanager
-
-
+from ray.experimental.workflow.common import WorkflowStatus
 logger = logging.getLogger(__name__)
+
 
 class WorkflowStepContext:
     def __init__(self,
@@ -87,9 +87,9 @@ def get_step_name() -> str:
     return f"{get_current_workflow_id()}@{get_current_step_id()}"
 
 
-def get_step_status_info(status: "WorkflowStatus") -> None:
+def get_step_status_info(status: WorkflowStatus) -> None:
     assert _context is not None
-    return f"Step status {status}\t{get_step_name()}"
+    return f"Step status [{status}]\t[{get_step_name()}]"
 
 
 def get_scope():
