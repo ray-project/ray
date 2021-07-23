@@ -70,6 +70,7 @@ public class ObjectStoreTest extends BaseTest {
     Assert.assertEquals(ints, Ray.get(refs));
   }
 
+  @Test
   public void testPutWithAssignedOwner() throws Exception {
     try {
       ActorHandle<Creator> creator = Ray.actor(Creator::new).remote();
