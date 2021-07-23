@@ -1,6 +1,5 @@
 from collections import defaultdict, namedtuple, Counter
 from typing import Any, Optional, Dict, List, Tuple
-from urllib3.exceptions import MaxRetryError
 import copy
 import logging
 import math
@@ -11,6 +10,11 @@ import threading
 import time
 import yaml
 import collections
+
+try:
+    from urllib3.exceptions import MaxRetryError
+except ImportError:
+    MaxRetryError = None
 
 from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
