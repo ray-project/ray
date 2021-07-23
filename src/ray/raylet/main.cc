@@ -240,7 +240,7 @@ int main(int argc, char *argv[]) {
         // Initialize stats.
         const ray::stats::TagsType global_tags = {
             {ray::stats::ComponentKey, "raylet"},
-            {ray::stats::VersionKey, "1.5.0rc1"},
+            {ray::stats::VersionKey, "1.5.0"},
             {ray::stats::NodeAddressKey, node_ip_address}};
         ray::stats::Init(global_tags, metrics_agent_port);
 
