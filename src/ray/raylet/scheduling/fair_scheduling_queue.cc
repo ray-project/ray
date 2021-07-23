@@ -18,7 +18,6 @@ void FairSchedulingQueue::Set(const SchedulingClass scheduling_class,
                               std::deque<Work> works) {
   // TODO (Alex): We may want to do an O(1) move here if this gets too
   // inefficient.
-
   work_queue_.emplace(scheduling_class, works);
 }
 
@@ -27,10 +26,16 @@ void FairSchedulingQueue::MarkRunning(const Task &task) {
   // `scheduling_class` is in `work_queue_` since `works_queue_`'s comparator
   // relies on `active_works_` and thus may become inconsistent.
   const auto scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
-  auto queue = std::move(work_queue_[scheduling_class]);
-  work_queue_.erase(scheduling_class);
-  active_tasks_[scheduling_class]++;
-  work_queue_.emplace(scheduling_class, queue);
+
+  auto it = work_queue_.find(scheduling_class);
+  if (it != work_queue_.end()) {
+    auto queue = std::move(it->second);
+    work_queue_.erase(scheduling_class);
+    active_tasks_[scheduling_class]++;
+    work_queue_.emplace(scheduling_class, queue);
+  } else {
+    active_tasks_[scheduling_class]++;
+  }
 }
 
 void FairSchedulingQueue::MarkFinished(const Task &task) {
@@ -38,10 +43,19 @@ void FairSchedulingQueue::MarkFinished(const Task &task) {
   // `scheduling_class` is in `work_queue_` since `works_queue_`'s comparator
   // relies on `active_works_` and thus may become inconsistent.
   const auto scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
-  auto queue = std::move(work_queue_[scheduling_class]);
-  work_queue_.erase(scheduling_class);
-  active_tasks_[scheduling_class]--;
-  work_queue_.emplace(scheduling_class, queue);
+
+  auto it = work_queue_.find(scheduling_class);
+  if (it != work_queue_.end()) {
+    auto queue = std::move(it->second);
+    work_queue_.erase(scheduling_class);
+    active_tasks_[scheduling_class]--;
+    work_queue_.emplace(scheduling_class, queue);
+  } else {
+    active_tasks_[scheduling_class]--;
+    if (active_tasks_[scheduling_class] == 0) {
+      active_tasks_.erase(scheduling_class);
+    }
+  }
 }
 
 WorkQueueIterator FairSchedulingQueue::begin() { return work_queue_.begin(); }
@@ -64,6 +78,8 @@ ConstWorkQueueIterator FairSchedulingQueue::find(
 WorkQueueIterator FairSchedulingQueue::erase(WorkQueueIterator &it) {
   return work_queue_.erase(it);
 }
+
+size_t FairSchedulingQueue::size() const { return work_queue_.size(); }
 
 namespace internal {
 

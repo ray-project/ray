@@ -73,6 +73,7 @@ class FairSchedulingQueue {
   WorkQueueIterator find(const SchedulingClass scheduling_class);
   ConstWorkQueueIterator find(const SchedulingClass scheduling_class) const;
   WorkQueueIterator erase(WorkQueueIterator &it);
+  size_t size() const;
 
  private:
   /// The number of active tasks for each scheduling class, which is opposite

@@ -872,6 +872,18 @@ cc_test(
 )
 
 cc_test(
+    name = "fair_scheduling_queue_test",
+    srcs = [
+        "src/ray/raylet/scheduling/fair_scheduling_queue_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "scheduling_policy_test",
     srcs = [
         "src/ray/raylet/scheduling/scheduling_policy_test.cc",

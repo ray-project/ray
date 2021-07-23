@@ -193,7 +193,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
   }
 
   void AssertNoLeaks() {
-    ASSERT_TRUE(task_manager_.tasks_to_schedule_.empty());
+    ASSERT_EQ(task_manager_.tasks_to_schedule_.size(), 0);
     ASSERT_TRUE(task_manager_.tasks_to_dispatch_.empty());
     ASSERT_TRUE(task_manager_.waiting_tasks_index_.empty());
     ASSERT_TRUE(task_manager_.waiting_task_queue_.empty());

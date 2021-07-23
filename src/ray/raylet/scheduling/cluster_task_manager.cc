@@ -1145,6 +1145,12 @@ void ClusterTaskManager::ForAllQueues(std::function<void(const Work &)> &fn) con
       fn(work);
     }
   }
+  for (const auto &class_deque_pair : tasks_to_dispatch_) {
+    const auto &deque = class_deque_pair.second;
+    for (const auto &work : deque) {
+      fn(work);
+    }
+  }
 }
 
 }  // namespace raylet
