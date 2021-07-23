@@ -10,10 +10,12 @@ from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune.logger import NoopLogger
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.function_runner import with_parameters, wrap_function, \
     FuncCheckpointUtil
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from ray.tune.schedulers import ResourceChangingScheduler
 
 
 def creator_generator(logdir):
@@ -486,6 +488,28 @@ class FunctionApiTest(unittest.TestCase):
         import cloudpickle as cp
         dumped = cp.dumps(trainable)
         assert sys.getsizeof(dumped) < 100 * 1024
+
+    def testNewResources(self):
+        sched = ResourceChangingScheduler(
+            resources_allocation_function=(
+                lambda a, b, c, d: PlacementGroupFactory([{"CPU": 2}])
+            )
+        )
+
+        def train(config, checkpoint_dir=None):
+            tune.report(metric=1, resources=tune.get_trial_resources())
+
+        analysis = tune.run(
+            train,
+            scheduler=sched,
+            stop={"training_iteration": 2},
+            resources_per_trial=PlacementGroupFactory([{
+                "CPU": 1
+            }]),
+            num_samples=1)
+
+        results_list = list(analysis.results.values())
+        assert results_list[0]["resources"].head_cpus == 2.0
 
     def testWithParametersTwoRuns1(self):
         # Makes sure two runs in the same script but different ray sessions

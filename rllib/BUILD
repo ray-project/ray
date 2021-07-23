@@ -536,7 +536,6 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
 )
 
-
 # TD3
 py_test(
     name = "run_regression_tests_pendulum_td3_tf",
@@ -990,7 +989,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_data_loader_buffers\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'",
+        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -1004,7 +1003,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_data_loader_buffers\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'",
+        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -2472,21 +2471,39 @@ py_test(
 # Deactivated for now due to open-spiel's dependency on an outdated
 # tensorflow-probability version.
 # py_test(
-#    name = "examples/self_play_with_open_spiel_connect_4",
-#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    name = "examples/self_play_with_open_spiel_connect_4_tf",
+#    main = "examples/self_play_with_open_spiel.py",
 #    tags = ["examples", "examples_S"],
 #    size = "medium",
-#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
-#    args = ["--framework=tf", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+#    srcs = ["examples/self_play_with_open_spiel.py"],
+#    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
 # )
 
 # py_test(
 #    name = "examples/self_play_with_open_spiel_connect_4_torch",
-#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    main = "examples/self_play_with_open_spiel.py",
 #    tags = ["examples", "examples_S"],
 #    size = "medium",
-#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
-#    args = ["--framework=torch", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+#    srcs = ["examples/self_play_with_open_spiel.py"],
+#    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
+# py_test(
+#    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_tf",
+#    main = "examples/self_play_league_based_with_open_spiel.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
+#    args = ["--framework=tf", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
+# py_test(
+#    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_torch",
+#    main = "examples/self_play_league_based_with_open_spiel.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_league_based_with_open_spiel_markov_soccer.py"],
+#    args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
 # )
 
 py_test(

@@ -52,10 +52,16 @@ class WorkerPoolInterface {
   /// the worker back onto the pool once the worker has completed its work.
   ///
   /// \param task_spec The returned worker must be able to execute this task.
-  /// \return An idle worker with the requested task spec. Returns nullptr if no
+  /// \param callback The callback function which will be executed when gets the result
+  /// worker popping. \param allocated_instances_serialized_json The allocated resouce
+  /// instances json string, it contains resource ID which assigned to this worker.
+  /// Instance resource value will be like {"GPU":[10000,0,10000]}, non-instance
+  /// resource value will be {"CPU":20000}.
+  /// \return An idle worker with tit he requested task spec. Returns nullptr if no
   /// such worker exists.
-  virtual void PopWorker(const TaskSpecification &task_spec,
-                         const PopWorkerCallback callback) = 0;
+  virtual void PopWorker(
+      const TaskSpecification &task_spec, const PopWorkerCallback &callback,
+      const std::string &allocated_instances_serialized_json = "{}") = 0;
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
@@ -124,6 +130,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// language.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
+  /// \param ray_debugger_external Ray debugger in workers will be started in a way
+  /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time.
   WorkerPool(instrumented_io_context &io_service, const NodeID node_id,
              const std::string node_address, int num_workers_soft_limit,
@@ -133,7 +141,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              std::function<void()> starting_worker_timeout_callback,
-             const std::function<double()> get_time);
+             int ray_debugger_external, const std::function<double()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -279,9 +287,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// the worker back onto the pool once the worker has completed its work.
   ///
   /// \param task_spec The returned worker must be able to execute this task.
-  /// \return An idle worker with the requested task spec. Returns nullptr if no
-  /// such worker exists.
-  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback callback);
+  /// \param callback The callback function which will be executed when gets the result
+  /// worker popping. \param allocated_instances_serialized_json The allocated resouce
+  /// instances json string. \return An idle worker with the requested task spec. Returns
+  /// nullptr if no such worker exists.
+  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback,
+                 const std::string &allocated_instances_serialized_json = "{}");
 
   /// Try to prestart a number of workers suitable the given task spec. Prestarting
   /// is needed since core workers request one lease at a time, if starting is slow,
@@ -357,16 +368,18 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param task_id The ID of the task which triggers the worker process starting.
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \param serialized_runtime_env The runtime environment for the started worker
+  /// \param allocated_instances_serialized_json The allocated resource instances
+  //  json string.
   /// process. \return The id of the process that we started if it's positive, otherwise
   /// it means we didn't start a process.
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
-      const TaskID &task_id = TaskID::Nil(),
+      const PopWorkerCallback &callback, const TaskID &task_id = TaskID::Nil(),
       const std::vector<std::string> &dynamic_options = {},
       const int runtime_env_hash = 0, const std::string &serialized_runtime_env = "{}",
       std::unordered_map<std::string, std::string> override_environment_variables = {},
       const std::string &serialized_runtime_env_context = "{}",
-      const PopWorkerCallback callback = PopWorkerCallback());
+      const std::string &allocated_instances_serialized_json = "{}");
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -524,7 +537,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// worker types (SPILL_WORKER and RESTORE_WORKER and UTIL_WORKER).
   bool IsIOWorkerType(const rpc::WorkerType &worker_type);
 
-  void PopWorkerCallbackExecution(const PopWorkerCallback callback,
+  void PopWorkerCallbackExecution(const PopWorkerCallback &callback,
                                   std::shared_ptr<WorkerInterface> worker,
                                   Status status = Status::OK());
 
@@ -547,6 +560,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The callback that will be triggered once it times out to start a worker.
   std::function<void()> starting_worker_timeout_callback_;
+  /// If 1, expose Ray debuggers started by the workers externally (to this node).
+  int ray_debugger_external;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
 
   /// The Job ID of the firstly received job.

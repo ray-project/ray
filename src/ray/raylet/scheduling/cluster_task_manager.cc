@@ -2,6 +2,7 @@
 
 #include <google/protobuf/map.h>
 
+#include <boost/functional/hash.hpp>
 #include <boost/range/join.hpp>
 
 #include "ray/stats/stats.h"
@@ -155,6 +156,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
+
       if (work->dispatch_finished) {
         work_it = dispatch_queue.erase(work_it);
         continue;
@@ -162,6 +164,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         work_it++;
         continue;
       }
+
+      const auto runtime_env_worker_key =
+          std::make_pair(spec.JobId().Hash(), spec.GetRuntimeEnvHash());
 
       bool args_missing = false;
       bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
@@ -235,17 +240,24 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       } else {
         // The local node has the available resources to run the task, so we should run
         // it.
+        std::string allocated_instances_serialized_json = "{}";
+        if (RayConfig::instance().worker_resource_limits_enabled()) {
+          allocated_instances_serialized_json =
+              cluster_resource_scheduler_->SerializedTaskResourceInstances(
+                  allocated_instances);
+        }
         work->waiting_worker_popped = true;
-        tasks_waiting_workers_popped_index_.emplace(task_id, work);
+        pending_workers_index_.emplace(task_id, work);
         worker_pool_.PopWorker(
-            spec, [this, allocated_instances, task_id](
-                      const std::shared_ptr<WorkerInterface> worker, Status status) {
-              auto it = tasks_waiting_workers_popped_index_.find(task_id);
-              RAY_CHECK(it != tasks_waiting_workers_popped_index_.end());
-              auto work = it->second;
-              auto reply = work->reply;
-              auto callback = work->callback;
-              auto canceled = work->canceled;
+            spec,
+            [this, allocated_instances, task_id, runtime_env_worker_key](
+                const std::shared_ptr<WorkerInterface> worker, Status status) {
+              auto it = pending_workers_index_.find(task_id);
+              RAY_CHECK(it != pending_workers_index_.end());
+              const auto &work = it->second;
+              const auto &reply = work->reply;
+              const auto &callback = work->callback;
+              const auto &canceled = work->canceled;
               if (canceled || !worker) {
                 if (canceled) {
                   RAY_LOG(DEBUG)
@@ -281,8 +293,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                 }
                 work->dispatch_finished = true;
               }
-              tasks_waiting_workers_popped_index_.erase(task_id);
-            });
+              pending_workers_index_.erase(task_id);
+            },
+            allocated_instances_serialized_json);
         work_it++;
       }
     }
@@ -910,7 +923,7 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
 void ClusterTaskManager::Dispatch(
     std::shared_ptr<WorkerInterface> worker,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
-    std::shared_ptr<TaskResourceInstances> allocated_instances, const Task &task,
+    const std::shared_ptr<TaskResourceInstances> &allocated_instances, const Task &task,
     rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> send_reply_callback) {
   metric_tasks_dispatched_++;
   const auto &task_spec = task.GetTaskSpecification();

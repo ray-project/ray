@@ -240,7 +240,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       tasks_to_dispatch_;
 
   /// Map of lease requests that waiting for workers popped.
-  std::unordered_map<TaskID, std::shared_ptr<Work>> tasks_waiting_workers_popped_index_;
+  std::unordered_map<TaskID, std::shared_ptr<Work>> pending_workers_index_;
 
   /// Tasks waiting for arguments to be transferred locally.
   /// Tasks move from waiting -> dispatch.
@@ -316,7 +316,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
-      std::shared_ptr<TaskResourceInstances> allocated_instances, const Task &task,
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances, const Task &task,
       rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> send_reply_callback);
 
   void Spillback(const NodeID &spillback_to, const std::shared_ptr<Work> &work);

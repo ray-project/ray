@@ -1,0 +1,116 @@
+cluster_name: network_interfaces
+
+max_workers: 2
+
+provider:
+    type: aws
+    # Ensure that all Security Group IDs associated with your network interfaces
+    # below are available in this region. If you are using Elastic Fabric
+    # Adaptors (EFA) with your network interfaces, then ensure that the
+    # available instance types in this region support EFA. To see the available
+    # instance types that support EFA in a Region, use the
+    # describe-instance-types command with the --region option and the
+    # appropriate Region code:
+    # aws ec2 describe-instance-types --region us-east-2 --filters Name=network-info.efa-supported,Values=true --query "InstanceTypes[*].[InstanceType]" --output text
+    region: us-west-2
+
+    # Note that availability zones can be omitted when using custom network
+    # interfaces with all node types, since each node will always be launched in
+    # the availability zone shared by its network interface subnets.
+    # If some of your node types have network interfaces configured and others
+    # do not, then node types without network interfaces will be limited to
+    # launching only in subnets available in the given availability zones.
+    # availability_zone: us-west-2a, us-west-2b, us-west-2c
+
+    # The example network interfaces below don't associate public IP addresses
+    # with Ray cluster nodes, so we need to explicitly tell Ray to connect to
+    # them via their private IP addresses. This also means that any instance
+    # running "ray up" or otherwise communicating with cluster nodes must be
+    # located in the same VPC to succeed. This line should be omitted if your
+    # network interfaces use public IP addresses.
+    use_internal_ips: True
+
+auth:
+    ssh_user: ubuntu
+
+# One or more NetworkInterfaces may be optionally defined for both head and
+# worker nodes. Each NetworkInterface must minimally contain an associated
+# DeviceIndex, SubnetID, and SecurityGroupID.
+
+# For more information, see the "NetworkInterfaces" parameter of:
+# https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
+
+available_node_types:
+  ray.head.default:
+    max_workers: 0
+    resources: {}
+    node_config:
+      NetworkInterfaces:
+        - DeviceIndex: 0 # Primary network interface.
+          SubnetId: subnet-00000000 # Replace with your Subnet ID.
+          # Head node network interfaces can optionally associate fixed private
+          # addresses with the head node.
+          PrivateIpAddress: 172.31.64.10 # Replace with an IP in your subnet.
+          Groups:
+            - sg-00000000 # Replace with your Security Group ID.
+
+        # Multiple network interfaces can optionally be attached to a single
+        # node. Each interface should be assigned a different subnet, but each
+        # subnet should be in the same availability zone.
+        # For more information, see:
+        # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-eni.html
+        # When assigning multiple network interfaces to a node, the network
+        # interfaces CANNOT have associated public IP addresses.
+        - DeviceIndex: 1 # Secondary network interface.
+          SubnetId: subnet-11111111 # Replace with your Subnet ID.
+          PrivateIpAddress: 172.31.16.10 # Replace with an IP in your subnet.
+          Groups:
+            - sg-11111111 # Replace with your Security Group ID.
+
+      # Use any node and instance type with default network interface types.
+      ImageId: latest_dlami
+      InstanceType: m5.large
+
+  ray.worker.efa:
+    min_workers: 0
+    max_workers: 1
+    resources: {}
+    node_config:
+      # Worker node network interfaces should always use auto-assigned private
+      # IP addresses from their associated subnets to avoid conflicts between
+      # multiple workers trying to use the same private IP.
+      NetworkInterfaces:
+        - DeviceIndex: 0 # Primary network interface.
+          AssociatePublicIpAddress: False # Omit to let your Subnet auto-assign a public IP (if enabled).
+          SubnetId: subnet-22222222 # Replace with your actual Subnet ID
+          Groups:
+            - sg-22222222 # Replace with your actual Security Group ID.
+          InterfaceType: efa # Use EFA for higher throughput and lower latency.
+
+      # Use an AMI and instance type that supports Elastic Fabric Adapters (EFA).
+      # When using EFA, ideally all your cluster nodes should be Linux instances
+      # in the same subnet. This allows your EFA interfaces to leverage their
+      # OS-bypass capabilities and communicate directly with the device. See:
+      # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa.html
+      # In this case, we'll use EFA with NCCL on the latest Ubuntu Deep Learning
+      # AMI and a supported network-optimized GPU instance type.
+      # See: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start-nccl-dlami.html
+      ImageId: latest_dlami
+      InstanceType: p3dn.24xlarge
+
+  ray.worker.default:
+    min_workers: 0
+    max_workers: 1
+    resources: {}
+    node_config:
+      NetworkInterfaces:
+        - DeviceIndex: 0 # Primary network interface.
+          AssociatePublicIpAddress: False # Omit to let your Subnet auto-assign a public IP (if enabled).
+          SubnetId: subnet-33333333 # Replace with your actual Subnet ID
+          Groups:
+            - sg-33333333 # Replace with your actual Security Group ID.
+
+      ImageId: latest_dlami
+      InstanceType: m5.large
+
+head_node_type: ray.head.default

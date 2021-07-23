@@ -100,7 +100,7 @@ class WorkerPoolMock : public WorkerPool {
                               &mock_worker_rpc_clients)
       : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
                    MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
-                   []() {}, [this]() { return current_time_ms_; }),
+                   []() {}, 0, [this]() { return current_time_ms_; }),
         last_worker_process_(),
         instrumented_io_service_(io_service),
         error_message_type_(1),
@@ -341,7 +341,8 @@ class WorkerPoolTest : public ::testing::Test {
                 static_cast<int>(desired_initial_worker_process_count));
     Process last_started_worker_process;
     for (int i = 0; i < desired_initial_worker_process_count; i++) {
-      worker_pool_->StartWorkerProcess(language, rpc::WorkerType::WORKER, JOB_ID);
+      worker_pool_->StartWorkerProcess(language, rpc::WorkerType::WORKER, JOB_ID,
+                                       EmptyPopWorkerCallback);
       ASSERT_TRUE(worker_pool_->NumWorkerProcessesStarting() <=
                   expected_worker_process_count);
       Process prev = worker_pool_->LastStartedWorkerProcess();
@@ -388,6 +389,9 @@ class WorkerPoolTest : public ::testing::Test {
     agent_manager->HandleRegisterAgent(request, &reply, send_reply_callback);
     worker_pool_->SetAgentManager(agent_manager);
   }
+
+  PopWorkerCallback EmptyPopWorkerCallback =
+      [](const std::shared_ptr<WorkerInterface> worker, Status status) {};
 
   absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
       mock_worker_rpc_clients_;
@@ -440,8 +444,8 @@ TEST_F(WorkerPoolTest, CompareWorkerProcessObjects) {
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
-  Process proc =
-      worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER, JOB_ID);
+  Process proc = worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER,
+                                                  JOB_ID, EmptyPopWorkerCallback);
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   for (int i = 0; i < NUM_WORKERS_PER_PROCESS_JAVA; i++) {
     workers.push_back(worker_pool_->CreateWorker(Process(), Language::JAVA));
@@ -923,8 +927,8 @@ TEST_F(WorkerPoolTest, DeleteWorkerPushPop) {
 
 TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
   // Start a Java worker process.
-  Process proc =
-      worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER, JOB_ID);
+  Process proc = worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER,
+                                                  JOB_ID, EmptyPopWorkerCallback);
   auto worker1 = worker_pool_->CreateWorker(Process(), Language::JAVA);
   auto worker2 = worker_pool_->CreateWorker(Process(), Language::JAVA);
 
@@ -972,8 +976,8 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   int num_workers = POOL_SIZE_SOFT_LIMIT + 2;
   for (int i = 0; i < num_workers; i++) {
-    Process proc = worker_pool_->StartWorkerProcess(Language::PYTHON,
-                                                    rpc::WorkerType::WORKER, job_id);
+    Process proc = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::WORKER, job_id, EmptyPopWorkerCallback);
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
     workers.push_back(worker);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
@@ -1064,7 +1068,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   // Start two IO workers. These don't count towards the limit.
   {
     Process proc = worker_pool_->StartWorkerProcess(
-        Language::PYTHON, rpc::WorkerType::SPILL_WORKER, job_id);
+        Language::PYTHON, rpc::WorkerType::SPILL_WORKER, job_id, EmptyPopWorkerCallback);
     auto worker = CreateSpillWorker(Process());
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
                                               [](Status, int) {}));
@@ -1073,8 +1077,9 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
     worker_pool_->PushSpillWorker(worker);
   }
   {
-    Process proc = worker_pool_->StartWorkerProcess(
-        Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, job_id);
+    Process proc = worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                                    rpc::WorkerType::RESTORE_WORKER,
+                                                    job_id, EmptyPopWorkerCallback);
     auto worker = CreateRestoreWorker(Process());
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
                                               [](Status, int) {}));
@@ -1114,8 +1119,8 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   int num_workers = POOL_SIZE_SOFT_LIMIT * 2;
   for (int i = 0; i < num_workers; i++) {
-    Process proc = worker_pool_->StartWorkerProcess(Language::PYTHON,
-                                                    rpc::WorkerType::WORKER, job_id);
+    Process proc = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::WORKER, job_id, EmptyPopWorkerCallback);
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
     workers.push_back(worker);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
@@ -1211,8 +1216,8 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
       ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
       /*dynamic_options=*/{}, TaskID::ForFakeTask(), "mock_runtime_env_2");
 
-  const WorkerCacheKey env1 = {/*override_environment_variables=*/{},
-                               "mock_runtime_env_1"};
+  const WorkerCacheKey env1 = {
+      /*override_environment_variables=*/{}, "mock_runtime_env_1", {}};
   const int runtime_env_hash_1 = env1.IntHash();
 
   // Try to pop worker for task with runtime env 1.
