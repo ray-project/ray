@@ -3,6 +3,11 @@ import ray
 from ray.experimental import workflow
 from filelock import FileLock
 
+def test_workflow_manager_simple(workflow_start_regular):
+    assert [] == workflow.list_all()
+    with pytest.raises(ValueError):
+        workflow.get_status("X")
+
 
 def test_workflow_manager(workflow_start_regular, tmp_path):
     # For sync between jobs
@@ -70,8 +75,6 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     # Test get_status
     assert workflow.get_status("0") == "RESUMABLE"
     assert workflow.get_status("1") == "FINISHED"
-    with pytest.raises(ValueError):
-        workflow.get_status("X")
     lock.acquire()
     r = workflow.resume("0")
     assert workflow.get_status("0") == workflow.RUNNING
