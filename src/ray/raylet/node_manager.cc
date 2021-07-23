@@ -1161,6 +1161,8 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
   if (is_worker) {
     if (worker_pool_.OnWorkerStarted(worker)) {
       HandleWorkerAvailable(worker->Connection());
+    } else {
+      cluster_task_manager_->ScheduleAndDispatchTasks();
     }
   }
 }

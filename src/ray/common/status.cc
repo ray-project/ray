@@ -58,6 +58,10 @@ namespace ray {
 #define STATUS_CODE_OBJECT_STORE_ALREADY_SEALED "ObjectAlreadySealed"
 #define STATUS_CODE_OBJECT_STORE_FULL "ObjectStoreFull"
 #define STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL "TransientObjectStoreFull"
+// worker pool status
+#define STATUS_CODE_JOB_NOT_STARTED "JobNotStarted"
+#define STATUS_CODE_WORKER_PENDING_REGISTRATION "WorkerPendingRegistration"
+#define STATUS_CODE_RUNTIME_ENV_CREATION_FAILED "RuntimeEnvCreationFailed"
 
 Status::Status(StatusCode code, const std::string &msg) {
   assert(code != StatusCode::OK);
@@ -102,6 +106,9 @@ std::string Status::CodeAsString() const {
       {StatusCode::ObjectAlreadySealed, STATUS_CODE_OBJECT_STORE_ALREADY_SEALED},
       {StatusCode::ObjectStoreFull, STATUS_CODE_OBJECT_STORE_FULL},
       {StatusCode::TransientObjectStoreFull, STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL},
+      {StatusCode::JobNotStarted, STATUS_CODE_JOB_NOT_STARTED},
+      {StatusCode::WorkerPendingRegistration, STATUS_CODE_WORKER_PENDING_REGISTRATION},
+      {StatusCode::RuntimeEnvCreationFailed, STATUS_CODE_RUNTIME_ENV_CREATION_FAILED},
   };
 
   if (!code_to_str.count(code())) {

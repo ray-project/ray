@@ -101,6 +101,10 @@ enum class StatusCode : char {
   ObjectAlreadySealed = 23,
   ObjectStoreFull = 24,
   TransientObjectStoreFull = 25,
+  // worker pool status
+  JobNotStarted = 30,
+  WorkerPendingRegistration = 31,
+  RuntimeEnvCreationFailed = 32,
 };
 
 #if defined(__clang__)
@@ -205,6 +209,18 @@ class RAY_EXPORT Status {
     return Status(StatusCode::TransientObjectStoreFull, msg);
   }
 
+  static Status JobNotStarted(const std::string &msg) {
+    return Status(StatusCode::JobNotStarted, msg);
+  }
+
+  static Status WorkerPendingRegistration(const std::string &msg) {
+    return Status(StatusCode::WorkerPendingRegistration, msg);
+  }
+
+  static Status RuntimeEnvCreationFailed(const std::string &msg) {
+    return Status(StatusCode::RuntimeEnvCreationFailed, msg);
+  }
+
   // Returns true iff the status indicates success.
   bool ok() const { return (state_ == NULL); }
 
@@ -238,6 +254,13 @@ class RAY_EXPORT Status {
   bool IsObjectStoreFull() const { return code() == StatusCode::ObjectStoreFull; }
   bool IsTransientObjectStoreFull() const {
     return code() == StatusCode::TransientObjectStoreFull;
+  }
+  bool IsJobNotStarted() const { return code() == StatusCode::JobNotStarted; }
+  bool IsWorkerPendingRegistration() const {
+    return code() == StatusCode::WorkerPendingRegistration;
+  }
+  bool IsRuntimeEnvCreationFailed() const {
+    return code() == StatusCode::RuntimeEnvCreationFailed;
   }
 
   // Return a string representation of this status suitable for printing.

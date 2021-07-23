@@ -44,15 +44,15 @@ using ::testing::_;
 class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
-
-  std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec) {
+  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback callback) {
     num_pops++;
     if (workers.empty()) {
-      return nullptr;
+      callback(nullptr, Status::WorkerPendingRegistration(""));
+      return;
     }
     auto worker_ptr = workers.front();
     workers.pop_front();
-    return worker_ptr;
+    callback(worker_ptr, Status::OK());
   }
 
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
@@ -194,7 +194,6 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
   void AssertNoLeaks() {
     ASSERT_TRUE(task_manager_.tasks_to_schedule_.empty());
-    ASSERT_TRUE(task_manager_.tasks_to_dispatch_.empty());
     ASSERT_TRUE(task_manager_.waiting_tasks_index_.empty());
     ASSERT_TRUE(task_manager_.waiting_task_queue_.empty());
     ASSERT_TRUE(task_manager_.infeasible_tasks_.empty());
@@ -202,6 +201,9 @@ class ClusterTaskManagerTest : public ::testing::Test {
     ASSERT_TRUE(task_manager_.pinned_task_arguments_.empty());
     ASSERT_EQ(task_manager_.pinned_task_arguments_bytes_, 0);
     ASSERT_TRUE(dependency_manager_.subscribed_tasks.empty());
+    // Dispatch one more time to clear the finished tasks in dispatch queue.
+    task_manager_.ScheduleAndDispatchTasks();
+    ASSERT_TRUE(task_manager_.tasks_to_dispatch_.empty());
   }
 
   void AssertPinnedTaskArgumentsPresent(const Task &task) {
@@ -266,7 +268,6 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
   task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
   ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
             task.GetTaskSpecification().TaskId());
-
   AssertNoLeaks();
 }
 
@@ -1024,6 +1025,7 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
   ASSERT_TRUE(callback_occurred1);
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(task_manager_.tasks_to_schedule_.size(), 0);
+  task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(task_manager_.tasks_to_dispatch_.size(), 0);
   ASSERT_EQ(task_manager_.infeasible_tasks_.size(), 0);
 
@@ -1039,6 +1041,8 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
   ASSERT_FALSE(callback_occurred2);
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(task_manager_.tasks_to_schedule_.size(), 0);
+  // Dispatch one more time to clear the finished tasks in dispatch queue.
+  task_manager_.ScheduleAndDispatchTasks();
   // This task is under scheduling
   ASSERT_EQ(task_manager_.tasks_to_dispatch_.size(), 1);
   ASSERT_EQ(task_manager_.infeasible_tasks_.size(), 0);

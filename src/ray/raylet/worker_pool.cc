@@ -151,10 +151,13 @@ void WorkerPool::SetAgentManager(std::shared_ptr<AgentManager> agent_manager) {
   agent_manager_ = agent_manager;
 }
 
-void WorkerPool::PopWorkerCallbackAsync(const PopWorkerCallback callback,
-                                        std::shared_ptr<WorkerInterface> worker) {
+void WorkerPool::PopWorkerCallbackExecution(const PopWorkerCallback callback,
+                                            std::shared_ptr<WorkerInterface> worker,
+                                            Status status) {
   if (callback) {
-    io_service_->post([callback, worker]() { callback(worker); });
+    // Call back this function asynchronously if needed. Such as
+    // io_service_->post([callback, worker, status]() { callback(worker, status); });
+    callback(worker, status);
   }
 }
 
@@ -169,9 +172,11 @@ Process WorkerPool::StartWorkerProcess(
     RAY_CHECK(!job_id.IsNil());
     auto it = all_jobs_.find(job_id);
     if (it == all_jobs_.end()) {
-      RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
+      std::ostringstream oss;
+      oss << "Job config of job " << job_id << " are not local yet.";
+      RAY_LOG(DEBUG) << oss.str();
       // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
-      PopWorkerCallbackAsync(callback);
+      PopWorkerCallbackExecution(callback, nullptr, Status::JobNotStarted(oss.str()));
       return Process();
     }
     job_config = &it->second;
@@ -190,10 +195,12 @@ Process WorkerPool::StartWorkerProcess(
   // Here we consider both task workers and I/O workers.
   if (starting_workers >= maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
-    RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
-                   << " workers of language type " << static_cast<int>(language)
-                   << " pending registration";
-    PopWorkerCallbackAsync(callback);
+    std::ostringstream oss;
+    oss << "Worker not started, " << starting_workers << " workers of language type "
+        << static_cast<int>(language) << " pending registration";
+    RAY_LOG(DEBUG) << oss.str();
+    PopWorkerCallbackExecution(callback, nullptr,
+                               Status::WorkerPendingRegistration(oss.str()));
     return Process();
   }
   // Either there are no workers pending registration or the worker start is being forced.
@@ -373,12 +380,14 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
         // to avoid the zombie worker.
         auto it = state.starting_worker_processes.find(proc);
         if (it != state.starting_worker_processes.end()) {
-          RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
-                        << ") have not registered to raylet within timeout.";
+          std::ostringstream oss;
+          oss << "Some workers of the worker process(" << proc.GetId()
+              << ") have not registered to raylet within timeout.";
+          RAY_LOG(INFO) << oss.str();
           auto task_id = it->second.task_id;
           auto callback = it->second.callback;
           if (!task_id.IsNil() && callback) {
-            callback(nullptr);
+            callback(nullptr, Status::WorkerPendingRegistration(oss.str()));
             it->second.task_id = TaskID::Nil();
             it->second.callback = PopWorkerCallback();
           }
@@ -525,7 +534,7 @@ bool WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
     auto task_id = it->second.task_id;
     auto callback = it->second.callback;
     if (!task_id.IsNil() && callback) {
-      callback(worker);
+      callback(worker, Status::OK());
       worker_available = false;
       it->second.task_id = TaskID::Nil();
       it->second.callback = PopWorkerCallback();
@@ -953,9 +962,11 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
               if (!done) {
                 // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
                 // failed.
-                RAY_LOG(ERROR) << "Create runtime env(for dedicated actor) rpc failed. "
-                                  "Wait for next time to retry or reschedule.";
-                callback(nullptr);
+                std::ostringstream oss;
+                oss << "Create runtime env(for dedicated actor) rpc failed. "
+                       "Wait for next time to retry or reschedule.";
+                RAY_LOG(ERROR) << oss.str();
+                callback(nullptr, Status::RuntimeEnvCreationFailed(oss.str()));
                 return;
               }
               start_worker_process_fn(task_spec, state, dynamic_options, true,
@@ -1013,7 +1024,11 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
               if (!successful) {
                 // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
                 // failed.
-                callback(nullptr);
+                std::ostringstream oss;
+                oss << "Create runtime env rpc failed. Wait for next time to retry or "
+                       "reschedule.";
+                RAY_LOG(ERROR) << oss.str();
+                callback(nullptr, Status::RuntimeEnvCreationFailed(oss.str()));
                 return;
               }
               start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash,
@@ -1033,7 +1048,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
 
   if (worker) {
     RAY_CHECK(worker->GetAssignedJobId() == task_spec.JobId());
-    PopWorkerCallbackAsync(callback, worker);
+    PopWorkerCallbackExecution(callback, worker);
   }
 }
 

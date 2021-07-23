@@ -41,7 +41,7 @@ using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
 using PopWorkerCallback =
-    std::function<void(const std::shared_ptr<WorkerInterface> worker)>;
+    std::function<void(const std::shared_ptr<WorkerInterface> worker, Status status)>;
 
 /// \class WorkerPoolInterface
 ///
@@ -442,8 +442,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::unordered_set<TaskID> tasks_with_dedicated_workers;
     /// All tasks that have pending runtime envs.
     std::unordered_set<TaskID> tasks_with_pending_runtime_envs;
-    /// All tasks that with callback functions.
-    std::unordered_map<TaskID, PopWorkerCallback> tasks_with_callbacks;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -526,8 +524,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// worker types (SPILL_WORKER and RESTORE_WORKER and UTIL_WORKER).
   bool IsIOWorkerType(const rpc::WorkerType &worker_type);
 
-  void PopWorkerCallbackAsync(const PopWorkerCallback callback,
-                              std::shared_ptr<WorkerInterface> worker = nullptr);
+  void PopWorkerCallbackExecution(const PopWorkerCallback callback,
+                                  std::shared_ptr<WorkerInterface> worker,
+                                  Status status = Status::OK());
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;

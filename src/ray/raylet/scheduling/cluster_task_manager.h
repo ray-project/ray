@@ -20,10 +20,14 @@ namespace raylet {
 /// Work represents all the information needed to make a scheduling decision.
 /// This includes the task, the information we need to communicate to
 /// dispatch/spillback and the callback to trigger it.
-typedef std::tuple<Task, rpc::RequestWorkerLeaseReply *, std::function<void(void)>> Work;
-
-// The information of Work instance which waiting worker popped.
-typedef std::tuple<bool, SchedulingClass, Work> WorkWaitingWorkerPopped;
+struct Work {
+  Task task;
+  rpc::RequestWorkerLeaseReply *reply;
+  std::function<void(void)> callback;
+  bool waiting_worker_popped;
+  bool dispatch_finished;
+  bool canceled;
+};
 
 typedef std::function<boost::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
     NodeInfoGetter;
@@ -193,13 +197,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \returns true if the task was spilled. The task may not be spilled if the
   /// spillback policy specifies the local node (which may happen if no other nodes have
   /// the available resources).
-  bool TrySpillback(const Work &spec, bool &is_infeasible);
-
-  /// Helper method to try dispatching a single task from the queue to an
-  /// available worker. Returns whether the task should be removed from the
-  /// queue and whether the worker was successfully leased to execute the work.
-  bool AttemptDispatchWork(const Work &work, std::shared_ptr<WorkerInterface> &worker,
-                           bool *worker_leased);
+  bool TrySpillback(const std::shared_ptr<Work> &work, bool &is_infeasible);
 
   /// Reiterate all local infeasible tasks and register them to task_to_schedule_ if it
   /// becomes feasible to schedule.
@@ -228,7 +226,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// through queues to cancel tasks, etc.
   /// Queue of lease requests that are waiting for resources to become available.
   /// Tasks move from scheduled -> dispatch | waiting.
-  std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
+  std::unordered_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
+      tasks_to_schedule_;
 
   /// Queue of lease requests that should be scheduled onto workers.
   /// Tasks move from scheduled | waiting -> dispatch.
@@ -237,12 +236,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// All tasks in this map that have dependencies should be registered with
   /// the dependency manager, in case a dependency gets evicted while the task
   /// is still queued.
-  std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
+  std::unordered_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
+      tasks_to_dispatch_;
 
   /// Map of lease requests that waiting for workers popped.
-  /// Tasks move from dispatch to this map.
-  /// Tasks can also move from this map to dispatch if workers can not be popped.
-  std::unordered_map<TaskID, WorkWaitingWorkerPopped> tasks_waiting_workers_popped_;
+  std::unordered_map<TaskID, std::shared_ptr<Work>> tasks_waiting_workers_popped_index_;
 
   /// Tasks waiting for arguments to be transferred locally.
   /// Tasks move from waiting -> dispatch.
@@ -260,14 +258,16 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// in this queue may not match the order in which we initially received the
   /// tasks. This also means that the PullManager may request dependencies for
   /// these tasks in a different order than the waiting task queue.
-  std::list<Work> waiting_task_queue_;
+  std::list<std::shared_ptr<Work>> waiting_task_queue_;
 
   /// An index for the above queue.
-  absl::flat_hash_map<TaskID, std::list<Work>::iterator> waiting_tasks_index_;
+  absl::flat_hash_map<TaskID, std::list<std::shared_ptr<Work>>::iterator>
+      waiting_tasks_index_;
 
   /// Queue of lease requests that are infeasible.
   /// Tasks go between scheduling <-> infeasible.
-  std::unordered_map<SchedulingClass, std::deque<Work>> infeasible_tasks_;
+  std::unordered_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
+      infeasible_tasks_;
 
   /// Track the cumulative backlog of all workers requesting a lease to this raylet.
   std::unordered_map<SchedulingClass, int> backlog_tracker_;
@@ -311,7 +311,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// or placed on a wait queue.
   ///
   /// \return True if the work can be immediately dispatched.
-  bool WaitForTaskArgsRequests(Work work);
+  bool WaitForTaskArgsRequests(std::shared_ptr<Work> work);
 
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
@@ -319,7 +319,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::shared_ptr<TaskResourceInstances> allocated_instances, const Task &task,
       rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> send_reply_callback);
 
-  void Spillback(const NodeID &spillback_to, const Work &work);
+  void Spillback(const NodeID &spillback_to, const std::shared_ptr<Work> &work);
 
   void AddToBacklogTracker(const Task &task);
   void RemoveFromBacklogTracker(const Task &task);
