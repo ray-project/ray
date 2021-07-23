@@ -148,7 +148,7 @@ def test_actor_writer(workflow_start_regular, tmp_path):
             return (self.v, self.val_lock, self.incr_lock, self.g_lock, self.val_err, self.incr_err)
 
         def __setstate__(self, state):
-            return (self.v, self.val_lock, self.incr_lock, self.g_lock, self.val_err, self.incr_err) = state
+            (self.v, self.val_lock, self.incr_lock, self.g_lock, self.val_err, self.incr_err) = state
 
     actor = SyncCounter.get_or_create("sync_counter", val_lock, g_lock, val_err, incr_err)
     ray.get(actor.ready())
