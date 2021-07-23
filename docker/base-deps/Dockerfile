@@ -74,7 +74,7 @@ RUN  export arch=$(uname -m); \
 	# We install cmake temporarily to get psutil, blist & atari-py
 	# But in arm we need these friends for later parties.
 	&& sudo apt-get autoremove -y $(if [ "$arch" = "x86_64" ]; then echo \
-	cmake zlib1g-dev; fi)
+	cmake zlib1g-dev; fi) \
 	# We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
 	$(if [ "$BASE_IMAGE" = "ubuntu:focal" && "$arch" = "x86_64" ]; then echo \
 	g++; fi) \

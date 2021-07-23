@@ -51,4 +51,3 @@ RUN arch=$(uname -m); \
 # Install the opencv as a seperate step for caching happiness
 RUN $HOME/anaconda3/bin/pip install opencv-python-headless
 RUN $HOME/anaconda3/bin/pip install -r requirements.txt
->>>>>>> ed9b7f24b (Cross-build of base-deps works)
