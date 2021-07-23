@@ -1,12 +1,15 @@
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 import logging
 import abc
 import time
+import re
 from uuid import uuid4
 from collections import UserDict
 from enum import Enum
+from functools import wraps
 
 from googleapiclient.discovery import Resource
+from googleapiclient.errors import HttpError
 
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
@@ -16,6 +19,37 @@ INSTANCE_NAME_MAX_LEN = 64
 INSTANCE_NAME_UUID_LEN = 8
 MAX_POLLS = 12
 POLL_INTERVAL = 5
+
+
+def _retry_on_exception(exception: Union[Exception, Tuple[Exception]],
+                        regex: Optional[str] = None,
+                        max_retries: int = MAX_POLLS,
+                        retry_interval: int = POLL_INTERVAL):
+    def dec(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            def try_catch_exc():
+                try:
+                    value = func(*args, **kwargs)
+                    return value
+                except Exception as e:
+                    if not isinstance(e, exception) or (
+                            regex and not re.search(regex, str(e))):
+                        raise e
+                    return e
+
+            for _ in range(max_retries):
+                ret = try_catch_exc()
+                if not isinstance(ret, Exception):
+                    break
+                time.sleep(retry_interval)
+            if isinstance(ret, Exception):
+                raise ret
+            return ret
+
+        return wrapper
+
+    return dec
 
 
 def _generate_node_name(labels: dict, node_suffix: str) -> str:
@@ -424,6 +458,8 @@ class GCPTPU(GCPResource):
 
         return GCPTPUNode(instance, self)
 
+    @_retry_on_exception(HttpError, "unable to queue the operation",
+                         MAX_POLLS * 8)
     def set_labels(self,
                    node: GCPNode,
                    labels: dict,
