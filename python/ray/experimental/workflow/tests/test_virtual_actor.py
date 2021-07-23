@@ -117,11 +117,8 @@ def test_actor_writer(workflow_start_regular, tmp_path):
 
     @workflow.virtual_actor
     class SyncCounter:
-        def __init__(self, val_lock: str,
-                     incr_lock: str,
-                     g_lock: str,
-                     val_err: str,
-                     incr_err: str):
+        def __init__(self, val_lock: str, incr_lock: str, g_lock: str,
+                     val_err: str, incr_err: str):
             self.val_lock = val_lock
             self.incr_lock = incr_lock
             self.g_lock = g_lock
@@ -145,15 +142,19 @@ def test_actor_writer(workflow_start_regular, tmp_path):
                 return self.v
 
         def __getstate__(self):
-            return (self.v, self.val_lock, self.incr_lock, self.g_lock, self.val_err, self.incr_err)
+            return (self.v, self.val_lock, self.incr_lock, self.g_lock,
+                    self.val_err, self.incr_err)
 
         def __setstate__(self, state):
-            (self.v, self.val_lock, self.incr_lock, self.g_lock, self.val_err, self.incr_err) = state
+            (self.v, self.val_lock, self.incr_lock, self.g_lock, self.val_err,
+             self.incr_err) = state
 
-    actor = SyncCounter.get_or_create("sync_counter", val_lock, g_lock, val_err, incr_err)
+    actor = SyncCounter.get_or_create("sync_counter", val_lock, g_lock,
+                                      val_err, incr_err)
     ray.get(actor.ready())
 
-    assert ray.get([actor.incr.run_async() for _ in range(10)]) == list(range(1, 11))
+    assert ray.get([actor.incr.run_async() for _ in range(10)]) == list(
+        range(1, 11))
 
     incr_lock.acquire()
     objs = [actor.incr.run_async() for _ in range(10)]
@@ -162,17 +163,16 @@ def test_actor_writer(workflow_start_regular, tmp_path):
     with pytest.raises(Exception):
         actor.val.run()
     Path(incr_err).unlink()
-
     incr_lock.release()
-    assert ray.get([actor.incr.run_async() for _ in range(10)]) == list(range(11, 21))
+    assert ray.get(objs) == list(range(11, 21))
 
     # test error cases
-    s1 = actor.incr.run_async() # 21
-    s2 = actor.incr.run_async() # 22
-    s3 = actor.incr.run_async() # 23
+    actor.incr.run_async()  # 21
+    actor.incr.run_async()  # 22
+    actor.incr.run_async()  # 23
     Path(incr_err).touch()
-    s4 = actor.incr.run_async() # 24
-    s5 = actor.incr.run_async() # 25
+    actor.incr.run_async()  # 24
+    s5 = actor.incr.run_async()  # 25
     with pytest.raises(Exception):
         ray.get(s5)
 
