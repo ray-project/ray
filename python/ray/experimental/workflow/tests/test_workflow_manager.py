@@ -3,6 +3,7 @@ import ray
 from ray.experimental import workflow
 from filelock import FileLock
 
+
 def test_workflow_manager_simple(workflow_start_regular):
     assert [] == workflow.list_all()
     with pytest.raises(ValueError):
@@ -61,16 +62,10 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
         workflow.WorkflowStatus.RUNNING
     })
     assert len(all_tasks_status) == 100
-    assert failed_jobs == [
-        (k, v)
-        for (k, v) in all_tasks_status
-        if v == workflow.WorkflowStatus.RESUMABLE
-    ]
-    assert finished_jobs == [
-        (k, v)
-        for (k, v) in all_tasks_status
-        if v == workflow.WorkflowStatus.FINISHED
-    ]
+    assert failed_jobs == [(k, v) for (k, v) in all_tasks_status
+                           if v == workflow.WorkflowStatus.RESUMABLE]
+    assert finished_jobs == [(k, v) for (k, v) in all_tasks_status
+                             if v == workflow.WorkflowStatus.FINISHED]
 
     # Test get_status
     assert workflow.get_status("0") == "RESUMABLE"

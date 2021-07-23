@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import Set, Dict, List, Tuple, Optional
+from typing import Set, List, Tuple, Optional
 
 import ray
 
@@ -99,7 +99,8 @@ def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
     return meta.status
 
 
-def list_all(status_filter: Set[WorkflowStatus]) -> List[Tuple[str, WorkflowStatus]]:
+def list_all(status_filter: Set[WorkflowStatus]
+             ) -> List[Tuple[str, WorkflowStatus]]:
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
     except ValueError:

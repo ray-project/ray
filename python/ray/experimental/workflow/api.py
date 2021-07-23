@@ -184,8 +184,9 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
     """List the workflow status. If status is given, it'll filter by that.
 
     Args:
-        status: If given, only return workflow with that status. It can be a set
-           workflow status, i.e., "RUNNING"/"RESUMABLE"/"FINISHED"/"CANCELED"
+        status: If given, only return workflow with that status. It can
+            be a set workflow status,
+            i.e., "RUNNING"/"RESUMABLE"/"FINISHED"/"CANCELED"
 
     Examples:
         >>> workflow_step = long_running_job.step()
