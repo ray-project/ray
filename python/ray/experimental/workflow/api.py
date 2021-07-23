@@ -205,7 +205,7 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
     Args:
         status: If given, only return workflow with that status. It can
             be a set workflow status,
-            i.e., "RUNNING"/"RESUMABLE"/"FINISHED"/"CANCELED"
+            i.e., "RUNNING"/"FAILED"/"SUCCESSFUL"/"CANCELED"/"RESUMABLE"
 
     Examples:
         >>> workflow_step = long_running_job.step()
@@ -240,7 +240,7 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
     return execution.list_all(status_filter)
 
 
-def resume_all() -> Dict[str, ray.ObjectRef]:
+def resume_all(with_failed: bool=False) -> Dict[str, ray.ObjectRef]:
     """Resume all resumable workflow jobs.
 
     Examples:
@@ -251,13 +251,13 @@ def resume_all() -> Dict[str, ray.ObjectRef]:
         >>> except Exception:
         >>>     print("JobFailed")
         >>> jobs = workflow.list_all()
-        >>> assert jobs == [("failed_job", workflow.RESUMABLE)]
+        >>> assert jobs == [("failed_job", workflow.FAILED)]
         >>> assert workflow.resume_all().get("failed_job") is not None
 
     Returns:
         Workflow resumed. It'll be a list of (workflow_id, returned_obj_ref).
     """
-    return execution.resume_all()
+    return execution.resume_all(with_failed)
 
 
 def get_status(workflow_id: str) -> WorkflowStatus:

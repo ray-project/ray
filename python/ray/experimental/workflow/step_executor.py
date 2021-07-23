@@ -7,6 +7,7 @@ from ray import ObjectRef
 from ray._private import signature
 
 from ray.experimental.workflow import workflow_context
+from ray.experimental.workflow.workflow_context import get_step_status_info
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.workflow_access import MANAGEMENT_ACTOR_NAME
@@ -175,15 +176,23 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
     result = None
     # max_retries are for application level failure.
     # For ray failure, we should use max_retries.
+    workflow_id = workflow_context.get_current_workflow_id()
     for i in range(max_retries):
+        logger.info(f"{get_step_status_info(WorkflowStatus.RUNNING)}"
+                    f"\t[{i+1}/{max_retries}]")
         if exception is not None:
-            logger.error(f"Step '{step_id}' raises an exception. Retrying "
-                         f"[{i}/{max_retries-1}]. Exception: {exception}")
+            logger.error(f"{workflow_context.get_step_name()} raises an exception. Retrying "
+                         f"{i}/{max_retries-1}. Exception: {exception}")
         try:
             result = func(*args, **kwargs)
             exception = None
             break
         except BaseException as e:
+            if i + 1 == max_retries:
+                retry_msg = f"Maximum retry reached."
+            else:
+                retry_msg = "The step will be retried."
+            logger.error(f"{workflow_context.get_step_name()} failed with error {e}. {retry_msg}")
             exception = e
 
     if catch_exceptions:
@@ -199,7 +208,9 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
     else:
         if exception is not None:
             if step_type != StepType.READONLY_ACTOR_METHOD:
-                _record_step_status(step_id, WorkflowStatus.RESUMABLE)
+                status = WorkflowStatus.FAILED
+                _record_step_status(step_id, status)
+                logger.info(get_step_status_info(status))
             raise exception
         if step_type == StepType.FUNCTION:
             state, output = result, None
@@ -269,8 +280,8 @@ def _workflow_step_executor(
         elif last_step_of_workflow:
             # advance the progress of the workflow
             store.advance_progress(step_id)
-        _record_step_status(step_id, WorkflowStatus.FINISHED)
-
+        _record_step_status(step_id, WorkflowStatus.SUCCESSFUL)
+    logger.info(get_step_status_info(WorkflowStatus.SUCCESSFUL))
     return state, output
 
 
@@ -326,7 +337,6 @@ def execute_virtual_actor_step(step_id: "StepID",
 def _record_step_status(step_id: "StepID", status: "WorkflowStatus") -> None:
     workflow_id = workflow_context.get_current_workflow_id()
     workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
-    logger.info(f"Update step status to {status}: [{workflow_id}][{step_id}]")
     ray.get(
         workflow_manager.update_step_status.remote(workflow_id, step_id,
                                                    status))
