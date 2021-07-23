@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from ray.util.sgd.v2.backend import BackendConfig, BackendExecutor
+from ray.util.sgd.v2.backends.backend import BackendExecutor, BackendConfig
 
 
 class TorchExecutor(BackendExecutor):
