@@ -59,7 +59,7 @@ class WorkflowData:
             "name": f.__module__ + "." + f.__qualname__,
             "object_refs": [r.hex() for r in self.inputs.object_refs],
             "workflows": [w.id for w in self.inputs.workflows],
-            "step_max_retries": self.step_max_retries,
+            "max_retries": self.max_retries,
             "catch_exceptions": self.catch_exceptions,
             "ray_options": self.ray_options,
         }
