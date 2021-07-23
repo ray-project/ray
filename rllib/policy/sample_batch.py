@@ -366,6 +366,9 @@ class SampleBatch(dict):
                         ]
                         if start < 0:
                             seq_lens[0] += -start
+                        diff = sum(seq_lens) - (end - start)
+                        if diff > 0:
+                            seq_lens[0] -= diff
                         assert sum(seq_lens) == (end - start)
                         break
                     elif state_start is None and count > start:

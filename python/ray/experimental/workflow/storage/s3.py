@@ -2,13 +2,15 @@ import functools
 import tempfile
 import json
 import urllib.parse as parse
+from botocore.exceptions import ClientError
 import aioboto3
 import itertools
 import ray
-from typing import Any, Dict, Callable
+from typing import Any, Dict, Callable, Optional, List
 from ray.experimental.workflow.common import StepID
 from ray.experimental.workflow.storage.base import (
     Storage, ArgsType, StepStatus, DataLoadError, DataSaveError)
+
 # constants used in filesystem
 OBJECTS_DIR = "objects"
 STEPS_DIR = "steps"
@@ -18,6 +20,7 @@ STEP_ARGS = "args.pkl"
 STEP_OUTPUT = "output.pkl"
 STEP_FUNC_BODY = "func_body.pkl"
 CLASS_BODY = "class_body.pkl"
+WORKFLOW_META = "workflow_meta.json"
 
 MAX_RECEIVED_DATA_MEMORY_SIZE = 25 * 1024 * 1024  # 25MB
 
@@ -29,6 +32,7 @@ def data_load_error(func):
             ret = await func(*args, **kvargs)
             return ret
         except Exception as e:
+            print(">>>>>>", e, type(e))
             raise DataLoadError from e
 
     return _func
@@ -63,6 +67,9 @@ class S3StorageImpl(Storage):
 
         self._bucket = bucket
         self._s3_path = s3_path
+        self._s3_path.rstrip("/")
+        if len(self._s3_path) == 0:
+            raise ValueError(f"s3 path {self._s3_path} invalid")
         self._session = aioboto3.Session()
         self._region_name = region_name
         self._endpoint_url = endpoint_url
@@ -201,6 +208,22 @@ class S3StorageImpl(Storage):
             else:
                 return ray.cloudpickle.load(tmp_file)
 
+    async def _list_objects(self, path: Optional[str] = None) -> List[str]:
+        workflow_ids = []
+        async with self._client() as s3:
+            paginator = s3.get_paginator("list_objects")
+            operation_parameters = {"Bucket": self._bucket, "Delimiter": "/"}
+            if path is not None:
+                operation_parameters["Prefix"] = path
+            else:
+                operation_parameters["Prefix"] = self._s3_path + "/"
+            page_iterator = paginator.paginate(**operation_parameters)
+            async for page in page_iterator:
+                for o in page.get("CommonPrefixes"):
+                    prefix = o.get("Prefix", "").rstrip("/").split("/")[-1]
+                    workflow_ids.append(prefix)
+        return workflow_ids
+
     def _client(self):
         return self._session.client(
             "s3",
@@ -243,6 +266,30 @@ class S3StorageImpl(Storage):
     async def save_actor_class_body(self, workflow_id: str, cls: type) -> None:
         path = self._get_s3_path(workflow_id, CLASS_BODY)
         await self._put_object(path, cls)
+
+    @data_save_error
+    async def save_workflow_meta(self, workflow_id: str,
+                                 metadata: Dict[str, Any]) -> None:
+        path = self._get_s3_path(workflow_id, WORKFLOW_META)
+        await self._put_object(path, metadata, True)
+
+    @data_load_error
+    async def load_workflow_meta(self, workflow_id: str) -> Dict[str, Any]:
+        try:
+            path = self._get_s3_path(workflow_id, WORKFLOW_META)
+            data = await self._get_object(path, True)
+        except ClientError as ex:
+            if ex.response["Error"]["Code"] == "NoSuchKey":
+                return None
+            else:
+                raise
+
+        return data
+
+    @data_load_error
+    async def list_workflow(self) -> List[str]:
+        objs = await self._list_objects()
+        return objs
 
     def __reduce__(self):
         return S3StorageImpl, (self._bucket, self._s3_path, self._region_name,

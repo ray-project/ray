@@ -149,13 +149,17 @@ ray_files += [
 if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
         "default": [
+            "aiohttp",  # noqa
+            "aiohttp_cors",  # noqa
+            "aioredis",  # noqa
             "colorful",  # noqa
             "py-spy >= 0.2.0",  # noqa
             "jsonschema",  # noqa
-            "gpustat"  # noqa
+            "requests",  # noqa
+            "gpustat",  # noqa
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
-        "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
+        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes"],
         "observability": [
             "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
@@ -170,7 +174,7 @@ if setup_spec.type == SetupType.RAY:
         "dm_tree",
         "gym",
         "lz4",
-        "opencv-python-headless<=4.3.0.36",
+        "scikit-image",
         "pyyaml",
         "scipy",
     ]
@@ -183,15 +187,8 @@ if setup_spec.type == SetupType.RAY:
 # the change in the matching section of requirements/requirements.txt
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        # TODO(alex) Pin the version once this PR is
-        # included in the stable release.
-        # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
-        "aiohttp",
-        "aiohttp_cors",
-        "aioredis",
         "attrs",
         "click >= 7.0",
-        "colorama",
         "dataclasses; python_version < '3.7'",
         "filelock",
         "grpcio >= 1.28.1",
@@ -200,7 +197,6 @@ if setup_spec.type == SetupType.RAY:
         "numpy >= 1.19.3; python_version >= '3.9'",
         "protobuf >= 3.15.3",
         "pyyaml",
-        "requests",
         "redis >= 3.5.0",
         "opencensus",
         "prometheus_client >= 0.7.1",
@@ -328,7 +324,7 @@ def build(build_python, build_java, build_cpp):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
-        pip_packages = ["psutil", "setproctitle==1.2.2"]
+        pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
         subprocess.check_call(
             [
                 sys.executable, "-m", "pip", "install", "-q",

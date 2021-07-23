@@ -131,6 +131,8 @@ Get started by creating Datasets from synthetic data using ``ray.data.range()`` 
 
 .. code-block:: python
 
+    import ray
+    
     # Create a Dataset of Python objects.
     ds = ray.data.range(10000)
     # -> Dataset(num_rows=10000, num_blocks=200, schema=<class 'int'>)
@@ -172,6 +174,9 @@ Datasets can be created from files on local disk or remote datasources such as S
 Finally, you can create a Dataset from existing data in the Ray object store or Ray compatible distributed DataFrames:
 
 .. code-block:: python
+
+    import pandas as pd
+    import dask.dataframe as dd
 
     # Create a Dataset from a list of Pandas DataFrame objects.
     pdf = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -239,7 +244,7 @@ By default, transformations are executed using Ray tasks. For transformations th
     class BatchInferModel:
         def __init__(self):
             self.model = ImageNetModel()
-        def __call__(self, batch: pandas.DataFrame) -> pandas.DataFrame:
+        def __call__(self, batch: pd.DataFrame) -> pd.DataFrame:
             return self.model(batch)
 
     ds = ray.data.read_binary_files("s3://bucket/image-dir")
@@ -283,7 +288,7 @@ Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is
         def __init__(self, rank: int):
             pass
 
-        def train(self, shard: Dataset[int]) -> int:
+        def train(self, shard: ray.data.Dataset[int]) -> int:
             for batch in shard.iter_batches(batch_size=256):
                 pass
             return shard.count()
@@ -313,6 +318,11 @@ Datasets can read and write in parallel to `custom datasources <package-ref.html
 
     # Write to a custom datasource.
     ds.write_datasource(YourCustomDatasource(), **write_args)
+
+Tensor-typed values
+-------------------
+
+Currently Datasets does not have native support for tensor-typed values in records (e.g., TFRecord / Petastorm format / multi-dimensional arrays). This is planned for development.
 
 Pipelining data processing and ML computations
 ----------------------------------------------

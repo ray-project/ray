@@ -21,7 +21,7 @@ from ray.includes.function_descriptor cimport (
 )
 
 
-cdef extern from * namespace "polyfill":
+cdef extern from * namespace "polyfill" nogil:
     """
     namespace polyfill {
 
@@ -154,6 +154,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CAddress()
         const c_string &SerializeAsString()
         void ParseFromString(const c_string &serialized)
+        void CopyFrom(const CAddress& address)
+        const c_string &worker_id()
 
 
 # This is a workaround for C++ enum class since Cython has no corresponding
@@ -264,7 +266,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,
             const c_vector[c_string] &dynamic_worker_options,
-            c_bool is_detached, c_string &name, c_bool is_asyncio,
+            c_bool is_detached, c_string &name, c_string &ray_namespace,
+            c_bool is_asyncio,
             c_pair[CPlacementGroupID, int64_t] placement_options,
             c_bool placement_group_capture_child_tasks,
             c_string serialized_runtime_env,
