@@ -10,7 +10,7 @@ from ray.rllib.agents.sac.sac import SACTrainer, \
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay
-from ray.rllib.execution.train_ops import TrainTFMultiGPU, TrainOneStep, \
+from ray.rllib.execution.train_ops import MultiGPUTrainOneStep, TrainOneStep, \
     UpdateTargetNetwork
 from ray.rllib.offline.shuffled_input import ShuffledInput
 from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
@@ -103,7 +103,7 @@ def execution_plan(workers, config):
     if config["simple_optimizer"]:
         train_step_op = TrainOneStep(workers)
     else:
-        train_step_op = TrainTFMultiGPU(
+        train_step_op = MultiGPUTrainOneStep(
             workers=workers,
             sgd_minibatch_size=config["train_batch_size"],
             num_sgd_iter=1,
@@ -134,7 +134,8 @@ def after_init(trainer):
     reader = trainer.workers.local_worker().input_reader
 
     # For d4rl, add the D4RLReaders' dataset to the buffer.
-    if "d4rl" in trainer.config["input"]:
+    if isinstance(trainer.config["input"], str) and \
+            "d4rl" in trainer.config["input"]:
         dataset = reader.dataset
         replay_buffer.add_batch(dataset)
     # For a list of files, add each file's entire content to the buffer.

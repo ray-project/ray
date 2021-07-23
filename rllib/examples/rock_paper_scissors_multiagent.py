@@ -16,6 +16,7 @@ from ray.rllib.agents.pg import PGTrainer, PGTFPolicy, PGTorchPolicy
 from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.examples.policy.rock_paper_scissors_dummies import \
     BeatLastHeuristic, AlwaysSameHeuristic
+from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import register_env
@@ -61,10 +62,6 @@ def env_creator(args):
 register_env("RockPaperScissors",
              lambda config: PettingZooEnv(env_creator(config)))
 
-env_for_spaces = PettingZooEnv(env_creator({}))
-obs_space = env_for_spaces.observation_space
-act_space = env_for_spaces.action_space
-
 
 def run_same_policy(args, stop):
     """Use the same policy for both agents (trivial case)."""
@@ -108,9 +105,9 @@ def run_heuristic_vs_learned(args, use_lstm=False, trainer="PG"):
         "multiagent": {
             "policies_to_train": ["learned"],
             "policies": {
-                "always_same": (AlwaysSameHeuristic, obs_space, act_space, {}),
-                "beat_last": (BeatLastHeuristic, obs_space, act_space, {}),
-                "learned": (None, obs_space, act_space, {
+                "always_same": PolicySpec(policy_class=AlwaysSameHeuristic),
+                "beat_last": PolicySpec(policy_class=BeatLastHeuristic),
+                "learned": PolicySpec(config={
                     "model": {
                         "use_lstm": use_lstm
                     },

@@ -12,36 +12,42 @@ if TYPE_CHECKING:
     import dask
     import pyspark
     import ray.util.sgd
+    import torch
+    import tensorflow as tf
 
 import collections
 import itertools
 import numpy as np
 
 import ray
+from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
 from ray.experimental.data.datasource import Datasource, WriteTask
-from ray.experimental.data.impl.compute import get_compute
+from ray.experimental.data.impl.batcher import Batcher
+from ray.experimental.data.impl.compute import get_compute, cache_wrapper, \
+    CallableClass
 from ray.experimental.data.impl.progress_bar import ProgressBar
 from ray.experimental.data.impl.shuffle import simple_shuffle
-from ray.experimental.data.impl.block import ObjectRef, Block, SimpleBlock, \
-    BlockMetadata
 from ray.experimental.data.impl.block_list import BlockList
-from ray.experimental.data.impl.arrow_block import (
-    DelegatingArrowBlockBuilder, ArrowBlock)
+from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
 
 T = TypeVar("T")
 U = TypeVar("U")
-BatchType = Union["pandas.DataFrame", "pyarrow.Table"]
+
+# An output type of iter_batches() determined by the batch_format parameter.
+BatchType = Union["pandas.DataFrame", "pyarrow.Table", list]
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 class Dataset(Generic[T]):
     """Implements a distributed Arrow dataset.
 
     Datasets are implemented as a list of ``ObjectRef[Block[T]]``. The block
     also determines the unit of parallelism. The default block type is the
-    ``ArrowBlock``, which is backed by a ``pyarrow.Table`` object. Other
-    Python objects are represented with ``SimpleBlock`` (a plain Python list).
+    ``pyarrow.Table``. Arrow-incompatible objects are held in ``list`` blocks.
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors just like any other object. Datasets support
@@ -57,7 +63,9 @@ class Dataset(Generic[T]):
         self._blocks: BlockList[T] = blocks
         assert isinstance(self._blocks, BlockList), self._blocks
 
-    def map(self, fn: Callable[[T], U], compute="tasks",
+    def map(self,
+            fn: Union[CallableClass, Callable[[T], U]],
+            compute: Optional[str] = None,
             **ray_remote_args) -> "Dataset[U]":
         """Apply the given function to each record of this dataset.
 
@@ -65,23 +73,40 @@ class Dataset(Generic[T]):
         can be quite slow. Consider using `.map_batches()` for performance.
 
         Examples:
-            # Transform python objects.
+            >>> # Transform python objects.
             >>> ds.map(lambda x: x * 2)
 
-            # Transform Arrow records.
+            >>> # Transform Arrow records.
             >>> ds.map(lambda record: {"v2": record["value"] * 2})
+
+            >>> # Define a callable class that persists state across
+            >>> # function invocations for efficiency.
+            >>> class CachedModel:
+            ...    def __init__(self):
+            ...        self.model = init_model()
+            ...    def __call__(self, batch):
+            ...        return self.model(batch)
+
+            >>> # Apply the transform in parallel on GPUs. Since
+            >>> # compute="actors", the transform will be applied on an
+            >>> # autoscaling pool of Ray actors, each allocated 1 GPU by Ray.
+            >>> ds.map(CachedModel, compute="actors", num_gpus=1)
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            fn: The function to apply to each record.
-            compute: The compute strategy, either "tasks" to use Ray tasks,
-                or "actors" to use an autoscaling Ray actor pool.
+            fn: The function to apply to each record, or a class type
+                that can be instantiated to create such a callable.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
+        fn = cache_wrapper(fn)
+
         def transform(block: Block[T]) -> Block[U]:
+            block = BlockAccessor.for_block(block)
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
                 builder.add(fn(row))
@@ -92,9 +117,9 @@ class Dataset(Generic[T]):
         return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 
     def map_batches(self,
-                    fn: Callable[[BatchType], BatchType],
+                    fn: Union[CallableClass, Callable[[BatchType], BatchType]],
                     batch_size: int = None,
-                    compute: str = "tasks",
+                    compute: Optional[str] = None,
                     batch_format: str = "pandas",
                     **ray_remote_args) -> "Dataset[Any]":
         """Apply the given function to batches of records of this dataset.
@@ -102,36 +127,33 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            # Transform batches in parallel.
+            >>> # Transform batches in parallel.
             >>> ds.map_batches(lambda batch: [v * 2 for v in batch])
 
-            # Define a batch transform function that persists state across
-            # function invocations for efficiency with compute="actors".
-            >>> def batch_infer_fn(batch):
-            ...    global model
-            ...    if model is None:
-            ...        model = init_model()
-            ...    return model(batch)
+            >>> # Define a callable class that persists state across
+            >>> # function invocations for efficiency.
+            >>> class CachedModel:
+            ...    def __init__(self):
+            ...        self.model = init_model()
+            ...    def __call__(self, item):
+            ...        return self.model(item)
 
-            # Apply the transform in parallel on GPUs. Since compute="actors",
-            # the transform will be applied on an autoscaling pool of Ray
-            # actors, each allocated 1 GPU by Ray.
+            >>> # Apply the transform in parallel on GPUs. Since
+            >>> # compute="actors", the transform will be applied on an
+            >>> # autoscaling pool of Ray actors, each allocated 1 GPU by Ray.
             >>> ds.map_batches(
-            ...    batch_infer_fn,
+            ...    CachedModel,
             ...    batch_size=256, compute="actors", num_gpus=1)
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            fn: The function to apply to each record batch.
+            fn: The function to apply to each record batch, or a class type
+                that can be instantiated to create such a callable.
             batch_size: Request a specific batch size, or leave unspecified
                 to use entire blocks as batches.
-            compute: The compute strategy, either "tasks" to use Ray tasks,
-                or "actors" to use an autoscaling Ray actor pool. When using
-                actors, state can be preserved across function invocations
-                in Python global variables. This can be useful for one-time
-                setups, e.g., initializing a model once and re-using it across
-                many function applications.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool.
             batch_format: Specify "pandas" to select ``pandas.DataFrame`` as
                 the batch format, or "pyarrow" to select ``pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
@@ -142,7 +164,10 @@ class Dataset(Generic[T]):
         import pyarrow as pa
         import pandas as pd
 
+        fn = cache_wrapper(fn)
+
         def transform(block: Block[T]) -> Block[U]:
+            block = BlockAccessor.for_block(block)
             total_rows = block.num_rows()
             max_batch_size = batch_size
             if max_batch_size is None:
@@ -155,9 +180,9 @@ class Dataset(Generic[T]):
                 end = min(total_rows, start + max_batch_size)
                 view = block.slice(start, end, copy=False)
                 if batch_format == "pandas":
-                    view = view.to_pandas()
+                    view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pyarrow":
-                    view = view._table
+                    view = BlockAccessor.for_block(view).to_arrow_table()
                 else:
                     raise ValueError(
                         f"The given batch format: {batch_format} "
@@ -165,11 +190,11 @@ class Dataset(Generic[T]):
 
                 applied = fn(view)
                 if isinstance(applied, list):
-                    applied = SimpleBlock(applied)
-                elif isinstance(applied, pd.core.frame.DataFrame):
-                    applied = ArrowBlock(pa.Table.from_pandas(applied))
+                    applied = applied
                 elif isinstance(applied, pa.Table):
-                    applied = ArrowBlock(applied)
+                    applied = applied
+                elif isinstance(applied, pd.core.frame.DataFrame):
+                    applied = pa.Table.from_pandas(applied)
                 else:
                     raise ValueError("The map batch UDF returns a type "
                                      f"{type(applied)}, which is not allowed. "
@@ -184,8 +209,8 @@ class Dataset(Generic[T]):
         return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 
     def flat_map(self,
-                 fn: Callable[[T], Iterable[U]],
-                 compute="tasks",
+                 fn: Union[CallableClass, Callable[[T], Iterable[U]]],
+                 compute: Optional[str] = None,
                  **ray_remote_args) -> "Dataset[U]":
         """Apply the given function to each record and then flatten results.
 
@@ -198,14 +223,18 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            fn: The function to apply to each record.
-            compute: The compute strategy, either "tasks" to use Ray tasks,
-                or "actors" to use an autoscaling Ray actor pool.
+            fn: The function to apply to each record, or a class type
+                that can be instantiated to create such a callable.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
+        fn = cache_wrapper(fn)
+
         def transform(block: Block[T]) -> Block[U]:
+            block = BlockAccessor.for_block(block)
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
                 for r2 in fn(row):
@@ -217,8 +246,8 @@ class Dataset(Generic[T]):
         return Dataset(compute.apply(transform, ray_remote_args, self._blocks))
 
     def filter(self,
-               fn: Callable[[T], bool],
-               compute="tasks",
+               fn: Union[CallableClass, Callable[[T], bool]],
+               compute: Optional[str] = None,
                **ray_remote_args) -> "Dataset[T]":
         """Filter out records that do not satisfy the given predicate.
 
@@ -231,14 +260,18 @@ class Dataset(Generic[T]):
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            fn: The predicate function to apply to each record.
-            compute: The compute strategy, either "tasks" to use Ray tasks,
-                or "actors" to use an autoscaling Ray actor pool.
+            fn: The predicate to apply to each record, or a class type
+                that can be instantiated to create such a callable.
+            compute: The compute strategy, either "tasks" (default) to use Ray
+                tasks, or "actors" to use an autoscaling Ray actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
+        fn = cache_wrapper(fn)
+
         def transform(block: Block[T]) -> Block[T]:
+            block = BlockAccessor.for_block(block)
             builder = block.builder()
             for row in block.iter_rows():
                 if fn(row):
@@ -255,7 +288,7 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            # Set the number of output partitions to write to disk.
+            >>> # Set the number of output partitions to write to disk.
             >>> ds.repartition(100).write_parquet(...)
 
         Time complexity: O(dataset size / parallelism)
@@ -423,16 +456,16 @@ class Dataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            # Sort using the entire record as the key.
+            >>> # Sort using the entire record as the key.
             >>> ds.sort()
 
-            # Sort by a single column.
+            >>> # Sort by a single column.
             >>> ds.sort("field1")
 
-            # Sort by multiple columns.
+            >>> # Sort by multiple columns.
             >>> ds.sort(["field1", "field2"])
 
-            # Sort by a key function.
+            >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["field1"] % 100)
 
         Time complexity: O(dataset size / parallelism)
@@ -465,16 +498,19 @@ class Dataset(Generic[T]):
 
         @ray.remote
         def get_num_rows(block: Block[T]) -> int:
+            block = BlockAccessor.for_block(block)
             return block.num_rows()
 
         @ray.remote(num_returns=2)
         def truncate(block: Block[T], meta: BlockMetadata,
                      count: int) -> (Block[T], BlockMetadata):
+            block = BlockAccessor.for_block(block)
             logger.debug("Truncating last block to size: {}".format(count))
             new_block = block.slice(0, count, copy=True)
+            accessor = BlockAccessor.for_block(new_block)
             new_meta = BlockMetadata(
-                num_rows=new_block.num_rows(),
-                size_bytes=new_block.size_bytes(),
+                num_rows=accessor.num_rows(),
+                size_bytes=accessor.size_bytes(),
                 schema=meta.schema,
                 input_files=meta.input_files)
             return new_block, new_meta
@@ -548,6 +584,7 @@ class Dataset(Generic[T]):
 
         @ray.remote
         def count(block: Block[T]) -> int:
+            block = BlockAccessor.for_block(block)
             return block.num_rows()
 
         return sum(ray.get([count.remote(block) for block in self._blocks]))
@@ -563,6 +600,7 @@ class Dataset(Generic[T]):
 
         @ray.remote
         def agg(block: Block[T]) -> int:
+            block = BlockAccessor.for_block(block)
             return sum(block.iter_rows())
 
         return sum(ray.get([agg.remote(block) for block in self._blocks]))
@@ -576,7 +614,8 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Returns:
-            The Python type or Arrow schema of the records.
+            The Python type or Arrow schema of the records, or None if the
+            schema is not known.
         """
         metadata = self._blocks.get_metadata()
         # Some blocks could be empty, in which case we cannot get their schema.
@@ -584,7 +623,7 @@ class Dataset(Generic[T]):
         for m in metadata:
             if m.schema:
                 return m.schema
-        raise ValueError("Could not get the schema for this dataset.")
+        return None
 
     def num_blocks(self) -> int:
         """Return the number of blocks of this dataset.
@@ -602,12 +641,12 @@ class Dataset(Generic[T]):
         Time complexity: O(1)
 
         Returns:
-            The in-memory size of the dataset in bytes, or an error if the
+            The in-memory size of the dataset in bytes, or None if the
             in-memory size is not known.
         """
         metadata = self._blocks.get_metadata()
         if not metadata or metadata[0].size_bytes is None:
-            raise ValueError("Could not estimate the size of this dataset.")
+            return None
         return sum(m.size_bytes for m in metadata)
 
     def input_files(self) -> List[str]:
@@ -616,18 +655,15 @@ class Dataset(Generic[T]):
         Time complexity: O(num input files)
 
         Returns:
-            The list of input files used to create the dataset.
+            The list of input files used to create the dataset, or an empty
+            list if the input files is not known.
         """
         metadata = self._blocks.get_metadata()
         files = set()
         for m in metadata:
             for f in m.input_files:
                 files.add(f)
-        if files:
-            return list(files)
-        else:
-            raise ValueError(
-                "Could not retrieve the input files of this dataset.")
+        return list(files)
 
     def write_parquet(self,
                       path: str,
@@ -652,10 +688,12 @@ class Dataset(Generic[T]):
 
         @ray.remote
         def parquet_write(write_path, block):
+            block = BlockAccessor.for_block(block)
             logger.debug(
                 f"Writing {block.num_rows()} records to {write_path}.")
-            with pq.ParquetWriter(write_path, block._table.schema) as writer:
-                writer.write_table(block._table)
+            table = block.to_arrow_table()
+            with pq.ParquetWriter(write_path, table.schema) as writer:
+                writer.write_table(table)
 
         refs = [
             parquet_write.remote(
@@ -683,7 +721,8 @@ class Dataset(Generic[T]):
         """
 
         @ray.remote
-        def json_write(write_path: str, block: ArrowBlock):
+        def json_write(write_path: str, block: Block):
+            block = BlockAccessor.for_block(block)
             logger.debug(
                 f"Writing {block.num_rows()} records to {write_path}.")
             block.to_pandas().to_json(write_path, orient="records")
@@ -714,7 +753,8 @@ class Dataset(Generic[T]):
         """
 
         @ray.remote
-        def csv_write(write_path: str, block: ArrowBlock):
+        def csv_write(write_path: str, block: Block):
+            block = BlockAccessor.for_block(block)
             logger.debug(
                 f"Writing {block.num_rows()} records to {write_path}.")
             block.to_pandas().to_csv(
@@ -743,7 +783,9 @@ class Dataset(Generic[T]):
             write_args: Additional write args to pass to the datasource.
         """
 
-        write_tasks = datasource.prepare_write(self._blocks, **write_args)
+        write_tasks = datasource.prepare_write(self._blocks,
+                                               self._blocks.get_metadata(),
+                                               **write_args)
         progress = ProgressBar("Write Progress", len(write_tasks))
 
         @ray.remote
@@ -777,16 +819,17 @@ class Dataset(Generic[T]):
         Returns:
             A local iterator over the entire dataset.
         """
-
-        for ref in self._blocks:
-            block = ray.get(ref)
-            for row in block.iter_rows():
+        for batch in self.iter_batches(
+                prefetch_blocks=prefetch_blocks, batch_format="_blocks"):
+            batch = BlockAccessor.for_block(batch)
+            for row in batch.iter_rows():
                 yield row
 
     def iter_batches(self,
                      prefetch_blocks: int = 0,
                      batch_size: int = None,
-                     batch_format: str = "pandas") -> Iterator[BatchType]:
+                     batch_format: str = "pandas",
+                     drop_last: bool = False) -> Iterator[BatchType]:
         """Return a local batched iterator over the dataset.
 
         Examples:
@@ -799,34 +842,211 @@ class Dataset(Generic[T]):
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
-            batch_format: Specify "pandas" to select ``pandas.DataFrame`` as
-                the batch format, or "pyarrow" to select ``pyarrow.Table``.
+            batch_format: The format in which to return each batch.
+                Specify "pandas" to select ``pandas.DataFrame`` or "pyarrow" to
+                select ``pyarrow.Table``. Default is "pandas".
+            drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
             A list of iterators over record batches.
         """
 
-        raise NotImplementedError  # P1
+        def sliding_window(iterable: Iterable, n: int):
+            """Creates an iterator consisting of n-width sliding windows over
+            iterable. The sliding windows are constructed lazily such that an
+            element on the base iterator (iterable) isn't consumed until the
+            first sliding window containing that element is reached.
 
-    def to_torch(self, **todo) -> "ray.util.sgd.torch.TorchMLDataset":
-        """Return a dataset that can be used for Torch distributed training.
+            Args:
+                iterable: The iterable on which the sliding window will be
+                    created.
+                n: The width of the sliding window.
+
+            Returns:
+                An iterator of n-width windows over iterable.
+            """
+            iters = itertools.tee(iter(iterable), n)
+            for i in range(1, n):
+                for it in iters[i:]:
+                    next(it, None)
+            return zip(*iters)
+
+        def format_batch(batch: Block, format: str) -> BatchType:
+            if batch_format == "pandas":
+                batch = BlockAccessor.for_block(batch)
+                return batch.to_pandas()
+            elif batch_format == "pyarrow":
+                batch = BlockAccessor.for_block(batch)
+                return batch.to_arrow_table()
+            elif batch_format == "_blocks":
+                return batch
+            else:
+                raise ValueError(
+                    f"The given batch format: {batch_format} "
+                    f"is invalid. Supported batch type: {BatchType}")
+
+        batcher = Batcher(batch_size=batch_size)
+        for block_window in sliding_window(self._blocks, prefetch_blocks + 1):
+            block_window = list(block_window)
+            ray.wait(block_window, num_returns=1, fetch_local=True)
+            block = ray.get(block_window[0])
+            batcher.add(block)
+            while batcher.has_batch():
+                yield format_batch(batcher.next_batch(), batch_format)
+
+        if batcher.has_any() and not drop_last:
+            yield format_batch(batcher.next_batch(), batch_format)
+
+    def to_torch(self,
+                 label_column: str,
+                 feature_columns: Optional[List[str]] = None,
+                 label_column_dtype: Optional["torch.dtype"] = None,
+                 feature_column_dtypes: Optional[List["torch.dtype"]] = None,
+                 batch_size: int = 1,
+                 prefetch_blocks: int = 0,
+                 drop_last: bool = False) -> \
+            "torch.utils.data.IterableDataset":
+        """Return a Torch IterableDataset over this dataset.
+
+        It is recommended to use the returned ``IterableDataset`` directly
+        instead of passing it into a torch ``DataLoader``.
+
+        Each element in IterableDataset will be a tuple consisting of 2
+        elements. The first item is a list of the feature tensors. The
+        second item is the label tensor. Each tensor will be of shape (N,
+        1), where N is the ``batch_size`` used by the DataLoader.
+
+        Note that you probably want to call ``.split()`` on this dataset if
+        there are to be multiple Torch workers consuming the data.
 
         Time complexity: O(1)
 
-        Returns:
-            A TorchMLDataset.
-        """
-        raise NotImplementedError  # P1
+        Args:
+            label_column (str): The name of the column used as the label
+                (second element of the output list).
+            feature_columns (Optional[List[str]]): The names of the columns
+                to use as the features. If None, then use all columns
+                except the label columns as the features.
+            label_column_dtype (Optional[torch.dtype]): The torch dtype to
+                use for the label column. If None, then automatically infer
+                the dtype.
+            feature_column_dtypes (Optional[List[torch.dtype]]): The dtypes
+                to use for the feature columns. The len of this list must
+                be equal to the len of ``feature_columns``. If None,
+                then automatically infer the dtype.
+            batch_size (int): How many samples per batch to yield at a time.
+                Defaults to 1.
+            prefetch_blocks (int): The number of blocks to prefetch ahead of
+                the current block during the scan.
+            drop_last (bool): Set to True to drop the last incomplete batch,
+                if the dataset size is not divisible by the batch size. If
+                False and the size of dataset is not divisible by the batch
+                size, then the last batch will be smaller. Defaults to False.
 
-    def to_tf(self, **todo) -> "ray.util.sgd.tf.TFMLDataset":
-        """Return a dataset that can be used for TF distributed training.
+        Returns:
+            A torch IterableDataset.
+        """
+        import torch
+
+        from ray.experimental.data.impl.torch_iterable_dataset import \
+            TorchIterableDataset
+
+        if feature_columns and feature_column_dtypes:
+            if len(feature_columns) != len(feature_column_dtypes):
+                raise ValueError("The lengths of `feature_columns` "
+                                 f"({len(feature_columns)}) and "
+                                 f"`feature_column_dtypes` ("
+                                 f"{len(feature_column_dtypes)}) do not "
+                                 "match!")
+
+        def make_generator():
+            for batch in self.iter_batches(
+                    batch_size=batch_size,
+                    prefetch_blocks=prefetch_blocks,
+                    drop_last=drop_last):
+                label_vals = batch.pop(label_column).values
+                label_tensor = torch.as_tensor(
+                    label_vals, dtype=label_column_dtype)
+                label_tensor = label_tensor.view(-1, 1)
+
+                feature_tensor = []
+                if feature_columns:
+                    batch = batch[feature_columns]
+
+                if feature_column_dtypes:
+                    dtypes = feature_column_dtypes
+                else:
+                    dtypes = [None] * len(batch.columns)
+
+                for col, dtype in zip(batch.columns, dtypes):
+                    col_vals = batch[col].values
+                    t = torch.as_tensor(col_vals, dtype=dtype)
+                    t = t.view(-1, 1)
+                    feature_tensor.append(t)
+
+                yield (feature_tensor, label_tensor)
+
+        return TorchIterableDataset(make_generator)
+
+    def to_tf(self,
+              label_column: str,
+              output_signature: List["tf.TypeSpec"],
+              feature_columns: Optional[List[str]] = None,
+              prefetch_blocks: int = 0,
+              batch_size: int = 1) -> "tf.data.Dataset":
+        """Return a TF Dataset over this dataset.
+
+        The TF Dataset will be created from the generator returned by the
+        ``iter_batches`` method. ``prefetch_blocks`` and ``batch_size``
+        arguments will be passed to that method.
+
+        This is only supported for datasets convertible to Arrow records.
+
+        Requires all datasets to have the same columns.
+
+        Note that you probably want to call ``.split()`` on this dataset if
+        there are to be multiple TensorFlow workers consuming the data.
+
+        The elements generated must be compatible with the given
+        ``output_signature`` argument (same as in
+        ``tf.data.Dataset.from_generator``).
 
         Time complexity: O(1)
 
+        Args:
+            label_column (str): The name of the column used as the label
+                (second element of the output tuple).
+            output_signature (List[tf.TypeSpec]): A 2-element list
+                of `tf.TypeSpec` objects corresponding to (features, label).
+            feature_columns (Optional[List[str]]): List of columns in datasets
+                to use. If None, all columns will be used.
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+            batch_size: Record batch size. Defaults to 1.
+
         Returns:
-            A TFMLDataset.
+            A tf.data.Dataset.
         """
-        raise NotImplementedError  # P1
+
+        # argument exception checking is done in from_generator
+
+        try:
+            import tensorflow as tf
+        except ImportError:
+            raise ValueError("tensorflow must be installed!")
+
+        def make_generator():
+            for batch in self.iter_batches(
+                    prefetch_blocks=prefetch_blocks,
+                    batch_size=batch_size,
+                    batch_format="pandas"):
+                target_col = batch.pop(label_column)
+                if feature_columns:
+                    batch = batch[feature_columns]
+                yield batch.values, target_col.values
+
+        return tf.data.Dataset.from_generator(
+            make_generator, output_signature=output_signature)
 
     def to_dask(self) -> "dask.DataFrame":
         """Convert this dataset into a Dask DataFrame.
@@ -836,7 +1056,7 @@ class Dataset(Generic[T]):
         Note that this function will set the Dask scheduler to Dask-on-Ray
         globally, via the config.
 
-        Time complexity: O(1)
+        Time complexity: O(dataset size / parallelism)
 
         Returns:
             A Dask DataFrame created from this dataset.
@@ -849,13 +1069,14 @@ class Dataset(Generic[T]):
         dask.config.set(scheduler=ray_dask_get)
 
         @dask.delayed
-        def block_to_df(block: ArrowBlock):
+        def block_to_df(block: Block):
+            block = BlockAccessor.for_block(block)
             if isinstance(block, (ray.ObjectRef, ClientObjectRef)):
                 raise ValueError(
                     "Dataset.to_dask() must be used with Dask-on-Ray, please "
                     "set the Dask scheduler to ray_dask_get (located in "
                     "ray.util.dask).")
-            return block._table.to_pandas()
+            return block.to_pandas()
 
         # TODO(Clark): Give Dask a Pandas-esque schema via the Pyarrow schema,
         # once that's implemented.
@@ -865,7 +1086,7 @@ class Dataset(Generic[T]):
     def to_mars(self) -> "mars.DataFrame":
         """Convert this dataset into a MARS dataframe.
 
-        Time complexity: O(1)
+        Time complexity: O(dataset size / parallelism)
 
         Returns:
             A MARS dataframe created from this dataset.
@@ -875,46 +1096,92 @@ class Dataset(Generic[T]):
     def to_modin(self) -> "modin.DataFrame":
         """Convert this dataset into a Modin dataframe.
 
-        Time complexity: O(1)
+        Time complexity: O(dataset size / parallelism)
 
         Returns:
             A Modin dataframe created from this dataset.
         """
         raise NotImplementedError  # P1
 
-    def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
-        """Convert this dataset into a set of Pandas dataframes.
-
-        This is only supported for datasets convertible to Arrow records.
-
-        Time complexity: O(1)
-
-        Returns:
-            A list of remote Pandas dataframes created from this dataset.
-        """
-
-        @ray.remote
-        def block_to_df(block: ArrowBlock):
-            return block._table.to_pandas()
-
-        return [block_to_df.remote(block) for block in self._blocks]
-
     def to_spark(self) -> "pyspark.sql.DataFrame":
         """Convert this dataset into a Spark dataframe.
 
-        Time complexity: O(1)
+        Time complexity: O(dataset size / parallelism)
 
         Returns:
             A Spark dataframe created from this dataset.
         """
         raise NotImplementedError  # P2
 
+    def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
+        """Convert this dataset into a distributed set of Pandas dataframes.
+
+        This is only supported for datasets convertible to Arrow records.
+        This function induces a copy of the data. For zero-copy access to the
+        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Returns:
+            A list of remote Pandas dataframes created from this dataset.
+        """
+
+        @ray.remote
+        def block_to_df(block: Block):
+            block = BlockAccessor.for_block(block)
+            return block.to_pandas()
+
+        return [block_to_df.remote(block) for block in self._blocks]
+
+    def to_arrow(self) -> List[ObjectRef["pyarrow.Table"]]:
+        """Convert this dataset into a distributed set of Arrow tables.
+
+        This is only supported for datasets convertible to Arrow records.
+        This function is zero-copy if the existing data is already in Arrow
+        format. Otherwise, the data will be converted to Arrow format.
+
+        Time complexity: O(1) unless conversion is required.
+
+        Returns:
+            A list of remote Arrow tables created from this dataset.
+        """
+
+        @ray.remote
+        def check_is_arrow(block: Block) -> bool:
+            import pyarrow
+            return isinstance(block, pyarrow.Table)
+
+        blocks: List[ObjectRef[Block[T]]] = list(self._blocks)
+        is_arrow = ray.get(check_is_arrow.remote(blocks[0]))
+
+        if is_arrow:
+            return blocks  # Zero-copy path.
+
+        @ray.remote
+        def block_to_df(block: Block):
+            block = BlockAccessor.for_block(block)
+            return block.to_arrow_table()
+
+        return [block_to_df.remote(block) for block in self._blocks]
+
+    @DeveloperAPI
+    def get_blocks(self) -> List[ObjectRef["Block"]]:
+        """Get a list of references to the underlying blocks of this dataset.
+
+        This function can be used for zero-copy access to the data.
+
+        Time complexity: O(1)
+
+        Returns:
+            A list of references to this dataset's blocks.
+        """
+        return list(self._blocks)
+
     def __repr__(self) -> str:
-        try:
-            schema = self.schema()
-        except ValueError:
-            schema = "Unknown schema"
-        if hasattr(schema, "names"):
+        schema = self.schema()
+        if schema is None:
+            schema_str = "Unknown schema"
+        elif schema and not isinstance(schema, type):
             schema_str = []
             for n, t in zip(schema.names, schema.types):
                 if hasattr(t, "__name__"):
@@ -936,6 +1203,7 @@ class Dataset(Generic[T]):
     def _block_sizes(self) -> List[int]:
         @ray.remote
         def query(block: Block[T]) -> int:
+            block = BlockAccessor.for_block(block)
             return block.num_rows()
 
         return ray.get([query.remote(b) for b in self._blocks])

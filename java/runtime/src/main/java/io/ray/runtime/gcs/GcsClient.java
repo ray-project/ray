@@ -66,6 +66,11 @@ public class GcsClient {
     return placementGroups;
   }
 
+  public String getInternalKV(String key) {
+    byte[] value = globalStateAccessor.getInternalKV(key);
+    return value == null ? null : new String(value);
+  }
+
   public List<NodeInfo> getAllNodeInfo() {
     List<byte[]> results = globalStateAccessor.getAllNodeInfo();
 
@@ -144,6 +149,18 @@ public class GcsClient {
 
   public JobId nextJobId() {
     return JobId.fromBytes(globalStateAccessor.getNextJobID());
+  }
+
+  public GcsNodeInfo getNodeToConnectForDriver(String nodeIpAddress) {
+    byte[] value = globalStateAccessor.getNodeToConnectForDriver(nodeIpAddress);
+    Preconditions.checkNotNull(value);
+    GcsNodeInfo nodeInfo = null;
+    try {
+      nodeInfo = GcsNodeInfo.parseFrom(value);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Received invalid protobuf data from GCS.");
+    }
+    return nodeInfo;
   }
 
   /** Destroy global state accessor when ray native runtime will be shutdown. */

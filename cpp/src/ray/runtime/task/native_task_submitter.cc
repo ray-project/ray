@@ -9,7 +9,7 @@ namespace api {
 
 RayFunction BuildRayFunction(InvocationSpec &invocation) {
   auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
-      invocation.lib_name, invocation.remote_function_holder.function_name);
+      invocation.remote_function_holder.function_name);
   return RayFunction(ray::Language::CPP, function_descriptor);
 }
 
@@ -41,10 +41,11 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   std::unordered_map<std::string, double> resources;
   std::string name = create_options.name;
+  std::string ray_namespace = "";
   ray::ActorCreationOptions actor_options{
       create_options.max_restarts, 0,         create_options.max_concurrency,
       create_options.resources,    resources, {},
-      /*is_detached=*/false,       name,
+      /*is_detached=*/false,       name, ray_namespace,
       /*is_asyncio=*/false};
   ActorID actor_id;
   auto status = core_worker.CreateActor(BuildRayFunction(invocation), invocation.args,

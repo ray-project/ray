@@ -51,7 +51,7 @@ class AbstractRayRuntime : public RayRuntime {
 
   void RemoveLocalReference(const std::string &id);
 
-  std::string GetActorId(const std::string &actor_name);
+  std::string GetActorId(bool global, const std::string &actor_name);
 
   void KillActor(const std::string &str_actor_id, bool no_restart);
 

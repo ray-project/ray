@@ -315,7 +315,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     start = time.time()
     new_version_ref = None
     while time.time() - start < 30:
-        ready, not_ready = ray.wait([call.remote(block=False)], timeout=0.5)
+        ready, not_ready = ray.wait([call.remote(block=False)], timeout=5)
         if len(ready) == 1:
             # If the request doesn't block, it must have been the old version.
             val, pid = ray.get(ready[0])
@@ -325,7 +325,6 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             # If the request blocks, it must have been the new version.
             new_version_ref = not_ready[0]
             break
-        time.sleep(0.1)
     else:
         assert False, "Timed out waiting for new version to be called."
 
@@ -393,7 +392,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
         start = time.time()
         while time.time() - start < 30:
             refs = [call.remote(block=False) for _ in range(10)]
-            ready, not_ready = ray.wait(refs, timeout=0.5)
+            ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
                 val, pid = ray.get(ref)
                 responses[val].add(pid)
@@ -405,7 +404,6 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
                     for val, num in expected.items())
                     and (expect_blocking is False or len(blocking) > 0)):
                 break
-            time.sleep(0.1)
         else:
             assert False, f"Timed out, responses: {responses}."
 
@@ -493,7 +491,7 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
         start = time.time()
         while time.time() - start < 30:
             refs = [call.remote() for _ in range(10)]
-            ready, not_ready = ray.wait(refs, timeout=0.5)
+            ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
                 val, pid = ray.get(ref)
                 responses[val].add(pid)
@@ -505,7 +503,6 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
                     for val, num in expected.items())
                     and (expect_blocking is False or len(blocking) > 0)):
                 break
-            time.sleep(0.1)
         else:
             assert False, f"Timed out, responses: {responses}."
 
@@ -557,7 +554,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
         start = time.time()
         while time.time() - start < 30:
             refs = [call.remote() for _ in range(10)]
-            ready, not_ready = ray.wait(refs, timeout=0.5)
+            ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
                 val, pid = ray.get(ref)
                 responses[val].add(pid)
@@ -566,7 +563,6 @@ def test_redeploy_scale_down(serve_instance, use_handle):
                     len(responses[val]) == num
                     for val, num in expected.items()):
                 break
-            time.sleep(0.1)
         else:
             assert False, f"Timed out, responses: {responses}."
 
@@ -611,7 +607,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
         start = time.time()
         while time.time() - start < 30:
             refs = [call.remote() for _ in range(10)]
-            ready, not_ready = ray.wait(refs, timeout=0.5)
+            ready, not_ready = ray.wait(refs, timeout=5)
             for ref in ready:
                 val, pid = ray.get(ref)
                 responses[val].add(pid)
@@ -620,7 +616,6 @@ def test_redeploy_scale_up(serve_instance, use_handle):
                     len(responses[val]) == num
                     for val, num in expected.items()):
                 break
-            time.sleep(0.1)
         else:
             assert False, f"Timed out, responses: {responses}."
 

@@ -627,6 +627,7 @@ class NotDetached:
 actor = NotDetached.options(name="actor").remote()
 assert ray.get(actor.ping.remote()) == "pong"
 handle = ray.get_actor("actor")
+assert ray.util.list_named_actors() == ["actor"]
 assert ray.get(handle.ping.remote()) == "pong"
 """.format(redis_address)
 
@@ -635,6 +636,7 @@ assert ray.get(handle.ping.remote()) == "pong"
 
     # Must raise an exception since lifetime is not detached.
     with pytest.raises(Exception):
+        assert not ray.util.list_named_actors()
         detached_actor = ray.get_actor("actor")
         ray.get(detached_actor.ping.remote())
 
@@ -687,7 +689,9 @@ def test_detached_actor(ray_start_regular):
 import ray
 ray.init(address="{}", namespace="")
 
-existing_actor = ray.get_actor("{}")
+name = "{}"
+assert ray.util.list_named_actors() == [name]
+existing_actor = ray.get_actor(name)
 assert ray.get(existing_actor.ping.remote()) == "pong"
 
 @ray.remote
@@ -713,6 +717,9 @@ ray.get(actor.ping.remote())
 """.format(redis_address, get_actor_name, create_actor_name)
 
     run_string_as_driver(driver_script)
+    assert len(ray.util.list_named_actors()) == 2
+    assert get_actor_name in ray.util.list_named_actors()
+    assert create_actor_name in ray.util.list_named_actors()
     detached_actor = ray.get_actor(create_actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
     # Verify that a detached actor is able to create tasks/actors
@@ -735,6 +742,7 @@ def test_detached_actor_cleanup(ray_start_regular):
         # Wait for detached actor creation.
         assert ray.get(detached_actor.ping.remote()) == "pong"
         del detached_actor
+        assert ray.util.list_named_actors() == [dup_actor_name]
         detached_actor = ray.get_actor(dup_actor_name)
         ray.kill(detached_actor)
         # Wait until actor dies.
@@ -805,12 +813,29 @@ def test_detached_actor_local_mode(ray_start_regular):
             return RETURN_VALUE
 
     Y.options(lifetime="detached", name="test").remote()
+    assert ray.util.list_named_actors() == ["test"]
     y = ray.get_actor("test")
     assert ray.get(y.f.remote()) == RETURN_VALUE
 
     ray.kill(y)
+    assert not ray.util.list_named_actors()
     with pytest.raises(ValueError):
         ray.get_actor("test")
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }], indirect=True)
+def test_get_actor_local_mode(ray_start_regular):
+    @ray.remote
+    class A:
+        def hi(self):
+            return "hi"
+
+    a = A.options(name="hi").remote()  # noqa: F841
+    b = ray.get_actor("hi")
+    assert ray.get(b.hi.remote()) == "hi"
 
 
 @pytest.mark.parametrize(
@@ -1252,6 +1277,21 @@ def test_actor_timestamps(ray_start_regular):
     graceful_exit()
     not_graceful_exit()
     restarted()
+
+
+def test_actor_namespace_access(ray_start_regular):
+    @ray.remote
+    class A:
+        def hi(self):
+            return "hi"
+
+    A.options(name="actor_in_current_namespace", lifetime="detached").remote()
+    A.options(name="namespace/actor_name", lifetime="detached").remote()
+    ray.get_actor("actor_in_current_namespace")  # => works
+    ray.get_actor("namespace/actor_name")  # => works
+    match_str = r"Failed to look up actor with name.*"
+    with pytest.raises(ValueError, match=match_str):
+        ray.get_actor("actor_name")  # => errors
 
 
 if __name__ == "__main__":

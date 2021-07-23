@@ -17,12 +17,14 @@ import sys
 import time
 from typing import Optional
 
-import colorama
-import psutil
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
 import redis
+
+# Import psutil and colorama after ray so the packaged version is used.
+import colorama
+import psutil
 
 resource = None
 if sys.platform != "win32":
@@ -32,14 +34,6 @@ EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
-
-# The number of seconds to wait for the Raylet to start. This is normally
-# fast, but when RAY_PREALLOCATE_PLASMA_MEMORY=1 is set, it may take some time
-# (a few GB/s) to populate all the pages on Raylet startup.
-if os.environ.get("RAY_PREALLOCATE_PLASMA_MEMORY") == "1":
-    RAYLET_START_WAIT_TIME_S = 120
-else:
-    RAYLET_START_WAIT_TIME_S = 10
 
 # Location of the redis server and module.
 RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
@@ -278,80 +272,14 @@ def wait_for_node(redis_address,
     raise TimeoutError("Timed out while waiting for node to startup.")
 
 
-def get_address_info_from_redis_helper(redis_address,
-                                       node_ip_address,
-                                       redis_password=None):
+def get_node_to_connect_for_driver(redis_address,
+                                   node_ip_address,
+                                   redis_password=None):
     redis_ip_address, redis_port = redis_address.split(":")
     # Get node table from global state accessor.
     global_state = ray.state.GlobalState()
     global_state._initialize_global_state(redis_address, redis_password)
-    client_table = global_state.node_table()
-    if len(client_table) == 0:
-        raise RuntimeError(
-            "Redis has started but no raylets have registered yet.")
-
-    relevant_client = None
-    head_node_client = None
-    for client_info in client_table:
-        if not client_info["Alive"]:
-            continue
-        client_node_ip_address = client_info["NodeManagerAddress"]
-        if client_node_ip_address == node_ip_address:
-            relevant_client = client_info
-            break
-        if ((client_node_ip_address == "127.0.0.1"
-             and redis_ip_address == get_node_ip_address())
-                or client_node_ip_address == redis_ip_address):
-            head_node_client = client_info
-
-    if relevant_client is None and head_node_client is not None:
-        logger.info(f"This node has an IP address of {node_ip_address}, "
-                    "while we can not found the matched Raylet address. "
-                    "This maybe come from when you connect the Ray cluster "
-                    "with a different IP address or connect a container.")
-        relevant_client = head_node_client
-
-    if relevant_client is None:
-        raise RuntimeError(
-            f"This node has an IP address of {node_ip_address}, and Ray "
-            "expects this IP address to be either the Redis address or one of"
-            f" the Raylet addresses. Connected to Redis at {redis_address} and"
-            " found raylets at "
-            f"{', '.join(c['NodeManagerAddress'] for c in client_table)} but "
-            f"none of these match this node's IP {node_ip_address}. Are any of"
-            " these actually a different IP address for the same node?"
-            "You might need to provide --node-ip-address to specify the IP "
-            "address that the head should use when sending to this node.")
-
-    return {
-        "object_store_address": relevant_client["ObjectStoreSocketName"],
-        "raylet_socket_name": relevant_client["RayletSocketName"],
-        "node_manager_port": relevant_client["NodeManagerPort"],
-    }
-
-
-def get_address_info_from_redis(redis_address,
-                                node_ip_address,
-                                num_retries=RAYLET_START_WAIT_TIME_S,
-                                redis_password=None,
-                                log_warning=True):
-    counter = 0
-    while True:
-        try:
-            return get_address_info_from_redis_helper(
-                redis_address, node_ip_address, redis_password=redis_password)
-        except Exception:
-            if counter == num_retries:
-                raise
-            if log_warning:
-                logger.warning(
-                    "Some processes that the driver needs to connect to have "
-                    "not registered with Redis, so retrying. Have you run "
-                    "'ray start' on this node?")
-            # Some of the information may not be in Redis yet, so wait a little
-            # bit.
-            time.sleep(1)
-        counter += 1
+    return global_state.get_node_to_connect_for_driver(node_ip_address)
 
 
 def get_webui_url_from_redis(redis_client):
@@ -1247,11 +1175,15 @@ def start_dashboard(require_dashboard,
         # Make sure the process can start.
         try:
             import aiohttp  # noqa: F401
+            import aioredis  # noqa: F401
+            import aiohttp_cors  # noqa: F401
             import grpc  # noqa: F401
         except ImportError:
             warning_message = (
-                "Missing dependencies for dashboard. Please run "
-                "pip install aiohttp grpcio'.")
+                "Not all Ray Dashboard dependencies were found. "
+                "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
+                "only be usable via `pip install 'ray[default]'`. Please "
+                "update your install command.")
             raise ImportError(warning_message)
 
         # Start the dashboard process.
@@ -1717,8 +1649,10 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
         "--ray-node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--ray-address={redis_address}",
         f"--ray-redis-password={redis_password}",
-        f"--ray-session-dir={session_dir}", f"--ray-logs-dir={log_dir}",
-        f"--ray-node-ip-address={node_ip_address}"
+        f"--ray-session-dir={session_dir}",
+        f"--ray-logs-dir={log_dir}",
+        f"--ray-node-ip-address={node_ip_address}",
+        "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 
     return command

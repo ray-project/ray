@@ -1,21 +1,36 @@
+from enum import Enum, unique
 from collections import deque
 import re
-from typing import Tuple, List, Optional, Callable, Set, Iterator
+from typing import Tuple, Dict, List, Optional, Callable, Set, Iterator, Any
 import unicodedata
 import uuid
 
 from dataclasses import dataclass
 
 import ray
+from ray import ObjectRef
 
 # Alias types
-RRef = ray.ObjectRef  # Alias ObjectRef because it is too long in type hints.
 StepID = str
-WorkflowOutputType = RRef
-WorkflowInputTuple = Tuple[RRef, List["Workflow"], List[RRef]]
+WorkflowOutputType = ObjectRef
+WorkflowInputTuple = Tuple[ObjectRef, List["Workflow"], List[ObjectRef]]
 StepExecutionFunction = Callable[
     [StepID, WorkflowInputTuple, Optional[StepID]], WorkflowOutputType]
 SerializedStepFunction = str
+
+
+@unique
+class WorkflowStatus(str, Enum):
+    # There is at least a remote task running in ray cluster
+    RUNNING = "RUNNING"
+    # It got canceled and can't be resumed later
+    CANCELED = "CANCELED"
+    # The step is finished. For virtual actor, it means that all
+    # writing steps has been finished.
+    FINISHED = "FINISHED"
+    # The workflow that can be resumed. Usually it's because some
+    # internal or external errors.
+    RESUMABLE = "RESUMABLE"
 
 
 @dataclass
@@ -23,14 +38,26 @@ class WorkflowInputs:
     # The workflow step function body.
     func_body: Callable
     # The object ref of the input arguments.
-    args: RRef
+    args: ObjectRef
     # The hex string of object refs in the arguments.
     object_refs: List[str]
     # The ID of workflows in the arguments.
     workflows: List[str]
+    # The num of retry for application exception
+    step_max_retries: int
+    # Whether the user want to handle the exception mannually
+    catch_exceptions: bool
+    # ray_remote options
+    ray_options: Dict[str, Any]
 
 
-def slugify(value: str, allow_unicode=False):
+@dataclass
+class WorkflowMetaData:
+    # The current status of the workflow
+    status: WorkflowStatus
+
+
+def slugify(value: str, allow_unicode=False) -> str:
     """Adopted from
     https://github.com/django/django/blob/master/django/utils/text.py
     Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
@@ -50,20 +77,24 @@ def slugify(value: str, allow_unicode=False):
 class Workflow:
     def __init__(self, original_function: Callable,
                  step_execution_function: StepExecutionFunction,
-                 input_placeholder: RRef, input_workflows: List["Workflow"],
-                 input_object_refs: List[RRef]):
-        self._input_placeholder: RRef = input_placeholder
+                 input_placeholder: ObjectRef,
+                 input_workflows: List["Workflow"],
+                 input_object_refs: List[ObjectRef], step_max_retries: int,
+                 catch_exceptions: bool, ray_options: Dict[str, Any]):
+        self._input_placeholder: ObjectRef = input_placeholder
         self._input_workflows: List[Workflow] = input_workflows
-        self._input_object_refs: List[RRef] = input_object_refs
+        self._input_object_refs: List[ObjectRef] = input_object_refs
         # we need the original function for checkpointing
         self._original_function: Callable = original_function
         self._step_execution_function: StepExecutionFunction = (
             step_execution_function)
-
         self._executed: bool = False
         self._output: Optional[WorkflowOutputType] = None
         self._step_id: StepID = slugify(
             original_function.__qualname__) + "." + uuid.uuid4().hex
+        self._step_max_retries: int = step_max_retries
+        self._catch_exceptions: bool = catch_exceptions
+        self._ray_options: Dict[str, Any] = ray_options
 
     @property
     def executed(self) -> bool:
@@ -79,7 +110,8 @@ class Workflow:
     def id(self) -> StepID:
         return self._step_id
 
-    def execute(self, outer_most_step_id: Optional[StepID] = None) -> RRef:
+    def execute(self,
+                outer_most_step_id: Optional[StepID] = None) -> ObjectRef:
         """Trigger workflow execution recursively.
 
         Args:
@@ -88,6 +120,7 @@ class Workflow:
         """
         if self.executed:
             return self._output
+
         workflow_outputs = [w.execute() for w in self._input_workflows]
         # NOTE: Input placeholder is only a placeholder. It only can be
         # deserialized under a proper serialization context. Directly
@@ -97,8 +130,9 @@ class Workflow:
         # proper context. To prevent it, we put it inside a tuple.
         step_inputs = (self._input_placeholder, workflow_outputs,
                        self._input_object_refs)
-        output = self._step_execution_function(self._step_id, step_inputs,
-                                               outer_most_step_id)
+        output = self._step_execution_function(
+            self._step_id, step_inputs, self._catch_exceptions,
+            self._step_max_retries, self._ray_options, outer_most_step_id)
         if not isinstance(output, WorkflowOutputType):
             raise TypeError("Unexpected return type of the workflow.")
         self._output = output
@@ -127,6 +161,9 @@ class Workflow:
             args=self._input_placeholder,
             object_refs=[r.hex() for r in self._input_object_refs],
             workflows=[w.id for w in self._input_workflows],
+            step_max_retries=self._step_max_retries,
+            catch_exceptions=self._catch_exceptions,
+            ray_options=self._ray_options,
         )
 
     def __reduce__(self):
@@ -135,3 +172,61 @@ class Workflow:
             "Maybe you are passing it to a Ray remote function, "
             "returning it from a Ray remote function, or using "
             "'ray.put()' with it?")
+
+    def run(self, workflow_id: Optional[str] = None) -> Any:
+        """Run a workflow.
+
+        Examples:
+            >>> @workflow.step
+            ... def book_flight(origin: str, dest: str) -> Flight:
+            ...    return Flight(...)
+
+            >>> @workflow.step
+            ... def book_hotel(location: str) -> Reservation:
+            ...    return Reservation(...)
+
+            >>> @workflow.step
+            ... def finalize_trip(bookings: List[Any]) -> Trip:
+            ...    return Trip(...)
+
+            >>> flight1 = book_flight.step("OAK", "SAN")
+            >>> flight2 = book_flight.step("SAN", "OAK")
+            >>> hotel = book_hotel.step("SAN")
+            >>> trip = finalize_trip.step([flight1, flight2, hotel])
+            >>> result = trip.run()
+
+        Args:
+            workflow_id: A unique identifier that can be used to resume the
+                workflow. If not specified, a random id will be generated.
+        """
+        return ray.get(self.run_async(workflow_id))
+
+    def run_async(self, workflow_id: Optional[str] = None) -> ObjectRef:
+        """Run a workflow asynchronously.
+
+        Examples:
+            >>> @workflow.step
+            ... def book_flight(origin: str, dest: str) -> Flight:
+            ...    return Flight(...)
+
+            >>> @workflow.step
+            ... def book_hotel(location: str) -> Reservation:
+            ...    return Reservation(...)
+
+            >>> @workflow.step
+            ... def finalize_trip(bookings: List[Any]) -> Trip:
+            ...    return Trip(...)
+
+            >>> flight1 = book_flight.step("OAK", "SAN")
+            >>> flight2 = book_flight.step("SAN", "OAK")
+            >>> hotel = book_hotel.step("SAN")
+            >>> trip = finalize_trip.step([flight1, flight2, hotel])
+            >>> result = ray.get(trip.run_async())
+
+        Args:
+            workflow_id: A unique identifier that can be used to resume the
+                workflow. If not specified, a random id will be generated.
+        """
+        # TODO(suquark): avoid cyclic importing
+        from ray.experimental.workflow.execution import run
+        return run(self, workflow_id)

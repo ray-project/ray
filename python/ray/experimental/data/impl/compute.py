@@ -1,21 +1,25 @@
-from typing import TypeVar, Iterable, Any
+from typing import TypeVar, Iterable, Any, Union, Callable
 
 import ray
-from ray.experimental.data.impl.block import Block, BlockMetadata, ObjectRef
+from ray.types import ObjectRef
+from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.progress_bar import ProgressBar
 
 T = TypeVar("T")
 U = TypeVar("U")
 
+# A class type that implements __call__.
+CallableClass = type
 
-class ComputePool:
+
+class ComputeStrategy:
     def apply(self, fn: Any,
               blocks: Iterable[Block[T]]) -> Iterable[ObjectRef[Block]]:
         raise NotImplementedError
 
 
-class TaskPool(ComputePool):
+class TaskPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
               blocks: BlockList[Any]) -> BlockList[Any]:
         map_bar = ProgressBar("Map Progress", total=len(blocks))
@@ -26,10 +30,11 @@ class TaskPool(ComputePool):
         @ray.remote(**kwargs)
         def wrapped_fn(block: Block, meta: BlockMetadata):
             new_block = fn(block)
+            accessor = BlockAccessor.for_block(new_block)
             new_meta = BlockMetadata(
-                num_rows=new_block.num_rows(),
-                size_bytes=new_block.size_bytes(),
-                schema=new_block.schema(),
+                num_rows=accessor.num_rows(),
+                size_bytes=accessor.size_bytes(),
+                schema=accessor.schema(),
                 input_files=meta.input_files)
             return new_block, new_meta
 
@@ -44,7 +49,7 @@ class TaskPool(ComputePool):
         return BlockList(list(new_blocks), list(new_metadata))
 
 
-class ActorPool(ComputePool):
+class ActorPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
               blocks: Iterable[Block[T]]) -> Iterable[ObjectRef[Block]]:
 
@@ -58,10 +63,11 @@ class ActorPool(ComputePool):
             def process_block(self, block: Block[T], meta: BlockMetadata
                               ) -> (Block[U], BlockMetadata):
                 new_block = fn(block)
+                accessor = BlockAccessor.for_block(new_block)
                 new_metadata = BlockMetadata(
-                    num_rows=new_block.num_rows(),
-                    size_bytes=new_block.size_bytes(),
-                    schema=new_block.schema(),
+                    num_rows=accessor.num_rows(),
+                    size_bytes=accessor.size_bytes(),
+                    schema=accessor.schema(),
                     input_files=meta.input_files)
                 return new_block, new_metadata
 
@@ -113,10 +119,40 @@ class ActorPool(ComputePool):
         return BlockList(blocks_out, new_metadata)
 
 
-def get_compute(compute_spec: str) -> ComputePool:
-    if compute_spec == "tasks":
+cached_cls = None
+cached_fn = None
+
+
+def cache_wrapper(fn: Union[CallableClass, Callable[[Any], Any]]
+                  ) -> Callable[[Any], Any]:
+    """Implements caching of stateful callables.
+
+    Args:
+        fn: Either a plain function or class of a stateful callable.
+
+    Returns:
+        A plain function with per-process initialization cached as needed.
+    """
+    if isinstance(fn, CallableClass):
+
+        def _fn(item: Any) -> Any:
+            global cached_cls, cached_fn
+            if cached_fn is None or cached_cls != fn:
+                cached_cls = fn
+                cached_fn = fn()
+            return cached_fn(item)
+
+        return _fn
+    else:
+        return fn
+
+
+def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
+    if not compute_spec or compute_spec == "tasks":
         return TaskPool()
     elif compute_spec == "actors":
         return ActorPool()
+    elif isinstance(compute_spec, ComputeStrategy):
+        return compute_spec
     else:
         raise ValueError("compute must be one of [`tasks`, `actors`]")

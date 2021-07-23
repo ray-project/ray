@@ -20,5 +20,10 @@ class RayIntentionalSystemExitException : public RayException {
   RayIntentionalSystemExitException(const std::string &msg) : RayException(msg){};
 };
 
+class RayFunctionNotFound : public RayException {
+ public:
+  RayFunctionNotFound(const std::string &msg) : RayException(msg){};
+};
+
 }  // namespace api
 }  // namespace ray

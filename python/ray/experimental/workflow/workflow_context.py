@@ -1,4 +1,5 @@
 from typing import Optional, List
+from contextlib import contextmanager
 
 
 class WorkflowStepContext:
@@ -29,7 +30,8 @@ class WorkflowStepContext:
 _context: Optional[WorkflowStepContext] = None
 
 
-def init_workflow_step_context(workflow_id, storage_url) -> None:
+@contextmanager
+def workflow_step_context(workflow_id, storage_url) -> None:
     """Initialize the workflow step context.
 
     Args:
@@ -38,7 +40,11 @@ def init_workflow_step_context(workflow_id, storage_url) -> None:
     """
     global _context
     assert workflow_id is not None
-    _context = WorkflowStepContext(workflow_id, storage_url)
+    try:
+        _context = WorkflowStepContext(workflow_id, storage_url)
+        yield
+    finally:
+        _context = None
 
 
 def get_workflow_step_context() -> Optional[WorkflowStepContext]:
@@ -55,6 +61,11 @@ def update_workflow_step_context(context: Optional[WorkflowStepContext],
     global _context
     _context = context
     _context.workflow_scope.append(step_id)
+    # avoid cyclic import
+    from ray.experimental.workflow import storage
+    # TODO(suquark): [optimization] if the original storage has the same URL,
+    # skip creating the new one
+    storage.set_global_storage(storage.create_storage(context.storage_url))
 
 
 def get_current_step_id() -> str:
@@ -62,6 +73,11 @@ def get_current_step_id() -> str:
     the workflow job driver."""
     s = get_scope()
     return s[-1] if s else ""
+
+
+def get_current_workflow_id() -> str:
+    assert _context is not None
+    return _context.workflow_id
 
 
 def get_scope():

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Set
 
 import click
 import copy
@@ -30,6 +30,7 @@ from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import cli_logger, cf
+from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +166,7 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port,
                 from None
 
 
-def continue_debug_session():
+def continue_debug_session(live_jobs: Set[str]):
     """Continue active debugging session.
 
     This function will connect 'ray debug' to the right debugger
@@ -176,21 +177,39 @@ def continue_debug_session():
 
     for active_session in active_sessions:
         if active_session.startswith(b"RAY_PDB_CONTINUE"):
+            # Check to see that the relevant job is still alive.
+            data = ray.experimental.internal_kv._internal_kv_get(
+                active_session)
+            if json.loads(data)["job_id"] not in live_jobs:
+                ray.experimental.internal_kv._internal_kv_del(active_session)
+                continue
+
             print("Continuing pdb session in different process...")
             key = b"RAY_PDB_" + active_session[len("RAY_PDB_CONTINUE_"):]
             while True:
                 data = ray.experimental.internal_kv._internal_kv_get(key)
                 if data:
                     session = json.loads(data)
-                    if "exit_debugger" in session:
+                    if ("exit_debugger" in session
+                            or session["job_id"] not in live_jobs):
                         ray.experimental.internal_kv._internal_kv_del(key)
                         return
                     host, port = session["pdb_address"].split(":")
                     ray.util.rpdb.connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(key)
-                    continue_debug_session()
+                    continue_debug_session(live_jobs)
                     return
                 time.sleep(1.0)
+
+
+def format_table(table):
+    """Format a table as a list of lines with aligned columns."""
+    result = []
+    col_width = [max(len(x) for x in col) for col in zip(*table)]
+    for line in table:
+        result.append(" | ".join(
+            "{0:{1}}".format(x, col_width[i]) for i, x in enumerate(line)))
+    return result
 
 
 @cli.command()
@@ -206,18 +225,40 @@ def debug(address):
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, log_to_driver=False)
     while True:
-        continue_debug_session()
+        # Used to filter out and clean up entries from dead jobs.
+        live_jobs = {
+            job["JobID"]
+            for job in ray.state.jobs() if not job["IsDead"]
+        }
+        continue_debug_session(live_jobs)
 
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
             "RAY_PDB_")
         print("Active breakpoints:")
-        for i, active_session in enumerate(active_sessions):
+        sessions_data = []
+        for active_session in active_sessions:
             data = json.loads(
                 ray.experimental.internal_kv._internal_kv_get(active_session))
-            print(
-                str(i) + ": " + data["proctitle"] + " | " + data["filename"] +
-                ":" + str(data["lineno"]))
-            print(data["traceback"])
+            # Check that the relevant job is alive, else clean up the entry.
+            if data["job_id"] in live_jobs:
+                sessions_data.append(data)
+            else:
+                ray.experimental.internal_kv._internal_kv_del(active_session)
+        sessions_data = sorted(
+            sessions_data, key=lambda data: data["timestamp"], reverse=True)
+        table = [["index", "timestamp", "Ray task", "filename:lineno"]]
+        for i, data in enumerate(sessions_data):
+            date = datetime.utcfromtimestamp(
+                data["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
+            table.append([
+                str(i), date, data["proctitle"],
+                data["filename"] + ":" + str(data["lineno"])
+            ])
+        for i, line in enumerate(format_table(table)):
+            print(line)
+            if i >= 1 and not sessions_data[i - 1]["traceback"].startswith(
+                    "NoneType: None"):
+                print(sessions_data[i - 1]["traceback"])
         inp = input("Enter breakpoint index or press enter to refresh: ")
         if inp == "":
             print()
@@ -1358,7 +1399,8 @@ def stack():
     COMMAND = """
 pyspy=`which py-spy`
 if [ ! -e "$pyspy" ]; then
-    echo "ERROR: Please 'pip install py-spy' first"
+    echo "ERROR: Please 'pip install py-spy'" \
+        "or 'pip install ray[default]' first."
     exit 1
 fi
 # Set IFS to iterate over lines instead of over words.
@@ -1820,6 +1862,67 @@ def install_nightly(verbose, dryrun):
         subprocess.check_call(cmd)
 
 
+@cli.command()
+@click.option(
+    "--show-library-path",
+    "-show",
+    required=False,
+    is_flag=True,
+    help="Show the cpp include path and library path, if provided.")
+@click.option(
+    "--generate-bazel-project-template-to",
+    "-gen",
+    required=False,
+    type=str,
+    help="The directory to generate the bazel project template to,"
+    " if provided.")
+@add_click_options(logging_options)
+def cpp(show_library_path, generate_bazel_project_template_to, log_style,
+        log_color, verbose):
+    """Show the cpp library path and generate the bazel project template."""
+    if not show_library_path and not generate_bazel_project_template_to:
+        raise ValueError(
+            "Please input at least one option of '--show-library-path'"
+            " and '--generate-bazel-project-template-to'.")
+    cli_logger.configure(log_style, log_color, verbose)
+    raydir = os.path.abspath(os.path.dirname(ray.__file__))
+    cpp_dir = os.path.join(raydir, "cpp")
+    cpp_templete_dir = os.path.join(cpp_dir, "example")
+    include_dir = os.path.join(cpp_dir, "include")
+    lib_dir = os.path.join(cpp_dir, "lib")
+    if not os.path.isdir(cpp_dir):
+        raise ValueError(
+            "Please install ray with C++ API by \"pip install ray[cpp]\".")
+    if show_library_path:
+        cli_logger.print("Ray C++ include path {} ", cf.bold(f"{include_dir}"))
+        cli_logger.print("Ray C++ library path {} ", cf.bold(f"{lib_dir}"))
+    if generate_bazel_project_template_to:
+        if not os.path.isdir(generate_bazel_project_template_to):
+            cli_logger.abort(
+                "The provided directory "
+                f"{generate_bazel_project_template_to} doesn't exist.")
+        copy_tree(cpp_templete_dir, generate_bazel_project_template_to)
+        out_include_dir = os.path.join(generate_bazel_project_template_to,
+                                       "thirdparty/include")
+        if not os.path.exists(out_include_dir):
+            os.makedirs(out_include_dir)
+        copy_tree(include_dir, out_include_dir)
+        out_lib_dir = os.path.join(generate_bazel_project_template_to,
+                                   "thirdparty/lib")
+        if not os.path.exists(out_lib_dir):
+            os.makedirs(out_lib_dir)
+        copy_tree(lib_dir, out_lib_dir)
+
+        cli_logger.print(
+            "Project template generated to {}",
+            cf.bold(f"{os.path.abspath(generate_bazel_project_template_to)}"))
+        cli_logger.print("To build and run this template, run")
+        cli_logger.print(
+            cf.bold(
+                f"    cd {os.path.abspath(generate_bazel_project_template_to)}"
+                " && bazel run //:example"))
+
+
 def add_command_alias(command, name, hidden):
     new_command = copy.deepcopy(command)
     new_command.hidden = hidden
@@ -1852,6 +1955,7 @@ cli.add_command(cluster_dump)
 cli.add_command(global_gc)
 cli.add_command(timeline)
 cli.add_command(install_nightly)
+cli.add_command(cpp)
 
 try:
     from ray.serve.scripts import serve_cli

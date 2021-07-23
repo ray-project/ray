@@ -37,6 +37,7 @@ MOCK_MODULES = [
     "ax.service.ax_client",
     "blist",
     "ConfigSpace",
+    "dask.distributed",
     "gym",
     "gym.spaces",
     "horovod",
@@ -97,10 +98,9 @@ for mod_name in MOCK_MODULES:
 sys.modules["tensorflow"].VERSION = "9.9.9"
 sys.modules["tensorflow.keras.callbacks"] = ChildClassMock()
 sys.modules["pytorch_lightning"] = ChildClassMock()
-sys.modules["xgboost"] = ChildClassMock()
-sys.modules["xgboost.core"] = ChildClassMock()
-sys.modules["xgboost.callback"] = ChildClassMock()
-sys.modules["xgboost_ray"] = ChildClassMock()
+
+assert "ray" not in sys.modules, (
+    "If ray is already imported, we will not render documentation correctly!")
 
 
 class SimpleClass(object):

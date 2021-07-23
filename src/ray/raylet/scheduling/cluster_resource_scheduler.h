@@ -33,9 +33,6 @@ namespace ray {
 
 using rpc::HeartbeatTableData;
 
-// Specify resources that consists of unit-size instances.
-static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU};
-
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available
 /// resources at those nodes.
@@ -423,10 +420,20 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   void UpdateLastResourceUsage(
       const std::shared_ptr<SchedulingResources> gcs_resources) override;
 
+  /// Serialize task resource instances to json string.
+  ///
+  /// \param task_allocation Allocated resource instances for a task.
+  /// \return The task resource instances json string
+  std::string SerializedTaskResourceInstances(
+      std::shared_ptr<TaskResourceInstances> task_allocation) const;
+
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
 
  private:
+  /// Init the information about which resources are unit_instance.
+  void InitResourceUnitInstanceInfo();
+
   /// Decrease the available resources of a node when a resource request is
   /// scheduled on the given node.
   ///
@@ -458,6 +465,12 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
+
+  // Specify predefine resources that consists of unit-size instances.
+  std::unordered_set<int64_t> predefined_unit_instance_resources_{};
+
+  // Specify custom resources that consists of unit-size instances.
+  std::unordered_set<int64_t> custom_unit_instance_resources_{};
 };
 
 }  // end namespace ray

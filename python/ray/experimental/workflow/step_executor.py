@@ -1,16 +1,21 @@
+from typing import (List, Tuple, Any, Dict, Callable, Optional, TYPE_CHECKING,
+                    Union)
 import ray
-
-from typing import List, Tuple, Union, Any, Dict, Callable, Optional
+from ray import ObjectRef
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
-from ray.experimental.workflow.common import (
-    RRef, Workflow, StepID, WorkflowOutputType, WorkflowInputTuple)
 from ray.experimental.workflow import workflow_storage
+from ray.experimental.workflow.workflow_access import MANAGEMENT_ACTOR_NAME
 
-StepInputTupleToResolve = Tuple[RRef, List[RRef], List[RRef]]
+if TYPE_CHECKING:
+    from ray.experimental.workflow.common import (StepID, WorkflowOutputType,
+                                                  Workflow, WorkflowInputTuple,
+                                                  WorkflowStatus)
+
+StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 
 
-def _resolve_object_ref(ref: RRef) -> Tuple[Any, RRef]:
+def _resolve_object_ref(ref: ObjectRef) -> Tuple[Any, ObjectRef]:
     """
     Resolves the ObjectRef into the object instance.
 
@@ -20,7 +25,7 @@ def _resolve_object_ref(ref: RRef) -> Tuple[Any, RRef]:
     assert ray.is_initialized()
     last_ref = ref
     while True:
-        if isinstance(ref, RRef):
+        if isinstance(ref, ObjectRef):
             last_ref = ref
         else:
             break
@@ -40,9 +45,9 @@ def _deref_arguments(args: List, kwargs: Dict) -> Tuple[List, Dict]:
     Returns:
         Post processed arguments.
     """
-    _args = [ray.get(a) if isinstance(a, RRef) else a for a in args]
+    _args = [ray.get(a) if isinstance(a, ObjectRef) else a for a in args]
     _kwargs = {
-        k: ray.get(v) if isinstance(v, RRef) else v
+        k: ray.get(v) if isinstance(v, ObjectRef) else v
         for k, v in kwargs.items()
     }
     return _args, _kwargs
@@ -71,8 +76,8 @@ def _resolve_step_inputs(
 
     objects_mapping = []
     input_placeholder, input_workflows, input_object_refs = step_inputs
-    for rref in input_workflows:
-        obj, ref = _resolve_object_ref(rref)
+    for obj_ref in input_workflows:
+        obj, ref = _resolve_object_ref(obj_ref)
         objects_mapping.append(obj)
     with serialization_context.workflow_args_resolving_context(
             objects_mapping, input_object_refs):
@@ -82,7 +87,7 @@ def _resolve_step_inputs(
     return _args, _kwargs
 
 
-def execute_workflow(workflow: Workflow,
+def execute_workflow(workflow: "Workflow",
                      outer_most_step_id: Optional[str] = None
                      ) -> ray.ObjectRef:
     """Execute workflow.
@@ -121,28 +126,31 @@ def execute_workflow(workflow: Workflow,
     return workflow.execute(outer_most_step_id)
 
 
-def commit_step(ret: Union[Workflow, Any],
+def commit_step(store: workflow_storage.WorkflowStorage,
+                step_id: "StepID",
+                ret: Union["Workflow", Any],
                 outer_most_step_id: Optional[str] = None):
     """Checkpoint the step output.
-
     Args:
-        The returned object of the workflow step.
+        store: The storage the current workflow is using.
+        step_id: The ID of the step.
+        ret: The returned object of the workflow step.
         outer_most_step_id: The ID of the outer most workflow. None if it
             does not exists. See "step_executor.execute_workflow" for detailed
             explanation.
     """
-    store = workflow_storage.WorkflowStorage()
+    from ray.experimental.workflow.common import Workflow
     if isinstance(ret, Workflow):
         store.save_subworkflow(ret)
-    step_id = workflow_context.get_current_step_id()
     store.save_step_output(step_id, ret, outer_most_step_id)
 
 
 @ray.remote
 def _workflow_step_executor(
         func: Callable, context: workflow_context.WorkflowStepContext,
-        step_id: StepID, step_inputs: StepInputTupleToResolve,
-        outer_most_step_id: StepID) -> Any:
+        step_id: "StepID", step_inputs: "StepInputTupleToResolve",
+        outer_most_step_id: "StepID", catch_exceptions: bool,
+        step_max_retries: int) -> Any:
     """Executor function for workflow step.
 
     Args:
@@ -152,29 +160,61 @@ def _workflow_step_executor(
         step_inputs: The inputs tuple of the step.
         outer_most_step_id: See "step_executor.execute_workflow" for
             explanation.
+        catch_exceptions: If set to be true, return
+            (Optional[Result], Optional[Error]) instead of Result.
+        step_max_retries: Max number of retries encounter of a failure.
 
     Returns:
         Workflow step output.
     """
-    # Before running the actual function, we
-    # 1. Setup the workflow context, so we have proper access to
-    #    workflow storage.
-    # 2. Decode step inputs to arguments and keyword-arguments.
-    workflow_context.update_workflow_step_context(context, step_id)
-    args, kwargs = _resolve_step_inputs(step_inputs)
-    # Running the actual step function
-    ret = func(*args, **kwargs)
-    # Save workflow output
-    commit_step(ret, outer_most_step_id)
-    if isinstance(ret, Workflow):
-        # execute sub-workflow
-        return execute_workflow(ret, outer_most_step_id)
-    return ret
+    ret = None
+    err = None
+    # step_max_retries are for application level failure.
+    # For ray failure, we should use max_retries.
+    from ray.experimental.workflow.common import WorkflowStatus
+    from ray.experimental.workflow.common import Workflow
+    for _ in range(step_max_retries):
+        try:
+            workflow_context.update_workflow_step_context(context, step_id)
+            args, kwargs = _resolve_step_inputs(step_inputs)
+            # Running the actual step function
+            ret = func(*args, **kwargs)
+            # Save workflow output
+            store = workflow_storage.get_workflow_storage()
+            commit_step(store, step_id, ret, outer_most_step_id)
+            if isinstance(ret, Workflow):
+                # execute sub-workflow
+                ret = execute_workflow(ret, outer_most_step_id)
+            err = None
+            break
+        except BaseException as e:
+            err = e
+    if catch_exceptions:
+        _record_step_status(step_id, WorkflowStatus.FINISHED)
+        return (ret, err)
+    else:
+        if err is not None:
+            _record_step_status(step_id, WorkflowStatus.RESUMABLE)
+            raise err
+        _record_step_status(step_id, WorkflowStatus.FINISHED)
+        return ret
 
 
-def execute_workflow_step(step_func: Callable, step_id: StepID,
-                          step_inputs: WorkflowInputTuple,
-                          outer_most_step_id: StepID) -> WorkflowOutputType:
-    return _workflow_step_executor.remote(
+def execute_workflow_step(
+        step_func: Callable, step_id: "StepID",
+        step_inputs: "WorkflowInputTuple", catch_exceptions: bool,
+        step_max_retries: int, ray_options: Dict[str, Any],
+        outer_most_step_id: "StepID") -> "WorkflowOutputType":
+    from ray.experimental.workflow.common import WorkflowStatus
+    _record_step_status(step_id, WorkflowStatus.RUNNING)
+    return _workflow_step_executor.options(**ray_options).remote(
         step_func, workflow_context.get_workflow_step_context(), step_id,
-        step_inputs, outer_most_step_id)
+        step_inputs, outer_most_step_id, catch_exceptions, step_max_retries)
+
+
+def _record_step_status(step_id: "StepID", status: "WorkflowStatus") -> None:
+    workflow_id = workflow_context.get_current_workflow_id()
+    workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    ray.get(
+        workflow_manager.update_step_status.remote(workflow_id, step_id,
+                                                   status))
