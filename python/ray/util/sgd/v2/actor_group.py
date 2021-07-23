@@ -2,5 +2,5 @@ class ActorGroup:
     pass
 
 
-class DistributedActor:
+class BaseActor:
     pass
