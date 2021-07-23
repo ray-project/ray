@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     import ray.util.sgd
     import torch
     import tensorflow as tf
+    from ray.experimental.data.dataset_pipeline import DatasetPipeline
 
 import collections
 import itertools
@@ -62,6 +63,13 @@ class Dataset(Generic[T]):
     def __init__(self, blocks: BlockList[T]):
         self._blocks: BlockList[T] = blocks
         assert isinstance(self._blocks, BlockList), self._blocks
+
+    def repeat(self) -> "DatasetPipeline[T]":
+        def gen_datasets():
+            while True:
+                yield lambda: self
+
+        return DatasetPipeline(gen_datasets)
 
     def map(self,
             fn: Union[CallableClass, Callable[[T], U]],
