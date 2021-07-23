@@ -660,6 +660,62 @@ def chdir(dir):
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.")
+def test_runtime_env_override(call_ray_start):
+    # https://github.com/ray-project/ray/issues/16481
+
+    with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
+        ray.init(address="auto", namespace="test")
+
+        @ray.remote
+        class Child:
+            def getcwd(self):
+                import os
+                return os.getcwd()
+
+            def read(self, path):
+                return open(path).read()
+
+            def ready(self):
+                pass
+
+        @ray.remote
+        class Parent:
+            def spawn_child(self, name, runtime_env):
+                child = Child.options(
+                    lifetime="detached", name=name,
+                    runtime_env=runtime_env).remote()
+                ray.get(child.ready.remote())
+
+        Parent.options(lifetime="detached", name="parent").remote()
+        ray.shutdown()
+
+        with open("hello", "w") as f:
+            f.write("world")
+
+        job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
+        ray.init(address="auto", namespace="test", job_config=job_config)
+
+        os.remove("hello")
+
+        parent = ray.get_actor("parent")
+
+        env = ray.get_runtime_context().runtime_env
+        del env["working_dir"]  # make sure to directly use the direcotry
+        print("Spawning with env:", env)
+        ray.get(parent.spawn_child.remote("child", env))
+
+        child = ray.get_actor("child")
+        child_cwd = ray.get(child.getcwd.remote())
+        # Child should be in tmp runtime resource dir.
+        assert child_cwd != os.getcwd(), (child_cwd, os.getcwd())
+        assert ray.get(child.read.remote("hello")) == "world"
+
+        ray.shutdown()
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.")
 def test_runtime_env_inheritance_regression(shutdown_only):
     # https://github.com/ray-project/ray/issues/16479
     with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
@@ -683,13 +739,11 @@ def test_runtime_env_inheritance_regression(shutdown_only):
         t = Test.options(runtime_env=env1).remote()
         assert ray.get(t.f.remote()) == "world"
 
-        # TODO(simon): This shows overriding working_dir has no effect.
-        # This tests the current behavior and the tests should change when
-        # we support per-task/actor runtime env.
+        # Using working_dir is not supported
         env2 = ray.get_runtime_context().runtime_env
-        print("Using env:", env2)
-        t = Test.options(runtime_env=env2).remote()
-        assert ray.get(t.f.remote()) == "world"
+        assert "working_dir" in env2
+        with pytest.raises(NotImplementedError):
+            t = Test.options(runtime_env=env2).remote()
 
 
 if __name__ == "__main__":

@@ -1226,6 +1226,7 @@ def connect(node,
             namespace=None,
             job_config=None,
             runtime_env_hash=0,
+            runtime_env_json="{}",
             worker_shim_pid=0,
             ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
@@ -1364,9 +1365,19 @@ def connect(node,
     elif mode == WORKER_MODE:
         # TODO(ekl) get rid of the env var hack and get runtime env from the
         # task spec and/or job config only.
-        uris = os.environ.get("RAY_PACKAGING_URI")
-        uris = [uris] if uris else \
-            worker.core_worker.get_job_config().runtime_env.uris
+        uris = []
+        global_job_config = worker.core_worker.get_job_config()
+        override_runtime_env = json.loads(runtime_env_json)
+
+        if os.environ.get("RAY_PACKAGING_URI"):
+            uris = [os.environ.get("RAY_PACKAGING_URI")]
+        if global_job_config.runtime_env.uris:
+            uris = global_job_config.runtime_env.uris
+        if override_runtime_env.get("uris"):
+            # TODO(simon): should we combine the uris from package and global
+            # job config if they are present?
+            uris = override_runtime_env["uris"]
+
         working_dir = runtime_env_pkg.ensure_runtime_env_setup(uris)
         if working_dir is not None:
             os.chdir(working_dir)
