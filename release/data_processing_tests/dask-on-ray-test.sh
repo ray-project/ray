@@ -11,6 +11,7 @@ DASK_VERSION=(
 unset RAY_ADDRESS
 
 pip install --upgrade pip
+pip install pytest
 
 # Comment out the below block for testing.
 echo "Please run vi dask-on-ray-test.sh and modify the ray wheel properly."
