@@ -6,7 +6,7 @@ from ray.experimental.data.impl.compute import CallableClass
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
-# TODO(ekl) make this serializable?
+# TODO(ekl) make this serializable [initial version]
 @PublicAPI(stability="beta")
 class DatasetPipeline(Generic[T]):
     def __init__(self, dataset_generator: Iterator[Callable[[], Dataset[T]]]):
@@ -29,6 +29,7 @@ class DatasetPipeline(Generic[T]):
               locality_hints: List[Any] = None) -> List["DatasetPipeline[T]"]:
         # TODO(ekl) this should return serializable pipeline readers, probably
         # need a coordinating actor here
+        # (not in initial version)
         raise NotImplementedError
 
     def iter_rows(self, prefetch_blocks: int = 0) -> Iterator[T]:
@@ -59,6 +60,8 @@ class DatasetPipeline(Generic[T]):
         def compute_single(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
             return fn()
 
+        # TODO(ekl) pipeline individual transforms? config depth?
+        # .pipeline(blocks_per_stage=10)
         def gen_datasets() -> Iterator[Dataset[T]]:
             i = 0
             self._active_dataset = compute_single.remote(

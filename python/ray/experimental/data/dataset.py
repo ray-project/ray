@@ -64,14 +64,38 @@ class Dataset(Generic[T]):
         self._blocks: BlockList[T] = blocks
         assert isinstance(self._blocks, BlockList), self._blocks
 
-    def repeat(self) -> "DatasetPipeline[T]":
+    def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         from ray.experimental.data.dataset_pipeline import DatasetPipeline
 
-        def gen_datasets():
-            while True:
-                yield lambda: self
+        class Iterator:
+            def __init__(self, ds: "Dataset[T]"):
+                self._ds = ds
+                self._i = 0
 
-        return DatasetPipeline(gen_datasets())
+            def __next__(self) -> "Dataset[T]":
+                if self._i >= times:
+                    raise StopIteration
+                self._i += 1
+                return self._ds
+
+        return DatasetPipeline(Iterator(self))
+
+    def pipeline(self, blocks_per_stage: int = 10) -> "DatasetPipeline[T]":
+        from ray.experimental.data.dataset_pipeline import DatasetPipeline
+
+        class Iterator:
+            def __init__(self, blocks)
+                self._splits = blocks.split(split_size = blocks_per_stage)
+                self._i = 0
+
+            def __next__(self) -> "Dataset[T]":
+                if self._i >= len(self._splits):
+                    raise StopIteration
+                result = Dataset(self._splits[self._i])
+                self._i += 1
+                return result
+
+        return DatasetPipeline(Iterator(self._blocks))
 
     def map(self,
             fn: Union[CallableClass, Callable[[T], U]],
