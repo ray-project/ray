@@ -9,12 +9,13 @@ from enum import Enum
 from googleapiclient.discovery import Resource
 
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
-from ray.autoscaler._private.gcp.config import MAX_POLLS, POLL_INTERVAL
 
 logger = logging.getLogger(__name__)
 
 INSTANCE_NAME_MAX_LEN = 64
 INSTANCE_NAME_UUID_LEN = 8
+MAX_POLLS = 12
+POLL_INTERVAL = 5
 
 
 def _generate_node_name(labels: dict, node_suffix: str) -> str:

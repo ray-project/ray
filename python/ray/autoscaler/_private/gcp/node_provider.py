@@ -5,37 +5,13 @@ import time
 import logging
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler._private.gcp.config import bootstrap_gcp
-from ray.autoscaler._private.gcp.config import \
-    construct_clients_from_provider_config
+from ray.autoscaler._private.gcp.config import (
+    bootstrap_gcp, construct_clients_from_provider_config, get_node_type)
 from ray.autoscaler._private.gcp.node import (  # noqa
     GCPResource, GCPNode, GCPCompute, GCPTPU, GCPNodeType,
     INSTANCE_NAME_MAX_LEN, INSTANCE_NAME_UUID_LEN)
 
 logger = logging.getLogger(__name__)
-
-
-def _get_node_type(node: dict) -> GCPNodeType:
-    """Returns node type based on the keys in ``node``.
-
-    This is a very simple check. If we have a ``machineType`` key,
-    this is a Compute instance. If we don't have a ``machineType`` key,
-    but we have ``acceleratorType``, this is a TPU. Otherwise, it's
-    invalid and an exception is raised.
-
-    This works for both configs and nodes.
-    """
-
-    if "machineType" not in node and "acceleratorType" not in node:
-        raise ValueError(
-            "Invalid node. For a Compute instance, 'machineType' is "
-            "required."
-            "For a TPU instance, 'acceleratorType' and no 'machineType' "
-            "is required.")
-
-    if "machineType" not in node and "acceleratorType" in node:
-        return GCPNodeType.TPU
-    return GCPNodeType.COMPUTE
 
 
 def _retry(method, max_tries=5, backoff_s=1):
@@ -84,19 +60,23 @@ class GCPNodeProvider(NodeProvider):
         # At this moment - Compute and TPUs
         self.resources: Dict[GCPNodeType, GCPResource] = {}
 
+        # Compute is always required
         self.resources[GCPNodeType.COMPUTE] = GCPCompute(
             compute, self.provider_config["project_id"],
             self.provider_config["availability_zone"], self.cluster_name)
-        self.resources[GCPNodeType.TPU] = GCPTPU(
-            tpu, self.provider_config["project_id"],
-            self.provider_config["availability_zone"], self.cluster_name)
+
+        # if there are no TPU nodes defined in config, tpu will be None.
+        if tpu is not None:
+            self.resources[GCPNodeType.TPU] = GCPTPU(
+                tpu, self.provider_config["project_id"],
+                self.provider_config["availability_zone"], self.cluster_name)
 
     def _get_resource_depending_on_node_name(self,
                                              node_name: str) -> GCPResource:
         """Return the resource responsible for the node, based on node_name.
 
         This expects the name to be in format '[NAME]-[UUID]-[TYPE]',
-        where [TYPE] is either 'compute' or 'tpu'.
+        where [TYPE] is either 'compute' or 'tpu' (see ``GCPNodeType``).
         """
         return self.resources[GCPNodeType.name_to_type(node_name)]
 
@@ -167,7 +147,7 @@ class GCPNodeProvider(NodeProvider):
         with self.lock:
             labels = tags  # gcp uses "labels" instead of aws "tags"
 
-            node_type = _get_node_type(base_config)
+            node_type = get_node_type(base_config)
             resource = self.resources[node_type]
 
             resource.create_instances(base_config, labels, count)

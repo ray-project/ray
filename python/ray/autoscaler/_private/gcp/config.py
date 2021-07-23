@@ -13,6 +13,8 @@ from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as OAuthCredentials
 
 from ray.autoscaler._private.util import check_legacy_fields
+from ray.autoscaler._private.gcp.node import (GCPNodeType, MAX_POLLS,
+                                              POLL_INTERVAL)
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +28,44 @@ SERVICE_ACCOUNT_EMAIL_TEMPLATE = (
 DEFAULT_SERVICE_ACCOUNT_CONFIG = {
     "displayName": "Ray Autoscaler Service Account ({})".format(VERSION),
 }
-DEFAULT_SERVICE_ACCOUNT_ROLES = ("roles/storage.objectAdmin",
-                                 "roles/compute.admin", "roles/tpu.admin",
-                                 "roles/iam.serviceAccountUser")
+
+# Those roles will be always added.
+DEFAULT_SERVICE_ACCOUNT_ROLES = [
+    "roles/storage.objectAdmin", "roles/compute.admin",
+    "roles/iam.serviceAccountUser"
+]
+# Those roles will only be added if there are TPU nodes defined in config.
+TPU_SERVICE_ACCOUNT_ROLES = ["roles/tpu.admin"]
+
+# If there are TPU nodes in config, this field will be set
+# to True in config["provider"].
+HAS_TPU_PROVIDER_FIELD = "_has_tpus"
+
 # NOTE: iam.serviceAccountUser allows the Head Node to create worker nodes
 # with ServiceAccounts.
 
-MAX_POLLS = 12
-POLL_INTERVAL = 5
+
+def get_node_type(node: dict) -> GCPNodeType:
+    """Returns node type based on the keys in ``node``.
+
+    This is a very simple check. If we have a ``machineType`` key,
+    this is a Compute instance. If we don't have a ``machineType`` key,
+    but we have ``acceleratorType``, this is a TPU. Otherwise, it's
+    invalid and an exception is raised.
+
+    This works for both node configs and API returned nodes.
+    """
+
+    if "machineType" not in node and "acceleratorType" not in node:
+        raise ValueError(
+            "Invalid node. For a Compute instance, 'machineType' is "
+            "required."
+            "For a TPU instance, 'acceleratorType' and no 'machineType' "
+            "is required.")
+
+    if "machineType" not in node and "acceleratorType" in node:
+        return GCPNodeType.TPU
+    return GCPNodeType.COMPUTE
 
 
 def wait_for_crm_operation(operation, crm):
@@ -111,6 +143,15 @@ def generate_rsa_key_pair():
     return public_key, pem
 
 
+def _has_tpus_in_node_configs(config: dict) -> bool:
+    """Check if any nodes in config are TPUs."""
+    node_configs = [
+        node_type["node_config"]
+        for node_type in config["available_node_types"].values()
+    ]
+    return any(get_node_type(node) == GCPNodeType.TPU for node in node_configs)
+
+
 def _create_crm(gcp_credentials=None):
     return discovery.build(
         "cloudresourcemanager",
@@ -142,18 +183,23 @@ def construct_clients_from_provider_config(provider_config):
     """
     Attempt to fetch and parse the JSON GCP credentials from the provider
     config yaml file.
+
+    tpu resource (the last element of the tuple) will be None if
+    `_has_tpus` in provider config is not set or False.
     """
     gcp_credentials = provider_config.get("gcp_credentials")
     if gcp_credentials is None:
         logger.debug("gcp_credentials not found in cluster yaml file. "
                      "Falling back to GOOGLE_APPLICATION_CREDENTIALS "
                      "environment variable.")
+        tpu = _create_tpu() if provider_config.get(HAS_TPU_PROVIDER_FIELD,
+                                                   False) else None
         # If gcp_credentials is None, then discovery.build will search for
         # credentials in the local environment.
         return _create_crm(), \
             _create_iam(), \
             _create_compute(), \
-            _create_tpu()
+            tpu
 
     assert ("type" in gcp_credentials), \
         "gcp_credentials cluster yaml field missing 'type' field."
@@ -178,10 +224,13 @@ def construct_clients_from_provider_config(provider_config):
         # Otherwise the credentials type must be credentials_token.
         credentials = OAuthCredentials(credentials_field)
 
+    tpu = _create_tpu(credentials) if provider_config.get(
+        HAS_TPU_PROVIDER_FIELD, False) else None
+
     return _create_crm(credentials), \
         _create_iam(credentials), \
         _create_compute(credentials), \
-        _create_tpu(credentials)
+        tpu
 
 
 def bootstrap_gcp(config):
@@ -189,6 +238,11 @@ def bootstrap_gcp(config):
     check_legacy_fields(config)
     # Used internally to store head IAM role.
     config["head_node"] = {}
+
+    # Check if we have any TPUs defined, and if so,
+    # insert that information into the provider config
+    if _has_tpus_in_node_configs(config):
+        config["provider"][HAS_TPU_PROVIDER_FIELD] = True
 
     crm, iam, compute, tpu = \
         construct_clients_from_provider_config(config["provider"])
@@ -259,8 +313,12 @@ def _configure_iam_role(config, crm, iam):
 
     assert service_account is not None, "Failed to create service account"
 
-    _add_iam_policy_binding(service_account, DEFAULT_SERVICE_ACCOUNT_ROLES,
-                            crm)
+    if config["provider"].get(HAS_TPU_PROVIDER_FIELD, False):
+        roles = DEFAULT_SERVICE_ACCOUNT_ROLES + TPU_SERVICE_ACCOUNT_ROLES
+    else:
+        roles = DEFAULT_SERVICE_ACCOUNT_ROLES
+
+    _add_iam_policy_binding(service_account, roles, crm)
 
     config["head_node"]["serviceAccounts"] = [{
         "email": service_account["email"],
