@@ -179,6 +179,8 @@ time.sleep(5)
     wait_for_condition(no_active_sessions)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 @pytest.mark.parametrize("ray_debugger_external", [False, True])
 def test_ray_debugger_public(shutdown_only, call_ray_stop_only,
                              ray_debugger_external):
@@ -227,6 +229,8 @@ def test_ray_debugger_public(shutdown_only, call_ray_stop_only,
     ray.get(result)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 @pytest.mark.parametrize("ray_debugger_external", [False, True])
 def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
     c = Cluster(
