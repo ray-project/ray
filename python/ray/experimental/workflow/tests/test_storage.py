@@ -1,6 +1,7 @@
 import pytest
 import asyncio
 import ray
+from ray._private import signature
 from ray.tests.conftest import *  # noqa
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow import storage
@@ -108,7 +109,10 @@ def test_workflow_storage(workflow_start_regular):
         "output_step_id": "a12423",
         "dynamic_output_step_id": "b1234"
     }
-    args = ([1, "2"], {"k": b"543"})
+    flattened_args = [
+        signature.DUMMY_TYPE, 1, signature.DUMMY_TYPE, "2", "k", b"543"
+    ]
+    args = signature.recover_args(flattened_args)
     output = ["the_answer"]
     object_resolved = 42
     obj_ref = ray.put(object_resolved)
@@ -119,7 +123,8 @@ def test_workflow_storage(workflow_start_regular):
                                              input_metadata))
     asyncio_run(
         raw_storage.save_step_func_body(workflow_id, step_id, some_func))
-    asyncio_run(raw_storage.save_step_args(workflow_id, step_id, args))
+    asyncio_run(
+        raw_storage.save_step_args(workflow_id, step_id, flattened_args))
     asyncio_run(raw_storage.save_object_ref(workflow_id, obj_ref))
     asyncio_run(
         raw_storage.save_step_output_metadata(workflow_id, step_id,
