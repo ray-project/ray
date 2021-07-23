@@ -65,11 +65,13 @@ class Dataset(Generic[T]):
         assert isinstance(self._blocks, BlockList), self._blocks
 
     def repeat(self) -> "DatasetPipeline[T]":
+        from ray.experimental.data.dataset_pipeline import DatasetPipeline
+
         def gen_datasets():
             while True:
                 yield lambda: self
 
-        return DatasetPipeline(gen_datasets)
+        return DatasetPipeline(gen_datasets())
 
     def map(self,
             fn: Union[CallableClass, Callable[[T], U]],

@@ -19,11 +19,11 @@ class DatasetPipeline(Generic[T]):
             fn: Union[CallableClass, Callable[[T], U]],
             compute: Optional[str] = None,
             **ray_remote_args) -> "DatasetPipeline[U]":
-        return self._foreach_dataset(
+        return self.foreach_dataset(
             lambda ds: ds.map(fn, compute, **ray_remote_args))
 
     def repartition(self, num_blocks: int) -> "DatasetPipeline[T]":
-        return self._foreach_dataset(lambda ds: ds.repartition(num_blocks))
+        return self.foreach_dataset(lambda ds: ds.repartition(num_blocks))
 
     def split(self, n: int,
               locality_hints: List[Any] = None) -> List["DatasetPipeline[T]"]:
@@ -46,7 +46,7 @@ class DatasetPipeline(Generic[T]):
                      batch_format: str = "pandas",
                      drop_last: bool = False) -> Iterator[BatchType]:
         def gen_batches() -> Iterator[BatchType]:
-            for ds in self._iter_datasets():
+            for ds in self.iter_datasets():
                 for batch in ds.iter_batches(prefetch_blocks, batch_size,
                                              batch_format, drop_last):
                     yield batch
@@ -71,6 +71,7 @@ class DatasetPipeline(Generic[T]):
 
             while self._active_dataset:
                 print("Returning pipeline index", i)
+                i += 1
                 yield ray.get(self._active_dataset)
                 self._active_dataset = self._next_dataset
                 try:
