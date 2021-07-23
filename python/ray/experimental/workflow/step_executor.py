@@ -1,4 +1,5 @@
 import enum
+import logging
 from typing import (List, Tuple, Any, Dict, Callable, Optional, TYPE_CHECKING,
                     Union)
 import ray
@@ -9,13 +10,15 @@ from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.workflow_access import MANAGEMENT_ACTOR_NAME
-from ray.experimental.workflow.common import Workflow
+from ray.experimental.workflow.common import Workflow, WorkflowStatus
 
 if TYPE_CHECKING:
     from ray.experimental.workflow.common import (StepID, WorkflowOutputType,
-                                                  WorkflowData, WorkflowStatus)
+                                                  WorkflowData)
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_object_ref(ref: ObjectRef) -> Tuple[Any, ObjectRef]:
@@ -139,8 +142,9 @@ class StepType(enum.Enum):
     READONLY_ACTOR_METHOD = 3
 
 
-def _wrap_run(func: Callable, step_type: StepType, catch_exceptions: bool,
-              step_max_retries: int, *args, **kwargs) -> Tuple[Any, Any, Any]:
+def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
+              catch_exceptions: bool, step_max_retries: int, *args,
+              **kwargs) -> Tuple[Any, Any]:
     """Wrap the function and execute it.
 
     It returns two parts, state and output. State is the part of result
@@ -165,13 +169,16 @@ def _wrap_run(func: Callable, step_type: StepType, catch_exceptions: bool,
         step_max_retries: Max retry times for failure.
 
     Returns:
-        State, output and exception.
+        State and output.
     """
     exception = None
     result = None
     # step_max_retries are for application level failure.
     # For ray failure, we should use max_retries.
-    for _ in range(step_max_retries):
+    for i in range(step_max_retries):
+        if exception is not None:
+            logger.error(f"Step '{step_id}' raises an exception. Retrying "
+                         f"[{i}/{step_max_retries-1}]. Exception: {exception}")
         try:
             result = func(*args, **kwargs)
             exception = None
@@ -190,6 +197,10 @@ def _wrap_run(func: Callable, step_type: StepType, catch_exceptions: bool,
         else:
             raise ValueError(f"Unknown StepType '{step_type}'")
     else:
+        if exception is not None:
+            if step_type != StepType.READONLY_ACTOR_METHOD:
+                _record_step_status(step_id, WorkflowStatus.RESUMABLE)
+            raise exception
         if step_type == StepType.FUNCTION:
             state, output = result, None
         elif step_type == StepType.ACTOR_METHOD:
@@ -206,7 +217,7 @@ def _wrap_run(func: Callable, step_type: StepType, catch_exceptions: bool,
         raise TypeError("Only a workflow step function "
                         "can return a workflow.")
 
-    return state, output, exception
+    return state, output
 
 
 @ray.remote(num_returns=2)
@@ -235,17 +246,10 @@ def _workflow_step_executor(
     Returns:
         Workflow step output.
     """
-    from ray.experimental.workflow.common import WorkflowStatus
-
     workflow_context.update_workflow_step_context(context, step_id)
     args, kwargs = _resolve_step_inputs(step_inputs)
-    state, output, exception = _wrap_run(func, step_type, catch_exceptions,
-                                         step_max_retries, *args, **kwargs)
-
-    if not catch_exceptions and exception is not None:
-        if step_type != StepType.READONLY_ACTOR_METHOD:
-            _record_step_status(step_id, WorkflowStatus.RESUMABLE)
-        raise exception
+    state, output = _wrap_run(func, step_type, step_id, catch_exceptions,
+                              step_max_retries, *args, **kwargs)
 
     if step_type != StepType.READONLY_ACTOR_METHOD:
         store = workflow_storage.get_workflow_storage()
@@ -273,7 +277,6 @@ def _workflow_step_executor(
 def execute_workflow_step(step_id: "StepID", workflow_data: "WorkflowData",
                           outer_most_step_id: "StepID",
                           last_step_of_workflow: bool) -> "WorkflowOutputType":
-    from ray.experimental.workflow.common import WorkflowStatus
     _record_step_status(step_id, WorkflowStatus.RUNNING)
     workflow_outputs = [w.execute() for w in workflow_data.inputs.workflows]
     # NOTE: Input placeholder is only a placeholder. It only can be
