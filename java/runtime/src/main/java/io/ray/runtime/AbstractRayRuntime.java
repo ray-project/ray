@@ -80,6 +80,10 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public <T> ObjectRef<T> put(T obj, BaseActorHandle actor) {
+    Preconditions.checkNotNull(
+      gcsClient,
+      "Putting an object with assigned actor as owner is not implemented in local mode."
+    );
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug(
           "Putting Object in Task {} with {} as owner.",
