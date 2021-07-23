@@ -1,6 +1,8 @@
 import logging
 from typing import Any, Dict, List, TYPE_CHECKING
+from weakref import WeakValueDictionary
 
+from dataclasses import dataclass
 import ray
 from ray.experimental.workflow import common
 from ray.experimental.workflow import recovery
@@ -9,6 +11,8 @@ from ray.experimental.workflow import workflow_storage
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
+    from ray.experimental.workflow.common import (StepID,
+                                                  WorkflowExecutionResult)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +49,42 @@ def flatten_workflow_output(workflow_id: str,
         A direct ref of an object.
     """
     return ray.put(_SelfDereferenceObject(workflow_id, workflow_output))
+
+
+def _resolve_and_replace_result(workflow_id: str, result: ray.ObjectRef,
+                                replace: Any):
+    _resolve_workflow_output(workflow_id, result)
+    return replace
+
+
+class _ReplaceSelfDereferenceObject:
+    """A object that dereferences itself during deserialization, but
+    replace the result with another result."""
+
+    def __init__(self, workflow_id: str, nested_ref: ray.ObjectRef,
+                 replace: Any):
+        self.workflow_id = workflow_id
+        self.nested_ref = nested_ref
+        self.replace = replace
+
+    def __reduce__(self):
+        return _resolve_and_replace_result, (self.workflow_id, self.nested_ref,
+                                             self.replace)
+
+
+def replace_workflow_output(workflow_id: str, workflow_output: ray.ObjectRef,
+                            replace: Any) -> ray.ObjectRef:
+    """Converts the nested ref to a direct ref of an object.
+
+    Args:
+        workflow_id: The ID of a workflow.
+        workflow_output: A (nested) object ref of the workflow output.
+
+    Returns:
+        A direct ref of an object.
+    """
+    return ray.put(
+        _ReplaceSelfDereferenceObject(workflow_id, workflow_output, replace))
 
 
 def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef) -> Any:
@@ -98,6 +138,13 @@ def cancel_job(obj: ray.ObjectRef):
     #     pass
 
 
+@dataclass
+class LatestWorkflowOutput:
+    output: ray.ObjectRef
+    workflow_id: str
+    step_id: "StepID"
+
+
 # TODO(suquark): we may use an actor pool in the future if too much
 # concurrent workflow access blocks the actor.
 @ray.remote
@@ -106,7 +153,9 @@ class WorkflowManagementActor:
 
     def __init__(self, store: "storage.Storage"):
         self._store = store
-        self._workflow_outputs: Dict[str, ray.ObjectRef] = {}
+        self._workflow_outputs: Dict[str, LatestWorkflowOutput] = {}
+        # Cache step output.
+        self._step_output_cache = WeakValueDictionary()
         self._actor_initialized: Dict[str, ray.ObjectRef] = {}
         self._step_status: Dict[str, Dict[str, common.WorkflowStatus]] = {}
 
@@ -114,28 +163,61 @@ class WorkflowManagementActor:
         """Get hte storage URL."""
         return self._store.storage_url
 
-    def run_or_resume(self, workflow_id: str) -> ray.ObjectRef:
+    def get_cached_step(self, workflow_id: str,
+                        step_id: "StepID") -> ray.ObjectRef:
+        """Get the cached result of a step.
+
+        Args:
+            workflow_id: The ID of the workflow.
+            step_id: The ID of the step.
+
+        Raises:
+            KeyError: If the step is missing.
+
+        Returns:
+            An object reference that can be used to retrieve the
+            step result.
+        """
+        return self._step_output_cache[workflow_id, step_id]
+
+    def run_or_resume(self, workflow_id: str, ignore_existing: bool = False
+                      ) -> "WorkflowExecutionResult":
         """Run or resume a workflow.
 
         Args:
             workflow_id: The ID of the workflow.
+            ignore_existing: Ignore we already have an existing output.
 
         Returns:
-            An object reference that can be used to retrieve the
-            workflow result.
+            Workflow execution result that contains the state and output.
         """
-        if workflow_id in self._workflow_outputs:
+        if workflow_id in self._workflow_outputs and not ignore_existing:
             raise RuntimeError(f"The output of workflow[id={workflow_id}] "
                                "already exists.")
-        output = recovery.resume_workflow_job.remote(workflow_id,
-                                                     self._store.storage_url)
-        self._workflow_outputs[workflow_id] = output
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
+        step_id = wf_store.get_entrypoint_step_id()
+        result = recovery.resume_workflow_step(workflow_id, step_id,
+                                               self._store.storage_url)
+
+        latest_output = LatestWorkflowOutput(result.state, workflow_id,
+                                             step_id)
+        self._workflow_outputs[workflow_id] = latest_output
+        self._step_output_cache[workflow_id, step_id] = latest_output
+
         wf_store.save_workflow_meta(
             common.WorkflowMetaData(common.WorkflowStatus.RUNNING))
-        self._step_status[workflow_id] = {}
-        logger.info(f"Workflow job [id={workflow_id}] started.")
-        return output
+        if not ignore_existing:
+            # TODO(suquark): status handling is a mess now. We should
+            # fix it later. This temporary patch ensures later submitted
+            # virtual actor writer step would not erase the status of
+            # previous steps.
+            self._step_status[workflow_id] = {}
+            logger.info(f"Workflow job [id={workflow_id}] started.")
+        else:
+            if workflow_id not in self._step_status:
+                self._step_status[workflow_id] = {}
+                logger.info(f"Workflow job [id={workflow_id}] started.")
+        return result
 
     def update_step_status(self, workflow_id: str, step_id: str,
                            status: common.WorkflowStatus):
@@ -152,7 +234,7 @@ class WorkflowManagementActor:
 
         if status == common.WorkflowStatus.FAILED:
             if workflow_id in self._workflow_outputs:
-                cancel_job(self._workflow_outputs.pop(workflow_id))
+                cancel_job(self._workflow_outputs.pop(workflow_id).output)
             wf_store.save_workflow_meta(
                 common.WorkflowMetaData(common.WorkflowStatus.FAILED))
             self._step_status.pop(workflow_id)
@@ -164,7 +246,7 @@ class WorkflowManagementActor:
 
     def cancel_workflow(self, workflow_id: str) -> None:
         self._step_status.pop(workflow_id)
-        cancel_job(self._workflow_outputs.pop(workflow_id))
+        cancel_job(self._workflow_outputs.pop(workflow_id).output)
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         wf_store.save_workflow_meta(
             common.WorkflowMetaData(common.WorkflowStatus.CANCELED))
@@ -214,7 +296,7 @@ class WorkflowManagementActor:
                              "it has failed before initialization.")
         return self._actor_initialized[actor_id]
 
-    def get_output(self, workflow_id: str) -> ray.ObjectRef:
+    def get_output(self, workflow_id: str) -> "WorkflowExecutionResult":
         """Get the output of a running workflow.
 
         Args:
@@ -233,14 +315,17 @@ class WorkflowManagementActor:
         if meta == common.WorkflowStatus.FAILED:
             raise ValueError(
                 f"Workflow {workflow_id} failed, please resume it")
-        output = recovery.resume_workflow_job.remote(workflow_id,
-                                                     self._store.storage_url)
-        self._workflow_outputs[workflow_id] = output
+        step_id = wf_store.get_entrypoint_step_id()
+        result = recovery.resume_workflow_step(workflow_id, step_id,
+                                               self._store.storage_url)
+        latest_output = LatestWorkflowOutput(result.state, workflow_id,
+                                             step_id)
+        self._workflow_outputs[workflow_id] = latest_output
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         wf_store.save_workflow_meta(
             common.WorkflowMetaData(common.WorkflowStatus.RUNNING))
         self._step_status[workflow_id] = {}
-        return output
+        return result
 
     def get_running_workflow(self) -> List[str]:
         return list(self._workflow_outputs.keys())

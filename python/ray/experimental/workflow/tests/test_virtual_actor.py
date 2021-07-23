@@ -22,6 +22,10 @@ class Counter:
         self.x += 1
         return self.x
 
+    def add(self, y):
+        self.x += y
+        return self.x
+
     @workflow.virtual_actor.readonly
     def readonly_workload(self):
         # simulate a workload
@@ -68,6 +72,32 @@ def test_readonly_actor(workflow_start_regular):
     ray.get([readonly_actor.readonly_workload.run_async() for _ in range(10)])
     end = time.time()
     assert end - start < 5
+
+
+@pytest.mark.parametrize(
+    "workflow_start_regular",
+    [{
+        "num_cpus": 4
+        # We need more CPUs, otherwise 'create()' blocks 'get()'
+    }],
+    indirect=True)
+def test_writer_actor_1(workflow_start_regular):
+    actor = Counter.get_or_create("Counter", 0)
+    ray.get(actor.ready())
+    assert actor.readonly_get.run() == 0
+    array = []
+    s = 0
+    for i in range(1, 10):
+        s += i
+        array.append(s)
+    assert [actor.add.run(i) for i in range(1, 10)] == array
+    assert actor.readonly_get.run() == 45
+
+    array = []
+    for i in range(10, 20):
+        s += i
+        array.append(s)
+    assert ray.get([actor.add.run_async(i) for i in range(10, 20)]) == array
 
 
 @workflow.virtual_actor
