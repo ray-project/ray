@@ -113,7 +113,7 @@ if __name__ == "__main__":
         ep_reward += reward
         try:
             env.render()
-        except NotImplementedError:
+        except (NotImplementedError, ImportError):
             pass
         if done:
             eps += 1
