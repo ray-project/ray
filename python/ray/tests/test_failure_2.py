@@ -8,7 +8,6 @@ import time
 
 import numpy as np
 import pytest
-import redis
 
 import ray
 from ray.experimental.internal_kv import _internal_kv_get
