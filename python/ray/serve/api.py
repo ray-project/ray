@@ -583,6 +583,7 @@ class Client:
         return handle
 
 
+@ray.util.annotations.PublicAPI
 def start(
         detached: bool = False,
         http_host: Optional[str] = DEFAULT_HTTP_HOST,
@@ -718,10 +719,9 @@ def start(
     return client
 
 
+@ray.util.annotations.Deprecated
 def connect() -> Client:
     """Connect to an existing Serve instance on this Ray cluster.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     If calling from the driver program, the Serve instance on this Ray cluster
     must first have been initialized using `serve.start(detached=True)`.
@@ -756,6 +756,7 @@ def connect() -> Client:
     return client
 
 
+@ray.util.annotations.PublicAPI
 def shutdown() -> None:
     """Completely shut down the connected Serve instance.
 
@@ -769,14 +770,13 @@ def shutdown() -> None:
     _set_global_client(None)
 
 
+@ray.util.annotations.Deprecated
 def create_endpoint(endpoint_name: str,
                     *,
                     backend: str = None,
                     route: Optional[str] = None,
                     methods: List[str] = ["GET"]) -> None:
     """Create a service endpoint given route_expression.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Args:
         endpoint_name (str): A name to associate to with the endpoint.
@@ -796,20 +796,18 @@ def create_endpoint(endpoint_name: str,
         _internal=True)
 
 
+@ray.util.annotations.Deprecated
 def delete_endpoint(endpoint: str) -> None:
     """Delete the given endpoint.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Does not delete any associated backends.
     """
     return _get_global_client().delete_endpoint(endpoint, _internal=True)
 
 
+@ray.util.annotations.Deprecated
 def list_endpoints() -> Dict[str, Dict[str, Any]]:
     """Returns a dictionary of all registered endpoints.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     The dictionary keys are endpoint names and values are dictionaries
     of the form: {"methods": List[str], "traffic": Dict[str, float]}.
@@ -817,12 +815,11 @@ def list_endpoints() -> Dict[str, Dict[str, Any]]:
     return _get_global_client().list_endpoints(_internal=True)
 
 
+@ray.util.annotations.Deprecated
 def update_backend_config(
         backend_tag: str,
         config_options: Union[BackendConfig, Dict[str, Any]]) -> None:
     """Update a backend configuration for a backend tag.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Keys not specified in the passed will be left unchanged.
 
@@ -844,10 +841,9 @@ def update_backend_config(
         backend_tag, config_options, _internal=True)
 
 
+@ray.util.annotations.Deprecated
 def get_backend_config(backend_tag: str) -> BackendConfig:
     """Get the backend configuration for a backend tag.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Args:
         backend_tag(str): A registered backend.
@@ -855,6 +851,7 @@ def get_backend_config(backend_tag: str) -> BackendConfig:
     return _get_global_client().get_backend_config(backend_tag, _internal=True)
 
 
+@ray.util.annotations.Deprecated
 def create_backend(
         backend_tag: str,
         backend_def: Union[Callable, Type[Callable], str],
@@ -862,8 +859,6 @@ def create_backend(
         ray_actor_options: Optional[Dict] = None,
         config: Optional[Union[BackendConfig, Dict[str, Any]]] = None) -> None:
     """Create a backend with the provided tag.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Args:
         backend_tag (str): a unique tag assign to identify this backend.
@@ -898,20 +893,18 @@ def create_backend(
         _internal=True)
 
 
+@ray.util.annotations.Deprecated
 def list_backends() -> Dict[str, BackendConfig]:
     """Returns a dictionary of all registered backends.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Dictionary maps backend tags to backend config objects.
     """
     return _get_global_client().list_backends(_internal=True)
 
 
+@ray.util.annotations.Deprecated
 def delete_backend(backend_tag: str, force: bool = False) -> None:
     """Delete the given backend.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     The backend must not currently be used by any endpoints.
 
@@ -924,11 +917,10 @@ def delete_backend(backend_tag: str, force: bool = False) -> None:
         backend_tag, force=force, _internal=True)
 
 
+@ray.util.annotations.Deprecated
 def set_traffic(endpoint_name: str,
                 traffic_policy_dictionary: Dict[str, float]) -> None:
     """Associate a service endpoint with traffic policy.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Example:
 
@@ -946,11 +938,10 @@ def set_traffic(endpoint_name: str,
         endpoint_name, traffic_policy_dictionary, _internal=True)
 
 
+@ray.util.annotations.Deprecated
 def shadow_traffic(endpoint_name: str, backend_tag: str,
                    proportion: float) -> None:
     """Shadow traffic from an endpoint to a backend.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     The specified proportion of requests will be duplicated and sent to the
     backend. Responses of the duplicated traffic will be ignored.
@@ -968,6 +959,7 @@ def shadow_traffic(endpoint_name: str, backend_tag: str,
         endpoint_name, backend_tag, proportion, _internal=True)
 
 
+@ray.util.annotations.Deprecated
 def get_handle(
         endpoint_name: str,
         missing_ok: bool = False,
@@ -976,8 +968,6 @@ def get_handle(
         _internal_pickled_http_request: bool = False,
 ) -> Union[RayServeHandle, RayServeSyncHandle]:
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Args:
         endpoint_name (str): A registered service endpoint.
@@ -999,6 +989,7 @@ def get_handle(
         _internal=True)
 
 
+@ray.util.annotations.PublicAPI
 def get_replica_context() -> ReplicaContext:
     """When called from a backend, returns the backend tag and replica tag.
 
@@ -1021,6 +1012,7 @@ def get_replica_context() -> ReplicaContext:
     return _INTERNAL_REPLICA_CONTEXT
 
 
+@ray.util.annotations.PublicAPI(stability="beta")
 def ingress(app: Union["FastAPI", "APIRouter"]):
     """Mark a FastAPI application ingress for Serve.
 
@@ -1098,6 +1090,7 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
     return decorator
 
 
+@ray.util.annotations.PublicAPI
 class Deployment:
     def __init__(self,
                  func_or_class: Callable,
@@ -1157,11 +1150,13 @@ class Deployment:
         self._route_prefix = route_prefix
         self._ray_actor_options = ray_actor_options
 
+    @ray.util.annotations.PublicAPI
     @property
     def name(self) -> str:
         """Unique name of this deployment."""
         return self._name
 
+    @ray.util.annotations.PublicAPI
     @property
     def version(self) -> Optional[str]:
         """Version of this deployment.
@@ -1170,6 +1165,7 @@ class Deployment:
         """
         return self._version
 
+    @ray.util.annotations.PublicAPI
     @property
     def prev_version(self) -> Optional[str]:
         """Existing version of deployment to target.
@@ -1179,36 +1175,43 @@ class Deployment:
         """
         return self._prev_version
 
+    @ray.util.annotations.PublicAPI
     @property
     def func_or_class(self) -> Callable:
         """Underlying class or function that this deployment wraps."""
         return self._func_or_class
 
+    @ray.util.annotations.PublicAPI
     @property
     def num_replicas(self) -> int:
         """Current target number of replicas."""
         return self._config.num_replicas
 
+    @ray.util.annotations.PublicAPI
     @property
     def user_config(self) -> Any:
         """Current dynamic user-provided config options."""
         return self._config.user_config
 
+    @ray.util.annotations.PublicAPI
     @property
     def max_concurrent_queries(self) -> int:
         """Current max outstanding queries from each handle."""
         return self._config.max_concurrent_queries
 
+    @ray.util.annotations.PublicAPI
     @property
     def route_prefix(self) -> Optional[str]:
         """HTTP route prefix that this deploymet is exposed under."""
         return self._route_prefix
 
+    @ray.util.annotations.PublicAPI
     @property
     def ray_actor_options(self) -> Optional[Dict]:
         """Actor options such as resources required for each replica."""
         return self._ray_actor_options
 
+    @ray.util.annotations.PublicAPI
     @property
     def init_args(self) -> Tuple[Any]:
         """Arguments passed to the underlying class' constructor."""
@@ -1218,6 +1221,7 @@ class Deployment:
         raise RuntimeError("Deployments cannot be constructed directly. "
                            "Use `deployment.deploy() instead.`")
 
+    @ray.util.annotations.PublicAPI
     def deploy(self, *init_args, _blocking=True):
         """Deploy or update this deployment.
 
@@ -1240,11 +1244,13 @@ class Deployment:
             _blocking=_blocking,
             _internal=True)
 
+    @ray.util.annotations.PublicAPI
     def delete(self):
         """Delete this deployment."""
         return _get_global_client().delete_deployment(
             self._name, _internal=True)
 
+    @ray.util.annotations.PublicAPI
     def get_handle(self, sync: Optional[bool] = True
                    ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Get a ServeHandle to this deployment to invoke it from Python.
@@ -1265,6 +1271,7 @@ class Deployment:
             _internal_use_serve_request=False,
             _internal=True)
 
+    @ray.util.annotations.PublicAPI
     def options(
             self,
             func_or_class: Optional[Callable] = None,
@@ -1365,6 +1372,7 @@ def deployment(name: Optional[str] = None,
     pass
 
 
+@ray.util.annotations.PublicAPI
 def deployment(
         _func_or_class: Optional[Callable] = None,
         name: Optional[str] = None,
@@ -1458,6 +1466,7 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
+@ray.util.annotations.PublicAPI
 def get_deployment(name: str) -> Deployment:
     """Dynamically fetch a handle to a Deployment object.
 
@@ -1494,6 +1503,7 @@ def get_deployment(name: str) -> Deployment:
     )
 
 
+@ray.util.annotations.PublicAPI
 def list_deployments() -> Dict[str, Deployment]:
     """Returns a dictionary of all active deployments.
 
