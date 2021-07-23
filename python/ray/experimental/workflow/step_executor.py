@@ -189,12 +189,12 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
             break
         except BaseException as e:
             if i + 1 == max_retries:
-                retry_msg = f"Maximum retry reached."
+                retry_msg = "Maximum retry reached."
             else:
                 retry_msg = "The step will be retried."
             logger.error(
-                f"{workflow_context.get_step_name()} failed with error {e}. {retry_msg}"
-            )
+                f"{workflow_context.get_step_name()} failed with error"
+                f" {e}. {retry_msg}")
             exception = e
 
     if catch_exceptions:
