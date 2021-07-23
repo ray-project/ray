@@ -21,8 +21,7 @@ class WorkflowStepFunction:
                  catch_exceptions=False,
                  ray_options=None):
         if not isinstance(max_retries, int) or max_retries < 1:
-            raise ValueError(
-                "max_retries should be greater or equal to 1.")
+            raise ValueError("max_retries should be greater or equal to 1.")
         if ray_options is not None and not isinstance(ray_options, dict):
             raise ValueError("ray_options must be a dict.")
 
@@ -108,5 +107,5 @@ class WorkflowStepFunction:
         Returns:
             The step function itself.
         """
-        return WorkflowStepFunction(self._func, max_retries,
-                                    catch_exceptions, ray_options)
+        return WorkflowStepFunction(self._func, max_retries, catch_exceptions,
+                                    ray_options)

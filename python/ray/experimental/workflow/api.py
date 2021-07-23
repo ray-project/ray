@@ -62,6 +62,7 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
 def make_step_decorator(step_options: Dict[str, Any]):
     def decorator(func):
         return WorkflowStepFunction(func, **step_options)
+
     return decorator
 
 

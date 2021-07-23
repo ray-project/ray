@@ -186,8 +186,7 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
     assert err is None
 
 
-def test_step_failure_decorator(
-    workflow_start_regular_shared, tmp_path):
+def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
     (tmp_path / "test").write_text("0")
 
     @workflow.step(max_retries=11)
@@ -197,10 +196,11 @@ def test_step_failure_decorator(
         if v < 10:
             raise ValueError("Invalid")
         return v
+
     assert unstable_step.step().run() == 10
 
-
     (tmp_path / "test").write_text("0")
+
     @workflow.step(catch_exceptions=True)
     def unstable_step_exception():
         v = int((tmp_path / "test").read_text())
@@ -208,13 +208,13 @@ def test_step_failure_decorator(
         if v < 10:
             raise ValueError("Invalid")
         return v
+
     (ret, err) = unstable_step_exception.step().run()
     assert ret is None
     assert err is not None
 
-
-
     (tmp_path / "test").write_text("0")
+
     @workflow.step(catch_exceptions=True, max_retries=4)
     def unstable_step_exception():
         v = int((tmp_path / "test").read_text())
@@ -222,6 +222,7 @@ def test_step_failure_decorator(
         if v < 10:
             raise ValueError("Invalid")
         return v
+
     (ret, err) = unstable_step_exception.step().run()
     assert ret is None
     assert err is not None
