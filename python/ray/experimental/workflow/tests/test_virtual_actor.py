@@ -1,8 +1,8 @@
 import time
-
+from filelock import FileLock
 import pytest
 import ray
-
+from pathlib import Path
 from ray.tests.conftest import *  # noqa
 from ray.experimental import workflow
 from ray.experimental.workflow import virtual_actor_class
@@ -99,3 +99,84 @@ def test_actor_ready(workflow_start_regular):
         actor.readonly_get.run()
     ray.get(actor.ready())
     assert actor.readonly_get.run() == 42
+
+
+@pytest.mark.parametrize(
+    "workflow_start_regular",
+    [{
+        "num_cpus": 4  # We need more CPUs, otherwise 'create()' blocks 'get()'
+    }],
+    indirect=True)
+def test_actor_writer(workflow_start_regular, tmp_path):
+    g_lock = str(Path(tmp_path / "g.lock"))
+    incr_lock = str(Path(tmp_path / "incr.lock"))
+    val_lock = str(Path(tmp_path / "val.lock"))
+
+    val_err = str(Path(tmp_path / "val.err"))
+    incr_err = str(Path(tmp_path / "incr.err"))
+
+    @workflow.virtual_actor
+    class SyncCounter:
+        def __init__(self, val_lock: str,
+                     incr_lock: str,
+                     g_lock: str,
+                     val_err: str,
+                     incr_err: str):
+            self.val_lock = val_lock
+            self.incr_lock = incr_lock
+            self.g_lock = g_lock
+
+            self.val_err = val_err
+            self.incr_err = incr_err
+            self.v = 0
+
+        @workflow.virtual_actor.readonly
+        def val(self):
+            with FileLock(self.val_lock), FileLock(self.g_lock):
+                if Path(self.val_err).exists():
+                    raise ValueError()
+                return self.v
+
+        def incr(self):
+            with FileLock(self.incr_lock), FileLock(self.g_lock):
+                if Path(self.incr_err).exists():
+                    raise ValueError()
+                self.v += 1
+                return self.v
+
+        def __getstate__(self):
+            return (self.v, self.val_lock, self.incr_lock, self.g_lock, self.val_err, self.incr_err)
+
+        def __setstate__(self, state):
+            return (self.v, self.val_lock, self.incr_lock, self.g_lock, self.val_err, self.incr_err) = state
+
+    actor = SyncCounter.get_or_create("sync_counter", val_lock, g_lock, val_err, incr_err)
+    ray.get(actor.ready())
+
+    assert ray.get([actor.incr.run_async() for _ in range(10)]) == list(range(1, 11))
+
+    incr_lock.acquire()
+    objs = [actor.incr.run_async() for _ in range(10)]
+    assert 10 == actor.val.run()
+    Path(incr_err).touch()
+    with pytest.raises(Exception):
+        actor.val.run()
+    Path(incr_err).unlink()
+
+    incr_lock.release()
+    assert ray.get([actor.incr.run_async() for _ in range(10)]) == list(range(11, 21))
+
+    # test error cases
+    s1 = actor.incr.run_async() # 21
+    s2 = actor.incr.run_async() # 22
+    s3 = actor.incr.run_async() # 23
+    Path(incr_err).touch()
+    s4 = actor.incr.run_async() # 24
+    s5 = actor.incr.run_async() # 25
+    with pytest.raises(Exception):
+        ray.get(s5)
+
+    assert 23 == actor.val.run()
+    Path(incr_err).unlink()
+    obj = workflow.resume("sync_counter")
+    assert ray.get(obj) == 25
