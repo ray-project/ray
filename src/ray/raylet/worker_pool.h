@@ -52,8 +52,9 @@ class WorkerPoolInterface {
   /// the worker back onto the pool once the worker has completed its work.
   ///
   /// \param task_spec The returned worker must be able to execute this task.
-  /// \param callback The callback function which will be executed when gets the result
-  /// worker popping. \param allocated_instances_serialized_json The allocated resouce
+  /// \param callback The callback function that executed when gets the result of
+  /// worker popping.
+  /// \param allocated_instances_serialized_json The allocated resouce
   /// instances json string, it contains resource ID which assigned to this worker.
   /// Instance resource value will be like {"GPU":[10000,0,10000]}, non-instance
   /// resource value will be {"CPU":20000}.
@@ -287,8 +288,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// the worker back onto the pool once the worker has completed its work.
   ///
   /// \param task_spec The returned worker must be able to execute this task.
-  /// \param callback The callback function which will be executed when gets the result
-  /// worker popping. \param allocated_instances_serialized_json The allocated resouce
+  /// \param callback The callback function that executed when gets the result of
+  /// worker popping.
+  /// \param allocated_instances_serialized_json The allocated resouce
   /// instances json string. \return An idle worker with the requested task spec. Returns
   /// nullptr if no such worker exists.
   void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback,
@@ -366,6 +368,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///                             will have rpc::WorkerType instead.
   /// \param job_id The ID of the job to which the started worker process belongs.
   /// \param task_id The ID of the task which triggers the worker process starting.
+  /// \param callback The callback function that executed when gets the result of
+  /// worker popping.
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \param serialized_runtime_env The runtime environment for the started worker
   /// \param allocated_instances_serialized_json The allocated resource instances
