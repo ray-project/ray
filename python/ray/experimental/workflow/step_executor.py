@@ -139,96 +139,74 @@ class StepType(enum.Enum):
     READONLY_ACTOR_METHOD = 3
 
 
-class ExecutionResult:
-    """A class for storing execution result. It unifies step function and
-    virtual actor.
+def _wrap_run(func: Callable, step_type: StepType, catch_exceptions: bool,
+              step_max_retries: int, *args, **kwargs) -> Tuple[Any, Any, Any]:
+    """Wrap the function and execute it.
 
-    Attributes:
+    It returns two parts, state and output. State is the part of result
+    to persist in a storage and pass to the next step. Output is the part
+    of result to return to the user but does not require persistence.
+
+    This table describes their relationships
+
+    +-----------------------------+-------+--------+----------------------+
+    | Step Type                   | state | output | catch exception into |
+    +-----------------------------+-------+--------+----------------------+
+    | Function Step               | Y     | N      | state                |
+    +-----------------------------+-------+--------+----------------------+
+    | Virtual Actor Step          | Y     | Y      | output               |
+    +-----------------------------+-------+--------+----------------------+
+    | Readonly Virtual Actor Step | N     | Y      | output               |
+    +-----------------------------+-------+--------+----------------------+
+
+    Args:
         step_type: The type of the step producing the result.
-        state: The part of result to persist in a storage and pass to the
-            next step.
-        output: The part of result to return to the user but does not
-            require persistence.
-        exception: Record the exception during execution.
         catch_exceptions: True if we would like to catch the exception.
+        step_max_retries: Max retry times for failure.
 
-    +-----------------------------+-------+--------+
-    | Step Type                   | state | output |
-    +-----------------------------+-------+--------+
-    | Function Step               | Y     | N      |
-    +-----------------------------+-------+--------+
-    | Virtual Actor Step          | Y     | Y      |
-    +-----------------------------+-------+--------+
-    | Readonly Virtual Actor Step | N     | Y      |
-    +-----------------------------+-------+--------+
+    Returns:
+        State, output and exception.
     """
+    exception = None
+    result = None
+    # step_max_retries are for application level failure.
+    # For ray failure, we should use max_retries.
+    for _ in range(step_max_retries):
+        try:
+            result = func(*args, **kwargs)
+            exception = None
+            break
+        except BaseException as e:
+            exception = e
 
-    def __init__(self, step_type: StepType, state: Any, output: Any,
-                 catch_exceptions: bool):
-        self.step_type = step_type
-        self.state = state
-        self.output = output
-        self.catch_exceptions = catch_exceptions
-        self.exception = None
-
-    def wrap_run(self, func: Callable, *args, **kwargs) -> "ExecutionResult":
-        """Wrap the function and execute it."""
-        if self.step_type == StepType.FUNCTION:
-            ret = func(*args, **kwargs)
-            return ExecutionResult(self.step_type, ret, None,
-                                   self.catch_exceptions)
-        elif self.step_type == StepType.ACTOR_METHOD:
-            state, output = func(*args, **kwargs)
-            return ExecutionResult(self.step_type, state, output,
-                                   self.catch_exceptions)
-        elif self.step_type == StepType.READONLY_ACTOR_METHOD:
-            output = func(*args, **kwargs)
-            return ExecutionResult(self.step_type, None, output,
-                                   self.catch_exceptions)
+    if catch_exceptions:
+        if step_type == StepType.FUNCTION:
+            state, output = (result, exception), None
+        elif step_type == StepType.ACTOR_METHOD:
+            # virtual actors do not persist exception
+            state, output = result[0], (result[1], exception)
+        elif step_type == StepType.READONLY_ACTOR_METHOD:
+            state, output = None, (result, exception)
         else:
-            raise ValueError(f"Unknown StepType '{self.step_type}'")
+            raise ValueError(f"Unknown StepType '{step_type}'")
+    else:
+        if step_type == StepType.FUNCTION:
+            state, output = result, None
+        elif step_type == StepType.ACTOR_METHOD:
+            state, output = result
+        elif step_type == StepType.READONLY_ACTOR_METHOD:
+            state, output = None, result
+        else:
+            raise ValueError(f"Unknown StepType '{step_type}'")
 
-    def commit(self, step_id: "StepID", outer_most_step_id: "StepID",
-               last_step_of_workflow: bool):
-        """Commit the output of the workflow"""
-        if self.step_type == StepType.READONLY_ACTOR_METHOD:
-            # Readonly virtual actor does not write the storage.
-            return
-        is_nested = isinstance(self.state, Workflow)
-        if self.step_type != StepType.FUNCTION and is_nested:
-            # TODO(suquark): Support returning a workflow inside
-            # a virtual actor.
-            raise TypeError("Only a workflow step function "
-                            "can return a workflow.")
+    is_nested = isinstance(state, Workflow)
+    if step_type != StepType.FUNCTION and is_nested:
+        # TODO(suquark): Support returning a workflow inside
+        # a virtual actor.
+        raise TypeError("Only a workflow step function "
+                        "can return a workflow.")
 
-        store = workflow_storage.get_workflow_storage()
-        # Save workflow output
-        commit_step(store, step_id, self.state, outer_most_step_id)
-
-        # We MUST execute the workflow after saving the output.
-        if is_nested:
-            if self.step_type == StepType.FUNCTION:
-                # execute sub-workflow
-                self.state = execute_workflow(self.state, outer_most_step_id,
-                                              last_step_of_workflow)
-            else:
-                assert False, "This code path should not be reachable."
-        elif last_step_of_workflow:
-            # advance the progress of the workflow
-            store.advance_progress(step_id)
-        self.exception = None
-
-    def unpack(self) -> Tuple[Any, Any]:
-        """Unpack the content to a tuple of (state, output)"""
-        if self.catch_exceptions:
-            if self.step_type == StepType.FUNCTION:
-                return (self.state, self.exception), self.output
-            else:
-                # virtual actors do not persist exception
-                return self.state, (self.output, self.exception)
-        if self.exception is not None:
-            raise self.exception
-        return self.state, self.output
+    return state, output, exception
 
 
 @ray.remote(num_returns=2)
@@ -257,29 +235,39 @@ def _workflow_step_executor(
     Returns:
         Workflow step output.
     """
-    ret: ExecutionResult = ExecutionResult(step_type, None, None,
-                                           catch_exceptions)
-    # step_max_retries are for application level failure.
-    # For ray failure, we should use max_retries.
     from ray.experimental.workflow.common import WorkflowStatus
-    for _ in range(step_max_retries):
-        try:
-            workflow_context.update_workflow_step_context(context, step_id)
-            args, kwargs = _resolve_step_inputs(step_inputs)
-            # Running the actual step function
-            ret = ret.wrap_run(func, *args, **kwargs)
-            # Save workflow output
-            ret.commit(step_id, outer_most_step_id, last_step_of_workflow)
-            break
-        except BaseException as e:
-            ret.exception = e
+
+    workflow_context.update_workflow_step_context(context, step_id)
+    args, kwargs = _resolve_step_inputs(step_inputs)
+    state, output, exception = _wrap_run(func, step_type, catch_exceptions,
+                                         step_max_retries, *args, **kwargs)
+
+    if not catch_exceptions and exception is not None:
+        if step_type != StepType.READONLY_ACTOR_METHOD:
+            _record_step_status(step_id, WorkflowStatus.RESUMABLE)
+        raise exception
 
     if step_type != StepType.READONLY_ACTOR_METHOD:
-        if catch_exceptions or ret.exception is None:
-            _record_step_status(step_id, WorkflowStatus.FINISHED)
-        else:
-            _record_step_status(step_id, WorkflowStatus.RESUMABLE)
-    return ret.unpack()
+        store = workflow_storage.get_workflow_storage()
+        # Save workflow output
+        commit_step(store, step_id, state, outer_most_step_id)
+        # We MUST execute the workflow after saving the output.
+        if isinstance(state, Workflow):
+            if step_type == StepType.FUNCTION:
+                # execute sub-workflow
+                state = execute_workflow(state, outer_most_step_id,
+                                         last_step_of_workflow)
+            else:
+                # TODO(suquark): Support returning a workflow inside
+                # a virtual actor.
+                raise TypeError("Only a workflow step function "
+                                "can return a workflow.")
+        elif last_step_of_workflow:
+            # advance the progress of the workflow
+            store.advance_progress(step_id)
+        _record_step_status(step_id, WorkflowStatus.FINISHED)
+
+    return state, output
 
 
 def execute_workflow_step(step_id: "StepID", workflow_data: "WorkflowData",
