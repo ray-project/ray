@@ -98,7 +98,7 @@ class WorkerPoolMock : public WorkerPool {
                           const WorkerCommandMap &worker_commands)
       : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
                    MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
-                   []() {}, [this]() { return current_time_ms_; }),
+                   []() {}, 0, [this]() { return current_time_ms_; }),
         last_worker_process_() {
     SetNodeManagerPort(1);
   }
