@@ -151,9 +151,9 @@ def test_workflow_output_resolving(workflow_start_regular_shared):
 
 def test_run_or_resume_during_running(workflow_start_regular_shared):
     output = simple_sequential.step().run_async(workflow_id="running_workflow")
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         simple_sequential.step().run_async(workflow_id="running_workflow")
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         workflow.resume(workflow_id="running_workflow")
     assert ray.get(output) == "[source1][append1][append2]"
 

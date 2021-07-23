@@ -1,15 +1,9 @@
 import functools
-import inspect
-from typing import Any, Dict, List, Tuple, Callable, Optional
+from typing import Callable
 
-import ray
-
-from ray import ObjectRef
+from ray._private import signature
 from ray.experimental.workflow import serialization_context
-from ray.experimental.workflow.common import (
-    Workflow, StepID, WorkflowOutputType, WorkflowInputTuple)
-
-StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
+from ray.experimental.workflow.common import Workflow, WorkflowData
 
 
 class WorkflowStepFunction:
@@ -29,57 +23,25 @@ class WorkflowStepFunction:
         self._max_retries = max_retries
         self._catch_exceptions = catch_exceptions
         self._ray_options = ray_options or {}
-        self._func_signature = list(
-            inspect.signature(func).parameters.values())
+        self._func_signature = signature.extract_signature(func)
 
         # Override signature and docstring
         @functools.wraps(func)
         def _build_workflow(*args, **kwargs) -> Workflow:
-            # validate if the input arguments match the signature of the
-            # original function.
-            reconstructed_signature = inspect.Signature(
-                parameters=self._func_signature)
-            try:
-                reconstructed_signature.bind(*args, **kwargs)
-            except TypeError as exc:  # capture a friendlier stacktrace
-                raise TypeError(str(exc)) from None
-            workflows: List[Workflow] = []
-            object_refs: List[ObjectRef] = []
-            with serialization_context.workflow_args_serialization_context(
-                    workflows, object_refs):
-                # NOTE: When calling 'ray.put', we trigger python object
-                # serialization. Under our serialization context,
-                # Workflows and ObjectRefs are separated from the arguments,
-                # leaving a placeholder object with all other python objects.
-                # Then we put the placeholder object to object store,
-                # so it won't be mutated later. This guarantees correct
-                # semantics. See "tests/test_variable_mutable.py" as
-                # an example.
-                input_placeholder: ObjectRef = ray.put((args, kwargs))
-                if object_refs:
-                    raise ValueError(
-                        "There are ObjectRefs in workflow inputs. However "
-                        "workflow currently does not support checkpointing "
-                        "ObjectRefs.")
-            return Workflow(self._func, self._run_step, input_placeholder,
-                            workflows, object_refs, self._max_retries,
-                            self._catch_exceptions, self._ray_options)
+            flattened_args = signature.flatten_args(self._func_signature, args,
+                                                    kwargs)
+            workflow_inputs = serialization_context.make_workflow_inputs(
+                flattened_args)
+            workflow_data = WorkflowData(
+                func_body=self._func,
+                inputs=workflow_inputs,
+                max_retries=self._max_retries,
+                catch_exceptions=self._catch_exceptions,
+                ray_options=self._ray_options,
+            )
+            return Workflow(workflow_data)
 
         self.step = _build_workflow
-
-    def _run_step(
-            self,
-            step_id: StepID,
-            step_inputs: WorkflowInputTuple,
-            catch_exceptions: bool,
-            max_retries: int,
-            ray_options: Dict[str, Any],
-            outer_most_step_id: Optional[StepID] = None) -> WorkflowOutputType:
-        from ray.experimental.workflow.step_executor import (
-            execute_workflow_step)
-        return execute_workflow_step(self._func, step_id, step_inputs,
-                                     catch_exceptions, max_retries,
-                                     ray_options, outer_most_step_id)
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Workflow steps cannot be called directly. Instead "
@@ -101,8 +63,8 @@ class WorkflowStepFunction:
                 If it's set to be true, (Optional[R], Optional[E]) will be
                 returned.
                 If it's false, the normal result will be returned.
-            **kwargs(dict): All parameters in this fields will be passed to
-                ray remote function options.
+            **ray_options(dict): All parameters in this fields will be passed
+                to ray remote function options.
 
         Returns:
             The step function itself.

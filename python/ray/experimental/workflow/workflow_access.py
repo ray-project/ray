@@ -125,8 +125,8 @@ class WorkflowManagementActor:
             workflow result.
         """
         if workflow_id in self._workflow_outputs:
-            raise ValueError(f"The output of workflow[id={workflow_id}] "
-                             "already exists.")
+            raise RuntimeError(f"The output of workflow[id={workflow_id}] "
+                               "already exists.")
         output = recovery.resume_workflow_job.remote(workflow_id,
                                                      self._store.storage_url)
         self._workflow_outputs[workflow_id] = output
