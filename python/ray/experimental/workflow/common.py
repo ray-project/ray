@@ -126,7 +126,6 @@ class Workflow:
         if self.executed:
             return self._output
 
-
         from ray.experimental.workflow import step_executor
         output = step_executor.execute_workflow_step(self._step_id, self._data,
                                                      outer_most_step_id,

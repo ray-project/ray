@@ -273,6 +273,7 @@ def _workflow_step_executor(
 
     return state, output
 
+
 def execute_workflow_step(step_id: "StepID", workflow_data: "WorkflowData",
                           outer_most_step_id: "StepID",
                           last_step_of_workflow: bool) -> "WorkflowOutputType":
