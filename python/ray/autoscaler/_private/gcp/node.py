@@ -25,6 +25,8 @@ def _retry_on_exception(exception: Union[Exception, Tuple[Exception]],
                         regex: Optional[str] = None,
                         max_retries: int = MAX_POLLS,
                         retry_interval: int = POLL_INTERVAL):
+    """Retry a function call n-times for as long as it throws an exception."""
+
     def dec(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -458,8 +460,9 @@ class GCPTPU(GCPResource):
 
         return GCPTPUNode(instance, self)
 
-    @_retry_on_exception(HttpError, "unable to queue the operation",
-                         MAX_POLLS * 8)
+    # this sometimes fails without a clear reason, so we retry it
+    # MAX_POLLS times
+    @_retry_on_exception(HttpError, "unable to queue the operation")
     def set_labels(self,
                    node: GCPNode,
                    labels: dict,
