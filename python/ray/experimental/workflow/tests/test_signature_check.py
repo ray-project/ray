@@ -29,3 +29,8 @@ def test_signature_check(workflow_start_regular):
     signature_check.step(1, 2, c=3)
     signature_check.step(1, b=2, c=3)
     signature_check.step(a=1, b=2, c=3)
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

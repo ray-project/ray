@@ -180,3 +180,9 @@ def test_actor_writer(workflow_start_regular, tmp_path):
     Path(incr_err).unlink()
     obj = workflow.resume("sync_counter")
     assert ray.get(obj) == 25
+
+    
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
+
