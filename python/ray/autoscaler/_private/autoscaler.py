@@ -707,6 +707,7 @@ class StandardAutoscaler:
         last AUTOSCALER_HEARTBEAT_TIMEOUT_S seconds.
         """
         key = self.provider.internal_ip(node_id)
+
         if key in self.load_metrics.last_heartbeat_time_by_ip:
             last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[
                 key]
@@ -764,7 +765,6 @@ class StandardAutoscaler:
             " (lost contact with raylet). last_heartbeat_time_by_ip is " + str(list(self.load_metrics.last_heartbeat_time_by_ip)),
             quantity=1,
             aggregate=operator.add)
-
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
