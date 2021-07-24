@@ -4,7 +4,7 @@ from typing import Any, Callable, List, Iterator, Generic, Union, TYPE_CHECKING
 import ray
 from ray.experimental.data.dataset import Dataset, T, U, BatchType
 from ray.util.annotations import PublicAPI
-from ray.util.types import ObjectRef
+from ray.types import ObjectRef
 
 if TYPE_CHECKING:
     import pyarrow
@@ -43,6 +43,7 @@ class DatasetPipeline(Generic[T]):
     def iter_datasets(self) -> Iterator[Dataset[T]]:
         @ray.remote
         def do(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
+#            print("EXECUTE DO", fn)
             return fn()
 
         class PipelineExecutor:
@@ -50,18 +51,24 @@ class DatasetPipeline(Generic[T]):
                 self._pipeline: DatasetPipeline[T] = pipeline
                 self._stages: List[ObjectRef[Dataset[Any]]] = [None] * (
                     len(self._pipeline._stage_transforms) + 1)
+                self._stages[0] = do.remote(
+                    next(self._pipeline._base_iterator))
+
+            def __iter__(self):
+                return self
 
             def __next__(self):
                 output = None
+                ready = []
 
                 while output is None:
                     if all(s is None for s in self._stages):
                         raise StopIteration
 
-                    # Wait for any completed stages.
+                    # Wait for any completed stages. TODO(ekl) avoid fast loop
+                    pending = [s for s in self._stages if s is not None]
                     ready, _ = ray.wait(
-                        [s for s in self._stages if s is not None],
-                        timeout=1.0)
+                        pending, timeout=0, num_returns=len(pending))
 
                     # Bubble elements down the pipeline as they become ready.
                     for i in range(len(self._stages))[::-1]:
@@ -75,16 +82,20 @@ class DatasetPipeline(Generic[T]):
                             continue
 
                         # Bubble.
-                        result = self._stages[i]
+                        result = ray.get(self._stages[i])
+#                        print("RESULT", result)
                         self._stages[i] = None
                         if is_last:
+#                            print("RETURNING OUTPUT", output)
                             output = result
                         else:
                             fn = self._pipeline._stage_transforms[i]
+#                            print("Executing transform", i)
                             self._stages[i + 1] = do.remote(lambda: fn(result))
 
                     # Pull a new element for the initial slot if possible.
                     if self._stages[0] is None:
+#                        print("Pulling new element")
                         try:
                             self._stages[0] = do.remote(
                                 next(self._pipeline._base_iterator))

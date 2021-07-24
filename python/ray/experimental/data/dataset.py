@@ -67,16 +67,19 @@ class Dataset(Generic[T]):
     def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         from ray.experimental.data.dataset_pipeline import DatasetPipeline
 
+        if times is not None and times < 1:
+            raise ValueError("`times` must be >= 1, got {}".format(times))
+
         class Iterator:
             def __init__(self, ds: "Dataset[T]"):
                 self._ds = ds
                 self._i = 0
 
             def __next__(self) -> "Dataset[T]":
-                if self._i >= times:
+                if times and self._i >= times:
                     raise StopIteration
                 self._i += 1
-                return self._ds
+                return lambda: self._ds
 
         return DatasetPipeline(Iterator(self))
 
@@ -91,7 +94,7 @@ class Dataset(Generic[T]):
             def __next__(self) -> "Dataset[T]":
                 if self._i >= len(self._splits):
                     raise StopIteration
-                result = Dataset(self._splits[self._i])
+                result = lambda: Dataset(self._splits[self._i])
                 self._i += 1
                 return result
 
