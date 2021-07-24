@@ -199,7 +199,7 @@ class DreamerIteration:
         metrics = _get_shared_metrics()
         metrics.info[LEARNER_INFO] = fetches
         metrics.counters[STEPS_SAMPLED_COUNTER] = self.episode_buffer.timesteps
-        metrics.counter[STEPS_SAMPLED_COUNTER] *= self.repeat
+        metrics.counters[STEPS_SAMPLED_COUNTER] *= self.repeat
         res = collect_metrics(local_worker=self.worker)
         res["info"] = metrics.info
         res["info"].update(metrics.counters)
