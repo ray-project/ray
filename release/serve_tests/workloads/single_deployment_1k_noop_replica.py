@@ -68,6 +68,7 @@ def deploy_replicas(num_replicas, max_batch_size):
 
     Echo.deploy()
 
+
 def save_results(final_result, default_name):
     test_output_json = os.environ.get(
         "TEST_OUTPUT_JSON", "/tmp/single_deployment_1k_noop_replica.json")
