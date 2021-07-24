@@ -19,11 +19,11 @@ class ComputeStrategy:
         raise NotImplementedError
 
 
-# Remote version of dataset_apply, lazily initialized to avoid circular import.
-_remote_apply = None
+# Remote version of dataset_fn, lazily initialized to avoid circular import.
+_remote_fn = None
 
 
-def dataset_apply(block: Block, meta: BlockMetadata, fn: Any):
+def dataset_fn(block: Block, meta: BlockMetadata, fn: Any):
     new_block = fn(block)
     accessor = BlockAccessor.for_block(new_block)
     new_meta = BlockMetadata(
@@ -43,12 +43,12 @@ class TaskPool(ComputeStrategy):
         kwargs["num_returns"] = 2
 
         # Lazy init to avoid circular import.
-        global _remote_apply
-        if _remote_apply is None:
-            _remote_apply = ray.remote(dataset_apply)
+        global _remote_fn
+        if _remote_fn is None:
+            _remote_fn = ray.remote(dataset_fn)
 
         refs = [
-            _remote_apply.options(**kwargs).remote(b, m, fn)
+            _remote_fn.options(**kwargs).remote(b, m, fn)
             for b, m in zip(blocks, blocks.get_metadata())
         ]
         new_blocks, new_metadata = zip(*refs)
