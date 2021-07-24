@@ -23,7 +23,8 @@ class ComputeStrategy:
 _remote_fn = None
 
 
-def map_block(block: Block, meta: BlockMetadata, fn: Any):
+def map_block(block: Block, meta: BlockMetadata,
+              fn: Any) -> (Block, BlockMetadata):
     new_block = fn(block)
     accessor = BlockAccessor.for_block(new_block)
     new_meta = BlockMetadata(
