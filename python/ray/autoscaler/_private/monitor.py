@@ -189,8 +189,10 @@ class Monitor:
                 resources_batch_data.placement_group_load.placement_group_data)
 
             use_node_id_as_ip = self.autoscaler.config['provider'].get('init_cmd_run_by_scheduler_not_ray_NodeUpdater', False)
+            logger.info(f'in monitor update_load_metrics total_resources is {total_resources}')
             if use_node_id_as_ip:
-                ip = resource_message.node_id.hex()
+                # ip = resource_message.node_id.hex()
+                ip = str(int(total_resources.get('NODE_ID_AS_RESOURCE', 0)))
             else:
                 ip = resource_message.node_manager_address
             logger.info(f'in monitor update_load_metrics ip is {ip} resource_load {resource_load} total_resources {total_resources} use_node_id_as_ip {use_node_id_as_ip}')
