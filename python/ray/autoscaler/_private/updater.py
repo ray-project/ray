@@ -87,6 +87,7 @@ class NodeUpdater:
         self.node_id = node_id
         self.provider_type = provider_config.get("type")
         self.provider = provider
+        self.provider_config = provider_config
         # Some node providers don't specify empty structures as
         # defaults. Better to be defensive.
         file_mounts = file_mounts or {}
@@ -116,7 +117,6 @@ class NodeUpdater:
         self.restart_only = restart_only
         self.update_time = None
         self.for_recovery = for_recovery
-        self.provider_config = provider_config
 
     def run(self):
         update_start_time = time.time()
@@ -169,22 +169,12 @@ class NodeUpdater:
         if self.file_mounts_contents_hash is not None:
             tags_to_set[
                 TAG_RAY_FILE_MOUNTS_CONTENTS] = self.file_mounts_contents_hash
-        cli_logger.print(
-                "node {} will provider.set_node_tags with {} now", 
-                self.node_id,
-                tags_to_set,
-        )
+
         self.provider.set_node_tags(self.node_id, tags_to_set)
-        cli_logger.print(
-                f"node {self.node_id} cli_loger about to set labeled_value"
-        )
         cli_logger.labeled_value("New status", STATUS_UP_TO_DATE)
 
         self.update_time = time.time() - update_start_time
         self.exitcode = 0
-        cli_logger.print(
-                f"node {self.node_id} exitcode set to 0 now from update start time {update_start_time}"
-        )
 
     def sync_file_mounts(self, sync_cmd, step_numbers=(0, 2)):
         # step_numbers is (# of previous steps, total steps)

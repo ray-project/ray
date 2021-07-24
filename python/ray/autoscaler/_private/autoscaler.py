@@ -667,8 +667,6 @@ class StandardAutoscaler:
         node_tags = self.provider.node_tags(node_id)
         tag_launch_conf = node_tags.get(TAG_RAY_LAUNCH_CONFIG)
         node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE)
-        logger.info(f'in launch_config_ok node_id {node_id} node_tags {node_tags} tag_launch_conf {tag_launch_conf} node_type {node_type}')
-
         if node_type not in self.available_node_types:
             # The node type has been deleted from the cluster config.
             # Don't keep the node.
@@ -684,7 +682,6 @@ class StandardAutoscaler:
                                                   self.config["auth"])
 
         if calculated_launch_hash != tag_launch_conf:
-            logger.info(f'in launch_config_ok not ok calculated_launch_hash {calculated_launch_hash} tag_launch_conf {tag_launch_conf}')
             return False
         return True
 
@@ -710,12 +707,6 @@ class StandardAutoscaler:
         last AUTOSCALER_HEARTBEAT_TIMEOUT_S seconds.
         """
         key = self.provider.internal_ip(node_id)
-        
-        logger.warning(f'in recover_if_needed node_id is {node_id} key is {key}')
-        
-        for akey, aval in self.load_metrics.last_heartbeat_time_by_ip.items():
-            logger.warning(f'in recover_if_needed last_hearbeat_time_ty_ip has key {akey} val {aval}')
-        logger.warning(f'in recover_if_needed last_hearbeat_time_ty_ip is {self.load_metrics.last_heartbeat_time_by_ip.items()}')
         if key in self.load_metrics.last_heartbeat_time_by_ip:
             last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[
                 key]

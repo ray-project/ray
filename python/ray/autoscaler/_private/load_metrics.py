@@ -52,7 +52,6 @@ class LoadMetrics:
                waiting_bundles: List[Dict[str, float]] = None,
                infeasible_bundles: List[Dict[str, float]] = None,
                pending_placement_groups: List[PlacementGroupTableData] = None):
-        logger.info(f"LoadMetrics update with ip {ip} dynamic_resources {dynamic_resources} self.last_heartbeat_time_by_ip {self.last_heartbeat_time_by_ip}")
         self.resource_load_by_ip[ip] = resource_load
         self.static_resources_by_ip[ip] = static_resources
 
