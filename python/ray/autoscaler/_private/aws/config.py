@@ -867,7 +867,7 @@ def _configure_from_network_interfaces(config: Dict[str, Any]) \
         available node types. If no network interfaces are found, then the
         config is returned unchanged.
     Raises:
-        ValueError: If [1] subnet and security group IDs exists at both the
+        ValueError: If [1] subnet and security group IDs exist at both the
         node config and network interface levels, [2] any network interface
         doesn't have a subnet defined, or [3] any network interface doesn't
         have a security group defined.
@@ -893,7 +893,7 @@ def _configure_node_type_from_network_interface(
         given node type. If no network interfaces are found, then the
         config is returned unchanged.
     Raises:
-        ValueError: If [1] subnet and security group IDs exists at both the
+        ValueError: If [1] subnet and security group IDs exist at both the
         node config and network interface levels, [2] any network interface
         doesn't have a subnet defined, or [3] any network interface doesn't
         have a security group defined.
@@ -914,7 +914,7 @@ def _configure_subnets_and_groups_from_network_interfaces(
     Args:
         node_cfg (Dict[str, Any]): node config to bootstrap
     Raises:
-        ValueError: If [1] subnet and security group IDs exists at both the
+        ValueError: If [1] subnet and security group IDs exist at both the
         node config and network interface levels, [2] any network interface
         doesn't have a subnet defined, or [3] any network interface doesn't
         have a security group defined.
@@ -943,7 +943,7 @@ def _configure_subnets_and_groups_from_network_interfaces(
 
 def _subnets_in_network_config(config: Dict[str, Any]) -> List[str]:
     """
-    Returns all subnet IDs found in the given node config.
+    Returns all subnet IDs found in the given node config's network interfaces.
 
     Args:
         config: node config
@@ -960,7 +960,8 @@ def _subnets_in_network_config(config: Dict[str, Any]) -> List[str]:
 def _security_groups_in_network_config(config: Dict[str, Any]) \
         -> List[List[str]]:
     """
-    Returns all security group IDs found in the given node config.
+    Returns all security group IDs found in the given node config's network
+    interfaces.
 
     Args:
         config: node config

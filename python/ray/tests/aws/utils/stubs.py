@@ -1,7 +1,7 @@
 import ray
 import copy
 
-from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
+from ray.tests.aws.utils import helpers
 from ray.tests.aws.utils.mocks import mock_path_exists_key_pair
 from ray.tests.aws.utils.constants import DEFAULT_INSTANCE_PROFILE, \
     DEFAULT_KEY_PAIR, DEFAULT_SUBNET, A_THOUSAND_SUBNETS_IN_DIFFERENT_VPCS, \
@@ -168,7 +168,7 @@ def run_instances_with_network_interfaces_consumer(ec2_client_stub,
 
 
 def run_instances_with_launch_template_consumer(
-        ec2_client_stub, node_cfg, lt_data, node_provider_cfg_updates):
+        ec2_client_stub, config, node_cfg, node_type_name, lt_data, max_count):
     # create a copy of both node config and launch template data to modify
     lt_data_cp = copy.deepcopy(lt_data)
     node_cfg_cp = copy.deepcopy(node_cfg)
@@ -177,12 +177,9 @@ def run_instances_with_launch_template_consumer(
     # copy all launch template parameters back to node config
     node_cfg_cp.update(lt_data_cp)
     # copy all default node provider config updates to node config
-    node_cfg_cp.update(node_provider_cfg_updates)
-    # merge node provider tag specs with user overrides
-    user_tag_specs = node_cfg.get("TagSpecifications", [])
-    tag_specs = node_provider_cfg_updates["TagSpecifications"]
-    AWSNodeProvider._merge_tag_specs(tag_specs, user_tag_specs)
-    # remove any security group and subet IDs copied from network interfaces
+    helpers.apply_node_provider_config_updates(config, node_cfg_cp,
+                                               node_type_name, max_count)
+    # remove any security group and subnet IDs copied from network interfaces
     node_cfg_cp.pop("SecurityGroupIds", [])
     node_cfg_cp.pop("SubnetIds", [])
     ec2_client_stub.add_response(

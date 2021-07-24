@@ -2,6 +2,9 @@ import copy
 import ray
 from datetime import datetime
 
+from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_KIND, \
+    NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
+
 # Override global constants used in AWS autoscaler config artifact names.
 # This helps ensure that any unmocked test doesn't alter non-test artifacts.
 ray.autoscaler._private.aws.config.RAY = \
@@ -203,4 +206,11 @@ DEFAULT_LT = {
             }]
         }]
     }
+}
+
+# Default node provider tags to expose to tests.
+DEFAULT_NODE_PROVIDER_INSTANCE_TAGS = {
+    TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+    TAG_RAY_LAUNCH_CONFIG: "test-ray-launch-config",
+    TAG_RAY_USER_NODE_TYPE: "ray.head.default",
 }

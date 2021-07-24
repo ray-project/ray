@@ -1,7 +1,7 @@
 import random
 import copy
 import threading
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import logging
 import time
 from typing import Any, Dict, List
@@ -241,7 +241,8 @@ class AWSNodeProvider(NodeProvider):
         Returns dict mapping instance id to ec2.Instance object for the created
         instances.
         """
-        tags = copy.deepcopy(tags)
+        # sort tags by key to support deterministic unit test stubbing
+        tags = OrderedDict(sorted(copy.deepcopy(tags).items()))
 
         reused_nodes_dict = {}
         # Try to reuse previously stopped nodes with compatible configs
@@ -311,11 +312,11 @@ class AWSNodeProvider(NodeProvider):
         return all_created_nodes
 
     @staticmethod
-    def _merge_tag_specs(tag_specs: Dict[str, Any],
-                         user_tag_specs: Dict[str, Any]) -> None:
+    def _merge_tag_specs(tag_specs: List[Dict[str, Any]],
+                         user_tag_specs: List[Dict[str, Any]]) -> None:
         """
         Merges user-provided node config tag specifications into a base
-        dictionary of node provider tag specifications. The base dictionary of
+        list of node provider tag specifications. The base list of
         node provider tag specs is modified in-place.
 
         This allows users to add tags and override values of existing
@@ -324,8 +325,8 @@ class AWSNodeProvider(NodeProvider):
         tag specs.
 
         Args:
-            tag_specs (Dict[str, Any]): base node provider tag specs to modify
-            user_tag_specs (Dict[str, Any]): user's node config tag specs
+            tag_specs (List[Dict[str, Any]]): base node provider tag specs
+            user_tag_specs (List[Dict[str, Any]]): user's node config tag specs
         """
 
         for user_tag_spec in user_tag_specs:

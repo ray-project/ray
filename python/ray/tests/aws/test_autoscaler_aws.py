@@ -2,9 +2,6 @@ import copy
 
 import pytest
 
-from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_KIND, \
-    NODE_KIND_HEAD, NODE_KIND_WORKER, TAG_RAY_USER_NODE_TYPE, \
-    TAG_RAY_CLUSTER_NAME
 from ray.autoscaler._private.aws.config import _get_vpc_id_or_die, \
     bootstrap_aws, log_to_cli, \
     DEFAULT_AMI
@@ -499,15 +496,9 @@ def test_network_interfaces(ec2_client_stub, iam_client_stub,
         False,
     )
 
-    head_name = config["head_node_type"]
     for name, node_type in config["available_node_types"].items():
         node_cfg = node_type["node_config"]
-        node_kind = NODE_KIND_HEAD if name is head_name else NODE_KIND_WORKER
-        tags = {
-            TAG_RAY_NODE_KIND: node_kind,
-            TAG_RAY_LAUNCH_CONFIG: "test-ray-launch-config",
-            TAG_RAY_USER_NODE_TYPE: name,
-        }
+        tags = helpers.node_provider_tags(config, name)
         # given our bootstrapped node config as input to create a new node...
         # expect to first describe all stopped instances that could be reused
         stubs.describe_instances_with_any_filter_consumer(
@@ -611,41 +602,19 @@ def test_launch_templates(ec2_client_stub, ec2_client_stub_fail_fast,
         False,
     )
 
-    head_name = config["head_node_type"]
+    max_count = 1
     for name, node_type in config["available_node_types"].items():
-        node_cfg = node_type["node_config"]
-        node_kind = NODE_KIND_HEAD if name is head_name else NODE_KIND_WORKER
-        tags = {
-            TAG_RAY_CLUSTER_NAME: DEFAULT_CLUSTER_NAME,
-            TAG_RAY_NODE_KIND: node_kind,
-            TAG_RAY_LAUNCH_CONFIG: "test-ray-launch-config",
-            TAG_RAY_USER_NODE_TYPE: name,
-        }
-        max_count = 1
-        # expected node provider config updates to merge into user node config
-        node_provider_cfg_updates = {
-            "MinCount": 1,
-            "MaxCount": max_count,
-            "TagSpecifications": [{
-                "ResourceType": "instance",
-                "Tags": [{
-                    "Key": k,
-                    "Value": v
-                } for k, v in tags.items()]
-            }]
-        }
-        # ensure we don't tag the ray cluster name twice
-        tags.pop(TAG_RAY_CLUSTER_NAME)
-
         # given our bootstrapped node config as input to create a new node...
         # expect to first describe all stopped instances that could be reused
         stubs.describe_instances_with_any_filter_consumer(
             ec2_client_stub_max_retries)
         # given no stopped EC2 instances to reuse...
         # expect to create new nodes with the given launch template config
+        node_cfg = node_type["node_config"]
         stubs.run_instances_with_launch_template_consumer(
-            ec2_client_stub_fail_fast, node_cfg,
-            DEFAULT_LT["LaunchTemplateData"], node_provider_cfg_updates)
+            ec2_client_stub_fail_fast, config, node_cfg, name,
+            DEFAULT_LT["LaunchTemplateData"], max_count)
+        tags = helpers.node_provider_tags(config, name)
         new_provider.create_node(node_cfg, tags, max_count)
 
     ec2_client_stub.assert_no_pending_responses()
