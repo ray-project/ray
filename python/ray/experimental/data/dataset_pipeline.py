@@ -6,6 +6,7 @@ import ray
 from ray.experimental.data.dataset import Dataset, T, U, BatchType
 from ray.experimental.data.impl.pipeline_executor import PipelineExecutor, \
     PipelineSplitExecutorCoordinator
+from ray.experimental.data.impl import progress_bar
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -26,7 +27,8 @@ class DatasetPipeline(Generic[T]):
             self,
             base_iterator: Iterator[Callable[[], Dataset[T]]],
             stage_transforms: List[Callable[[Dataset[T]], Dataset[U]]] = None,
-            length: int = None):
+            length: int = None,
+            progress_bars: bool = progress_bar._enabled):
         """Construct a DatasetPipeline (internal API).
 
         The constructor is not part of the DatasetPipeline API. Use the
@@ -36,6 +38,7 @@ class DatasetPipeline(Generic[T]):
         self._base_iterator = base_iterator
         self._stage_transforms = stage_transforms or []
         self._length = length
+        self._progress_bars = progress_bars
 
     def iter_batches(self,
                      prefetch_blocks: int = 0,
@@ -56,7 +59,8 @@ class DatasetPipeline(Generic[T]):
     def foreach_dataset(self, fn: Callable[[Dataset[T]], Dataset[U]]
                         ) -> "DatasetPipeline[U]":
         return DatasetPipeline(self._base_iterator,
-                               self._stage_transforms + [fn], self._length)
+                               self._stage_transforms + [fn], self._length,
+                               self._progress_bars)
 
     def split(self, n: int,
               locality_hints: List[Any] = None) -> List["DatasetPipeline[T]"]:
@@ -66,21 +70,35 @@ class DatasetPipeline(Generic[T]):
         class SplitIterator:
             def __init__(self, split_index):
                 self.split_index = split_index
+                self.warn_threshold = 100
+                self.wait_delay_s = 0.1
 
             def __next__(self):
                 ds = None
+                tries = 0
                 while ds is None:
                     ds = ray.get(
                         coordinator.next_dataset_if_ready.remote(
                             self.split_index))
                     # Wait for other shards to catch up reading.
                     if not ds:
-                        time.sleep(.1)
-                return ds
+                        time.sleep(self.wait_delay_s)
+                        tries += 1
+                    if tries > self.warn_threshold:
+                        print("Warning: shard {} of the pipeline has been "
+                              "stalled more than {}s waiting for other shards "
+                              "to catch up.".format(
+                                  self.split_index,
+                                  self.wait_delay_s * self.warn_threshold))
+                        self.warn_threshold *= 2
+                return lambda: ds
 
         splits = []
         for i in range(n):
-            splits.append(DatasetPipeline(SplitIterator(i)))
+            # Disable progress bars for the split readers since they would
+            # overwhelm the console.
+            splits.append(
+                DatasetPipeline(SplitIterator(i), progress_bars=False))
 
         return splits
 

@@ -25,11 +25,16 @@ class PipelineExecutor:
         self._stages: List[ObjectRef[Dataset[
             Any]]] = [None] * (len(self._pipeline._stage_transforms) + 1)
         self._stages[0] = do.remote(next(self._pipeline._base_iterator))
-        self._bars = [
-            ProgressBar(
-                "Stage {}".format(i), self._pipeline._length or 1, position=i)
-            for i in range(len(self._stages))
-        ]
+
+        if self._pipeline._progress_bars:
+            self._bars = [
+                ProgressBar(
+                    "Stage {}".format(i),
+                    self._pipeline._length or 1,
+                    position=i) for i in range(len(self._stages))
+            ]
+        else:
+            self._bars = None
 
     def __iter__(self):
         return self
@@ -58,7 +63,8 @@ class PipelineExecutor:
 
                 # Bubble.
                 result = ray.get(self._stages[i])
-                self._bars[i].update(1)
+                if self._bars:
+                    self._bars[i].update(1)
                 self._stages[i] = None
                 if is_last:
                     output = result
