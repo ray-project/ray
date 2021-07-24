@@ -61,6 +61,11 @@ class Dataset(Generic[T]):
     """
 
     def __init__(self, blocks: BlockList[T]):
+        """Construct a Dataset (internal API).
+
+        The constructor is not part of the Dataset API. Please use the
+        ``ray.data.*`` read methods to construct a dataset instead.
+        """
         self._blocks: BlockList[T] = blocks
         assert isinstance(self._blocks, BlockList), self._blocks
 

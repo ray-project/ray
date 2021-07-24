@@ -24,6 +24,12 @@ class DatasetPipeline(Generic[T]):
             base_iterator: Iterator[Callable[[], Dataset[T]]],
             stage_transforms: List[Callable[[Dataset[T]], Dataset[U]]] = None,
             length: int = None):
+        """Construct a DatasetPipeline (internal API).
+
+        The constructor is not part of the DatasetPipeline API. Please use the
+        ``Dataset.repeat()`` and ``Dataset.pipeline()`` methods to construct a
+        pipeline instead.
+        """
         self._base_iterator = base_iterator
         self._stage_transforms = stage_transforms or []
         self._length = length
