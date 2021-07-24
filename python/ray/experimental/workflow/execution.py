@@ -125,8 +125,11 @@ def list_all(status_filter: Set[WorkflowStatus]
     return ret
 
 
-def resume_all() -> List[Tuple[str, ray.ObjectRef]]:
-    all_failed = list_all({WorkflowStatus.RESUMABLE})
+def resume_all(with_failed: bool) -> List[Tuple[str, ray.ObjectRef]]:
+    filter_set = {WorkflowStatus.RESUMABLE}
+    if with_failed:
+        filter_set.add(WorkflowStatus.FAILED)
+    all_failed = list_all(filter_set)
     try:
         workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
     except Exception as e:
