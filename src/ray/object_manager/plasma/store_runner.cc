@@ -26,7 +26,7 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
     RAY_LOG(FATAL) << "please specify the amount of system memory with -m switch";
   }
   // Set system memory capacity
-  PlasmaAllocator::SetFootprintLimit(static_cast<size_t>(system_memory));
+  PlasmaAllocator::GetInstance().SetFootprintLimit(static_cast<size_t>(system_memory));
   RAY_LOG(INFO) << "Allowing the Plasma store to use up to "
                 << static_cast<double>(system_memory) / 1000000000 << "GB of memory.";
   if (hugepages_enabled && plasma_directory.empty()) {
@@ -97,13 +97,14 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
     // large amount of space up front. According to the documentation,
     // dlmalloc might need up to 128*sizeof(size_t) bytes for internal
     // bookkeeping.
-    void *pointer = PlasmaAllocator::Memalign(
-        kBlockSize, PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
-    RAY_CHECK(pointer != nullptr);
+    // TODO(scv119): this leaks details of PlasmaAlloctor,
+    // should be part of PlasmaAllocator contruction.
+    auto allocation = PlasmaAllocator::GetInstance().Allocate(
+        PlasmaAllocator::GetInstance().GetFootprintLimit() - 256 * sizeof(size_t));
+    RAY_CHECK(allocation.has_value());
     // This will unmap the file, but the next one created will be as large
     // as this one (this is an implementation detail of dlmalloc).
-    PlasmaAllocator::Free(pointer,
-                          PlasmaAllocator::GetFootprintLimit() - 256 * sizeof(size_t));
+    PlasmaAllocator::GetInstance().Free(allocation.value());
 
     store_->Start();
   }

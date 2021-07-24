@@ -19,53 +19,70 @@
 
 #include <cstddef>
 #include <cstdint>
+#include "ray/object_manager/plasma/allocator.h"
 
 namespace plasma {
 
-class PlasmaAllocator {
+// PlasmaAllocator that allocates memory from mmaped file to
+// enable memory sharing between processes.
+//
+// PlasmaAllocator is optimized for linux. On linux,
+// the Allocate call allocates memory from a pre-mmap file
+// from /dev/shm. On other system, it allocates memory from
+// a pre-mmap file on disk.
+//
+// The FallbackAllocate always allocates memory from a disk
+// based mmap file.
+class PlasmaAllocator : public IAllocator {
  public:
-  /// Allocates size bytes and returns a pointer to the allocated memory. The
-  /// memory address will be a multiple of alignment, which must be a power of two.
-  ///
-  /// \param alignment Memory alignment.
-  /// \param bytes Number of bytes.
-  /// \return Pointer to allocated memory.
-  static void *Memalign(size_t alignment, size_t bytes);
+  /// PlasmaAllocator can only be created once per process.
+  /// This is because it uses dlmalloc to allocate memory under the hood,
+  /// whose metadata is a global state(singleton).
+  static PlasmaAllocator &GetInstance();
 
-  // Same as MemAlign, but allocates pages from the filesystem. The footprint limit
-  // is not enforced for these allocations, but allocations here are still tracked
-  // and count towards the limit.
-  static void *DiskMemalignUnlimited(size_t alignment, size_t bytes);
+  /// On linux, it allocates memory from a pre-mmaped file from /dev/shm.
+  /// On other system, it allocates memory from a pre-mmaped file on disk.
+  /// return null if running out of space.
+  ///
+  /// \param bytes Number of bytes.
+  /// \return allocated memory. returns empty if not enough space.
+  absl::optional<Allocation> Allocate(size_t bytes) override;
+
+  /// Fallback allocate memory from disk mmaped file.
+  /// On linux with fallocate support, it returns null if running out of
+  /// space; On linux without fallocate it raises SIGBUS interrupt.
+  /// TODO(scv119): On other system the behavior is undefined.
+  ///
+  /// \param bytes Number of bytes.
+  /// \return allocated memory. returns empty if not enough space.
+  absl::optional<Allocation> FallbackAllocate(size_t bytes) override;
 
   /// Frees the memory space pointed to by mem, which must have been returned by
-  /// a previous call to Memalign()
+  /// a previous call to Allocate/FallbackAllocate or it yield undefined behavior.
   ///
-  /// \param mem Pointer to memory to free.
-  /// \param bytes Number of bytes to be freed.
-  static void Free(void *mem, size_t bytes);
+  /// \param allocation allocation to free.
+  void Free(const Allocation &allocation) override;
 
-  /// Sets the memory footprint limit for Plasma.
-  ///
-  /// \param bytes Plasma memory footprint limit in bytes.
-  static void SetFootprintLimit(size_t bytes);
+  /// Sets the memory footprint limit for this allocator.
+  void SetFootprintLimit(size_t bytes) override;
 
-  /// Get the memory footprint limit for Plasma.
-  ///
-  /// \return Plasma memory footprint limit in bytes.
-  static int64_t GetFootprintLimit();
+  /// Get the memory footprint limit for this allocator.
+  int64_t GetFootprintLimit() const override;
 
-  /// Get the number of bytes allocated by Plasma so far.
-  /// \return Number of bytes allocated by Plasma so far.
-  static int64_t Allocated();
+  /// Get the number of bytes allocated so far.
+  int64_t Allocated() const override;
 
-  /// Get the number of bytes fallback allocated by Plasma so far.
-  /// \return Number of bytes fallback allocated by Plasma so far.
-  static int64_t FallbackAllocated();
+  /// Get the number of bytes fallback allocated so far.
+  int64_t FallbackAllocated() const override;
 
  private:
-  static int64_t allocated_;
-  static int64_t fallback_allocated_;
-  static int64_t footprint_limit_;
+  explicit PlasmaAllocator(size_t alignment);
+
+ private:
+  const size_t kAlignment;
+  int64_t allocated_;
+  int64_t fallback_allocated_;
+  int64_t footprint_limit_;
 };
 
 }  // namespace plasma
