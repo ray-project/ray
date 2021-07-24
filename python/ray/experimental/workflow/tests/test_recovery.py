@@ -120,8 +120,8 @@ if __name__ == "__main__":
 def test_recovery_cluster_failure(reset_workflow, tmp_path):
     subprocess.check_call(["ray", "start", "--head"])
     time.sleep(1)
-    proc = run_string_as_driver_nonblocking(driver_script.format(
-        tmp_path=str(tmp_path)))
+    proc = run_string_as_driver_nonblocking(
+        driver_script.format(tmp_path=str(tmp_path)))
     time.sleep(10)
     subprocess.check_call(["ray", "stop"])
     proc.kill()
@@ -133,7 +133,6 @@ def test_recovery_cluster_failure(reset_workflow, tmp_path):
 
 
 def test_recovery_cluster_failure_resume_all(reset_workflow, tmp_path):
-    from pathlib import Path
     tmp_path = tmp_path
     subprocess.check_call(["ray", "start", "--head"])
     time.sleep(1)

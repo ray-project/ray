@@ -2,7 +2,6 @@ import pytest
 import ray
 from ray.experimental import workflow
 from filelock import FileLock
-from ray.test_utils import run_string_as_driver
 
 
 def test_workflow_manager_simple(workflow_start_regular):
