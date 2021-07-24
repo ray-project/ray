@@ -511,12 +511,10 @@ class GCPTPU(GCPResource):
         })
 
         if "networkConfig" not in config:
-            config.update({
-                # this is required for SSH to work, per google documentation
-                "networkConfig": {
-                    "enableExternalIps": True
-                }
-            })
+            config["networkConfig"] = {}
+        if "enableExternalIps" not in config["networkConfig"]:
+            # this is required for SSH to work, per google documentation
+            config["networkConfig"]["enableExternalIps"] = True
 
         operation = self.resource.projects().locations().nodes().create(
             parent=self.path,
