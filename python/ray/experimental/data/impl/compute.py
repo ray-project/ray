@@ -22,6 +22,7 @@ class ComputeStrategy:
 # Remote version of wrapped_fn, lazily initialized to avoid circular import.
 _remote_fn = None
 
+
 def wrapped_fn(block: Block, meta: BlockMetadata, fn: Any):
     new_block = fn(block)
     accessor = BlockAccessor.for_block(new_block)
