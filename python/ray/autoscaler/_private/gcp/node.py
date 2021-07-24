@@ -508,11 +508,15 @@ class GCPTPU(GCPResource):
         config.update({
             "labels": dict(labels,
                            **{TAG_RAY_CLUSTER_NAME: self.cluster_name}),
-            # this is required for SSH to work, per google documentation
-            "networkConfig": {
-                "enableExternalIps": True
-            }
         })
+
+        if "networkConfig" not in config:
+            config.update({
+                # this is required for SSH to work, per google documentation
+                "networkConfig": {
+                    "enableExternalIps": True
+                }
+            })
 
         operation = self.resource.projects().locations().nodes().create(
             parent=self.path,
