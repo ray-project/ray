@@ -69,6 +69,7 @@ def deploy_replicas(num_replicas, max_batch_size):
     deployment_handle = Echo.deploy()
     return deployment_handle
 
+
 def save_results(final_result, default_name):
     test_output_json = os.environ.get(
         "TEST_OUTPUT_JSON", "/tmp/single_deployment_1k_noop_replica.json")
@@ -121,12 +122,17 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
     # TODO:(jiaodong) What's the best number to use here ?
     num_connections = int(num_replicas * DEFAULT_MAX_BATCH_SIZE * 0.75)
     all_endpoints = list(serve.list_endpoints().keys())
+<<<<<<< HEAD
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
         trial_length,
         num_connections,
         http_host,
         http_port,
         all_endpoints=all_endpoints)
+=======
+    all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(trial_length, num_connections, http_host,
+                                                       http_port, all_endpoints=all_endpoints)
+>>>>>>> 97756611c (both multi and single working locally)
 
     aggregated_metrics = aggregate_all_metrics(all_metrics)
     logger.info("Wrk stdout on each node: ")
@@ -136,8 +142,12 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
     for key, val in aggregated_metrics.items():
         logger.info(f"{key}: {val}")
     save_test_results(
+<<<<<<< HEAD
         aggregated_metrics,
         default_output_file="/tmp/single_deployment_1k_noop_replica.json")
+=======
+        aggregated_metrics, default_output_file="/tmp/single_deployment_1k_noop_replica.json")
+>>>>>>> 97756611c (both multi and single working locally)
 
 
 if __name__ == "__main__":
