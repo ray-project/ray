@@ -87,7 +87,7 @@ class ActorPool(ComputeStrategy):
                     input_files=meta.input_files)
                 return new_block, new_metadata
 
-        if "num_cpus" not in remote_args:
+        if not remote_args:
             remote_args["num_cpus"] = 1
         Worker = ray.remote(**remote_args)(Worker)
 

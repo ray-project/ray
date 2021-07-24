@@ -1,8 +1,11 @@
 import functools
+import time
 from typing import Any, Callable, List, Iterator, Generic, Union, TYPE_CHECKING
 
+import ray
 from ray.experimental.data.dataset import Dataset, T, U, BatchType
-from ray.experimental.data.impl.pipeline_executor import PipelineExecutor
+from ray.experimental.data.impl.pipeline_executor import PipelineExecutor, \
+    PipelineSplitExecutorCoordinator
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -57,9 +60,29 @@ class DatasetPipeline(Generic[T]):
 
     def split(self, n: int,
               locality_hints: List[Any] = None) -> List["DatasetPipeline[T]"]:
-        # TODO(ekl) implement this in the next PR. We'll need some kind of
-        # coordinator actor to make this work.
-        raise NotImplementedError
+        coordinator = PipelineSplitExecutorCoordinator.remote(
+            self, n, locality_hints)
+
+        class SplitIterator:
+            def __init__(self, split_index):
+                self.split_index = split_index
+
+            def __next__(self):
+                ds = None
+                while ds is None:
+                    ds = ray.get(
+                        coordinator.next_dataset_if_ready.remote(
+                            self.split_index))
+                    # Wait for other shards to catch up reading.
+                    if not ds:
+                        time.sleep(.1)
+                return ds
+
+        splits = []
+        for i in range(n):
+            splits.append(DatasetPipeline(SplitIterator(i)))
+
+        return splits
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         return next(self.iter_datasets()).schema()

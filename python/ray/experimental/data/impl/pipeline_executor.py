@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, TYPE_CHECKING
+from typing import Any, Callable, List, Optional, TYPE_CHECKING
 
 import ray
 from ray.experimental.data.dataset import Dataset, T
@@ -75,3 +75,24 @@ class PipelineExecutor:
                     pass
 
         return output
+
+
+@ray.remote
+class PipelineSplitExecutorCoordinator:
+    def __init__(self, pipeline: "DatasetPipeline[T]", n: int,
+                 locality_hints: List[Any]):
+        self.executor = PipelineExecutor(pipeline)
+        self.n = n
+        self.locality_hints = locality_hints
+        self.cur_splits = [None] * self.n
+
+    def next_dataset_if_ready(self, split_index: int) -> Optional[Dataset[T]]:
+        # Pull the next dataset once all splits are fully consumed.
+        if all(s is None for s in self.cur_splits):
+            ds = next(self.executor)
+            self.cur_splits = ds.split(self.n, self.locality_hints)
+
+        # Return the dataset at the split index once per split.
+        ret = self.cur_splits[split_index]
+        self.cur_splits[split_index] = None
+        return ret
