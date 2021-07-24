@@ -29,8 +29,6 @@ import click
 import math
 import os
 import random
-import requests
-import time
 
 from ray import serve
 from ray.serve.utils import logger
@@ -65,6 +63,7 @@ DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 def setup_multi_deployment_replicas(num_replicas, num_deployments):
     num_replica_per_deployment = num_replicas // num_deployments
     all_deployment_names = [f"Echo_{i+1}" for i in range(num_deployments)]
+
     @serve.deployment(num_replicas=num_replica_per_deployment)
     class Echo:
         def __init__(self):

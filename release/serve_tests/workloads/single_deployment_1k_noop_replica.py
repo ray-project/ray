@@ -24,12 +24,10 @@ Report:
     cluster_max_P99_latency_ms
 """
 
-from logging import shutdown
 import click
 import json
 import math
 import os
-import pprint 
 
 from ray import serve
 from ray.serve.utils import logger
