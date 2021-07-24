@@ -254,7 +254,11 @@ def run_wrk_on_all_nodes(trial_length: str,
                          http_port: str,
                          all_endpoints: List[str] = None):
     """
+<<<<<<< HEAD
     Use ray task to run one wrk trial on each node alive, picked randomly
+=======
+    Use ray task to run one wrk trial on each node alive, picked randomly 
+>>>>>>> f1dd93c07 (make functions cleaner)
     from all available deployments.
 
     Returns:
