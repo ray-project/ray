@@ -83,12 +83,13 @@ class Dataset(Generic[T]):
 
         return DatasetPipeline(Iterator(self), length=times)
 
-    def pipeline(self, blocks_per_stage: int = 10) -> "DatasetPipeline[T]":
+    def pipeline(self,
+                 per_stage_parallelism: int = 10) -> "DatasetPipeline[T]":
         from ray.experimental.data.dataset_pipeline import DatasetPipeline
 
         class Iterator:
             def __init__(self, blocks):
-                self._splits = blocks.split(split_size=blocks_per_stage)
+                self._splits = blocks.split(split_size=per_stage_parallelism)
                 self._i = 0
 
             def __next__(self) -> "Dataset[T]":

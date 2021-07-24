@@ -5,6 +5,7 @@ ray.init(num_gpus=2)
 
 ds = ray.experimental.data.from_items(range(10))
 
+
 def preprocess(x):
     import time
     time.sleep(.1)
@@ -16,7 +17,7 @@ class Model:
         time.sleep(.1)
         return x
 
-ds = ds.repeat(10) \
+ds = ds.repeat() \
     .map(preprocess) \
     .map(Model, compute="actors", num_gpus=1)
 

@@ -3,7 +3,8 @@ from typing import Any, Callable, List, Iterator, Generic, Union, TYPE_CHECKING
 
 import ray
 from ray.experimental.data.dataset import Dataset, T, U, BatchType
-from ray.experimental.data.impl.progress_bar import ProgressBar
+from ray.experimental.data.impl.progress_bar import ProgressBar, \
+    set_progress_bars
 from ray.util.annotations import PublicAPI
 from ray.types import ObjectRef
 
@@ -46,7 +47,11 @@ class DatasetPipeline(Generic[T]):
     def iter_datasets(self) -> Iterator[Dataset[T]]:
         @ray.remote
         def do(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
-            return fn()
+            try:
+                prev = set_progress_bars(False)
+                return fn()
+            finally:
+                set_progress_bars(prev)
 
         class PipelineExecutor:
             def __init__(self, pipeline: DatasetPipeline[T]):
@@ -56,8 +61,10 @@ class DatasetPipeline(Generic[T]):
                 self._stages[0] = do.remote(
                     next(self._pipeline._base_iterator))
                 self._bars = [
-                    ProgressBar("Stage {}".format(i), self._pipeline._length or 1, position=i)
-                    for i in range(len(self._stages))
+                    ProgressBar(
+                        "Stage {}".format(i),
+                        self._pipeline._length or 1,
+                        position=i) for i in range(len(self._stages))
                 ]
 
             def __iter__(self):
@@ -112,8 +119,7 @@ class DatasetPipeline(Generic[T]):
     def foreach_dataset(self, fn: Callable[[Dataset[T]], Dataset[U]]
                         ) -> "DatasetPipeline[U]":
         return DatasetPipeline(self._base_iterator,
-                               self._stage_transforms + [fn],
-                               self._length)
+                               self._stage_transforms + [fn], self._length)
 
     def split(self, n: int,
               locality_hints: List[Any] = None) -> List["DatasetPipeline[T]"]:
