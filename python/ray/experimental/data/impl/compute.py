@@ -19,11 +19,11 @@ class ComputeStrategy:
         raise NotImplementedError
 
 
-# Remote version of wrapped_fn, lazily initialized to avoid circular import.
-_remote_fn = None
+# Remote version of dataset_apply, lazily initialized to avoid circular import.
+_remote_apply = None
 
 
-def wrapped_fn(block: Block, meta: BlockMetadata, fn: Any):
+def dataset_apply(block: Block, meta: BlockMetadata, fn: Any):
     new_block = fn(block)
     accessor = BlockAccessor.for_block(new_block)
     new_meta = BlockMetadata(
@@ -43,12 +43,12 @@ class TaskPool(ComputeStrategy):
         kwargs["num_returns"] = 2
 
         # Lazy init to avoid circular import.
-        global _remote_fn
-        if _remote_fn is None:
-            _remote_fn = ray.remote(wrapped_fn)
+        global _remote_apply
+        if _remote_apply is None:
+            _remote_apply = ray.remote(dataset_apply)
 
         refs = [
-            _remote_fn.options(**kwargs).remote(b, m, fn)
+            _remote_apply.options(**kwargs).remote(b, m, fn)
             for b, m in zip(blocks, blocks.get_metadata())
         ]
         new_blocks, new_metadata = zip(*refs)
@@ -71,7 +71,7 @@ class ActorPool(ComputeStrategy):
 
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
-        class Worker:
+        class DatasetWorker:
             def ready(self):
                 return "ok"
 
@@ -89,9 +89,9 @@ class ActorPool(ComputeStrategy):
 
         if not remote_args:
             remote_args["num_cpus"] = 1
-        Worker = ray.remote(**remote_args)(Worker)
+        DatasetWorker = ray.remote(**remote_args)(DatasetWorker)
 
-        self.workers = [Worker.remote()]
+        self.workers = [DatasetWorker.remote()]
         metadata_mapping = {}
         tasks = {w.ready.remote(): w for w in self.workers}
         ready_workers = set()
@@ -103,7 +103,7 @@ class ActorPool(ComputeStrategy):
                 list(tasks), timeout=0.01, num_returns=1, fetch_local=False)
             if not ready:
                 if len(ready_workers) / len(self.workers) > 0.8:
-                    w = Worker.remote()
+                    w = DatasetWorker.remote()
                     self.workers.append(w)
                     tasks[w.ready.remote()] = w
                     map_bar.set_description(
