@@ -43,7 +43,6 @@ class DatasetPipeline(Generic[T]):
     def iter_datasets(self) -> Iterator[Dataset[T]]:
         @ray.remote
         def do(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
-#            print("EXECUTE DO", fn)
             return fn()
 
         class PipelineExecutor:
@@ -83,19 +82,15 @@ class DatasetPipeline(Generic[T]):
 
                         # Bubble.
                         result = ray.get(self._stages[i])
-#                        print("RESULT", result)
                         self._stages[i] = None
                         if is_last:
-#                            print("RETURNING OUTPUT", output)
                             output = result
                         else:
                             fn = self._pipeline._stage_transforms[i]
-#                            print("Executing transform", i)
                             self._stages[i + 1] = do.remote(lambda: fn(result))
 
                     # Pull a new element for the initial slot if possible.
                     if self._stages[0] is None:
-#                        print("Pulling new element")
                         try:
                             self._stages[0] = do.remote(
                                 next(self._pipeline._base_iterator))

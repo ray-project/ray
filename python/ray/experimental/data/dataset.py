@@ -94,7 +94,7 @@ class Dataset(Generic[T]):
             def __next__(self) -> "Dataset[T]":
                 if self._i >= len(self._splits):
                     raise StopIteration
-                result = lambda: Dataset(self._splits[self._i])
+                result = Dataset(self._splits[self._i])
                 self._i += 1
                 return result
 
