@@ -449,6 +449,27 @@ class Dataset(Generic[T]):
             for actor in locality_hints
         ]
 
+    def random_shuffle(self, seed: int = None) -> "Dataset[T]":
+        """Randomly shuffle the elements of this dataset.
+
+        This is a blocking operation.
+
+        Examples:
+            >>> # Randomly shuffle this dataset with the given seed.
+            >>> ds.random_shuffle(seed=12345)
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            seed: Fix the random seed to use, otherwise one will be chosen
+                based on system randomness.
+
+        Returns:
+            The shuffled dataset.
+        """
+
+        raise NotImplementedError
+
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]],
              descending: bool = False) -> "Dataset[T]":
