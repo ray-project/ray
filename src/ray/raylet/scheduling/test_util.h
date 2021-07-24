@@ -2,7 +2,6 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 
-
 namespace ray {
 
 namespace raylet {
