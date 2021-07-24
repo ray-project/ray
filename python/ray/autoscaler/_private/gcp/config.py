@@ -152,6 +152,16 @@ def _has_tpus_in_node_configs(config: dict) -> bool:
     return any(get_node_type(node) == GCPNodeType.TPU for node in node_configs)
 
 
+def _is_head_node_a_tpu(config: dict) -> bool:
+    """Check if the head node is a TPU."""
+    node_configs = {
+        node_id: node_type["node_config"]
+        for node_id, node_type in config["available_node_types"].items()
+    }
+    return get_node_type(
+        node_configs[config["head_node_type"]]) == GCPNodeType.TPU
+
+
 def _create_crm(gcp_credentials=None):
     return discovery.build(
         "cloudresourcemanager",
@@ -243,6 +253,10 @@ def bootstrap_gcp(config):
     # insert that information into the provider config
     if _has_tpus_in_node_configs(config):
         config["provider"][HAS_TPU_PROVIDER_FIELD] = True
+
+        # We can't run autoscaling through a serviceAccount on TPUs (atm)
+        if _is_head_node_a_tpu(config):
+            raise RuntimeError("TPUs are not supported as head nodes.")
 
     crm, iam, compute, tpu = \
         construct_clients_from_provider_config(config["provider"])
