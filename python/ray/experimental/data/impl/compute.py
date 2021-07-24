@@ -22,7 +22,7 @@ class ComputeStrategy:
 class TaskPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
               blocks: BlockList[Any]) -> BlockList[Any]:
-        map_bar = ProgressBar("Map Progress", total=len(blocks))
+#        map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         kwargs = remote_args.copy()
         kwargs["num_returns"] = 2
@@ -44,7 +44,7 @@ class TaskPool(ComputeStrategy):
         ]
         new_blocks, new_metadata = zip(*refs)
 
-        map_bar.block_until_complete(list(new_blocks))
+#        map_bar.block_until_complete(list(new_blocks))
         new_metadata = ray.get(list(new_metadata))
         return BlockList(list(new_blocks), list(new_metadata))
 
@@ -53,7 +53,7 @@ class ActorPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
               blocks: Iterable[Block]) -> Iterable[ObjectRef[Block]]:
 
-        map_bar = ProgressBar("Map Progress", total=len(blocks))
+#        map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         class Worker:
             def ready(self):
@@ -90,10 +90,10 @@ class ActorPool(ComputeStrategy):
                     w = Worker.remote()
                     workers.append(w)
                     tasks[w.ready.remote()] = w
-                    map_bar.set_description(
-                        "Map Progress ({} actors {} pending)".format(
-                            len(ready_workers),
-                            len(workers) - len(ready_workers)))
+#                    map_bar.set_description(
+#                        "Map Progress ({} actors {} pending)".format(
+#                            len(ready_workers),
+#                            len(workers) - len(ready_workers)))
                 continue
 
             [obj_id] = ready
@@ -103,7 +103,7 @@ class ActorPool(ComputeStrategy):
             # Process task result.
             if worker in ready_workers:
                 blocks_out.append(obj_id)
-                map_bar.update(1)
+#                map_bar.update(1)
             else:
                 ready_workers.add(worker)
 
@@ -115,7 +115,7 @@ class ActorPool(ComputeStrategy):
                 tasks[block_ref] = worker
 
         new_metadata = ray.get([metadata_mapping[b] for b in blocks_out])
-        map_bar.close()
+#        map_bar.close()
         return BlockList(blocks_out, new_metadata)
 
 

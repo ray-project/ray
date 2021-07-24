@@ -81,7 +81,7 @@ class Dataset(Generic[T]):
                 self._i += 1
                 return lambda: self._ds
 
-        return DatasetPipeline(Iterator(self))
+        return DatasetPipeline(Iterator(self), length=times)
 
     def pipeline(self, blocks_per_stage: int = 10) -> "DatasetPipeline[T]":
         from ray.experimental.data.dataset_pipeline import DatasetPipeline
@@ -98,7 +98,8 @@ class Dataset(Generic[T]):
                 self._i += 1
                 return result
 
-        return DatasetPipeline(Iterator(self._blocks))
+        it = Iterator(self._blocks)
+        return DatasetPipeline(it, length=len(it._splits))
 
     def map(self,
             fn: Union[CallableClass, Callable[[T], U]],

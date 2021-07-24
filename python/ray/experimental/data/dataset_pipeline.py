@@ -3,6 +3,7 @@ from typing import Any, Callable, List, Iterator, Generic, Union, TYPE_CHECKING
 
 import ray
 from ray.experimental.data.dataset import Dataset, T, U, BatchType
+from ray.experimental.data.impl.progress_bar import ProgressBar
 from ray.util.annotations import PublicAPI
 from ray.types import ObjectRef
 
@@ -23,9 +24,11 @@ class DatasetPipeline(Generic[T]):
     def __init__(
             self,
             base_iterator: Iterator[Callable[[], Dataset[T]]],
-            stage_transforms: List[Callable[[Dataset[T]], Dataset[U]]] = None):
+            stage_transforms: List[Callable[[Dataset[T]], Dataset[U]]] = None,
+            length: int = None):
         self._base_iterator = base_iterator
         self._stage_transforms = stage_transforms or []
+        self._length = length
 
     def iter_batches(self,
                      prefetch_blocks: int = 0,
@@ -52,6 +55,10 @@ class DatasetPipeline(Generic[T]):
                     len(self._pipeline._stage_transforms) + 1)
                 self._stages[0] = do.remote(
                     next(self._pipeline._base_iterator))
+                self._bars = [
+                    ProgressBar("Stage {}".format(i), self._pipeline._length or 1, position=i)
+                    for i in range(len(self._stages))
+                ]
 
             def __iter__(self):
                 return self
@@ -82,6 +89,7 @@ class DatasetPipeline(Generic[T]):
 
                         # Bubble.
                         result = ray.get(self._stages[i])
+                        self._bars[i].update(1)
                         self._stages[i] = None
                         if is_last:
                             output = result
@@ -104,7 +112,8 @@ class DatasetPipeline(Generic[T]):
     def foreach_dataset(self, fn: Callable[[Dataset[T]], Dataset[U]]
                         ) -> "DatasetPipeline[U]":
         return DatasetPipeline(self._base_iterator,
-                               self._stage_transforms + [fn])
+                               self._stage_transforms + [fn],
+                               self._length)
 
     def split(self, n: int,
               locality_hints: List[Any] = None) -> List["DatasetPipeline[T]"]:
