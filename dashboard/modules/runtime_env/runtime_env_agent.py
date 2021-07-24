@@ -31,23 +31,31 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         self._runtime_env_dir = dashboard_agent.runtime_env_dir
         self._setup = import_attr(dashboard_agent.runtime_env_setup_hook)
         self._logging_params = dashboard_agent.logging_params
-        self._logging_params["filename"] = "runtime_env_setup.log"
+        self._per_job_logger_cache = dict()
         runtime_env.PKG_DIR = dashboard_agent.runtime_env_dir
+
+    def get_or_create_logger(self, job_id):
+        if job_id not in self._per_job_logger_cache:
+            params = self._logging_params.copy()
+            params["filename"] = f"runtime_env_setup-{job_id}.log"
+            per_job_logger = setup_component_logger(
+                logger_name=f"runtime_env_{job_id}", **self._logging_params)
+            # Keep only the last rotated file handler we added
+            per_job_logger.handlers = [per_job_logger.handlers[-1]]
+            self._per_job_logger_cache[job_id] = per_job_logger
+        return self._per_job_logger_cache[job_id]
 
     async def CreateRuntimeEnv(self, request, context):
         async def _setup_runtime_env(serialized_runtime_env, session_dir):
             # This function will be ran inside a thread
             def run_setup_with_logger():
                 runtime_env: dict = json.loads(serialized_runtime_env or "{}")
-                logger = setup_component_logger(
-                    logger_name="runtime_env", **self._logging_params)
-                # Keep only the last rotated file handler we added
-                logger.handlers = [logger.handlers[-1]]
-                hook = StandardStreamInterceptor(logger)
+                per_job_logger = self.get_or_create_logger(request.job_id)
+                hook = StandardStreamInterceptor(per_job_logger)
                 with contextlib.redirect_stdout(hook), \
                       contextlib.redirect_stderr(hook):
                     print("begin setup with ", runtime_env)
-                    self._setup(runtime_env, session_dir)
+                    return self._setup(runtime_env, session_dir)
 
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(None, run_setup_with_logger)
