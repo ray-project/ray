@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 INSTANCE_NAME_MAX_LEN = 64
 INSTANCE_NAME_UUID_LEN = 8
 MAX_POLLS = 12
+# TPUs take a long while to respond, so we increase the MAX_POLLS
+# considerably - this probably could be smaller
+# TPU deletion uses MAX_POLLS
+MAX_POLLS_TPU = MAX_POLLS * 8
 POLL_INTERVAL = 5
 
 
@@ -172,7 +176,10 @@ class GCPResource(metaclass=abc.ABCMeta):
         self.cluster_name = cluster_name
 
     @abc.abstractmethod
-    def wait_for_operation(self, operation: dict) -> dict:
+    def wait_for_operation(self,
+                           operation: dict,
+                           max_polls: int = MAX_POLLS,
+                           poll_interval: int = POLL_INTERVAL) -> dict:
         """Waits a preset amount of time for operation to complete."""
         return None
 
@@ -247,12 +254,15 @@ class GCPResource(metaclass=abc.ABCMeta):
 class GCPCompute(GCPResource):
     """Abstraction around GCP compute resource"""
 
-    def wait_for_operation(self, operation: dict) -> dict:
+    def wait_for_operation(self,
+                           operation: dict,
+                           max_polls: int = MAX_POLLS,
+                           poll_interval: int = POLL_INTERVAL) -> dict:
         """Poll for compute zone operation until finished."""
         logger.info("wait_for_compute_zone_operation: "
                     f"Waiting for operation {operation['name']} to finish...")
 
-        for _ in range(MAX_POLLS):
+        for _ in range(max_polls):
             result = self.resource.zoneOperations().get(
                 project=self.project_id,
                 operation=operation["name"],
@@ -265,7 +275,7 @@ class GCPCompute(GCPResource):
                             f"Operation {operation['name']} finished.")
                 break
 
-            time.sleep(POLL_INTERVAL)
+            time.sleep(poll_interval)
 
         return result
 
@@ -400,14 +410,13 @@ class GCPTPU(GCPResource):
     def path(self):
         return f"projects/{self.project_id}/locations/{self.availability_zone}"
 
-    def wait_for_operation(self, operation: dict) -> dict:
+    def wait_for_operation(self,
+                           operation: dict,
+                           max_polls: int = MAX_POLLS_TPU,
+                           poll_interval: int = POLL_INTERVAL) -> dict:
         """Poll for TPU operation until finished."""
         logger.info("wait_for_tpu_zone_operation: "
                     f"Waiting for operation {operation['name']} to finish...")
-
-        # TPUs take a long while to start, so we increase the MAX_POLLS
-        # considerably - this probably could be smaller
-        max_polls = MAX_POLLS * 8
 
         for _ in range(max_polls):
             result = self.resource.projects().locations().operations().get(
@@ -420,7 +429,7 @@ class GCPTPU(GCPResource):
                             f"Operation {operation['name']} finished.")
                 break
 
-            time.sleep(POLL_INTERVAL)
+            time.sleep(poll_interval)
 
         return result
 
@@ -523,8 +532,9 @@ class GCPTPU(GCPResource):
         operation = self.resource.projects().locations().nodes().delete(
             name=node_id).execute()
 
+        # No need to increase MAX_POLLS for deletion
         if wait_for_operation:
-            result = self.wait_for_operation(operation)
+            result = self.wait_for_operation(operation, max_polls=MAX_POLLS)
         else:
             result = operation
 
