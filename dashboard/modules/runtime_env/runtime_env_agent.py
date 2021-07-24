@@ -1,6 +1,8 @@
 import asyncio
 import json
 import logging
+import contextlib
+from ray._private.ray_logging import StandardStreamInterceptor, setup_component_logger
 
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
@@ -28,15 +30,29 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         self._session_dir = dashboard_agent.session_dir
         self._runtime_env_dir = dashboard_agent.runtime_env_dir
         self._setup = import_attr(dashboard_agent.runtime_env_setup_hook)
+        self._logging_params = dashboard_agent.logging_params
+        self._logging_params["filename"] = "runtime_env_setup.log"
         runtime_env.PKG_DIR = dashboard_agent.runtime_env_dir
 
     async def CreateRuntimeEnv(self, request, context):
         async def _setup_runtime_env(serialized_runtime_env, session_dir):
-            loop = asyncio.get_event_loop()
-            runtime_env: dict = json.loads(serialized_runtime_env or "{}")
-            return await loop.run_in_executor(None, self._setup, runtime_env,
-                                              session_dir)
+            # This function will be ran inside a thread
+            def run_setup_with_logger():
+                runtime_env: dict = json.loads(serialized_runtime_env or "{}")
+                logger = setup_component_logger(
+                    logger_name="runtime_env", **self._logging_params)
+                # Keep only the last rotated file handler we added
+                logger.handlers = [logger.handlers[-1]]
+                hook = StandardStreamInterceptor(logger)
+                with contextlib.redirect_stdout(hook), \
+                      contextlib.redirect_stderr(hook):
+                    print("begin setup with ", runtime_env)
+                    self._setup(runtime_env, session_dir)
 
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, run_setup_with_logger)
+
+        # print(request.job_id)
         logger.info("Creating runtime env: %s.",
                     request.serialized_runtime_env)
         runtime_env_dict = json.loads(request.serialized_runtime_env or "{}")

@@ -28,8 +28,14 @@ def setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
-def setup_component_logger(*, logging_level, logging_format, log_dir, filename,
-                           max_bytes, backup_count):
+def setup_component_logger(*,
+                           logging_level,
+                           logging_format,
+                           log_dir,
+                           filename,
+                           max_bytes,
+                           backup_count,
+                           logger_name=""):
     """Configure the root logger that is used for Ray's python components.
 
     For example, it should be used for monitor, dashboard, and log monitor.
@@ -44,7 +50,7 @@ def setup_component_logger(*, logging_level, logging_format, log_dir, filename,
         backup_count(int): Same argument as RotatingFileHandler's backupCount.
     """
     # Get the root logger.
-    logger = logging.getLogger("")
+    logger = logging.getLogger(logger_name)
     if type(logging_level) is str:
         logging_level = logging.getLevelName(logging_level.upper())
     assert filename, "filename argument should not be None."
@@ -56,6 +62,7 @@ def setup_component_logger(*, logging_level, logging_format, log_dir, filename,
     logger.setLevel(logging_level)
     handler.setFormatter(logging.Formatter(logging_format))
     logger.addHandler(handler)
+    return logger
 
 
 """
