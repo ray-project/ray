@@ -3,7 +3,7 @@ from typing import Any, Callable, List, Iterator, Generic, Union, TYPE_CHECKING
 
 import ray
 from ray.experimental.data.dataset import Dataset, T, U, BatchType
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
@@ -47,7 +47,6 @@ class DatasetPipeline(Generic[T]):
 
         return gen_batches()
 
-    @DeveloperAPI
     def iter_datasets(self) -> Iterator[Dataset[T]]:
         @ray.remote
         def compute_single(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
@@ -79,7 +78,6 @@ class DatasetPipeline(Generic[T]):
 
         return gen_datasets()
 
-    @DeveloperAPI
     def foreach_dataset(self, fn: Callable[[Dataset[T]], Dataset[U]]
                         ) -> "DatasetPipeline[U]":
         def make_dataset_generator() -> Iterator[Callable[[], Dataset[U]]]:
