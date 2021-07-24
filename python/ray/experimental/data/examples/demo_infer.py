@@ -17,10 +17,10 @@ class Model:
         time.sleep(.1)
         return x
 
-ds = ds.repeat() \
+
+ds = ds.repeat(10) \
     .map(preprocess) \
     .map(Model, compute="actors", num_gpus=1)
 
-print(ds)
 for x in ds.iter_rows():
     pass
