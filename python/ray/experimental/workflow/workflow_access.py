@@ -224,12 +224,22 @@ class WorkflowManagementActor:
             An object reference that can be used to retrieve the
             workflow result.
         """
-        if workflow_id not in self._workflow_outputs:
-            raise ValueError(f"The output of workflow[id={workflow_id}] "
-                             "does not exist. The workflow is either failed "
-                             "or finished. Use 'workflow.resume()' to access "
-                             "the workflow result.")
-        return self._workflow_outputs[workflow_id]
+        if workflow_id in self._workflow_outputs:
+            return self._workflow_outputs[workflow_id]
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
+        meta = wf_store.load_workflow_meta()
+        if meta is None:
+            raise ValueError(f"No such workflow {workflow_id}")
+        if meta == common.WorkflowStatus.FAILED:
+            raise ValueError(f"Workflow {workflow_id} failed, please resume it")
+        output = recovery.resume_workflow_job.remote(workflow_id,
+                                                     self._store.storage_url)
+        self._workflow_outputs[workflow_id] = output
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
+        wf_store.save_workflow_meta(
+            common.WorkflowMetaData(common.WorkflowStatus.RUNNING))
+        self._step_status[workflow_id] = {}
+        return output
 
     def get_running_workflow(self) -> List[str]:
         return list(self._workflow_outputs.keys())

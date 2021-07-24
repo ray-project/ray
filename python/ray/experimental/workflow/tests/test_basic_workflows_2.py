@@ -53,6 +53,29 @@ def test_step_resources(workflow_start_regular, tmp_path):
     assert ray.get(obj) is None
 
 
+def test_get_output_1(workflow_start_regular, tmp_path):
+    @workflow.step
+    def simple(v):
+        return v
+
+    assert 0 == simple.step(0).run("simple")
+    assert 0 == ray.get(workflow.get_output("simple"))
+
+
+def test_get_output_2(workflow_start_regular, tmp_path):
+    lock_path = str(tmp_path / "lock")
+    lock = FileLock(lock_path)
+    @workflow.step
+    def simple(v):
+        with FileLock(lock_path):
+            return v
+    lock.acquire()
+    obj = simple.step(0).run_async("simple")
+    obj2 = workflow.get_output("simple")
+    lock.release()
+    assert ray.get([obj, obj2]) == [0, 0]
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
