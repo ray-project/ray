@@ -2,6 +2,7 @@ import pytest
 import ray
 from ray.experimental import workflow
 from filelock import FileLock
+from ray.test_utils import run_string_as_driver
 
 
 def test_workflow_manager_simple(workflow_start_regular):
@@ -86,7 +87,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     assert workflow.get_status("2") == workflow.CANCELED
 
     # Now resume_all
-    resumed = workflow.resume_all()
+    resumed = workflow.resume_all(include_failed=True)
     assert len(resumed) == 48
     lock.release()
     assert [ray.get(o) for (_, o) in resumed] == [100] * 48

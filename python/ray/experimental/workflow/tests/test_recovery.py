@@ -3,7 +3,7 @@ import time
 
 from ray.tests.conftest import *  # noqa
 import pytest
-
+from filelock import FileLock
 import ray
 from ray.test_utils import run_string_as_driver_nonblocking
 from ray.exceptions import RaySystemError
@@ -112,21 +112,61 @@ def foo(x):
 
 
 if __name__ == "__main__":
-    workflow.init()
+    workflow.init("{tmp_path}")
     assert foo.step(0).run(workflow_id="cluster_failure") == 20
 """
 
 
-def test_recovery_cluster_failure(reset_workflow):
+def test_recovery_cluster_failure(reset_workflow, tmp_path):
     subprocess.check_call(["ray", "start", "--head"])
     time.sleep(1)
+    proc = run_string_as_driver_nonblocking(driver_script.format(
+        tmp_path=str(tmp_path)))
+    time.sleep(10)
+    subprocess.check_call(["ray", "stop"])
+    proc.kill()
+    time.sleep(1)
+    workflow.init(str(tmp_path))
+    assert ray.get(workflow.resume("cluster_failure")) == 20
+    workflow.storage.set_global_storage(None)
+    ray.shutdown()
+
+
+def test_recovery_cluster_failure_resume_all(reset_workflow, tmp_path):
+    from pathlib import Path
+    tmp_path = tmp_path
+    subprocess.check_call(["ray", "start", "--head"])
+    time.sleep(1)
+    workflow_dir = tmp_path / "workflow"
+    lock_file = tmp_path / "lock_file"
+    driver_script = f"""
+import time
+from ray.experimental import workflow
+from filelock import FileLock
+@workflow.step
+def foo(x):
+    with FileLock("{str(lock_file)}"):
+        return 20
+
+if __name__ == "__main__":
+    workflow.init("{str(workflow_dir)}")
+    assert foo.step(0).run(workflow_id="cluster_failure") == 20
+"""
+    lock = FileLock(lock_file)
+    lock.acquire()
+
     proc = run_string_as_driver_nonblocking(driver_script)
     time.sleep(10)
     subprocess.check_call(["ray", "stop"])
     proc.kill()
     time.sleep(1)
-    workflow.init()
-    assert ray.get(workflow.resume("cluster_failure")) == 20
+    lock.release()
+    workflow.init(str(workflow_dir))
+    resumed = workflow.resume_all()
+    assert len(resumed) == 1
+    (wid, obj_ref) = resumed[0]
+    assert wid == "cluster_failure"
+    assert ray.get(obj_ref) == 20
     workflow.storage.set_global_storage(None)
     ray.shutdown()
 
