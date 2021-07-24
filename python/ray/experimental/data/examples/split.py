@@ -2,7 +2,8 @@ import ray
 
 ray.init(num_cpus=2)
 
-#ray.data.set_progress_bars(False)
+# ray.data.set_progress_bars(False)
+
 
 @ray.remote
 def consume(name, split):

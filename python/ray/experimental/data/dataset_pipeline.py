@@ -105,6 +105,20 @@ class DatasetPipeline(Generic[T]):
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         return next(self.iter_datasets()).schema()
 
+    def count(self) -> int:
+        pipe = self.map_batches(lambda batch: [len(batch)])
+        total = 0
+        for elem in pipe.iter_rows():
+            total += elem
+        return total
+
+    def sum(self) -> int:
+        pipe = self.map_batches(lambda batch: [batch.sum()[0]])
+        total = 0
+        for elem in pipe.iter_rows():
+            total += elem
+        return total
+
     # TODO(ekl) add write APIs (need to assign uuids to avoid name conflicts)
 
 
