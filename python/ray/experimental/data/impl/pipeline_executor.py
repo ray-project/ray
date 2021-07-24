@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 
 @ray.remote
-def do(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
+def pipeline_stage(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
     try:
         prev = set_progress_bars(False)
         return fn()
@@ -24,7 +24,8 @@ class PipelineExecutor:
         self._pipeline: "DatasetPipeline[T]" = pipeline
         self._stages: List[ObjectRef[Dataset[
             Any]]] = [None] * (len(self._pipeline._stage_transforms) + 1)
-        self._stages[0] = do.remote(next(self._pipeline._base_iterator))
+        self._stages[0] = pipeline_stage.remote(
+            next(self._pipeline._base_iterator))
 
         if self._pipeline._progress_bars:
             self._bars = [
@@ -70,12 +71,13 @@ class PipelineExecutor:
                     output = result
                 else:
                     fn = self._pipeline._stage_transforms[i]
-                    self._stages[i + 1] = do.remote(lambda: fn(result))
+                    self._stages[i +
+                                 1] = pipeline_stage.remote(lambda: fn(result))
 
             # Pull a new element for the initial slot if possible.
             if self._stages[0] is None:
                 try:
-                    self._stages[0] = do.remote(
+                    self._stages[0] = pipeline_stage.remote(
                         next(self._pipeline._base_iterator))
                 except StopIteration:
                     pass
