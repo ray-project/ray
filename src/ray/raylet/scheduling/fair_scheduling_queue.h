@@ -85,6 +85,8 @@ class FairSchedulingQueue {
   internal::SchedulingPriorityComparator comparator_;
   /// The set of work queues ordered by priority.
   internal::WorkQueueType work_queue_;
+
+  friend class FairSchedulingQueueTest;
 };
 
 }  // namespace raylet
