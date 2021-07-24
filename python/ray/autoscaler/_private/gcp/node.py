@@ -415,7 +415,7 @@ class GCPTPU(GCPResource):
                            max_polls: int = MAX_POLLS_TPU,
                            poll_interval: int = POLL_INTERVAL) -> dict:
         """Poll for TPU operation until finished."""
-        logger.info("wait_for_tpu_zone_operation: "
+        logger.info("wait_for_tpu_operation: "
                     f"Waiting for operation {operation['name']} to finish...")
 
         for _ in range(max_polls):
@@ -425,7 +425,7 @@ class GCPTPU(GCPResource):
                 raise Exception(result["error"])
 
             if "response" in result:
-                logger.info("wait_for_tpu_zone_operation: "
+                logger.info("wait_for_tpu_operation: "
                             f"Operation {operation['name']} finished.")
                 break
 
