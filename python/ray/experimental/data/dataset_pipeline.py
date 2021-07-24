@@ -26,9 +26,9 @@ class DatasetPipeline(Generic[T]):
             length: int = None):
         """Construct a DatasetPipeline (internal API).
 
-        The constructor is not part of the DatasetPipeline API. Please use the
+        The constructor is not part of the DatasetPipeline API. Use the
         ``Dataset.repeat()`` and ``Dataset.pipeline()`` methods to construct a
-        pipeline instead.
+        dataset pipeline.
         """
         self._base_iterator = base_iterator
         self._stage_transforms = stage_transforms or []
