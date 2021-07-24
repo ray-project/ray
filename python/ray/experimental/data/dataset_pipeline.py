@@ -64,10 +64,10 @@ class DatasetPipeline(Generic[T]):
                     if all(s is None for s in self._stages):
                         raise StopIteration
 
-                    # Wait for any completed stages. TODO(ekl) avoid fast loop
+                    # Wait for any completed stages.
                     pending = [s for s in self._stages if s is not None]
                     ready, _ = ray.wait(
-                        pending, timeout=0, num_returns=len(pending))
+                        pending, timeout=0.1, num_returns=len(pending))
 
                     # Bubble elements down the pipeline as they become ready.
                     for i in range(len(self._stages))[::-1]:
