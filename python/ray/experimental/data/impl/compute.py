@@ -19,11 +19,11 @@ class ComputeStrategy:
         raise NotImplementedError
 
 
-# Remote version of dataset_fn, lazily initialized to avoid circular import.
+# Remote version of map_block, lazily initialized to avoid circular import.
 _remote_fn = None
 
 
-def dataset_fn(block: Block, meta: BlockMetadata, fn: Any):
+def map_block(block: Block, meta: BlockMetadata, fn: Any):
     new_block = fn(block)
     accessor = BlockAccessor.for_block(new_block)
     new_meta = BlockMetadata(
@@ -45,7 +45,7 @@ class TaskPool(ComputeStrategy):
         # Lazy init to avoid circular import.
         global _remote_fn
         if _remote_fn is None:
-            _remote_fn = ray.remote(dataset_fn)
+            _remote_fn = ray.remote(map_block)
 
         refs = [
             _remote_fn.options(**kwargs).remote(b, m, fn)
@@ -71,7 +71,7 @@ class ActorPool(ComputeStrategy):
 
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
-        class DatasetWorker:
+        class BlockWorker:
             def ready(self):
                 return "ok"
 
@@ -89,9 +89,9 @@ class ActorPool(ComputeStrategy):
 
         if not remote_args:
             remote_args["num_cpus"] = 1
-        DatasetWorker = ray.remote(**remote_args)(DatasetWorker)
+        BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
-        self.workers = [DatasetWorker.remote()]
+        self.workers = [BlockWorker.remote()]
         metadata_mapping = {}
         tasks = {w.ready.remote(): w for w in self.workers}
         ready_workers = set()
@@ -103,7 +103,7 @@ class ActorPool(ComputeStrategy):
                 list(tasks), timeout=0.01, num_returns=1, fetch_local=False)
             if not ready:
                 if len(ready_workers) / len(self.workers) > 0.8:
-                    w = DatasetWorker.remote()
+                    w = BlockWorker.remote()
                     self.workers.append(w)
                     tasks[w.ready.remote()] = w
                     map_bar.set_description(
