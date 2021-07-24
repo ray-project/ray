@@ -231,7 +231,8 @@ class WorkflowManagementActor:
         if meta is None:
             raise ValueError(f"No such workflow {workflow_id}")
         if meta == common.WorkflowStatus.FAILED:
-            raise ValueError(f"Workflow {workflow_id} failed, please resume it")
+            raise ValueError(
+                f"Workflow {workflow_id} failed, please resume it")
         output = recovery.resume_workflow_job.remote(workflow_id,
                                                      self._store.storage_url)
         self._workflow_outputs[workflow_id] = output

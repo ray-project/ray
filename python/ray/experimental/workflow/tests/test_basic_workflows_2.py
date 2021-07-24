@@ -65,10 +65,12 @@ def test_get_output_1(workflow_start_regular, tmp_path):
 def test_get_output_2(workflow_start_regular, tmp_path):
     lock_path = str(tmp_path / "lock")
     lock = FileLock(lock_path)
+
     @workflow.step
     def simple(v):
         with FileLock(lock_path):
             return v
+
     lock.acquire()
     obj = simple.step(0).run_async("simple")
     obj2 = workflow.get_output("simple")
