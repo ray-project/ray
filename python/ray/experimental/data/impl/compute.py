@@ -19,6 +19,20 @@ class ComputeStrategy:
         raise NotImplementedError
 
 
+# Remote version of wrapped_fn, lazily initialized to avoid circular import.
+_remote_fn = None
+
+def wrapped_fn(block: Block, meta: BlockMetadata, fn: Any):
+    new_block = fn(block)
+    accessor = BlockAccessor.for_block(new_block)
+    new_meta = BlockMetadata(
+        num_rows=accessor.num_rows(),
+        size_bytes=accessor.size_bytes(),
+        schema=accessor.schema(),
+        input_files=meta.input_files)
+    return new_block, new_meta
+
+
 class TaskPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
               blocks: BlockList[Any]) -> BlockList[Any]:
@@ -27,19 +41,13 @@ class TaskPool(ComputeStrategy):
         kwargs = remote_args.copy()
         kwargs["num_returns"] = 2
 
-        @ray.remote(**kwargs)
-        def wrapped_fn(block: Block, meta: BlockMetadata):
-            new_block = fn(block)
-            accessor = BlockAccessor.for_block(new_block)
-            new_meta = BlockMetadata(
-                num_rows=accessor.num_rows(),
-                size_bytes=accessor.size_bytes(),
-                schema=accessor.schema(),
-                input_files=meta.input_files)
-            return new_block, new_meta
+        # Lazy init to avoid circular import.
+        global _remote_fn
+        if _remote_fn is None:
+            _remote_fn = ray.remote(wrapped_fn)
 
         refs = [
-            wrapped_fn.remote(b, m)
+            _remote_fn.options(**kwargs).remote(b, m, fn)
             for b, m in zip(blocks, blocks.get_metadata())
         ]
         new_blocks, new_metadata = zip(*refs)
@@ -50,6 +58,13 @@ class TaskPool(ComputeStrategy):
 
 
 class ActorPool(ComputeStrategy):
+    def __init__(self):
+        self.workers = []
+
+    def __del__(self):
+        for w in self.workers:
+            w.__ray_terminate__.remote()
+
     def apply(self, fn: Any, remote_args: dict,
               blocks: Iterable[Block]) -> Iterable[ObjectRef[Block]]:
 
@@ -75,9 +90,9 @@ class ActorPool(ComputeStrategy):
             remote_args["num_cpus"] = 1
         Worker = ray.remote(**remote_args)(Worker)
 
-        workers = [Worker.remote()]
+        self.workers = [Worker.remote()]
         metadata_mapping = {}
-        tasks = {w.ready.remote(): w for w in workers}
+        tasks = {w.ready.remote(): w for w in self.workers}
         ready_workers = set()
         blocks_in = [(b, m) for (b, m) in zip(blocks, blocks.get_metadata())]
         blocks_out = []
@@ -86,14 +101,14 @@ class ActorPool(ComputeStrategy):
             ready, _ = ray.wait(
                 list(tasks), timeout=0.01, num_returns=1, fetch_local=False)
             if not ready:
-                if len(ready_workers) / len(workers) > 0.8:
+                if len(ready_workers) / len(self.workers) > 0.8:
                     w = Worker.remote()
-                    workers.append(w)
+                    self.workers.append(w)
                     tasks[w.ready.remote()] = w
                     map_bar.set_description(
                         "Map Progress ({} actors {} pending)".format(
                             len(ready_workers),
-                            len(workers) - len(ready_workers)))
+                            len(self.workers) - len(ready_workers)))
                 continue
 
             [obj_id] = ready

@@ -64,44 +64,6 @@ class Dataset(Generic[T]):
         self._blocks: BlockList[T] = blocks
         assert isinstance(self._blocks, BlockList), self._blocks
 
-    def repeat(self, times: int = None) -> "DatasetPipeline[T]":
-        from ray.experimental.data.dataset_pipeline import DatasetPipeline
-
-        if times is not None and times < 1:
-            raise ValueError("`times` must be >= 1, got {}".format(times))
-
-        class Iterator:
-            def __init__(self, ds: "Dataset[T]"):
-                self._ds = ds
-                self._i = 0
-
-            def __next__(self) -> "Dataset[T]":
-                if times and self._i >= times:
-                    raise StopIteration
-                self._i += 1
-                return lambda: self._ds
-
-        return DatasetPipeline(Iterator(self), length=times)
-
-    def pipeline(self,
-                 per_stage_parallelism: int = 10) -> "DatasetPipeline[T]":
-        from ray.experimental.data.dataset_pipeline import DatasetPipeline
-
-        class Iterator:
-            def __init__(self, blocks):
-                self._splits = blocks.split(split_size=per_stage_parallelism)
-                self._i = 0
-
-            def __next__(self) -> "Dataset[T]":
-                if self._i >= len(self._splits):
-                    raise StopIteration
-                result = Dataset(self._splits[self._i])
-                self._i += 1
-                return result
-
-        it = Iterator(self._blocks)
-        return DatasetPipeline(it, length=len(it._splits))
-
     def map(self,
             fn: Union[CallableClass, Callable[[T], U]],
             compute: Optional[str] = None,
@@ -1202,6 +1164,112 @@ class Dataset(Generic[T]):
             return block.to_arrow_table()
 
         return [block_to_df.remote(block) for block in self._blocks]
+
+    def repeat(self, times: int = None) -> "DatasetPipeline[T]":
+        """Convert this into a DatasetPipeline by looping over this dataset.
+
+        Transformations prior to the call to ``repeat()`` are evaluated once.
+        Transformations done on the returned pipeline are evaluated on each
+        loop of the pipeline over the base dataset.
+
+        Examples:
+            >>> # Infinite pipeline of numbers [0, 5)
+            >>> ray.data.range(5).repeat().take()
+            [0, 1, 2, 3, 4, 0, 1, 2, 3, 4, ...]
+
+            >>> # Can apply transformations to the pipeline.
+            >>> ray.data.range(5).repeat().map(lambda x: -x).take()
+            [0, -1, -2, -3, -4, 0, -1, -2, -3, -4, ...]
+
+            >>> # Can shuffle each epoch (dataset) in the pipeline.
+            >>> ray.data.range(5).repeat().random_shuffle().take()
+            [2, 3, 0, 4, 1, 4, 0, 2, 1, 3, ...]
+
+        Args:
+            times: The number of times to loop over this dataset, or None
+                to repeat indefinitely.
+        """
+        from ray.experimental.data.dataset_pipeline import DatasetPipeline
+
+        if times is not None and times < 1:
+            raise ValueError("`times` must be >= 1, got {}".format(times))
+
+        class Iterator:
+            def __init__(self, ds: "Dataset[T]"):
+                self._ds = ds
+                self._i = 0
+
+            def __next__(self) -> "Dataset[T]":
+                if times and self._i >= times:
+                    raise StopIteration
+                self._i += 1
+                return lambda: self._ds
+
+        return DatasetPipeline(Iterator(self), length=times)
+
+    def pipeline(self,
+                 per_stage_parallelism: int = 10) -> "DatasetPipeline[T]":
+        """Pipeline the dataset execution by splitting its blocks into groups.
+
+        Transformations prior to the call to ``pipeline()`` are evaluated in
+        bulk on the entire dataset. Transformations done on the returned
+        pipeline are evaluated incrementally per group of blocks as data is
+        read from the output of the pipeline.
+
+        Pipelining execution allows for output to be read sooner without
+        waiting for all transformations to fully execute, and can also improve
+        efficiency if transforms use different resources (e.g., GPUs).
+
+        Without pipelining::
+
+            [preprocessing......]
+                                  [inference.......]
+                                                     [write........]
+            Time ----------------------------------------------------------->
+
+        With pipelining::
+
+            [prep1] [prep2] [prep3]
+                    [infer1] [infer2] [infer3]
+                             [write1] [write2] [write3]
+            Time ----------------------------------------------------------->
+
+        Examples:
+            >>> # Create an inference pipeline.
+            >>> ds = ray.data.read_binary_files(dir)
+            >>> pipe = ds.pipeline(per_stage_parallelism=10).map(infer)
+
+            >>> # Outputs can be read from the pipeline without full execution.
+            >>> for item in pipe.iter_rows():
+            ...    print(item)
+
+        Args:
+            per_stage_parallelism: Increasing per_stage_parallelism increases
+                pipeline throughput, but may increase latency. For example,
+                setting it to ``1`` means at most one 1 parallel instance of
+                each transformation will be run at any given time. Setting it
+                to ``num_blocks`` effectively disables pipelining since each
+                stage waits for all blocks to be computed prior to returning.
+        """
+        from ray.experimental.data.dataset_pipeline import DatasetPipeline
+
+        class Iterator:
+            def __init__(self, blocks):
+                self._splits = blocks.split(split_size=per_stage_parallelism)
+
+            def __next__(self) -> "Dataset[T]":
+                if not self._splits:
+                    raise StopIteration
+
+                blocks = self._splits.pop(0)
+
+                def gen():
+                    return Dataset(blocks)
+
+                return gen
+
+        it = Iterator(self._blocks)
+        return DatasetPipeline(it, length=len(it._splits))
 
     @DeveloperAPI
     def get_blocks(self) -> List[ObjectRef[Block]]:

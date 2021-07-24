@@ -3,7 +3,7 @@ import time
 
 ray.init(num_gpus=2)
 
-ds = ray.experimental.data.from_items(range(10))
+ds = ray.experimental.data.range(100)
 
 
 def preprocess(x):
@@ -18,7 +18,7 @@ class Model:
         return x
 
 
-ds = ds.repeat(10) \
+ds = ds.pipeline(10) \
     .map(preprocess) \
     .map(Model, compute="actors", num_gpus=1)
 
