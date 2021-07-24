@@ -3,7 +3,8 @@ import copy
 import pytest
 
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_KIND, \
-    NODE_KIND_HEAD, NODE_KIND_WORKER, TAG_RAY_USER_NODE_TYPE
+    NODE_KIND_HEAD, NODE_KIND_WORKER, TAG_RAY_USER_NODE_TYPE, \
+    TAG_RAY_CLUSTER_NAME
 from ray.autoscaler._private.aws.config import _get_vpc_id_or_die, \
     bootstrap_aws, log_to_cli, \
     DEFAULT_AMI
@@ -15,7 +16,8 @@ from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
     DEFAULT_SG_WITH_RULES_AUX_SUBNET, AUX_SG, \
     DEFAULT_SG_WITH_RULES, DEFAULT_SG_WITH_NAME, \
     DEFAULT_SG_WITH_NAME_AND_RULES, CUSTOM_IN_BOUND_RULES, \
-    DEFAULT_KEY_PAIR, DEFAULT_INSTANCE_PROFILE, DEFAULT_CLUSTER_NAME
+    DEFAULT_KEY_PAIR, DEFAULT_INSTANCE_PROFILE, DEFAULT_CLUSTER_NAME, \
+    DEFAULT_LT
 
 
 def test_use_subnets_in_only_one_vpc(iam_client_stub, ec2_client_stub):
@@ -572,6 +574,83 @@ def test_network_interface_missing_security_group():
             network_interface_cfg.pop("Groups")
             with pytest.raises(ValueError, match=expected_error_msg):
                 helpers.bootstrap_aws_config(config)
+
+
+def test_launch_templates(ec2_client_stub, ec2_client_stub_fail_fast,
+                          ec2_client_stub_max_retries):
+
+    # given the launch template associated with our default head node type...
+    # expect to first describe the default launch template by ID
+    stubs.describe_launch_template_versions_by_id_default(
+        ec2_client_stub, ["$Latest"])
+    # given the launch template associated with our default worker node type...
+    # expect to next describe the same default launch template by name
+    stubs.describe_launch_template_versions_by_name_default(
+        ec2_client_stub, ["2"])
+    # use default stubs to skip ahead to subnet configuration
+    stubs.configure_key_pair_default(ec2_client_stub)
+
+    # given the security groups associated with our launch template...
+    sgids = [DEFAULT_SG["GroupId"]]
+    security_groups = [DEFAULT_SG]
+    # expect to describe all security groups to ensure they share the same VPC
+    stubs.describe_sgs_by_id(ec2_client_stub, sgids, security_groups)
+
+    # use a default stub to skip subnet configuration
+    stubs.configure_subnet_default(ec2_client_stub)
+
+    # given our mocks and an example config file as input...
+    # expect the config to be loaded, validated, and bootstrapped successfully
+    config = helpers.bootstrap_aws_example_config_file(
+        "example-launch-templates.yaml")
+
+    # instantiate a new node provider
+    new_provider = _get_node_provider(
+        config["provider"],
+        DEFAULT_CLUSTER_NAME,
+        False,
+    )
+
+    head_name = config["head_node_type"]
+    for name, node_type in config["available_node_types"].items():
+        node_cfg = node_type["node_config"]
+        node_kind = NODE_KIND_HEAD if name is head_name else NODE_KIND_WORKER
+        tags = {
+            TAG_RAY_CLUSTER_NAME: DEFAULT_CLUSTER_NAME,
+            TAG_RAY_NODE_KIND: node_kind,
+            TAG_RAY_LAUNCH_CONFIG: "test-ray-launch-config",
+            TAG_RAY_USER_NODE_TYPE: name,
+        }
+        max_count = 1
+        # expected node provider config updates to merge into user node config
+        node_provider_cfg_updates = {
+            "MinCount": 1,
+            "MaxCount": max_count,
+            "TagSpecifications": [{
+                "ResourceType": "instance",
+                "Tags": [{
+                    "Key": k,
+                    "Value": v
+                } for k, v in tags.items()]
+            }]
+        }
+        # ensure we don't tag the ray cluster name twice
+        tags.pop(TAG_RAY_CLUSTER_NAME)
+
+        # given our bootstrapped node config as input to create a new node...
+        # expect to first describe all stopped instances that could be reused
+        stubs.describe_instances_with_any_filter_consumer(
+            ec2_client_stub_max_retries)
+        # given no stopped EC2 instances to reuse...
+        # expect to create new nodes with the given launch template config
+        stubs.run_instances_with_launch_template_consumer(
+            ec2_client_stub_fail_fast, node_cfg,
+            DEFAULT_LT["LaunchTemplateData"], node_provider_cfg_updates)
+        new_provider.create_node(node_cfg, tags, max_count)
+
+    ec2_client_stub.assert_no_pending_responses()
+    ec2_client_stub_fail_fast.assert_no_pending_responses()
+    ec2_client_stub_max_retries.assert_no_pending_responses()
 
 
 if __name__ == "__main__":

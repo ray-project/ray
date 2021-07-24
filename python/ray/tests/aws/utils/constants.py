@@ -168,3 +168,39 @@ CUSTOM_IN_BOUND_RULES = [{
 DEFAULT_SG_WITH_NAME_AND_RULES = copy.deepcopy(DEFAULT_SG_WITH_NAME)
 DEFAULT_SG_WITH_NAME_AND_RULES[
     "IpPermissions"] = DEFAULT_IN_BOUND_RULES + CUSTOM_IN_BOUND_RULES
+
+# Default launch template to expose to tests.
+DEFAULT_LT = {
+    "LaunchTemplateId": "lt-00000000000000000",
+    "LaunchTemplateName": "ExampleLaunchTemplate",
+    "VersionNumber": 2,
+    "CreateTime": datetime(2020, 8, 17, 23, 30, 3),
+    "CreatedBy": DEFAULT_INSTANCE_PROFILE["Roles"][0]["Arn"],
+    "DefaultVersion": True,
+    "LaunchTemplateData": {
+        "EbsOptimized": False,
+        "IamInstanceProfile": {
+            "Arn": DEFAULT_INSTANCE_PROFILE["Arn"]
+        },
+        "NetworkInterfaces": [{
+            "DeviceIndex": 0,
+            "Groups": [DEFAULT_SG["GroupId"]],
+            "SubnetId": DEFAULT_SUBNET["SubnetId"]
+        }],
+        "ImageId": "ami-00000000000000000",
+        "InstanceType": "m5.large",
+        "TagSpecifications": [{
+            "ResourceType": "instance",
+            "Tags": [{
+                "Key": "test-key",
+                "Value": "test-value"
+            }]
+        }, {
+            "ResourceType": "volume",
+            "Tags": [{
+                "Key": "test-key",
+                "Value": "test-value"
+            }]
+        }]
+    }
+}

@@ -36,10 +36,11 @@ available_node_types:
       # launch template values for the same key. You can specify either the name
       # or ID of a launch template, but not both.
       LaunchTemplate:
-        LaunchTemplateId: lt-00000000000000000,
+        LaunchTemplateId: lt-00000000000000000
         # Launch template versions can be set to a version number, "$Default"
         # for the default launch template version, or "$Latest" for the latest
-        # launch template version.
+        # launch template version. If the version is omitted, it will
+        # automatically resolve to the launch template's default version.
         Version: $Latest
 
       ImageId: latest_dlami
@@ -51,7 +52,7 @@ available_node_types:
     resources: {}
     node_config:
       LaunchTemplate:
-        LaunchTemplateName: ExampleLaunchTemplate,
+        LaunchTemplateName: ExampleLaunchTemplate
         Version: 2
 
       ImageId: latest_dlami
