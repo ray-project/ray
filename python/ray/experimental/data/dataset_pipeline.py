@@ -4,35 +4,28 @@ from typing import Any, Callable, List, Iterator, Generic, Union, TYPE_CHECKING
 import ray
 from ray.experimental.data.dataset import Dataset, T, U, BatchType
 from ray.util.annotations import PublicAPI
+from ray.util.types import ObjectRef
 
 if TYPE_CHECKING:
     import pyarrow
 
+# Operations that can be naively applied per dataset in the pipeline.
 PER_DATASET_OPS = [
     "map", "map_batches", "flat_map", "filter", "repartition", "sort", "limit"
 ]
 
+# Operations that operate over the stream of output batches from the pipeline.
 OUTPUT_ITER_OPS = ["take", "show", "iter_rows", "to_tf", "to_torch"]
 
 
-# TODO(ekl) make this serializable [initial version]
 @PublicAPI(stability="beta")
 class DatasetPipeline(Generic[T]):
-    def __init__(self, dataset_generator: Iterator[Callable[[], Dataset[T]]]):
-        self._dataset_generator = dataset_generator
-        self._active_dataset = None
-        self._next_dataset = None
-        self._generated_datasets = []
-
-    def split(self, n: int,
-              locality_hints: List[Any] = None) -> List["DatasetPipeline[T]"]:
-        # TODO(ekl) this should return serializable pipeline readers, probably
-        # need a coordinating actor here
-        # (not in initial version)
-        raise NotImplementedError
-
-    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
-        return next(self.iter_datasets()).schema()
+    def __init__(
+            self,
+            base_iterator: Iterator[Callable[[], Dataset[T]]],
+            stage_transforms: List[Callable[[Dataset[T]], Dataset[U]]] = None):
+        self._base_iterator = base_iterator
+        self._stage_transforms = stage_transforms or []
 
     def iter_batches(self,
                      prefetch_blocks: int = 0,
@@ -49,42 +42,74 @@ class DatasetPipeline(Generic[T]):
 
     def iter_datasets(self) -> Iterator[Dataset[T]]:
         @ray.remote
-        def compute_single(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
+        def do(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
             return fn()
 
-        # TODO(ekl) pipeline individual transforms? config depth?
-        # .pipeline(blocks_per_stage=10)
-        def gen_datasets() -> Iterator[Dataset[T]]:
-            i = 0
-            self._active_dataset = compute_single.remote(
-                next(self._dataset_generator))
-            try:
-                self._next_dataset = compute_single.remote(
-                    next(self._dataset_generator))
-            except StopIteration:
-                self._next_dataset = None
+        class PipelineExecutor:
+            def __init__(self, pipeline: DatasetPipeline[T]):
+                self._pipeline: DatasetPipeline[T] = pipeline
+                self._stages: List[ObjectRef[Dataset[Any]]] = [None] * (
+                    len(self._pipeline._stage_transforms) + 1)
 
-            while self._active_dataset:
-                print("Returning pipeline index", i)
-                i += 1
-                yield ray.get(self._active_dataset)
-                self._active_dataset = self._next_dataset
-                try:
-                    self._next_dataset = compute_single.remote(
-                        next(self._dataset_generator))
-                except StopIteration:
-                    self._next_dataset = None
-                    print("No more datasets left")
+            def __next__(self):
+                output = None
 
-        return gen_datasets()
+                while output is None:
+                    if all(s is None for s in self._stages):
+                        raise StopIteration
+
+                    # Wait for any completed stages.
+                    ready, _ = ray.wait(
+                        [s for s in self._stages if s is not None],
+                        timeout=1.0)
+
+                    # Bubble elements down the pipeline as they become ready.
+                    for i in range(len(self._stages))[::-1]:
+                        is_last = i + 1 >= len(self._stages)
+                        next_slot_free = is_last or self._stages[i + 1] is None
+                        if not next_slot_free:
+                            continue
+
+                        slot_ready = self._stages[i] in ready
+                        if not slot_ready:
+                            continue
+
+                        # Bubble.
+                        result = self._stages[i]
+                        self._stages[i] = None
+                        if is_last:
+                            output = result
+                        else:
+                            fn = self._pipeline._stage_transforms[i]
+                            self._stages[i + 1] = do.remote(lambda: fn(result))
+
+                    # Pull a new element for the initial slot if possible.
+                    if self._stages[0] is None:
+                        try:
+                            self._stages[0] = do.remote(
+                                next(self._pipeline._base_iterator))
+                        except StopIteration:
+                            pass
+
+                return output
+
+        return PipelineExecutor(self)
 
     def foreach_dataset(self, fn: Callable[[Dataset[T]], Dataset[U]]
                         ) -> "DatasetPipeline[U]":
-        def make_dataset_generator() -> Iterator[Callable[[], Dataset[U]]]:
-            for item in self._dataset_generator:
-                yield lambda item=item: fn(item())
+        return DatasetPipeline(self._base_iterator,
+                               self._stage_transforms + [fn])
 
-        return DatasetPipeline(make_dataset_generator())
+    def split(self, n: int,
+              locality_hints: List[Any] = None) -> List["DatasetPipeline[T]"]:
+        # TODO(ekl) implement this in the next PR. We'll need some kind of
+        # coordinator actor to make this work.
+        raise NotImplementedError
+
+    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+        return next(self.iter_datasets()).schema()
+
+    # TODO(ekl) add write APIs (need to assign uuids to avoid name conflicts)
 
 
 for method in PER_DATASET_OPS:
