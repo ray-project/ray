@@ -456,3 +456,7 @@ RAY_CONFIG(std::string, custom_unit_instance_resources, "")
 
 // Maximum size of the batch size when broadcasting resources to raylet.
 RAY_CONFIG(uint64_t, resource_broadcast_batch_size_bytes, 1024 * 1024 * 5);
+
+// If enabled and worker stated in container, the container will add
+// resource limit.
+RAY_CONFIG(bool, worker_resource_limits_enabled, false)

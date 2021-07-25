@@ -1,8 +1,7 @@
 import time
-
+import pytest
 from ray.tests.conftest import *  # noqa
 
-import pytest
 import numpy as np
 from ray.experimental import workflow
 
@@ -29,12 +28,13 @@ def simple_large_intermediate():
     return average.step(y)
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_shared", [{
-        "namespace": "workflow"
-    }], indirect=True)
-def test_simple_large_intermediate(ray_start_regular_shared):
+def test_simple_large_intermediate(workflow_start_regular_shared):
     start = time.time()
     outputs = simple_large_intermediate.step().run()
     print(f"duration = {time.time() - start}")
     assert np.isclose(outputs, 8388607.5)
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

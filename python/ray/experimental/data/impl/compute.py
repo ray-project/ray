@@ -2,7 +2,7 @@ from typing import TypeVar, Iterable, Any, Union, Callable
 
 import ray
 from ray.types import ObjectRef
-from ray.experimental.data.block import Block, BlockMetadata
+from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.progress_bar import ProgressBar
 
@@ -15,7 +15,7 @@ CallableClass = type
 
 class ComputeStrategy:
     def apply(self, fn: Any,
-              blocks: Iterable[Block[T]]) -> Iterable[ObjectRef[Block]]:
+              blocks: Iterable[Block]) -> Iterable[ObjectRef[Block]]:
         raise NotImplementedError
 
 
@@ -30,10 +30,11 @@ class TaskPool(ComputeStrategy):
         @ray.remote(**kwargs)
         def wrapped_fn(block: Block, meta: BlockMetadata):
             new_block = fn(block)
+            accessor = BlockAccessor.for_block(new_block)
             new_meta = BlockMetadata(
-                num_rows=new_block.num_rows(),
-                size_bytes=new_block.size_bytes(),
-                schema=new_block.schema(),
+                num_rows=accessor.num_rows(),
+                size_bytes=accessor.size_bytes(),
+                schema=accessor.schema(),
                 input_files=meta.input_files)
             return new_block, new_meta
 
@@ -50,7 +51,7 @@ class TaskPool(ComputeStrategy):
 
 class ActorPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
-              blocks: Iterable[Block[T]]) -> Iterable[ObjectRef[Block]]:
+              blocks: Iterable[Block]) -> Iterable[ObjectRef[Block]]:
 
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
@@ -59,13 +60,14 @@ class ActorPool(ComputeStrategy):
                 return "ok"
 
             @ray.method(num_returns=2)
-            def process_block(self, block: Block[T], meta: BlockMetadata
-                              ) -> (Block[U], BlockMetadata):
+            def process_block(self, block: Block,
+                              meta: BlockMetadata) -> (Block, BlockMetadata):
                 new_block = fn(block)
+                accessor = BlockAccessor.for_block(new_block)
                 new_metadata = BlockMetadata(
-                    num_rows=new_block.num_rows(),
-                    size_bytes=new_block.size_bytes(),
-                    schema=new_block.schema(),
+                    num_rows=accessor.num_rows(),
+                    size_bytes=accessor.size_bytes(),
+                    schema=accessor.schema(),
                     input_files=meta.input_files)
                 return new_block, new_metadata
 

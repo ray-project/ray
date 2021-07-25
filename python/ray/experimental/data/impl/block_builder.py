@@ -1,11 +1,11 @@
 import sys
-from typing import Iterator, Generic, Any, TYPE_CHECKING
+from typing import Iterator, List, Generic, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas
     import pyarrow
 
-from ray.experimental.data.block import Block, T
+from ray.experimental.data.block import Block, BlockAccessor, T
 
 
 class BlockBuilder(Generic[T]):
@@ -15,11 +15,11 @@ class BlockBuilder(Generic[T]):
         """Append a single row to the block being built."""
         raise NotImplementedError
 
-    def add_block(self, block: "Block[T]") -> None:
+    def add_block(self, block: Block) -> None:
         """Append an entire block to the block being built."""
         raise NotImplementedError
 
-    def build(self) -> "Block[T]":
+    def build(self) -> Block:
         """Build the block."""
         raise NotImplementedError
 
@@ -31,14 +31,15 @@ class SimpleBlockBuilder(BlockBuilder[T]):
     def add(self, item: T) -> None:
         self._items.append(item)
 
-    def add_block(self, block: "SimpleBlock[T]") -> None:
-        self._items.extend(block._items)
+    def add_block(self, block: List[T]) -> None:
+        assert isinstance(block, list), block
+        self._items.extend(block)
 
-    def build(self) -> "SimpleBlock[T]":
-        return SimpleBlock(self._items)
+    def build(self) -> Block:
+        return list(self._items)
 
 
-class SimpleBlock(Block):
+class SimpleBlockAccessor(BlockAccessor):
     def __init__(self, items):
         self._items = items
 
@@ -48,11 +49,12 @@ class SimpleBlock(Block):
     def iter_rows(self) -> Iterator[T]:
         return iter(self._items)
 
-    def slice(self, start: int, end: int, copy: bool) -> "SimpleBlock[T]":
+    def slice(self, start: int, end: int,
+              copy: bool) -> "SimpleBlockAccessor[T]":
         view = self._items[start:end]
         if copy:
             view = view.copy()
-        return SimpleBlock(view)
+        return view
 
     def to_pandas(self) -> "pandas.DataFrame":
         import pandas

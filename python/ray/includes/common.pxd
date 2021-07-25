@@ -21,7 +21,7 @@ from ray.includes.function_descriptor cimport (
 )
 
 
-cdef extern from * namespace "polyfill":
+cdef extern from * namespace "polyfill" nogil:
     """
     namespace polyfill {
 
@@ -154,6 +154,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CAddress()
         const c_string &SerializeAsString()
         void ParseFromString(const c_string &serialized)
+        void CopyFrom(const CAddress& address)
+        const c_string &worker_id()
 
 
 # This is a workaround for C++ enum class since Cython has no corresponding
