@@ -122,6 +122,9 @@ class Worker:
         # by the worker should drop into the debugger at the specified
         # breakpoint ID.
         self.debugger_get_breakpoint = b""
+        # If True, make the debugger external to the node this worker is
+        # running on.
+        self.ray_debugger_external = False
         self._load_code_from_local = False
         # Used to toggle whether or not logs should be filtered to only those
         # produced in the same job.
@@ -1223,7 +1226,9 @@ def connect(node,
             namespace=None,
             job_config=None,
             runtime_env_hash=0,
-            worker_shim_pid=0):
+            runtime_env_json="{}",
+            worker_shim_pid=0,
+            ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1239,6 +1244,8 @@ def connect(node,
         runtime_env_hash (int): The hash of the runtime env for this worker.
         worker_shim_pid (int): The PID of the process for setup worker
             runtime env.
+        ray_debugger_host (bool): The host to bind a Ray debugger to on
+            this worker.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1338,6 +1345,8 @@ def connect(node,
     if mode == WORKER_MODE:
         os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
 
+    worker.ray_debugger_external = ray_debugger_external
+
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
@@ -1356,9 +1365,19 @@ def connect(node,
     elif mode == WORKER_MODE:
         # TODO(ekl) get rid of the env var hack and get runtime env from the
         # task spec and/or job config only.
-        uris = os.environ.get("RAY_PACKAGING_URI")
-        uris = [uris] if uris else \
-            worker.core_worker.get_job_config().runtime_env.uris
+        uris = []
+        global_job_config = worker.core_worker.get_job_config()
+        override_runtime_env = json.loads(runtime_env_json)
+
+        if os.environ.get("RAY_PACKAGING_URI"):
+            uris = [os.environ.get("RAY_PACKAGING_URI")]
+        if global_job_config.runtime_env.uris:
+            uris = global_job_config.runtime_env.uris
+        if override_runtime_env.get("uris"):
+            # TODO(simon): should we combine the uris from package and global
+            # job config if they are present?
+            uris = override_runtime_env["uris"]
+
         working_dir = runtime_env_pkg.ensure_runtime_env_setup(uris)
         if working_dir is not None:
             os.chdir(working_dir)
@@ -1589,8 +1608,13 @@ def get(object_refs, *, timeout=None):
         if debugger_breakpoint != b"":
             frame = sys._getframe().f_back
             rdb = ray.util.pdb.connect_ray_pdb(
-                None, None, False, None,
-                debugger_breakpoint.decode() if debugger_breakpoint else None)
+                host=None,
+                port=None,
+                patch_stdstreams=False,
+                quiet=None,
+                breakpoint_uuid=debugger_breakpoint.decode()
+                if debugger_breakpoint else None,
+                debugger_external=worker.ray_debugger_external)
             rdb.set_trace(frame=frame)
 
         return values

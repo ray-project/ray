@@ -21,6 +21,7 @@ STEP_OUTPUT = "output.pkl"
 STEP_FUNC_BODY = "func_body.pkl"
 CLASS_BODY = "class_body.pkl"
 WORKFLOW_META = "workflow_meta.json"
+WORKFLOW_PROGRESS = "progress.json"
 
 MAX_RECEIVED_DATA_MEMORY_SIZE = 25 * 1024 * 1024  # 25MB
 
@@ -32,7 +33,6 @@ def data_load_error(func):
             ret = await func(*args, **kvargs)
             return ret
         except Exception as e:
-            print(">>>>>>", e, type(e))
             raise DataLoadError from e
 
     return _func
@@ -219,7 +219,7 @@ class S3StorageImpl(Storage):
                 operation_parameters["Prefix"] = self._s3_path + "/"
             page_iterator = paginator.paginate(**operation_parameters)
             async for page in page_iterator:
-                for o in page.get("CommonPrefixes"):
+                for o in page.get("CommonPrefixes", []):
                     prefix = o.get("Prefix", "").rstrip("/").split("/")[-1]
                     workflow_ids.append(prefix)
         return workflow_ids
@@ -290,6 +290,17 @@ class S3StorageImpl(Storage):
     async def list_workflow(self) -> List[str]:
         objs = await self._list_objects()
         return objs
+
+    @data_load_error
+    async def load_workflow_progress(self, workflow_id: str) -> Dict[str, Any]:
+        path = self._get_s3_path(workflow_id, STEPS_DIR, STEP_OUTPUTS_METADATA)
+        return await self._get_object(path, True)
+
+    @data_save_error
+    async def save_workflow_progress(self, workflow_id: str,
+                                     metadata: Dict[str, Any]) -> None:
+        path = self._get_s3_path(workflow_id, STEPS_DIR, STEP_OUTPUTS_METADATA)
+        await self._put_object(path, metadata, True)
 
     def __reduce__(self):
         return S3StorageImpl, (self._bucket, self._s3_path, self._region_name,
