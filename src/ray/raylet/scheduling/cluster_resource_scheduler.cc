@@ -1018,6 +1018,13 @@ bool ClusterResourceScheduler::AllocatePlacementGroupResourcesForTask(
   // for instance, if we allocate the second gpu to the `GPU_group_1_xxx`, then we must simultaneously allocate
   // the second gpu to the `GPU_group_xxx`.
   const auto &index_resources = GetAllPlacementGroupIndexResource(task_resources);
+  if (index_resources.empty()) {
+    RAY_LOG(DEBUG) << "Not found the resources request that contains the bundle index, maybe this task is not set the bundle index when using placement group, so we will directly allocate the resources request that doesn't contain the bundle index.";
+    ResourceRequest resource_request =
+      ResourceMapToResourceRequest(string_to_int_map_, task_resources);
+    return AllocateLocalTaskResources(resource_request, task_allocation);
+  }
+
   ResourceRequest index_resource_request =
       ResourceMapToResourceRequest(string_to_int_map_, index_resources);
   bool index_resource_allocated_res = AllocateLocalTaskResources(index_resource_request, task_allocation);
