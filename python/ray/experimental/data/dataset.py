@@ -178,7 +178,7 @@ class Dataset(Generic[T]):
             total_rows = block.num_rows()
             max_batch_size = batch_size
             if max_batch_size is None:
-                max_batch_size = total_rows
+                max_batch_size = max(total_rows, 1)
 
             builder = DelegatingArrowBlockBuilder()
 

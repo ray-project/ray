@@ -13,9 +13,9 @@ def test_pipeline_actors(shutdown_only):
     pipe = ray.experimental.data.range(3) \
         .map(lambda x: x + 1) \
         .map(lambda x: x + 1, compute="actors", num_gpus=1) \
-        .repeat(3)
+        .repeat(100)
 
-    assert sorted(pipe.take()) == sorted([2, 3, 4, 2, 3, 4, 2, 3, 4])
+    assert sorted(pipe.take(999)) == sorted([2, 3, 4] * 100)
 
 
 def test_basic_pipeline(ray_start_regular_shared):
@@ -39,6 +39,13 @@ def test_basic_pipeline(ray_start_regular_shared):
     for _ in range(2):
         assert pipe.count() == 100
     assert pipe.sum() == 450
+
+
+def test_repartition(ray_start_regular_shared):
+    pipe = ray.experimental.data.range(10).repeat(10)
+    assert pipe.repartition(1).sum() == 450
+    assert pipe.repartition(10).sum() == 450
+    assert pipe.repartition(100).sum() == 450
 
 
 def test_iter_batches(ray_start_regular_shared):
