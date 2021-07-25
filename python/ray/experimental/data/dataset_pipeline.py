@@ -136,6 +136,9 @@ class DatasetPipeline(Generic[T]):
                 self.warn_threshold = 100
                 self.wait_delay_s = 0.1
 
+            def __iter__(self):
+                return self
+
             def __next__(self):
                 ds = None
                 tries = 0

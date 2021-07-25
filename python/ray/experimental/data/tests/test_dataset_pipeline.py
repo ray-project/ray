@@ -1,23 +1,8 @@
-import os
-import random
-import requests
-import shutil
-import time
-
-from unittest.mock import patch
-import math
-import numpy as np
-import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 
 import ray
 
 from ray.tests.conftest import *  # noqa
-from ray.experimental.data.datasource import DummyOutputDatasource
-from ray.experimental.data.block import BlockAccessor
-import ray.experimental.data.tests.util as util
 
 
 def test_basic_pipeline(ray_start_regular_shared):
@@ -67,3 +52,25 @@ def test_foreach_dataset(ray_start_regular_shared):
 def test_schema(ray_start_regular_shared):
     pipe = ray.experimental.data.range(5).pipeline(2)
     assert pipe.schema() == int
+
+
+def test_split(ray_start_regular_shared):
+    pipe = ray.experimental.data.range(3).repeat()
+
+    @ray.remote
+    def consume(shard, i):
+        total = 0
+        for row in shard.iter_rows():
+            total += 1
+            assert row == i
+            if total > 100:
+                break
+
+    shards = pipe.split(3)
+    refs = [consume.remote(s, i) for i, s in enumerate(shards)]
+    ray.get(refs)
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
