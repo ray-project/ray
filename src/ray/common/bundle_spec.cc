@@ -119,4 +119,53 @@ std::string GetOriginalResourceName(const std::string &resource) {
   return resource.substr(0, idx);
 }
 
+bool IsAllPlacementGroupResource(const std::unordered_map<std::string, double> &resources) {
+  for (const auto& resource: resources) {
+    if (!std::regex_match(resource.first, ray::withoud_index_resource_reg) && 
+       !std::regex_match(resource.first, ray::with_index_resource_reg)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const std::unordered_map<std::string, double> GetAllPlacementGroupIndexResource(
+  const std::unordered_map<std::string, double> &resources) {
+  std::unordered_map<std::string, double> res;
+  for (const auto& resource: resources) {
+    if (std::regex_match(resource.first, ray::with_index_resource_reg)) {
+      res.insert({resource.first, resource.second});
+    }
+  }
+  return res;
+}
+
+const std::unordered_map<std::string, double> GetAllPlacementGroupWithoutIndexResource(
+  const std::unordered_map<std::string, double> &resources) {
+  std::unordered_map<std::string, double> res;
+  for (const auto& resource: resources) {
+    if (std::regex_match(resource.first, ray::withoud_index_resource_reg)) {
+      res.insert({resource.first, resource.second});
+    }
+  }
+  return res;
+}
+
+boost::optional<std::string> GetIndexResourceFromWithoutIndexResource(
+  const std::unordered_map<std::string, double> &resources,
+  const std::string &without_index_resource) {
+
+  const auto &original_name = GetOriginalResourceName(without_index_resource);
+  std::string regex_str = "^" + original_name + "_group_[0-9]+_[\\S]+$";
+  std::regex with_index_reg(regex_str);
+  for (const auto& resource: resources) {
+    std::smatch matchResult;
+    if (std::regex_match(resource.first, matchResult, with_index_reg)) {
+      RAY_CHECK(matchResult.size() == 1);
+      return boost::optional<std::string>(matchResult[0]);
+    }
+  }
+  return boost::none;
+}
+
 }  // namespace ray

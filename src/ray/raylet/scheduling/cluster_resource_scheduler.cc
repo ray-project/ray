@@ -19,6 +19,8 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/raylet/scheduling/scheduling_policy.h"
+#include <regex>
+#include "ray/common/bundle_spec.h"
 
 namespace ray {
 
@@ -800,6 +802,44 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
   return true;
 }
 
+void ClusterResourceScheduler::AllocateTaskPlacementGroupResourceInstances(
+    const std::unordered_map<std::string, double> &task_resources,
+    std::shared_ptr<TaskResourceInstances> task_allocation) {
+  RAY_CHECK(task_allocation != nullptr);
+  // Get all the resources that does not contain the bundle index.
+  const auto &without_index_resources = GetAllPlacementGroupWithoutIndexResource(task_resources);
+  ResourceRequest without_index_resource_request =
+      ResourceMapToResourceRequest(string_to_int_map_, without_index_resources);
+
+  for (const auto &task_req_custom_resource : without_index_resource_request.custom_resources) {  
+    auto it = local_resources_.custom_resources.find(task_req_custom_resource.first);
+    if (it != local_resources_.custom_resources.end()) {
+       if (task_req_custom_resource.second > 0) {
+         // Get the resource name that does not contain the bundle index.
+         const auto &without_index_resource_name = string_to_int_map_.Get(task_req_custom_resource.first);
+         RAY_CHECK(without_index_resource_name != "-1");
+         // Get the resource name that contains the bundle index by the resource name that does not contain the bundle index.
+         const auto &with_index_resource_name = GetIndexResourceFromWithoutIndexResource(task_resources, without_index_resource_name);
+         RAY_CHECK(with_index_resource_name != boost::none);
+         RAY_LOG(DEBUG) << "Get the resource name: `" << *with_index_resource_name << "` that contains the bundle index by the resource name: `" << without_index_resource_name << "` that does not contain the bundle index.";
+         
+         const auto &with_index_resource_id = string_to_int_map_.Get(*with_index_resource_name);
+         const auto with_id_resource_allocation = task_allocation->custom_resources[with_index_resource_id];
+
+        for (size_t i = 0; i < it->second.available.size(); i++) {
+          RAY_CHECK( (it->second.available[i] - with_id_resource_allocation[i]) >= 0);
+          it->second.available[i] -= with_id_resource_allocation[i];
+        }
+
+        // Notice: the resources allocated to the requested resource that does not contain the bundle index should keep same with the requested resource that contains the bundle index.
+        task_allocation->custom_resources.emplace(it->first, with_id_resource_allocation); 
+       }
+    }
+  }
+  UpdateLocalAvailableResourcesFromResourceInstances();
+}
+
+
 bool ClusterResourceScheduler::AllocateTaskResourceInstances(
     const ResourceRequest &resource_request,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
@@ -969,10 +1009,38 @@ bool ClusterResourceScheduler::AllocateLocalTaskResources(
   return false;
 }
 
+bool ClusterResourceScheduler::AllocatePlacementGroupResourcesForTask(
+  const std::unordered_map<std::string, double> &task_resources,
+    std::shared_ptr<TaskResourceInstances> task_allocation) {
+  // First of all, we should allocate resources for the requested resource that contains the bundle index,
+  // because the `resource index` allocated to the requested resource that `does not contain` the bundle index
+  // must be keep same with the resource index allocated to the requested resource that `contains` the bundle index.
+  // for instance, if we allocate the second gpu to the `GPU_group_1_xxx`, then we must simultaneously allocate
+  // the second gpu to the `GPU_group_xxx`.
+  const auto &index_resources = GetAllPlacementGroupIndexResource(task_resources);
+  ResourceRequest index_resource_request =
+      ResourceMapToResourceRequest(string_to_int_map_, index_resources);
+  bool index_resource_allocated_res = AllocateLocalTaskResources(index_resource_request, task_allocation);
+  if (!index_resource_allocated_res) {
+    // Return false directly if the requested resource that contains the bundle index allocates failed.
+    return false;
+  }
+  // Seconsly, allocate resource for the requested resource that does not contain the bundle index.
+  // Actually, this step is bound to succeed.
+  AllocateTaskPlacementGroupResourceInstances(task_resources, task_allocation);
+  return true;
+}
+
 bool ClusterResourceScheduler::AllocateLocalTaskResources(
     const std::unordered_map<std::string, double> &task_resources,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   RAY_CHECK(task_allocation != nullptr);
+  // Notice: Currently, if a task is using placement group,
+  // then all requested resource of this task must be placemnet group resource.
+  if (IsAllPlacementGroupResource(task_resources)) {
+    RAY_LOG(DEBUG) << "Allocate resource for a task whose request resource is all placement group resouece.";
+    return AllocatePlacementGroupResourcesForTask(task_resources, task_allocation);
+  }
   ResourceRequest resource_request =
       ResourceMapToResourceRequest(string_to_int_map_, task_resources);
   return AllocateLocalTaskResources(resource_request, task_allocation);

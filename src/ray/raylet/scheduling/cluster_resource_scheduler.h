@@ -378,6 +378,14 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   bool AllocateLocalTaskResources(const ResourceRequest &resource_request,
                                   std::shared_ptr<TaskResourceInstances> task_allocation);
 
+  bool AllocatePlacementGroupResourcesForTask(
+    const std::unordered_map<std::string, double> &task_resources,
+    std::shared_ptr<TaskResourceInstances> task_allocation);
+
+  void AllocateTaskPlacementGroupResourceInstances(
+    const std::unordered_map<std::string, double> &task_resources,
+    std::shared_ptr<TaskResourceInstances> task_allocation);
+
   /// Subtract the resources required by a given resource request (resource_request) from
   /// a given remote node.
   ///
