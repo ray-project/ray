@@ -338,9 +338,10 @@ def test_parquet_write(ray_start_regular_shared, tmp_path):
     ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
     path = os.path.join(tmp_path, "test_parquet_dir")
     os.mkdir(path)
+    ds._set_uuid("data")
     ds.write_parquet(path)
-    path1 = os.path.join(path, "data0.parquet")
-    path2 = os.path.join(path, "data1.parquet")
+    path1 = os.path.join(path, "data_000000.parquet")
+    path2 = os.path.join(path, "data_000001.parquet")
     dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])
     assert df.equals(dfds)
 
@@ -970,8 +971,9 @@ def test_json_write(ray_start_regular_shared, tmp_path):
     os.mkdir(path)
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     ds = ray.experimental.data.from_pandas([ray.put(df)])
+    ds._set_uuid("data")
     ds.write_json(path)
-    file_path = os.path.join(path, "data0.json")
+    file_path = os.path.join(path, "data_000000.json")
     assert df.equals(pd.read_json(file_path))
     shutil.rmtree(path)
 
@@ -979,8 +981,9 @@ def test_json_write(ray_start_regular_shared, tmp_path):
     os.mkdir(path)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     ds = ray.experimental.data.from_pandas([ray.put(df), ray.put(df2)])
+    ds._set_uuid("data")
     ds.write_json(path)
-    file_path2 = os.path.join(path, "data1.json")
+    file_path2 = os.path.join(path, "data_000001.json")
     assert pd.concat([df, df2]).equals(
         pd.concat([pd.read_json(file_path),
                    pd.read_json(file_path2)]))
@@ -1080,8 +1083,9 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
     os.mkdir(path)
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     ds = ray.experimental.data.from_pandas([ray.put(df)])
+    ds._set_uuid("data")
     ds.write_csv(path)
-    file_path = os.path.join(path, "data0.csv")
+    file_path = os.path.join(path, "data_000000.csv")
     assert df.equals(pd.read_csv(file_path))
     shutil.rmtree(path)
 
@@ -1089,8 +1093,9 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
     os.mkdir(path)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     ds = ray.experimental.data.from_pandas([ray.put(df), ray.put(df2)])
+    ds._set_uuid("data")
     ds.write_csv(path)
-    file_path2 = os.path.join(path, "data1.csv")
+    file_path2 = os.path.join(path, "data_000001.csv")
     assert pd.concat([df, df2]).equals(
         pd.concat([pd.read_csv(file_path),
                    pd.read_csv(file_path2)]))
