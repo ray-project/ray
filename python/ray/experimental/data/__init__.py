@@ -5,6 +5,10 @@ from ray.experimental.data.datasource import Datasource, ReadTask, WriteTask
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.impl.progress_bar import set_progress_bars
 
+# Module-level cached global functions (for impl/compute).
+_cached_fn = None
+_cached_cls = None
+
 __all__ = [
     "Dataset",
     "Datasource",

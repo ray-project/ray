@@ -9,4 +9,4 @@ def compute(i):
 
 pipeline = ray.data.range(10).repeat(100)
 pipeline = pipeline.map(compute).map(compute).map(compute).map(compute)
-print(pipeline.sum())
+pipeline.repartition(1).write_json("/tmp/output")

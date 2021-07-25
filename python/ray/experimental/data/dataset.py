@@ -1,8 +1,8 @@
 import logging
+import os
 from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
     Dict, Optional, Union, TYPE_CHECKING
-
-import os
+from uuid import uuid4
 
 if TYPE_CHECKING:
     import pyarrow
@@ -67,6 +67,7 @@ class Dataset(Generic[T]):
         read methods to construct a dataset.
         """
         self._blocks: BlockList[T] = blocks
+        self._uuid = uuid4().hex
         assert isinstance(self._blocks, BlockList), self._blocks
 
     def map(self,
@@ -701,6 +702,9 @@ class Dataset(Generic[T]):
         This is only supported for datasets convertible to Arrow records.
         To control the number of files, use ``.repartition()``.
 
+        The format of the output files will be {uuid}_{block_idx}.parquet,
+        where ``uuid`` is an unique id for the dataset.
+
         Examples:
             >>> ds.write_parquet("s3://bucket/path")
 
@@ -708,7 +712,7 @@ class Dataset(Generic[T]):
 
         Args:
             path: The path to the destination root directory, where Parquet
-                files will be written to..
+                files will be written to.
             filesystem: The filesystem implementation to write to.
         """
         import pyarrow.parquet as pq
@@ -724,8 +728,8 @@ class Dataset(Generic[T]):
 
         refs = [
             parquet_write.remote(
-                os.path.join(path, f"data{block_idx}.parquet"), block)
-            for block_idx, block in enumerate(self._blocks)
+                os.path.join(path, f"{self._uuid}_{block_idx:06}.parquet"),
+                block) for block_idx, block in enumerate(self._blocks)
         ]
 
         # Block until writing is done.
@@ -737,6 +741,9 @@ class Dataset(Generic[T]):
         This is only supported for datasets convertible to Arrow records.
         To control the number of files, use ``.repartition()``.
 
+        The format of the output files will be {self._uuid}_{block_idx}.json,
+        where ``uuid`` is an unique id for the dataset.
+
         Examples:
             >>> ds.write_json("s3://bucket/path")
 
@@ -744,7 +751,7 @@ class Dataset(Generic[T]):
 
         Args:
             path: The path to the destination root directory, where json
-                files will be written to..
+                files will be written to.
         """
 
         @ray.remote
@@ -756,7 +763,7 @@ class Dataset(Generic[T]):
 
         refs = [
             json_write.remote(
-                os.path.join(path, f"data{block_idx}.json"), block)
+                os.path.join(path, f"{self._uuid}_{block_idx:06}.json"), block)
             for block_idx, block in enumerate(self._blocks)
         ]
 
@@ -769,6 +776,9 @@ class Dataset(Generic[T]):
         This is only supported for datasets convertible to Arrow records.
         To control the number of files, use ``.repartition()``.
 
+        The format of the output files will be {uuid}_{block_idx}.csv, where
+        ``uuid`` is an unique id for the dataset.
+
         Examples:
             >>> ds.write_csv("s3://bucket/path")
 
@@ -776,7 +786,7 @@ class Dataset(Generic[T]):
 
         Args:
             path: The path to the destination root directory, where csv
-                files will be written to..
+                files will be written to.
         """
 
         @ray.remote
@@ -789,7 +799,7 @@ class Dataset(Generic[T]):
 
         refs = [
             csv_write.remote(
-                os.path.join(path, f"data{block_idx}.csv"), block)
+                os.path.join(path, f"{self._uuid}_{block_idx:06}.csv"), block)
             for block_idx, block in enumerate(self._blocks)
         ]
 
@@ -1347,3 +1357,9 @@ class Dataset(Generic[T]):
             return sum(m.num_rows for m in metadata)
         else:
             return None
+
+    def _get_uuid(self) -> str:
+        return self._uuid
+
+    def _set_uuid(self, uuid: str) -> None:
+        self._uuid = uuid

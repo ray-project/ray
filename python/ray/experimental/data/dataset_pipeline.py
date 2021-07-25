@@ -14,7 +14,13 @@ if TYPE_CHECKING:
 
 # Operations that can be naively applied per dataset in the pipeline.
 PER_DATASET_OPS = [
-    "map", "map_batches", "flat_map", "filter", "repartition", "sort", "limit"
+    "map", "map_batches", "flat_map", "filter", "repartition", "sort", "limit",
+    "write_json", "write_csv", "write_parquet", "write_datasource"
+]
+
+# Similar to above but we should force evaluation immediately.
+PER_DATASET_OUTPUT_OPS = [
+    "write_json", "write_csv", "write_parquet", "write_datasource"
 ]
 
 # Operations that operate over the stream of output batches from the pipeline.
@@ -119,8 +125,6 @@ class DatasetPipeline(Generic[T]):
             total += elem
         return total
 
-    # TODO(ekl) add write APIs (need to assign uuids to avoid name conflicts)
-
 
 for method in PER_DATASET_OPS:
 
@@ -132,9 +136,27 @@ for method in PER_DATASET_OPS:
             return self.foreach_dataset(
                 lambda ds: getattr(ds, method)(*args, **kwargs))
 
-        if "return" in impl.__annotations__:
+        if impl.__annotations__.get("return"):
             impl.__annotations__["return"] = impl.__annotations__[
                 "return"].replace("Dataset", "DatasetPipeline")
+
+        return impl
+
+    setattr(DatasetPipeline, method, make_impl(method))
+
+for method in PER_DATASET_OUTPUT_OPS:
+
+    def make_impl(method):
+        delegate = getattr(Dataset, method)
+
+        @functools.wraps(delegate)
+        def impl(self, *args, **kwargs):
+            uuid = None
+            for i, ds in enumerate(self.iter_datasets()):
+                if uuid is None:
+                    uuid = ds._get_uuid()
+                ds._set_uuid(f"{uuid}_{i:06}")
+                getattr(ds, method)(*args, **kwargs)
 
         return impl
 

@@ -136,10 +136,6 @@ class ActorPool(ComputeStrategy):
         return BlockList(blocks_out, new_metadata)
 
 
-cached_cls = None
-cached_fn = None
-
-
 def cache_wrapper(fn: Union[CallableClass, Callable[[Any], Any]]
                   ) -> Callable[[Any], Any]:
     """Implements caching of stateful callables.
@@ -153,11 +149,10 @@ def cache_wrapper(fn: Union[CallableClass, Callable[[Any], Any]]
     if isinstance(fn, CallableClass):
 
         def _fn(item: Any) -> Any:
-            global cached_cls, cached_fn
-            if cached_fn is None or cached_cls != fn:
-                cached_cls = fn
-                cached_fn = fn()
-            return cached_fn(item)
+            if ray.data._cached_fn is None or ray.data._cached_cls != fn:
+                ray.data._cached_cls = fn
+                ray.data._cached_fn = fn()
+            return ray.data._cached_fn(item)
 
         return _fn
     else:
