@@ -637,7 +637,7 @@ class Dataset(Generic[T]):
         """Return the schema of the dataset.
 
         For datasets of Arrow records, this will return the Arrow schema.
-        For dataset of Python objects, this returns their Python type.
+        For datasets of Python objects, this returns their Python type.
 
         Time complexity: O(1)
 
@@ -1241,7 +1241,14 @@ class Dataset(Generic[T]):
                 self._i += 1
                 return lambda: self._ds
 
-        return DatasetPipeline(Iterator(self), length=times)
+        class Iterable:
+            def __init__(self, ds: "Dataset[T]"):
+                self._ds = ds
+
+            def __iter__(self):
+                return Iterator(self._ds)
+
+        return DatasetPipeline(Iterable(self), length=times)
 
     def pipeline(self,
                  per_stage_parallelism: int = 10) -> "DatasetPipeline[T]":
@@ -1290,8 +1297,8 @@ class Dataset(Generic[T]):
         from ray.experimental.data.dataset_pipeline import DatasetPipeline
 
         class Iterator:
-            def __init__(self, blocks):
-                self._splits = blocks.split(split_size=per_stage_parallelism)
+            def __init__(self, splits):
+                self._splits = splits.copy()
 
             def __next__(self) -> "Dataset[T]":
                 if not self._splits:
@@ -1304,7 +1311,14 @@ class Dataset(Generic[T]):
 
                 return gen
 
-        it = Iterator(self._blocks)
+        class Iterable:
+            def __init__(self, blocks):
+                self._splits = blocks.split(split_size=per_stage_parallelism)
+
+            def __iter__(self):
+                return Iterator(self._splits)
+
+        it = Iterable(self._blocks)
         return DatasetPipeline(it, length=len(it._splits))
 
     @DeveloperAPI

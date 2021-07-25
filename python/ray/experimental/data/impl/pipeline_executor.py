@@ -24,8 +24,8 @@ class PipelineExecutor:
         self._pipeline: "DatasetPipeline[T]" = pipeline
         self._stages: List[ObjectRef[Dataset[
             Any]]] = [None] * (len(self._pipeline._stage_transforms) + 1)
-        self._stages[0] = pipeline_stage.remote(
-            next(self._pipeline._base_iterator))
+        self._iter = iter(self._pipeline._base_iterable)
+        self._stages[0] = pipeline_stage.remote(next(self._iter))
 
         if self._pipeline._progress_bars:
             self._bars = [
@@ -77,8 +77,7 @@ class PipelineExecutor:
             # Pull a new element for the initial slot if possible.
             if self._stages[0] is None:
                 try:
-                    self._stages[0] = pipeline_stage.remote(
-                        next(self._pipeline._base_iterator))
+                    self._stages[0] = pipeline_stage.remote(next(self._iter))
                 except StopIteration:
                     pass
 

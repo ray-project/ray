@@ -1,13 +1,14 @@
 import functools
 import time
-from typing import Any, Callable, List, Iterator, Generic, Union, TYPE_CHECKING
+from typing import Any, Callable, List, Iterator, Iterable, Generic, Union, \
+    TYPE_CHECKING
 
 import ray
 from ray.experimental.data.dataset import Dataset, T, U, BatchType
 from ray.experimental.data.impl.pipeline_executor import PipelineExecutor, \
     PipelineSplitExecutorCoordinator
 from ray.experimental.data.impl import progress_bar
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
@@ -29,9 +30,25 @@ OUTPUT_ITER_OPS = ["take", "show", "iter_rows", "to_tf", "to_torch"]
 
 @PublicAPI(stability="beta")
 class DatasetPipeline(Generic[T]):
+    """Implements a pipeline of Datasets.
+
+    Unlike Datasets, which execute all transformations synchronously,
+    DatasetPipelines implement pipelined execution. This allows for the
+    overlapped execution of data input (e.g., reading files), computation
+    (e.g. feature preprocessing), and output (e.g., distributed ML training).
+
+    A DatasetPipeline can be created by either repeating a Dataset
+    (``ds.repeat(times=None)``), or turning a single Dataset into a pipeline
+    (``ds.pipeline(per_stage_parallelism=10)``).
+
+    DatasetPipeline supports the all the per-record transforms of Datasets
+    (e.g., map, flat_map, filter), holistic transforms (e.g., repartition),
+    and output methods (e.g., iter_rows, to_tf, to_torch, write_datasource).
+    """
+
     def __init__(
             self,
-            base_iterator: Iterator[Callable[[], Dataset[T]]],
+            base_iterable: Iterable[Callable[[], Dataset[T]]],
             stage_transforms: List[Callable[[Dataset[T]], Dataset[U]]] = None,
             length: int = None,
             progress_bars: bool = progress_bar._enabled):
@@ -41,7 +58,7 @@ class DatasetPipeline(Generic[T]):
         ``Dataset.repeat()`` and ``Dataset.pipeline()`` methods to construct a
         dataset pipeline.
         """
-        self._base_iterator = base_iterator
+        self._base_iterable = base_iterable
         self._stage_transforms = stage_transforms or []
         self._length = length
         self._progress_bars = progress_bars
@@ -51,6 +68,27 @@ class DatasetPipeline(Generic[T]):
                      batch_size: int = None,
                      batch_format: str = "pandas",
                      drop_last: bool = False) -> Iterator[BatchType]:
+        """Return a local batched iterator over the data in the pipeline.
+
+        Examples:
+            >>> for pandas_df in ray.data.range(1000000).iter_batches():
+            ...     print(pandas_df)
+
+        Time complexity: O(1)
+
+        Args:
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+            batch_size: Record batch size, or None to let the system pick.
+            batch_format: The format in which to return each batch.
+                Specify "pandas" to select ``pandas.DataFrame`` or "pyarrow" to
+                select ``pyarrow.Table``. Default is "pandas".
+            drop_last: Whether to drop the last batch if it's incomplete.
+
+        Returns:
+            A list of iterators over record batches.
+        """
+
         def gen_batches() -> Iterator[BatchType]:
             for ds in self.iter_datasets():
                 for batch in ds.iter_batches(prefetch_blocks, batch_size,
@@ -59,17 +97,36 @@ class DatasetPipeline(Generic[T]):
 
         return gen_batches()
 
-    def iter_datasets(self) -> Iterator[Dataset[T]]:
-        return PipelineExecutor(self)
-
-    def foreach_dataset(self, fn: Callable[[Dataset[T]], Dataset[U]]
-                        ) -> "DatasetPipeline[U]":
-        return DatasetPipeline(self._base_iterator,
-                               self._stage_transforms + [fn], self._length,
-                               self._progress_bars)
-
     def split(self, n: int,
               locality_hints: List[Any] = None) -> List["DatasetPipeline[T]"]:
+        """Split the pipeline into ``n`` disjoint pipeline shards.
+
+        This returns a list of sub-pipelines that can be passed to Ray tasks
+        and actors and used to read the pipeline records in parallel.
+
+        Examples:
+            >>> # Split up a pipeline to process over `n` worker actors.
+            >>> shards = pipe.split(len(workers), locality_hints=workers)
+            >>> for shard, worker in zip(shards, workers):
+            ...     worker.consume.remote(shard)
+
+        Time complexity: O(1)
+
+        Implementation detail: this launches a coordinator actor that is used
+        to execute the pipeline and push data blocks to each pipeline shard.
+        Reading from an individual shard will be blocked if other shards are
+        falling behind. A warning will be printed if a shard has been blocked
+        on read for more than 10 seconds.
+
+        Args:
+            n: Number of child pipelines to return.
+            locality_hints: A list of Ray actor handles of size ``n``. The
+                system will try to co-locate the blocks of the ith pipeline
+                shard with the ith actor to maximize data locality.
+
+        Returns:
+            A list of ``n`` disjoint pipeline splits.
+        """
         coordinator = PipelineSplitExecutorCoordinator.remote(
             self, n, locality_hints)
 
@@ -109,9 +166,29 @@ class DatasetPipeline(Generic[T]):
         return splits
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+        """Return the schema of the dataset pipeline.
+
+        For datasets of Arrow records, this will return the Arrow schema.
+        For dataset of Python objects, this returns their Python type.
+
+        Time complexity: O(1)
+
+        Returns:
+            The Python type or Arrow schema of the records, or None if the
+            schema is not known.
+        """
         return next(self.iter_datasets()).schema()
 
     def count(self) -> int:
+        """Count the number of records in the dataset pipeline.
+
+        This blocks until the entire pipeline is fully executed.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Returns:
+            The number of records in the dataset pipeline.
+        """
         pipe = self.map_batches(lambda batch: [len(batch)])
         total = 0
         for elem in pipe.iter_rows():
@@ -119,11 +196,44 @@ class DatasetPipeline(Generic[T]):
         return total
 
     def sum(self) -> int:
+        """Sum the records in the dataset pipeline.
+
+        This blocks until the entire pipeline is fully executed.
+
+        Time complexity: O(dataset size / parallelism)
+
+        Returns:
+            The sum of the records in the dataset pipeline.
+        """
         pipe = self.map_batches(lambda batch: [batch.sum()[0]])
         total = 0
         for elem in pipe.iter_rows():
             total += elem
         return total
+
+    @DeveloperAPI
+    def iter_datasets(self) -> Iterator[Dataset[T]]:
+        """Iterate over the output datasets of this pipeline.
+
+        Returns:
+            Iterator over the datasets outputted from this pipeline.
+        """
+        return PipelineExecutor(self)
+
+    @DeveloperAPI
+    def foreach_dataset(self, fn: Callable[[Dataset[T]], Dataset[U]]
+                        ) -> "DatasetPipeline[U]":
+        """Apply a transform to each dataset in this pipeline.
+
+        Args:
+            fn: The function to transform each dataset with.
+
+        Returns:
+            The transformed DatasetPipeline.
+        """
+        return DatasetPipeline(self._base_iterable,
+                               self._stage_transforms + [fn], self._length,
+                               self._progress_bars)
 
 
 for method in PER_DATASET_OPS:
