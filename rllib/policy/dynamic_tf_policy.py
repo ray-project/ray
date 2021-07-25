@@ -241,7 +241,7 @@ class DynamicTFPolicy(TFPolicy):
                 True, (), name="is_exploring")
 
         # Placeholder for `is_training` flag.
-        self._input_dict["is_training"] = self._get_is_training_placeholder()
+        self._input_dict.is_training = self._get_is_training_placeholder()
 
         # Multi-GPU towers do not need any action computing/exploration
         # graphs.
@@ -266,7 +266,7 @@ class DynamicTFPolicy(TFPolicy):
                     prev_reward_batch=self._input_dict.get(
                         SampleBatch.PREV_REWARDS),
                     explore=explore,
-                    is_training=self._input_dict["is_training"])
+                    is_training=self._input_dict.is_training)
             # Distribution generation is customized, e.g., DQN, DDPG.
             else:
                 if action_distribution_fn:
@@ -284,7 +284,7 @@ class DynamicTFPolicy(TFPolicy):
                                 seq_lens=self._seq_lens,
                                 explore=explore,
                                 timestep=timestep,
-                                is_training=in_dict["is_training"])
+                                is_training=in_dict.is_training)
                     # Trying the old way (to stay backward compatible).
                     # TODO: Remove in future.
                     except TypeError as e:
@@ -301,7 +301,7 @@ class DynamicTFPolicy(TFPolicy):
                                     prev_reward_batch=in_dict.get(
                                         SampleBatch.PREV_REWARDS),
                                     explore=explore,
-                                    is_training=in_dict["is_training"])
+                                    is_training=in_dict.is_training)
                         else:
                             raise e
 
