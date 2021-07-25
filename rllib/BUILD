@@ -2443,6 +2443,13 @@ py_test(
 )
 
 py_test(
+    name = "examples/rnnsac_stateless_cartpole",
+    tags = ["examples", "examples_R"],
+    size = "large",
+    srcs = ["examples/rnnsac_stateless_cartpole.py"]
+)
+
+py_test(
     name = "examples/rollout_worker_custom_workflow",
     tags = ["examples", "examples_R"],
     size = "small",
