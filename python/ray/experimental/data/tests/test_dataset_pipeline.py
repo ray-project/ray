@@ -1,4 +1,5 @@
 import pytest
+import pandas as pd
 
 import ray
 
@@ -80,6 +81,22 @@ def test_split(ray_start_regular_shared):
     shards = pipe.split(3)
     refs = [consume.remote(s, i) for i, s in enumerate(shards)]
     ray.get(refs)
+
+
+def test_parquet_write(ray_start_regular_shared, tmp_path):
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    df = pd.concat([df1, df2])
+    ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
+    ds = ds.pipeline(1)
+    path = os.path.join(tmp_path, "test_parquet_dir")
+    os.mkdir(path)
+    ds._set_uuid("data")
+    ds.write_parquet(path)
+    path1 = os.path.join(path, "data_000000_000000.parquet")
+    path2 = os.path.join(path, "data_000001_000000.parquet")
+    dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])
+    assert df.equals(dfds)
 
 
 if __name__ == "__main__":

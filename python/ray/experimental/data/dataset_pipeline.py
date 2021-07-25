@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 # Operations that can be naively applied per dataset in the pipeline.
 PER_DATASET_OPS = [
-    "map", "map_batches", "flat_map", "filter", "repartition", "sort", "limit",
+    "map", "map_batches", "flat_map", "filter", "repartition", "sort",
     "write_json", "write_csv", "write_parquet", "write_datasource"
 ]
 
@@ -62,6 +62,7 @@ class DatasetPipeline(Generic[T]):
         self._stage_transforms = stage_transforms or []
         self._length = length
         self._progress_bars = progress_bars
+        self._uuid = None  # For testing only.
 
     def iter_batches(self,
                      prefetch_blocks: int = 0,
@@ -238,6 +239,12 @@ class DatasetPipeline(Generic[T]):
                                self._stage_transforms + [fn], self._length,
                                self._progress_bars)
 
+    def _get_uuid(self) -> str:
+        return self._uuid
+
+    def _set_uuid(self, uuid: str) -> None:
+        self._uuid = uuid
+
 
 for method in PER_DATASET_OPS:
 
@@ -267,7 +274,7 @@ for method in PER_DATASET_OUTPUT_OPS:
             uuid = None
             for i, ds in enumerate(self.iter_datasets()):
                 if uuid is None:
-                    uuid = ds._get_uuid()
+                    uuid = self._get_uuid() or ds._get_uuid()
                 ds._set_uuid(f"{uuid}_{i:06}")
                 getattr(ds, method)(*args, **kwargs)
 
