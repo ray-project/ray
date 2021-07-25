@@ -41,6 +41,16 @@ def test_basic_pipeline(ray_start_regular_shared):
     assert pipe.sum() == 450
 
 
+def test_repeat_forever(ray_start_regular_shared):
+    ds = ray.experimental.data.range(10)
+    pipe = ds.repeat()
+    assert str(pipe) == "DatasetPipeline(length=None, num_stages=1)"
+    for i, v in enumerate(pipe.iter_rows()):
+        assert v == i % 10, (v, i, i % 10)
+        if i > 1000:
+            break
+
+
 def test_repartition(ray_start_regular_shared):
     pipe = ray.experimental.data.range(10).repeat(10)
     assert pipe.repartition(1).sum() == 450
