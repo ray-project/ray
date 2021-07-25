@@ -5,6 +5,16 @@ import ray
 from ray.tests.conftest import *  # noqa
 
 
+def test_pipeline_actors(shutdown_only):
+    ray.init(num_cpus=2, num_gpus=1)
+    pipe = ray.experimental.data.range(3) \
+        .map(lambda x: x + 1) \
+        .map(lambda x: x + 1, compute="actors", num_gpus=1) \
+        .repeat(3)
+
+    assert sorted(pipe.take()) == sorted([2, 3, 4, 2, 3, 4, 2, 3, 4])
+
+
 def test_basic_pipeline(ray_start_regular_shared):
     ds = ray.experimental.data.range(10)
 
@@ -55,16 +65,17 @@ def test_schema(ray_start_regular_shared):
 
 
 def test_split(ray_start_regular_shared):
-    pipe = ray.experimental.data.range(3).repeat()
+    pipe = ray.experimental.data.range(3) \
+        .map(lambda x: x + 1) \
+        .repeat(10)
 
     @ray.remote
     def consume(shard, i):
         total = 0
         for row in shard.iter_rows():
             total += 1
-            assert row == i
-            if total > 100:
-                break
+            assert row == i + 1, row
+        assert total == 10, total
 
     shards = pipe.split(3)
     refs = [consume.remote(s, i) for i, s in enumerate(shards)]
