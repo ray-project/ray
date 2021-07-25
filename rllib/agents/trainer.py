@@ -1626,7 +1626,7 @@ class Trainer(Trainable):
 
             env_object._get_spaces = _get_spaces
 
-            if config["remote_worker_envs"]:
+            if config.get("remote_worker_envs"):
                 register_env(
                     name,
                     lambda cfg: ray.remote(num_cpus=0)(env_object).remote(cfg))
