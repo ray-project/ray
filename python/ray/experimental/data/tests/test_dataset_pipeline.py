@@ -1,3 +1,5 @@
+import os
+
 import pytest
 import pandas as pd
 
@@ -20,20 +22,22 @@ def test_basic_pipeline(ray_start_regular_shared):
     ds = ray.experimental.data.range(10)
 
     pipe = ds.pipeline(1)
+    assert str(pipe) == "DatasetPipeline(length=10, num_stages=1)"
     for _ in range(2):
         assert pipe.count() == 10
 
-    pipe = ds.pipeline(1)
+    pipe = ds.pipeline(1).map(lambda x: x).map(lambda x: x)
+    assert str(pipe) == "DatasetPipeline(length=10, num_stages=3)"
     assert pipe.take() == list(range(10))
 
     pipe = ds.pipeline(999)
+    assert str(pipe) == "DatasetPipeline(length=1, num_stages=1)"
     assert pipe.count() == 10
 
     pipe = ds.repeat(10)
+    assert str(pipe) == "DatasetPipeline(length=10, num_stages=1)"
     for _ in range(2):
         assert pipe.count() == 100
-
-    pipe = ds.repeat(10)
     assert pipe.sum() == 450
 
 

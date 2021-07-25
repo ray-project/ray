@@ -239,6 +239,13 @@ class DatasetPipeline(Generic[T]):
                                self._stage_transforms + [fn], self._length,
                                self._progress_bars)
 
+    def __repr__(self) -> str:
+        return "DatasetPipeline(length={}, num_stages={})".format(
+            self._length, 1 + len(self._stage_transforms))
+
+    def __str__(self) -> str:
+        return repr(self)
+
     def _get_uuid(self) -> str:
         return self._uuid
 
