@@ -75,7 +75,7 @@ Ray client is used when the address passed into ``ray.init`` is prefixed with th
    ray.init("ray://1.2.3.4:10001", namespace="my_namespace")
    #....
 
-**Custom protocols** can be created by third parties to extend or alter connection behavior. More details can be found in the source for `client_builder.py <https://github.com/ray-project/ray/blob/master/python/ray/client_builder.py>`_
+- **Custom protocols** can be created by third parties to extend or alter connection behavior. More details can be found in the source for `client_builder.py <https://github.com/ray-project/ray/blob/master/python/ray/client_builder.py>`_
 
 ClientBuilder API
 -----------------
