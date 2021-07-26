@@ -12,11 +12,11 @@ from ray.tests.conftest import *  # noqa
 def test_pipeline_actors(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1)
     pipe = ray.experimental.data.range(3) \
+        .repeat(10) \
         .map(lambda x: x + 1) \
-        .map(lambda x: x + 1, compute="actors", num_gpus=1) \
-        .repeat(100)
+        .map(lambda x: x + 1, compute="actors", num_gpus=1)
 
-    assert sorted(pipe.take(999)) == sorted([2, 3, 4] * 100)
+    assert sorted(pipe.take(999)) == sorted([2, 3, 4] * 10)
 
 
 def test_basic_pipeline(ray_start_regular_shared):
