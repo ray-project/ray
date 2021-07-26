@@ -1,9 +1,12 @@
+# This config is an example TPU config allowing you to run
+# https://github.com/Yard1/swarm-jax on GCP TPUs
+
 # A unique identifier for the head node and workers of this cluster.
 cluster_name: tputest
 
 # The maximum number of worker nodes to launch in addition to the head
 # node. min_workers default to 0.
-max_workers: 1
+max_workers: 4
 
 available_node_types:
     ray_head_default:
@@ -11,23 +14,24 @@ available_node_types:
         max_workers: 0
         resources: {"CPU": 2}
         node_config:
-            machineType: n1-standard-2
+            machineType: n2-standard-2
             disks:
               - boot: true
                 autoDelete: true
                 type: PERSISTENT
                 initializeParams:
-                  diskSizeGb: 50
+                  diskSizeGb: 100
                   # See https://cloud.google.com/compute/docs/images for more images
                   sourceImage: projects/deeplearning-platform-release/global/images/family/common-cpu
     ray_tpu:
-        min_workers: 1
+        min_workers: 4
         resources: {"TPU": 1}
         node_config:
             acceleratorType: v2-8
             runtimeVersion: v2-alpha
-            schedulingConfig:
-                preemptible: True
+            # Uncomment to use preemptible TPUs
+            # schedulingConfig:
+            #     preemptible: true
 
 provider:
     type: gcp
@@ -37,13 +41,22 @@ provider:
 
 setup_commands: []
 
+# Specify the node type of the head node (as configured above).
+head_node_type: ray_head_default
 
 # Compute instances have python 3.7, but TPUs have 3.8 - need to update
 head_setup_commands:
-  - sleep 2 && sudo apt-get install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libsqlite3-dev libreadline-dev libffi-dev curl libbz2-dev && curl -O https://www.python.org/ftp/python/3.8.5/Python-3.8.5.tar.xz && tar -xf Python-3.8.5.tar.xz && cd Python-3.8.5 && ./configure && make -j 4 && sudo make install
-  - python3.8 -m pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl && wget https://raw.githubusercontent.com/Yard1/ray/gcp_tpu_autoscaler/python/ray/autoscaler/_private/gcp/config.py && wget https://raw.githubusercontent.com/Yard1/ray/gcp_tpu_autoscaler/python/ray/autoscaler/_private/gcp/node.py && wget https://raw.githubusercontent.com/Yard1/ray/gcp_tpu_autoscaler/python/ray/autoscaler/_private/gcp/node_provider.py && cp -f config.py ~/.local/lib/python3.8/site-packages/ray/autoscaler/_private/gcp/ && cp -f node.py ~/.local/lib/python3.8/site-packages/ray/autoscaler/_private/gcp/ && cp -f node_provider.py ~/.local/lib/python3.8/site-packages/ray/autoscaler/_private/gcp/
-  - python3.8 -m pip install google-api-python-client==1.7.8 cryptography
+  - until sudo apt-get install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libsqlite3-dev libreadline-dev libffi-dev curl libbz2-dev; do echo "Try again"; sleep 2; done && curl -O https://www.python.org/ftp/python/3.8.5/Python-3.8.5.tar.xz && tar -xf Python-3.8.5.tar.xz && cd Python-3.8.5 && ./configure && make -j 4 && sudo make install
+  - python3.8 -m pip install --upgrade "jax[cpu]==0.2.14" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
+  - python3.8 -m pip install --upgrade fabric dataclasses optax==0.0.6 git+https://github.com/deepmind/dm-haiku google-api-python-client cryptography tensorboardX ray[default]
+  - python3.8 -m pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+  - git clone --branch test https://github.com/Yard1/swarm-jax.git && cd swarm-jax && python3.8 -m pip install .
+  - sudo update-alternatives --install /opt/conda/bin/python python /usr/local/bin/python3.8 10 && sudo update-alternatives --install /opt/conda/bin/pip pip /usr/local/bin/pip3.8 10
 
+# Install Jax and other dependencies on TPU
 worker_setup_commands:
+  - pip3 install --upgrade "jax[tpu]==0.2.14" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
+  - pip3 install --upgrade fabric dataclasses optax==0.0.6 git+https://github.com/deepmind/dm-haiku tensorboardX ray[default]
+  - python3 -c "import jax; jax.device_count(); jax.numpy.add(1, 1)"
   - pip3 install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
-  - pip3 install google-api-python-client==1.7.8
+  - git clone --branch test https://github.com/Yard1/swarm-jax.git && cd swarm-jax && sudo pip3 install .
