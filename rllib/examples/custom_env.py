@@ -72,13 +72,11 @@ parser.add_argument(
     "--no-tune",
     action="store_true",
     help="Run without Tune using a manual train loop instead. In this case,"
-         "use PPO without grid search and no TensorBoard."
-)
+    "use PPO without grid search and no TensorBoard.")
 parser.add_argument(
     "--local-mode",
     action="store_true",
-    help="Init Ray in local mode for easier debugging."
-)
+    help="Init Ray in local mode for easier debugging.")
 
 
 class SimpleCorridor(gym.Env):
@@ -190,7 +188,7 @@ if __name__ == "__main__":
         # manual training with train loop using PPO and fixed learning rate
         if args.run != "PPO":
             raise ValueError("Only support --run PPO with --no-tune.")
-        print(f"Running manual train loop without Ray Tune.")
+        print("Running manual train loop without Ray Tune.")
         ppo_config = ppo.DEFAULT_CONFIG.copy()
         ppo_config.update(config)
         # use fixed learning rate instead of grid search (needs tune)
@@ -200,9 +198,9 @@ if __name__ == "__main__":
         for _ in range(args.stop_iters):
             result = trainer.train()
             print(pretty_print(result))
-            # also stop training of the target train steps or reward are reached
+            # stop training of the target train steps or reward are reached
             if result["timesteps_total"] >= args.stop_timesteps or \
-                result["episode_reward_mean"] >= args.stop_reward:
+                    result["episode_reward_mean"] >= args.stop_reward:
                 break
     else:
         # automated run with Tune and grid search and TensorBoard
