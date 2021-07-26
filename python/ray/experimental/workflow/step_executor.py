@@ -61,9 +61,15 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
             except Exception:
                 pass
         if not get_cached_step:
-            step_ref = recovery.resume_workflow_step(
-                workflow_id, workflow_ref.step_id, storage_url).state
-            output, _ = _resolve_object_ref(step_ref)
+            wf_store = workflow_storage.get_workflow_storage()
+            try:
+                output = wf_store.load_step_output(workflow_ref.step_id)
+            except Exception:
+                logger.warning("Failed to get the output of step "
+                               f"{workflow_ref.step_id}. Trying to resume it.")
+                step_ref = recovery.resume_workflow_step(
+                    workflow_id, workflow_ref.step_id, storage_url).state
+                output, _ = _resolve_object_ref(step_ref)
         workflow_ref_mapping.append(output)
     return workflow_ref_mapping
 
