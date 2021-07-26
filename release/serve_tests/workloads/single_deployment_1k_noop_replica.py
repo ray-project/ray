@@ -57,7 +57,6 @@ DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
 DEFAULT_FULL_TEST_TRIAL_LENGTH = "1m"
 
 
-
 def deploy_replicas(num_replicas, max_batch_size):
     @serve.deployment(name="echo", num_replicas=num_replicas)
     class Echo:
