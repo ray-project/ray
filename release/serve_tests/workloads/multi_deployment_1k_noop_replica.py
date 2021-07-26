@@ -42,6 +42,7 @@ from serve_test_cluster_utils import (
     setup_anyscale_cluster,
     warm_up_cluster,
     NUM_CPU_PER_NODE,
+    NUM_CONNECTIONS,
 )
 from typing import Optional
 
@@ -52,12 +53,12 @@ DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS = 4  # 2 replicas each
 # TODO:(jiaodong) We should investigate and change this back to 1k
 # for now, we won't get valid latency numbers from wrk at 1k replica
 # likely due to request timeout.
-DEFAULT_FULL_TEST_NUM_REPLICA = 1000
-DEFAULT_FULL_TEST_NUM_DEPLOYMENTS = 100  # 10 replicas each
+DEFAULT_FULL_TEST_NUM_REPLICA = 100
+DEFAULT_FULL_TEST_NUM_DEPLOYMENTS = 10  # 10 replicas each
 
 # Experiment configs - wrk specific
 DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
-DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
+DEFAULT_FULL_TEST_TRIAL_LENGTH = "1m"
 
 
 def setup_multi_deployment_replicas(num_replicas, num_deployments):
@@ -141,12 +142,10 @@ def main(num_replicas: Optional[int], num_deployments: Optional[int],
     logger.info(f"Starting wrk trial for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
-    num_connections = int(num_replicas * NUM_CPU_PER_NODE * 0.75)
-
     all_endpoints = list(serve.list_endpoints().keys())
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
         trial_length,
-        num_connections,
+        NUM_CONNECTIONS,
         http_host,
         http_port,
         all_endpoints=all_endpoints)

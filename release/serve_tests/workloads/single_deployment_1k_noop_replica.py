@@ -41,19 +41,21 @@ from serve_test_cluster_utils import (
     setup_anyscale_cluster,
     warm_up_cluster,
     NUM_CPU_PER_NODE,
+    NUM_CONNECTIONS,
 )
 from typing import Optional
 
 # Experiment configs
 DEFAULT_SMOKE_TEST_NUM_REPLICA = 8
-DEFAULT_FULL_TEST_NUM_REPLICA = 1000
+DEFAULT_FULL_TEST_NUM_REPLICA = 100
 
 # Deployment configs
 DEFAULT_MAX_BATCH_SIZE = 16
 
 # Experiment configs - wrk specific
 DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
-DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
+DEFAULT_FULL_TEST_TRIAL_LENGTH = "1m"
+
 
 
 def deploy_replicas(num_replicas, max_batch_size):
@@ -66,7 +68,8 @@ def deploy_replicas(num_replicas, max_batch_size):
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-    Echo.deploy()
+    deployment_handle = Echo.deploy()
+    return deployment_handle
 
 
 def save_results(final_result, default_name):
@@ -119,25 +122,13 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
     logger.info(f"Starting wrk trial for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
-    num_connections = int(num_replicas * DEFAULT_MAX_BATCH_SIZE * 0.75)
     all_endpoints = list(serve.list_endpoints().keys())
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 941b57c6e (travis)
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
         trial_length,
-        num_connections,
+        NUM_CONNECTIONS,
         http_host,
         http_port,
         all_endpoints=all_endpoints)
-<<<<<<< HEAD
-=======
-    all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(trial_length, num_connections, http_host,
-                                                       http_port, all_endpoints=all_endpoints)
->>>>>>> 97756611c (both multi and single working locally)
-=======
->>>>>>> 941b57c6e (travis)
 
     aggregated_metrics = aggregate_all_metrics(all_metrics)
     logger.info("Wrk stdout on each node: ")
@@ -147,17 +138,8 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
     for key, val in aggregated_metrics.items():
         logger.info(f"{key}: {val}")
     save_test_results(
-<<<<<<< HEAD
-<<<<<<< HEAD
         aggregated_metrics,
         default_output_file="/tmp/single_deployment_1k_noop_replica.json")
-=======
-        aggregated_metrics, default_output_file="/tmp/single_deployment_1k_noop_replica.json")
->>>>>>> 97756611c (both multi and single working locally)
-=======
-        aggregated_metrics,
-        default_output_file="/tmp/single_deployment_1k_noop_replica.json")
->>>>>>> 941b57c6e (travis)
 
 
 if __name__ == "__main__":
