@@ -1,6 +1,5 @@
 import logging
 from typing import Any, Dict, List, TYPE_CHECKING
-from weakref import WeakValueDictionary
 
 from dataclasses import dataclass
 import ray
@@ -155,7 +154,7 @@ class WorkflowManagementActor:
         self._store = store
         self._workflow_outputs: Dict[str, LatestWorkflowOutput] = {}
         # Cache step output.
-        self._step_output_cache = WeakValueDictionary()
+        self._step_output_cache: Dict[str, LatestWorkflowOutput] = {}
         self._actor_initialized: Dict[str, ray.ObjectRef] = {}
         self._step_status: Dict[str, Dict[str, common.WorkflowStatus]] = {}
 
@@ -222,6 +221,8 @@ class WorkflowManagementActor:
         else:
             self._step_status.setdefault(workflow_id, {})[step_id] = status
         remaining = len(self._step_status[workflow_id])
+        if status != common.WorkflowStatus.RUNNING:
+            self._step_output_cache.pop((workflow_id, step_id), None)
 
         if status != common.WorkflowStatus.FAILED and remaining != 0:
             return
@@ -341,6 +342,8 @@ class WorkflowManagementActor:
         Args:
             workflow_id: The ID of the workflow.
         """
+        # TODO(suquark): maybe we should not report success for every
+        # step of virtual actor writer?
         logger.info(f"Workflow job [id={workflow_id}] succeeded.")
         self._workflow_outputs.pop(workflow_id, None)
 
