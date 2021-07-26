@@ -5,7 +5,8 @@ from ray.experimental.data.datasource import Datasource, ReadTask, WriteTask
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.impl.progress_bar import set_progress_bars
 
-# Module-level cached global functions (for impl/compute).
+# Module-level cached global functions (for impl/compute). It cannot be defined
+# in impl/compute since it has to be process-global across cloudpickled funcs.
 _cached_fn = None
 _cached_cls = None
 
