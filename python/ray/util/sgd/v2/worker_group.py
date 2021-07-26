@@ -1,9 +1,12 @@
-from typing import Callable, Any, List, TypeVar
+from typing import Callable, List, TypeVar
+
+from inspect import signature
 
 import ray
 from ray.types import ObjectRef
 
 T = TypeVar("T")
+
 
 class WorkerGroup:
     """
@@ -26,10 +29,11 @@ class WorkerGroup:
         .. code_block:: python
 
         worker_group = WorkerGroup(num_workers=2)
-        output = worker_group.execute(lambda: return 1)
+        output = worker_group.execute(lambda: 1)
         assert len(output) == 2
         assert all(o == 1 for o in output)
     """
+
     def __init__(self,
                  num_workers: int = 1,
                  num_cpus_per_worker: int = 1,
@@ -68,7 +72,7 @@ class WorkerGroup:
             for worker in self.workers:
                 ray.kill(worker)
         else:
-            done_refs = [w.__ray__terminate__.remote() for w in self.workers]
+            done_refs = [w.__ray_terminate__.remote() for w in self.workers]
             # Wait 5 seconds for workers to die gracefully.
             done, not_done = ray.wait(done_refs, timeout=5)
             if not_done:
@@ -83,21 +87,32 @@ class WorkerGroup:
 
         Args:
             func (Callable): A function to call on each worker.
-                The function must not accept any arguments.
+                The function must not require any arguments.
 
         Returns:
             (List[ObjectRef]) A list of ``ObjectRef`` representing the
                 output of ``func`` from each worker.
 
         """
-        return [w.execute(func) for w in self.workers]
+        if len(self.workers) <= 0:
+            raise RuntimeError("There are no active workers. This worker "
+                               "group has most likely been shut down. Please"
+                               "create a new WorkerGroup.")
+
+        num_args = len(signature(func).parameters)
+        if num_args != 0:
+            raise ValueError("The provided function should not require"
+                             f"any arguments, but it is requiring {num_args} "
+                             "instead.")
+
+        return [w.execute.remote(func) for w in self.workers]
 
     def execute(self, func: Callable[[], T]) -> List[T]:
         """Execute ``func`` on each worker and return the outputs of ``func``.
 
         Args:
             func (Callable): A function to call on each worker.
-                The function must not accept any arguments.
+                The function must not require any arguments.
 
         Returns:
             (List[T]) A list containing the output of ``func`` from each
