@@ -514,6 +514,7 @@ class GCPTPU(GCPResource):
             config["networkConfig"] = {}
         if "enableExternalIps" not in config["networkConfig"]:
             # this is required for SSH to work, per google documentation
+            # https://cloud.google.com/tpu/docs/users-guide-tpu-vm#create-curl
             config["networkConfig"]["enableExternalIps"] = True
 
         operation = self.resource.projects().locations().nodes().create(
