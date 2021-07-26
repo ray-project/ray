@@ -23,13 +23,16 @@ class BackendExecutor:
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
 
+        self.worker_group = None
+
     def start(self):
         self.worker_group = WorkerGroup(self._num_workers,
                                         self._num_cpus_per_worker,
                                         self._num_gpus_per_worker)
 
     def execute(self, train_func: Callable):
-        pass
+        if not self.worker_group:
+
 
     def shutdown(self):
         self.worker_group.shutdown()
@@ -42,4 +45,6 @@ class BackendExecutor:
                 3. Shuts down the executor.
                 4. Returns results of the function.
         """
-        pass
+        self.start()
+        self.execute(train_func)
+        self.shutdown()

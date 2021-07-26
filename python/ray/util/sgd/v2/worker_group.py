@@ -131,3 +131,10 @@ class BaseWorker:
             func(Callable): A function that does not take any arguments.
         """
         return func()
+
+class DeactivatedWorkerGroup:
+    def __getattr__(self, *args, **kwargs):
+        raise RuntimeError(
+            "This Trainer is not active. It is either shutdown already or "
+            "never started in the first place. Either create a new Trainer "
+            "or start this one again.")
