@@ -136,7 +136,7 @@ class Workflow:
             raise ValueError("Workflow should have one return value.")
         self._data = workflow_data
         self._executed: bool = False
-        self._state: Optional[WorkflowOutputType] = None
+        self._result: Optional[WorkflowExecutionResult] = None
         self._step_id: StepID = slugify(
             self._data.func_body.__qualname__) + "." + uuid.uuid4().hex
 
@@ -145,10 +145,10 @@ class Workflow:
         return self._executed
 
     @property
-    def result(self) -> WorkflowOutputType:
+    def result(self) -> WorkflowExecutionResult:
         if not self._executed:
             raise Exception("The workflow has not been executed.")
-        return self._state
+        return self._result
 
     @property
     def id(self) -> StepID:
