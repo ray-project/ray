@@ -50,11 +50,17 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
     storage_url = context.storage_url
     workflow_ref_mapping = []
     for workflow_ref in workflow_refs:
-        step_ref = workflow_manager.get_cached_step.remote(
-            workflow_id, workflow_ref.step_id)
-        try:
-            output, _ = _resolve_object_ref(step_ref)
-        except Exception:
+        step_ref = ray.get(
+            workflow_manager.get_cached_step.remote(workflow_id,
+                                                    workflow_ref.step_id))
+        get_cached_step = False
+        if step_ref is not None:
+            try:
+                output, _ = _resolve_object_ref(step_ref)
+                get_cached_step = True
+            except Exception:
+                pass
+        if not get_cached_step:
             step_ref = recovery.resume_workflow_step(
                 workflow_id, workflow_ref.step_id, storage_url).state
             output, _ = _resolve_object_ref(step_ref)

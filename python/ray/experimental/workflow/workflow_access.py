@@ -171,14 +171,14 @@ class WorkflowManagementActor:
             workflow_id: The ID of the workflow.
             step_id: The ID of the step.
 
-        Raises:
-            KeyError: If the step is missing.
-
         Returns:
             An object reference that can be used to retrieve the
-            step result.
+            step result. If it does not exist, return None
         """
-        return self._step_output_cache[workflow_id, step_id]
+        try:
+            return self._step_output_cache[workflow_id, step_id].output
+        except Exception:
+            return None
 
     def run_or_resume(self, workflow_id: str, ignore_existing: bool = False
                       ) -> "WorkflowExecutionResult":
