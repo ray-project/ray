@@ -214,6 +214,9 @@ class WorkflowManagementActor:
 
     def update_step_status(self, workflow_id: str, step_id: str,
                            status: common.WorkflowStatus):
+        # Note: For virtual actor, we could add more steps even if
+        # the workflow finishes.
+        self._step_status.setdefault(workflow_id, {})
         if status == common.WorkflowStatus.SUCCESSFUL:
             self._step_status[workflow_id].pop(step_id, None)
         else:
