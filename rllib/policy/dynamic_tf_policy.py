@@ -379,6 +379,9 @@ class DynamicTFPolicy(TFPolicy):
                             self.config.get("num_multi_gpu_tower_stacks", 1))
                     ]
 
+            # Initialize again after loss and tower init.
+            self.get_session().run(tf1.global_variables_initializer())
+
     @override(TFPolicy)
     @DeveloperAPI
     def copy(self,
@@ -692,9 +695,6 @@ class DynamicTFPolicy(TFPolicy):
             for k, v in self._loss_input_dict.items()
             if (v not in self._state_inputs and v != self._seq_lens)
         }
-
-        # Initialize again after loss init.
-        self.get_session().run(tf1.global_variables_initializer())
 
     def _do_loss_init(self, train_batch: SampleBatch):
         loss = self._loss_fn(self, self.model, self.dist_class, train_batch)
