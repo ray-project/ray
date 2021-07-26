@@ -1297,8 +1297,13 @@ class Dataset(Generic[T]):
             >>> # Create an inference pipeline.
             >>> ds = ray.data.read_binary_files(dir)
             >>> pipe = ds.pipeline(per_stage_parallelism=10).map(infer)
+            DatasetPipeline(num_stages=2, length=40)
 
-            >>> # Outputs can be read from the pipeline without full execution.
+            >>> # The higher the stage parallelism, the shorter the pipeline.
+            >>> pipe = ds.pipeline(per_stage_parallelism=20).map(infer)
+            DatasetPipeline(num_stages=2, length=20)
+
+            >>> # Outputs can be incrementally read from the pipeline.
             >>> for item in pipe.iter_rows():
             ...    print(item)
 
