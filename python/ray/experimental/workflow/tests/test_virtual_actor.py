@@ -100,6 +100,23 @@ def test_writer_actor_1(workflow_start_regular):
     assert ray.get([actor.add.run_async(i) for i in range(10, 20)]) == array
 
 
+@pytest.mark.parametrize(
+    "workflow_start_regular",
+    [{
+        "num_cpus": 8,  # increase CPUs to add pressure
+    }],
+    indirect=True)
+def test_writer_actor_pressure_test(workflow_start_regular):
+    actor = Counter.get_or_create("Counter", 0)
+    array = []
+    length = 50
+    s = 0
+    for i in range(1, length):
+        s += i
+        array.append(s)
+    assert ray.get([actor.add.run_async(i) for i in range(1, length)]) == array
+
+
 @workflow.virtual_actor
 class SlowInit:
     def __init__(self, x: int):
