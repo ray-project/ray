@@ -682,7 +682,7 @@ class StandardAutoscaler:
             if not node_status == STATUS_UP_TO_DATE:
                 continue
             # This node is up-to-date. If it hasn't had the chance to produce
-            # a heartbeat, fake the heartbeat now (cf. logic for completed node
+            # a heartbeat, fake the heartbeat now (see logic for completed node
             # updaters).
             ip = self.provider.internal_ip(node_id)
             if ip not in self.load_metrics.last_heartbeat_time_by_ip:
