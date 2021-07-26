@@ -55,17 +55,18 @@ class WorkerGroup:
         self.num_workers = num_workers
         self.num_cpus_per_worker = num_cpus_per_worker
         self.num_gpus_per_worker = num_gpus_per_worker
-        self.workers = self._start_workers()
+        self.workers = []
 
-    def _start_workers(self):
+    def start(self):
+        """Starts all the workers in this worker group."""
+        if not self.workers or len(self.workers) <= 0:
+            raise RuntimeError("The workers have already been started. "
+                               "Please call `shutdown` first if you want to "
+                               "restart them.")
         remote_cls = ray.remote(
             num_cpus=self.num_cpus_per_worker,
             num_gpus=self.num_gpus_per_worker)(BaseWorker)
-        return [remote_cls.remote() for _ in range(self.num_workers)]
-
-    def restart(self):
-        """Restarts all the workers in this worker group."""
-        self.workers = self._start_workers()
+        self.workers = [remote_cls.remote() for _ in range(self.num_workers)]
 
     def shutdown(self, graceful_shutdown_timeout_s: float = 5):
         """Shutdown all the workers in this worker group.
