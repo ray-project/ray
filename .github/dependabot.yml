@@ -37,7 +37,7 @@ updates:
       interval: "weekly"
       day: "saturday"
       time: "00:00"
-      timezone: "Europe/Amsterdam"
+      timezone: "America/Los_Angeles"
     commit-message:
       prefix: "[RLlib]"
       include: "scope"

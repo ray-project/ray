@@ -59,6 +59,15 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetA
       });
 }
 
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNextJobID(JNIEnv *env, jobject o,
+                                                               jlong gcs_accessor_ptr) {
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  const auto &job_id = gcs_accessor->GetNextJobID();
+  return IdToJavaByteArray<ray::JobID>(env, job_id);
+}
+
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllNodeInfo(JNIEnv *env, jobject o,
                                                                  jlong gcs_accessor_ptr) {
@@ -128,7 +137,8 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetPlacementGroupInfoByName(
   auto full_name = GetFullName(global, placement_group_name);
   auto *gcs_accessor =
       reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
-  auto placement_group = gcs_accessor->GetPlacementGroupByName(full_name);
+  // Java doesn't support namespaces.
+  auto placement_group = gcs_accessor->GetPlacementGroupByName(full_name, "");
   if (placement_group) {
     return NativeStringToJavaByteArray(env, *placement_group);
   }
@@ -145,6 +155,33 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllPlacementGroupInfo(
       env, placement_group_info_list, [](JNIEnv *env, const std::string &str) {
         return NativeStringToJavaByteArray(env, str);
       });
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalKV(JNIEnv *env, jobject o,
+                                                                jlong gcs_accessor_ptr,
+                                                                jstring k) {
+  std::string key = JavaStringToNativeString(env, k);
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  auto value = gcs_accessor->GetInternalKV(key);
+  if (value) {
+    return NativeStringToJavaByteArray(env, *value);
+  }
+  return nullptr;
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNodeToConnectForDriver(
+    JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jstring nodeIpAddress) {
+  std::string node_ip_address = JavaStringToNativeString(env, nodeIpAddress);
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  std::string node_to_connect;
+  auto status =
+      gcs_accessor->GetNodeToConnectForDriver(node_ip_address, &node_to_connect);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
+  return NativeStringToJavaByteArray(env, node_to_connect);
 }
 
 #ifdef __cplusplus

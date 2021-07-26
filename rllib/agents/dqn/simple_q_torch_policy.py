@@ -77,7 +77,7 @@ def build_q_losses(policy: Policy, model, dist_class,
     # q network evaluation
     q_t = compute_q_values(
         policy,
-        policy.model,
+        model,
         train_batch[SampleBatch.CUR_OBS],
         explore=False,
         is_training=True)

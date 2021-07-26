@@ -106,7 +106,7 @@ if __name__ == "__main__":
     # >> prev_r = 0.0
     # >>
     # >> while True:
-    # >>     a, state_out, _ = trainer.compute_action(
+    # >>     a, state_out, _ = trainer.compute_single_action(
     # ..         obs, state, prev_a, prev_r)
     # >>     obs, reward, done, _ = env.step(a)
     # >>     if done:

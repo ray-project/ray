@@ -21,11 +21,6 @@
 namespace ray {
 namespace api {
 
-enum WorkerType : int {
-  WORKER = 0,
-  DRIVER = 1,
-};
-
 struct TaskArg {
   TaskArg() = default;
   TaskArg(TaskArg &&rhs) {

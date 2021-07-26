@@ -86,7 +86,7 @@ struct ActorCreationOptions {
       const std::unordered_map<std::string, double> &resources,
       const std::unordered_map<std::string, double> &placement_resources,
       const std::vector<std::string> &dynamic_worker_options, bool is_detached,
-      std::string &name, bool is_asyncio,
+      std::string &name, std::string &ray_namespace, bool is_asyncio,
       BundleID placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
       bool placement_group_capture_child_tasks = true,
       const std::string &serialized_runtime_env = "{}",
@@ -100,6 +100,7 @@ struct ActorCreationOptions {
         dynamic_worker_options(dynamic_worker_options),
         is_detached(is_detached),
         name(name),
+        ray_namespace(ray_namespace),
         is_asyncio(is_asyncio),
         placement_options(placement_options),
         placement_group_capture_child_tasks(placement_group_capture_child_tasks),
@@ -130,6 +131,10 @@ struct ActorCreationOptions {
   /// other drivers. This must be globally unique across the cluster.
   /// This should set if and only if is_detached is true.
   const std::string name;
+  /// The namespace to give this detached actor so that the actor is only visible
+  /// with the namespace.
+  /// This should set if and only if is_detached is true.
+  const std::string ray_namespace;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
   /// The placement_options include placement_group_id and bundle_index.
@@ -166,6 +171,47 @@ struct PlacementGroupCreationOptions {
   const std::vector<std::unordered_map<std::string, double>> bundles;
   /// Whether to keep the placement group persistent after its creator dead.
   const bool is_detached = false;
+};
+
+class ObjectLocation {
+ public:
+  ObjectLocation(NodeID primary_node_id, uint64_t object_size,
+                 std::vector<NodeID> node_ids, bool is_spilled, std::string spilled_url,
+                 NodeID spilled_node_id)
+      : primary_node_id_(primary_node_id),
+        object_size_(object_size),
+        node_ids_(std::move(node_ids)),
+        is_spilled_(is_spilled),
+        spilled_url_(std::move(spilled_url)),
+        spilled_node_id_(spilled_node_id) {}
+
+  const NodeID &GetPrimaryNodeID() const { return primary_node_id_; }
+
+  const uint64_t GetObjectSize() const { return object_size_; }
+
+  const std::vector<NodeID> &GetNodeIDs() const { return node_ids_; }
+
+  bool IsSpilled() const { return is_spilled_; }
+
+  const std::string &GetSpilledURL() const { return spilled_url_; }
+
+  const NodeID &GetSpilledNodeID() const { return spilled_node_id_; }
+
+ private:
+  /// The ID of the node has the primary copy of the object.
+  /// Nil if the object is pending resolution.
+  const NodeID primary_node_id_;
+  /// The size of the object in bytes.
+  const uint64_t object_size_;
+  /// The IDs of the nodes that this object appeared on or was evicted by.
+  const std::vector<NodeID> node_ids_;
+  /// Whether this object has been spilled.
+  const bool is_spilled_;
+  /// If spilled, the URL of this object's spill location.
+  const std::string spilled_url_;
+  /// If spilled, the ID of the node that spilled the object. Nil if the object was
+  /// spilled to distributed external storage.
+  const NodeID spilled_node_id_;
 };
 
 }  // namespace ray

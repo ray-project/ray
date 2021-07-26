@@ -3,16 +3,20 @@ from typing import Optional, Any, List, Dict
 from collections.abc import Iterable
 
 import ray
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="beta")
 class Empty(Exception):
     pass
 
 
+@PublicAPI(stability="beta")
 class Full(Exception):
     pass
 
 
+@PublicAPI(stability="beta")
 class Queue:
     """A first-in, first-out queue implementation on Ray.
 

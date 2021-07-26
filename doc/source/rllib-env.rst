@@ -342,7 +342,18 @@ In many situations, it does not make sense for an environment to be "stepped" by
 
     A Unity3D soccer game being learnt by RLlib via the ExternalEnv API.
 
-RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/rllib/env/external_env.py>`__ class for this purpose. Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``. This can be done for multiple concurrent episodes as well.
+RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/rllib/env/external_env.py>`__ class for this purpose.
+Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``.
+This can be done for multiple concurrent episodes as well.
+
+Take a look at the examples here for a `simple "CartPole-v0" server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__
+and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__
+scripts, in which we setup an RLlib policy server that listens on one or more ports for client connections
+and connect several clients to this server to learn the env.
+
+Another `example <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/unity3d_server.py>`__ shows,
+how to run a similar setup against a Unity3D external game engine.
+
 
 Logging off-policy actions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

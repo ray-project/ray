@@ -62,7 +62,7 @@ class QLoss:
             # Indispensable judgement which is missed in most implementations
             # when b happens to be an integer, lb == ub, so pr_j(s', a*) will
             # be discarded because (ub-b) == (b-lb) == 0.
-            floor_equal_ceil = (ub - lb < 0.5).float()
+            floor_equal_ceil = ((ub - lb) < 0.5).float()
 
             # (batch_size, num_atoms, num_atoms)
             l_project = F.one_hot(lb.long(), num_atoms)
@@ -79,7 +79,7 @@ class QLoss:
             # Rainbow paper claims that using this cross entropy loss for
             # priority is robust and insensitive to `prioritized_replay_alpha`
             self.td_error = softmax_cross_entropy_with_logits(
-                logits=q_logits_t_selected, labels=m)
+                logits=q_logits_t_selected, labels=m.detach())
             self.loss = torch.mean(self.td_error * importance_weights)
             self.stats = {
                 # TODO: better Q stats for dist dqn
@@ -180,8 +180,6 @@ def build_q_model_and_distribution(
         #  generically into ModelCatalog.
         add_layer_norm=add_layer_norm)
 
-    policy.q_func_vars = model.variables()
-
     policy.target_q_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
@@ -200,8 +198,6 @@ def build_q_model_and_distribution(
         # TODO(sven): Move option to add LayerNorm after each Dense
         #  generically into ModelCatalog.
         add_layer_norm=add_layer_norm)
-
-    policy.target_q_func_vars = policy.target_q_model.variables()
 
     return model, TorchCategorical
 
@@ -237,6 +233,7 @@ def build_q_losses(policy: Policy, model, _,
     Returns:
         TensorType: A single loss tensor.
     """
+
     config = policy.config
     # Q-network evaluation.
     q_t, q_logits_t, q_probs_t, _ = compute_q_values(
@@ -302,6 +299,13 @@ def build_q_losses(policy: Policy, model, _,
 
 def adam_optimizer(policy: Policy,
                    config: TrainerConfigDict) -> "torch.optim.Optimizer":
+
+    # By this time, the models have been moved to the GPU - if any - and we
+    # can define our optimizers using the correct CUDA variables.
+    if not hasattr(policy, "q_func_vars"):
+        policy.q_func_vars = policy.model.variables()
+        policy.target_q_func_vars = policy.target_q_model.variables()
+
     return torch.optim.Adam(
         policy.q_func_vars, lr=policy.cur_lr, eps=config["adam_epsilon"])
 
@@ -357,7 +361,7 @@ def compute_q_values(policy: Policy,
             support_logits_per_action = torch.unsqueeze(
                 state_score, dim=1) + support_logits_per_action_centered
             support_prob_per_action = nn.functional.softmax(
-                support_logits_per_action)
+                support_logits_per_action, dim=-1)
             value = torch.sum(z * support_prob_per_action, dim=-1)
             logits = support_logits_per_action
             probs_or_logits = support_prob_per_action

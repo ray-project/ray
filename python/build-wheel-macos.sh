@@ -16,19 +16,21 @@ DOWNLOAD_DIR=python_downloads
 NODE_VERSION="14"
 PY_VERSIONS=("3.6.2"
              "3.7.0"
-             "3.8.2")
+             "3.8.2"
+             "3.9.1")
 PY_INSTS=("python-3.6.2-macosx10.6.pkg"
           "python-3.7.0-macosx10.6.pkg"
-          "python-3.8.2-macosx10.9.pkg")
+          "python-3.8.2-macosx10.9.pkg"
+          "python-3.9.1-macosx10.9.pkg")
 PY_MMS=("3.6"
         "3.7"
-        "3.8")
+        "3.8"
+        "3.9")
 
-# The minimum supported numpy version is 1.14, see
-# https://issues.apache.org/jira/browse/ARROW-3141
 NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
-                "1.14.5")
+                "1.14.5"
+                "1.19.3")
 
 ./ci/travis/install-bazel.sh
 
@@ -91,7 +93,10 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     fi
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
+    # build ray wheel
     PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel
+    # build ray-cpp wheel
+    RAY_INSTALL_CPP=1 PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel
     mv dist/*.whl ../.whl/
   popd
 done

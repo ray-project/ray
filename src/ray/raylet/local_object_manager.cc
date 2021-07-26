@@ -42,47 +42,39 @@ void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
 void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
                                            const std::vector<ObjectID> &object_ids) {
   for (const auto &object_id : object_ids) {
-    // Send a subscription message.
+    // Create a object eviction subscription message.
+    auto wait_request = std::make_unique<rpc::WorkerObjectEvictionSubMessage>();
+    wait_request->set_object_id(object_id.Binary());
+    wait_request->set_intended_worker_id(owner_address.worker_id());
     rpc::Address subscriber_address;
     subscriber_address.set_raylet_id(self_node_id_.Binary());
     subscriber_address.set_ip_address(self_node_address_);
     subscriber_address.set_port(self_node_port_);
-    auto owner_client = owner_client_pool_.GetOrConnect(owner_address);
-    rpc::SubscribeForObjectEvictionRequest wait_request;
-    wait_request.set_object_id(object_id.Binary());
-    wait_request.set_intended_worker_id(owner_address.worker_id());
-    wait_request.mutable_subscriber_address()->CopyFrom(subscriber_address);
-    owner_client->SubscribeForObjectEviction(
-        wait_request,
-        [this, owner_address, object_id](
-            Status status, const rpc::SubscribeForObjectEvictionReply &reply) {
-          if (!status.ok()) {
-            RAY_LOG(DEBUG)
-                << "Subscription request to Evicted objects have failed. Object id:"
-                << object_id << " status:" << status.ToString();
-            ReleaseFreedObject(object_id);
-            return;
-          }
+    wait_request->mutable_subscriber_address()->CopyFrom(subscriber_address);
 
-          // If the subscription succeeds, register the subscription callback.
-          // Callback that is invoked when the owner publishes the object to evict.
-          auto subscription_callback = [this, owner_address](const rpc::PubMessage &msg) {
-            RAY_CHECK(msg.has_worker_object_eviction_message());
-            const auto object_eviction_msg = msg.worker_object_eviction_message();
-            const auto object_id = ObjectID::FromBinary(object_eviction_msg.object_id());
-            ReleaseFreedObject(object_id);
-            core_worker_subscriber_->Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                                 owner_address, object_id.Binary());
-          };
+    // If the subscription succeeds, register the subscription callback.
+    // Callback is invoked when the owner publishes the object to evict.
+    auto subscription_callback = [this, owner_address](const rpc::PubMessage &msg) {
+      RAY_CHECK(msg.has_worker_object_eviction_message());
+      const auto object_eviction_msg = msg.worker_object_eviction_message();
+      const auto object_id = ObjectID::FromBinary(object_eviction_msg.object_id());
+      ReleaseFreedObject(object_id);
+      core_worker_subscriber_->Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                           owner_address, object_id.Binary());
+    };
 
-          // Callback that is invoked when the owner of the object id is dead.
-          auto owner_dead_callback = [this, object_id]() {
-            ReleaseFreedObject(object_id);
-          };
-          core_worker_subscriber_->Subscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                             owner_address, object_id.Binary(),
-                                             subscription_callback, owner_dead_callback);
-        });
+    // Callback that is invoked when the owner of the object id is dead.
+    auto owner_dead_callback = [this](const std::string &object_id_binary) {
+      const auto object_id = ObjectID::FromBinary(object_id_binary);
+      ReleaseFreedObject(object_id);
+    };
+
+    auto sub_message = std::make_unique<rpc::SubMessage>();
+    sub_message->mutable_worker_object_eviction_message()->Swap(wait_request.get());
+
+    core_worker_subscriber_->Subscribe(
+        std::move(sub_message), rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address,
+        object_id.Binary(), subscription_callback, owner_dead_callback);
   }
 }
 
@@ -92,9 +84,7 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
             (spilled_objects_url_.count(object_id) > 0) ||
             (objects_pending_spill_.count(object_id) > 0));
-  if (automatic_object_deletion_enabled_) {
-    spilled_object_pending_delete_.push(object_id);
-  }
+  spilled_object_pending_delete_.push(object_id);
   if (pinned_objects_.count(object_id)) {
     pinned_objects_size_ -= pinned_objects_[object_id].first->GetSize();
     pinned_objects_.erase(object_id);
@@ -116,16 +106,13 @@ void LocalObjectManager::FlushFreeObjects() {
     on_objects_freed_(objects_to_free_);
     objects_to_free_.clear();
   }
-  if (automatic_object_deletion_enabled_) {
-    // Deletion wouldn't work when the object pinning is not enabled.
-    ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
-  }
+  // Deletion wouldn't work when the object pinning is not enabled.
+  ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
   last_free_objects_at_ms_ = current_time_ms();
 }
 
 void LocalObjectManager::SpillObjectUptoMaxThroughput() {
-  if (RayConfig::instance().object_spilling_config().empty() ||
-      !RayConfig::instance().automatic_object_spilling_enabled()) {
+  if (RayConfig::instance().object_spilling_config().empty()) {
     return;
   }
 
@@ -149,8 +136,7 @@ bool LocalObjectManager::IsSpillingInProgress() {
 }
 
 bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
-  if (RayConfig::instance().object_spilling_config().empty() ||
-      !RayConfig::instance().automatic_object_spilling_enabled()) {
+  if (RayConfig::instance().object_spilling_config().empty()) {
     return false;
   }
 
@@ -175,7 +161,7 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
     SpillObjectsInternal(objects_to_spill, [this, bytes_to_spill, objects_to_spill,
                                             start_time](const Status &status) {
       if (!status.ok()) {
-        RAY_LOG(INFO) << "Failed to spill objects: " << status.ToString();
+        RAY_LOG(DEBUG) << "Failed to spill objects: " << status.ToString();
       } else {
         auto now = absl::GetCurrentTimeNanos();
         RAY_LOG(DEBUG) << "Spilled " << bytes_to_spill << " bytes in "
@@ -230,8 +216,13 @@ void LocalObjectManager::SpillObjectsInternal(
     if (it != pinned_objects_.end()) {
       RAY_LOG(DEBUG) << "Spilling object " << id;
       objects_to_spill.push_back(id);
-      num_bytes_pending_spill_ += it->second.first->GetSize();
+
+      // Move a pinned object to the pending spill object.
+      auto object_size = it->second.first->GetSize();
+      num_bytes_pending_spill_ += object_size;
       objects_pending_spill_[id] = std::move(it->second);
+
+      pinned_objects_size_ -= object_size;
       pinned_objects_.erase(it);
     }
   }
@@ -292,9 +283,9 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
     std::shared_ptr<size_t> num_remaining,
     std::function<void(const ray::Status &)> callback, ray::Status status) {
   if (!status.ok()) {
-    RAY_LOG(INFO) << "Failed to send spilled url for object " << object_id
-                  << " to object directory, considering the object to have been freed: "
-                  << status.ToString();
+    RAY_LOG(DEBUG) << "Failed to send spilled url for object " << object_id
+                   << " to object directory, considering the object to have been freed: "
+                   << status.ToString();
   } else {
     RAY_LOG(DEBUG) << "Object " << object_id << " spilled to " << object_url
                    << " and object directory has been informed";
@@ -305,20 +296,6 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
   RAY_CHECK(it != objects_pending_spill_.end());
   num_bytes_pending_spill_ -= it->second.first->GetSize();
   objects_pending_spill_.erase(it);
-
-  // Update the object_id -> url_ref_count to use it for deletion later.
-  // We need to track the references here because a single file can contain
-  // multiple objects, and we shouldn't delete the file until
-  // all the objects are gone out of scope.
-  // object_url is equivalent to url_with_offset.
-  auto parsed_url = ParseURL(object_url);
-  const auto base_url_it = parsed_url->find("url");
-  RAY_CHECK(base_url_it != parsed_url->end());
-  if (!url_ref_count_.contains(base_url_it->second)) {
-    url_ref_count_[base_url_it->second] = 1;
-  } else {
-    url_ref_count_[base_url_it->second] += 1;
-  }
 
   (*num_remaining)--;
   if (*num_remaining == 0 && callback) {
@@ -350,32 +327,37 @@ void LocalObjectManager::AddSpilledUrls(
     auto unpin_callback =
         std::bind(&LocalObjectManager::UnpinSpilledObjectCallback, this, object_id,
                   object_url, num_remaining, callback, std::placeholders::_1);
-    if (RayConfig::instance().ownership_based_object_directory_enabled()) {
-      // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
-      // spill RPC.
-      rpc::AddSpilledUrlRequest request;
-      request.set_object_id(object_id.Binary());
-      request.set_spilled_url(object_url);
-      request.set_spilled_node_id(node_id_object_spilled.Binary());
-      request.set_size(it->second.first->GetSize());
 
-      auto owner_client = owner_client_pool_.GetOrConnect(it->second.second);
-      RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object "
-                     << object_id << " to owner "
-                     << WorkerID::FromBinary(it->second.second.worker_id());
-      // Send spilled URL, spilled node ID, and object size to owner.
-      owner_client->AddSpilledUrl(
-          request, [unpin_callback](Status status, const rpc::AddSpilledUrlReply &reply) {
-            unpin_callback(status);
-          });
+    // Update the object_id -> url_ref_count to use it for deletion later.
+    // We need to track the references here because a single file can contain
+    // multiple objects, and we shouldn't delete the file until
+    // all the objects are gone out of scope.
+    // object_url is equivalent to url_with_offset.
+    auto parsed_url = ParseURL(object_url);
+    const auto base_url_it = parsed_url->find("url");
+    RAY_CHECK(base_url_it != parsed_url->end());
+    if (!url_ref_count_.contains(base_url_it->second)) {
+      url_ref_count_[base_url_it->second] = 1;
     } else {
-      // Write to object directory. Wait for the write to finish before
-      // releasing the object to make sure that the spilled object can
-      // be retrieved by other raylets.
-      RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
-          object_id, object_url, node_id_object_spilled, it->second.first->GetSize(),
-          unpin_callback));
+      url_ref_count_[base_url_it->second] += 1;
     }
+
+    // TODO(Clark): Don't send RPC to owner if we're fulfilling an owner-initiated
+    // spill RPC.
+    rpc::AddSpilledUrlRequest request;
+    request.set_object_id(object_id.Binary());
+    request.set_spilled_url(object_url);
+    request.set_spilled_node_id(node_id_object_spilled.Binary());
+    request.set_size(it->second.first->GetSize());
+
+    auto owner_client = owner_client_pool_.GetOrConnect(it->second.second);
+    RAY_LOG(DEBUG) << "Sending spilled URL " << object_url << " for object " << object_id
+                   << " to owner " << WorkerID::FromBinary(it->second.second.worker_id());
+    // Send spilled URL, spilled node ID, and object size to owner.
+    owner_client->AddSpilledUrl(
+        request, [unpin_callback](Status status, const rpc::AddSpilledUrlReply &reply) {
+          unpin_callback(status);
+        });
   }
 }
 
@@ -477,6 +459,8 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
       // If there's no more refs, delete the object.
       if (url_ref_count_it->second == 0) {
         url_ref_count_.erase(url_ref_count_it);
+        RAY_LOG(DEBUG) << "The URL " << object_url
+                       << " is deleted because the references are out of scope.";
         object_urls_to_delete.emplace_back(object_url);
       }
       spilled_objects_url_.erase(spilled_objects_url_it);
@@ -517,6 +501,7 @@ void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) 
   stats->set_restore_time_total_s(restore_time_total_s_);
   stats->set_restored_bytes_total(restored_bytes_total_);
   stats->set_restored_objects_total(restored_objects_total_);
+  stats->set_object_store_bytes_primary_copy(pinned_objects_size_);
 }
 
 void LocalObjectManager::RecordObjectSpillingStats() const {
@@ -538,6 +523,8 @@ std::string LocalObjectManager::DebugString() const {
   result << "- num objects pending restore: " << objects_pending_restore_.size() << "\n";
   result << "- num objects pending spill: " << objects_pending_spill_.size() << "\n";
   result << "- num bytes pending spill: " << num_bytes_pending_spill_ << "\n";
+  result << "- cumulative spill requests: " << spilled_objects_total_ << "\n";
+  result << "- cumulative restore requests: " << restored_objects_total_ << "\n";
   return result.str();
 }
 

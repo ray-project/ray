@@ -76,7 +76,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             else:
                 self.ray_connect_handler(job_config)
         if job_config is None:
-            return ray_client_pb2.InitResponse()
+            return ray_client_pb2.InitResponse(ok=True)
         job_config = job_config.get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
@@ -128,6 +128,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             exists = ray.experimental.internal_kv._internal_kv_exists(
                 request.key)
         return ray_client_pb2.KVExistsResponse(exists=exists)
+
+    def ListNamedActors(self, request, context=None
+                        ) -> ray_client_pb2.ClientListNamedActorsResponse:
+        with disable_client_hook():
+            actors = ray.util.list_named_actors(
+                all_namespaces=request.all_namespaces)
+
+        return ray_client_pb2.ClientListNamedActorsResponse(
+            actors_json=json.dumps(actors))
 
     def ClusterInfo(self, request,
                     context=None) -> ray_client_pb2.ClusterInfoResponse:
@@ -560,7 +569,7 @@ def decode_options(
     opts = json.loads(options.json_options)
     assert isinstance(opts, dict)
 
-    if opts.get("placement_group", None):
+    if isinstance(opts.get("placement_group", None), dict):
         # Placement groups in Ray client options are serialized as dicts.
         # Convert the dict to a PlacementGroup.
         opts["placement_group"] = PlacementGroup.from_dict(
@@ -639,19 +648,23 @@ def create_ray_handler(redis_address, redis_password):
     return ray_connect_handler
 
 
-def try_create_redis_client(args):
-    if "redis-address" not in args:
+def try_create_redis_client(redis_address: Optional[str],
+                            redis_password: Optional[str]) -> Optional[Any]:
+    """
+    Try to create a redis client based on the the command line args or by
+    autodetecting a running Ray cluster.
+    """
+    if redis_address is None:
         possible = ray._private.services.find_redis_address()
         if len(possible) != 1:
             return None
-        address = possible.pop()
-    else:
-        address = args["redis-address"]
-    if args.redis_password is None:
-        password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
-    else:
-        password = args.redis_password
-    return ray._private.services.create_redis_client(address, password)
+        redis_address = possible.pop()
+
+    if redis_password is None:
+        redis_password = ray.ray_constants.REDIS_DEFAULT_PASSWORD
+
+    return ray._private.services.create_redis_client(redis_address,
+                                                     redis_password)
 
 
 def main():
@@ -660,7 +673,7 @@ def main():
     parser.add_argument(
         "--host", type=str, default="0.0.0.0", help="Host IP to bind to")
     parser.add_argument(
-        "-p", "--port", type=int, default=50051, help="Port to bind to")
+        "-p", "--port", type=int, default=10001, help="Port to bind to")
     parser.add_argument(
         "--mode",
         type=str,
@@ -676,7 +689,13 @@ def main():
         required=False,
         type=str,
         help="Password for connecting to Redis")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--worker-shim-pid",
+        required=False,
+        type=int,
+        default=0,
+        help="The PID of the process for setup worker runtime env.")
+    args, _ = parser.parse_known_args()
     logging.basicConfig(level="INFO")
 
     # This redis client is used for health checking. We can't use `internal_kv`
@@ -690,7 +709,8 @@ def main():
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")
     if args.mode == "proxy":
-        server = serve_proxier(hostport, args.redis_address)
+        server = serve_proxier(
+            hostport, args.redis_address, redis_password=args.redis_password)
     else:
         server = serve(hostport, ray_connect_handler)
 
@@ -703,7 +723,8 @@ def main():
 
             try:
                 if not redis_client:
-                    redis_client = try_create_redis_client(args)
+                    redis_client = try_create_redis_client(
+                        args.redis_address, args.redis_password)
                 redis_client.hset("healthcheck:ray_client_server", "value",
                                   json.dumps(health_report))
             except Exception as e:

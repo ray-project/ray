@@ -28,15 +28,10 @@ ObjectBufferPool::ObjectBufferPool(const std::string &store_socket_name,
 
 ObjectBufferPool::~ObjectBufferPool() {
   // Abort everything in progress.
-  auto get_buf_state_copy = get_buffer_state_;
-  for (const auto &pair : get_buf_state_copy) {
-    AbortGet(pair.first);
-  }
   auto create_buf_state_copy = create_buffer_state_;
   for (const auto &pair : create_buf_state_copy) {
     AbortCreate(pair.first);
   }
-  RAY_CHECK(get_buffer_state_.empty());
   RAY_CHECK(create_buffer_state_.empty());
   RAY_CHECK_OK(store_client_.Disconnect());
 }
@@ -51,127 +46,97 @@ uint64_t ObjectBufferPool::GetBufferLength(uint64_t chunk_index, uint64_t data_s
              : default_chunk_size_;
 }
 
-std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::GetChunk(
-    const ObjectID &object_id, uint64_t data_size, uint64_t metadata_size,
-    uint64_t chunk_index) {
+std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status>
+ObjectBufferPool::CreateObjectReader(const ObjectID &object_id,
+                                     rpc::Address owner_address) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
-  if (get_buffer_state_.count(object_id) == 0) {
-    plasma::ObjectBuffer object_buffer;
-    RAY_CHECK_OK(
-        store_client_.Get(&object_id, 1, 0, &object_buffer, /*is_from_worker=*/false));
-    if (object_buffer.data == nullptr) {
-      RAY_LOG(INFO)
-          << "Failed to get a chunk of the object: " << object_id
-          << ". It is mostly because the object is already evicted or spilled when the "
-             "pull request is received. The caller will retry the pull request again.";
-      return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
-          errored_chunk_,
-          ray::Status::IOError("Unable to obtain object chunk, object not local."));
-    }
-    RAY_CHECK(object_buffer.metadata->Data() ==
-              object_buffer.data->Data() + object_buffer.data->Size());
-    RAY_CHECK(data_size == static_cast<uint64_t>(object_buffer.data->Size() +
-                                                 object_buffer.metadata->Size()));
-    auto *data = object_buffer.data->Data();
-    uint64_t num_chunks = GetNumChunks(data_size);
-    get_buffer_state_.emplace(
-        std::piecewise_construct, std::forward_as_tuple(object_id),
-        std::forward_as_tuple(BuildChunks(object_id, data, data_size)));
-    RAY_CHECK(get_buffer_state_[object_id].chunk_info.size() == num_chunks);
+
+  std::vector<ObjectID> object_ids{object_id};
+  std::vector<plasma::ObjectBuffer> object_buffers(1);
+  RAY_CHECK_OK(
+      store_client_.Get(object_ids, 0, &object_buffers, /*is_from_worker=*/false));
+  if (object_buffers[0].data == nullptr) {
+    RAY_LOG(INFO)
+        << "Failed to get a chunk of the object: " << object_id
+        << ". This is most likely because the object was evicted or spilled before the "
+           "pull request was received. The caller will retry the pull request after a "
+           "timeout.";
+    return std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status>(
+        nullptr,
+        ray::Status::IOError("Unable to obtain object chunk, object not local."));
   }
-  get_buffer_state_[object_id].references++;
-  return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
-      get_buffer_state_[object_id].chunk_info[chunk_index], ray::Status::OK());
+
+  return std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status>(
+      std::make_shared<MemoryObjectReader>(std::move(object_buffers[0]),
+                                           std::move(owner_address)),
+      ray::Status::OK());
 }
 
-void ObjectBufferPool::ReleaseGetChunk(const ObjectID &object_id, uint64_t chunk_index) {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
-  GetBufferState &buffer_state = get_buffer_state_[object_id];
-  buffer_state.references--;
-  if (buffer_state.references == 0) {
-    RAY_CHECK_OK(store_client_.Release(object_id));
-    get_buffer_state_.erase(object_id);
-  }
-}
-
-void ObjectBufferPool::AbortGet(const ObjectID &object_id) {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
-  RAY_CHECK_OK(store_client_.Release(object_id));
-  get_buffer_state_.erase(object_id);
-}
-
-std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> ObjectBufferPool::CreateChunk(
-    const ObjectID &object_id, const rpc::Address &owner_address, uint64_t data_size,
-    uint64_t metadata_size, uint64_t chunk_index) {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
+ray::Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
+                                          const rpc::Address &owner_address,
+                                          uint64_t data_size, uint64_t metadata_size,
+                                          uint64_t chunk_index) {
+  std::unique_lock<std::mutex> lock(pool_mutex_);
   if (create_buffer_state_.count(object_id) == 0) {
     int64_t object_size = data_size - metadata_size;
     // Try to create shared buffer.
     std::shared_ptr<Buffer> data;
-    Status s = store_client_.TryCreateImmediately(object_id, owner_address, object_size,
-                                                  NULL, metadata_size, &data);
-    std::vector<boost::asio::mutable_buffer> buffer;
-    if (!s.ok()) {
-      // Create failed. The object may already exist locally. If something else went
-      // wrong, another chunk will succeed in creating the buffer, and this
-      // chunk will eventually make it here via pull requests.
-      return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
-          errored_chunk_, ray::Status::IOError(s.message()));
+
+    // Release the buffer pool lock during the blocking create call.
+    lock.unlock();
+    Status s = store_client_.CreateAndSpillIfNeeded(
+        object_id, owner_address, object_size, NULL, metadata_size, &data,
+        plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);
+    lock.lock();
+
+    // Another thread may have succeeded in creating the chunk while the lock
+    // was released. In that case skip the remainder of the creation block.
+    if (create_buffer_state_.count(object_id) == 0) {
+      std::vector<boost::asio::mutable_buffer> buffer;
+      if (!s.ok()) {
+        // Create failed. The object may already exist locally. If something else went
+        // wrong, another chunk will succeed in creating the buffer, and this
+        // chunk will eventually make it here via pull requests.
+        return ray::Status::IOError(s.message());
+      }
+      // Read object into store.
+      uint8_t *mutable_data = data->Data();
+      uint64_t num_chunks = GetNumChunks(data_size);
+      create_buffer_state_.emplace(
+          std::piecewise_construct, std::forward_as_tuple(object_id),
+          std::forward_as_tuple(BuildChunks(object_id, mutable_data, data_size, data)));
+      RAY_LOG(DEBUG) << "Created object " << object_id
+                     << " in plasma store, number of chunks: " << num_chunks
+                     << ", chunk index: " << chunk_index;
+      RAY_CHECK(create_buffer_state_[object_id].chunk_info.size() == num_chunks);
     }
-    // Read object into store.
-    uint8_t *mutable_data = data->Data();
-    uint64_t num_chunks = GetNumChunks(data_size);
-    create_buffer_state_.emplace(
-        std::piecewise_construct, std::forward_as_tuple(object_id),
-        std::forward_as_tuple(BuildChunks(object_id, mutable_data, data_size)));
-    RAY_LOG(DEBUG) << "Created object " << object_id
-                   << " in plasma store, number of chunks: " << num_chunks
-                   << ", chunk index: " << chunk_index;
-    RAY_CHECK(create_buffer_state_[object_id].chunk_info.size() == num_chunks);
   }
   if (create_buffer_state_[object_id].chunk_state[chunk_index] !=
       CreateChunkState::AVAILABLE) {
     // There can be only one reference to this chunk at any given time.
-    return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
-        errored_chunk_,
-        ray::Status::IOError("Chunk already received by a different thread."));
+    return ray::Status::IOError("Chunk already received by a different thread.");
   }
   create_buffer_state_[object_id].chunk_state[chunk_index] = CreateChunkState::REFERENCED;
-  return std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status>(
-      create_buffer_state_[object_id].chunk_info[chunk_index], ray::Status::OK());
+  return ray::Status::OK();
 }
 
-void ObjectBufferPool::AbortCreateChunk(const ObjectID &object_id,
-                                        const uint64_t chunk_index) {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
-  RAY_CHECK(create_buffer_state_[object_id].chunk_state[chunk_index] ==
-            CreateChunkState::REFERENCED);
-  create_buffer_state_[object_id].chunk_state[chunk_index] = CreateChunkState::AVAILABLE;
-  if (create_buffer_state_[object_id].num_seals_remaining ==
-      create_buffer_state_[object_id].chunk_state.size()) {
-    // If chunk_state is AVAILABLE at every chunk_index and
-    // num_seals_remaining == num_chunks, this is back to the initial state
-    // right before the first CreateChunk.
-    bool abort = true;
-    for (auto chunk_state : create_buffer_state_[object_id].chunk_state) {
-      abort &= chunk_state == CreateChunkState::AVAILABLE;
-    }
-    if (abort) {
-      AbortCreate(object_id);
-    }
-  }
-}
-
-void ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk_index) {
+void ObjectBufferPool::WriteChunk(const ObjectID &object_id, const uint64_t chunk_index,
+                                  const std::string &data) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   auto it = create_buffer_state_.find(object_id);
   if (it == create_buffer_state_.end() ||
-      it->second.chunk_state[chunk_index] != CreateChunkState::REFERENCED) {
+      it->second.chunk_state.at(chunk_index) != CreateChunkState::REFERENCED) {
     RAY_LOG(DEBUG) << "Object " << object_id << " aborted due to OOM before chunk "
                    << chunk_index << " could be sealed";
     return;
   }
-  it->second.chunk_state[chunk_index] = CreateChunkState::SEALED;
+  RAY_CHECK(it->second.chunk_info.size() > chunk_index);
+  auto &chunk_info = it->second.chunk_info.at(chunk_index);
+  RAY_CHECK(data.size() == chunk_info.buffer_length)
+      << "size mismatch!  data size: " << data.size()
+      << " chunk size: " << chunk_info.buffer_length;
+  std::memcpy(chunk_info.data, data.data(), chunk_info.buffer_length);
+  it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
   it->second.num_seals_remaining--;
   if (it->second.num_seals_remaining == 0) {
     RAY_CHECK_OK(store_client_.Seal(object_id));
@@ -195,17 +160,19 @@ void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
 }
 
 std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
-    const ObjectID &object_id, uint8_t *data, uint64_t data_size) {
+    const ObjectID &object_id, uint8_t *data, uint64_t data_size,
+    std::shared_ptr<Buffer> buffer_ref) {
   uint64_t space_remaining = data_size;
   std::vector<ChunkInfo> chunks;
   int64_t position = 0;
   while (space_remaining) {
     position = data_size - space_remaining;
     if (space_remaining < default_chunk_size_) {
-      chunks.emplace_back(chunks.size(), data + position, space_remaining);
+      chunks.emplace_back(chunks.size(), data + position, space_remaining, buffer_ref);
       space_remaining = 0;
     } else {
-      chunks.emplace_back(chunks.size(), data + position, default_chunk_size_);
+      chunks.emplace_back(chunks.size(), data + position, default_chunk_size_,
+                          buffer_ref);
       space_remaining -= default_chunk_size_;
     }
   }
@@ -221,7 +188,6 @@ std::string ObjectBufferPool::DebugString() const {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   std::stringstream result;
   result << "BufferPool:";
-  result << "\n- get buffer state map size: " << get_buffer_state_.size();
   result << "\n- create buffer state map size: " << create_buffer_state_.size();
   return result.str();
 }

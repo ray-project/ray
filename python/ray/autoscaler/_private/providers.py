@@ -35,7 +35,7 @@ def _import_gcp(provider_config):
 
 
 def _import_azure(provider_config):
-    from ray.autoscaler._private.azure.node_provider import AzureNodeProvider
+    from ray.autoscaler._private._azure.node_provider import AzureNodeProvider
     return AzureNodeProvider
 
 
@@ -60,6 +60,12 @@ def _import_staroid(provider_config):
     from ray.autoscaler._private.staroid.node_provider import \
         StaroidNodeProvider
     return StaroidNodeProvider
+
+
+def _import_aliyun(provider_config):
+    from ray.autoscaler._private.aliyun.node_provider import \
+        AliyunNodeProvider
+    return AliyunNodeProvider
 
 
 def _load_local_defaults_config():
@@ -93,6 +99,11 @@ def _load_staroid_defaults_config():
     return os.path.join(os.path.dirname(ray_staroid.__file__), "defaults.yaml")
 
 
+def _load_aliyun_defaults_config():
+    import ray.autoscaler.aliyun as ray_aliyun
+    return os.path.join(os.path.dirname(ray_aliyun.__file__), "defaults.yaml")
+
+
 def _import_external(provider_config):
     provider_cls = _load_class(path=provider_config["module"])
     return provider_cls
@@ -105,6 +116,7 @@ _NODE_PROVIDERS = {
     "azure": _import_azure,
     "staroid": _import_staroid,
     "kubernetes": _import_kubernetes,
+    "aliyun": _import_aliyun,
     "external": _import_external  # Import an external module
 }
 
@@ -115,6 +127,7 @@ _PROVIDER_PRETTY_NAMES = {
     "azure": "Azure",
     "staroid": "Staroid",
     "kubernetes": "Kubernetes",
+    "aliyun": "Aliyun",
     "external": "External"
 }
 
@@ -124,6 +137,7 @@ _DEFAULT_CONFIGS = {
     "gcp": _load_gcp_defaults_config,
     "azure": _load_azure_defaults_config,
     "staroid": _load_staroid_defaults_config,
+    "aliyun": _load_aliyun_defaults_config,
     "kubernetes": _load_kubernetes_defaults_config,
 }
 

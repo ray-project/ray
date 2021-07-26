@@ -1,7 +1,9 @@
 #include "ray/common/task/task_spec.h"
 
+#include <boost/functional/hash.hpp>
 #include <sstream>
 
+#include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -91,6 +93,11 @@ TaskID TaskSpecification::TaskId() const {
   return TaskID::FromBinary(message_->task_id());
 }
 
+const std::string TaskSpecification::GetSerializedActorHandle() const {
+  RAY_CHECK(IsActorCreationTask());
+  return message_->actor_creation_task_spec().serialized_actor_handle();
+}
+
 JobID TaskSpecification::JobId() const {
   if (message_->job_id().empty() /* e.g., empty proto default */) {
     return JobID::Nil();
@@ -114,6 +121,21 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
 std::string TaskSpecification::SerializedRuntimeEnv() const {
   return message_->serialized_runtime_env();
 }
+
+bool TaskSpecification::HasRuntimeEnv() const {
+  return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv() == "");
+}
+
+int TaskSpecification::GetRuntimeEnvHash() const {
+  std::unordered_map<std::string, double> required_resource{};
+  if (RayConfig::instance().worker_resource_limits_enabled()) {
+    required_resource = GetRequiredResources().GetResourceMap();
+  }
+  WorkerCacheKey env = {OverrideEnvironmentVariables(), SerializedRuntimeEnv(),
+                        required_resource};
+  return env.IntHash();
+}
+
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
   RAY_CHECK(sched_cls_id_ > 0);
   return sched_cls_id_;
@@ -353,5 +375,62 @@ std::string TaskSpecification::CallSiteString() const {
   stream << FunctionDescriptor()->CallSiteString();
   return stream.str();
 }
+
+WorkerCacheKey::WorkerCacheKey(
+    const std::unordered_map<std::string, std::string> override_environment_variables,
+    const std::string serialized_runtime_env,
+    const std::unordered_map<std::string, double> required_resources)
+    : override_environment_variables(override_environment_variables),
+      serialized_runtime_env(serialized_runtime_env),
+      required_resources(std::move(required_resources)) {}
+
+bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
+  // FIXME we should compare fields
+  return Hash() == k.Hash();
+}
+
+bool WorkerCacheKey::EnvIsEmpty() const {
+  return override_environment_variables.size() == 0 &&
+         (serialized_runtime_env == "" || serialized_runtime_env == "{}") &&
+         required_resources.empty();
+}
+
+std::size_t WorkerCacheKey::Hash() const {
+  // Cache the hash value.
+  if (!hash_) {
+    if (EnvIsEmpty()) {
+      // It's useful to have the same predetermined value for both unspecified and empty
+      // runtime envs.
+      hash_ = 0;
+    } else {
+      std::vector<std::pair<std::string, std::string>> env_vars(
+          override_environment_variables.begin(), override_environment_variables.end());
+      // The environment doesn't depend the order of the variables, so the hash should not
+      // either.  Sort the variables so different permutations yield the same hash.
+      std::sort(env_vars.begin(), env_vars.end());
+      for (auto &pair : env_vars) {
+        // TODO(architkulkarni): boost::hash_combine isn't guaranteed to be equal during
+        // separate runs of a program, which may cause problems if these hashes are
+        // communicated between different Raylets and compared.
+        boost::hash_combine(hash_, pair.first);
+        boost::hash_combine(hash_, pair.second);
+      }
+
+      boost::hash_combine(hash_, serialized_runtime_env);
+
+      std::vector<std::pair<std::string, double>> resource_vars(
+          required_resources.begin(), required_resources.end());
+      // Sort the variables so different permutations yield the same hash.
+      std::sort(resource_vars.begin(), resource_vars.end());
+      for (auto &pair : resource_vars) {
+        boost::hash_combine(hash_, pair.first);
+        boost::hash_combine(hash_, pair.second);
+      }
+    }
+  }
+  return hash_;
+}
+
+int WorkerCacheKey::IntHash() const { return (int)Hash(); }
 
 }  // namespace ray
