@@ -72,6 +72,7 @@ class Dataset(Generic[T]):
 
     def map(self,
             fn: Union[CallableClass, Callable[[T], U]],
+            *,
             compute: Optional[str] = None,
             **ray_remote_args) -> "Dataset[U]":
         """Apply the given function to each record of this dataset.
@@ -125,6 +126,7 @@ class Dataset(Generic[T]):
 
     def map_batches(self,
                     fn: Union[CallableClass, Callable[[BatchType], BatchType]],
+                    *,
                     batch_size: int = None,
                     compute: Optional[str] = None,
                     batch_format: str = "pandas",
@@ -217,6 +219,7 @@ class Dataset(Generic[T]):
 
     def flat_map(self,
                  fn: Union[CallableClass, Callable[[T], Iterable[U]]],
+                 *,
                  compute: Optional[str] = None,
                  **ray_remote_args) -> "Dataset[U]":
         """Apply the given function to each record and then flatten results.
@@ -254,6 +257,7 @@ class Dataset(Generic[T]):
 
     def filter(self,
                fn: Union[CallableClass, Callable[[T], bool]],
+               *,
                compute: Optional[str] = None,
                **ray_remote_args) -> "Dataset[T]":
         """Filter out records that do not satisfy the given predicate.
@@ -310,7 +314,7 @@ class Dataset(Generic[T]):
         new_blocks = simple_shuffle(self._blocks, num_blocks)
         return Dataset(new_blocks)
 
-    def split(self, n: int,
+    def split(self, n: int, *,
               locality_hints: List[Any] = None) -> List["Dataset[T]"]:
         """Split the dataset into ``n`` disjoint pieces.
 
@@ -455,18 +459,26 @@ class Dataset(Generic[T]):
             for actor in locality_hints
         ]
 
-    def random_shuffle(self, seed: int = None) -> "Dataset[T]":
+    def random_shuffle(self,
+                       *,
+                       num_blocks: int = None,
+                       equal_block_sizes: bool = False,
+                       seed: int = None) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
-        This is a blocking operation.
+        This is a blocking operation similar to repartition().
 
         Examples:
-            >>> # Randomly shuffle this dataset with the given seed.
-            >>> ds.random_shuffle(seed=12345)
+            >>> # Shuffle this dataset into one with 100 equi-sized blocks.
+            >>> ds.random_shuffle(num_blocks=100, equal_block_sizes=True)
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
+            num_blocks: The number of output blocks after the shuffle, or None
+                to retain the number of blocks.
+            equal_block_sizes: If True, the output blocks will be truncated
+                to have an identical number of rows each.
             seed: Fix the random seed to use, otherwise one will be chosen
                 based on system randomness.
 
@@ -693,10 +705,11 @@ class Dataset(Generic[T]):
                 files.add(f)
         return list(files)
 
-    def write_parquet(self,
-                      path: str,
-                      filesystem: Optional["pyarrow.fs.FileSystem"] = None
-                      ) -> None:
+    def write_parquet(
+            self,
+            path: str,
+            *,
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
         """Write the dataset to parquet.
 
         This is only supported for datasets convertible to Arrow records.
@@ -840,7 +853,7 @@ class Dataset(Generic[T]):
         finally:
             progress.close()
 
-    def iter_rows(self, prefetch_blocks: int = 0) -> Iterator[T]:
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[T]:
         """Return a local row iterator over the dataset.
 
         Examples:
@@ -863,6 +876,7 @@ class Dataset(Generic[T]):
                 yield row
 
     def iter_batches(self,
+                     *,
                      prefetch_blocks: int = 0,
                      batch_size: int = None,
                      batch_format: str = "pandas",
@@ -935,6 +949,7 @@ class Dataset(Generic[T]):
             yield format_batch(batcher.next_batch(), batch_format)
 
     def to_torch(self,
+                 *,
                  label_column: str,
                  feature_columns: Optional[List[str]] = None,
                  label_column_dtype: Optional["torch.dtype"] = None,
@@ -1026,6 +1041,7 @@ class Dataset(Generic[T]):
         return TorchIterableDataset(make_generator)
 
     def to_tf(self,
+              *,
               label_column: str,
               output_signature: List["tf.TypeSpec"],
               feature_columns: Optional[List[str]] = None,
@@ -1250,7 +1266,7 @@ class Dataset(Generic[T]):
 
         return DatasetPipeline(Iterable(self), length=times)
 
-    def pipeline(self,
+    def pipeline(self, *,
                  per_stage_parallelism: int = 10) -> "DatasetPipeline[T]":
         """Pipeline the dataset execution by splitting its blocks into groups.
 

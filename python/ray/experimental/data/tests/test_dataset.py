@@ -809,7 +809,7 @@ def test_to_tf(ray_start_regular_shared, pipelined):
         [ray.put(df1), ray.put(df2), ray.put(df3)])
     ds = maybe_pipeline(ds, pipelined)
     tfd = ds.to_tf(
-        "label",
+        label_column="label",
         output_signature=(tf.TensorSpec(shape=(None, 2), dtype=tf.float32),
                           tf.TensorSpec(shape=(None), dtype=tf.float32)))
     iterations = []
@@ -837,7 +837,7 @@ def test_to_tf_feature_columns(ray_start_regular_shared):
     ds = ray.experimental.data.from_pandas(
         [ray.put(df1), ray.put(df2), ray.put(df3)])
     tfd = ds.to_tf(
-        "label",
+        label_column="label",
         feature_columns=["one"],
         output_signature=(tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
                           tf.TensorSpec(shape=(None), dtype=tf.float32)))
@@ -894,7 +894,8 @@ def test_to_torch_feature_columns(ray_start_regular_shared):
     df = pd.concat([df1, df2, df3]).drop("two", axis=1)
     ds = ray.experimental.data.from_pandas(
         [ray.put(df1), ray.put(df2), ray.put(df3)])
-    torchd = ds.to_torch("label", feature_columns=["one"], batch_size=3)
+    torchd = ds.to_torch(
+        label_column="label", feature_columns=["one"], batch_size=3)
     iterations = []
 
     for batch in iter(torchd):

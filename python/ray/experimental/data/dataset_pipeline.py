@@ -38,8 +38,9 @@ class DatasetPipeline(Generic[T]):
     (e.g. feature preprocessing), and output (e.g., distributed ML training).
 
     A DatasetPipeline can be created by either repeating a Dataset
-    (``ds.repeat(times=None)``), or turning a single Dataset into a pipeline
-    (``ds.pipeline(per_stage_parallelism=10)``).
+    (``ds.repeat(times=None)``), by turning a single Dataset into a pipeline
+    (``ds.pipeline(per_stage_parallelism=10)``), or defined explicitly using
+    ``DatasetPipeline.from_iterable()``.
 
     DatasetPipeline supports the all the per-record transforms of Datasets
     (e.g., map, flat_map, filter), holistic transforms (e.g., repartition),
@@ -55,8 +56,8 @@ class DatasetPipeline(Generic[T]):
         """Construct a DatasetPipeline (internal API).
 
         The constructor is not part of the DatasetPipeline API. Use the
-        ``Dataset.repeat()`` and ``Dataset.pipeline()`` methods to construct a
-        dataset pipeline.
+        ``Dataset.repeat()``, ``Dataset.pipeline()``, or
+        ``DatasetPipeline.from_iterable()`` methods to construct a pipeline.
         """
         self._base_iterable = base_iterable
         self._stage_transforms = stage_transforms or []
@@ -65,6 +66,7 @@ class DatasetPipeline(Generic[T]):
         self._uuid = None  # For testing only.
 
     def iter_batches(self,
+                     *,
                      prefetch_blocks: int = 0,
                      batch_size: int = None,
                      batch_format: str = "pandas",
@@ -98,7 +100,7 @@ class DatasetPipeline(Generic[T]):
 
         return gen_batches()
 
-    def split(self, n: int,
+    def split(self, n: int, *,
               locality_hints: List[Any] = None) -> List["DatasetPipeline[T]"]:
         """Split the pipeline into ``n`` disjoint pipeline shards.
 
@@ -238,6 +240,16 @@ class DatasetPipeline(Generic[T]):
         return DatasetPipeline(self._base_iterable,
                                self._stage_transforms + [fn], self._length,
                                self._progress_bars)
+
+    @DeveloperAPI
+    @staticmethod
+    def from_iterable(iterable: Iterable[Callable[[], Dataset[T]]]
+                      ) -> "DatasetPipeline[T]":
+        if hasattr(iterable, "__len__"):
+            length = len(iterable)
+        else:
+            length = None
+        return DatasetPipeline(iterable, length=length)
 
     def __repr__(self) -> str:
         return "DatasetPipeline(length={}, num_stages={})".format(
