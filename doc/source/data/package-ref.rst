@@ -19,23 +19,17 @@ Creating a Dataset
 Dataset API
 -----------
 
-.. autoclass:: ray.data.dataset.Dataset
-    :members:
-
-DatasetPipeline API
--------------------
-
-.. autoclass:: ray.data.dataset_pipeline.DatasetPipeline
+.. autoclass:: ray.data.Dataset
     :members:
 
 Custom Datasource API
 ---------------------
 
-.. autoclass:: ray.data.datasource.Datasource
+.. autoclass:: ray.data.Datasource
     :members:
 
-.. autoclass:: ray.data.datasource.ReadTask
+.. autoclass:: ray.data.ReadTask
     :members:
 
-.. autoclass:: ray.data.datasource.WriteTask
+.. autoclass:: ray.data.WriteTask
     :members:
