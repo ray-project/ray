@@ -2254,6 +2254,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/fractional_gpus",
+    main = "examples/fractional_gpus.py",
+    tags = ["examples", "examples_F"],
+    size = "medium",
+    srcs = ["examples/fractional_gpus.py"],
+    args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
+)
+
+py_test(
     name = "examples/hierarchical_training_tf",
     main = "examples/hierarchical_training.py",
     tags = ["examples", "examples_H"],
@@ -2418,15 +2427,6 @@ py_test(
 )
 
 py_test(
-    name = "examples/fractional_gpus",
-    main = "examples/fractional_gpus.py",
-    tags = ["examples", "examples_P"],
-    size = "medium",
-    srcs = ["examples/fractional_gpus.py"],
-    args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
-)
-
-py_test(
     name = "examples/pettingzoo_env",
     main = "examples/pettingzoo_env.py",
     tags = ["examples", "examples_P"],
@@ -2435,11 +2435,26 @@ py_test(
 )
 
 py_test(
+    name = "examples/remote_vector_env_with_custom_api",
+    tags = ["examples", "examples_R"],
+    size = "medium",
+    srcs = ["examples/remote_vector_env_with_custom_api.py"],
+    args = ["--stop-iters=3"]
+)
+
+py_test(
     name = "examples/restore_1_of_n_agents_from_checkpoint",
     tags = ["examples", "examples_R"],
     size = "medium",
     srcs = ["examples/restore_1_of_n_agents_from_checkpoint.py"],
     args = ["--pre-training-iters=1", "--stop-iters=1", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/rnnsac_stateless_cartpole",
+    tags = ["examples", "examples_R"],
+    size = "large",
+    srcs = ["examples/rnnsac_stateless_cartpole.py"]
 )
 
 py_test(

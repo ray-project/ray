@@ -205,7 +205,7 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
     Args:
         status: If given, only return workflow with that status. It can
             be a set workflow status,
-            i.e., "RUNNING"/"RESUMABLE"/"FINISHED"/"CANCELED"
+            i.e., "RUNNING"/"FAILED"/"SUCCESSFUL"/"CANCELED"/"RESUMABLE"
 
     Examples:
         >>> workflow_step = long_running_job.step()
@@ -215,8 +215,8 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
         >>> ray.get(wf)
         >>> jobs = workflow.list_all({workflow.RUNNING})
         >>> assert jobs == []
-        >>> jobs = workflow.list_all(workflow.FINISHED)
-        >>> assert jobs == [ ("long_running_job", workflow.FINISHED) ]
+        >>> jobs = workflow.list_all(workflow.SUCCESSFUL)
+        >>> assert jobs == [ ("long_running_job", workflow.SUCCESSFUL) ]
 
     Returns:
         A list of tuple with workflow id and workflow status
@@ -240,8 +240,14 @@ def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
     return execution.list_all(status_filter)
 
 
-def resume_all() -> Dict[str, ray.ObjectRef]:
+def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
     """Resume all resumable workflow jobs.
+
+    This usually is used after ray cluster shutdown to resume all tasks.
+
+
+    Args:
+        with_failed: Whether to include the failed workflow.
 
     Examples:
         >>> workflow_step = failed_job.step()
@@ -251,13 +257,14 @@ def resume_all() -> Dict[str, ray.ObjectRef]:
         >>> except Exception:
         >>>     print("JobFailed")
         >>> jobs = workflow.list_all()
-        >>> assert jobs == [("failed_job", workflow.RESUMABLE)]
-        >>> assert workflow.resume_all().get("failed_job") is not None
+        >>> assert jobs == [("failed_job", workflow.FAILED)]
+        >>> assert workflow.resume_all(
+        >>>   include_failed=True).get("failed_job") is not None
 
     Returns:
         Workflow resumed. It'll be a list of (workflow_id, returned_obj_ref).
     """
-    return execution.resume_all()
+    return execution.resume_all(include_failed)
 
 
 def get_status(workflow_id: str) -> WorkflowStatus:
@@ -269,7 +276,7 @@ def get_status(workflow_id: str) -> WorkflowStatus:
     Examples:
         >>> workflow_step = trip.step()
         >>> output = workflow_step.run(workflow_id="trip")
-        >>> assert workflow.FINISHED == workflow.get_status("trip")
+        >>> assert workflow.SUCCESSFUL == workflow.get_status("trip")
 
     Returns:
         The status of that workflow
