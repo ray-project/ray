@@ -27,7 +27,7 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
   const rpc::Address owner_address = actor_handle->GetOwnerAddress();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
 
-  RAY_UNUSED(AddActorHandle(std::move(actor_handle),
+  RAY_UNUSED(AddActorHandle(std::move(actor_handle), /*actor_name=*/"",
                             /*is_owner_handle=*/false, caller_id, call_site,
                             caller_address, actor_id, actor_creation_return_id));
   ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
@@ -50,6 +50,7 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
 }
 
 bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                                     const std::string actor_name,
                                      const TaskID &caller_id,
                                      const std::string &call_site,
                                      const rpc::Address &caller_address,
@@ -64,14 +65,14 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                        /*is_reconstructable=*/true);
   }
 
-  return AddActorHandle(std::move(actor_handle),
+  return AddActorHandle(std::move(actor_handle), actor_name,
                         /*is_owner_handle=*/!is_detached, caller_id, call_site,
                         caller_address, actor_id, actor_creation_return_id);
 }
 
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                  bool is_owner_handle, const TaskID &caller_id,
-                                  const std::string &call_site,
+                                  const std::string actor_name, bool is_owner_handle,
+                                  const TaskID &caller_id, const std::string &call_site,
                                   const rpc::Address &caller_address,
                                   const ActorID &actor_id,
                                   const ObjectID &actor_creation_return_id) {
@@ -88,9 +89,12 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
         std::bind(&ActorManager::HandleActorStateNotification, this,
                   std::placeholders::_1, std::placeholders::_2);
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-        actor_id, actor_notification_callback, nullptr));
-  } else {
-    RAY_LOG(ERROR) << "Actor handle already exists " << actor_id.Hex();
+        actor_id, actor_notification_callback,
+        [this, &actor_id, &actor_name](Status status) {
+          if (status.ok() && !actor_name.empty()) {
+            actor_name_to_ids_cache_.emplace(actor_name, actor_id);
+          }
+        }));
   }
 
   return inserted;
@@ -136,6 +140,9 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false);
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
+    if (!actor_data.name().empty()) {
+      actor_name_to_ids_cache_.erase(actor_data.name());
+    }
     std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
     if (actor_data.has_creation_task_exception()) {
       RAY_LOG(INFO) << "Creation task formatted exception: "
@@ -166,6 +173,14 @@ std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {
     actor_handle_ids.push_back(actor_handle_id);
   }
   return actor_handle_ids;
+}
+
+ActorID ActorManager::GetCachedNamedActorID(const std::string &actor_name) {
+  auto it = actor_name_to_ids_cache_.find(actor_name);
+  if (it != actor_name_to_ids_cache_.end()) {
+    return it->second;
+  }
+  return ActorID::Nil();
 }
 
 }  // namespace ray

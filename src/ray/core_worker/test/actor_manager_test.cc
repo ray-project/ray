@@ -145,7 +145,7 @@ class ActorManagerTest : public ::testing::Test {
         function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
     EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
         .WillRepeatedly(testing::Return(true));
-    actor_manager_->AddNewActorHandle(move(actor_handle), task_id, call_site,
+    actor_manager_->AddNewActorHandle(move(actor_handle), "", task_id, call_site,
                                       caller_address, /*is_detached*/ false);
     return actor_id;
   }
@@ -173,8 +173,8 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
       .WillRepeatedly(testing::Return(true));
 
   // Add an actor handle.
-  ASSERT_TRUE(actor_manager_->AddNewActorHandle(move(actor_handle), task_id, call_site,
-                                                caller_address, false));
+  ASSERT_TRUE(actor_manager_->AddNewActorHandle(move(actor_handle), "", task_id,
+                                                call_site, caller_address, false));
   // Make sure the subscription request is sent to GCS.
   ASSERT_TRUE(actor_info_accessor_->CheckSubscriptionRequested(actor_id));
   ASSERT_TRUE(actor_manager_->CheckActorHandleExists(actor_id));
@@ -183,8 +183,8 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
       actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
       function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
   // Make sure the same actor id adding will return false.
-  ASSERT_FALSE(actor_manager_->AddNewActorHandle(move(actor_handle2), task_id, call_site,
-                                                 caller_address, false));
+  ASSERT_FALSE(actor_manager_->AddNewActorHandle(move(actor_handle2), "", task_id,
+                                                 call_site, caller_address, false));
   // Make sure we can get an actor handle correctly.
   const std::shared_ptr<ActorHandle> actor_handle_to_get =
       actor_manager_->GetActorHandle(actor_id);

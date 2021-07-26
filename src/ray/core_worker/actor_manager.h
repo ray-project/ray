@@ -133,8 +133,9 @@ class ActorManager {
   /// actor. \return True if the handle was added and False if we already had a handle to
   /// the same actor.
   bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                         const TaskID &caller_id, const std::string &call_site,
-                         const rpc::Address &caller_address, bool is_detached);
+                         const std::string actor_name, const TaskID &caller_id,
+                         const std::string &call_site, const rpc::Address &caller_address,
+                         bool is_detached);
 
   /// Wait for actor out of scope.
   ///
@@ -148,6 +149,10 @@ class ActorManager {
   /// Get a list of actor_ids from existing actor handles.
   /// This is used for debugging purpose.
   std::vector<ObjectID> GetActorHandleIDsFromHandles();
+
+  /// Check if named actor is cached locally.
+  /// If it has been cached, core worker will not get actor id by name from GCS.
+  ActorID GetCachedNamedActorID(const std::string &actor_name);
 
  private:
   /// Give this worker a handle to an actor.
@@ -167,7 +172,8 @@ class ActorManager {
   /// \param[in] actor_creation_return_id object id of this actor creation
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
-  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle,
+  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                      const std::string actor_name, bool is_owner_handle,
                       const TaskID &caller_id, const std::string &call_site,
                       const rpc::Address &caller_address, const ActorID &actor_id,
                       const ObjectID &actor_creation_return_id);
@@ -195,6 +201,9 @@ class ActorManager {
   /// Actor handle is a logical abstraction that holds actor handle's states.
   absl::flat_hash_map<ActorID, std::shared_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(mutex_);
+
+  /// The map to cache the named actor in this worker locally..
+  absl::flat_hash_map<std::string, ActorID> actor_name_to_ids_cache_;
 };
 
 }  // namespace ray
