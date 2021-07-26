@@ -33,3 +33,5 @@ if __name__ == "__main__":
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(json.dumps({"shuffle_time": delta, "success": 1}))
+    import sys
+    sys.exit(134)

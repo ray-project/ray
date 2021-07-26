@@ -10,4 +10,4 @@ post_build_cmds:
   - pip uninstall -y ray
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip3 install -U ray[default]
-  - echo {{env["DATESTAMP"]}}
+  # - echo {{env["DATESTAMP"]}}
