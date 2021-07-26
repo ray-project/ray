@@ -66,7 +66,7 @@ Ray client is used when the address passed into ``ray.init`` is prefixed with th
 **Client mode** is used when the address is prefixed with ``ray://``. i.e. ``ray.init("ray://<head_node_host>:10001")``. Client mode connects to an existing Ray Client Server at the given address. Client mode currently accepts two arguments:
 
    - ``namespace``: Sets the namespace for the session
-   - ``runtime_env``: Sets the `runtime environment </advanced.html?highlight=runtime environment#runtime-environments-experimental>`_ for the session
+   - ``runtime_env``: Sets the `runtime environment <../advanced.html?highlight=runtime environment#runtime-environments-experimental>`_ for the session
 
 .. code-block:: python
 
@@ -85,7 +85,7 @@ The ClientBuilder API is an alternative way to create a ray client connection. I
 The client connection can be configured using the `fluent builder pattern <https://en.wikipedia.org/wiki/Fluent_interface>`_. The following settings can be configured through method chaining:
 
 - ``namespace``: Sets the namespace for the session
-- ``env``: Sets the `runtime environment </advanced.html?highlight=runtime environment#runtime-environments-experimental>`_ for the session
+- ``env``: Sets the `runtime environment </..advanced.html?highlight=runtime environment#runtime-environments-experimental>`_ for the session
 
 .. code-block:: python
 
