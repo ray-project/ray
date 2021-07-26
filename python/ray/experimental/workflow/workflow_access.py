@@ -206,17 +206,10 @@ class WorkflowManagementActor:
 
         wf_store.save_workflow_meta(
             common.WorkflowMetaData(common.WorkflowStatus.RUNNING))
-        if not ignore_existing:
-            # TODO(suquark): status handling is a mess now. We should
-            # fix it later. This temporary patch ensures later submitted
-            # virtual actor writer step would not erase the status of
-            # previous steps.
+
+        if workflow_id not in self._step_status:
             self._step_status[workflow_id] = {}
             logger.info(f"Workflow job [id={workflow_id}] started.")
-        else:
-            if workflow_id not in self._step_status:
-                self._step_status[workflow_id] = {}
-                logger.info(f"Workflow job [id={workflow_id}] started.")
         return result
 
     def update_step_status(self, workflow_id: str, step_id: str,
@@ -296,18 +289,18 @@ class WorkflowManagementActor:
                              "it has failed before initialization.")
         return self._actor_initialized[actor_id]
 
-    def get_output(self, workflow_id: str) -> "WorkflowExecutionResult":
+    def get_output(self, workflow_id: str) -> "ray.ObjectRef":
         """Get the output of a running workflow.
 
         Args:
-            workflow_id: The ID of a  workflow job.
+            workflow_id: The ID of a workflow job.
 
         Returns:
             An object reference that can be used to retrieve the
             workflow result.
         """
         if workflow_id in self._workflow_outputs:
-            return self._workflow_outputs[workflow_id]
+            return self._workflow_outputs[workflow_id].output
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         meta = wf_store.load_workflow_meta()
         if meta is None:
@@ -324,8 +317,8 @@ class WorkflowManagementActor:
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         wf_store.save_workflow_meta(
             common.WorkflowMetaData(common.WorkflowStatus.RUNNING))
-        self._step_status[workflow_id] = {}
-        return result
+        self._step_status.setdefault(workflow_id, {})
+        return result.state
 
     def get_running_workflow(self) -> List[str]:
         return list(self._workflow_outputs.keys())
