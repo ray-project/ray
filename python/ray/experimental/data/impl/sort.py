@@ -1,5 +1,20 @@
 """
-TODO: document the algorithm
+We implement a distributed sorting algorithm similar to
+[External Merge Sort](https://en.wikipedia.org/wiki/External_sorting).
+Sorting is done in 3 stages: sampling, sorting individual blocks, and
+merging sorted blocks.
+
+Sampling: we get a number of sample items from each block, sort them, and
+use them to compute boundaries that would partition all items into
+approximately equal ranges.
+
+Sorting: each block is sorted locally, then partitioned into smaller blocks
+according to the boundaries. Each partitioned block is passed to a merge task.
+This is an all-to-all shuffle.
+
+Merging: a merge task would receive a block from every worker that consists
+of items in a certain range. It then merges the sorted blocks into one sorted
+block and becomes part of the new, sorted dataset.
 """
 from typing import List, Any, Callable, TypeVar, Tuple, Union
 
@@ -19,7 +34,10 @@ SortKeyT = Union[None, List[Tuple[str, str]], Callable[[T], Any]]
 
 def sample_boundaries(blocks: BlockList[T], key: SortKeyT,
                       num_reducers: int) -> List[T]:
-    """return len(boundaries) == num_reducers - 1"""
+    """
+    Return (num_reducers - 1) items from the blocks that partition the domain
+    into ranges with approximately equally many elements.
+    """
     n_samples = int(num_reducers * 10 / len(blocks))
 
     @ray.remote
@@ -48,7 +66,7 @@ def sort_impl(blocks: BlockList[T], key: SortKeyT,
 
     if isinstance(key, str):
         key = [(key, "descending" if descending else "ascending")]
-    
+
     if isinstance(key, list):
         descending = key[0][1] == "descending"
 
