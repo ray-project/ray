@@ -16,13 +16,16 @@ class WorkerGroup:
     specification. It can then execute arbitrary Python functions in each of
     these workers.
 
+    If not enough resources are available to launch the actors, the Ray
+    cluster will automatically scale up if autoscaling is enabled.
+
     Args:
         num_workers (int): The number of workers (Ray actors) to launch.
             Defaults to 1.
-        num_cpus_per_worker (int): The number of CPUs to reserve for each
-            worker. Defaults to 1.
-        num_gpus_per_worker (int): The number of GPUs to reserve for each
-            worker. Defaults to 0.
+        num_cpus_per_worker (float): The number of CPUs to reserve for each
+            worker. Fractional values are allowed. Defaults to 1.
+        num_gpus_per_worker (float): The number of GPUs to reserve for each
+            worker. Fractional values are allowed. Defaults to 0.
 
     Example:
 
@@ -36,8 +39,8 @@ class WorkerGroup:
 
     def __init__(self,
                  num_workers: int = 1,
-                 num_cpus_per_worker: int = 1,
-                 num_gpus_per_worker: int = 0):
+                 num_cpus_per_worker: float = 1,
+                 num_gpus_per_worker: float = 0):
 
         if num_workers <= 0:
             raise ValueError("The provided `num_workers` must be greater "
@@ -60,25 +63,26 @@ class WorkerGroup:
             num_gpus=self.num_gpus_per_worker)(BaseWorker)
         return [remote_cls.remote() for _ in range(self.num_workers)]
 
-    def shutdown(self, force=False):
+    def restart(self):
+        """Restarts all the workers in this worker group."""
+        self.workers = self._start_workers()
+
+    def shutdown(self, graceful_shutdown_timeout_s: float = 5):
         """Shutdown all the workers in this worker group.
 
         Args:
-            force (bool): If True, forcefully kill all workers. If False,
-                attempt a graceful shutdown first, and then forcefully kill if
-                unsuccessful. Defaults to False.
+            graceful_shutdown_timeout_s (float): Attempt a graceful shutdown
+                of the workers for this many seconds. Fallback to force kill
+                if graceful shutdown is not complete after this time.
         """
-        if force:
+        done_refs = [w.__ray_terminate__.remote() for w in self.workers]
+        # Wait for actors to die gracefully.
+        done, not_done = ray.wait(
+            done_refs, timeout=graceful_shutdown_timeout_s)
+        if not_done:
+            # If all actors are not able to die gracefully, then kill them.
             for worker in self.workers:
                 ray.kill(worker)
-        else:
-            done_refs = [w.__ray_terminate__.remote() for w in self.workers]
-            # Wait 5 seconds for workers to die gracefully.
-            done, not_done = ray.wait(done_refs, timeout=5)
-            if not_done:
-                # If all actors are not able to die gracefully, then kill them.
-                for worker in self.workers:
-                    ray.kill(worker)
 
         self.workers = []
 
@@ -91,13 +95,14 @@ class WorkerGroup:
 
         Returns:
             (List[ObjectRef]) A list of ``ObjectRef`` representing the
-                output of ``func`` from each worker.
+                output of ``func`` from each worker. The order is the same
+                as ``self.workers``.
 
         """
         if len(self.workers) <= 0:
             raise RuntimeError("There are no active workers. This worker "
                                "group has most likely been shut down. Please"
-                               "create a new WorkerGroup.")
+                               "create a new WorkerGroup or restart this one.")
 
         num_args = len(signature(func).parameters)
         if num_args != 0:
@@ -116,7 +121,7 @@ class WorkerGroup:
 
         Returns:
             (List[T]) A list containing the output of ``func`` from each
-                worker.
+                worker. The order is the same as ``self.workers``.
 
         """
         return ray.get(self.execute_async(func))
