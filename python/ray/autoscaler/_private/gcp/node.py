@@ -61,7 +61,12 @@ def _retry_on_exception(exception: Union[Exception, Tuple[Exception]],
 def _generate_node_name(labels: dict, node_suffix: str) -> str:
     """Generate node name from labels and suffix.
 
-    The suffix is expected to be one of 'compute' or 'tpu'."""
+    This is required so that the correct resource can be selected
+    when the only information autoscaler has is the name of the node.
+
+    The suffix is expected to be one of 'compute' or 'tpu'
+    (as in ``GCPNodeType``).
+    """
     name_label = labels[TAG_RAY_NODE_NAME]
     assert (len(name_label) <=
             (INSTANCE_NAME_MAX_LEN - INSTANCE_NAME_UUID_LEN - 1)), (
