@@ -59,7 +59,7 @@ def parse_size_to_KB(size_string: str) -> float:
     # 200.56 / 50 / 0.5
     # Group 2 - (All words)
     # KB / MB / GB
-    parsed = re.split(r"(\d+.?\d+)(\w+)", size_string)
+    parsed = re.split(r"(\d+.?\d+)(\w*)", size_string)
     values = [val for val in parsed if val]
 
     if values[1] == "KB":
@@ -69,8 +69,8 @@ def parse_size_to_KB(size_string: str) -> float:
     elif values[1] == "GB":
         return float(values[0]) * 1024 * 1024
 
-    # Should not return here in common benchmark
-    return values[1]
+    # Bytes
+    return float(values[0]) / 1000
 
 
 def parse_metric_to_base(metric_string: str) -> float:
@@ -162,11 +162,14 @@ def parse_wrk_decoded_stdout(decoded_out):
         elif parsed[0] == "99%":
             metrics_dict["P99_latency_ms"] = parse_time_to_ms(parsed[1])
         # Total requests and transfer (might have timeout too)
+        # 13306 requests in 10.10s, 1.95MB read
         elif len(parsed) >= 6 and parsed[1] == "requests":
             metrics_dict["per_node_total_thoughput"] = int(parsed[0])
             metrics_dict["per_node_total_transfer_KB"] = parse_size_to_KB(
                 parsed[4])
-        # 13306 requests in 10.10s, 1.95MB read
+        # Socket errors: connect 0, read 0, write 0, timeout 100
+        elif parsed[0] == "Socket" and parsed[1] == "errors:":
+            metrics_dict["per_node_total_timeout_requests"] = parse_metric_to_base(parsed[-1])
         # Summary section
         # Requests/sec:   1317.73
         # Transfer/sec:    198.19KB
@@ -237,6 +240,9 @@ def aggregate_all_metrics(
             metrics_from_all_nodes["per_node_total_thoughput"]),
         "cluster_total_transfer_KB": sum(
             metrics_from_all_nodes["per_node_total_transfer_KB"]),
+        "cluster_total_timeout_requests": sum(
+            metrics_from_all_nodes["per_node_total_timeout_requests"]
+        ),
         "cluster_max_P50_latency_ms": max(
             metrics_from_all_nodes["P50_latency_ms"]),
         "cluster_max_P75_latency_ms": max(
@@ -304,6 +310,8 @@ def run_wrk_on_all_nodes(trial_length: str,
         all_metrics["per_nodel_tps"].append(parsed_metrics["per_nodel_tps"])
         all_metrics["per_node_transfer_per_sec_KB"].append(
             parsed_metrics["per_node_transfer_per_sec_KB"])
+        all_metrics["per_node_total_timeout_requests"].append(
+            parsed_metrics.get("per_node_total_timeout_requests", 0))
 
     return all_metrics, all_wrk_stdout
 

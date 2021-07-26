@@ -47,14 +47,14 @@ from typing import Optional
 
 # Experiment configs
 DEFAULT_SMOKE_TEST_NUM_REPLICA = 8
-DEFAULT_FULL_TEST_NUM_REPLICA = 100
+DEFAULT_FULL_TEST_NUM_REPLICA = 1000
 
 # Deployment configs
 DEFAULT_MAX_BATCH_SIZE = 16
 
 # Experiment configs - wrk specific
 DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
-DEFAULT_FULL_TEST_TRIAL_LENGTH = "1m"
+DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
 
 def deploy_replicas(num_replicas, max_batch_size):
@@ -67,9 +67,7 @@ def deploy_replicas(num_replicas, max_batch_size):
         async def __call__(self, request):
             return await self.handle_batch(request)
 
-    deployment_handle = Echo.deploy()
-    return deployment_handle
-
+    Echo.deploy()
 
 def save_results(final_result, default_name):
     test_output_json = os.environ.get(

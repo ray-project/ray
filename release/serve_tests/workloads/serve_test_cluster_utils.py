@@ -9,7 +9,7 @@ from ray.serve.utils import logger
 from ray.serve.config import DeploymentMode
 
 # Cluster setup configs
-NUM_CPU_PER_NODE = 8
+NUM_CPU_PER_NODE = 10
 NUM_CONNECTIONS = 100
 
 
@@ -61,4 +61,4 @@ def warm_up_cluster(
             resp = requests.get(
                 f"http://{http_host}:{http_port}/{endpoint}").text
             logger.info(resp)
-            time.sleep(0.1)
+            time.sleep(1)

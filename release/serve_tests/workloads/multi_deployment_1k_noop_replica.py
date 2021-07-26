@@ -53,12 +53,12 @@ DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS = 4  # 2 replicas each
 # TODO:(jiaodong) We should investigate and change this back to 1k
 # for now, we won't get valid latency numbers from wrk at 1k replica
 # likely due to request timeout.
-DEFAULT_FULL_TEST_NUM_REPLICA = 100
-DEFAULT_FULL_TEST_NUM_DEPLOYMENTS = 10  # 10 replicas each
+DEFAULT_FULL_TEST_NUM_REPLICA = 1000
+DEFAULT_FULL_TEST_NUM_DEPLOYMENTS = 100  # 10 replicas each
 
 # Experiment configs - wrk specific
 DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
-DEFAULT_FULL_TEST_TRIAL_LENGTH = "1m"
+DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
 
 def setup_multi_deployment_replicas(num_replicas, num_deployments):
@@ -83,7 +83,7 @@ def setup_multi_deployment_replicas(num_replicas, num_deployments):
 
         async def handle_request(self, request, depth: int):
             # Max recursive call depth reached
-            if depth >= 4:
+            if depth > 4:
                 return "hi"
 
             next_deployment_handle = self.get_random_deployment_handle()
