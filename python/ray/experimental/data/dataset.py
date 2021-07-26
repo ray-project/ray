@@ -1303,12 +1303,11 @@ class Dataset(Generic[T]):
             ...    print(item)
 
         Args:
-            per_stage_parallelism: Increasing per_stage_parallelism increases
-                pipeline throughput, but may increase latency. For example,
-                setting it to ``1`` means at most one 1 parallel instance of
-                each transformation will be run at any given time. Setting it
-                to ``num_blocks`` effectively disables pipelining since each
-                stage waits for all blocks to be computed prior to returning.
+            per_stage_parallelism: The parallelism (number of blocks) per
+                stage. Increasing per_stage_parallelism increases
+                pipeline throughput, but may also increase latency since it
+                decreases the length of the pipeline (i.e., a setting of
+                infinity effectively disables pipelining).
         """
         from ray.experimental.data.dataset_pipeline import DatasetPipeline
 
