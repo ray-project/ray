@@ -47,12 +47,12 @@ class DatasetPipeline(Generic[T]):
     and output methods (e.g., iter_rows, to_tf, to_torch, write_datasource).
     """
 
-    def __init__(
-            self,
-            base_iterable: Iterable[Callable[[], Dataset[T]]],
-            stage_transforms: List[Callable[[Dataset[T]], Dataset[U]]] = None,
-            length: int = None,
-            progress_bars: bool = progress_bar._enabled):
+    def __init__(self,
+                 base_iterable: Iterable[Callable[[], Dataset[T]]],
+                 stage_transforms: List[Callable[[Dataset[Any]], Dataset[
+                     Any]]] = None,
+                 length: int = None,
+                 progress_bars: bool = progress_bar._enabled):
         """Construct a DatasetPipeline (internal API).
 
         The constructor is not part of the DatasetPipeline API. Use the
