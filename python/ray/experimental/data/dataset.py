@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 class Dataset(Generic[T]):
     """Implements a distributed Arrow dataset.
 
-    Datasets are implemented as a list of ``ObjectRef[Block[T]]``. The block
+    Datasets are implemented as a list of ``ObjectRef[Block]``. The block
     also determines the unit of parallelism. The default block type is the
     ``pyarrow.Table``. Arrow-incompatible objects are held in ``list`` blocks.
 
@@ -106,7 +106,7 @@ class Dataset(Generic[T]):
 
         fn = cache_wrapper(fn)
 
-        def transform(block: Block[T]) -> Block[U]:
+        def transform(block: Block) -> Block:
             block = BlockAccessor.for_block(block)
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
@@ -167,7 +167,7 @@ class Dataset(Generic[T]):
 
         fn = cache_wrapper(fn)
 
-        def transform(block: Block[T]) -> Block[U]:
+        def transform(block: Block) -> Block:
             block = BlockAccessor.for_block(block)
             total_rows = block.num_rows()
             max_batch_size = batch_size
@@ -234,7 +234,7 @@ class Dataset(Generic[T]):
 
         fn = cache_wrapper(fn)
 
-        def transform(block: Block[T]) -> Block[U]:
+        def transform(block: Block) -> Block:
             block = BlockAccessor.for_block(block)
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
@@ -271,7 +271,7 @@ class Dataset(Generic[T]):
 
         fn = cache_wrapper(fn)
 
-        def transform(block: Block[T]) -> Block[T]:
+        def transform(block: Block) -> Block:
             block = BlockAccessor.for_block(block)
             builder = block.builder()
             for row in block.iter_rows():
@@ -498,13 +498,13 @@ class Dataset(Generic[T]):
         """
 
         @ray.remote
-        def get_num_rows(block: Block[T]) -> int:
+        def get_num_rows(block: Block) -> int:
             block = BlockAccessor.for_block(block)
             return block.num_rows()
 
         @ray.remote(num_returns=2)
-        def truncate(block: Block[T], meta: BlockMetadata,
-                     count: int) -> (Block[T], BlockMetadata):
+        def truncate(block: Block, meta: BlockMetadata,
+                     count: int) -> (Block, BlockMetadata):
             block = BlockAccessor.for_block(block)
             logger.debug("Truncating last block to size: {}".format(count))
             new_block = block.slice(0, count, copy=True)
@@ -584,7 +584,7 @@ class Dataset(Generic[T]):
             return meta_count
 
         @ray.remote
-        def count(block: Block[T]) -> int:
+        def count(block: Block) -> int:
             block = BlockAccessor.for_block(block)
             return block.num_rows()
 
@@ -600,7 +600,7 @@ class Dataset(Generic[T]):
         """
 
         @ray.remote
-        def agg(block: Block[T]) -> int:
+        def agg(block: Block) -> int:
             block = BlockAccessor.for_block(block)
             return sum(block.iter_rows())
 
@@ -1152,7 +1152,7 @@ class Dataset(Generic[T]):
             import pyarrow
             return isinstance(block, pyarrow.Table)
 
-        blocks: List[ObjectRef[Block[T]]] = list(self._blocks)
+        blocks: List[ObjectRef[Block]] = list(self._blocks)
         is_arrow = ray.get(check_is_arrow.remote(blocks[0]))
 
         if is_arrow:
@@ -1166,7 +1166,7 @@ class Dataset(Generic[T]):
         return [block_to_df.remote(block) for block in self._blocks]
 
     @DeveloperAPI
-    def get_blocks(self) -> List[ObjectRef["Block"]]:
+    def get_blocks(self) -> List[ObjectRef[Block]]:
         """Get a list of references to the underlying blocks of this dataset.
 
         This function can be used for zero-copy access to the data.
@@ -1203,7 +1203,7 @@ class Dataset(Generic[T]):
 
     def _block_sizes(self) -> List[int]:
         @ray.remote
-        def query(block: Block[T]) -> int:
+        def query(block: Block) -> int:
             block = BlockAccessor.for_block(block)
             return block.num_rows()
 

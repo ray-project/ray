@@ -9,7 +9,7 @@ dragonfly-opt==0.1.6
 flaml==0.5.2
 gluoncv==0.10.1.post0
 gpy==1.10.0
-gym[atari]==0.18.0
+gym[atari]==0.18.3
 h5py==3.1.0; python_version < '3.7'
 h5py==3.2.1; python_version >= '3.7'
 hpbandster==0.7.4

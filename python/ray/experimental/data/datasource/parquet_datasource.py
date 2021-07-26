@@ -22,12 +22,14 @@ class ParquetDatasource(Datasource[ArrowRow]):
         ... {"a": 1, "b": "foo"}
     """
 
-    def prepare_read(self,
-                     parallelism: int,
-                     paths: Union[str, List[str]],
-                     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-                     columns: Optional[List[str]] = None,
-                     **reader_args) -> List[ReadTask]:
+    def prepare_read(
+            self,
+            parallelism: int,
+            paths: Union[str, List[str]],
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+            columns: Optional[List[str]] = None,
+            schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+            **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
         """
         import pyarrow.parquet as pq
@@ -60,7 +62,7 @@ class ParquetDatasource(Datasource[ArrowRow]):
         read_tasks = [
             ReadTask(
                 lambda pieces=pieces: read_pieces(pieces),
-                _get_metadata(pieces, file_sizes))
+                _get_metadata(pieces, file_sizes, schema))
             for pieces, file_sizes in zip(
                 np.array_split(pieces, parallelism),
                 np.array_split(file_sizes, parallelism)) if len(pieces) > 0
@@ -70,7 +72,8 @@ class ParquetDatasource(Datasource[ArrowRow]):
 
 
 def _get_metadata(pieces: List["pyarrow._dataset.ParquetFileFragment"],
-                  file_sizes: List[int]):
+                  file_sizes: List[int],
+                  schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None):
     piece_metadata = []
     for p in pieces:
         try:
@@ -95,6 +98,6 @@ def _get_metadata(pieces: List["pyarrow._dataset.ParquetFileFragment"],
         block_metadata = BlockMetadata(
             num_rows=None,
             size_bytes=sum(file_sizes),
-            schema=None,
+            schema=schema,
             input_files=input_files)
     return block_metadata

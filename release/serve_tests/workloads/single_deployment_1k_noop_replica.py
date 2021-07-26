@@ -8,7 +8,7 @@ Benchmark test for single deployment at 1k no-op replica scale.
 
 Report:
  - QPS
- - Latency (median, p90, p95, p99)
+ - Latency (median, p75, p95, p99)
  - Time to reach 1k no-op running replicas
  - [P1] Memory delta / growth
 """
@@ -36,13 +36,10 @@ DEFAULT_SMOKE_TEST_NUM_TRIALS = 1
 # TODO:(jiaodong) We should investigate and change this back to 1k
 # for now, we won't get valid latency numbers from wrk at 1k replica
 # likely due to request timeout.
-DEFAULT_FULL_TEST_NUM_REPLICA = 100
+DEFAULT_FULL_TEST_NUM_REPLICA = 1000
 DEFAULT_FULL_TEST_NUM_TRIALS = 10
 
 # Cluster setup configs
-NUM_REDIS_SHARDS = 1
-REDIS_MAX_MEMORY = 10**8
-OBJECT_STORE_MEMORY = 10**8
 NUM_CPU_PER_NODE = 8
 
 # Deployment configs
@@ -50,7 +47,12 @@ DEFAULT_MAX_BATCH_SIZE = 16
 
 # Experiment configs - wrk specific
 DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "10s"
-DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
+DEFAULT_FULL_TEST_TRIAL_LENGTH = "1m"
+
+# wrk config.
+# For more discussion, see https://github.com/wg/wrk/issues/205
+WRK_NUM_CONNECTIONS = 100
+WRK_NUM_THREADS = 10
 
 
 def setup_local_single_node_cluster(num_nodes):
@@ -63,16 +65,12 @@ def setup_local_single_node_cluster(num_nodes):
     for i in range(num_nodes):
         cluster.add_node(
             redis_port=6379 if i == 0 else None,
-            num_redis_shards=NUM_REDIS_SHARDS if i == 0 else None,
             num_cpus=NUM_CPU_PER_NODE,
             num_gpus=0,
             resources={str(i): 2},
-            object_store_memory=OBJECT_STORE_MEMORY,
-            redis_max_memory=REDIS_MAX_MEMORY,
-            dashboard_host="0.0.0.0",
         )
     ray.init(address=cluster.address, dashboard_host="0.0.0.0")
-    serve_client = serve.start()
+    serve_client = serve.start(http_options=dict(location="EveryNode"))
 
     return serve_client
 
@@ -87,7 +85,7 @@ def setup_anyscale_cluster():
     # we cannot connect to anyscale cluster from its headnode
     # ray.client().env({}).connect()
     ray.init(address="auto")
-    serve_client = serve.start()
+    serve_client = serve.start(http_options=dict(location="EveryNode"))
 
     return serve_client
 
@@ -113,15 +111,14 @@ def warm_up_cluster(num_warmup_iterations: int, http_host: str,
         time.sleep(0.5)
 
 
-def run_one_trial(trial_length: str, num_connections, http_host,
-                  http_port) -> None:
+def run_one_trial(trial_length: str, http_host, http_port) -> None:
     proc = subprocess.Popen(
         [
             "wrk",
             "-c",
-            str(num_connections),
+            str(WRK_NUM_CONNECTIONS),
             "-t",
-            str(NUM_CPU_PER_NODE),
+            str(WRK_NUM_THREADS),
             "-d",
             trial_length,
             "--latency",
@@ -155,7 +152,7 @@ def main(num_replicas: Optional[int], num_trials: Optional[int],
     # Give default cluster parameter values based on smoke_test config
     # if user provided values explicitly, use them instead.
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
-    smoke_test = os.environ.get("IS_SMOKE_TEST", "0")
+    smoke_test = os.environ.get("IS_SMOKE_TEST", "1")
     if smoke_test == "0":
         num_replicas = num_replicas or DEFAULT_FULL_TEST_NUM_REPLICA
         num_trials = num_trials or DEFAULT_FULL_TEST_NUM_TRIALS
@@ -191,23 +188,51 @@ def main(num_replicas: Optional[int], num_trials: Optional[int],
     logger.info("Warming up cluster ....\n")
     warm_up_cluster(5, http_host, http_port)
 
-    final_result = []
+    avg_throughput = []
+    avg_latency = []
+    p50_latency = []
+    p75_latency = []
+    p90_latency = []
+    p99_latency = []
     for iteration in range(num_trials):
         logger.info(f"Starting wrk trial # {iteration + 1} ....\n")
-        # For detailed discussion, see https://github.com/wg/wrk/issues/205
-        # TODO:(jiaodong) What's the best number to use here ?
-        num_connections = int(num_replicas * DEFAULT_MAX_BATCH_SIZE * 0.75)
-        decoded_out = run_one_trial(trial_length, num_connections, http_host,
-                                    http_port)
-        metrics_dict = parse_wrk_decoded_stdout(decoded_out)
-        final_result.append(metrics_dict)
 
-    logger.info(f"Final results: {final_result}\n")
+        run_one_trial_remote = ray.remote(run_one_trial)
+
+        refs = []
+        for node in ray.nodes():
+            if node["Alive"]:
+                node_resource = f"node:{node['NodeManagerAddress']}"
+                refs.append(
+                    run_one_trial_remote.options(
+                        num_cpus=0, resources={
+                            node_resource: 0.01
+                        }).remote(trial_length, http_host, http_port))
+
+        for decoded_output in ray.get(refs):
+            parsed = parse_wrk_decoded_stdout(decoded_output)
+            avg_throughput.append(float(parsed["requests/sec"]))
+            avg_latency.append(float(parsed["latency_avg_ms"]))
+            p50_latency.append(float(parsed["P50_latency_ms"]))
+            p75_latency.append(float(parsed["P75_latency_ms"]))
+            p90_latency.append(float(parsed["P90_latency_ms"]))
+            p99_latency.append(float(parsed["P99_latency_ms"]))
+
+    final_results = {
+        "avg_throughput_qps": sum(avg_throughput) / len(avg_throughput),
+        "avg_latency_ms": sum(avg_latency) / len(avg_latency),
+        "max_p50_latency_ms": max(p50_latency),
+        "max_p75_latency_ms": max(p75_latency),
+        "max_p90_latency_ms": max(p90_latency),
+        "max_p99_latency_ms": max(p99_latency),
+    }
+
+    logger.info(f"Final results: {final_results}\n")
 
     test_output_json = os.environ.get(
         "TEST_OUTPUT_JSON", "/tmp/single_deployment_1k_noop_replica.json")
     with open(test_output_json, "wt") as f:
-        json.dump(final_result, f)
+        json.dump(final_results, f)
 
 
 if __name__ == "__main__":

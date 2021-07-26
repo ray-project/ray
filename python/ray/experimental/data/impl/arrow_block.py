@@ -63,12 +63,12 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
                 self._builder = SimpleBlockBuilder()
         self._builder.add(item)
 
-    def add_block(self, block: Block[T]) -> None:
+    def add_block(self, block: Block) -> None:
         if self._builder is None:
             self._builder = BlockAccessor.for_block(block).builder()
         self._builder.add_block(block)
 
-    def build(self) -> Block[T]:
+    def build(self) -> Block:
         if self._builder is None:
             self._builder = ArrowBlockBuilder()
         return self._builder.build()
@@ -101,7 +101,7 @@ class ArrowBlockBuilder(BlockBuilder[T]):
         self._tables.append(block)
         self._num_rows += block.num_rows
 
-    def build(self) -> Block[T]:
+    def build(self) -> Block:
         if self._columns:
             tables = [pyarrow.Table.from_pydict(self._columns)]
         else:
