@@ -23,7 +23,7 @@ class PipelineExecutor:
     def __init__(self, pipeline: "DatasetPipeline[T]"):
         self._pipeline: "DatasetPipeline[T]" = pipeline
         self._stages: List[ObjectRef[Dataset[
-            Any]]] = [None] * (len(self._pipeline._stage_transforms) + 1)
+            Any]]] = [None] * (len(self._pipeline._stages) + 1)
         self._iter = iter(self._pipeline._base_iterable)
         self._stages[0] = pipeline_stage.remote(next(self._iter))
 
@@ -70,7 +70,7 @@ class PipelineExecutor:
                 if is_last:
                     output = result
                 else:
-                    fn = self._pipeline._stage_transforms[i]
+                    fn = self._pipeline._stages[i]
                     self._stages[i +
                                  1] = pipeline_stage.remote(lambda: fn(result))
 
