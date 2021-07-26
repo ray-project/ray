@@ -17,6 +17,8 @@ By changing ``ray.init()`` to ``ray.init("ray://<host>:<port>")``, you can conne
    import ray
 
    # Starting the Ray client. This connects to a remote Ray cluster.
+   # If you're using a version of Ray prior to 1.5, use the ClientBuilder API
+   # shown below.
    ray.init("ray://<head_node_host>:10001").connect()
 
    # Normal Ray code follows
@@ -51,27 +53,51 @@ You can also connect using the ClientBuilder API, but this will eventually be de
 Client arguments
 ----------------
 
-Ray client is run used whenever the address passed into ray.init is prefixed with the name of a protocol and ``://``. Currently, two protocols built into ray by default:
+Ray client is used when the address passed into ``ray.init`` is prefixed with the name of a protocol and ``://``. **This will only work with Ray 1.5+.** If you're using an older version of ray, see the ClientBuilder API section for information on passing arguments. Currently, two protocols are built into ray by default:
 
-**Local mode** is used when the address is prefixed with ``local://``, i.e. ``ray.init("local://")``. In local mode, a local cluster is created and is automatically connected to by Ray Client. Local mode accepts all of the same keywords as ``ray.init`` and uses them to configure the local cluster.
+- **Local mode** is used when the address is prefixed with ``local://``, i.e. ``ray.init("local://")``. In local mode, a local cluster is created and connected to by Ray Client. Local mode accepts all of the same keywords as ``ray.init`` and uses them to configure the local cluster.
 
 .. code-block:: python
-   # Start a local cluster with
+
+   # Start a local cluster with 2 cpus and expose the dashboard on port 888
    ray.init("local://", num_cpus=2, dashboard_port=8888)
    #....
 
-**Client mode** is used when the address is prefixed with ``ray://``. i.e. ``ray.init("ray://<head_node_host>:10001")``. Client mode connects to an existing Ray Client Server at the given address. Client mdoe currently accepts two arguments:
+- **Client mode** is used when the address is prefixed with ``ray://``. i.e. ``ray.init("ray://<head_node_host>:10001")``. Client mode connects to an existing Ray Client Server at the given address. Client mdoe currently accepts two arguments:
 
-- ``namespace``: Sets the namespace for the session
-- ``runtime_env``: Sets the runtime environment for the session
+   - ``namespace``: Sets the namespace for the session
+   - ``runtime_env``: Sets the `runtime environment <advanced.html?highlight=runtime environment#runtime-environments-experimental>`_ for the session
 
 .. code-block:: python
-   # Connects to an existing cluster at 1.2.3.4 listening on port 10001
+
+   # Connects to an existing cluster at 1.2.3.4 listening on port 10001, using
+   # the namespace "my_namespace"
    ray.init("ray://1.2.3.4:10001", namespace="my_namespace")
    #....
 
-**Custom protocols** can be created by third parties to extend or alter connection behavior. More details can be found in the source for `client_builder.py <https://github.com/ray-project/ray/blob/master/python/ray/client_builder.py>`_)
+**Custom protocols** can be created by third parties to extend or alter connection behavior. More details can be found in the source for `client_builder.py <https://github.com/ray-project/ray/blob/master/python/ray/client_builder.py>`_
 
+ClientBuilder API
+-----------------
+
+The ClientBuilder API is an alternative way to create a ray client connection. It is currently supported for backwards compatibility, but will eventually be deprecated. To use the ClientBuilder API, replace any calls to ``ray.init()`` with ``ray.client("<head_node_host>:10001").connect()``. This will connect to an existing Ray Client Server at that address.
+
+The client connection can be configured using the `fluent builder pattern <https://en.wikipedia.org/wiki/Fluent_interface>`_. The following settings can be configured through method chaining:
+
+- ``namespace``: Sets the namespace for the session
+- ``env``: Sets the `runtime environment <advanced.html?highlight=runtime environment#runtime-environments-experimental>`_ for the session
+
+.. code-block:: python
+
+   # Start a ray client connection in the namespace "my_namespace"
+   ray.client("1.2.3.4:10001").namespace("my_namespace").connect()
+   #....
+
+.. code-block:: python
+
+   # Start with both a namespace and runtime environment (order does not matter)
+   ray.client("1.2.3.4:10001").namespace("my_namespace").env({...}).connect()
+   #....
 
 How do you use the Ray client?
 ------------------------------
