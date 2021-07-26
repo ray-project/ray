@@ -13,7 +13,8 @@ from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2, MockVectorEnv
+from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2, MockVectorEnv,\
+    VectorizedMockEnv
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
@@ -478,8 +479,11 @@ class TestRolloutWorker(unittest.TestCase):
         ev.stop()
 
     def test_vector_env_support(self):
+        # Test a vector env that contains 8 actual envs
+        # (MockEnv instances).
         ev = RolloutWorker(
-            env_creator=lambda _: MockVectorEnv(episode_length=20, num_envs=8),
+            env_creator=(
+                lambda _: VectorizedMockEnv(episode_length=20, num_envs=8)),
             policy_spec=MockPolicy,
             batch_mode="truncate_episodes",
             rollout_fragment_length=10)
@@ -493,6 +497,25 @@ class TestRolloutWorker(unittest.TestCase):
             self.assertEqual(batch.count, 10)
         result = collect_metrics(ev, [])
         self.assertEqual(result["episodes_this_iter"], 8)
+        ev.stop()
+
+        # Test a vector env that pretends(!) to contain 4 envs, but actually
+        # only has 1 (CartPole).
+        ev = RolloutWorker(
+            env_creator=(lambda _: MockVectorEnv(20, mocked_num_envs=4)),
+            policy_spec=MockPolicy,
+            batch_mode="truncate_episodes",
+            rollout_fragment_length=10)
+        for _ in range(8):
+            batch = ev.sample()
+            self.assertEqual(batch.count, 10)
+        result = collect_metrics(ev, [])
+        self.assertGreater(result["episodes_this_iter"], 3)
+        for _ in range(8):
+            batch = ev.sample()
+            self.assertEqual(batch.count, 10)
+        result = collect_metrics(ev, [])
+        self.assertGreater(result["episodes_this_iter"], 7)
         ev.stop()
 
     def test_truncate_episodes(self):
