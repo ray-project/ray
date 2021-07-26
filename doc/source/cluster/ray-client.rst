@@ -34,7 +34,7 @@ Client arguments
 
 Ray client is used when the address passed into ``ray.init`` is prefixed with the name of a protocol and ``://``. **This will only work with Ray 1.5+.** If you're using an older version of ray, see the `1.4.1 docs <https://docs.ray.io/en/releases-1.4.1/cluster/ray-client.html>`_. Currently, two protocols are built into ray by default:
 
-**Local mode** is used when the address is prefixed with ``local://``. If no address is provided, i.e. ``ray.init("local://")``), a local cluster is created and connected to. If an address is provided, i.e. ``ray.init("local://localhost:6379")``, Ray will attempt to connect to an existing cluster at the specified address. Local mode accepts all of the same keywords as ``ray.init`` and uses them to configure the local cluster.
+**Local mode** is used when the address is prefixed with ``local://``. If no address is provided, i.e. ``ray.init("local://")``), a local cluster is created and connected to directly by attaching a driver. If an address is provided, i.e. ``ray.init("local://localhost:6379")``, Ray will attempt to attach a driver to an existing cluster at the specified address. Local mode accepts all of the same keywords as ``ray.init`` and uses them to configure the local cluster.
 
 .. code-block:: python
 
