@@ -17,7 +17,7 @@ def test_worker_creation(ray_start_2_cpus):
     assert ray.available_resources()["CPU"] == 2
     wg = WorkerGroup(num_workers=2)
     assert len(wg.workers) == 2
-    time.sleep(0.1)
+    time.sleep(1)
     # Make sure both CPUs are being used by the actors.
     assert "CPU" not in ray.available_resources()
     wg.shutdown()
@@ -26,7 +26,7 @@ def test_worker_creation(ray_start_2_cpus):
 def test_worker_creation_num_cpus(ray_start_2_cpus):
     assert ray.available_resources()["CPU"] == 2
     wg = WorkerGroup(num_cpus_per_worker=2)
-    time.sleep(0.1)
+    time.sleep(1)
     assert len(wg.workers) == 1
     # Make sure both CPUs are being used by the actor.
     assert "CPU" not in ray.available_resources()
@@ -36,11 +36,11 @@ def test_worker_creation_num_cpus(ray_start_2_cpus):
 def test_worker_shutdown(ray_start_2_cpus):
     assert ray.available_resources()["CPU"] == 2
     wg = WorkerGroup(num_workers=2)
-    time.sleep(0.1)
+    time.sleep(1)
     assert "CPU" not in ray.available_resources()
     assert len(ray.state.actors()) == 2
     wg.shutdown()
-    time.sleep(0.1)
+    time.sleep(1)
     assert ray.available_resources()["CPU"] == 2
 
     with pytest.raises(RuntimeError):
