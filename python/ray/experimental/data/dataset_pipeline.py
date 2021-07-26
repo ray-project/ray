@@ -49,8 +49,7 @@ class DatasetPipeline(Generic[T]):
 
     def __init__(self,
                  base_iterable: Iterable[Callable[[], Dataset[T]]],
-                 stage_transforms: List[Callable[[Dataset[Any]], Dataset[
-                     Any]]] = None,
+                 stages: List[Callable[[Dataset[Any]], Dataset[Any]]] = None,
                  length: int = None,
                  progress_bars: bool = progress_bar._enabled):
         """Construct a DatasetPipeline (internal API).
@@ -60,7 +59,7 @@ class DatasetPipeline(Generic[T]):
         ``DatasetPipeline.from_iterable()`` methods to construct a pipeline.
         """
         self._base_iterable = base_iterable
-        self._stage_transforms = stage_transforms or []
+        self._stages = stages or []
         self._length = length
         self._progress_bars = progress_bars
         self._uuid = None  # For testing only.
@@ -240,9 +239,8 @@ class DatasetPipeline(Generic[T]):
         Returns:
             The transformed DatasetPipeline.
         """
-        return DatasetPipeline(self._base_iterable,
-                               self._stage_transforms + [fn], self._length,
-                               self._progress_bars)
+        return DatasetPipeline(self._base_iterable, self._stages + [fn],
+                               self._length, self._progress_bars)
 
     @DeveloperAPI
     @staticmethod
@@ -262,7 +260,7 @@ class DatasetPipeline(Generic[T]):
 
     def __repr__(self) -> str:
         return "DatasetPipeline(length={}, num_stages={})".format(
-            self._length, 1 + len(self._stage_transforms))
+            self._length, 1 + len(self._stages))
 
     def __str__(self) -> str:
         return repr(self)
