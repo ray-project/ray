@@ -22,14 +22,15 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
                                           const ObjectID &outer_object_id,
                                           const TaskID &caller_id,
                                           const std::string &call_site,
-                                          const rpc::Address &caller_address) {
+                                          const rpc::Address &caller_address,
+                                          bool is_self) {
   const ActorID actor_id = actor_handle->GetActorID();
   const rpc::Address owner_address = actor_handle->GetOwnerAddress();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
 
   RAY_UNUSED(AddActorHandle(std::move(actor_handle),
                             /*is_owner_handle=*/false, caller_id, call_site,
-                            caller_address, actor_id, actor_creation_return_id));
+                            caller_address, actor_id, actor_creation_return_id, is_self));
   ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
   reference_counter_->AddBorrowedObject(actor_handle_id, outer_object_id, owner_address);
   return actor_id;
@@ -74,7 +75,8 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                   const std::string &call_site,
                                   const rpc::Address &caller_address,
                                   const ActorID &actor_id,
-                                  const ObjectID &actor_creation_return_id) {
+                                  const ObjectID &actor_creation_return_id,
+                                  bool is_self) {
   reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
   direct_actor_submitter_->AddActorQueueIfNotExists(actor_id);
   bool inserted;
@@ -82,14 +84,14 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     absl::MutexLock lock(&mutex_);
     inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
   }
-  if (inserted) {
+  if (inserted && !is_self) {
     // Register a callback to handle actor notifications.
     auto actor_notification_callback =
         std::bind(&ActorManager::HandleActorStateNotification, this,
                   std::placeholders::_1, std::placeholders::_2);
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
         actor_id, actor_notification_callback, nullptr));
-  } else {
+  } else if (!inserted) {
     RAY_LOG(ERROR) << "Actor handle already exists " << actor_id.Hex();
   }
 
