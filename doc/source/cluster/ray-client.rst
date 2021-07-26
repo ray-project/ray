@@ -35,7 +35,7 @@ You can also connect using the ClientBuilder API, but this will eventually be de
    # You can run this code outside of the Ray cluster!
    import ray
 
-   # Starting the Ray client. This connects to a remote Ray cluster. 
+   # Starting the Ray client. This connects to a remote Ray cluster.
    # `ray.client` will be deprecated in future releases, so we recommend
    # using `ray.init("ray://<head_node_host>:10001")` instead.
    ray.client("<head_node_host>:10001").connect()
@@ -47,6 +47,31 @@ You can also connect using the ClientBuilder API, but this will eventually be de
 
    do_work.remote(2)
    #....
+
+Client arguments
+----------------
+
+Ray client is run used whenever the address passed into ray.init is prefixed with the name of a protocol and ``://``. Currently, two protocols built into ray by default:
+
+**Local mode** is used when the address is prefixed with ``local://``, i.e. ``ray.init("local://")``. In local mode, a local cluster is created and is automatically connected to by Ray Client. Local mode accepts all of the same keywords as ``ray.init`` and uses them to configure the local cluster.
+
+.. code-block:: python
+   # Start a local cluster with
+   ray.init("local://", num_cpus=2, dashboard_port=8888)
+   #....
+
+**Client mode** is used when the address is prefixed with ``ray://``. i.e. ``ray.init("ray://<head_node_host>:10001")``. Client mode connects to an existing Ray Client Server at the given address. Client mdoe currently accepts two arguments:
+
+- ``namespace``: Sets the namespace for the session
+- ``runtime_env``: Sets the runtime environment for the session
+
+.. code-block:: python
+   # Connects to an existing cluster at 1.2.3.4 listening on port 10001
+   ray.init("ray://1.2.3.4:10001", namespace="my_namespace")
+   #....
+
+**Custom protocols** can be created by third parties to extend or alter connection behavior. More details can be found in the source for `client_builder.py <https://github.com/ray-project/ray/blob/master/python/ray/client_builder.py>`_)
+
 
 How do you use the Ray client?
 ------------------------------

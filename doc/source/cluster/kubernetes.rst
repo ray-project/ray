@@ -176,7 +176,7 @@ Then open a new shell and try out a `sample Ray program`_:
 
   $ python ray/doc/kubernetes/example_scripts/run_local_example.py
 
-The program in this example uses ``ray.client(127.0.0.1:10001).connect()`` to connect to the Ray cluster.
+The program in this example uses ``ray.init("ray://127.0.0.1:10001")`` to connect to the Ray cluster.
 The program waits for three Ray nodes to connect and then tests object transfer
 between the nodes.
 
@@ -197,7 +197,7 @@ The following command submits a Job which executes an `example Ray program`_.
   job.batch/ray-test-job created
 
 The program executed by the job uses the name of the Ray cluster's head Service to connect:
-``ray.client("example-cluster-ray-head:10001").connect()``.
+``ray.init("ray://example-cluster-ray-head:10001")``.
 The program waits for three Ray nodes to connect and then tests object transfer
 between the nodes.
 

@@ -13,7 +13,7 @@ first connect to the cluster.
 
    ray.init(namespace="hello")
    # or using ray client
-   ray.client().namespace("world").connect()
+   ray.init("local://", namespace="world")
 
 Named actors are only accessible within their namespaces.
 
@@ -26,12 +26,12 @@ Named actors are only accessible within their namespaces.
       pass
 
     # Job 1 creates two actors, "orange" and "purple" in the "colors" namespace.
-    with ray.client().namespace("colors").connect():
+    with ray.init("local://", namespace="colors"):
       Actor.options(name="orange", lifetime="detached")
       Actor.options(name="purple", lifetime="detached")
 
     # Job 2 is now connecting to a different namespace.
-    with ray.client().namespace("fruits").connect():
+    with ray.init("local://", namespace="fruits")
       # This fails because "orange" was defined in the "colors" namespace.
       ray.get_actor("orange")
       # This succceeds because the name "orange" is unused in this namespace.
@@ -39,14 +39,14 @@ Named actors are only accessible within their namespaces.
       Actor.options(name="watermelon", lifetime="detached")
 
     # Job 3 connects to the original "colors" namespace
-    context = ray.client().namespace("colors").connect()
+    context = ray.init("local://", namespace="colors")
     # This fails because "watermelon" was in the fruits namespace.
     ray.get_actor("watermelon")
     # This returns the "orange" actor we created in the first job, not the second.
     ray.get_actor("orange")
     context.disconnect()
-    # We are manually managing the scope of the connection in this example. 
-         
+    # We are manually managing the scope of the connection in this example.
+
 
 Anonymous namespaces
 --------------------
@@ -64,12 +64,12 @@ will not have access to actors in other namespaces.
       pass
 
     # Job 1 connects to an anonymous namespace by default
-    ctx = ray.client().connect()
+    ctx = ray.init("local://")
     Actor.options(name="my_actor", lifetime="detached")
     ctx.disconnect()
 
     # Job 2 connects to an _different_ anonymous namespace by default
-    ctx = ray.client().connect()
+    ctx = ray.init("local://")
     # This succeeds because the second job is in its own namespace.
     Actor.options(name="my_actor", lifetime="detached")
     ctx.disconnect()
