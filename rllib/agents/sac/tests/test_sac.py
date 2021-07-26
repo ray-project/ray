@@ -430,7 +430,7 @@ class TestSAC(unittest.TestCase):
                                 np.transpose(torch_var.detach().cpu()),
                                 atol=0.002)
                         else:
-                            check(tf_var, torch_var, rtol=0.1)
+                            check(tf_var, torch_var, atol=0.002)
                     # And alpha.
                     check(policy.model.log_alpha,
                           tf_weights["default_policy/log_alpha"])
@@ -447,7 +447,7 @@ class TestSAC(unittest.TestCase):
                                 np.transpose(torch_var.detach().cpu()),
                                 atol=0.002)
                         else:
-                            check(tf_var, torch_var, rtol=0.1)
+                            check(tf_var, torch_var, atol=0.002)
             trainer.stop()
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
