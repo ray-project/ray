@@ -11,17 +11,16 @@ class WorkflowStepFunction:
 
     def __init__(self,
                  func: Callable,
-                 step_max_retries=1,
+                 max_retries=1,
                  catch_exceptions=False,
                  ray_options=None):
-        if not isinstance(step_max_retries, int) or step_max_retries < 1:
-            raise ValueError(
-                "step_max_retries should be greater or equal to 1.")
+        if not isinstance(max_retries, int) or max_retries < 1:
+            raise ValueError("max_retries should be greater or equal to 1.")
         if ray_options is not None and not isinstance(ray_options, dict):
             raise ValueError("ray_options must be a dict.")
 
         self._func = func
-        self._step_max_retries = step_max_retries
+        self._max_retries = max_retries
         self._catch_exceptions = catch_exceptions
         self._ray_options = ray_options or {}
         self._func_signature = signature.extract_signature(func)
@@ -36,7 +35,7 @@ class WorkflowStepFunction:
             workflow_data = WorkflowData(
                 func_body=self._func,
                 inputs=workflow_inputs,
-                step_max_retries=self._step_max_retries,
+                max_retries=self._max_retries,
                 catch_exceptions=self._catch_exceptions,
                 ray_options=self._ray_options,
             )
@@ -51,14 +50,14 @@ class WorkflowStepFunction:
 
     def options(self,
                 *,
-                step_max_retries: int = 1,
+                max_retries: int = 1,
                 catch_exceptions: bool = False,
                 **ray_options) -> "WorkflowStepFunction":
         """This function set how the step function is going to be executed.
 
         Args:
-            step_max_retries(int): num of retries the step for an application
-                level error
+            max_retries(int): num of retries the step for an application
+                level error.
             catch_exceptions(bool): Whether the user want to take care of the
                 failure mannually.
                 If it's set to be true, (Optional[R], Optional[E]) will be
@@ -70,5 +69,5 @@ class WorkflowStepFunction:
         Returns:
             The step function itself.
         """
-        return WorkflowStepFunction(self._func, step_max_retries,
-                                    catch_exceptions, ray_options)
+        return WorkflowStepFunction(self._func, max_retries, catch_exceptions,
+                                    ray_options)

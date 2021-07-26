@@ -397,7 +397,7 @@ class VirtualActor:
                 workflow_data = WorkflowData(
                     func_body=_readonly_actor_method,
                     inputs=workflow_inputs,
-                    step_max_retries=1,
+                    max_retries=1,
                     catch_exceptions=False,
                     ray_options={},
                 )

@@ -7,6 +7,7 @@ from ray import ObjectRef
 from ray._private import signature
 
 from ray.experimental.workflow import workflow_context
+from ray.experimental.workflow.workflow_context import get_step_status_info
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.workflow_access import MANAGEMENT_ACTOR_NAME
@@ -143,7 +144,7 @@ class StepType(enum.Enum):
 
 
 def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
-              catch_exceptions: bool, step_max_retries: int, *args,
+              catch_exceptions: bool, max_retries: int, *args,
               **kwargs) -> Tuple[Any, Any]:
     """Wrap the function and execute it.
 
@@ -166,24 +167,30 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
     Args:
         step_type: The type of the step producing the result.
         catch_exceptions: True if we would like to catch the exception.
-        step_max_retries: Max retry times for failure.
+        max_retries: Max retry times for failure.
 
     Returns:
         State and output.
     """
     exception = None
     result = None
-    # step_max_retries are for application level failure.
+    # max_retries are for application level failure.
     # For ray failure, we should use max_retries.
-    for i in range(step_max_retries):
-        if exception is not None:
-            logger.error(f"Step '{step_id}' raises an exception. Retrying "
-                         f"[{i}/{step_max_retries-1}]. Exception: {exception}")
+    for i in range(max_retries):
+        logger.info(f"{get_step_status_info(WorkflowStatus.RUNNING)}"
+                    f"\t[{i+1}/{max_retries}]")
         try:
             result = func(*args, **kwargs)
             exception = None
             break
         except BaseException as e:
+            if i + 1 == max_retries:
+                retry_msg = "Maximum retry reached, stop retry."
+            else:
+                retry_msg = "The step will be retried."
+            logger.error(
+                f"{workflow_context.get_step_name()} failed with error message"
+                f" {e}. {retry_msg}")
             exception = e
 
     if catch_exceptions:
@@ -199,7 +206,9 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
     else:
         if exception is not None:
             if step_type != StepType.READONLY_ACTOR_METHOD:
-                _record_step_status(step_id, WorkflowStatus.RESUMABLE)
+                status = WorkflowStatus.FAILED
+                _record_step_status(step_id, status)
+                logger.info(get_step_status_info(status))
             raise exception
         if step_type == StepType.FUNCTION:
             state, output = result, None
@@ -225,7 +234,7 @@ def _workflow_step_executor(
         step_type: StepType, func: Callable,
         context: workflow_context.WorkflowStepContext, step_id: "StepID",
         step_inputs: "StepInputTupleToResolve", outer_most_step_id: "StepID",
-        catch_exceptions: bool, step_max_retries: int,
+        catch_exceptions: bool, max_retries: int,
         last_step_of_workflow: bool) -> Any:
     """Executor function for workflow step.
 
@@ -239,7 +248,7 @@ def _workflow_step_executor(
             explanation.
         catch_exceptions: If set to be true, return
             (Optional[Result], Optional[Error]) instead of Result.
-        step_max_retries: Max number of retries encounter of a failure.
+        max_retries: Max number of retries encounter of a failure.
         last_step_of_workflow: The step that generates the output of the
             workflow (including nested steps).
 
@@ -249,7 +258,7 @@ def _workflow_step_executor(
     workflow_context.update_workflow_step_context(context, step_id)
     args, kwargs = _resolve_step_inputs(step_inputs)
     state, output = _wrap_run(func, step_type, step_id, catch_exceptions,
-                              step_max_retries, *args, **kwargs)
+                              max_retries, *args, **kwargs)
 
     if step_type != StepType.READONLY_ACTOR_METHOD:
         store = workflow_storage.get_workflow_storage()
@@ -269,8 +278,8 @@ def _workflow_step_executor(
         elif last_step_of_workflow:
             # advance the progress of the workflow
             store.advance_progress(step_id)
-        _record_step_status(step_id, WorkflowStatus.FINISHED)
-
+        _record_step_status(step_id, WorkflowStatus.SUCCESSFUL)
+    logger.info(get_step_status_info(WorkflowStatus.SUCCESSFUL))
     return state, output
 
 
@@ -291,7 +300,7 @@ def execute_workflow_step(step_id: "StepID", workflow_data: "WorkflowData",
         StepType.FUNCTION, workflow_data.func_body,
         workflow_context.get_workflow_step_context(), step_id, step_inputs,
         outer_most_step_id, workflow_data.catch_exceptions,
-        workflow_data.step_max_retries, last_step_of_workflow)[0]
+        workflow_data.max_retries, last_step_of_workflow)[0]
 
 
 def execute_virtual_actor_step(step_id: "StepID",
@@ -316,7 +325,7 @@ def execute_virtual_actor_step(step_id: "StepID",
         step_inputs,
         outer_most_step_id,
         workflow_data.catch_exceptions,
-        workflow_data.step_max_retries,
+        workflow_data.max_retries,
         last_step_of_workflow=True)
     if readonly:
         return ret[1]  # only return output. skip state

@@ -33,7 +33,6 @@ def data_load_error(func):
             ret = await func(*args, **kvargs)
             return ret
         except Exception as e:
-            print(">>>>>>", e, type(e))
             raise DataLoadError from e
 
     return _func
@@ -220,7 +219,7 @@ class S3StorageImpl(Storage):
                 operation_parameters["Prefix"] = self._s3_path + "/"
             page_iterator = paginator.paginate(**operation_parameters)
             async for page in page_iterator:
-                for o in page.get("CommonPrefixes"):
+                for o in page.get("CommonPrefixes", []):
                     prefix = o.get("Prefix", "").rstrip("/").split("/")[-1]
                     workflow_ids.append(prefix)
         return workflow_ids

@@ -118,10 +118,10 @@ def read_datasource(datasource: Datasource[T],
     read_tasks = datasource.prepare_read(parallelism, **read_args)
 
     @ray.remote
-    def remote_read(task: ReadTask) -> Block[T]:
+    def remote_read(task: ReadTask) -> Block:
         return task()
 
-    calls: List[Callable[[], ObjectRef[Block[T]]]] = []
+    calls: List[Callable[[], ObjectRef[Block]]] = []
     metadata: List[BlockMetadata] = []
 
     for task in read_tasks:
