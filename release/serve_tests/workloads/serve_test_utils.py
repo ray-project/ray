@@ -169,7 +169,9 @@ def parse_wrk_decoded_stdout(decoded_out):
                 parsed[4])
         # Socket errors: connect 0, read 0, write 0, timeout 100
         elif parsed[0] == "Socket" and parsed[1] == "errors:":
-            metrics_dict["per_node_total_timeout_requests"] = parse_metric_to_base(parsed[-1])
+            metrics_dict[
+                "per_node_total_timeout_requests"] = parse_metric_to_base(
+                    parsed[-1])
         # Summary section
         # Requests/sec:   1317.73
         # Transfer/sec:    198.19KB
@@ -241,8 +243,7 @@ def aggregate_all_metrics(
         "cluster_total_transfer_KB": sum(
             metrics_from_all_nodes["per_node_total_transfer_KB"]),
         "cluster_total_timeout_requests": sum(
-            metrics_from_all_nodes["per_node_total_timeout_requests"]
-        ),
+            metrics_from_all_nodes["per_node_total_timeout_requests"]),
         "cluster_max_P50_latency_ms": max(
             metrics_from_all_nodes["P50_latency_ms"]),
         "cluster_max_P75_latency_ms": max(
