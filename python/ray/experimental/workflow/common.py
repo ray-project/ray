@@ -19,13 +19,15 @@ WorkflowOutputType = ObjectRef
 class WorkflowStatus(str, Enum):
     # There is at least a remote task running in ray cluster
     RUNNING = "RUNNING"
-    # It got canceled and can't be resumed later
+    # It got canceled and can't be resumed later.
     CANCELED = "CANCELED"
-    # The step is finished. For virtual actor, it means that all
-    # writing steps has been finished.
-    FINISHED = "FINISHED"
-    # The workflow that can be resumed. Usually it's because some
-    # internal or external errors.
+    # The workflow runs successfully.
+    SUCCESSFUL = "SUCCESSFUL"
+    # The workflow failed with an applicaiton error.
+    # It can be resumed.
+    FAILED = "FAILED"
+    # The workflow failed with a system error, i.e., ray shutdown.
+    # It can be resumed.
     RESUMABLE = "RESUMABLE"
 
 
@@ -47,7 +49,7 @@ class WorkflowData:
     # The arguments of a workflow.
     inputs: WorkflowInputs
     # The num of retry for application exception
-    step_max_retries: int
+    max_retries: int
     # Whether the user want to handle the exception mannually
     catch_exceptions: bool
     # ray_remote options
@@ -59,7 +61,7 @@ class WorkflowData:
             "name": f.__module__ + "." + f.__qualname__,
             "object_refs": [r.hex() for r in self.inputs.object_refs],
             "workflows": [w.id for w in self.inputs.workflows],
-            "step_max_retries": self.step_max_retries,
+            "max_retries": self.max_retries,
             "catch_exceptions": self.catch_exceptions,
             "ray_options": self.ray_options,
         }
