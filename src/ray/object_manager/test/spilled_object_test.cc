@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/object_manager/spilled_object.h"
+#include "ray/object_manager/chunk_object_reader.h"
+#include "ray/object_manager/memory_object_reader.h"
+#include "ray/object_manager/spilled_object_reader.h"
 
 #include <boost/endian/conversion.hpp>
 #include <fstream>
@@ -24,15 +26,15 @@
 
 namespace ray {
 
-TEST(SpilledObjectTest, ParseObjectURL) {
+TEST(SpilledObjectReaderTest, ParseObjectURL) {
   auto assert_parse_success =
       [](const std::string &object_url, const std::string &expected_file_path,
          uint64_t expected_object_offset, uint64_t expected_object_size) {
         std::string actual_file_path;
         uint64_t actual_offset = 0;
         uint64_t actual_size = 0;
-        ASSERT_TRUE(SpilledObject::ParseObjectURL(object_url, actual_file_path,
-                                                  actual_offset, actual_size));
+        ASSERT_TRUE(SpilledObjectReader::ParseObjectURL(object_url, actual_file_path,
+                                                        actual_offset, actual_size));
         ASSERT_EQ(expected_file_path, actual_file_path);
         ASSERT_EQ(expected_object_offset, actual_offset);
         ASSERT_EQ(expected_object_size, actual_size);
@@ -42,8 +44,8 @@ TEST(SpilledObjectTest, ParseObjectURL) {
     std::string actual_file_path;
     uint64_t actual_offset = 0;
     uint64_t actual_size = 0;
-    ASSERT_FALSE(SpilledObject::ParseObjectURL(object_url, actual_file_path,
-                                               actual_offset, actual_size));
+    ASSERT_FALSE(SpilledObjectReader::ParseObjectURL(object_url, actual_file_path,
+                                                     actual_offset, actual_size));
   };
 
   assert_parse_success("file://path/to/file?offset=123&size=456", "file://path/to/file",
@@ -53,24 +55,35 @@ TEST(SpilledObjectTest, ParseObjectURL) {
                        "file:///C:/Users/file.txt", 123, 456);
   assert_parse_success("/tmp/file.txt?offset=123&size=456", "/tmp/file.txt", 123, 456);
   assert_parse_success("C:\\file.txt?offset=123&size=456", "C:\\file.txt", 123, 456);
+  assert_parse_success(
+      "/tmp/ray/session_2021-07-19_09-50-58_115365_119/ray_spillled_objects/"
+      "2f81e7cfcc578f4effffffffffffffffffffffff0200000001000000-multi-1?offset=0&size="
+      "2199437144",
+      "/tmp/ray/session_2021-07-19_09-50-58_115365_119/ray_spillled_objects/"
+      "2f81e7cfcc578f4effffffffffffffffffffffff0200000001000000-multi-1",
+      0, 2199437144);
+  assert_parse_success("/tmp/123?offset=0&size=9223372036854775807", "/tmp/123", 0,
+                       9223372036854775807);
 
+  assert_parse_fail("/tmp/123?offset=-1&size=1");
+  assert_parse_fail("/tmp/123?offset=0&size=9223372036854775808");
   assert_parse_fail("file://path/to/file?offset=a&size=456");
   assert_parse_fail("file://path/to/file?offset=0&size=bb");
   assert_parse_fail("file://path/to/file?offset=123");
   assert_parse_fail("file://path/to/file?offset=a&size=456&extra");
 }
 
-TEST(SpilledObjectTest, ToUINT64) {
-  ASSERT_EQ(0, SpilledObject::ToUINT64(
+TEST(SpilledObjectReaderTest, ToUINT64) {
+  ASSERT_EQ(0, SpilledObjectReader::ToUINT64(
                    {'\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00'}));
-  ASSERT_EQ(1, SpilledObject::ToUINT64(
+  ASSERT_EQ(1, SpilledObjectReader::ToUINT64(
                    {'\x01', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00', '\x00'}));
   ASSERT_EQ(std::numeric_limits<uint64_t>::max(),
-            SpilledObject::ToUINT64(
+            SpilledObjectReader::ToUINT64(
                 {'\xff', '\xff', '\xff', '\xff', '\xff', '\xff', '\xff', '\xff'}));
 }
 
-TEST(SpilledObjectTest, ReadUINT64) {
+TEST(SpilledObjectReaderTest, ReadUINT64) {
   std::istringstream s1(std::string{
       '\x00', '\x00', '\x00', '\x00', '\x00', '\x00',
       '\x00', '\x00',  // little endian of 0
@@ -81,13 +94,13 @@ TEST(SpilledObjectTest, ReadUINT64) {
       '\xff', '\xff', '\xff', '\xff', '\xff', '\xff'  // malformed
   });
   uint64_t output{100};
-  ASSERT_TRUE(SpilledObject::ReadUINT64(s1, output));
+  ASSERT_TRUE(SpilledObjectReader::ReadUINT64(s1, output));
   ASSERT_EQ(0, output);
-  ASSERT_TRUE(SpilledObject::ReadUINT64(s1, output));
+  ASSERT_TRUE(SpilledObjectReader::ReadUINT64(s1, output));
   ASSERT_EQ(1, output);
-  ASSERT_TRUE(SpilledObject::ReadUINT64(s1, output));
+  ASSERT_TRUE(SpilledObjectReader::ReadUINT64(s1, output));
   ASSERT_EQ(std::numeric_limits<uint64_t>::max(), output);
-  ASSERT_FALSE(SpilledObject::ReadUINT64(s1, output));
+  ASSERT_FALSE(SpilledObjectReader::ReadUINT64(s1, output));
 }
 
 namespace {
@@ -110,7 +123,7 @@ std::string ContructObjectString(uint64_t object_offset, std::string data,
 }
 }  // namespace
 
-TEST(SpilledObjectTest, ParseObjectHeader) {
+TEST(SpilledObjectReaderTest, ParseObjectHeader) {
   auto assert_parse_success = [](uint64_t object_offset, std::string data,
                                  std::string metadata, std::string raylet_id) {
     rpc::Address owner_address;
@@ -122,7 +135,7 @@ TEST(SpilledObjectTest, ParseObjectHeader) {
     uint64_t actual_metadata_size = 0;
     rpc::Address actual_owner_address;
     std::istringstream is(str);
-    ASSERT_TRUE(SpilledObject::ParseObjectHeader(
+    ASSERT_TRUE(SpilledObjectReader::ParseObjectHeader(
         is, object_offset, actual_data_offset, actual_data_size, actual_metadata_offset,
         actual_metadata_size, actual_owner_address));
     std::string address_str;
@@ -165,7 +178,7 @@ TEST(SpilledObjectTest, ParseObjectHeader) {
     uint64_t actual_metadata_size = 0;
     rpc::Address actual_owner_address;
     std::istringstream is(str);
-    ASSERT_FALSE(SpilledObject::ParseObjectHeader(
+    ASSERT_FALSE(SpilledObjectReader::ParseObjectHeader(
         is, object_offset, actual_data_offset, actual_data_size, actual_metadata_offset,
         actual_metadata_size, actual_owner_address));
   };
@@ -179,28 +192,49 @@ TEST(SpilledObjectTest, ParseObjectHeader) {
   }
 }
 
-TEST(SpilledObjectTest, Getters) {
-  rpc::Address owner_address;
-  owner_address.set_raylet_id("nonsense");
-  SpilledObject obj("path", 8 /* object_size */, 2 /* data_offset */, 3 /* data_size */,
-                    4 /* metadata_offset */, 5 /* metadata_size */, owner_address,
-                    6 /* chunk_size */);
-  ASSERT_EQ(3, obj.GetDataSize());
-  ASSERT_EQ(5, obj.GetMetadataSize());
-  ASSERT_EQ(owner_address.raylet_id(), obj.GetOwnerAddress().raylet_id());
-  ASSERT_EQ(2, obj.GetNumChunks());
+namespace {
+std::string CreateSpilledObjectReaderOnTmp(uint64_t object_offset, std::string data,
+                                           std::string metadata,
+                                           rpc::Address owner_address,
+                                           bool skip_write = false) {
+  auto str = ContructObjectString(object_offset, data, metadata, owner_address);
+  std::string tmp_file = ray::JoinPaths(
+      ray::GetUserTempDir(), "spilled_object_test" + ObjectID::FromRandom().Hex());
+
+  std::ofstream f(tmp_file, std::ios::binary);
+  if (!skip_write) {
+    RAY_CHECK(f.write(str.c_str(), str.size()));
+  }
+  f.close();
+  return absl::StrFormat("%s?offset=%d&size=%d", tmp_file, object_offset,
+                         str.size() - object_offset);
 }
 
-TEST(SpilledObjectTest, GetNumChunks) {
+MemoryObjectReader CreateMemoryObjectReader(std::string &data, std::string &metadata,
+                                            rpc::Address owner_address) {
+  plasma::ObjectBuffer object_buffer;
+  object_buffer.data =
+      std::make_shared<SharedMemoryBuffer>((uint8_t *)data.c_str(), data.size());
+  object_buffer.metadata =
+      std::make_shared<SharedMemoryBuffer>((uint8_t *)metadata.c_str(), metadata.size());
+  object_buffer.device_num = 0;
+  return MemoryObjectReader(std::move(object_buffer), owner_address);
+}
+}  // namespace
+
+TEST(ChunkObjectReaderTest, GetNumChunks) {
   auto assert_get_num_chunks = [](uint64_t data_size, uint64_t chunk_size,
                                   uint64_t expected_num_chunks) {
     rpc::Address owner_address;
     owner_address.set_raylet_id("nonsense");
-    SpilledObject obj("path", 100 /* object_size */, 2 /* data_offset */,
-                      data_size /* data_size */, 4 /* metadata_offset */,
-                      0 /* metadata_size */, owner_address, chunk_size /* chunk_size */);
+    ChunkObjectReader reader(
+        std::make_shared<SpilledObjectReader>(SpilledObjectReader(
+            "path", 100 /* object_size */, 2 /* data_offset */, data_size /* data_size */,
+            4 /* metadata_offset */, 0 /* metadata_size */, owner_address)),
+        chunk_size /* chunk_size */);
 
-    ASSERT_EQ(expected_num_chunks, obj.GetNumChunks());
+    ASSERT_EQ(expected_num_chunks, reader.GetNumChunks());
+    ASSERT_EQ(expected_num_chunks, reader.GetNumChunks());
   };
 
   assert_get_num_chunks(11 /* data_size */, 1 /* chunk_size */,
@@ -217,76 +251,157 @@ TEST(SpilledObjectTest, GetNumChunks) {
                         6 /* expected_num_chunks */);
 }
 
-namespace {
-std::string CreateSpilledObjectOnTmp(uint64_t object_offset, std::string data,
-                                     std::string metadata, rpc::Address owner_address,
-                                     bool skip_write = false) {
-  auto str = ContructObjectString(object_offset, data, metadata, owner_address);
-  std::string tmp_file = ray::JoinPaths(
-      ray::GetUserTempDir(), "spilled_object_test" + ObjectID::FromRandom().Hex());
-
-  std::ofstream f(tmp_file, std::ios::binary);
-  if (!skip_write) {
-    RAY_CHECK(f.write(str.c_str(), str.size()));
-  }
-  f.close();
-  return absl::StrFormat("%s?offset=%d&size=%d", tmp_file, object_offset,
-                         str.size() - object_offset);
-}
-}  // namespace
-
-TEST(SpilledObjectTest, CreateSpilledObject) {
-  auto object_url = CreateSpilledObjectOnTmp(10 /* object_offset */, "data", "metadata",
-                                             ray::rpc::Address());
-  // 0 chunk_size.
+TEST(SpilledObjectReaderTest, CreateSpilledObjectReader) {
+  auto object_url = CreateSpilledObjectReaderOnTmp(10 /* object_offset */, "data",
+                                                   "metadata", ray::rpc::Address());
+  ASSERT_TRUE(SpilledObjectReader::CreateSpilledObjectReader(object_url).has_value());
   ASSERT_FALSE(
-      SpilledObject::CreateSpilledObject(object_url, 0 /* chunk_size */).has_value());
-  ASSERT_FALSE(SpilledObject::CreateSpilledObject("malformatted_url", 1 /* chunk_size */)
-                   .has_value());
-  auto optional_object =
-      SpilledObject::CreateSpilledObject(object_url, 2 /* chunk_size */);
+      SpilledObjectReader::CreateSpilledObjectReader("malformatted_url").has_value());
+  auto optional_object = SpilledObjectReader::CreateSpilledObjectReader(object_url);
   ASSERT_TRUE(optional_object.has_value());
 
-  auto object_url1 = CreateSpilledObjectOnTmp(10 /* object_offset */, "data", "metadata",
-                                              ray::rpc::Address(), true /* skip_write */);
+  auto object_url1 =
+      CreateSpilledObjectReaderOnTmp(10 /* object_offset */, "data", "metadata",
+                                     ray::rpc::Address(), true /* skip_write */);
   // file corrupted.
-  ASSERT_FALSE(
-      SpilledObject::CreateSpilledObject(object_url1, 2 /* chunk_size */).has_value());
+  ASSERT_FALSE(SpilledObjectReader::CreateSpilledObjectReader(object_url1).has_value());
 }
 
-namespace {
-void AssertGetChunkWorks(std::string metadata, std::string data,
-                         std::vector<uint64_t> chunk_sizes) {
-  std::string expected_output = data + metadata;
-  chunk_sizes.push_back(expected_output.size());
-  auto object_url = CreateSpilledObjectOnTmp(10 /* object_offset */, data, metadata,
-                                             ray::rpc::Address());
+template <class T>
+std::shared_ptr<T> CreateObjectReader(std::string &data, std::string &metadata,
+                                      rpc::Address owner_address);
 
-  // check that we can reconstruct the output by concatinating chunks with different
-  // chunk_size, and the size of chunk is expected.
-  for (auto chunk_size : chunk_sizes) {
-    auto optional_object = SpilledObject::CreateSpilledObject(object_url, chunk_size);
-    ASSERT_TRUE(optional_object.has_value());
-    std::string actual_output_by_chunks;
-    for (uint64_t i = 0; i < optional_object->GetNumChunks(); i++) {
-      auto chunk = optional_object->GetChunk(i);
-      ASSERT_TRUE(chunk.has_value());
-      ASSERT_GE(chunk_size, chunk->size());
-      if (i + 1 != optional_object->GetNumChunks()) {
-        ASSERT_EQ(chunk_size, chunk->size());
+template <>
+std::shared_ptr<SpilledObjectReader> CreateObjectReader<SpilledObjectReader>(
+    std::string &data, std::string &metadata, rpc::Address owner_address) {
+  auto object_url = CreateSpilledObjectReaderOnTmp(0 /* object_offset */, data, metadata,
+                                                   owner_address);
+  auto optional_object = SpilledObjectReader::CreateSpilledObjectReader(object_url);
+  return std::make_shared<SpilledObjectReader>(std::move(optional_object.value()));
+}
+
+template <>
+std::shared_ptr<MemoryObjectReader> CreateObjectReader<MemoryObjectReader>(
+    std::string &data, std::string &metadata, rpc::Address owner_address) {
+  return std::make_shared<MemoryObjectReader>(
+      CreateMemoryObjectReader(data, metadata, owner_address));
+}
+
+template <typename T>
+struct ObjectReaderTest : public ::testing::Test {
+  static std::shared_ptr<T> CreateObjectReader_(std::string &data, std::string &metadata,
+                                                rpc::Address owner_address) {
+    return CreateObjectReader<T>(data, metadata, owner_address);
+  }
+};
+
+typedef ::testing::Types<SpilledObjectReader, MemoryObjectReader> Implementations;
+
+TYPED_TEST_CASE(ObjectReaderTest, Implementations);
+
+TYPED_TEST(ObjectReaderTest, Getters) {
+  std::string data("data");
+  std::string metadata("metadata");
+  rpc::Address owner_address;
+  owner_address.set_raylet_id("nonsense");
+  auto obj_reader = this->CreateObjectReader_(data, metadata, owner_address);
+  ASSERT_EQ(data.size(), obj_reader->GetDataSize());
+  ASSERT_EQ(metadata.size(), obj_reader->GetMetadataSize());
+  ASSERT_EQ(data.size() + metadata.size(), obj_reader->GetObjectSize());
+  ASSERT_EQ(owner_address.raylet_id(), obj_reader->GetOwnerAddress().raylet_id());
+}
+
+TYPED_TEST(ObjectReaderTest, GetDataAndMetadata) {
+  std::vector<std::string> list_data{"", "alotofdata", "da", "data"};
+  std::vector<std::string> list_metadata{"", "meta", "metadata", "alotofmetadata"};
+  for (auto &data : list_data) {
+    for (auto &metadata : list_metadata) {
+      std::vector<uint64_t> chunk_sizes{1, 2, 3, 5, 100};
+      rpc::Address owner_address;
+
+      auto reader = TestFixture::CreateObjectReader_(data, metadata, owner_address);
+
+      for (size_t offset = 0; offset <= data.size(); offset++) {
+        for (size_t size = offset; size <= data.size() - offset; size++) {
+          std::string result(size, '\0');
+          if (offset + size <= data.size()) {
+            ASSERT_TRUE(reader->ReadFromDataSection(offset, size, &result[0]));
+            ASSERT_EQ(data.substr(offset, size), result);
+          } else {
+            ASSERT_FALSE(reader->ReadFromDataSection(offset, size, &result[0]));
+          }
+        }
       }
-      actual_output_by_chunks.append(chunk.value());
+
+      for (size_t offset = 0; offset <= metadata.size(); offset++) {
+        for (size_t size = offset; size <= metadata.size() - offset; size++) {
+          std::string result(size, '\0');
+          if (offset + size <= metadata.size()) {
+            ASSERT_TRUE(reader->ReadFromMetadataSection(offset, size, &result[0]));
+            ASSERT_EQ(metadata.substr(offset, size), result);
+          } else {
+            ASSERT_FALSE(reader->ReadFromMetadataSection(offset, size, &result[0]));
+          }
+        }
+      }
     }
-    ASSERT_EQ(expected_output, actual_output_by_chunks);
   }
 }
-}  // namespace
 
-TEST(SpilledObjectTest, GetChunk) {
-  AssertGetChunkWorks("meta", "alotofdata", {1, 2, 3, 5, 100});
-  AssertGetChunkWorks("alotofactualmeta", "meh", {1, 2, 3, 5, 100});
-  AssertGetChunkWorks("", "weonlyhavedata", {1, 2, 3, 5, 100});
-  AssertGetChunkWorks("weonlyhavemetadata", "", {1, 2, 3, 5, 100});
+TYPED_TEST(ObjectReaderTest, GetChunk) {
+  std::vector<std::string> list_data{"", "alotofdata", "da", "data"};
+  std::vector<std::string> list_metadata{"", "meta", "metadata", "alotofmetadata"};
+  for (auto &data : list_data) {
+    for (auto &metadata : list_metadata) {
+      std::vector<uint64_t> chunk_sizes{1, 2, 3, 5, 100};
+      rpc::Address owner_address;
+      owner_address.set_raylet_id("nonsense");
+
+      std::string expected_output = data + metadata;
+      if (expected_output.size() != 0) {
+        chunk_sizes.push_back(expected_output.size());
+      }
+
+      // check that we can reconstruct the output by concatinating chunks with different
+      // chunk_size, and the size of chunk is expected.
+      for (auto chunk_size : chunk_sizes) {
+        auto reader = ChunkObjectReader(
+            TestFixture::CreateObjectReader_(data, metadata, owner_address), chunk_size);
+
+        std::string actual_output_by_chunks;
+        for (uint64_t i = 0; i < reader.GetNumChunks(); i++) {
+          auto chunk = reader.GetChunk(i);
+          ASSERT_TRUE(chunk.has_value());
+          ASSERT_GE(chunk_size, chunk->size());
+          if (i + 1 != reader.GetNumChunks()) {
+            ASSERT_EQ(chunk_size, chunk->size());
+          }
+          actual_output_by_chunks.append(chunk.value());
+        }
+        ASSERT_EQ(expected_output, actual_output_by_chunks);
+      }
+    }
+  }
+}
+
+TEST(StringAllocationTest, TestNoCopyWhenStringMoved) {
+  // Since protobuf always allocate string on heap,
+  // move assign a string field doesn't copy the data.
+  std::string s(1000, '\0');
+  auto allocation_address = s.c_str();
+  rpc::Address address;
+  address.set_raylet_id(std::move(s));
+  EXPECT_EQ(allocation_address, address.raylet_id().c_str());
+}
+
+TEST(StringAllocationTest, TestCopyWhenPassByPointer) {
+  // Construct a string field by pointer and length
+  // always copy the data.
+  char arr[1000];
+  auto allocation_address = &arr[0];
+  rpc::Address address;
+  address.set_raylet_id(allocation_address, 1000);
+  EXPECT_NE(allocation_address, address.raylet_id().c_str());
 }
 }  // namespace ray
 

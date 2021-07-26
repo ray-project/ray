@@ -20,9 +20,12 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/id.h"
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
+
+namespace ray {
 
 /// List of predefined resources.
 enum PredefinedResources { CPU, MEM, GPU, OBJECT_STORE_MEM, PredefinedResources_MAX };
@@ -218,3 +221,5 @@ NodeResources ResourceMapToNodeResources(
 ResourceRequest ResourceMapToResourceRequest(
     StringIdMap &string_to_int_map,
     const std::unordered_map<std::string, double> &resource_map);
+
+}  // namespace ray

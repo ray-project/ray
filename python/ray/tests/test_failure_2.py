@@ -8,7 +8,6 @@ import time
 
 import numpy as np
 import pytest
-import redis
 
 import ray
 from ray.experimental.internal_kv import _internal_kv_get
@@ -227,58 +226,6 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
     assert "actor" in log_contents
     assert "has been exported {} times.".format(
         ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD) in log_contents
-
-
-def test_redis_module_failure(ray_start_regular):
-    address_info = ray_start_regular
-    address = address_info["redis_address"]
-    address = address.split(":")
-    assert len(address) == 2
-
-    def run_failure_test(expecting_message, *command):
-        with pytest.raises(
-                Exception, match=".*{}.*".format(expecting_message)):
-            client = redis.StrictRedis(
-                host=address[0],
-                port=int(address[1]),
-                password=ray_constants.REDIS_DEFAULT_PASSWORD)
-            client.execute_command(*command)
-
-    def run_one_command(*command):
-        client = redis.StrictRedis(
-            host=address[0],
-            port=int(address[1]),
-            password=ray_constants.REDIS_DEFAULT_PASSWORD)
-        client.execute_command(*command)
-
-    run_failure_test("wrong number of arguments", "RAY.TABLE_ADD", 13)
-    run_failure_test("Prefix must be in the TablePrefix range",
-                     "RAY.TABLE_ADD", 100000, 1, 1, 1)
-    run_failure_test("Prefix must be in the TablePrefix range",
-                     "RAY.TABLE_REQUEST_NOTIFICATIONS", 100000, 1, 1, 1)
-    run_failure_test("Prefix must be a valid TablePrefix integer",
-                     "RAY.TABLE_ADD", b"a", 1, 1, 1)
-    run_failure_test("Pubsub channel must be in the TablePubsub range",
-                     "RAY.TABLE_ADD", 1, 10000, 1, 1)
-    run_failure_test("Pubsub channel must be a valid integer", "RAY.TABLE_ADD",
-                     1, b"a", 1, 1)
-    # Change the key from 1 to 2, since the previous command should have
-    # succeeded at writing the key, but not publishing it.
-    run_failure_test("Index is less than 0.", "RAY.TABLE_APPEND", 1, 1, 2, 1,
-                     -1)
-    run_failure_test("Index is not a number.", "RAY.TABLE_APPEND", 1, 1, 2, 1,
-                     b"a")
-    run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1)
-    # It's okay to add duplicate entries.
-    run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1)
-    run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1, 0)
-    run_one_command("RAY.TABLE_APPEND", 1, 1, 2, 1, 1)
-    run_one_command("RAY.SET_ADD", 1, 1, 3, 1)
-    # It's okey to add duplicate entries.
-    run_one_command("RAY.SET_ADD", 1, 1, 3, 1)
-    run_one_command("RAY.SET_REMOVE", 1, 1, 3, 1)
-    # It's okey to remove duplicate entries.
-    run_one_command("RAY.SET_REMOVE", 1, 1, 3, 1)
 
 
 # Note that this test will take at least 10 seconds because it must wait for

@@ -6,7 +6,8 @@ try:
 except ImportError:
     pyarrow = None
 
-from ray.experimental.data.impl.block import Block, BlockBuilder, \
+from ray.experimental.data.block import Block, BlockAccessor
+from ray.experimental.data.impl.block_builder import BlockBuilder, \
     SimpleBlockBuilder
 
 if TYPE_CHECKING:
@@ -62,12 +63,12 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
                 self._builder = SimpleBlockBuilder()
         self._builder.add(item)
 
-    def add_block(self, block: Block[T]) -> None:
+    def add_block(self, block: Block) -> None:
         if self._builder is None:
-            self._builder = block.builder()
+            self._builder = BlockAccessor.for_block(block).builder()
         self._builder.add_block(block)
 
-    def build(self) -> Block[T]:
+    def build(self) -> Block:
         if self._builder is None:
             self._builder = ArrowBlockBuilder()
         return self._builder.build()
@@ -95,28 +96,29 @@ class ArrowBlockBuilder(BlockBuilder[T]):
             self._columns[key].append(value)
         self._num_rows += 1
 
-    def add_block(self, block: "ArrowBlock[T]") -> None:
-        self._tables.append(block._table)
-        self._num_rows += block.num_rows()
+    def add_block(self, block: "pyarrow.Table") -> None:
+        assert isinstance(block, pyarrow.Table), block
+        self._tables.append(block)
+        self._num_rows += block.num_rows
 
-    def build(self) -> "ArrowBlock[T]":
+    def build(self) -> Block:
         if self._columns:
             tables = [pyarrow.Table.from_pydict(self._columns)]
         else:
             tables = []
         tables.extend(self._tables)
         if len(tables) > 1:
-            return ArrowBlock(pyarrow.concat_tables(tables))
+            return pyarrow.concat_tables(tables)
         elif len(tables) > 0:
-            return ArrowBlock(tables[0])
+            return tables[0]
         else:
-            return ArrowBlock(pyarrow.Table.from_pydict({}))
+            return pyarrow.Table.from_pydict({})
 
     def num_rows(self) -> int:
         return self._num_rows
 
 
-class ArrowBlock(Block):
+class ArrowBlockAccessor(BlockAccessor):
     def __init__(self, table: "pyarrow.Table"):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
@@ -141,15 +143,15 @@ class ArrowBlock(Block):
 
         return Iter()
 
-    def slice(self, start: int, end: int, copy: bool) -> "ArrowBlock[T]":
+    def slice(self, start: int, end: int,
+              copy: bool) -> "ArrowBlockAccessor[T]":
         view = self._table.slice(start, end - start)
         if copy:
             # TODO(ekl) there must be a cleaner way to force a copy of a table.
             copy = [c.to_pandas() for c in view.itercolumns()]
-            return ArrowBlock(
-                pyarrow.Table.from_arrays(copy, schema=self._table.schema))
+            return pyarrow.Table.from_arrays(copy, schema=self._table.schema)
         else:
-            return ArrowBlock(view)
+            return view
 
     def schema(self) -> "pyarrow.lib.Schema":
         return self._table.schema

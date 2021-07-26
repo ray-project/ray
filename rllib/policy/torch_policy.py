@@ -22,6 +22,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
+from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
@@ -120,8 +121,8 @@ class TorchPolicy(Policy):
         worker_idx = worker.worker_index if worker else 0
 
         # Create multi-GPU model towers, if necessary.
-        # - The central main model will be stored under self.model, residing on
-        #   self.device.
+        # - The central main model will be stored under self.model, residing
+        #   on self.device.
         # - Each GPU will have a copy of that model under
         #   self.model_gpu_towers, matching the devices in self.devices.
         # - Parallelization is done by splitting the train batch and passing
@@ -130,6 +131,8 @@ class TorchPolicy(Policy):
         #   updating all towers' weights from the main model.
         # - In case of just one device (1 (fake) GPU or 1 CPU), no
         #   parallelization will be done.
+        # TODO: (sven) implement data pre-loading and n loader buffers for
+        #  torch.
         if config["_fake_gpus"] or config["num_gpus"] == 0 or \
                 not torch.cuda.is_available():
             logger.info("TorchPolicy (worker={}) running on {}.".format(
@@ -373,8 +376,10 @@ class TorchPolicy(Policy):
             state_batches: Optional[List[TensorType]] = None,
             prev_action_batch: Optional[Union[List[TensorType],
                                               TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[
-                TensorType], TensorType]] = None) -> TensorType:
+            prev_reward_batch: Optional[Union[List[TensorType],
+                                              TensorType]] = None,
+            actions_normalized: bool = True,
+    ) -> TensorType:
 
         if self.action_sampler_fn and self.action_distribution_fn is None:
             raise ValueError("Cannot compute log-prob/likelihood w/o an "
@@ -436,7 +441,13 @@ class TorchPolicy(Policy):
                                             seq_lens)
 
             action_dist = dist_class(dist_inputs, self.model)
-            log_likelihoods = action_dist.logp(input_dict[SampleBatch.ACTIONS])
+
+            # Normalize actions if necessary.
+            actions = input_dict[SampleBatch.ACTIONS]
+            if not actions_normalized and self.config["normalize_actions"]:
+                actions = normalize_action(actions, self.action_space_struct)
+
+            log_likelihoods = action_dist.logp(actions)
 
             return log_likelihoods
 
@@ -536,7 +547,7 @@ class TorchPolicy(Policy):
             all_grads, grad_info = tower_outputs[0]
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
-        grad_info.update(self.extra_grad_info(postprocessed_batch))
+        grad_info.update(self.extra_grad_info(batches[0]))
 
         fetches = self.extra_compute_grad_fetches()
 

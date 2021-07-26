@@ -182,7 +182,7 @@ class TestRolloutWorker(unittest.TestCase):
                     0.1 - ((0.1 - 0.000001) / 100000) * global_timesteps
                 lr = policy.cur_lr
                 if fw == "tf":
-                    lr = policy._sess.run(lr)
+                    lr = policy.get_session().run(lr)
                 check(lr, expected_lr, rtol=0.05)
             agent.stop()
 

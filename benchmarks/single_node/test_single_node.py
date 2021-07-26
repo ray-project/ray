@@ -137,7 +137,7 @@ def test_large_object():
     assert big_obj[-1] == 0
 
 
-ray.client().env({}).connect()
+ray.init(address="auto")
 
 args_start = perf_counter()
 test_many_args()

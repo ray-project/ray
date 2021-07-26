@@ -8,7 +8,7 @@ Ray Client
 The Ray Client is an API that connects a python script to a Ray cluster. Effectively, it allows you to leverage a remote Ray cluster just like you would with Ray running on your local machine.
 
 
-By changing ``ray.init()`` to ``ray.client(...).connect()``, you can connect to a remote cluster and scale out your Ray code, while maintaining the ability to develop interactively in a python shell.
+By changing ``ray.init()`` to ``ray.init("ray://<host>:<port>")``, you can connect to a remote cluster and scale out your Ray code, while maintaining the ability to develop interactively in a python shell.
 
 
 .. code-block:: python
@@ -17,7 +17,7 @@ By changing ``ray.init()`` to ``ray.client(...).connect()``, you can connect to 
    import ray
 
    # Starting the Ray client. This connects to a remote Ray cluster.
-   ray.client("<head_node_host>:10001").connect()
+   ray.init("ray://<head_node_host>:10001")
 
    # Normal Ray code follows
    @ray.remote
@@ -27,6 +27,26 @@ By changing ``ray.init()`` to ``ray.client(...).connect()``, you can connect to 
    do_work.remote(2)
    #....
 
+
+You can also connect using the ClientBuilder API, but this will eventually be deprecated.
+
+.. code-block:: python
+
+   # You can run this code outside of the Ray cluster!
+   import ray
+
+   # Starting the Ray client. This connects to a remote Ray cluster. 
+   # `ray.client` will be deprecated in future releases, so we recommend
+   # using `ray.init("ray://<head_node_host>:10001")` instead.
+   ray.client("<head_node_host>:10001").connect()
+
+   # Normal Ray code follows
+   @ray.remote
+   def do_work(x):
+       return x ** x
+
+   do_work.remote(2)
+   #....
 
 How do you use the Ray client?
 ------------------------------
@@ -62,7 +82,7 @@ Now, connect to the Ray Cluster with the following and then use Ray like you nor
    import ray
 
    # replace with the appropriate host and port
-   ray.client("<head_node_host>:10001").connect()
+   ray.init("ray://<head_node_host>:10001")
 
    # Normal Ray code follows
    @ray.remote

@@ -318,8 +318,14 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   }
 
   const auto job_id = JobID::FromBinary(request.task_spec().job_id());
-  auto actor =
-      std::make_shared<GcsActor>(request.task_spec(), get_ray_namespace_(job_id));
+
+  // Use the namespace in task options by default. Otherwise use the
+  // namespace from the job.
+  std::string ray_namespace = actor_creation_task_spec.ray_namespace();
+  if (ray_namespace.empty()) {
+    ray_namespace = get_ray_namespace_(job_id);
+  }
+  auto actor = std::make_shared<GcsActor>(request.task_spec(), ray_namespace);
   if (!actor->GetName().empty()) {
     auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
     auto it = actors_in_namespace.find(actor->GetName());

@@ -55,9 +55,6 @@ int TestSetupUtil::StartUpRedisServer(const int &port) {
 
   std::string program = TEST_REDIS_SERVER_EXEC_PATH;
   std::vector<std::string> cmdargs({program, "--loglevel", "warning"});
-  if (!TEST_REDIS_MODULE_LIBRARY_PATH.empty()) {
-    cmdargs.insert(cmdargs.end(), {"--loadmodule", TEST_REDIS_MODULE_LIBRARY_PATH});
-  }
   cmdargs.insert(cmdargs.end(), {"--port", std::to_string(actual_port)});
   RAY_LOG(INFO) << "Start redis command is: " << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
@@ -232,8 +229,6 @@ std::shared_ptr<RayObject> GenerateRandomObject(
 std::string TEST_REDIS_SERVER_EXEC_PATH;
 /// Path to redis client executable binary.
 std::string TEST_REDIS_CLIENT_EXEC_PATH;
-/// Path to redis module library.
-std::string TEST_REDIS_MODULE_LIBRARY_PATH;
 /// Ports of redis server.
 std::vector<int> TEST_REDIS_SERVER_PORTS;
 
