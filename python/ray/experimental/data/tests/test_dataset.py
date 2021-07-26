@@ -712,7 +712,7 @@ def test_split_hints(ray_start_regular_shared):
 
                 state_mock.return_value = actor_state
 
-                datasets = ds.split(len(actors), actors)
+                datasets = ds.split(len(actors), locality_hints=actors)
                 assert len(datasets) == len(actors)
                 for i in range(len(actors)):
                     assert {blocks[j]

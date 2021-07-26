@@ -1,8 +1,6 @@
 from ray.experimental.data.read_api import from_items, range, range_arrow, \
     read_parquet, read_json, read_csv, read_binary_files, from_dask, \
     from_modin, from_mars, from_pandas, from_arrow, from_spark, read_datasource
-from ray.experimental.data.datasource import Datasource, ReadTask, WriteTask
-from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.impl.progress_bar import set_progress_bars
 
 # Module-level cached global functions (for impl/compute).
@@ -10,10 +8,6 @@ _cached_fn = None
 _cached_cls = None
 
 __all__ = [
-    "Dataset",
-    "Datasource",
-    "ReadTask",
-    "WriteTask",
     "from_dask",
     "from_items",
     "from_arrow",

@@ -246,8 +246,14 @@ class DatasetPipeline(Generic[T]):
 
     @DeveloperAPI
     @staticmethod
-    def from_iterable(iterable: Iterable[Callable[[], Dataset[T]]]
+    def from_iterable(iterable: Iterable[Callable[[], Dataset[T]]],
                       ) -> "DatasetPipeline[T]":
+        """Create a pipeline from an sequence of Dataset producers.
+
+        Args:
+            iterable: A finite or infinite-length sequence of callables that
+                each produce a Dataset when called.
+        """
         if hasattr(iterable, "__len__"):
             length = len(iterable)
         else:
