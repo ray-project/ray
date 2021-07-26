@@ -66,7 +66,8 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
                 output = wf_store.load_step_output(workflow_ref.step_id)
             except Exception:
                 logger.warning("Failed to get the output of step "
-                               f"{workflow_ref.step_id}. Trying to resume it.")
+                               f"{workflow_ref.step_id}. Trying to resume it. "
+                               f"Current step: {context.workflow_scope[-1]}")
                 step_ref = recovery.resume_workflow_step(
                     workflow_id, workflow_ref.step_id, storage_url).state
                 output, _ = _resolve_object_ref(step_ref)
