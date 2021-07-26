@@ -66,7 +66,7 @@ For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 
 .. code-block:: bash
 
-  sudo yum groupinstall 'Development Tools’
+  sudo yum groupinstall 'Development Tools'
   sudo yum install psmisc
 
   pip install cython==0.29.0 pytest
