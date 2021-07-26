@@ -45,7 +45,7 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
   ray::ActorCreationOptions actor_options{
       create_options.max_restarts, 0,         create_options.max_concurrency,
       create_options.resources,    resources, {},
-      /*is_detached=*/false,       name, ray_namespace,
+      /*is_detached=*/false,       name,      ray_namespace,
       /*is_asyncio=*/false};
   ActorID actor_id;
   auto status = core_worker.CreateActor(BuildRayFunction(invocation), invocation.args,

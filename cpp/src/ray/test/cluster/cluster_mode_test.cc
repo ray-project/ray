@@ -167,12 +167,18 @@ TEST(RayClusterModeTest, FullTest) {
 
   auto actor_object4 = actor1.Task(&Counter::Exit).Remote();
   EXPECT_THROW(actor_object4.Get(), RayException);
+}
 
-  Ray::Shutdown();
+TEST(RayClusterModeTest, MaxConcurrentTest) {
+  auto actor1 =
+      Ray::Actor(ActorConcurrentCall::FactoryCreate).SetMaxConcurrency(3).Remote();
+  auto object1 = actor1.Task(&ActorConcurrentCall::CountDown).Remote();
+  auto object2 = actor1.Task(&ActorConcurrentCall::CountDown).Remote();
+  auto object3 = actor1.Task(&ActorConcurrentCall::CountDown).Remote();
 
-  if (FLAGS_external_cluster) {
-    ProcessHelper::GetInstance().StopRayNode();
-  }
+  EXPECT_EQ(*object1.Get(), "ok");
+  EXPECT_EQ(*object2.Get(), "ok");
+  EXPECT_EQ(*object3.Get(), "ok");
 }
 
 int main(int argc, char **argv) {
@@ -180,5 +186,13 @@ int main(int argc, char **argv) {
   cmd_argc = &argc;
   cmd_argv = &argv;
   ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  int ret = RUN_ALL_TESTS();
+
+  Ray::Shutdown();
+
+  if (FLAGS_external_cluster) {
+    ProcessHelper::GetInstance().StopRayNode();
+  }
+
+  return ret;
 }
