@@ -1,4 +1,5 @@
 import collections
+import random
 from typing import Iterator, List, Union, Tuple, Any, TypeVar, TYPE_CHECKING
 
 try:
@@ -14,6 +15,10 @@ if TYPE_CHECKING:
     import pandas
 
 T = TypeVar("T")
+
+# An Arrow block can be sorted by a list of (column, asc/desc) pairs,
+# e.g. [("column1", "ascending"), ("column2", "descending")]
+SortKeyT = List[Tuple[str, str]]
 
 
 class ArrowRow:
@@ -172,16 +177,27 @@ class ArrowBlockAccessor(BlockAccessor):
     def builder() -> ArrowBlockBuilder[T]:
         return ArrowBlockBuilder()
 
-    def sort_and_partition(self, boundaries: List[T],
-                           key: Any) -> List["Block[T]"]:
+    def sample(self, n_samples: int, key: SortKeyT) -> List[T]:
+        k = min(n_samples, self._table.num_rows)
+        indices = random.sample(range(self._table.num_rows), k)
+        return self._table.select([k[0] for k in key]).take(indices)
+
+    def sort_and_partition(self, boundaries: List[T], key: SortKeyT,
+                           descending: bool) -> List["Block[T]"]:
+        if len(key) > 1:
+            raise NotImplementedError(
+                "sorting by multiple columns is not supported yet")
+
         import pyarrow.compute as pac
 
         indices = pac.sort_indices(self._table, sort_keys=key)
         table = self._table.take(indices)
         if len(boundaries) == 0:
             return [table]
+        col, _ = key[0]
+        comp_fn = pac.greater if descending else pac.less
         boundary_indices = [
-            pac.sum(pac.less(table[key[0][0]], b)).as_py() for b in boundaries
+            pac.sum(comp_fn(table[col], b)).as_py() for b in boundaries
         ]
         ret = []
         prev_i = 0
@@ -192,7 +208,8 @@ class ArrowBlockAccessor(BlockAccessor):
         return ret
 
     @staticmethod
-    def merge_sorted_blocks(blocks: List[Block[T]], key=Any) -> Block[T]:
+    def merge_sorted_blocks(blocks: List[Block[T]], key: SortKeyT,
+                            _descending: bool) -> Block[T]:
         ret = pyarrow.concat_tables(blocks)
         indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
         ret = ret.take(indices)

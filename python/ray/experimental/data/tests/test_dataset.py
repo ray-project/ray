@@ -1104,6 +1104,8 @@ def test_sort_simple(ray_start_regular_shared):
     random.shuffle(xs)
     ds = ray.experimental.data.from_items(xs, parallelism=parallelism)
     assert ds.sort().take(num_items) == list(range(num_items))
+    assert ds.sort(descending=True).take(num_items) == list(
+        reversed(range(num_items)))
     assert ds.sort(key=lambda x: -x).take(num_items) == list(
         reversed(range(num_items)))
 
@@ -1118,7 +1120,7 @@ def test_sort_arrow_distributed(ray_start_regular_shared):
 
 def _test_sort_arrow(num_items=100, parallelism=1):
     a = list(reversed(range(num_items)))
-    b = [str(x) for x in range(num_items)]
+    b = [f"{x:03}" for x in range(num_items)]
     shard = int(np.ceil(num_items / parallelism))
     offset = 0
     dfs = []
@@ -1132,12 +1134,20 @@ def _test_sort_arrow(num_items=100, parallelism=1):
     if offset < num_items:
         dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
     ds = ray.experimental.data.from_pandas([ray.put(df) for df in dfs])
-    assert [tuple(row.values())
-            for row in ds.sort(key="a").iter_rows()] == list(
-                zip(reversed(a), reversed(b)))
+
+    def assert_sorted(sorted_ds, expected_rows):
+        assert [tuple(row.values())
+                for row in sorted_ds.iter_rows()] == list(expected_rows)
+
+    assert_sorted(ds.sort(key="a"), zip(reversed(a), reversed(b)))
+    assert_sorted(ds.sort(key="b"), zip(a, b))
+    assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
+    assert_sorted(
+        ds.sort(key=[("b", "descending")]), zip(reversed(a), reversed(b)))
 
 
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
-    # sys.exit(pytest.main(["-sv", __file__, "-k", "test_sort_arrow"]))
+    # sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(
+        pytest.main(["-sv", __file__, "-k", "test_sort"]))

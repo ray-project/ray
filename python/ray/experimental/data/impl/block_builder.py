@@ -1,11 +1,15 @@
+import random
 import sys
-from typing import Iterator, List, Generic, Any, TYPE_CHECKING
+from typing import Callable, Iterator, List, Generic, Union, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas
     import pyarrow
 
 from ray.experimental.data.block import Block, BlockAccessor, T
+
+# A simple block can be sorted by value (None) or a lambda function (Callable).
+SortKeyT = Union[None, Callable[[T], Any]]
 
 
 class BlockBuilder(Generic[T]):
@@ -40,7 +44,7 @@ class SimpleBlockBuilder(BlockBuilder[T]):
 
 
 class SimpleBlockAccessor(BlockAccessor):
-    def __init__(self, items):
+    def __init__(self, items: List[T]):
         self._items = items
 
     def num_rows(self) -> int:
@@ -77,14 +81,22 @@ class SimpleBlockAccessor(BlockAccessor):
     def builder() -> SimpleBlockBuilder[T]:
         return SimpleBlockBuilder()
 
-    def sort_and_partition(self, boundaries: List[T],
-                           key: Any) -> List["Block[T]"]:
-        items = sorted(self._items, key=key)
+    def sample(self, n_samples: int = 1, key: SortKeyT = None) -> List[T]:
+        k = min(n_samples, len(self._items))
+        ret = random.sample(self._items, k)
+        if key is None:
+            return ret
+        return [key(x) for x in ret]
+
+    def sort_and_partition(self, boundaries: List[T], key: SortKeyT,
+                           descending: bool) -> List["Block[T]"]:
+        items = sorted(self._items, key=key, reverse=descending)
         if len(boundaries) == 0:
             return [items]
+        key_fn = key if key else lambda x: x
+        comp_fn = lambda x, b: key_fn(x) > b if descending else lambda x, b: key_fn(x) < b
         boundary_indices = [
-            len([1 for x in items if (key(x) if key else x) < b])
-            for b in boundaries
+            len([1 for x in items if comp_fn(x, b)]) for b in boundaries
         ]
         ret = []
         prev_i = 0
@@ -95,7 +107,8 @@ class SimpleBlockAccessor(BlockAccessor):
         return ret
 
     @staticmethod
-    def merge_sorted_blocks(blocks: List[Block[T]], key=Any) -> Block[T]:
+    def merge_sorted_blocks(blocks: List[Block[T]], key: SortKeyT,
+                            descending: bool) -> Block[T]:
         ret = [x for block in blocks for x in block]
-        ret.sort(key=key)
+        ret.sort(key=key, reverse=descending)
         return ret, SimpleBlockAccessor(ret).get_metadata(None)

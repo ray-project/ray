@@ -119,12 +119,17 @@ class BlockAccessor(Generic[T]):
         else:
             raise TypeError("Not a block type: {}".format(block))
 
-    def sort_and_partition(self, boundaries: List[T],
-                           key: Any) -> List["Block[T]"]:
-        """Sort and partition. TODO"""
+    def sample(self, n_samples: int, key: Any) -> "Block[T]":
+        """Return a random sample of items from this block."""
+        raise NotImplementedError
+
+    def sort_and_partition(self, boundaries: List[T], key: Any,
+                           descending: bool) -> List["Block[T]"]:
+        """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
     @staticmethod
-    def merge_sorted_blocks(blocks: List["Block[T]"], key=Any) -> "Block[T]":
-        """TODO"""
+    def merge_sorted_blocks(blocks: List["Block[T]"], key: Any,
+                            descending: bool) -> "Block[T]":
+        """Return a sorted block by merging a list of sorted blocks."""
         raise NotImplementedError
