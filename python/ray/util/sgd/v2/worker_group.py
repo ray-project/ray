@@ -55,7 +55,7 @@ class WorkerGroup:
         self.num_workers = num_workers
         self.num_cpus_per_worker = num_cpus_per_worker
         self.num_gpus_per_worker = num_gpus_per_worker
-        self.restart()
+        self.workers = self._start_workers()
 
     def _start_workers(self):
         remote_cls = ray.remote(
