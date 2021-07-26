@@ -42,8 +42,10 @@ TEST(RayClusterModeTest, FullTest) {
   task_result = *(Ray::Get(task_obj));
   EXPECT_EQ(6, task_result);
 
-  ActorHandle<Counter> actor =
-      Ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetGlobalName("named_actor").Remote();
+  ActorHandle<Counter> actor = Ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+                                   .SetMaxRestarts(1)
+                                   .SetGlobalName("named_actor")
+                                   .Remote();
   auto named_actor_obj = actor.Task(&Counter::Plus1)
                              .SetName("named_actor_task")
                              .SetResources({{"CPU", 1.0}})
@@ -58,10 +60,14 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_FALSE(Ray::GetGlobalActor<Counter>("not_exist_actor"));
 
   named_actor_handle.Kill(false);
+  std::this_thread::sleep_for(std::chrono::seconds(2));
   auto named_actor_obj2 = named_actor_handle.Task(&Counter::Plus1).Remote();
-  EXPECT_EQ(3, *named_actor_obj2.Get());
+  EXPECT_EQ(1, *named_actor_obj2.Get());
 
   named_actor_handle.Kill();
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+  EXPECT_THROW(named_actor_handle.Task(&Counter::Plus1).Remote().Get(), RayException);
+
   EXPECT_FALSE(Ray::GetGlobalActor<Counter>("named_actor"));
 
   /// actor task without args

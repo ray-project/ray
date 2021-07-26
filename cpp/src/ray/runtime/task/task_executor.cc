@@ -87,7 +87,7 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
                           std::make_shared<msgpack::sbuffer>(std::move(result)));
   } catch (ray::api::RayIntentionalSystemExitException &e) {
     return std::make_pair(ray::Status::IntentionalSystemExit(), nullptr);
-  }catch (ray::api::RayException &e) {
+  } catch (ray::api::RayException &e) {
     return std::make_pair(ray::Status::NotFound(e.what()), nullptr);
   } catch (msgpack::type_error &e) {
     return std::make_pair(
