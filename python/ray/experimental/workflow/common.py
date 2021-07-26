@@ -145,7 +145,7 @@ class Workflow:
         return self._executed
 
     @property
-    def state(self) -> WorkflowOutputType:
+    def result(self) -> WorkflowOutputType:
         if not self._executed:
             raise Exception("The workflow has not been executed.")
         return self._state

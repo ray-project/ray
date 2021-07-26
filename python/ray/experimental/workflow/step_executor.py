@@ -135,7 +135,7 @@ def execute_workflow(
         An object ref that represent the result.
     """
     if workflow.executed:
-        return workflow.state
+        return workflow.result
 
     _record_step_status(workflow.id, WorkflowStatus.RUNNING)
     workflow_data = workflow.data
@@ -150,9 +150,11 @@ def execute_workflow(
 
     if not isinstance(state, WorkflowOutputType):
         raise TypeError("Unexpected return type of the workflow.")
-    workflow._state = state
+
+    result = WorkflowExecutionResult(state, output)
+    workflow._result = result
     workflow._executed = True
-    return WorkflowExecutionResult(state, output)
+    return result
 
 
 def commit_step(store: workflow_storage.WorkflowStorage,

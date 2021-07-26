@@ -162,8 +162,12 @@ def resume_all(with_failed: bool) -> List[Tuple[str, ray.ObjectRef]]:
 
     async def _resume_one(wid: str) -> Tuple[str, Optional[ray.ObjectRef]]:
         try:
-            obj = await workflow_manager.run_or_resume.remote(wid)
-            return (wid, flatten_workflow_output(wid, obj))
+            result = await workflow_manager.run_or_resume.remote(wid)
+            if _is_virtual_actor(wid):
+                obj = replace_workflow_output(wid, result.output, None)
+            else:
+                obj = flatten_workflow_output(wid, result.state)
+            return wid, obj
         except Exception:
             logger.error(f"Failed to resume workflow {wid}")
             return (wid, None)
