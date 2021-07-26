@@ -1,4 +1,4 @@
-cluster_name: distributed-benchmarks
+cluster_name: yic-distributed-benchmarks
 min_workers: 0
 max_workers: 999999
 
@@ -23,25 +23,26 @@ available_node_types:
           node: 1
           small: 1
         max_workers: 0
-    worker_node:
-        node_config:
-            InstanceType: m5.16xlarge
-            ImageId: ami-0a2363a9cff180a64
-        resources:
-          node: 1
-        min_workers: 64
-        max_workers: 64
+    # worker_node:
+    #     node_config:
+    #         InstanceType: m5.16xlarge
+    #         ImageId: ami-0a2363a9cff180a64
+    #     resources:
+    #       node: 1
+    #     min_workers: 64
+    #     max_workers: 64
     small_worker_node:
         node_config:
-            InstanceType: m5.xlarge
+            InstanceType: t3.large
             ImageId: ami-0a2363a9cff180a64
         resources:
           node: 1
+          CPU: 4
         max_workers: 999999
 
 head_node_type: head_node
 
-worker_default_node_type: worker_node
+worker_default_node_type: small_worker_node
 
 file_mounts: {
     "~/benchmarks": "."
@@ -49,7 +50,7 @@ file_mounts: {
 
 setup_commands:
   - pip uninstall -y ray
-  - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.4.0/6ac5e0e5ad45070e27c77aca7267bcee30cc4b4a/ray-1.4.0-cp37-cp37m-manylinux2014_x86_64.whl
+  - pip install "ray[default]@https://ray-wheels.s3.us-west-2.amazonaws.com/master/d0e58af0754c643b51262fd15640c5200f550264/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
   - pip install tqdm
   - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 65535" >> /etc/security/limits.conf; echo "* hard nofile 65535" >> /etc/security/limits.conf;'
 
