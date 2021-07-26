@@ -97,7 +97,8 @@ class PipelineSplitExecutorCoordinator:
         # Pull the next dataset once all splits are fully consumed.
         if all(s is None for s in self.cur_splits):
             ds = next(self.executor)
-            self.cur_splits = ds.split(self.n, self.locality_hints)
+            self.cur_splits = ds.split(
+                self.n, locality_hints=self.locality_hints)
 
         # Return the dataset at the split index once per split.
         ret = self.cur_splits[split_index]

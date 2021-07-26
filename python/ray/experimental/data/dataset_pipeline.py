@@ -94,8 +94,11 @@ class DatasetPipeline(Generic[T]):
 
         def gen_batches() -> Iterator[BatchType]:
             for ds in self.iter_datasets():
-                for batch in ds.iter_batches(prefetch_blocks, batch_size,
-                                             batch_format, drop_last):
+                for batch in ds.iter_batches(
+                        prefetch_blocks=prefetch_blocks,
+                        batch_size=batch_size,
+                        batch_format=batch_format,
+                        drop_last=drop_last):
                     yield batch
 
         return gen_batches()
