@@ -31,8 +31,8 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   }
 
   if (!owned_by_us) {
-    RAY_LOG(INFO) << "Reconstruction for borrowed objects (" << object_id
-                  << ") is not supported";
+    RAY_LOG(DEBUG) << "Reconstruction for borrowed objects (" << object_id
+                   << ") is not supported";
     reconstruction_failure_callback_(object_id, /*pin_object=*/false);
     return true;
   }
@@ -48,7 +48,7 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   }
 
   if (!already_pending_recovery) {
-    RAY_LOG(INFO) << "Starting recovery for object " << object_id;
+    RAY_LOG(DEBUG) << "Starting recovery for object " << object_id;
     in_memory_store_->GetAsync(
         object_id, [this, object_id](std::shared_ptr<RayObject> obj) {
           absl::MutexLock lock(&mu_);
@@ -69,8 +69,8 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
 
 void ObjectRecoveryManager::PinOrReconstructObject(
     const ObjectID &object_id, const std::vector<rpc::Address> &locations) {
-  RAY_LOG(INFO) << "Lost object " << object_id << " has " << locations.size()
-                << " locations";
+  RAY_LOG(DEBUG) << "Lost object " << object_id << " has " << locations.size()
+                 << " locations";
   if (!locations.empty()) {
     auto locations_copy = locations;
     const auto location = locations_copy.back();

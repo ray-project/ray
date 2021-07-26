@@ -182,7 +182,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         clip_pg_rho_threshold=policy.config["vtrace_clip_pg_rho_threshold"])
 
     # Store loss object only for multi-GPU tower 0.
-    if policy.device == values.device:
+    if model is policy.model_gpu_towers[0]:
         policy.loss = loss
 
     return loss.total_loss
@@ -229,7 +229,7 @@ def stats(policy, train_batch):
     values_batched = make_time_major(
         policy,
         train_batch.get("seq_lens"),
-        policy.model.value_function(),
+        policy.model_gpu_towers[0].value_function(),
         drop_last=policy.config["vtrace"])
 
     return {

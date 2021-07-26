@@ -1,10 +1,11 @@
 from typing import Iterable, List
 
-from ray.experimental.data.impl.block import Block, BlockMetadata, ObjectRef, T
+from ray.types import ObjectRef
+from ray.experimental.data.block import Block, BlockMetadata
 
 
-class BlockList(Iterable[ObjectRef[Block[T]]]):
-    def __init__(self, blocks: List[ObjectRef[Block[T]]],
+class BlockList(Iterable[ObjectRef[Block]]):
+    def __init__(self, blocks: List[ObjectRef[Block]],
                  metadata: List[BlockMetadata]):
         assert len(blocks) == len(metadata), (blocks, metadata)
         self._blocks = blocks

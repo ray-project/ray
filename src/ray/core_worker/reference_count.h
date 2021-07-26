@@ -455,6 +455,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
                           const absl::flat_hash_set<NodeID> &locations,
                           uint64_t object_size);
 
+  /// Add borrower address in owner's worker. This function will add borrower address
+  /// to the `object_id_refs_`, then call WaitForRefRemoved() to monitor borrowed
+  /// object in borrower's worker.
+  ///
+  /// \param[in] object_id The ID of Object whose been borrowed.
+  /// \param[in] borrower_address The address of borrower.
+  void AddBorrowerAddress(const ObjectID &object_id, const rpc::Address &borrower_address)
+      LOCKS_EXCLUDED(mutex_);
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.

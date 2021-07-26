@@ -183,6 +183,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                    config.worker_commands,
                    /*starting_worker_timeout_callback=*/
                    [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+                   config.ray_debugger_external,
                    /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
@@ -538,21 +539,6 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
   RAY_CHECK(job_data.is_dead());
   worker_pool_.HandleJobFinished(job_id);
-
-  auto workers = worker_pool_.GetWorkersRunningTasksForJob(job_id);
-  // Kill all the workers. The actual cleanup for these workers is done
-  // later when we receive the DisconnectClient message from them.
-  for (const auto &worker : workers) {
-    if (!worker->IsDetachedActor()) {
-      // Clean up any open ray.wait calls that the worker made.
-      dependency_manager_.CancelWaitRequest(worker->WorkerId());
-      // Mark the worker as dead so further messages from it are ignored
-      // (except DisconnectClient).
-      worker->MarkDead();
-      // Then kill the worker process.
-      KillWorker(worker);
-    }
-  }
   runtime_env_manager_.RemoveURIReference(job_id.Hex());
 }
 
@@ -1243,19 +1229,9 @@ void NodeManager::DisconnectClient(
     }
   }
   RAY_CHECK(!(is_worker && is_driver));
-  // If the client has any blocked tasks, mark them as unblocked. In
-  // particular, we are no longer waiting for their dependencies.
-  if (is_worker && worker->IsDead()) {
-    // If the worker was killed by us because the driver exited,
-    // treat it as intentionally disconnected.
-    // Don't need to unblock the client if it's a worker and is already dead.
-    // Because in this case, its task is already cleaned up.
-    RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
-  } else {
-    // Clean up any open ray.wait calls that the worker made.
-    dependency_manager_.CancelGetRequest(worker->WorkerId());
-    dependency_manager_.CancelWaitRequest(worker->WorkerId());
-  }
+  // Clean up any open ray.get or ray.wait calls that the worker made.
+  dependency_manager_.CancelGetRequest(worker->WorkerId());
+  dependency_manager_.CancelWaitRequest(worker->WorkerId());
 
   // Erase any lease metadata.
   leased_workers_.erase(worker->WorkerId());

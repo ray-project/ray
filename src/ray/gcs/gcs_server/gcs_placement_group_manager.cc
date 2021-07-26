@@ -572,6 +572,8 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
 
 void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
     const JobID &job_id) {
+  std::vector<PlacementGroupID> groups_to_remove;
+
   for (const auto &it : registered_placement_groups_) {
     auto &placement_group = it.second;
     if (placement_group->GetCreatorJobId() != job_id) {
@@ -579,13 +581,19 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
     }
     placement_group->MarkCreatorJobDead();
     if (placement_group->IsPlacementGroupLifetimeDone()) {
-      RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
+      groups_to_remove.push_back(placement_group->GetPlacementGroupID());
     }
+  }
+
+  for (const auto &group : groups_to_remove) {
+    RemovePlacementGroup(group, [](Status status) {});
   }
 }
 
 void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
     const ActorID &actor_id) {
+  std::vector<PlacementGroupID> groups_to_remove;
+
   for (const auto &it : registered_placement_groups_) {
     auto &placement_group = it.second;
     if (placement_group->GetCreatorActorId() != actor_id) {
@@ -593,8 +601,12 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
     }
     placement_group->MarkCreatorActorDead();
     if (placement_group->IsPlacementGroupLifetimeDone()) {
-      RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
+      groups_to_remove.push_back(placement_group->GetPlacementGroupID());
     }
+  }
+
+  for (const auto &group : groups_to_remove) {
+    RemovePlacementGroup(group, [](Status status) {});
   }
 }
 

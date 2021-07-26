@@ -472,6 +472,7 @@ cc_library(
 
 cc_test(
     name = "gcs_pub_sub_test",
+    size = "small",
     srcs = ["src/ray/gcs/pubsub/test/gcs_pub_sub_test.cc"],
     args = [
         "$(location redis-server)",
@@ -742,6 +743,7 @@ cc_binary(
 
 cc_test(
     name = "core_worker_test",
+    size = "small",
     srcs = ["src/ray/core_worker/test/core_worker_test.cc"],
     args = [
         "$(location raylet)",
@@ -771,6 +773,7 @@ cc_test(
 
 cc_test(
     name = "memory_store_test",
+    size = "small",
     srcs = ["src/ray/core_worker/test/memory_store_test.cc"],
     copts = COPTS,
     deps = [
@@ -791,6 +794,7 @@ cc_test(
 
 cc_test(
     name = "direct_task_transport_test",
+    size = "small",
     srcs = ["src/ray/core_worker/test/direct_task_transport_test.cc"],
     copts = COPTS,
     deps = [
@@ -801,6 +805,7 @@ cc_test(
 
 cc_test(
     name = "reference_count_test",
+    size = "small",
     srcs = ["src/ray/core_worker/reference_count_test.cc"],
     copts = COPTS,
     deps = [
@@ -811,6 +816,7 @@ cc_test(
 
 cc_test(
     name = "object_recovery_manager_test",
+    size = "small",
     srcs = ["src/ray/core_worker/test/object_recovery_manager_test.cc"],
     copts = COPTS,
     deps = [
@@ -831,6 +837,7 @@ cc_test(
 
 cc_test(
     name = "task_manager_test",
+    size = "small",
     srcs = ["src/ray/core_worker/test/task_manager_test.cc"],
     copts = COPTS,
     deps = [
@@ -841,6 +848,7 @@ cc_test(
 
 cc_test(
     name = "actor_manager_test",
+    size = "small",
     srcs = ["src/ray/core_worker/test/actor_manager_test.cc"],
     copts = COPTS,
     deps = [
@@ -851,6 +859,7 @@ cc_test(
 
 cc_test(
     name = "lease_policy_test",
+    size = "small",
     srcs = ["src/ray/core_worker/test/lease_policy_test.cc"],
     copts = COPTS,
     deps = [
@@ -861,6 +870,7 @@ cc_test(
 
 cc_test(
     name = "cluster_resource_scheduler_test",
+    size = "small",
     srcs = [
         "src/ray/raylet/scheduling/cluster_resource_scheduler_test.cc",
     ],
@@ -873,6 +883,7 @@ cc_test(
 
 cc_test(
     name = "scheduling_policy_test",
+    size = "small",
     srcs = [
         "src/ray/raylet/scheduling/scheduling_policy_test.cc",
     ],
@@ -885,6 +896,7 @@ cc_test(
 
 cc_test(
     name = "cluster_task_manager_test",
+    size = "small",
     srcs = [
         "src/ray/raylet/scheduling/cluster_task_manager_test.cc",
     ],
@@ -897,6 +909,7 @@ cc_test(
 
 cc_test(
     name = "local_object_manager_test",
+    size = "small",
     srcs = [
         "src/ray/raylet/test/local_object_manager_test.cc",
     ],
@@ -909,6 +922,7 @@ cc_test(
 
 cc_test(
     name = "pull_manager_test",
+    size = "small",
     srcs = [
         "src/ray/object_manager/test/pull_manager_test.cc",
     ],
@@ -921,6 +935,7 @@ cc_test(
 
 cc_test(
     name = "push_manager_test",
+    size = "small",
     srcs = [
         "src/ray/object_manager/test/push_manager_test.cc",
     ],
@@ -933,6 +948,7 @@ cc_test(
 
 cc_test(
     name = "spilled_object_test",
+    size = "small",
     srcs = [
         "src/ray/object_manager/test/spilled_object_test.cc",
     ],
@@ -947,6 +963,7 @@ cc_test(
 
 cc_test(
     name = "create_request_queue_test",
+    size = "small",
     srcs = [
         "src/ray/object_manager/test/create_request_queue_test.cc",
     ],
@@ -960,6 +977,7 @@ cc_test(
 
 cc_test(
     name = "worker_pool_test",
+    size = "small",
     srcs = ["src/ray/raylet/worker_pool_test.cc"],
     copts = COPTS,
     deps = [
@@ -970,6 +988,7 @@ cc_test(
 
 cc_test(
     name = "placement_group_resource_manager_test",
+    size = "small",
     srcs = ["src/ray/raylet/placement_group_resource_manager_test.cc"],
     copts = COPTS,
     deps = [
@@ -982,6 +1001,7 @@ cc_test(
 
 cc_test(
     name = "id_test",
+    size = "small",
     srcs = ["src/ray/common/id_test.cc"],
     copts = COPTS,
     deps = [
@@ -992,6 +1012,7 @@ cc_test(
 
 cc_test(
     name = "logging_test",
+    size = "small",
     srcs = ["src/ray/util/logging_test.cc"],
     args = ["--gtest_filter=PrintLogTest*"],
     copts = COPTS,
@@ -1005,6 +1026,7 @@ cc_test(
 
 cc_test(
     name = "event_test",
+    size = "small",
     srcs = ["src/ray/util/event_test.cc"],
     copts = COPTS,
     deps = [
@@ -1016,6 +1038,7 @@ cc_test(
 
 cc_test(
     name = "filesystem_test",
+    size = "small",
     srcs = ["src/ray/util/filesystem_test.cc"],
     copts = COPTS,
     deps = [
@@ -1026,6 +1049,7 @@ cc_test(
 
 cc_test(
     name = "util_test",
+    size = "small",
     srcs = ["src/ray/util/util_test.cc"],
     copts = COPTS,
     deps = [
@@ -1037,6 +1061,7 @@ cc_test(
 
 cc_test(
     name = "throttler_test",
+    size = "small",
     srcs = ["src/ray/util/throttler_test.cc"],
     copts = COPTS,
     deps = [
@@ -1048,6 +1073,7 @@ cc_test(
 
 cc_test(
     name = "sample_test",
+    size = "small",
     srcs = ["src/ray/util/sample_test.cc"],
     copts = COPTS,
     deps = [
@@ -1058,6 +1084,7 @@ cc_test(
 
 cc_test(
     name = "dependency_manager_test",
+    size = "small",
     srcs = ["src/ray/raylet/dependency_manager_test.cc"],
     copts = COPTS,
     deps = [
@@ -1068,6 +1095,7 @@ cc_test(
 
 cc_test(
     name = "client_connection_test",
+    size = "small",
     srcs = ["src/ray/common/test/client_connection_test.cc"],
     copts = COPTS,
     deps = [
@@ -1078,6 +1106,7 @@ cc_test(
 
 cc_test(
     name = "publisher_test",
+    size = "small",
     srcs = ["src/ray/pubsub/test/publisher_test.cc"],
     copts = COPTS,
     deps = [
@@ -1088,6 +1117,7 @@ cc_test(
 
 cc_test(
     name = "subscriber_test",
+    size = "small",
     srcs = [
         "src/ray/pubsub/test/subscriber_test.cc",
     ],
@@ -1100,6 +1130,7 @@ cc_test(
 
 cc_test(
     name = "signal_test",
+    size = "small",
     srcs = ["src/ray/util/signal_test.cc"],
     copts = COPTS,
     deps = [
@@ -1110,6 +1141,7 @@ cc_test(
 
 cc_test(
     name = "sequencer_test",
+    size = "small",
     srcs = ["src/ray/util/sequencer_test.cc"],
     copts = COPTS,
     deps = [
@@ -1120,6 +1152,7 @@ cc_test(
 
 cc_test(
     name = "stats_test",
+    size = "small",
     srcs = ["src/ray/stats/stats_test.cc"],
     copts = COPTS,
     tags = ["stats"],
@@ -1131,6 +1164,7 @@ cc_test(
 
 cc_test(
     name = "metric_exporter_client_test",
+    size = "small",
     srcs = ["src/ray/stats/metric_exporter_client_test.cc"],
     copts = COPTS,
     tags = ["stats"],
@@ -1155,6 +1189,7 @@ cc_library(
 
 cc_test(
     name = "gcs_server_rpc_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_server_rpc_test.cc",
     ],
@@ -1187,6 +1222,7 @@ cc_library(
 
 cc_test(
     name = "gcs_node_manager_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_node_manager_test.cc",
     ],
@@ -1201,6 +1237,7 @@ cc_test(
 
 cc_test(
     name = "gcs_placement_group_manager_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_placement_group_manager_test.cc",
     ],
@@ -1215,6 +1252,7 @@ cc_test(
 
 cc_test(
     name = "gcs_placement_group_scheduler_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_placement_group_scheduler_test.cc",
     ],
@@ -1229,6 +1267,7 @@ cc_test(
 
 cc_test(
     name = "gcs_actor_scheduler_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_test.cc",
     ],
@@ -1243,6 +1282,7 @@ cc_test(
 
 cc_test(
     name = "gcs_actor_manager_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_actor_manager_test.cc",
     ],
@@ -1292,6 +1332,7 @@ cc_library(
 
 cc_test(
     name = "redis_gcs_table_storage_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/redis_gcs_table_storage_test.cc",
     ],
@@ -1317,6 +1358,7 @@ cc_test(
 
 cc_test(
     name = "in_memory_gcs_table_storage_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/in_memory_gcs_table_storage_test.cc",
     ],
@@ -1332,6 +1374,7 @@ cc_test(
 
 cc_test(
     name = "gcs_resource_manager_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_resource_manager_test.cc",
     ],
@@ -1345,6 +1388,7 @@ cc_test(
 
 cc_test(
     name = "gcs_resource_scheduler_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_resource_scheduler_test.cc",
     ],
@@ -1358,6 +1402,7 @@ cc_test(
 
 cc_test(
     name = "gcs_resource_report_poller_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_resource_report_poller_test.cc",
     ],
@@ -1371,6 +1416,7 @@ cc_test(
 
 cc_test(
     name = "grpc_based_resource_broadcaster_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/grpc_based_resource_broadcaster_test.cc",
     ],
@@ -1426,6 +1472,7 @@ cc_library(
 
 cc_test(
     name = "global_state_accessor_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_client/test/global_state_accessor_test.cc",
     ],
@@ -1475,6 +1522,7 @@ cc_test(
 
 cc_test(
     name = "gcs_object_manager_test",
+    size = "small",
     srcs = [
         "src/ray/gcs/gcs_server/test/gcs_object_manager_test.cc",
     ],
@@ -1703,6 +1751,7 @@ cc_library(
 
 cc_test(
     name = "redis_store_client_test",
+    size = "small",
     srcs = ["src/ray/gcs/store_client/test/redis_store_client_test.cc"],
     args = [
         "$(location redis-server)",
@@ -1724,6 +1773,7 @@ cc_test(
 
 cc_test(
     name = "in_memory_store_client_test",
+    size = "small",
     srcs = ["src/ray/gcs/store_client/test/in_memory_store_client_test.cc"],
     copts = COPTS,
     deps = [
@@ -1763,6 +1813,7 @@ cc_library(
 
 cc_test(
     name = "asio_test",
+    size = "small",
     srcs = ["src/ray/gcs/test/asio_test.cc"],
     args = [
         "$(location redis-server)",

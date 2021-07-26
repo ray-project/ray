@@ -174,9 +174,6 @@ def validate_config(config: TrainerConfigDict) -> None:
     Raises:
         ValueError: In case something is wrong with the config.
     """
-    if config["num_gpus"] > 1 and config["framework"] != "torch":
-        raise ValueError("`num_gpus` > 1 not yet supported for tf-SAC!")
-
     if config["use_state_preprocessor"] != DEPRECATED_VALUE:
         deprecation_warning(
             old="config['use_state_preprocessor']", error=False)
@@ -215,4 +212,5 @@ SACTrainer = GenericOffPolicyTrainer.with_updates(
     validate_config=validate_config,
     default_policy=SACTFPolicy,
     get_policy_class=get_policy_class,
+    allow_unknown_subkeys=["Q_model", "policy_model"],
 )
