@@ -127,7 +127,7 @@ class DashboardHead:
             except Exception as ex:
                 logger.error("Connect to GCS failed: %s, retry...", ex)
                 await asyncio.sleep(
-                    dashboard_consts.CONNECT_GCS_INTERVAL_SECONDS)
+                    dashboard_consts.GCS_RETRY_CONNECT_INTERVAL_SECONDS)
             else:
                 self.aiogrpc_gcs_channel = channel
                 break

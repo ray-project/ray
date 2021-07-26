@@ -657,7 +657,8 @@ def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
 
     gcs_server_proc.kill()
     gcs_server_proc.wait()
-    dashboard_proc.wait(10)
+    # The dashboard exits by os._exit(-1)
+    assert dashboard_proc.wait(10) == 255
 
 
 if __name__ == "__main__":
