@@ -55,7 +55,7 @@ class WorkerGroup:
         self.num_workers = num_workers
         self.num_cpus_per_worker = num_cpus_per_worker
         self.num_gpus_per_worker = num_gpus_per_worker
-        self.workers = self._start_workers()
+        self.restart()
 
     def _start_workers(self):
         remote_cls = ray.remote(
@@ -73,16 +73,22 @@ class WorkerGroup:
         Args:
             graceful_shutdown_timeout_s (float): Attempt a graceful shutdown
                 of the workers for this many seconds. Fallback to force kill
-                if graceful shutdown is not complete after this time.
+                if graceful shutdown is not complete after this time. If
+                this is less than or equal to 0, immediately force kill all
+                workers.
         """
-        done_refs = [w.__ray_terminate__.remote() for w in self.workers]
-        # Wait for actors to die gracefully.
-        done, not_done = ray.wait(
-            done_refs, timeout=graceful_shutdown_timeout_s)
-        if not_done:
-            # If all actors are not able to die gracefully, then kill them.
+        if graceful_shutdown_timeout_s <= 0:
             for worker in self.workers:
                 ray.kill(worker)
+        else:
+            done_refs = [w.__ray_terminate__.remote() for w in self.workers]
+            # Wait for actors to die gracefully.
+            done, not_done = ray.wait(
+                done_refs, timeout=graceful_shutdown_timeout_s)
+            if not_done:
+                # If all actors are not able to die gracefully, then kill them.
+                for worker in self.workers:
+                    ray.kill(worker)
 
         self.workers = []
 
