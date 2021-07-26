@@ -553,6 +553,7 @@ class DynamicTFPolicy(TFPolicy):
 
         return SampleBatch(input_dict, seq_lens=self._seq_lens), dummy_batch
 
+    @override(Policy)
     def _initialize_loss_from_dummy_batch(
             self, auto_remove_unneeded_view_reqs: bool = True,
             stats_fn=None) -> None:
@@ -562,7 +563,7 @@ class DynamicTFPolicy(TFPolicy):
         self._optimizer = self.optimizer()
 
         # Test calls depend on variable init, so initialize model first.
-        self._sess.run(tf1.global_variables_initializer())
+        self.get_session().run(tf1.global_variables_initializer())
 
         logger.info("Testing `compute_actions` w/ dummy batch.")
         actions, state_outs, extra_fetches = \
@@ -574,14 +575,16 @@ class DynamicTFPolicy(TFPolicy):
             if key not in self.view_requirements:
                 logger.info("Adding extra-action-fetch `{}` to "
                             "view-reqs.".format(key))
-                self.view_requirements[key] = \
-                    ViewRequirement(space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:],
-                        dtype=value.dtype))
+                self.view_requirements[key] = ViewRequirement(
+                    space=gym.spaces.Box(
+                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype),
+                    used_for_compute_actions=False,
+                )
         dummy_batch = self._dummy_batch
 
         logger.info("Testing `postprocess_trajectory` w/ dummy batch.")
-        self.exploration.postprocess_trajectory(self, dummy_batch, self._sess)
+        self.exploration.postprocess_trajectory(self, dummy_batch,
+                                                self.get_session())
         _ = self.postprocess_trajectory(dummy_batch)
         # Add new columns automatically to (loss) input_dict.
         for key in dummy_batch.added_keys:
@@ -589,10 +592,14 @@ class DynamicTFPolicy(TFPolicy):
                 self._input_dict[key] = get_placeholder(
                     value=dummy_batch[key], name=key)
             if key not in self.view_requirements:
-                self.view_requirements[key] = \
-                    ViewRequirement(space=gym.spaces.Box(
-                        -1.0, 1.0, shape=dummy_batch[key].shape[1:],
-                        dtype=dummy_batch[key].dtype))
+                self.view_requirements[key] = ViewRequirement(
+                    space=gym.spaces.Box(
+                        -1.0,
+                        1.0,
+                        shape=dummy_batch[key].shape[1:],
+                        dtype=dummy_batch[key].dtype),
+                    used_for_compute_actions=False,
+                )
 
         train_batch = SampleBatch(
             dict(self._input_dict, **self._loss_input_dict))
@@ -687,7 +694,7 @@ class DynamicTFPolicy(TFPolicy):
         }
 
         # Initialize again after loss init.
-        self._sess.run(tf1.global_variables_initializer())
+        self.get_session().run(tf1.global_variables_initializer())
 
     def _do_loss_init(self, train_batch: SampleBatch):
         loss = self._loss_fn(self, self.model, self.dist_class, train_batch)

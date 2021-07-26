@@ -536,7 +536,6 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
 )
 
-
 # TD3
 py_test(
     name = "run_regression_tests_pendulum_td3_tf",
@@ -2255,6 +2254,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/fractional_gpus",
+    main = "examples/fractional_gpus.py",
+    tags = ["examples", "examples_F"],
+    size = "medium",
+    srcs = ["examples/fractional_gpus.py"],
+    args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
+)
+
+py_test(
     name = "examples/hierarchical_training_tf",
     main = "examples/hierarchical_training.py",
     tags = ["examples", "examples_H"],
@@ -2419,15 +2427,6 @@ py_test(
 )
 
 py_test(
-    name = "examples/fractional_gpus",
-    main = "examples/fractional_gpus.py",
-    tags = ["examples", "examples_P"],
-    size = "medium",
-    srcs = ["examples/fractional_gpus.py"],
-    args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
-)
-
-py_test(
     name = "examples/pettingzoo_env",
     main = "examples/pettingzoo_env.py",
     tags = ["examples", "examples_P"],
@@ -2436,11 +2435,26 @@ py_test(
 )
 
 py_test(
+    name = "examples/remote_vector_env_with_custom_api",
+    tags = ["examples", "examples_R"],
+    size = "medium",
+    srcs = ["examples/remote_vector_env_with_custom_api.py"],
+    args = ["--stop-iters=3"]
+)
+
+py_test(
     name = "examples/restore_1_of_n_agents_from_checkpoint",
     tags = ["examples", "examples_R"],
     size = "medium",
     srcs = ["examples/restore_1_of_n_agents_from_checkpoint.py"],
     args = ["--pre-training-iters=1", "--stop-iters=1", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/rnnsac_stateless_cartpole",
+    tags = ["examples", "examples_R"],
+    size = "large",
+    srcs = ["examples/rnnsac_stateless_cartpole.py"]
 )
 
 py_test(
@@ -2472,21 +2486,39 @@ py_test(
 # Deactivated for now due to open-spiel's dependency on an outdated
 # tensorflow-probability version.
 # py_test(
-#    name = "examples/self_play_with_open_spiel_connect_4",
-#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    name = "examples/self_play_with_open_spiel_connect_4_tf",
+#    main = "examples/self_play_with_open_spiel.py",
 #    tags = ["examples", "examples_S"],
 #    size = "medium",
-#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
-#    args = ["--framework=tf", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+#    srcs = ["examples/self_play_with_open_spiel.py"],
+#    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
 # )
 
 # py_test(
 #    name = "examples/self_play_with_open_spiel_connect_4_torch",
-#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    main = "examples/self_play_with_open_spiel.py",
 #    tags = ["examples", "examples_S"],
 #    size = "medium",
-#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
-#    args = ["--framework=torch", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+#    srcs = ["examples/self_play_with_open_spiel.py"],
+#    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
+# py_test(
+#    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_tf",
+#    main = "examples/self_play_league_based_with_open_spiel.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
+#    args = ["--framework=tf", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
+# py_test(
+#    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_torch",
+#    main = "examples/self_play_league_based_with_open_spiel.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_league_based_with_open_spiel_markov_soccer.py"],
+#    args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
 # )
 
 py_test(

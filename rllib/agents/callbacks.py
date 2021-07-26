@@ -1,5 +1,4 @@
 import os
-import psutil
 import tracemalloc
 from typing import Dict, Optional, TYPE_CHECKING
 
@@ -10,6 +9,9 @@ from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import AgentID, PolicyID
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker

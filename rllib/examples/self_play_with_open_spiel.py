@@ -11,7 +11,8 @@ callback. We simply measure the win rate of "main" vs the opponent
 achieved rewards in the episodes in the train batch. If this win rate
 reaches some configurable threshold, we add a new policy to
 the policy map (a frozen copy of the current "main" one) and change the
-policy_mapping_fn to make new matches of "main" vs the just added one.
+policy_mapping_fn to make new matches of "main" vs any of the previous
+versions of "main" (including the just added one).
 
 After training for n iterations, a configurable number of episodes can
 be played by the user against the "main" agent on the command line.
@@ -30,9 +31,8 @@ from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
+from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
-
-OBS_SPACE = ACTION_SPACE = None
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -47,6 +47,11 @@ parser.add_argument(
     default=None,
     help="Full path to a checkpoint file for restoring a previously saved "
     "Trainer state.")
+parser.add_argument(
+    "--env",
+    type=str,
+    default="connect_four",
+    choices=["markov_soccer", "connect_four"])
 parser.add_argument(
     "--stop-iters",
     type=int,
@@ -67,7 +72,7 @@ parser.add_argument(
 parser.add_argument(
     "--num-episodes-human-play",
     type=int,
-    default=2,
+    default=10,
     help="How many episodes to play against the user on the command "
     "line after training has finished.")
 args = parser.parse_args()
@@ -138,9 +143,6 @@ class SelfPlayCallback(DefaultCallbacks):
             new_policy = trainer.add_policy(
                 policy_id=new_pol_id,
                 policy_cls=type(trainer.get_policy("main")),
-                observation_space=OBS_SPACE,
-                action_space=ACTION_SPACE,
-                config={},
                 policy_mapping_fn=policy_mapping_fn,
             )
 
@@ -153,18 +155,14 @@ class SelfPlayCallback(DefaultCallbacks):
             # to all the remote workers as well.
             trainer.workers.sync_weights()
         else:
-            print("not good enough; will keep learning")
+            print("not good enough; will keep learning ...")
 
 
 if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
 
-    dummy_env = OpenSpielEnv(pyspiel.load_game("connect_four"))
-    OBS_SPACE = dummy_env.observation_space
-    ACTION_SPACE = dummy_env.action_space
-
-    register_env("connect_four",
-                 lambda _: OpenSpielEnv(pyspiel.load_game("connect_four")))
+    register_env("open_spiel_env",
+                 lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
 
     def policy_mapping_fn(agent_id, episode, **kwargs):
         # agent_id = [0|1] -> policy depends on episode ID
@@ -173,7 +171,7 @@ if __name__ == "__main__":
         return "main" if episode.episode_id % 2 == agent_id else "random"
 
     config = {
-        "env": "connect_four",
+        "env": "open_spiel_env",
         "callbacks": SelfPlayCallback,
         "model": {
             "fcnet_hiddens": [512, 512],
@@ -187,9 +185,9 @@ if __name__ == "__main__":
             # custom callback defined above (`SelfPlayCallback`).
             "policies": {
                 # Our main policy, we'd like to optimize.
-                "main": (None, OBS_SPACE, ACTION_SPACE, {}),
+                "main": PolicySpec(),
                 # An initial random opponent to play against.
-                "random": (RandomPolicy, OBS_SPACE, ACTION_SPACE, {}),
+                "random": PolicySpec(policy_class=RandomPolicy),
             },
             # Assign agent 0 and 1 randomly to the "main" policy or
             # to the opponent ("random" at first). Make sure (via episode_id)
@@ -228,12 +226,15 @@ if __name__ == "__main__":
         if args.from_checkpoint:
             trainer.restore(args.from_checkpoint)
         else:
-            trainer.restore(results.get_last_checkpoint())
+            checkpoint = results.get_last_checkpoint()
+            if not checkpoint:
+                raise ValueError("No last checkpoint found in results!")
+            trainer.restore(checkpoint)
 
         # Play from the command line against the trained agent
         # in an actual (non-RLlib-wrapped) open-spiel env.
         human_player = 1
-        env = Environment("connect_four")
+        env = Environment(args.env)
 
         while num_episodes < args.num_episodes_human_play:
             print("You play as {}".format("o" if human_player else "x"))

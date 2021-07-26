@@ -1,5 +1,6 @@
 from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
+import os
 import tree  # pip install dm_tree
 import warnings
 
@@ -203,6 +204,20 @@ def sequence_mask(lengths, maxlen=None, dtype=None, time_major=False):
     mask.type(dtype or torch.bool)
 
     return mask
+
+
+def set_torch_seed(seed):
+    if seed is not None and torch:
+        torch.manual_seed(seed)
+        # See https://github.com/pytorch/pytorch/issues/47672.
+        cuda_version = torch.version.cuda
+        if cuda_version is not None and float(torch.version.cuda) >= 10.2:
+            os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
+        else:
+            # Not all Operations support this.
+            torch.use_deterministic_algorithms(True)
+        # This is only for Convolution no problem.
+        torch.backends.cudnn.deterministic = True
 
 
 def softmax_cross_entropy_with_logits(logits, labels):

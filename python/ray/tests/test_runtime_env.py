@@ -644,8 +644,7 @@ def test_init(shutdown_only):
         os.chdir(tmp_dir)
         with open("hello", "w") as f:
             f.write("world")
-        job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
-        ray.init(job_config=job_config)
+        ray.init(runtime_env={"working_dir": "."})
 
         @ray.remote
         class Test:
@@ -770,6 +769,38 @@ def test_container_option_serialize():
     # job_config.runtime_env.raw_json has container_option info
     # job_config.serialized_runtime_env also has container_option info
     assert job_config_serialized.count(b"image") == 2
+
+
+def test_working_dir_override_failure(shutdown_only):
+    ray.init()
+
+    @ray.remote(runtime_env={"working_dir": "."})
+    def f():
+        pass
+
+    with pytest.raises(NotImplementedError):
+        f.remote()
+
+    @ray.remote
+    def g():
+        pass
+
+    with pytest.raises(NotImplementedError):
+        g.options(runtime_env={"working_dir": "."}).remote()
+
+    @ray.remote(runtime_env={"working_dir": "."})
+    class A:
+        pass
+
+    with pytest.raises(NotImplementedError):
+        A.remote()
+
+    @ray.remote
+    class B:
+        pass
+
+    with pytest.raises(NotImplementedError):
+        B.options(runtime_env={"working_dir": "."}).remote()
 
 
 if __name__ == "__main__":
