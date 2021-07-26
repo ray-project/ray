@@ -59,7 +59,7 @@ Ray client is used when the address passed into ``ray.init`` is prefixed with th
 
 .. code-block:: python
 
-   # Start a local cluster with 2 cpus and expose the dashboard on port 888
+   # Start a local cluster with 2 cpus and expose the dashboard on port 8888
    ray.init("local://", num_cpus=2, dashboard_port=8888)
    #....
 
