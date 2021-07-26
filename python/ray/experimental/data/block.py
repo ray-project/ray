@@ -112,6 +112,10 @@ class BlockAccessor(Generic[T]):
             from ray.experimental.data.impl.arrow_block import \
                 ArrowBlockAccessor
             return ArrowBlockAccessor(block)
+        elif isinstance(block, bytes):
+            from ray.experimental.data.impl.arrow_block import \
+                ArrowBlockAccessor
+            return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
             from ray.experimental.data.impl.block_builder import \
                 SimpleBlockAccessor

@@ -345,7 +345,7 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
 
 
 @PublicAPI(stability="beta")
-def from_arrow(tables: List[ObjectRef["pyarrow.Table"]],
+def from_arrow(tables: List[ObjectRef[Union["pyarrow.Table", bytes]]],
                parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
 
