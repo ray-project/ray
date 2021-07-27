@@ -46,6 +46,11 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
                              rpc::ReportHeartbeatReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle check alive rpc come from dashboard.
+  void HandleCheckAlive(const rpc::CheckAliveRequest &request,
+                        rpc::CheckAliveReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) override;
+
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
