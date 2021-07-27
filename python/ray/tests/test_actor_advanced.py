@@ -1279,6 +1279,21 @@ def test_actor_timestamps(ray_start_regular):
     restarted()
 
 
+def test_actor_namespace_access(ray_start_regular):
+    @ray.remote
+    class A:
+        def hi(self):
+            return "hi"
+
+    A.options(name="actor_in_current_namespace", lifetime="detached").remote()
+    A.options(name="namespace/actor_name", lifetime="detached").remote()
+    ray.get_actor("actor_in_current_namespace")  # => works
+    ray.get_actor("namespace/actor_name")  # => works
+    match_str = r"Failed to look up actor with name.*"
+    with pytest.raises(ValueError, match=match_str):
+        ray.get_actor("actor_name")  # => errors
+
+
 if __name__ == "__main__":
     import pytest
     # Test suite is timing out. Disable on windows for now.

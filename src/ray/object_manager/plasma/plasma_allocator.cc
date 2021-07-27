@@ -49,7 +49,9 @@ void *PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
       return nullptr;
     }
   }
+  RAY_LOG(DEBUG) << "allocating " << bytes;
   void *mem = dlmemalign(alignment, bytes);
+  RAY_LOG(DEBUG) << "allocated " << bytes << " at " << mem;
   if (!mem) {
     return nullptr;
   }
@@ -75,6 +77,7 @@ void *PlasmaAllocator::DiskMemalignUnlimited(size_t alignment, size_t bytes) {
 }
 
 void PlasmaAllocator::Free(void *mem, size_t bytes) {
+  RAY_LOG(DEBUG) << "deallocating " << bytes << " at " << mem;
   dlfree(mem);
   allocated_ -= bytes;
   if (RayConfig::instance().plasma_unlimited() && IsOutsideInitialAllocation(mem)) {

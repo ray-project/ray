@@ -9,6 +9,7 @@ from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
@@ -292,7 +293,7 @@ class _PolicyCollector:
     appended to this policy's buffers.
     """
 
-    def __init__(self, policy):
+    def __init__(self, policy: Policy):
         """Initializes a _PolicyCollector instance.
 
         Args:
@@ -382,7 +383,7 @@ class SimpleListCollector(SampleCollector):
     """
 
     def __init__(self,
-                 policy_map: Dict[PolicyID, Policy],
+                 policy_map: PolicyMap,
                  clip_rewards: Union[bool, float],
                  callbacks: "DefaultCallbacks",
                  multiple_episodes_in_batch: bool = True,
@@ -535,11 +536,9 @@ class SimpleListCollector(SampleCollector):
         policy = self.policy_map[policy_id]
         keys = self.forward_pass_agent_keys[policy_id]
         buffers = {k: self.agent_collectors[k].buffers for k in keys}
-        view_reqs = policy.model.view_requirements if \
-            getattr(policy, "model", None) else policy.view_requirements
 
         input_dict = {}
-        for view_col, view_req in view_reqs.items():
+        for view_col, view_req in policy.view_requirements.items():
             # Not used for action computations.
             if not view_req.used_for_compute_actions:
                 continue
@@ -650,8 +649,7 @@ class SimpleListCollector(SampleCollector):
             post_batches[agent_id] = pre_batch
             if getattr(policy, "exploration", None) is not None:
                 policy.exploration.postprocess_trajectory(
-                    policy, post_batches[agent_id],
-                    getattr(policy, "_sess", None))
+                    policy, post_batches[agent_id], policy.get_session())
             post_batches[agent_id] = policy.postprocess_trajectory(
                 post_batches[agent_id], other_batches, episode)
 

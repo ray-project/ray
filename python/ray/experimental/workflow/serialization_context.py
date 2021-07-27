@@ -5,7 +5,7 @@ import ray
 import ray.cloudpickle
 from ray.util.serialization import register_serializer, deregister_serializer
 
-from ray.experimental.workflow.common import Workflow
+from ray.experimental.workflow.common import Workflow, WorkflowInputs
 
 
 def _resolve_workflow_outputs(index: int) -> Any:
@@ -157,3 +157,24 @@ def workflow_args_keeping_context() -> None:
     finally:
         _resolve_workflow_outputs = _resolve_workflow_outputs_bak
         _resolve_objectrefs = _resolve_objectrefs_bak
+
+
+def make_workflow_inputs(args_list: List[Any]) -> WorkflowInputs:
+    workflows: List[Workflow] = []
+    object_refs: List[ray.ObjectRef] = []
+    with workflow_args_serialization_context(workflows, object_refs):
+        # NOTE: When calling 'ray.put', we trigger python object
+        # serialization. Under our serialization context,
+        # Workflows and ObjectRefs are separated from the arguments,
+        # leaving a placeholder object with all other python objects.
+        # Then we put the placeholder object to object store,
+        # so it won't be mutated later. This guarantees correct
+        # semantics. See "tests/test_variable_mutable.py" as
+        # an example.
+        input_placeholder: ray.ObjectRef = ray.put(args_list)
+        if object_refs:
+            raise ValueError(
+                "There are ObjectRefs in workflow inputs. However "
+                "workflow currently does not support checkpointing "
+                "ObjectRefs.")
+    return WorkflowInputs(input_placeholder, object_refs, workflows)
