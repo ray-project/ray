@@ -2000,7 +2000,7 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
           if (status.ok() && result) {
             auto actor_handle = std::make_unique<ActorHandle>(*result);
             actor_id = actor_handle->GetActorID();
-            actor_manager_->AddNewActorHandle(stsd::move(actor_handle),
+            actor_manager_->AddNewActorHandle(std::move(actor_handle),
                                               result.get().name(), GetCallerId(),
                                               CurrentCallSite(), rpc_address_,
                                               /*is_detached*/ true);
