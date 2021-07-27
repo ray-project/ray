@@ -675,7 +675,7 @@ def init(
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
-        runtime_env (dict): The runtime environment to use
+        runtime_env (dict): The runtime environment to use for this job.
         internal_config (dict): Dictionary mapping names of a unstable
             parameters to values, e.g. {"redis_password": "1234"}. This is
             only used for initializing a local client (ray.init(local://...)).

@@ -53,7 +53,7 @@ class _MockTrainer(Trainer):
         self.info = info
         self.restored = True
 
-    def _register_if_needed(self, env_object):
+    def _register_if_needed(self, env_object, config):
         pass
 
     def set_info(self, info):

@@ -139,32 +139,31 @@ class WorkflowManagementActor:
 
     def update_step_status(self, workflow_id: str, step_id: str,
                            status: common.WorkflowStatus):
-        if status == common.WorkflowStatus.FINISHED:
+        if status == common.WorkflowStatus.SUCCESSFUL:
             self._step_status[workflow_id].pop(step_id, None)
         else:
             self._step_status.setdefault(workflow_id, {})[step_id] = status
         remaining = len(self._step_status[workflow_id])
 
-        if status != common.WorkflowStatus.RESUMABLE and remaining != 0:
+        if status != common.WorkflowStatus.FAILED and remaining != 0:
             return
 
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
 
-        if status == common.WorkflowStatus.RESUMABLE:
+        if status == common.WorkflowStatus.FAILED:
             if workflow_id in self._workflow_outputs:
                 cancel_job(self._workflow_outputs.pop(workflow_id))
             wf_store.save_workflow_meta(
-                common.WorkflowMetaData(common.WorkflowStatus.RESUMABLE))
+                common.WorkflowMetaData(common.WorkflowStatus.FAILED))
             self._step_status.pop(workflow_id)
         else:
             # remaining = 0
             wf_store.save_workflow_meta(
-                common.WorkflowMetaData(common.WorkflowStatus.FINISHED))
+                common.WorkflowMetaData(common.WorkflowStatus.SUCCESSFUL))
             self._step_status.pop(workflow_id)
 
     def cancel_workflow(self, workflow_id: str) -> None:
         self._step_status.pop(workflow_id)
-        print("CANCEL>>>>", workflow_id)
         cancel_job(self._workflow_outputs.pop(workflow_id))
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         wf_store.save_workflow_meta(
@@ -225,12 +224,23 @@ class WorkflowManagementActor:
             An object reference that can be used to retrieve the
             workflow result.
         """
-        if workflow_id not in self._workflow_outputs:
-            raise ValueError(f"The output of workflow[id={workflow_id}] "
-                             "does not exist. The workflow is either failed "
-                             "or finished. Use 'workflow.resume()' to access "
-                             "the workflow result.")
-        return self._workflow_outputs[workflow_id]
+        if workflow_id in self._workflow_outputs:
+            return self._workflow_outputs[workflow_id]
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
+        meta = wf_store.load_workflow_meta()
+        if meta is None:
+            raise ValueError(f"No such workflow {workflow_id}")
+        if meta == common.WorkflowStatus.FAILED:
+            raise ValueError(
+                f"Workflow {workflow_id} failed, please resume it")
+        output = recovery.resume_workflow_job.remote(workflow_id,
+                                                     self._store.storage_url)
+        self._workflow_outputs[workflow_id] = output
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
+        wf_store.save_workflow_meta(
+            common.WorkflowMetaData(common.WorkflowStatus.RUNNING))
+        self._step_status[workflow_id] = {}
+        return output
 
     def get_running_workflow(self) -> List[str]:
         return list(self._workflow_outputs.keys())

@@ -52,31 +52,31 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     all_tasks_running = workflow.list_all(workflow.WorkflowStatus.RUNNING)
     assert len(all_tasks_running) == 0
     # Half of them failed and half succeed
-    failed_jobs = workflow.list_all("RESUMABLE")
+    failed_jobs = workflow.list_all("FAILED")
     assert len(failed_jobs) == 50
-    finished_jobs = workflow.list_all("FINISHED")
+    finished_jobs = workflow.list_all("SUCCESSFUL")
     assert len(finished_jobs) == 50
 
     all_tasks_status = workflow.list_all({
-        workflow.WorkflowStatus.FINISHED, workflow.WorkflowStatus.RESUMABLE,
+        workflow.WorkflowStatus.SUCCESSFUL, workflow.WorkflowStatus.FAILED,
         workflow.WorkflowStatus.RUNNING
     })
     assert len(all_tasks_status) == 100
     assert failed_jobs == [(k, v) for (k, v) in all_tasks_status
-                           if v == workflow.WorkflowStatus.RESUMABLE]
+                           if v == workflow.WorkflowStatus.FAILED]
     assert finished_jobs == [(k, v) for (k, v) in all_tasks_status
-                             if v == workflow.WorkflowStatus.FINISHED]
+                             if v == workflow.WorkflowStatus.SUCCESSFUL]
 
     # Test get_status
-    assert workflow.get_status("0") == "RESUMABLE"
-    assert workflow.get_status("1") == "FINISHED"
+    assert workflow.get_status("0") == "FAILED"
+    assert workflow.get_status("1") == "SUCCESSFUL"
     lock.acquire()
     r = workflow.resume("0")
     assert workflow.get_status("0") == workflow.RUNNING
     flag_file.unlink()
     lock.release()
     assert 100 == ray.get(r)
-    assert workflow.get_status("0") == workflow.FINISHED
+    assert workflow.get_status("0") == workflow.SUCCESSFUL
 
     # Test cancel
     lock.acquire()
@@ -86,7 +86,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     assert workflow.get_status("2") == workflow.CANCELED
 
     # Now resume_all
-    resumed = workflow.resume_all()
+    resumed = workflow.resume_all(include_failed=True)
     assert len(resumed) == 48
     lock.release()
     assert [ray.get(o) for (_, o) in resumed] == [100] * 48
@@ -122,11 +122,11 @@ def test_actor_manager(workflow_start_regular, tmp_path):
     lock = FileLock(lock_file)
     lock.acquire()
 
-    assert [("counter", workflow.FINISHED)] == workflow.list_all()
+    assert [("counter", workflow.SUCCESSFUL)] == workflow.list_all()
 
     actor.val.run_async()
     # Readonly function won't make the workflow running
-    assert [("counter", workflow.FINISHED)] == workflow.list_all()
+    assert [("counter", workflow.SUCCESSFUL)] == workflow.list_all()
 
 
 if __name__ == "__main__":

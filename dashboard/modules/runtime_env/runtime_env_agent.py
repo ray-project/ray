@@ -3,6 +3,7 @@ import json
 import logging
 import threading
 from ray._private.ray_logging import setup_component_logger
+from typing import Dict
 
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
@@ -34,6 +35,9 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         self._logging_params = dashboard_agent.logging_params
         self._per_job_logger_cache = dict()
         runtime_env.PKG_DIR = dashboard_agent.runtime_env_dir
+        # Maps a serialized runtime env dict to the serialized
+        # RuntimeEnvContext arising from the creation of the env.
+        self._created_env_cache: Dict[str, str] = dict()
 
     def get_or_create_logger(self, job_id: bytes):
         job_id = job_id.decode()
@@ -58,7 +62,16 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(None, run_setup_with_logger)
 
-        # print(request.job_id)
+        serialized_env = request.serialized_runtime_env
+        if serialized_env in self._created_env_cache:
+            serialized_context = self._created_env_cache[serialized_env]
+            logger.info("Runtime env already created. Env: %s, context: %s",
+                        serialized_env,
+                        self._created_env_cache[serialized_env])
+            return runtime_env_agent_pb2.CreateRuntimeEnvReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
+                serialized_runtime_env_context=serialized_context)
+
         logger.info("Creating runtime env: %s.",
                     request.serialized_runtime_env)
         runtime_env_dict = json.loads(request.serialized_runtime_env or "{}")
@@ -90,6 +103,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 error_message=error_message)
 
         serialized_context = runtime_env_context.serialize()
+        self._created_env_cache[serialized_env] = serialized_context
         logger.info("Successfully created runtime env: %s, the context: %s",
                     request.serialized_runtime_env, serialized_context)
         return runtime_env_agent_pb2.CreateRuntimeEnvReply(

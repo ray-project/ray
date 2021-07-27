@@ -19,13 +19,15 @@ WorkflowOutputType = ObjectRef
 class WorkflowStatus(str, Enum):
     # There is at least a remote task running in ray cluster
     RUNNING = "RUNNING"
-    # It got canceled and can't be resumed later
+    # It got canceled and can't be resumed later.
     CANCELED = "CANCELED"
-    # The step is finished. For virtual actor, it means that all
-    # writing steps has been finished.
-    FINISHED = "FINISHED"
-    # The workflow that can be resumed. Usually it's because some
-    # internal or external errors.
+    # The workflow runs successfully.
+    SUCCESSFUL = "SUCCESSFUL"
+    # The workflow failed with an applicaiton error.
+    # It can be resumed.
+    FAILED = "FAILED"
+    # The workflow failed with a system error, i.e., ray shutdown.
+    # It can be resumed.
     RESUMABLE = "RESUMABLE"
 
 
