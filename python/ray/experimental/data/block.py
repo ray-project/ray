@@ -1,5 +1,5 @@
-from typing import TypeVar, List, Generic, Iterator, Tuple, Any, Union, Optional, \
-    TYPE_CHECKING
+from typing import TypeVar, List, Generic, Iterator, Tuple, Any, Union, \
+    Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas
