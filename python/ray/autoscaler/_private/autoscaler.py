@@ -234,7 +234,7 @@ class StandardAutoscaler:
         nodes_to_keep: List[NodeID] = []
 
         def keep_node(node_id: NodeID) -> None:
-            # Update per-type counts.
+            # Update per-type counts and add node_id to nodes_to_keep.
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
@@ -242,6 +242,7 @@ class StandardAutoscaler:
             nodes_to_keep.append(node_id)
 
         def schedule_node_termination(node_id: NodeID, reason: str) -> None:
+            # Log, record an event, and add node_id to nodes_to_terminate.
             logger.info("StandardAutoscaler: "
                         "{}: Terminating {} node.".format(node_id, reason))
             self.event_summarizer.add(
