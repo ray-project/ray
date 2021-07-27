@@ -1,13 +1,15 @@
 # This config is an example TPU config allowing you to run
 # https://github.com/Yard1/swarm-jax on GCP TPUs
 # Replace provider.project_id with your GCP project id
+# After the nodes are up, run:
+#   ray attach tpu.yaml swarm_tpu_jax.py swarm-jax/data/enwik8 [NUM_TPUS] [EPOCHS]
 
 # A unique identifier for the head node and workers of this cluster.
 cluster_name: tputest
 
 # The maximum number of worker nodes to launch in addition to the head
 # node.
-max_workers: 4
+max_workers: 7
 
 available_node_types:
     ray_head_default:
@@ -25,7 +27,7 @@ available_node_types:
                   # See https://cloud.google.com/compute/docs/images for more images
                   sourceImage: projects/deeplearning-platform-release/global/images/family/common-cpu
     ray_tpu:
-        min_workers: 4
+        min_workers: 7
         resources: {"TPU": 1}  # use TPU custom resource in your code
         node_config:
             acceleratorType: v2-8
@@ -38,7 +40,7 @@ provider:
     type: gcp
     region: us-central1
     availability_zone: us-central1-f
-    project_id: null
+    project_id: null  # replace with your GCP project id
 
 setup_commands: []
 
@@ -54,7 +56,7 @@ head_setup_commands:
   - python -m pip install --upgrade "jax[cpu]==0.2.14" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
   - python -m pip install --upgrade fabric dataclasses optax==0.0.6 git+https://github.com/deepmind/dm-haiku google-api-python-client cryptography tensorboardX ray[default]
   - python -m pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
-  - git clone --branch test https://github.com/Yard1/swarm-jax.git && cd swarm-jax && python -m pip install .
+  - git clone https://github.com/Yard1/swarm-jax.git && cd swarm-jax && python -m pip install .
 
 # Install Jax and other dependencies on TPU
 worker_setup_commands:
@@ -62,4 +64,4 @@ worker_setup_commands:
   - pip3 install --upgrade fabric dataclasses optax==0.0.6 git+https://github.com/deepmind/dm-haiku tensorboardX ray[default]
   - python3 -c "import jax; jax.device_count(); jax.numpy.add(1, 1)"  # test if Jax has been installed correctly
   - pip3 install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
-  - git clone --branch test https://github.com/Yard1/swarm-jax.git && cd swarm-jax && sudo pip3 install .
+  - git clone https://github.com/Yard1/swarm-jax.git && cd swarm-jax && sudo pip3 install .
