@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Benchmark test for single deployment at 1k no-op replica scale.
+Benchmark test for multi deployment at 1k no-op replica scale.
 
 1) Start with a single head node.
-2) Scale to 1k no-op replicas over N nodes.
+2) Start 1000 deployments each with 10 no-op replicas
 3) Launch wrk in each running node to simulate load balanced request
+4) Recursively send queries to random deployments, up to depth=5
 5) Run a 10-minute wrk trial on each node, aggregate results.
 
 Report:
@@ -25,9 +26,10 @@ Report:
 """
 
 import click
-import json
 import math
 import os
+import random
+import ray
 
 from ray import serve
 from ray.serve.utils import logger
@@ -39,7 +41,7 @@ from serve_test_utils import (
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
-    warm_up_cluster,
+    warm_up_one_cluster,
     NUM_CPU_PER_NODE,
     NUM_CONNECTIONS,
 )
@@ -47,63 +49,89 @@ from typing import Optional
 
 # Experiment configs
 DEFAULT_SMOKE_TEST_NUM_REPLICA = 8
-DEFAULT_FULL_TEST_NUM_REPLICA = 1000
+DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS = 4  # 2 replicas each
 
-# Deployment configs
-DEFAULT_MAX_BATCH_SIZE = 16
+# TODO:(jiaodong) We should investigate and change this back to 1k
+# for now, we won't get valid latency numbers from wrk at 1k replica
+# likely due to request timeout.
+DEFAULT_FULL_TEST_NUM_REPLICA = 1000
+DEFAULT_FULL_TEST_NUM_DEPLOYMENTS = 100  # 10 replicas each
 
 # Experiment configs - wrk specific
 DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
 DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 
 
-def deploy_replicas(num_replicas, max_batch_size):
-    @serve.deployment(name="echo", num_replicas=num_replicas)
+def setup_multi_deployment_replicas(num_replicas, num_deployments):
+    num_replica_per_deployment = num_replicas // num_deployments
+    all_deployment_names = [f"Echo_{i+1}" for i in range(num_deployments)]
+
+    @serve.deployment(num_replicas=num_replica_per_deployment)
     class Echo:
-        @serve.batch(max_batch_size=max_batch_size)
-        async def handle_batch(self, requests):
-            return ["hi" for _ in range(len(requests))]
+        def __init__(self):
+            self.all_deployment_async_handles = []
+
+        def get_random_async_handle(self):
+            # sync get_handle() and expected to be called only a few times
+            # during deployment warmup so each deployment has reference to
+            # all other handles to send recursive inference call
+            if len(self.all_deployment_async_handles) < len(
+                    all_deployment_names):
+                deployments = list(serve.list_deployments().values())
+                self.all_deployment_async_handles = [
+                    deployment.get_handle(sync=False)
+                    for deployment in deployments
+                ]
+
+            return random.choice(self.all_deployment_async_handles)
+
+        async def handle_request(self, request, depth: int):
+            # Max recursive call depth reached
+            if depth > 4:
+                return "hi"
+
+            next_async_handle = self.get_random_async_handle()
+            obj_ref = await next_async_handle.handle_request.remote(
+                request, depth + 1)
+
+            return await obj_ref
 
         async def __call__(self, request):
-            return await self.handle_batch(request)
+            return await self.handle_request(request, 0)
 
-    Echo.deploy()
-
-
-def save_results(final_result, default_name):
-    test_output_json = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/single_deployment_1k_noop_replica.json")
-    with open(test_output_json, "wt") as f:
-        json.dump(final_result, f)
+    for deployment in all_deployment_names:
+        Echo.options(name=deployment).deploy()
 
 
 @click.command()
 @click.option("--num-replicas", type=int)
+@click.option("--num-deployments", type=int)
 @click.option("--trial-length", type=str)
-@click.option("--max-batch-size", type=int, default=DEFAULT_MAX_BATCH_SIZE)
-def main(num_replicas: Optional[int], trial_length: Optional[str],
-         max_batch_size: Optional[int]):
+def main(num_replicas: Optional[int], num_deployments: Optional[int],
+         trial_length: Optional[str]):
     # Give default cluster parameter values based on smoke_test config
     # if user provided values explicitly, use them instead.
     # IS_SMOKE_TEST is set by args of releaser's e2e.py
     smoke_test = os.environ.get("IS_SMOKE_TEST", "1")
     if smoke_test == "1":
         num_replicas = num_replicas or DEFAULT_SMOKE_TEST_NUM_REPLICA
+        num_deployments = num_deployments or DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS
         trial_length = trial_length or DEFAULT_SMOKE_TEST_TRIAL_LENGTH
-        logger.info(
-            f"Running local / smoke test with {num_replicas} replicas ..\n")
-
+        logger.info(f"Running smoke test with {num_replicas} replicas, "
+                    f"{num_deployments} deployments .. \n")
         # Choose cluster setup based on user config. Local test uses Cluster()
         # to mock actors that requires # of nodes to be specified, but ray
         # client doesn't need to
         num_nodes = int(math.ceil(num_replicas / NUM_CPU_PER_NODE))
         logger.info(
-            f"Setting up local ray cluster with {num_nodes} nodes ..\n")
+            f"Setting up local ray cluster with {num_nodes} nodes .. \n")
         serve_client = setup_local_single_node_cluster(num_nodes)
     else:
         num_replicas = num_replicas or DEFAULT_FULL_TEST_NUM_REPLICA
+        num_deployments = num_deployments or DEFAULT_FULL_TEST_NUM_DEPLOYMENTS
         trial_length = trial_length or DEFAULT_FULL_TEST_TRIAL_LENGTH
-        logger.info(f"Running full test with {num_replicas} replicas ..\n")
+        logger.info(f"Running full test with {num_replicas} replicas, "
+                    f"{num_deployments} deployments .. \n")
         logger.info("Setting up anyscale ray cluster .. \n")
         serve_client = setup_anyscale_cluster()
 
@@ -112,10 +140,16 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
     logger.info(f"Ray serve http_host: {http_host}, http_port: {http_port}")
 
     logger.info(f"Deploying with {num_replicas} target replicas ....\n")
-    deploy_replicas(num_replicas, max_batch_size)
+    setup_multi_deployment_replicas(num_replicas, num_deployments)
 
     logger.info("Warming up cluster ....\n")
-    warm_up_cluster(10, http_host, http_port)
+    rst_ray_refs = []
+    for endpoint in serve.list_endpoints().keys():
+        rst_ray_refs.append(
+            warm_up_one_cluster.options(num_cpus=0.1).remote(
+                10, http_host, http_port, endpoint))
+    for endpoint in ray.get(rst_ray_refs):
+        logger.info(f"Finished warming up {endpoint}")
 
     logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
@@ -137,7 +171,7 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
         logger.info(f"{key}: {val}")
     save_test_results(
         aggregated_metrics,
-        default_output_file="/tmp/single_deployment_1k_noop_replica.json")
+        default_output_file="/tmp/multi_deployment_1k_noop_replica.json")
 
 
 if __name__ == "__main__":
