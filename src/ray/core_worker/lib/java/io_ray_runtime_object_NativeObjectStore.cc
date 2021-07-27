@@ -23,7 +23,7 @@
 
 ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_id,
                                 ray::ObjectID *out_object_id, bool pin_object = true,
-                                std::string *address = nullptr) {
+                                const std::string *address = nullptr) {
   auto native_ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
   RAY_CHECK(native_ray_object != nullptr);
   std::unique_ptr<ray::rpc::Address> owner_address = nullptr;
@@ -41,7 +41,7 @@ ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_i
     status = ray::CoreWorkerProcess::GetCoreWorker().CreateOwned(
         native_ray_object->GetMetadata(), data_size, native_ray_object->GetNestedIds(),
         out_object_id, &data, /*created_by_worker=*/true,
-        /*owner_address=*/std::move(owner_address));
+        /*owner_address=*/owner_address);
   } else {
     status = ray::CoreWorkerProcess::GetCoreWorker().CreateExisting(
         native_ray_object->GetMetadata(), data_size, object_id,
@@ -52,11 +52,6 @@ ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_i
   if (!status.ok()) {
     return status;
   }
-  if (address && owner_address == nullptr) {
-    // if owner_address have been moved
-    owner_address = std::make_unique<ray::rpc::Address>();
-    owner_address->ParseFromString(*address);
-  }
   // If data is nullptr, that means the ObjectID already existed, which we ignore.
   // TODO(edoakes): this is hacky, we should return the error instead and deal with it
   // here.
@@ -66,10 +61,10 @@ ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_i
     }
     if (object_id.IsNil()) {
       RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().SealOwned(
-          *out_object_id, pin_object, owner_address));
+          *out_object_id, pin_object, std::move(owner_address)));
     } else {
       RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().SealExisting(
-          *out_object_id, /* pin_object = */ false, owner_address));
+          *out_object_id, /* pin_object = */ false, std::move(owner_address)));
     }
   }
   return ray::Status::OK();
