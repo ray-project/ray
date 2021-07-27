@@ -69,6 +69,7 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
     "use_tmux",
 ])
 
+redis_pool = {}
 
 def serialize_config(config):
     return base64.b64encode(json.dumps(config).encode("utf-8")).decode("utf-8")
@@ -404,11 +405,16 @@ def create_redis_client(redis_address, password=None):
     Returns:
         A Redis client.
     """
+    global redis_pool
     redis_ip_address, redis_port = redis_address.split(":")
+    if redis_address in redis_pool:
+        pool = redis_pool[redis_address]
+    else:
+        pool = redis.ConnectionPool(host=redis_ip_address, port=int(redis_port), password=password)
+        redis_pool[redis_address] = pool
     # For this command to work, some other client (on the same machine
     # as Redis) must have run "CONFIG SET protected-mode no".
-    return redis.StrictRedis(
-        host=redis_ip_address, port=int(redis_port), password=password)
+    return redis.Redis(connection_pool=pool)
 
 
 def start_ray_process(command,

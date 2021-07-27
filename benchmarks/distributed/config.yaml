@@ -1,4 +1,4 @@
-cluster_name: yic-distributed-benchmarks
+cluster_name: distributed-benchmarks-actor
 min_workers: 0
 max_workers: 999999
 
@@ -50,7 +50,7 @@ file_mounts: {
 
 setup_commands:
   - pip uninstall -y ray
-  - pip install "ray[default]@https://ray-wheels.s3.us-west-2.amazonaws.com/master/d0e58af0754c643b51262fd15640c5200f550264/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+  - pip install "ray[default]@https://ray-wheels.s3.us-west-2.amazonaws.com/test_wheels/debug-info/937e2c53f0ec4988cac604241d1067ead0e91d0a/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
   - pip install tqdm
   - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 65535" >> /etc/security/limits.conf; echo "* hard nofile 65535" >> /etc/security/limits.conf;'
 
