@@ -1146,13 +1146,11 @@ class Deployment:
         self._route_prefix = route_prefix
         self._ray_actor_options = ray_actor_options
 
-    @PublicAPI
     @property
     def name(self) -> str:
         """Unique name of this deployment."""
         return self._name
 
-    @PublicAPI
     @property
     def version(self) -> Optional[str]:
         """Version of this deployment.
@@ -1161,7 +1159,6 @@ class Deployment:
         """
         return self._version
 
-    @PublicAPI
     @property
     def prev_version(self) -> Optional[str]:
         """Existing version of deployment to target.
@@ -1171,43 +1168,36 @@ class Deployment:
         """
         return self._prev_version
 
-    @PublicAPI
     @property
     def func_or_class(self) -> Callable:
         """Underlying class or function that this deployment wraps."""
         return self._func_or_class
 
-    @PublicAPI
     @property
     def num_replicas(self) -> int:
         """Current target number of replicas."""
         return self._config.num_replicas
 
-    @PublicAPI
     @property
     def user_config(self) -> Any:
         """Current dynamic user-provided config options."""
         return self._config.user_config
 
-    @PublicAPI
     @property
     def max_concurrent_queries(self) -> int:
         """Current max outstanding queries from each handle."""
         return self._config.max_concurrent_queries
 
-    @PublicAPI
     @property
     def route_prefix(self) -> Optional[str]:
         """HTTP route prefix that this deploymet is exposed under."""
         return self._route_prefix
 
-    @PublicAPI
     @property
     def ray_actor_options(self) -> Optional[Dict]:
         """Actor options such as resources required for each replica."""
         return self._ray_actor_options
 
-    @PublicAPI
     @property
     def init_args(self) -> Tuple[Any]:
         """Arguments passed to the underlying class' constructor."""
