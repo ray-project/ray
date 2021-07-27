@@ -1046,6 +1046,7 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     assert df.equals(dsdf)
     shutil.rmtree(dir_path)
 
+
 def test_json_write(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_json_dir")
 
