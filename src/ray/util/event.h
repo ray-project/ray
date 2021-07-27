@@ -23,6 +23,7 @@
 #include <iostream>
 #include <memory>
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
@@ -164,6 +165,16 @@ class RayEvent {
     return *this;
   }
 
+  void SetIntField(std::string key, int64_t value) { intFields_[std::move(key)] = value; }
+
+  void SetStrField(std::string key, std::string value) {
+    stringFields_[std::move(key)] = std::move(value);
+  }
+
+  void SetDoubleField(std::string key, double value) {
+    doubleFields_[std::move(key)] = value;
+  }
+
   static void ReportEvent(const std::string &severity, const std::string &label,
                           const std::string &message);
 
@@ -182,6 +193,48 @@ class RayEvent {
   rpc::Event_Severity severity_;
   std::string label_;
   std::ostringstream osstream_;
+  std::unordered_map<std::string, std::string> stringFields_;
+  std::unordered_map<std::string, int64_t> intFields_;
+  std::unordered_map<std::string, double> doubleFields_;
 };
 
+// Implementation of RAY_CUSTOM_EVENT(key1, value1, key2, value2 ...)
+namespace detail {
+// base template
+inline void RayLogEventRecursive(RayEvent & /* unused */) { return; }
+
+template <typename K, typename T,
+          typename std::enable_if<std::is_integral<T>::value, int>::type * = nullptr>
+inline void SetField(RayEvent &event, K &&key, T &&value) {
+  event.SetIntField(std::forward<K>(key), std::forward<T>(value));
+}
+
+template <
+    typename K, typename T,
+    typename std::enable_if<std::is_floating_point<T>::value, double>::type * = nullptr>
+inline void SetField(RayEvent &event, K &&key, T &&value) {
+  event.SetDoubleField(std::forward<K>(key), std::forward<T>(value));
+}
+
+template <typename K, typename T,
+          typename std::enable_if<!std::is_integral<T>::value &&
+                                      !std::is_floating_point<T>::value,
+                                  std::string>::type * = nullptr>
+inline void SetField(RayEvent &event, K &&key, T &&value) {
+  event.SetStrField(std::forward<K>(key), std::forward<T>(value));
+}
+
+// recursive vardict template
+template <typename K, typename T, typename... Args>
+inline void RayLogEventRecursive(RayEvent &event, K &&key, T &&value, Args &&... args) {
+  SetField(event, std::forward<K>(key), std::forward<T>(value));
+  RayLogEventRecursive(event, std::forward<Args>(args)...);
+}
+}  // namespace detail
+
+template <typename... Args>
+inline void RAY_CUSTOM_EVENT(Args &&... args) {
+  RayEvent event(::ray::rpc::Event_Severity::Event_Severity_ERROR, "default");
+  detail::RayLogEventRecursive(event, std::forward<Args>(args)...);
+}
 }  // namespace ray

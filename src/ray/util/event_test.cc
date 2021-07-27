@@ -205,6 +205,13 @@ TEST(EVENT_TEST, TEST_BASIC) {
   CheckEventDetail(result[3], "", "", "", "GCS", "FATAL", "", "");
 }
 
+TEST(EVENT_TEST, TEST_VARDIC_TEMPLATE) {
+  TestEventReporter::event_list.clear();
+  ray::EventManager::Instance().ClearReporters();
+  RAY_CUSTOM_EVENT("int", 123, "string", "string", "double", 1.24f);
+  RAY_CUSTOM_EVENT(std::string("key1"), 123, "string", "string", "double", 1.24f);
+}
+
 TEST(EVENT_TEST, LOG_ONE_THREAD) {
   std::string log_dir = GenerateLogDir();
 
