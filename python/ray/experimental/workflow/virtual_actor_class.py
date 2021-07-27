@@ -20,8 +20,7 @@ from ray.experimental.workflow.recovery import get_latest_output
 from ray.experimental.workflow.workflow_access import (
     get_or_create_management_actor)
 from ray.experimental.workflow import workflow_context
-from ray.experimental.workflow.step_executor import (
-    execute_readonly_virtual_actor_step)
+from ray.experimental.workflow.step_executor import execute_workflow
 
 if TYPE_CHECKING:
     from ray import ObjectRef
@@ -417,8 +416,7 @@ class VirtualActor:
         with workflow_context.workflow_step_context(self._actor_id,
                                                     self._storage.storage_url):
             if readonly:
-                return execute_readonly_virtual_actor_step(
-                    wf.id, workflow_data)
+                return execute_workflow(wf).output
             else:
                 return wf.run_async(self._actor_id)
 

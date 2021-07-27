@@ -18,8 +18,8 @@ from ray.experimental.workflow.common import (
     StepType)
 
 if TYPE_CHECKING:
-    from ray.experimental.workflow.common import (StepID, WorkflowData,
-                                                  WorkflowRef, WorkflowInputs)
+    from ray.experimental.workflow.common import (StepID, WorkflowRef,
+                                                  WorkflowInputs)
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 
@@ -59,15 +59,16 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
                 output, _ = _resolve_object_ref(step_ref)
                 get_cached_step = True
             except Exception:
-                pass
+                get_cached_step = False
         if not get_cached_step:
             wf_store = workflow_storage.get_workflow_storage()
             try:
                 output = wf_store.load_step_output(workflow_ref.step_id)
             except Exception:
+                current_step_id = workflow_context.get_current_step_id()
                 logger.warning("Failed to get the output of step "
                                f"{workflow_ref.step_id}. Trying to resume it. "
-                               f"Current step: {context.workflow_scope[-1]}")
+                               f"Current step: '{current_step_id}'")
                 step_ref = recovery.resume_workflow_step(
                     workflow_id, workflow_ref.step_id, storage_url).state
                 output, _ = _resolve_object_ref(step_ref)
@@ -149,9 +150,11 @@ def execute_workflow(
     """
     if workflow.executed:
         return workflow.result
-
-    _record_step_status(workflow.id, WorkflowStatus.RUNNING)
     workflow_data = workflow.data
+
+    if workflow_data.step_type != StepType.READONLY_ACTOR_METHOD:
+        _record_step_status(workflow.id, WorkflowStatus.RUNNING)
+
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
     state, output = _workflow_step_executor.options(
@@ -355,26 +358,6 @@ class _BakedWorkflowInputs:
     def __reduce__(self):
         return _BakedWorkflowInputs, (self.args, self.workflow_outputs,
                                       self.object_refs, self.workflow_refs)
-
-
-def execute_readonly_virtual_actor_step(
-        step_id: "StepID",
-        workflow_data: "WorkflowData") -> "WorkflowOutputType":
-    baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
-        workflow_data.inputs)
-    outer_most_step_id = ""
-    step_type = StepType.READONLY_ACTOR_METHOD
-    ret = _workflow_step_executor.options(**workflow_data.ray_options).remote(
-        step_type,
-        workflow_data.func_body,
-        workflow_context.get_workflow_step_context(),
-        step_id,
-        baked_inputs,
-        outer_most_step_id,
-        workflow_data.catch_exceptions,
-        workflow_data.max_retries,
-        last_step_of_workflow=True)
-    return ret[1]  # only return output. skip state
 
 
 def _record_step_status(step_id: "StepID", status: "WorkflowStatus") -> None:
