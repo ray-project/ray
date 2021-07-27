@@ -1,8 +1,8 @@
 import asyncio
 import json
 import logging
-import contextlib
-from ray._private.ray_logging import StandardStreamInterceptor, setup_component_logger
+import threading
+from ray._private.ray_logging import setup_component_logger
 
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
@@ -12,7 +12,8 @@ import ray.new_dashboard.modules.runtime_env.runtime_env_consts \
     as runtime_env_consts
 import ray._private.runtime_env as runtime_env
 from ray._private.utils import import_attr
-from ray.workers.pluggable_runtime_env import RuntimeEnvContext
+from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
+                                               using_thread_local_logger)
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +35,13 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         self._per_job_logger_cache = dict()
         runtime_env.PKG_DIR = dashboard_agent.runtime_env_dir
 
-    def get_or_create_logger(self, job_id):
+    def get_or_create_logger(self, job_id: bytes):
+        job_id = job_id.decode()
         if job_id not in self._per_job_logger_cache:
             params = self._logging_params.copy()
             params["filename"] = f"runtime_env_setup-{job_id}.log"
-            per_job_logger = setup_component_logger(
-                logger_name=f"runtime_env_{job_id}", **self._logging_params)
-            # Keep only the last rotated file handler we added
-            per_job_logger.handlers = [per_job_logger.handlers[-1]]
+            params["logger_name"] = f"runtime_env_{job_id}"
+            per_job_logger = setup_component_logger(**params)
             self._per_job_logger_cache[job_id] = per_job_logger
         return self._per_job_logger_cache[job_id]
 
@@ -51,11 +51,9 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             def run_setup_with_logger():
                 runtime_env: dict = json.loads(serialized_runtime_env or "{}")
                 per_job_logger = self.get_or_create_logger(request.job_id)
-                hook = StandardStreamInterceptor(per_job_logger)
-                with contextlib.redirect_stdout(hook), \
-                      contextlib.redirect_stderr(hook):
-                    print("begin setup with ", runtime_env)
-                    return self._setup(runtime_env, session_dir)
+                with using_thread_local_logger(per_job_logger):
+                    env_context = self._setup(runtime_env, session_dir)
+                return env_context
 
             loop = asyncio.get_event_loop()
             return await loop.run_in_executor(None, run_setup_with_logger)

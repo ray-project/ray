@@ -1,4 +1,29 @@
+import contextlib
 import json
+import logging
+import threading
+
+logger = logging.getLogger(__name__)
+thread_local_logger = threading.local()
+thread_local_logger.logger = None  # default
+
+
+def get_hook_logger():
+    thread_logger = thread_local_logger.logger
+    if thread_logger is None:
+        logger.warning(
+            "Tried to receive the per job logger in runtime env agent but it "
+            "hasn't been properly setup. Defaulting to dashboard_agent logger.",
+        )
+        thread_logger = logger
+    return thread_logger
+
+
+@contextlib.contextmanager
+def using_thread_local_logger(new_logger):
+    thread_local_logger.logger = new_logger
+    yield
+    thread_local_logger.logger = None
 
 
 class RuntimeEnvContext:

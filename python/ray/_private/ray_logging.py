@@ -59,6 +59,7 @@ def setup_component_logger(*,
         os.path.join(log_dir, filename),
         maxBytes=max_bytes,
         backupCount=backup_count)
+    handler.setLevel(logging_level)
     logger.setLevel(logging_level)
     handler.setFormatter(logging.Formatter(logging_format))
     logger.addHandler(handler)
