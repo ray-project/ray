@@ -115,9 +115,9 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
     deploy_replicas(num_replicas, max_batch_size)
 
     logger.info("Warming up cluster ....\n")
-    warm_up_cluster(5, http_host, http_port)
+    warm_up_cluster(10, http_host, http_port)
 
-    logger.info(f"Starting wrk trial for {trial_length} ....\n")
+    logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
     all_endpoints = list(serve.list_endpoints().keys())

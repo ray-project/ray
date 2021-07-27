@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import ray
 import requests
-import time
 
 from ray import serve
 from ray.cluster_utils import Cluster
@@ -50,15 +49,15 @@ def setup_anyscale_cluster():
     return serve_client
 
 
-def warm_up_cluster(
+@ray.remote
+def warm_up_one_cluster(
         num_warmup_iterations: int,
         http_host: str,
         http_port: str,
+        endpoint: str,
 ) -> None:
-    for endpoint in serve.list_endpoints().keys():
-        logger.info(f"Warming up {endpoint} ..")
-        for _ in range(num_warmup_iterations):
-            resp = requests.get(
-                f"http://{http_host}:{http_port}/{endpoint}").text
-            logger.info(resp)
-            time.sleep(1)
+    logger.info(f"Warming up {endpoint} ..")
+    for _ in range(num_warmup_iterations):
+        resp = requests.get(f"http://{http_host}:{http_port}/{endpoint}").text
+        logger.info(resp)
+    return endpoint

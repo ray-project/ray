@@ -29,6 +29,7 @@ import click
 import math
 import os
 import random
+import ray
 
 from ray import serve
 from ray.serve.utils import logger
@@ -40,7 +41,7 @@ from serve_test_utils import (
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
-    warm_up_cluster,
+    warm_up_one_cluster,
     NUM_CPU_PER_NODE,
     NUM_CONNECTIONS,
 )
@@ -68,27 +69,32 @@ def setup_multi_deployment_replicas(num_replicas, num_deployments):
     @serve.deployment(num_replicas=num_replica_per_deployment)
     class Echo:
         def __init__(self):
-            self.all_deployment_handles = []
+            self.all_deployment_async_handles = []
 
-        def get_random_deployment_handle(self):
+        def get_random_async_handle(self):
             # sync get_handle() and expected to be called only a few times
             # during deployment warmup so each deployment has reference to
             # all other handles to send recursive inference call
-            if len(self.all_deployment_handles) < len(all_deployment_names):
+            if len(self.all_deployment_async_handles) < len(
+                    all_deployment_names):
                 deployments = list(serve.list_deployments().values())
-                self.all_deployment_handles = [
-                    deployment.get_handle() for deployment in deployments
+                self.all_deployment_async_handles = [
+                    deployment.get_handle(sync=False)
+                    for deployment in deployments
                 ]
-            return random.choice(self.all_deployment_handles)
+
+            return random.choice(self.all_deployment_async_handles)
 
         async def handle_request(self, request, depth: int):
             # Max recursive call depth reached
             if depth > 4:
                 return "hi"
 
-            next_deployment_handle = self.get_random_deployment_handle()
-            return await next_deployment_handle.handle_request.remote(
+            next_async_handle = self.get_random_async_handle()
+            obj_ref = await next_async_handle.handle_request.remote(
                 request, depth + 1)
+
+            return await obj_ref
 
         async def __call__(self, request):
             return await self.handle_request(request, 0)
@@ -137,9 +143,15 @@ def main(num_replicas: Optional[int], num_deployments: Optional[int],
     setup_multi_deployment_replicas(num_replicas, num_deployments)
 
     logger.info("Warming up cluster ....\n")
-    warm_up_cluster(5, http_host, http_port)
+    rst_ray_refs = []
+    for endpoint in serve.list_endpoints().keys():
+        rst_ray_refs.append(
+            warm_up_one_cluster.options(num_cpus=0.1).remote(
+                10, http_host, http_port, endpoint))
+    for endpoint in ray.get(rst_ray_refs):
+        logger.info(f"Finished warming up {endpoint}")
 
-    logger.info(f"Starting wrk trial for {trial_length} ....\n")
+    logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
     all_endpoints = list(serve.list_endpoints().keys())
