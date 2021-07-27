@@ -320,7 +320,8 @@ class SampleBatch(dict):
             SampleBatch: A new SampleBatch, which has a slice of this batch's
                 data.
         """
-        deprecation_warning("SampleBatch.slice()", "SampleBatch[start:stop]", error=False)
+        deprecation_warning(
+            "SampleBatch.slice()", "SampleBatch[start:stop]", error=False)
 
         if self.get("seq_lens") is not None and len(self["seq_lens"]) > 0:
             if start < 0:
@@ -626,6 +627,9 @@ class SampleBatch(dict):
 
     @DeveloperAPI
     def set_get_interceptor(self, fn):
+        # If get-interceptor changes, must erase old intercepted values.
+        if fn is not self.get_interceptor:
+            self.intercepted_values = {}
         self.get_interceptor = fn
 
     def __repr__(self):

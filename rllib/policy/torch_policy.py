@@ -6,7 +6,6 @@ import numpy as np
 import os
 import time
 import threading
-import tree  # pip install dm_tree
 from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union, \
     TYPE_CHECKING
 
@@ -496,7 +495,6 @@ class TorchPolicy(Policy):
         # Shortcut for 1 CPU only: Store batch in `self._loaded_batches`.
         if len(self.devices) == 1 and self.devices[0].type == "cpu":
             assert buffer_index == 0
-            self._lazy_tensor_dict(batch)
             pad_batch_to_sequences_of_same_size(
                 batch=batch,
                 max_seq_len=self.max_seq_len,
@@ -504,6 +502,7 @@ class TorchPolicy(Policy):
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
             )
+            self._lazy_tensor_dict(batch)
             self._loaded_batches[0] = [batch]
             return len(batch)
 
@@ -546,21 +545,10 @@ class TorchPolicy(Policy):
     @override(Policy)
     @DeveloperAPI
     def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
-        # Shortcut for 1 CPU only: Batch should already be stored in
-        # `self._loaded_single_cpu_batch`.
-        if len(self.devices) == 1 and self.devices[0].type == "cpu":
-            assert buffer_index == 0
-
         if not self._loaded_batches[buffer_index]:
             raise ValueError(
                 "Must call Policy.load_batch_into_buffer() before "
                 "Policy.learn_on_loaded_batch()!")
-
-        if len(self.devices) > 1:
-            # Copy weights of main model to all towers.
-            state_dict = self.model.state_dict()
-            for tower in self.model_gpu_towers:
-                tower.load_state_dict(state_dict)
 
         # Get the correct slice of the already loaded batch to use,
         # based on offset and batch size.
@@ -568,6 +556,25 @@ class TorchPolicy(Policy):
             self.config.get(
                 "sgd_minibatch_size", self.config["train_batch_size"]) // \
             len(self.devices)
+
+        # Shortcut for 1 CPU only: Batch should already be stored in
+        # `self._loaded_single_cpu_batch`.
+        if len(self.devices) == 1 and self.devices[0].type == "cpu":
+            assert buffer_index == 0
+            if device_batch_size >= len(self._loaded_batches[0][0]):
+                batch = self._loaded_batches[0][0]
+            else:
+                batch = self._loaded_batches[0][0][offset:offset +
+                                                   device_batch_size]
+
+            return self.learn_on_batch(batch)
+
+        if len(self.devices) > 1:
+            # Copy weights of main model to all towers.
+            state_dict = self.model.state_dict()
+            for tower in self.model_gpu_towers:
+                tower.load_state_dict(state_dict)
+
         if device_batch_size >= sum(
                 len(s) for s in self._loaded_batches[buffer_index]):
             device_batches = self._loaded_batches[buffer_index]
@@ -603,8 +610,7 @@ class TorchPolicy(Policy):
                 LEARNER_STATS_KEY: self.extra_grad_info(batch)
             }
 
-        #TODO: do this per tower as well.
-        #fetches = self.extra_compute_grad_fetches()
+        batch_fetches.update(self.extra_compute_grad_fetches())
 
         return batch_fetches
 

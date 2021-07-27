@@ -23,7 +23,8 @@ from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical, TorchSquashedGaussian, TorchDiagGaussian, TorchBeta)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.torch_ops import apply_grad_clipping, huber_loss
+from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+    concat_multi_gpu_td_errors, huber_loss
 from ray.rllib.utils.typing import LocalOptimizer, ModelInputDict, \
     TensorType, TrainerConfigDict
 
@@ -343,15 +344,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     Returns:
         Dict[str, TensorType]: The stats dict.
     """
-    td_error = torch.cat(
-        [
-            getattr(t, "td_error", torch.tensor([0.0]))
-            for t in policy.model_gpu_towers
-        ],
-        dim=0)
     return {
-        "td_error": td_error,
-        "mean_td_error": torch.mean(td_error),
         "actor_loss": torch.mean(policy.actor_loss),
         "critic_loss": torch.mean(torch.stack(policy.critic_loss)),
         "alpha_loss": torch.mean(policy.alpha_loss),
@@ -513,6 +506,7 @@ SACTorchPolicy = build_policy_class(
     validate_spaces=validate_spaces,
     before_loss_init=setup_late_mixins,
     make_model_and_action_dist=build_sac_model_and_action_dist,
+    extra_learn_fetches_fn=concat_multi_gpu_td_errors,
     mixins=[TargetNetworkMixin, ComputeTDErrorMixin],
     action_distribution_fn=action_distribution_fn,
 )
