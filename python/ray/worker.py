@@ -720,11 +720,11 @@ def init(
             and the API is subject to change.
 
     Returns:
-        If the provided address included a protocol, for example
-        "ray://1.2.3.4:10001", then a ClientContext is returned with
-        information such as settings, server versions for ray and python, and
-        the dashboard_url. Otherwise, returns address information about the
-        started processes.
+        If the provided address includes a protocol, for example by prepending
+        "ray://" to the address to get "ray://1.2.3.4:10001", then a
+        ClientContext is returned with information such as settings, server
+        versions for ray and python, and the dashboard_url. Otherwise,
+        returns address information about the started processes.
 
     Raises:
         Exception: An exception is raised if an inappropriate combination of
