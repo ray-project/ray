@@ -22,7 +22,7 @@ import ray.experimental.data.tests.util as util
 
 def maybe_pipeline(ds, enabled):
     if enabled:
-        return ds.pipeline(per_stage_parallelism=1)
+        return ds.pipeline(parallelism=1)
     else:
         return ds
 

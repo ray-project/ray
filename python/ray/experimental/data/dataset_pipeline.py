@@ -39,7 +39,7 @@ class DatasetPipeline(Generic[T]):
 
     A DatasetPipeline can be created by either repeating a Dataset
     (``ds.repeat(times=None)``), by turning a single Dataset into a pipeline
-    (``ds.pipeline(per_stage_parallelism=10)``), or defined explicitly using
+    (``ds.pipeline(parallelism=10)``), or defined explicitly using
     ``DatasetPipeline.from_iterable()``.
 
     DatasetPipeline supports the all the per-record transforms of Datasets

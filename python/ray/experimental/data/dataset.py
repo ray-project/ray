@@ -1266,8 +1266,7 @@ class Dataset(Generic[T]):
 
         return DatasetPipeline(Iterable(self), length=times)
 
-    def pipeline(self, *,
-                 per_stage_parallelism: int = 10) -> "DatasetPipeline[T]":
+    def pipeline(self, *, parallelism: int = 10) -> "DatasetPipeline[T]":
         """Pipeline the dataset execution by splitting its blocks into groups.
 
         Transformations prior to the call to ``pipeline()`` are evaluated in
@@ -1296,11 +1295,11 @@ class Dataset(Generic[T]):
         Examples:
             >>> # Create an inference pipeline.
             >>> ds = ray.data.read_binary_files(dir)
-            >>> pipe = ds.pipeline(per_stage_parallelism=10).map(infer)
+            >>> pipe = ds.pipeline(parallelism=10).map(infer)
             DatasetPipeline(num_stages=2, length=40)
 
             >>> # The higher the stage parallelism, the shorter the pipeline.
-            >>> pipe = ds.pipeline(per_stage_parallelism=20).map(infer)
+            >>> pipe = ds.pipeline(parallelism=20).map(infer)
             DatasetPipeline(num_stages=2, length=20)
 
             >>> # Outputs can be incrementally read from the pipeline.
@@ -1308,11 +1307,11 @@ class Dataset(Generic[T]):
             ...    print(item)
 
         Args:
-            per_stage_parallelism: The parallelism (number of blocks) per
-                stage. Increasing per_stage_parallelism increases
-                pipeline throughput, but also increases the latency to initial
-                output, since it decreases the length of the pipeline. Setting
-                this to infinity effectively disables pipelining.
+            parallelism: The parallelism (number of blocks) per stage.
+                Increasing parallelism increases pipeline throughput, but also
+                increases the latency to initial output, since it decreases the
+                length of the pipeline. Setting this to infinity effectively
+                disables pipelining.
         """
         from ray.experimental.data.dataset_pipeline import DatasetPipeline
 
@@ -1333,7 +1332,7 @@ class Dataset(Generic[T]):
 
         class Iterable:
             def __init__(self, blocks):
-                self._splits = blocks.split(split_size=per_stage_parallelism)
+                self._splits = blocks.split(split_size=parallelism)
 
             def __iter__(self):
                 return Iterator(self._splits)

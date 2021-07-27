@@ -22,17 +22,16 @@ def test_pipeline_actors(shutdown_only):
 def test_basic_pipeline(ray_start_regular_shared):
     ds = ray.experimental.data.range(10)
 
-    pipe = ds.pipeline(per_stage_parallelism=1)
+    pipe = ds.pipeline(parallelism=1)
     assert str(pipe) == "DatasetPipeline(length=10, num_stages=1)"
     for _ in range(2):
         assert pipe.count() == 10
 
-    pipe = ds.pipeline(
-        per_stage_parallelism=1).map(lambda x: x).map(lambda x: x)
+    pipe = ds.pipeline(parallelism=1).map(lambda x: x).map(lambda x: x)
     assert str(pipe) == "DatasetPipeline(length=10, num_stages=3)"
     assert pipe.take() == list(range(10))
 
-    pipe = ds.pipeline(per_stage_parallelism=999)
+    pipe = ds.pipeline(parallelism=999)
     assert str(pipe) == "DatasetPipeline(length=1, num_stages=1)"
     assert pipe.count() == 10
 
@@ -67,30 +66,30 @@ def test_repartition(ray_start_regular_shared):
 
 
 def test_iter_batches(ray_start_regular_shared):
-    pipe = ray.experimental.data.range(10).pipeline(per_stage_parallelism=2)
+    pipe = ray.experimental.data.range(10).pipeline(parallelism=2)
     batches = list(pipe.iter_batches())
     assert len(batches) == 10
     assert all(len(e) == 1 for e in batches)
 
 
 def test_iter_datasets(ray_start_regular_shared):
-    pipe = ray.experimental.data.range(10).pipeline(per_stage_parallelism=2)
+    pipe = ray.experimental.data.range(10).pipeline(parallelism=2)
     ds = list(pipe.iter_datasets())
     assert len(ds) == 5
 
-    pipe = ray.experimental.data.range(10).pipeline(per_stage_parallelism=5)
+    pipe = ray.experimental.data.range(10).pipeline(parallelism=5)
     ds = list(pipe.iter_datasets())
     assert len(ds) == 2
 
 
 def test_foreach_dataset(ray_start_regular_shared):
-    pipe = ray.experimental.data.range(5).pipeline(per_stage_parallelism=2)
+    pipe = ray.experimental.data.range(5).pipeline(parallelism=2)
     pipe = pipe.foreach_dataset(lambda ds: ds.map(lambda x: x * 2))
     assert pipe.take() == [0, 2, 4, 6, 8]
 
 
 def test_schema(ray_start_regular_shared):
-    pipe = ray.experimental.data.range(5).pipeline(per_stage_parallelism=2)
+    pipe = ray.experimental.data.range(5).pipeline(parallelism=2)
     assert pipe.schema() == int
 
 
@@ -117,7 +116,7 @@ def test_parquet_write(ray_start_regular_shared, tmp_path):
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
     ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
-    ds = ds.pipeline(per_stage_parallelism=1)
+    ds = ds.pipeline(parallelism=1)
     path = os.path.join(tmp_path, "test_parquet_dir")
     os.mkdir(path)
     ds._set_uuid("data")
