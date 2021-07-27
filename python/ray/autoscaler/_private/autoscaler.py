@@ -1,5 +1,5 @@
 from collections import defaultdict, namedtuple, Counter
-from typing import Any, Optional, Dict, List, Tuple
+from typing import Any, Optional, Dict, List
 import copy
 import logging
 import math
@@ -10,6 +10,7 @@ import threading
 import time
 import yaml
 import collections
+from enum import Enum
 
 try:
     from urllib3.exceptions import MaxRetryError
@@ -54,6 +55,8 @@ UpdateInstructions = namedtuple(
 AutoscalerSummary = namedtuple(
     "AutoscalerSummary",
     ["active_nodes", "pending_nodes", "pending_launches", "failed_nodes"])
+
+KeepOrTerminate = Enum("KeepOrTerminate", "keep terminate decide_later")
 
 
 class StandardAutoscaler:
@@ -222,54 +225,62 @@ class StandardAutoscaler:
             nodes_allowed_to_terminate = self._get_nodes_allowed_to_terminate(
                 sorted_node_ids)
 
+        nodes_to_keep = []
+
+        def keep_node(node_id) -> None:
+            # Update per-type counts.
+            tags = self.provider.node_tags(node_id)
+            if TAG_RAY_USER_NODE_TYPE in tags:
+                node_type = tags[TAG_RAY_USER_NODE_TYPE]
+                node_type_counts[node_type] += 1
+            nodes_to_keep.append(node_id)
+
+        def terminate_node(node_id, kind, why=None) -> None:
+            why = why or kind
+            logger.info("StandardAutoscaler: "
+                        "{}: Terminating {} node.".format(node_id, kind))
+            self.event_summarizer.add(
+                "Removing {} nodes of type " + self._get_node_type(node_id) +
+                " ({}).".format(why),
+                quantity=1,
+                aggregate=operator.add)
+            nodes_to_terminate.append(node_id)
+
+        nodes_we_could_terminate = []
+
         for node_id in sorted_node_ids:
             # Make sure to not kill idle node types if the number of workers
             # of that type is lower/equal to the min_workers of that type
             # or it is needed for request_resources().
-            should_keep_worker_of_node_type, node_type_counts = \
-                self._keep_worker_of_node_type(node_id, node_type_counts)
-            if ((should_keep_worker_of_node_type
+            should_keep_or_terminate = self._keep_worker_of_node_type(
+                node_id, node_type_counts)
+            if ((should_keep_or_terminate == KeepOrTerminate.keep
                  or not nodes_allowed_to_terminate.get(node_id, True))
                     and self.launch_config_ok(node_id)):
+                keep_node(node_id)
+                continue
+            if should_keep_or_terminate == KeepOrTerminate.terminate:
+                terminate_node(node_id, "max_workers_per_type")
                 continue
 
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon:
-                logger.info("StandardAutoscaler: "
-                            "{}: Terminating idle node.".format(node_id))
-                self.event_summarizer.add(
-                    "Removing {} nodes of type " + self._get_node_type(node_id)
-                    + " (idle).",
-                    quantity=1,
-                    aggregate=operator.add)
-                nodes_to_terminate.append(node_id)
+                terminate_node(node_id, "idle")
             elif not self.launch_config_ok(node_id):
-                logger.info("StandardAutoscaler: "
-                            "{}: Terminating outdated node.".format(node_id))
-                self.event_summarizer.add(
-                    "Removing {} nodes of type " + self._get_node_type(node_id)
-                    + " (outdated).",
-                    quantity=1,
-                    aggregate=operator.add)
-                nodes_to_terminate.append(node_id)
-
-        if nodes_to_terminate:
-            self._terminate_nodes_and_cleanup(nodes_to_terminate)
-            nodes = self.workers()
-
+                terminate_node(node_id, "outdated")
+            else:
+                keep_node(node_id)
+                nodes_we_could_terminate.append(node_id)
         # Terminate nodes if there are too many
-        nodes_to_terminate = []
-        while (len(nodes) -
-               len(nodes_to_terminate)) > self.config["max_workers"] and nodes:
-            to_terminate = nodes.pop()
-            logger.info("StandardAutoscaler: "
-                        "{}: Terminating unneeded node.".format(to_terminate))
-            self.event_summarizer.add(
-                "Removing {} nodes of type " +
-                self._get_node_type(to_terminate) + " (max workers).",
-                quantity=1,
-                aggregate=operator.add)
-            nodes_to_terminate.append(to_terminate)
+        num_nodes_to_terminate = len(nodes_to_keep) - \
+            self.config["max_workers"]
+        num_nodes_to_terminate = min(num_nodes_to_terminate,
+                                     len(nodes_we_could_terminate))
+        exra_nodes_to_terminate = nodes_we_could_terminate[
+            -num_nodes_to_terminate:] if num_nodes_to_terminate > 0 else []
+
+        for node_id in exra_nodes_to_terminate:
+            terminate_node(node_id, "unneeded", "max workers")
 
         if nodes_to_terminate:
             self._terminate_nodes_and_cleanup(nodes_to_terminate)
@@ -483,45 +494,54 @@ class StandardAutoscaler:
                 nodes_allowed_to_terminate[node_id] = False
         return nodes_allowed_to_terminate
 
-    def _keep_worker_of_node_type(self, node_id: NodeID,
-                                  node_type_counts: Dict[NodeType, int]
-                                  ) -> Tuple[bool, Dict[NodeType, int]]:
+    def _keep_worker_of_node_type(
+            self, node_id: NodeID,
+            node_type_counts: Dict[NodeType, int]) -> KeepOrTerminate:
         """Determines if a worker should be kept based on the min_workers
-        constraint of the worker's node_type.
+        and max_workers constraint of the worker's node_type.
 
-        Returns True exactly when both of the following hold:
+        Returns KeepOrTerminate.keep when both of the following hold:
         (a) The worker's node_type is present among the keys of the current
             config's available_node_types dict.
         (b) Deleting the node would violate the min_workers constraint for that
             worker's node_type.
 
-        Also updates and returns the dictionary of node type counts.
+        Returns KeepOrTerminate.terminate when both the following hold:
+        (a) The worker's node_type is present among the keys of the current
+            config's available_node_types dict.
+        (b) Keeping the node would violate the max_workers constraint for that
+            worker's node_type.
+
+        Return KeepOrTerminate.decide_later otherwise.
+
 
         Args:
             node_type_counts(Dict[NodeType, int]): The non_terminated node
                 types counted so far.
         Returns:
-            bool: True if the node should be kept. False otherwise.
-            Dict[NodeType, int]: Updated node type counts
+            KeepOrTerminate: keep if the node should be kept, terminate if the
+            node should be terminated, decide_later if we could possibly
+            terminate it.
         """
-        new_node_type_counts = copy.deepcopy(node_type_counts)
         tags = self.provider.node_tags(node_id)
         if TAG_RAY_USER_NODE_TYPE in tags:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
+
+            min_workers = self.available_node_types.get(node_type, {}).get(
+                "min_workers", 0)
+            max_workers = self.available_node_types.get(node_type, {}).get(
+                "max_workers", 0)
             if node_type not in self.available_node_types:
                 # The node type has been deleted from the cluster config.
-                # Don't keep the node.
-                return False, new_node_type_counts
-            new_node_type_counts[node_type] += 1
-            min_workers = self.available_node_types[node_type].get(
-                "min_workers", 0)
-            max_workers = self.available_node_types[node_type].get(
-                "max_workers", 0)
-            if new_node_type_counts[node_type] <= min(min_workers,
-                                                      max_workers):
-                return True, new_node_type_counts
+                # Allow terminating it if needed.
+                return KeepOrTerminate.decide_later
+            new_count = node_type_counts[node_type] + 1
+            if new_count <= min(min_workers, max_workers):
+                return KeepOrTerminate.keep
+            if new_count > max_workers and max_workers > 0:
+                return KeepOrTerminate.terminate
 
-        return False, new_node_type_counts
+        return KeepOrTerminate.decide_later
 
     def _node_resources(self, node_id):
         node_type = self.provider.node_tags(node_id).get(

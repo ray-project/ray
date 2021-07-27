@@ -340,6 +340,43 @@ MOCK_DEFAULT_CONFIG = {
     "worker_start_ray_commands": [],
 }
 
+TINY_CLUSTER = {
+    "cluster_name": "default",
+    "max_workers": 10,
+    "provider": {
+        "type": "mock",
+        "region": "us-east-1",
+        "availability_zone": "us-east-1a",
+    },
+    "docker": {
+        "image": "example",
+        "container_name": "mock",
+    },
+    "auth": {
+        "ssh_user": "ubuntu",
+        "ssh_private_key": os.devnull,
+    },
+    "available_node_types": {
+        "ray.worker.default": {
+            "min_workers": 10,
+            "max_workers": 10,
+            "resources": {},
+            "node_config": {
+                "worker_default_prop": 7
+            }
+        }
+    },
+    "worker_nodes": {},
+    "file_mounts": {},
+    "cluster_synced_files": [],
+    "initialization_commands": [],
+    "setup_commands": [],
+    "head_setup_commands": [],
+    "worker_setup_commands": [],
+    "head_start_ray_commands": [],
+    "worker_start_ray_commands": [],
+}
+
 
 class LoadMetricsTest(unittest.TestCase):
     def testHeartbeat(self):
@@ -1125,7 +1162,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
-        # Update the config to reduce the cluster size
+        # Update the config to increase the cluster size
         new_config["min_workers"] = 10
         new_config["max_workers"] = 10
         self.write_config(new_config)
@@ -1143,8 +1180,8 @@ class AutoscalingTest(unittest.TestCase):
         # Check the launch failure event is generated.
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
-        assert ("Removing 1 nodes of type "
-                "ray-legacy-worker-node-type (max workers)." in events), events
+        assert ("Removing 1 nodes of type ray-legacy-worker-node-type "
+                "(max_workers_per_type)." in events)
         assert mock_metrics.stopped_nodes.inc.call_count == 1
         mock_metrics.running_workers.set.assert_called_with(10)
 
@@ -1707,6 +1744,49 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         autoscaler.update()
         self.waitFor(lambda: len(runner.calls) > 0)
+
+    def testScaleDownMaxWorkers(self):
+        config = copy.deepcopy(TINY_CLUSTER)
+        self.provider = MockProvider()
+        lm = LoadMetrics()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(10)])
+        config_path = self.write_config(config)
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(
+            self.provider.non_terminated_nodes({
+                TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+            })) == 0
+        autoscaler.update()
+        autoscaler.update()
+        self.waitForNodes(
+            10, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+
+        config["available_node_types"]["ray.worker.default"]["min_workers"] = 1
+        config["available_node_types"]["ray.worker.default"]["max_workers"] = 9
+        self.write_config(config)
+        autoscaler.update()
+        self.waitForNodes(9, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        assert autoscaler.pending_launches.value == 0
+        assert len(
+            self.provider.non_terminated_nodes({
+                TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+            })) == 9
+        config["min_workers"] = 2
+        config["max_workers"] = 2
+        self.write_config(config)
+        autoscaler.update()
+        self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        events = autoscaler.event_summarizer.summary()
+        assert ("Removing 1 nodes of type "
+                "ray.worker.default (max_workers_per_type)." in events)
+        assert ("Removing 7 nodes of type ray.worker.default (max workers)." in
+                events)
 
     def testScaleUpBasedOnLoad(self):
         config = SMALL_CLUSTER.copy()
