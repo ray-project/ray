@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     import modin
     import pyspark
 
+import time
 import ray
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
@@ -115,9 +116,14 @@ def read_datasource(datasource: Datasource[T],
         Dataset holding the data read from the datasource.
     """
 
+    start = time.time()
     read_tasks = datasource.prepare_read(parallelism, **read_args)
+    print(f"prepare_read time: {time.time() - start}")
+    print(
+        f"Number of read tasks: {len(read_tasks)}, parallelism: {parallelism}")
+    start = time.time()
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     def remote_read(task: ReadTask) -> Block:
         return task()
 
@@ -128,7 +134,9 @@ def read_datasource(datasource: Datasource[T],
         calls.append(lambda task=task: remote_read.remote(task))
         metadata.append(task.get_metadata())
 
-    return Dataset(LazyBlockList(calls, metadata))
+    t = Dataset(LazyBlockList(calls, metadata, parallelism))
+    print(f"lazy construction time: {time.time() - start}")
+    return t
 
 
 @PublicAPI(stability="beta")
