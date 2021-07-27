@@ -251,7 +251,7 @@ class StandardAutoscaler:
                 aggregate=operator.add)
             nodes_to_terminate.append(node_id)
 
-        nodes_we_could_terminate = []
+        nodes_we_could_terminate: List[NodeID] = []
 
         for node_id in sorted_node_ids:
             # Make sure to not kill idle node types if the number of workers
