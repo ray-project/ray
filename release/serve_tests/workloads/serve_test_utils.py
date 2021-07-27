@@ -271,7 +271,6 @@ def run_wrk_on_all_nodes(trial_length: str,
     """
     all_metrics = defaultdict(list)
     all_wrk_stdout = []
-    all_alive_ray_nodes = [node for node in ray.nodes() if node["Alive"]]
     rst_ray_refs = []
     for node in ray.nodes():
         if node["Alive"]:
