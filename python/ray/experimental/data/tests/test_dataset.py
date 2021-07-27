@@ -1141,4 +1141,4 @@ def test_sort_arrow(ray_start_regular_shared, num_items, parallelism):
 
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-v", __file__, "-k", "sort"]))
+    sys.exit(pytest.main(["-v", __file__]))
