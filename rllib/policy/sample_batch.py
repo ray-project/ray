@@ -298,10 +298,10 @@ class SampleBatch(dict):
         for i in range(self.count):
             next_eps_id = self[SampleBatch.EPS_ID][i]
             if next_eps_id != cur_eps_id:
-                slices.append(self.slice(offset, i))
+                slices.append(self[offset:i])
                 offset = i
                 cur_eps_id = next_eps_id
-        slices.append(self.slice(offset, self.count))
+        slices.append(self[offset:self.count])
         for s in slices:
             slen = len(set(s[SampleBatch.EPS_ID]))
             assert slen == 1, (s, slen)
@@ -320,8 +320,7 @@ class SampleBatch(dict):
             SampleBatch: A new SampleBatch, which has a slice of this batch's
                 data.
         """
-        deprecation_warning(
-            "SampleBatch.slice()", "SampleBatch[start:stop]", error=False)
+        deprecation_warning("SampleBatch.slice()", "SampleBatch[start:stop]", error=False)
 
         if self.get("seq_lens") is not None and len(self["seq_lens"]) > 0:
             if start < 0:
@@ -436,14 +435,19 @@ class SampleBatch(dict):
 
             return slices
 
-        slices, state_slices = self._get_slice_indices(size)
-        if len(state_slices) == 0:
-            timeslices = [self.slice(i, j) for i, j in slices]
         else:
-            timeslices = [
-                self.slice(i, j, si, sj) for (i, j), (si, sj) in slices
-            ]
-        return timeslices
+            assert isinstance(size, int)
+
+            slices = []
+            left = len(self)
+            start = 0
+            while left:
+                stop = start + size
+                slices.append(self[start:stop])
+                left -= size
+                start = stop
+
+            return slices
 
     def zero_pad(self, max_seq_len: int, exclude_states: bool = True):
         """Zero-pad the data in this SampleBatch in place.

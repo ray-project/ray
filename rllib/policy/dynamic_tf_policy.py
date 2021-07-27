@@ -448,6 +448,9 @@ class DynamicTFPolicy(TFPolicy):
             batch: SampleBatch,
             buffer_index: int = 0,
     ) -> int:
+        # Set the is_training flag of the batch.
+        batch.is_training = True
+
         # Shortcut for 1 CPU only: Store batch in
         # `self._loaded_single_cpu_batch`.
         if len(self.devices) == 1 and self.devices[0] == "/cpu:0":

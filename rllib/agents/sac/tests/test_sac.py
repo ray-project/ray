@@ -59,7 +59,7 @@ class TestSAC(unittest.TestCase):
     def setUpClass(cls) -> None:
         np.random.seed(42)
         torch.manual_seed(42)
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:

@@ -198,9 +198,8 @@ class TorchPolicy(Policy):
 
         # Create n sample-batch buffers (num_multi_gpu_tower_stacks), each
         # one with m towers (num_gpus).
-        if len(self.devices) > 1 or any("gpu" in d for d in self.devices):
-            num_buffers = self.config.get("num_multi_gpu_tower_stacks", 1)
-            self._loaded_batches = [[] for _ in range(num_buffers)]
+        num_buffers = self.config.get("num_multi_gpu_tower_stacks", 1)
+        self._loaded_batches = [[] for _ in range(num_buffers)]
 
         self.dist_class = action_distribution_class
         self.action_sampler_fn = action_sampler_fn
@@ -491,14 +490,13 @@ class TorchPolicy(Policy):
             batch: SampleBatch,
             buffer_index: int = 0,
     ) -> int:
-        assert isinstance(batch, SampleBatch) and batch.zero_padded is False
-
         # Set the is_training flag of the batch.
         batch.is_training = True
 
         # Shortcut for 1 CPU only: Store batch in `self._loaded_batches`.
-        if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
+        if len(self.devices) == 1 and self.devices[0].type == "cpu":
             assert buffer_index == 0
+            self._lazy_tensor_dict(batch)
             pad_batch_to_sequences_of_same_size(
                 batch=batch,
                 max_seq_len=self.max_seq_len,
@@ -550,7 +548,7 @@ class TorchPolicy(Policy):
     def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
         # Shortcut for 1 CPU only: Batch should already be stored in
         # `self._loaded_single_cpu_batch`.
-        if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
+        if len(self.devices) == 1 and self.devices[0].type == "cpu":
             assert buffer_index == 0
 
         if not self._loaded_batches[buffer_index]:
@@ -616,35 +614,16 @@ class TorchPolicy(Policy):
     def compute_gradients(self,
                           postprocessed_batch: SampleBatch) -> ModelGradients:
 
+        assert len(self.devices) == 1
+
+        postprocessed_batch.is_training = True
+        self._lazy_tensor_dict(postprocessed_batch, device=self.devices[0])
+
         # Do the (maybe parallelized) gradient calculation step.
         tower_outputs = self._multi_gpu_parallel_grad_calc(
             [postprocessed_batch])
 
-        # Multi device (GPU) case.
-        if len(self.devices) > 1:
-            # Mean-reduce over GPU-towers.
-            all_grads = []
-            for i in range(len(tower_outputs[0][0])):
-                if tower_outputs[0][0][i] is not None:
-                    all_grads.append(
-                        torch.mean(
-                            torch.stack([
-                                t[0][i].to(self.device) for t in tower_outputs
-                            ]),
-                            dim=0))
-                else:
-                    all_grads.append(None)
-            # Set main model's grads to mean-reduced values.
-            for i, p in enumerate(self.model.parameters()):
-                p.grad = all_grads[i]
-            # Reduce stats over towers as well.
-            from ray.rllib.execution.train_ops import all_tower_reduce
-            grad_info = tree.map_structure_with_path(
-                lambda p, *t: all_tower_reduce(p, *t),
-                *[t[1] for t in tower_outputs])
-        # Single device case.
-        else:
-            all_grads, grad_info = tower_outputs[0]
+        all_grads, grad_info = tower_outputs[0]
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.extra_grad_info(postprocessed_batch))

@@ -188,11 +188,6 @@ def validate_config(config: TrainerConfigDict) -> None:
                 "'complete_episodes'. Setting batch_mode=complete_episodes.")
             config["batch_mode"] = "complete_episodes"
 
-    if config["simple_optimizer"] != DEPRECATED_VALUE or \
-            config["simple_optimizer"] is False:
-        logger.warning("`simple_optimizer` must be True (or unset) for DDPG!")
-        config["simple_optimizer"] = True
-
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
     """Policy class picker function. Class is chosen based on DL-framework.
