@@ -84,8 +84,7 @@ class WorkerGroup:
         else:
             done_refs = [w.__ray_terminate__.remote() for w in self.workers]
             # Wait for actors to die gracefully.
-            done, not_done = ray.wait(
-                done_refs, timeout=patience_s)
+            done, not_done = ray.wait(done_refs, timeout=patience_s)
             if not_done:
                 # If all actors are not able to die gracefully, then kill them.
                 for worker in self.workers:
