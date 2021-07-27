@@ -135,12 +135,19 @@ def read_datasource(datasource: Datasource[T],
     if metadata and metadata[0].schema is None:
 
         @ray.remote
-        def get_metadata(block: Block) -> BlockMetadata:
+        def get_schema(block: Block) -> Any:
             return BlockAccessor.for_block(block).get_metadata(
-                input_files=metadata[0].input_files)
+                input_files=None).schema
 
-        meta0 = ray.get(get_metadata.remote(next(iter(block_list))))
-        block_list.set_metadata(0, meta0)
+        schema0 = ray.get(get_schema.remote(next(iter(block_list))))
+        block_list.set_metadata(
+            0,
+            BlockMetadata(
+                num_rows=metadata[0].num_rows,
+                size_bytes=metadata[0].size_bytes,
+                schema=schema0,
+                input_files=metadata[0].input_files,
+            ))
 
     return Dataset(block_list)
 
