@@ -8,7 +8,7 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import ComputeGradients, AverageGradients, \
-    ApplyGradients, TrainTFMultiGPU, TrainOneStep
+    ApplyGradients, MultiGPUTrainOneStep, TrainOneStep
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -66,7 +66,7 @@ def execution_plan(workers: WorkerSet,
         if config["simple_optimizer"]:
             train_step_op = TrainOneStep(workers)
         else:
-            train_step_op = TrainTFMultiGPU(
+            train_step_op = MultiGPUTrainOneStep(
                 workers=workers,
                 sgd_minibatch_size=config["train_batch_size"],
                 num_sgd_iter=1,

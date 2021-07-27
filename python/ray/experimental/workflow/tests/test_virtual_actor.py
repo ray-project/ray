@@ -40,12 +40,12 @@ def init_virtual_actor(x):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular",
+    "workflow_start_regular",
     [{
         "num_cpus": 4  # We need more CPUs, otherwise 'create()' blocks 'get()'
     }],
     indirect=True)
-def test_readonly_actor(ray_start_regular):
+def test_readonly_actor(workflow_start_regular):
     actor = Counter.get_or_create("Counter", 42)
     ray.get(actor.ready())
     assert actor.readonly_get.run() == 42
@@ -88,14 +88,19 @@ class SlowInit:
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular",
+    "workflow_start_regular",
     [{
         "num_cpus": 4  # We need more CPUs, otherwise 'create()' blocks 'get()'
     }],
     indirect=True)
-def test_actor_ready(ray_start_regular):
+def test_actor_ready(workflow_start_regular):
     actor = SlowInit.get_or_create("SlowInit", 42)
     with pytest.raises(virtual_actor_class.VirtualActorNotInitializedError):
         actor.readonly_get.run()
     ray.get(actor.ready())
     assert actor.readonly_get.run() == 42
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
