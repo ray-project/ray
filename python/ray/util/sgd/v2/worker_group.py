@@ -9,8 +9,7 @@ T = TypeVar("T")
 
 
 class WorkerGroup:
-    """
-    A group of workers (Ray Actors) that can execute arbitrary functions.
+    """Group of Ray Actors that can execute arbitrary functions.
 
     ``WorkerGroup`` launches Ray actors according to the given
     specification. It can then execute arbitrary Python functions in each of
@@ -29,7 +28,7 @@ class WorkerGroup:
 
     Example:
 
-        .. code_block:: python
+    .. code_block:: python
 
         worker_group = WorkerGroup(num_workers=2)
         output = worker_group.execute(lambda: 1)
