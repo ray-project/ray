@@ -1,8 +1,6 @@
 import logging
 from typing import Callable, List, TypeVar
 
-from inspect import signature
-
 import ray
 from ray.types import ObjectRef
 
@@ -101,12 +99,13 @@ class WorkerGroup:
         logger.debug("Shutdown successful.")
         self.workers = []
 
-    def execute_async(self, func: Callable[[], T]) -> List[ObjectRef]:
+    def execute_async(self, func: Callable[[], T], *args,
+                      **kwargs) -> List[ObjectRef]:
         """Execute ``func`` on each worker and return the futures.
 
         Args:
             func (Callable): A function to call on each worker.
-                The function must not require any arguments.
+            args, kwargs: Passed directly into func.
 
         Returns:
             (List[ObjectRef]) A list of ``ObjectRef`` representing the
@@ -119,42 +118,52 @@ class WorkerGroup:
                                "group has most likely been shut down. Please"
                                "create a new WorkerGroup or restart this one.")
 
-        num_args = len(signature(func).parameters)
-        if num_args != 0:
-            raise ValueError("The provided function should not require"
-                             f"any arguments, but it is requiring {num_args} "
-                             "instead.")
+        return [w.execute.remote(func, *args, **kwargs) for w in self.workers]
 
-        return [w.execute.remote(func) for w in self.workers]
-
-    def execute(self, func: Callable[[], T]) -> List[T]:
+    def execute(self, func: Callable[[], T], *args, **kwargs) -> List[T]:
         """Execute ``func`` on each worker and return the outputs of ``func``.
 
         Args:
             func (Callable): A function to call on each worker.
-                The function must not require any arguments.
+            args, kwargs: Passed directly into func.
 
         Returns:
             (List[T]) A list containing the output of ``func`` from each
                 worker. The order is the same as ``self.workers``.
 
         """
-        return ray.get(self.execute_async(func))
+        return ray.get(self.execute_async(func, *args, **kwargs))
+
+    def execute_single(self, worker_index: int, func: Callable[[], T], *args,
+                       **kwargs) -> T:
+        """Execute ``func`` on worker with index ``worker_index``.
+
+        Args:
+            worker_index (int): The index to execute func on.
+            func (Callable): A function to call on the first worker.
+            args, kwargs: Passed directly into func.
+
+        Returns:
+            (T) The output of func.
+
+        """
+        if worker_index >= len(self.workers):
+            raise ValueError(f"The provided worker_index {worker_index} is "
+                             f"not valid for {self.num_workers} workers.")
+        return ray.get(self.workers[worker_index].execute.remote(
+            func, *args, **kwargs))
+
+    def __len__(self):
+        return len(self.workers)
 
 
 class BaseWorker:
     """A class to execute arbitrary functions. Does not hold any state."""
 
-    def execute(self, func: Callable[[], T]) -> T:
+    def execute(self, func: Callable[[], T], *args, **kwargs) -> T:
         """Executes the input function and returns the output.
         Args:
             func(Callable): A function that does not take any arguments.
+            args, kwargs: Passed directly into func
         """
-        return func()
-
-class DeactivatedWorkerGroup:
-    def __getattr__(self, *args, **kwargs):
-        raise RuntimeError(
-            "This Trainer is not active. It is either shutdown already or "
-            "never started in the first place. Either create a new Trainer "
-            "or start this one again.")
+        return func(*args, **kwargs)
