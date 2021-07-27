@@ -779,7 +779,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "differ from those on the running container.")
         return re_init_required
 
-    def run_init(self, *, as_head, file_mounts, sync_run_yet):
+    def run_init(self, *, as_head: bool, file_mounts: Dict[str, str], sync_run_yet: bool ):
         BOOTSTRAP_MOUNTS = [
             "~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"
         ]
@@ -818,6 +818,17 @@ class DockerCommandRunner(CommandRunnerInterface):
                 self.run(
                     f"{self.docker_cmd} stop {self.container_name}",
                     run_env="host")
+        elif not sync_run_yet:
+            # This ensures that the docker_mount_location is created with the
+            # correct permissions. Without this, Docker will create the
+            # directory with `root` ownership.
+            docker_mount_location = self._get_docker_host_mount_location(
+                    self.ssh_command_runner.cluster_name)
+            self.ssh_command_runner.run(
+                f"mkdir -p {docker_mount_location} && chown -R "
+                f"{self.ssh_command_runner.ssh_user} {docker_mount_location}",
+                silent=is_rsync_silent())     
+            
 
         if (not container_running) or requires_re_init:
             # Get home directory
