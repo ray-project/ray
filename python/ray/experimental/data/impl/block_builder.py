@@ -94,7 +94,13 @@ class SimpleBlockAccessor(BlockAccessor):
         items = sorted(self._items, key=key, reverse=descending)
         if len(boundaries) == 0:
             return [items]
-        # TODO: document
+
+        # For each boundary value, count the number of items that are less
+        # than it. Since the block is sorted, these counts partition the items
+        # such that boundaries[i] <= x < boundaries[i + 1] for each x in
+        # partition[i]. If `descending` is true, `boundaries` would also be
+        # in descending order and we only need to count the number of items
+        # *greater than* the boundary value instead.
         key_fn = key if key else lambda x: x
         comp_fn = lambda x, b: key_fn(x) > b \
             if descending else lambda x, b: key_fn(x) < b  # noqa E731

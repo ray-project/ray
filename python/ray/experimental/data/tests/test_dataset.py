@@ -1110,15 +1110,8 @@ def test_sort_simple(ray_start_regular_shared):
         reversed(range(num_items)))
 
 
-def test_sort_arrow(ray_start_regular_shared):
-    _test_sort_arrow()
-
-
-def test_sort_arrow_distributed(ray_start_regular_shared):
-    _test_sort_arrow(parallelism=4)
-
-
-def _test_sort_arrow(num_items=100, parallelism=1):
+@pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
+def test_sort_arrow(ray_start_regular_shared, num_items, parallelism):
     a = list(reversed(range(num_items)))
     b = [f"{x:03}" for x in range(num_items)]
     shard = int(np.ceil(num_items / parallelism))
@@ -1148,4 +1141,4 @@ def _test_sort_arrow(num_items=100, parallelism=1):
 
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", __file__, "-k", "sort"]))

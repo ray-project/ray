@@ -194,6 +194,13 @@ class ArrowBlockAccessor(BlockAccessor):
         table = self._table.take(indices)
         if len(boundaries) == 0:
             return [table]
+
+        # For each boundary value, count the number of items that are less
+        # than it. Since the block is sorted, these counts partition the items
+        # such that boundaries[i] <= x < boundaries[i + 1] for each x in
+        # partition[i]. If `descending` is true, `boundaries` would also be
+        # in descending order and we only need to count the number of items
+        # *greater than* the boundary value instead.
         col, _ = key[0]
         comp_fn = pac.greater if descending else pac.less
         boundary_indices = [
