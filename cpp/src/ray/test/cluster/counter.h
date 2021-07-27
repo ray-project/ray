@@ -17,6 +17,8 @@ class Counter {
   int Plus1();
   int Add(int x);
   int Exit();
+  uint64_t GetPid();
+  static bool IsProcessAlive(uint64_t pid);
 };
 
 class CountDownLatch {

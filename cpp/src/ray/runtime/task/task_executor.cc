@@ -21,24 +21,20 @@ msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
 
   msgpack::sbuffer result;
   do {
-    try {
-      if (actor_ptr) {
-        auto func_ptr = FunctionManager::Instance().GetMemberFunction(func_name);
-        if (func_ptr == nullptr) {
-          result = PackError("unknown actor task: " + func_name);
-          break;
-        }
-        result = (*func_ptr)(actor_ptr, args_buffer);
-      } else {
-        auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
-        if (func_ptr == nullptr) {
-          result = PackError("unknown function: " + func_name);
-          break;
-        }
-        result = (*func_ptr)(args_buffer);
+    if (actor_ptr) {
+      auto func_ptr = FunctionManager::Instance().GetMemberFunction(func_name);
+      if (func_ptr == nullptr) {
+        result = PackError("unknown actor task: " + func_name);
+        break;
       }
-    } catch (const std::exception &ex) {
-      result = PackError(ex.what());
+      result = (*func_ptr)(actor_ptr, args_buffer);
+    } else {
+      auto func_ptr = FunctionManager::Instance().GetFunction(func_name);
+      if (func_ptr == nullptr) {
+        result = PackError("unknown function: " + func_name);
+        break;
+      }
+      result = (*func_ptr)(args_buffer);
     }
   } while (0);
 

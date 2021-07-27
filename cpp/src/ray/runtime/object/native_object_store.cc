@@ -50,13 +50,13 @@ std::shared_ptr<msgpack::sbuffer> NativeObjectStore::GetRaw(const ObjectID &obje
 
 void NativeObjectStore::CheckException(const std::string &meta_str) {
   if (meta_str == std::to_string(ray::rpc::ErrorType::WORKER_DIED)) {
-    throw RayException("WORKER_DIED");
+    throw RayWorkerException("WORKER_DIED");
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::ACTOR_DIED)) {
-    throw RayException("ACTOR_DIED");
+    throw RayActorException("ACTOR_DIED");
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE)) {
-    throw RayException("OBJECT_UNRECONSTRUCTABLE");
+    throw UnreconstructableException("OBJECT_UNRECONSTRUCTABLE");
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION)) {
-    throw RayException("TASK_EXECUTION_EXCEPTION");
+    throw RayTaskException("TASK_EXECUTION_EXCEPTION");
   }
 }
 

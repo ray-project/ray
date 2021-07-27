@@ -66,7 +66,8 @@ TEST(RayClusterModeTest, FullTest) {
 
   named_actor_handle.Kill();
   std::this_thread::sleep_for(std::chrono::seconds(2));
-  EXPECT_THROW(named_actor_handle.Task(&Counter::Plus1).Remote().Get(), RayException);
+  EXPECT_THROW(named_actor_handle.Task(&Counter::Plus1).Remote().Get(),
+               RayActorException);
 
   EXPECT_FALSE(Ray::GetGlobalActor<Counter>("named_actor"));
 
@@ -165,8 +166,13 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result15, 29);
   EXPECT_EQ(result16, 30);
 
+  uint64_t pid = *actor1.Task(&Counter::GetPid).Remote().Get();
+  EXPECT_TRUE(Counter::IsProcessAlive(pid));
+
   auto actor_object4 = actor1.Task(&Counter::Exit).Remote();
-  EXPECT_THROW(actor_object4.Get(), RayException);
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+  EXPECT_THROW(actor_object4.Get(), RayActorException);
+  EXPECT_FALSE(Counter::IsProcessAlive(pid));
 }
 
 TEST(RayClusterModeTest, MaxConcurrentTest) {
