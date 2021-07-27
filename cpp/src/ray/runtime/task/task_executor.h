@@ -23,8 +23,9 @@ BOOST_DLL_ALIAS(internal::TaskExecutionHandler, TaskExecutionHandler);
 FunctionManager &GetFunctionManager();
 BOOST_DLL_ALIAS(internal::GetFunctionManager, GetFunctionManager);
 
-std::vector<std::string> GetRemoteFunctionNames();
-BOOST_DLL_ALIAS(internal::GetRemoteFunctionNames, GetRemoteFunctionNames);
+std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>
+GetRemoteFunctions();
+BOOST_DLL_ALIAS(internal::GetRemoteFunctions, GetRemoteFunctions);
 }  // namespace internal
 
 namespace api {

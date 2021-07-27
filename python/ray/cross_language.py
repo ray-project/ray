@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray import Language
+from ray.util.annotations import PublicAPI
 from ray._raylet import JavaFunctionDescriptor
 
 __all__ = [
@@ -55,6 +56,7 @@ def get_function_descriptor_for_actor_method(
                                   f"not support language {language}")
 
 
+@PublicAPI(stability="beta")
 def java_function(class_name, function_name):
     """Define a Java function.
 
@@ -79,6 +81,7 @@ def java_function(class_name, function_name):
         None)  # runtime_env
 
 
+@PublicAPI(stability="beta")
 def java_actor_class(class_name):
     """Define a Java actor class.
 

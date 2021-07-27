@@ -1,12 +1,16 @@
 import json
 import os
 import platform
+import subprocess
 import sys
 from telnetlib import Telnet
 
 import pexpect
 import pytest
+
 import ray
+from ray.cluster_utils import Cluster
+from ray.test_utils import run_string_as_driver, wait_for_condition
 
 
 def test_ray_debugger_breakpoint(shutdown_only):
@@ -19,21 +23,22 @@ def test_ray_debugger_breakpoint(shutdown_only):
 
     result = f.remote()
 
-    # Wait until the breakpoint is hit:
-    while True:
-        active_sessions = ray.experimental.internal_kv._internal_kv_list(
-            "RAY_PDB_")
-        if len(active_sessions) > 0:
-            break
+    wait_for_condition(lambda: len(
+        ray.experimental.internal_kv._internal_kv_list("RAY_PDB_")) > 0)
+    active_sessions = ray.experimental.internal_kv._internal_kv_list(
+        "RAY_PDB_")
+    assert len(active_sessions) == 1
 
     # Now continue execution:
     session = json.loads(
         ray.experimental.internal_kv._internal_kv_get(active_sessions[0]))
     host, port = session["pdb_address"].split(":")
+    assert host == "localhost"  # Should be private by default.
+
     tn = Telnet(host, int(port))
     tn.write(b"c\n")
 
-    # This should succeed now!
+    # The message above should cause this to return now.
     ray.get(result)
 
 
@@ -132,6 +137,155 @@ def test_ray_debugger_recursive(shutdown_only):
     p.sendline("remote")
 
     ray.get(result)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_job_exit_cleanup(ray_start_regular):
+    address = ray_start_regular["redis_address"]
+
+    driver_script = """
+import time
+
+import ray
+ray.init(address="{}")
+
+@ray.remote
+def f():
+    ray.util.rpdb.set_trace()
+
+f.remote()
+# Give the remote function long enough to actually run.
+time.sleep(5)
+""".format(address)
+
+    assert not len(ray.experimental.internal_kv._internal_kv_list("RAY_PDB_"))
+
+    run_string_as_driver(driver_script)
+
+    def one_active_session():
+        return len(ray.experimental.internal_kv._internal_kv_list("RAY_PDB_"))
+
+    wait_for_condition(one_active_session)
+
+    # Start the debugger. This should clean up any existing sessions that
+    # belong to dead jobs.
+    p = pexpect.spawn("ray debug")  # noqa:F841
+
+    def no_active_sessions():
+        return not len(
+            ray.experimental.internal_kv._internal_kv_list("RAY_PDB_"))
+
+    wait_for_condition(no_active_sessions)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.parametrize("ray_debugger_external", [False, True])
+def test_ray_debugger_public(shutdown_only, call_ray_stop_only,
+                             ray_debugger_external):
+    redis_substring_prefix = "--address='"
+    cmd = ["ray", "start", "--head", "--num-cpus=1"]
+    if ray_debugger_external:
+        cmd.append("--ray-debugger-external")
+    out = ray._private.utils.decode(
+        subprocess.check_output(cmd, stderr=subprocess.STDOUT))
+    # Get the redis address from the output.
+    redis_substring_prefix = "--address='"
+    address_location = (
+        out.find(redis_substring_prefix) + len(redis_substring_prefix))
+    address = out[address_location:]
+    address = address.split("'")[0]
+
+    ray.init(address=address)
+
+    @ray.remote
+    def f():
+        ray.util.pdb.set_trace()
+        return 1
+
+    result = f.remote()
+
+    wait_for_condition(lambda: len(
+        ray.experimental.internal_kv._internal_kv_list("RAY_PDB_")) > 0)
+
+    active_sessions = ray.experimental.internal_kv._internal_kv_list(
+        "RAY_PDB_")
+    assert len(active_sessions) == 1
+    session = json.loads(
+        ray.experimental.internal_kv._internal_kv_get(active_sessions[0]))
+
+    host, port = session["pdb_address"].split(":")
+    if ray_debugger_external:
+        assert host not in ["localhost", "127.0.0.1"], host
+    else:
+        assert host == "localhost", host
+
+    # Check that we can successfully connect to both breakpoints.
+    tn = Telnet(host, int(port))
+    tn.write(b"c\n")
+
+    # The message above should cause this to return now.
+    ray.get(result)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.parametrize("ray_debugger_external", [False, True])
+def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
+    c = Cluster(
+        initialize_head=True,
+        connect=True,
+        head_node_args={
+            "num_cpus": 0,
+            "num_gpus": 1,
+            "ray_debugger_external": ray_debugger_external
+        })
+    c.add_node(num_cpus=1, ray_debugger_external=ray_debugger_external)
+
+    @ray.remote
+    def f():
+        ray.util.pdb.set_trace()
+        return 1
+
+    # num_gpus=1 forces the task onto the head node.
+    head_node_result = f.options(num_cpus=0, num_gpus=1).remote()
+
+    # num_cpus=1 forces the task onto the worker node.
+    worker_node_result = f.options(num_cpus=1).remote()
+
+    wait_for_condition(lambda: len(
+        ray.experimental.internal_kv._internal_kv_list("RAY_PDB_")) == 2)
+
+    active_sessions = ray.experimental.internal_kv._internal_kv_list(
+        "RAY_PDB_")
+    assert len(active_sessions) == 2
+    session1 = json.loads(
+        ray.experimental.internal_kv._internal_kv_get(active_sessions[0]))
+    session2 = json.loads(
+        ray.experimental.internal_kv._internal_kv_get(active_sessions[1]))
+
+    host1, port1 = session1["pdb_address"].split(":")
+    if ray_debugger_external:
+        assert host1 not in ["localhost", "127.0.0.1"], host1
+    else:
+        assert host1 == "localhost", host1
+
+    host2, port2 = session2["pdb_address"].split(":")
+    if ray_debugger_external:
+        assert host2 not in ["localhost", "127.0.0.1"], host2
+    else:
+        assert host2 == "localhost", host2
+
+    # Check that we can successfully connect to both breakpoints.
+    tn1 = Telnet(host1, int(port1))
+    tn1.write(b"c\n")
+
+    tn2 = Telnet(host2, int(port2))
+    tn2.write(b"c\n")
+
+    # The messages above should cause these to return now.
+    ray.get([head_node_result, worker_node_result])
 
 
 if __name__ == "__main__":

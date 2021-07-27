@@ -1,5 +1,4 @@
 import glob
-import gym
 import json
 import numpy as np
 import os
@@ -13,7 +12,6 @@ import ray
 from ray.tune.registry import register_env, register_input, \
     registry_get_input, registry_contains_input
 from ray.rllib.agents.pg import PGTrainer
-from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.offline import IOContext, JsonWriter, JsonReader, InputReader, \
     ShuffledInput
@@ -179,12 +177,6 @@ class AgentIOTest(unittest.TestCase):
     def testMultiAgent(self):
         register_env("multi_agent_cartpole",
                      lambda _: MultiAgentCartPole({"num_agents": 10}))
-        single_env = gym.make("CartPole-v0")
-
-        def gen_policy():
-            obs_space = single_env.observation_space
-            act_space = single_env.action_space
-            return (PGTFPolicy, obs_space, act_space, {})
 
         for fw in framework_iterator():
             pg = PGTrainer(
@@ -193,10 +185,7 @@ class AgentIOTest(unittest.TestCase):
                     "num_workers": 0,
                     "output": self.test_dir,
                     "multiagent": {
-                        "policies": {
-                            "policy_1": gen_policy(),
-                            "policy_2": gen_policy(),
-                        },
+                        "policies": {"policy_1", "policy_2"},
                         "policy_mapping_fn": (
                             lambda aid, **kwargs: random.choice(
                                 ["policy_1", "policy_2"])),
@@ -215,10 +204,7 @@ class AgentIOTest(unittest.TestCase):
                     "input_evaluation": ["simulation"],
                     "train_batch_size": 2000,
                     "multiagent": {
-                        "policies": {
-                            "policy_1": gen_policy(),
-                            "policy_2": gen_policy(),
-                        },
+                        "policies": {"policy_1", "policy_2"},
                         "policy_mapping_fn": (
                             lambda aid, **kwargs: random.choice(
                                 ["policy_1", "policy_2"])),

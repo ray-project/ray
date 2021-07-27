@@ -826,6 +826,15 @@ py_test(
 )
 
 py_test(
+    name = "xgboost_dynamic_resources_example",
+    size = "large",
+    srcs = ["examples/xgboost_dynamic_resources_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--test"]
+)
+
+py_test(
     name = "zoopt_example",
     size = "small",
     srcs = ["examples/zoopt_example.py"],

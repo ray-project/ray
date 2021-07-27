@@ -7,18 +7,27 @@ import traceback
 from collections import namedtuple
 from typing import List
 
-from opencensus.stats import aggregation
-from opencensus.stats import measure as measure_module
-from opencensus.stats import stats as stats_module
-from opencensus.stats.view import View
-from opencensus.stats.view_data import ViewData
-from opencensus.stats.aggregation_data import (CountAggregationData,
-                                               DistributionAggregationData,
-                                               LastValueAggregationData)
-from opencensus.metrics.export.value import ValueDouble
-from opencensus.tags import tag_key as tag_key_module
-from opencensus.tags import tag_map as tag_map_module
-from opencensus.tags import tag_value as tag_value_module
+from ray import logger
+
+try:
+    from opencensus.stats import aggregation
+    from opencensus.stats import measure as measure_module
+    from opencensus.stats import stats as stats_module
+    from opencensus.stats.view import View
+    from opencensus.stats.view_data import ViewData
+    from opencensus.stats.aggregation_data import (CountAggregationData,
+                                                   DistributionAggregationData,
+                                                   LastValueAggregationData)
+    from opencensus.metrics.export.value import ValueDouble
+    from opencensus.tags import tag_key as tag_key_module
+    from opencensus.tags import tag_map as tag_map_module
+    from opencensus.tags import tag_value as tag_value_module
+except (ModuleNotFoundError, ImportError):
+    gpustat = None
+    logger.warning("`gpustat` package is not installed. GPU monitoring is "
+                   "not available. In Ray 1.4+, the Ray CLI, autoscaler, and "
+                   "dashboard will only be usable via `pip install 'ray["
+                   "default]'`. Please update your install command")
 
 import ray
 from ray._private import services

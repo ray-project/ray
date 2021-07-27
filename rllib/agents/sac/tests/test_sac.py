@@ -130,7 +130,7 @@ class TestSAC(unittest.TestCase):
         env = "ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv"
         config["env_config"] = {"config": {"repeat_delay": 0}}
 
-        for _ in framework_iterator(config, frameworks="torch"):
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = sac.SACTrainer(config=config, env=env)
             num_iterations = 50
             learnt = False
@@ -428,9 +428,9 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.1)
+                                atol=0.002)
                         else:
-                            check(tf_var, torch_var, rtol=0.1)
+                            check(tf_var, torch_var, atol=0.002)
                     # And alpha.
                     check(policy.model.log_alpha,
                           tf_weights["default_policy/log_alpha"])
@@ -445,9 +445,10 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.1)
+                                atol=0.002)
                         else:
-                            check(tf_var, torch_var, rtol=0.1)
+                            check(tf_var, torch_var, atol=0.002)
+            trainer.stop()
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return SampleBatch({

@@ -1,0 +1,16 @@
+ray
+click
+anyscale
+slackclient
+boto3
+PyGithub
+pydantic
+pyyaml
+typer[all]
+toml
+python-dotenv
+expiringdict
+requests
+pytz
+git+https://github.com/ray-project/xgboost_ray.git#xgboost_ray
+git+https://github.com/ray-project/lightgbm_ray.git#lightgbm_ray

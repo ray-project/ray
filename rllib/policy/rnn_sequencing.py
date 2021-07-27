@@ -169,8 +169,8 @@ def add_time_dimension(padded_inputs: TensorType,
         padded_batch_size = tf.shape(padded_inputs)[0]
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
-        new_shape = ([new_batch_size, max_seq_len] +
-                     padded_inputs.get_shape().as_list()[1:])
+        new_shape = (
+            [new_batch_size, max_seq_len] + list(padded_inputs.shape[1:]))
         return tf.reshape(padded_inputs, new_shape)
     else:
         assert framework == "torch", "`framework` must be either tf or torch!"
@@ -385,7 +385,7 @@ def timeslice_along_seq_lens_with_overlap(
             eps_ids = sample_batch[SampleBatch.EPS_ID][begin if begin >= 0 else
                                                        0:end]
             is_last_episode_ids = eps_ids == eps_ids[-1]
-            if is_last_episode_ids[0] is not True:
+            if not is_last_episode_ids[0]:
                 zero_length = int(sum(1.0 - is_last_episode_ids))
                 data_begin = begin + zero_length
                 zero_init_states_ = True
