@@ -24,13 +24,8 @@
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task_common.h"
-#include <regex>
-#include <boost/optional.hpp>
 
 namespace ray {
-
-const std::regex withoud_index_resource_reg("^(?!bundle)[\\S]+_group_[0-9A-Za-z]+$");
-const std::regex with_index_resource_reg("^(?!bundle)[\\S]+_group_[0-9]+_[\\S]+$");
 
 typedef std::function<void(const ResourceIdSet &)> ScheduleBundleCallback;
 /// Arguments are the raylet ID to spill back to, the raylet's
@@ -127,22 +122,5 @@ bool IsBundleIndex(const std::string &resource, const PlacementGroupID &group_id
 
 /// Return the original resource name of the placement group resource.
 std::string GetOriginalResourceName(const std::string &resource);
-
-/// Return a flag that indicates whether all the resource in this map is placement group resource.
-bool IsAllPlacementGroupResource(const std::unordered_map<std::string, double> &resources);
-
-/// Return all the placement group resource that contains the bundle index.
-const std::unordered_map<std::string, double> GetAllPlacementGroupIndexResource(
-  const std::unordered_map<std::string, double> &resources);
-
-/// Return all the placement group resource that doesn't contain the bundle index.
-const std::unordered_map<std::string, double> GetAllPlacementGroupWithoutIndexResource(
-  const std::unordered_map<std::string, double> &resources);
-
-/// Get the placement group resource that contains the bundles index from the placement group that does not contain the bundle index.
-/// `CPU_group_${group_id}` -> `CPU_group_${bundle_index}_${group_id}`.
-boost::optional<std::string> GetIndexResourceFromWithoutIndexResource(
-  const std::unordered_map<std::string, double> &resources,
-  const std::string &index_resource);
 
 }  // namespace ray
