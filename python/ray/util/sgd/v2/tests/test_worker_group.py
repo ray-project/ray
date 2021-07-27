@@ -47,6 +47,15 @@ def test_worker_shutdown(ray_start_2_cpus):
         wg.execute(lambda: 1)
 
 
+def test_worker_restart(ray_start_2_cpus):
+    wg = WorkerGroup(num_workers=2)
+    with pytest.raises(RuntimeError):
+        wg.start()
+    wg.shutdown()
+    wg.start()
+    wg.execute(lambda: 1)
+
+
 def test_execute_async(ray_start_2_cpus):
     wg = WorkerGroup(num_workers=2)
     futures = wg.execute_async(lambda: 1)
