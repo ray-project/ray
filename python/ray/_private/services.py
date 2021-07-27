@@ -847,7 +847,7 @@ def start_redis(node_ip_address,
             redis_executable,
             port=port,
             password=password,
-            redis_max_clients=redis_max_clients,
+            redis_max_clients=redis_max_clients or 50000,
             num_retries=num_retries,
             # Below we use None to indicate no limit on the memory of the
             # primary Redis shard.
