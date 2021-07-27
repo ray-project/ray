@@ -56,6 +56,12 @@ AutoscalerSummary = namedtuple(
     "AutoscalerSummary",
     ["active_nodes", "pending_nodes", "pending_launches", "failed_nodes"])
 
+# Whether a worker should be kept based on the min_workers and
+# max_workers constraints.
+#
+# keep: should keep the worker
+# terminate: should terminate the worker
+# decide_later: the worker can be terminated if needed
 KeepOrTerminate = Enum("KeepOrTerminate", "keep terminate decide_later")
 
 
@@ -235,13 +241,12 @@ class StandardAutoscaler:
                 node_type_counts[node_type] += 1
             nodes_to_keep.append(node_id)
 
-        def terminate_node(node_id, kind, why=None) -> None:
-            why = why or kind
+        def terminate_node(node_id: NodeID, reason: str) -> None:
             logger.info("StandardAutoscaler: "
-                        "{}: Terminating {} node.".format(node_id, kind))
+                        "{}: Terminating {} node.".format(node_id, reason))
             self.event_summarizer.add(
                 "Removing {} nodes of type " + self._get_node_type(node_id) +
-                " ({}).".format(why),
+                " ({}).".format(reason),
                 quantity=1,
                 aggregate=operator.add)
             nodes_to_terminate.append(node_id)
@@ -272,15 +277,15 @@ class StandardAutoscaler:
                 keep_node(node_id)
                 nodes_we_could_terminate.append(node_id)
         # Terminate nodes if there are too many
-        num_nodes_to_terminate = len(nodes_to_keep) - \
-            self.config["max_workers"]
+        num_nodes_to_terminate = (
+            len(nodes_to_keep) - self.config["max_workers"])
         num_nodes_to_terminate = min(num_nodes_to_terminate,
                                      len(nodes_we_could_terminate))
-        exra_nodes_to_terminate = nodes_we_could_terminate[
+        extra_nodes_to_terminate = nodes_we_could_terminate[
             -num_nodes_to_terminate:] if num_nodes_to_terminate > 0 else []
 
-        for node_id in exra_nodes_to_terminate:
-            terminate_node(node_id, "unneeded", "max workers")
+        for node_id in extra_nodes_to_terminate:
+            terminate_node(node_id, "max workers")
 
         if nodes_to_terminate:
             self._terminate_nodes_and_cleanup(nodes_to_terminate)
