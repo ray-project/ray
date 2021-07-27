@@ -50,7 +50,7 @@ file_mounts: {
 
 setup_commands:
   - pip uninstall -y ray
-  - pip install "ray[default]@https://ray-wheels.s3.us-west-2.amazonaws.com/test_wheels/debug-info/937e2c53f0ec4988cac604241d1067ead0e91d0a/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+  - pip install "ray[default]@https://ray-wheels.s3.us-west-2.amazonaws.com/test_wheels/debug-info/7efa38e1ff24968449374d93d44770d11faf4dba/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
   - pip install tqdm
   - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 65535" >> /etc/security/limits.conf; echo "* hard nofile 65535" >> /etc/security/limits.conf;'
 
