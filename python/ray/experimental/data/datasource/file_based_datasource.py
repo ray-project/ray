@@ -48,7 +48,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
                 fs = fs.unwrap()
             tables = []
             for read_path in read_paths:
-                with fs.open_input_file(read_path) as f:
+                with fs.open_input_stream(read_path) as f:
                     tables.append(read_file(f, **reader_args))
             return ArrowBlock(pa.concat_tables(tables))
 
