@@ -984,7 +984,7 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     assert pd.concat([df1, df2]).equals(dsdf)
     # Test metadata ops.
     for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
-        ray.get(block).size_bytes() == meta.size_bytes
+        BlockAccessor.for_block(ray.get(block)).size_bytes()
 
     # Directory and file, two files.
     dir_path = os.path.join(tmp_path, "test_json_dir")
