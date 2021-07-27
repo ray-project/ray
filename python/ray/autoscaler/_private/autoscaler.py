@@ -227,7 +227,7 @@ class StandardAutoscaler:
 
         nodes_to_keep = []
 
-        def keep_node(node_id) -> None:
+        def keep_node(node_id: NodeID) -> None:
             # Update per-type counts.
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
