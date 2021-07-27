@@ -1222,7 +1222,7 @@ class Deployment:
         """Deploy or update this deployment.
 
         Args:
-            *init_args (optional): args to pass to the class __init__
+            init_args (optional): args to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
         """
         if len(init_args) == 0 and self._init_args is not None:
