@@ -15,7 +15,7 @@ def simple_shuffle(input_blocks: BlockList[T],
     input_num_blocks = len(input_blocks)
 
     @ray.remote(num_returns=output_num_blocks)
-    def shuffle_map(block: Block[T]) -> List[Block[T]]:
+    def shuffle_map(block: Block) -> List[Block]:
         block = BlockAccessor.for_block(block)
         slice_sz = max(1, math.ceil(block.num_rows() / output_num_blocks))
         slices = []
@@ -31,8 +31,7 @@ def simple_shuffle(input_blocks: BlockList[T],
             return slices
 
     @ray.remote(num_returns=2)
-    def shuffle_reduce(
-            *mapper_outputs: List[Block[T]]) -> (Block[T], BlockMetadata):
+    def shuffle_reduce(*mapper_outputs: List[Block]) -> (Block, BlockMetadata):
         builder = DelegatingArrowBlockBuilder()
         assert len(mapper_outputs) == input_num_blocks
         for block in mapper_outputs:

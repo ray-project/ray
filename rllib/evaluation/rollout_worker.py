@@ -31,7 +31,7 @@ from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.utils import merge_dicts
+from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
@@ -379,6 +379,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # Default policy mapping fn is to always return DEFAULT_POLICY_ID,
         # independent on the agent ID and the episode passed in.
         self.policy_mapping_fn = lambda aid, ep, **kwargs: DEFAULT_POLICY_ID
+        # If provided, set it here.
         self.set_policy_mapping_fn(policy_mapping_fn)
 
         self.env_creator: Callable[[EnvContext], EnvType] = env_creator
@@ -428,7 +429,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     return env
 
             # We can't auto-wrap a BaseEnv.
-            elif isinstance(self.env, BaseEnv):
+            elif isinstance(self.env, (BaseEnv, ray.actor.ActorHandle)):
 
                 def wrap(env):
                     return env
@@ -490,9 +491,13 @@ class RolloutWorker(ParallelIteratorWorker):
                         remote=remote_worker_envs)))
 
         self.make_env_fn = make_env
+        self.spaces = spaces
 
         policy_dict = _determine_spaces_for_multi_agent_dict(
-            policy_spec, self.env, spaces=spaces, policy_config=policy_config)
+            policy_spec,
+            self.env,
+            spaces=self.spaces,
+            policy_config=policy_config)
         # List of IDs of those policies, which should be trained.
         # By default, these are all policies found in the policy_dict.
         self.policies_to_train: List[PolicyID] = policies_to_train or list(
@@ -781,19 +786,24 @@ class RolloutWorker(ParallelIteratorWorker):
         return batch, batch.count
 
     @DeveloperAPI
-    def get_weights(self,
-                    policies: List[PolicyID] = None) -> (ModelWeights, dict):
+    def get_weights(
+            self,
+            policies: Optional[List[PolicyID]] = None,
+    ) -> Dict[PolicyID, ModelWeights]:
         """Returns the model weights of this worker.
 
-        Returns:
-            object: weights that can be set on another worker.
-            info: dictionary of extra metadata.
+        Args:
+            policies (Optional[List[PolicyID]]): List of PolicyIDs to get
+                the weights from. Use None for all policies.
 
-        Examples:
-            >>> weights = worker.get_weights()
+        Returns:
+            Dict[PolicyID, ModelWeights]: Mapping from PolicyIDs to weights
+                dicts.
         """
         if policies is None:
-            policies = self.policy_map.keys()
+            policies = list(self.policy_map.keys())
+        policies = force_list(policies)
+
         return {
             pid: policy.get_weights()
             for pid, policy in self.policy_map.items() if pid in policies
@@ -984,8 +994,11 @@ class RolloutWorker(ParallelIteratorWorker):
             return []
 
         envs = self.async_env.get_unwrapped()
+        # `get_unwrapped` not implemented (returned empty list). Call func
+        # directly on `self.async_env`.
         if not envs:
             return [func(self.async_env)]
+        # Vectorized env. Call func on all sub-envs.
         else:
             return [func(e) for e in envs]
 
@@ -1030,6 +1043,7 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_space: Optional[gym.spaces.Space] = None,
             action_space: Optional[gym.spaces.Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
+            policy_config: Optional[TrainerConfigDict] = None,
             policy_mapping_fn: Optional[Callable[
                 [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
@@ -1044,8 +1058,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 space of the policy to add.
             action_space (Optional[gym.spaces.Space]): The action space
                 of the policy to add.
-            config (Optional[PartialTrainerConfigDict]): The config overrides
-                for the policy to add.
+            config (Optional[PartialTrainerConfigDict]): The config
+                overrides for the policy to add.
+            policy_config (Optional[TrainerConfigDict]): The base config of the
+                Trainer object owning this RolloutWorker.
             policy_mapping_fn (Optional[Callable[[AgentID, MultiAgentEpisode],
                 PolicyID]]): An optional (updated) policy mapping function to
                 use from here on. Note that already ongoing episodes will not
@@ -1062,13 +1078,17 @@ class RolloutWorker(ParallelIteratorWorker):
         """
         if policy_id in self.policy_map:
             raise ValueError(f"Policy ID '{policy_id}' already in policy map!")
-        policy_dict = {
-            policy_id: (policy_cls, observation_space, action_space, config)
-        }
+        policy_dict = _determine_spaces_for_multi_agent_dict(
+            {
+                policy_id: PolicySpec(policy_cls, observation_space,
+                                      action_space, config)
+            },
+            self.env,
+            spaces=self.spaces,
+            policy_config=policy_config)
+
         self._build_policy_map(
-            policy_dict,
-            self.policy_config,
-            seed=self.policy_config.get("seed"))
+            policy_dict, policy_config, seed=policy_config.get("seed"))
         new_policy = self.policy_map[policy_id]
 
         self.filters[policy_id] = get_filter(
@@ -1370,23 +1390,39 @@ def _determine_spaces_for_multi_agent_dict(
         policy_config: Optional[PartialTrainerConfigDict] = None,
 ) -> MultiAgentPolicyConfigDict:
 
-    # Try extracting spaces from env.
+    # Try extracting spaces from env or from given spaces dict.
     env_obs_space = None
     env_act_space = None
-    if env is not None and hasattr(env, "observation_space") and isinstance(
-            env.observation_space, gym.Space):
-        env_obs_space = env.observation_space
-    if env is not None and hasattr(env, "action_space") and isinstance(
-            env.action_space, gym.Space):
-        env_act_space = env.action_space
+
+    # Env is a ray.remote: Get spaces via its (automatically added)
+    # `_get_spaces()` method.
+    if isinstance(env, ray.actor.ActorHandle):
+        env_obs_space, env_act_space = ray.get(env._get_spaces.remote())
+    # Normal env (gym.Env or MultiAgentEnv): These should have the
+    # `observation_space` and `action_space` properties.
+    elif env is not None:
+        if hasattr(env, "observation_space") and isinstance(
+                env.observation_space, gym.Space):
+            env_obs_space = env.observation_space
+
+        if hasattr(env, "action_space") and isinstance(env.action_space,
+                                                       gym.Space):
+            env_act_space = env.action_space
+    # Last resort: Try getting the env's spaces from the spaces
+    # dict's special __env__ key.
+    if spaces is not None:
+        if env_obs_space is None:
+            env_obs_space = spaces.get("__env__", [None])[0]
+        if env_act_space is None:
+            env_act_space = spaces.get("__env__", [None, None])[1]
 
     for pid, policy_spec in multi_agent_dict.copy().items():
         if policy_spec.observation_space is None:
-            if spaces is not None:
+            if spaces is not None and pid in spaces:
                 obs_space = spaces[pid][0]
             elif env_obs_space is not None:
                 obs_space = env_obs_space
-            elif "observation_space" in policy_config:
+            elif policy_config and "observation_space" in policy_config:
                 obs_space = policy_config["observation_space"]
             else:
                 raise ValueError(
@@ -1398,11 +1434,11 @@ def _determine_spaces_for_multi_agent_dict(
                 observation_space=obs_space)
 
         if policy_spec.action_space is None:
-            if spaces is not None:
+            if spaces is not None and pid in spaces:
                 act_space = spaces[pid][1]
             elif env_act_space is not None:
                 act_space = env_act_space
-            elif "action_space" in policy_config:
+            elif policy_config and "action_space" in policy_config:
                 act_space = policy_config["action_space"]
             else:
                 raise ValueError(
@@ -1420,7 +1456,10 @@ def _validate_env(env: Any) -> EnvType:
     if hasattr(env, "observation_space") and hasattr(env, "action_space"):
         return env
 
-    allowed_types = [gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv]
+    allowed_types = [
+        gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv,
+        ray.actor.ActorHandle
+    ]
     if not any(isinstance(env, tpe) for tpe in allowed_types):
         raise ValueError(
             "Returned env should be an instance of gym.Env, MultiAgentEnv, "

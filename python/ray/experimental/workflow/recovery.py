@@ -6,7 +6,6 @@ from ray.experimental.workflow.common import Workflow, StepID
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.step_function import WorkflowStepFunction
-from ray.experimental.workflow.step_executor import execute_workflow
 
 
 class WorkflowStepNotRecoverableError(Exception):
@@ -93,7 +92,7 @@ def _construct_resume_workflow_from_step(
             input_workflows.append(None)
             instant_workflow_outputs[i] = r
     recovery_workflow: Workflow = _recover_workflow_step.options(
-        step_max_retries=result.step_max_retries,
+        max_retries=result.max_retries,
         catch_exceptions=result.catch_exceptions,
         **result.ray_options).step(result.object_refs, input_workflows,
                                    instant_workflow_outputs)
@@ -101,14 +100,14 @@ def _construct_resume_workflow_from_step(
     return recovery_workflow
 
 
-def resume_workflow_job(workflow_id: str,
-                        store: storage.Storage) -> ray.ObjectRef:
+@ray.remote
+def resume_workflow_job(workflow_id: str, store_url: str) -> ray.ObjectRef:
     """Resume a workflow job.
 
     Args:
         workflow_id: The ID of the workflow job. The ID is used to identify
             the workflow.
-        store: The storage to access the workflow.
+        store_url: The url of the storage to access the workflow.
 
     Raises:
         WorkflowNotResumableException: fail to resume the workflow.
@@ -116,22 +115,21 @@ def resume_workflow_job(workflow_id: str,
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
-    reader = workflow_storage.WorkflowStorage(workflow_id, store)
     try:
-        entrypoint_step_id: StepID = reader.get_entrypoint_step_id()
-        r = _construct_resume_workflow_from_step(reader, entrypoint_step_id)
+        store = storage.create_storage(store_url)
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
+        entrypoint_step_id: StepID = wf_store.get_entrypoint_step_id()
+        r = _construct_resume_workflow_from_step(wf_store, entrypoint_step_id)
     except Exception as e:
         raise WorkflowNotResumableError(workflow_id) from e
 
     if isinstance(r, Workflow):
-        try:
-            workflow_context.init_workflow_step_context(
-                workflow_id, store.storage_url)
-            return execute_workflow(r)
-        finally:
-            workflow_context.set_workflow_step_context(None)
-
-    return ray.put(reader.load_step_output(r))
+        with workflow_context.workflow_step_context(workflow_id,
+                                                    store.storage_url):
+            from ray.experimental.workflow.step_executor import (
+                execute_workflow)
+            return execute_workflow(r, last_step_of_workflow=True)
+    return wf_store.load_step_output(r)
 
 
 def get_latest_output(workflow_id: str, store: storage.Storage) -> Any:
@@ -148,7 +146,7 @@ def get_latest_output(workflow_id: str, store: storage.Storage) -> Any:
     """
     reader = workflow_storage.WorkflowStorage(workflow_id, store)
     try:
-        step_id: StepID = reader.get_entrypoint_step_id()
+        step_id: StepID = reader.get_latest_progress()
         while True:
             result: workflow_storage.StepInspectResult = reader.inspect_step(
                 step_id)

@@ -99,3 +99,8 @@ def test_actor_ready(workflow_start_regular):
         actor.readonly_get.run()
     ray.get(actor.ready())
     assert actor.readonly_get.run() == 42
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
