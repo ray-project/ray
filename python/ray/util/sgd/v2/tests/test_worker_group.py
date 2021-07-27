@@ -51,7 +51,7 @@ def test_worker_restart(ray_start_2_cpus):
     wg = WorkerGroup(num_workers=2)
     with pytest.raises(RuntimeError):
         wg.start()
-    wg.shutdown(0)
+    wg.shutdown()
     wg.start()
     wg.execute(lambda: 1)
 

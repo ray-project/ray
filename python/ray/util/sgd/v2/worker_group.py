@@ -1,3 +1,4 @@
+import logging
 from typing import Callable, List, TypeVar
 
 from inspect import signature
@@ -6,6 +7,8 @@ import ray
 from ray.types import ObjectRef
 
 T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 
 class WorkerGroup:
@@ -59,14 +62,16 @@ class WorkerGroup:
 
     def start(self):
         """Starts all the workers in this worker group."""
-        if not self.workers or len(self.workers) <= 0:
+        if self.workers and len(self.workers) > 0:
             raise RuntimeError("The workers have already been started. "
                                "Please call `shutdown` first if you want to "
                                "restart them.")
         remote_cls = ray.remote(
             num_cpus=self.num_cpus_per_worker,
             num_gpus=self.num_gpus_per_worker)(BaseWorker)
+        logger.debug(f"Starting {self.num_workers} workers.")
         self.workers = [remote_cls.remote() for _ in range(self.num_workers)]
+        logger.debug(f"{len(self.workers)} workers have successfully started.")
 
     def shutdown(self, patience_s: float = 5):
         """Shutdown all the workers in this worker group.
@@ -78,6 +83,7 @@ class WorkerGroup:
                 this is less than or equal to 0, immediately force kill all
                 workers.
         """
+        logger.debug(f"Shutting down {len(self.workers)} workers.")
         if patience_s <= 0:
             for worker in self.workers:
                 ray.kill(worker)
@@ -86,10 +92,13 @@ class WorkerGroup:
             # Wait for actors to die gracefully.
             done, not_done = ray.wait(done_refs, timeout=patience_s)
             if not_done:
+                logger.debug("Graceful termination failed. Falling back to "
+                             "force kill.")
                 # If all actors are not able to die gracefully, then kill them.
                 for worker in self.workers:
                     ray.kill(worker)
 
+        logger.debug("Shutdown successful.")
         self.workers = []
 
     def execute_async(self, func: Callable[[], T]) -> List[ObjectRef]:
