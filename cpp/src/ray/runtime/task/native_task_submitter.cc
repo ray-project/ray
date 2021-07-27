@@ -42,11 +42,16 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
   std::unordered_map<std::string, double> resources;
   std::string name = create_options.name;
   std::string ray_namespace = "";
-  ray::ActorCreationOptions actor_options{
-      create_options.max_restarts, 0,         create_options.max_concurrency,
-      create_options.resources,    resources, {},
-      /*is_detached=*/false,       name,      ray_namespace,
-      /*is_asyncio=*/false};
+  ray::ActorCreationOptions actor_options{create_options.max_restarts,
+                                          /*max_task_retries=*/0,
+                                          create_options.max_concurrency,
+                                          create_options.resources,
+                                          resources,
+                                          /*dynamic_worker_options=*/{},
+                                          /*is_detached=*/false,
+                                          name,
+                                          ray_namespace,
+                                          /*is_asyncio=*/false};
   ActorID actor_id;
   auto status = core_worker.CreateActor(BuildRayFunction(invocation), invocation.args,
                                         actor_options, "", &actor_id);

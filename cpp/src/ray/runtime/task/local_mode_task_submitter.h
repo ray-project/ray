@@ -33,7 +33,7 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
 
   LocalModeRayRuntime &local_mode_ray_tuntime_;
 
-  ObjectID Submit(InvocationSpec &invocation, const CallOptions &call_options);
+  ObjectID Submit(InvocationSpec &invocation, const ActorCreationOptions &options);
 };
 }  // namespace api
 }  // namespace ray
