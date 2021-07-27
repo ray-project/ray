@@ -546,7 +546,7 @@ class Worker:
         """Register a ClientActorClass for the ActorClass and return a UUID"""
         key = uuid.uuid4().hex
         md = actor.__ray_metadata__
-        cls = md.modified_class
+        cls: type = md.modified_class
         self._converted[key] = ClientActorClass(
             cls,
             options={

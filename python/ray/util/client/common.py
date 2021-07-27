@@ -136,7 +136,7 @@ class ClientActorClass(ClientStub):
         _ref: The ClientObjectRef of the pickled `actor_cls`
     """
 
-    def __init__(self, actor_cls, options=None):
+    def __init__(self, actor_cls: type, options=None):
         self.actor_cls = actor_cls
         self._lock = threading.Lock()
         self._name = actor_cls.__name__
@@ -202,12 +202,14 @@ class ClientActorHandle(ClientStub):
 
     Args:
         actor_ref: A reference to the running actor given to the client. This
-          is a serialized version of the actual handle as an opaque token.
+            is a serialized version of the actual handle as an opaque token.
+        actor_class: Either the class of the actor represented or the list of
+            methods of that actor (received from the server).
     """
 
     def __init__(self,
                  actor_ref: ClientActorRef,
-                 actor_class: Optional[Union[Any, List[str]]] = None):
+                 actor_class: Optional[Union[type, List[str]]] = None):
         self.actor_ref = actor_ref
         if inspect.isclass(actor_class):
             self._dir = list(
