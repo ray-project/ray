@@ -85,6 +85,6 @@ class CommandRunnerInterface:
             sync_run_yet (bool): Whether sync has been run yet.
 
         Returns:
-            optional (bool): Whether initialization was run.
+            optional (bool): Whether initialization is necessary.
         """
         pass
