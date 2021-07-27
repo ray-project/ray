@@ -1148,6 +1148,4 @@ def _test_sort_arrow(num_items=100, parallelism=1):
 
 if __name__ == "__main__":
     import sys
-    # sys.exit(pytest.main(["-v", __file__]))
-    sys.exit(
-        pytest.main(["-sv", __file__, "-k", "test_sort"]))
+    sys.exit(pytest.main(["-v", __file__]))

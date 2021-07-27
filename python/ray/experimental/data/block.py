@@ -1,4 +1,4 @@
-from typing import TypeVar, List, Generic, Iterator, Any, Union, Optional, \
+from typing import TypeVar, List, Generic, Iterator, Tuple, Any, Union, Optional, \
     TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -129,7 +129,8 @@ class BlockAccessor(Generic[T]):
         raise NotImplementedError
 
     @staticmethod
-    def merge_sorted_blocks(blocks: List["Block[T]"], key: Any,
-                            descending: bool) -> "Block[T]":
+    def merge_sorted_blocks(
+            blocks: List["Block[T]"], key: Any,
+            descending: bool) -> Tuple[Block[T], BlockMetadata]:
         """Return a sorted block by merging a list of sorted blocks."""
         raise NotImplementedError

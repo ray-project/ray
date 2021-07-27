@@ -1,12 +1,12 @@
 import random
 import sys
-from typing import Callable, Iterator, List, Generic, Union, Any, TYPE_CHECKING
+from typing import Callable, Iterator, List, Tuple, Generic, Union, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas
     import pyarrow
 
-from ray.experimental.data.block import Block, BlockAccessor, T
+from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata, T
 
 # A simple block can be sorted by value (None) or a lambda function (Callable).
 SortKeyT = Union[None, Callable[[T], Any]]
@@ -93,8 +93,10 @@ class SimpleBlockAccessor(BlockAccessor):
         items = sorted(self._items, key=key, reverse=descending)
         if len(boundaries) == 0:
             return [items]
+        # TODO: document
         key_fn = key if key else lambda x: x
-        comp_fn = lambda x, b: key_fn(x) > b if descending else lambda x, b: key_fn(x) < b
+        comp_fn = lambda x, b: key_fn(x) > b \
+            if descending else lambda x, b: key_fn(x) < b  # noqa E731
         boundary_indices = [
             len([1 for x in items if comp_fn(x, b)]) for b in boundaries
         ]
@@ -107,8 +109,9 @@ class SimpleBlockAccessor(BlockAccessor):
         return ret
 
     @staticmethod
-    def merge_sorted_blocks(blocks: List[Block[T]], key: SortKeyT,
-                            descending: bool) -> Block[T]:
+    def merge_sorted_blocks(
+            blocks: List[Block[T]], key: SortKeyT,
+            descending: bool) -> Tuple[Block[T], BlockMetadata]:
         ret = [x for block in blocks for x in block]
         ret.sort(key=key, reverse=descending)
         return ret, SimpleBlockAccessor(ret).get_metadata(None)

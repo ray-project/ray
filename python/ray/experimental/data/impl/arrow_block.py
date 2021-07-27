@@ -7,7 +7,7 @@ try:
 except ImportError:
     pyarrow = None
 
-from ray.experimental.data.block import Block, BlockAccessor
+from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
 from ray.experimental.data.impl.block_builder import BlockBuilder, \
     SimpleBlockBuilder
 
@@ -208,8 +208,9 @@ class ArrowBlockAccessor(BlockAccessor):
         return ret
 
     @staticmethod
-    def merge_sorted_blocks(blocks: List[Block[T]], key: SortKeyT,
-                            _descending: bool) -> Block[T]:
+    def merge_sorted_blocks(
+            blocks: List[Block[T]], key: SortKeyT,
+            _descending: bool) -> Tuple[Block[T], BlockMetadata]:
         ret = pyarrow.concat_tables(blocks)
         indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
         ret = ret.take(indices)

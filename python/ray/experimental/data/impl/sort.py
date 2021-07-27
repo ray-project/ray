@@ -35,8 +35,8 @@ SortKeyT = Union[None, List[Tuple[str, str]], Callable[[T], Any]]
 def sample_boundaries(blocks: BlockList[T], key: SortKeyT,
                       num_reducers: int) -> List[T]:
     """
-    Return (num_reducers - 1) items from the blocks that partition the domain
-    into ranges with approximately equally many elements.
+    Return (num_reducers - 1) items in ascending order from the blocks that
+    partition the domain into ranges with approximately equally many elements.
     """
     n_samples = int(num_reducers * 10 / len(blocks))
 
