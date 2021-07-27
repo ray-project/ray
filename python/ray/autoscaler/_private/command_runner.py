@@ -823,8 +823,8 @@ class DockerCommandRunner(CommandRunnerInterface):
         if (not container_running) or requires_re_init:
             if not sync_run_yet:
                 # Do not start the actual image as we need to run file_sync
-                # first to ensure that all folders are created with the 
-                # correct ownership. Docker will create the folders with 
+                # first to ensure that all folders are created with the
+                # correct ownership. Docker will create the folders with
                 # `root` as the owner.
                 return True
             # Get home directory
