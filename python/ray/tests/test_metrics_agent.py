@@ -15,6 +15,11 @@ from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.util.metrics import Counter, Histogram, Gauge
 from ray.test_utils import wait_for_condition, SignalActor, fetch_prometheus
 
+try:
+    import prometheus_client
+except ImportError:
+    prometheus_client = None
+
 # This list of metrics should be kept in sync with src/ray/stats/metric_defs.h
 # NOTE: Commented out metrics are not available in this test.
 # TODO(Clark): Find ways to trigger commented out metrics in cluster setup.
@@ -120,6 +125,8 @@ def _setup_cluster_for_test(ray_start_cluster):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.skipif(
+    prometheus_client is None, reason="Prometheus not installed")
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
     TEST_TIMEOUT_S = 20
 

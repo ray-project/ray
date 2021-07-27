@@ -16,6 +16,7 @@ from socket import socket
 
 import ray
 import psutil
+import grpc
 import ray._private.services as services
 import ray.ray_constants as ray_constants
 import ray._private.utils
@@ -30,6 +31,8 @@ from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import cli_logger, cf
+from ray.core.generated import gcs_service_pb2
+from ray.core.generated import gcs_service_pb2_grpc
 from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
@@ -1759,7 +1762,19 @@ def healthcheck(address, redis_password, component):
         # client creation or ping fails, we will still exit with a non-zero
         # exit code.
         redis_client.ping()
-        sys.exit(0)
+        try:
+            gcs_address = redis_client.get("GcsServerAddress").decode("utf-8")
+            options = (("grpc.enable_http_proxy", 0), )
+            channel = grpc.insecure_channel(gcs_address, options=options)
+            stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
+            request = gcs_service_pb2.CheckAliveRequest(seq=0)
+            reply = stub.CheckAlive(
+                request, timeout=ray.ray_constants.HEALTHCHECK_EXPIRATION_S)
+            if reply.status.code == 0:
+                sys.exit(0)
+        except Exception:
+            pass
+        sys.exit(1)
 
     report_str = redis_client.hget(f"healthcheck:{component}", "value")
     if not report_str:
