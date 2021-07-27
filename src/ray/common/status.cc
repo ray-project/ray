@@ -60,6 +60,7 @@ namespace ray {
 #define STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL "TransientObjectStoreFull"
 // worker pool status
 #define STATUS_CODE_JOB_NOT_STARTED "JobNotStarted"
+#define STATUS_CODE_SO_MANY_STARTING_WORKER_PROCESSES "SoManyStartingWorkerProcesses"
 #define STATUS_CODE_WORKER_PENDING_REGISTRATION "WorkerPendingRegistration"
 #define STATUS_CODE_RUNTIME_ENV_CREATION_FAILED "RuntimeEnvCreationFailed"
 
@@ -107,6 +108,8 @@ std::string Status::CodeAsString() const {
       {StatusCode::ObjectStoreFull, STATUS_CODE_OBJECT_STORE_FULL},
       {StatusCode::TransientObjectStoreFull, STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL},
       {StatusCode::JobNotStarted, STATUS_CODE_JOB_NOT_STARTED},
+      {StatusCode::SoManyStartingWorkerProcesses,
+       STATUS_CODE_SO_MANY_STARTING_WORKER_PROCESSES},
       {StatusCode::WorkerPendingRegistration, STATUS_CODE_WORKER_PENDING_REGISTRATION},
       {StatusCode::RuntimeEnvCreationFailed, STATUS_CODE_RUNTIME_ENV_CREATION_FAILED},
   };

@@ -20,13 +20,23 @@ namespace raylet {
 /// Work represents all the information needed to make a scheduling decision.
 /// This includes the task, the information we need to communicate to
 /// dispatch/spillback and the callback to trigger it.
+enum WorkStatus {
+  WAITING,
+  SCHEDULED,
+  CANCELLED,
+  SPILLED,
+};
+
 struct Work {
   Task task;
   rpc::RequestWorkerLeaseReply *reply;
   std::function<void(void)> callback;
-  bool waiting_worker_popped;
-  bool dispatch_finished;
-  bool canceled;
+  WorkStatus status = WorkStatus::WAITING;
+  Work(Task task, rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> callback,
+       WorkStatus status = WorkStatus::WAITING)
+      : task(task), reply(reply), callback(callback), status(status){};
+  Work(const Work &Work) = delete;
+  Work &operator=(const Work &work) = delete;
 };
 
 typedef std::function<boost::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
@@ -238,9 +248,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// is still queued.
   std::unordered_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
       tasks_to_dispatch_;
-
-  /// Map of lease requests that waiting for workers popped.
-  std::unordered_map<TaskID, std::shared_ptr<Work>> pending_workers_index_;
 
   /// Tasks waiting for arguments to be transferred locally.
   /// Tasks move from waiting -> dispatch.

@@ -152,21 +152,19 @@ void WorkerPool::SetAgentManager(std::shared_ptr<AgentManager> agent_manager) {
   agent_manager_ = agent_manager;
 }
 
-void WorkerPool::PopWorkerCallbackExecution(const PopWorkerCallback &callback,
-                                            std::shared_ptr<WorkerInterface> worker,
-                                            Status status) {
+inline void WorkerPool::PopWorkerCallbackExecution(
+    const PopWorkerCallback &callback, std::shared_ptr<WorkerInterface> worker,
+    Status status) {
   if (callback) {
-    // Call back this function asynchronously if needed. Such as
-    // io_service_->post([callback, worker, status]() { callback(worker, status); });
-    callback(worker, status);
+    // Call back this function asynchronously to make sure executed in different stack.
+    io_service_->post([callback, worker, status]() { callback(worker, status); });
   }
 }
 
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
-    const PopWorkerCallback &callback, const TaskID &task_id,
-    const std::vector<std::string> &dynamic_options, const int runtime_env_hash,
-    const std::string &serialized_runtime_env,
+    Status *status, const std::vector<std::string> &dynamic_options,
+    const int runtime_env_hash, const std::string &serialized_runtime_env,
     std::unordered_map<std::string, std::string> override_environment_variables,
     const std::string &serialized_runtime_env_context,
     const std::string &allocated_instances_serialized_json) {
@@ -179,7 +177,7 @@ Process WorkerPool::StartWorkerProcess(
       oss << "Job config of job " << job_id << " are not local yet.";
       RAY_LOG(DEBUG) << oss.str();
       // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
-      PopWorkerCallbackExecution(callback, nullptr, Status::JobNotStarted(oss.str()));
+      *status = Status::JobNotStarted(oss.str());
       return Process();
     }
     job_config = &it->second;
@@ -202,8 +200,7 @@ Process WorkerPool::StartWorkerProcess(
     oss << "Worker not started, " << starting_workers << " workers of language type "
         << static_cast<int>(language) << " pending registration";
     RAY_LOG(DEBUG) << oss.str();
-    PopWorkerCallbackExecution(callback, nullptr,
-                               Status::WorkerPendingRegistration(oss.str()));
+    *status = Status::SoManyStartingWorkerProcesses(oss.str());
     return Process();
   }
   // Either there are no workers pending registration or the worker start is being forced.
@@ -366,8 +363,7 @@ Process WorkerPool::StartWorkerProcess(
                 << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
   state.starting_worker_processes.emplace(
-      proc, StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type,
-                                      task_id, callback});
+      proc, StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type});
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.num_starting_io_workers++;
@@ -394,9 +390,15 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
           oss << "Some workers of the worker process(" << proc.GetId()
               << ") have not registered to raylet within timeout.";
           RAY_LOG(INFO) << oss.str();
-          const auto &callback = it->second.callback;
-          if (callback) {
-            callback(nullptr, Status::WorkerPendingRegistration(oss.str()));
+          Status status = Status::WorkerPendingRegistration(oss.str());
+          bool found;
+          bool used;
+          TaskID task_id;
+          TryToCallbackTask(state.dedicated_workers_to_tasks, proc, nullptr, status,
+                            &found, &used, &task_id);
+          if (!found) {
+            TryToCallbackTask(state.workers_to_tasks, proc, nullptr, status, &found,
+                              &used, &task_id);
           }
           state.starting_worker_processes.erase(it);
           if (IsIOWorkerType(worker_type)) {
@@ -530,21 +532,13 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   return Status::OK();
 }
 
-bool WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
+void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   const auto &shim_process = worker->GetShimProcess();
   RAY_CHECK(shim_process.IsValid());
 
-  bool worker_available = true;
   auto it = state.starting_worker_processes.find(shim_process);
   if (it != state.starting_worker_processes.end()) {
-    const auto &callback = it->second.callback;
-    if (callback) {
-      callback(worker, Status::OK());
-      worker_available = false;
-      it->second.task_id = TaskID::Nil();
-      it->second.callback = nullptr;
-    }
     it->second.num_starting_workers--;
     if (it->second.num_starting_workers == 0) {
       state.starting_worker_processes.erase(it);
@@ -572,7 +566,6 @@ bool WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
       }
     }
   }
-  return worker_available;
 }
 
 Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
@@ -604,9 +597,8 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
       delay_callback = true;
       // Start initial Python workers for the first job.
       for (int i = 0; i < num_initial_python_workers_for_first_job_; i++) {
-        StartWorkerProcess(
-            Language::PYTHON, rpc::WorkerType::WORKER, job_id,
-            [](const std::shared_ptr<WorkerInterface> worker, Status status) {});
+        Status status;
+        StartWorkerProcess(Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
       }
     }
   }
@@ -729,19 +721,47 @@ void WorkerPool::PopDeleteWorker(
   }
 }
 
+void WorkerPool::TryToCallbackTask(
+    std::unordered_map<Process, std::pair<TaskID, PopWorkerCallback>> &workers_to_tasks,
+    const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
+    const Status &status, bool *found, bool *used, TaskID *task_id) {
+  *found = false;
+  *used = false;
+  auto it = workers_to_tasks.find(proc);
+  if (it != workers_to_tasks.end()) {
+    *found = true;
+    *task_id = it->second.first;
+    const auto &callback = it->second.second;
+    RAY_CHECK(callback);
+    *used = callback(worker, status);
+    workers_to_tasks.erase(it);
+  }
+}
+
 void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   // Since the worker is now idle, unset its assigned task ID.
   RAY_CHECK(worker->GetAssignedTaskId().IsNil())
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  auto it = state.dedicated_workers_to_tasks.find(worker->GetShimProcess());
-  if (it != state.dedicated_workers_to_tasks.end()) {
+  bool found;
+  bool used;
+  TaskID task_id;
+  TryToCallbackTask(state.dedicated_workers_to_tasks, worker->GetShimProcess(), worker,
+                    Status::OK(), &found, &used, &task_id);
+  if (found) {
     // The worker is used for the actor creation task with dynamic options.
-    // Put it into idle dedicated worker pool.
-    const auto task_id = it->second;
-    state.idle_dedicated_workers[task_id] = worker;
-  } else {
-    // The worker is not used for the actor creation task with dynamic options.
+    if (!used) {
+      // Put it into idle dedicated worker pool.
+      // TODO(guyang.sgy): This worker will not be used forever. We should kill it.
+      state.idle_dedicated_workers[task_id] = worker;
+    }
+    return;
+  }
+
+  TryToCallbackTask(state.workers_to_tasks, worker->GetShimProcess(), worker,
+                    Status::OK(), &found, &used, &task_id);
+  // The worker is not used for the actor creation task with dynamic options.
+  if (!used) {
     // Put the worker to the idle pool.
     state.idle.insert(worker);
     int64_t now = get_time_();
@@ -900,18 +920,6 @@ void WorkerPool::TryKillingIdleWorkers() {
   RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
 }
 
-int GetRuntimeEnvHash(const TaskSpecification &task_spec) {
-  // We add required_resource instead of allocated_instances because allocated_instances
-  // may contains resource ID.
-  std::unordered_map<std::string, double> required_resource{};
-  if (RayConfig::instance().worker_resource_limits_enabled()) {
-    required_resource = task_spec.GetRequiredResources().GetResourceMap();
-  }
-  const WorkerCacheKey env = {task_spec.OverrideEnvironmentVariables(),
-                              task_spec.SerializedRuntimeEnv(), required_resource};
-  return env.IntHash();
-}
-
 void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                            const PopWorkerCallback &callback,
                            const std::string &allocated_instances_serialized_json) {
@@ -923,21 +931,27 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   auto start_worker_process_fn = [this, allocated_instances_serialized_json](
                                      const TaskSpecification &task_spec, State &state,
                                      std::vector<std::string> dynamic_options,
-                                     bool dedicated, const int runtime_env_hash,
+                                     bool dedicated,
                                      const std::string &serialized_runtime_env,
                                      const std::string &serialized_runtime_env_context,
                                      const PopWorkerCallback &callback) -> Process {
+    Status status = Status::OK();
     Process proc = StartWorkerProcess(
-        task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(), callback,
-        task_spec.TaskId(), dynamic_options, runtime_env_hash, serialized_runtime_env,
+        task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(), &status,
+        dynamic_options, task_spec.GetRuntimeEnvHash(), serialized_runtime_env,
         task_spec.OverrideEnvironmentVariables(), serialized_runtime_env_context,
         allocated_instances_serialized_json);
-    if (proc.IsValid()) {
+    if (status.ok()) {
+      RAY_CHECK(proc.IsValid());
       WarnAboutSize();
       if (dedicated) {
-        state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
-        state.tasks_with_dedicated_workers.emplace(task_spec.TaskId());
+        state.dedicated_workers_to_tasks[proc] =
+            std::make_pair(task_spec.TaskId(), callback);
+      } else {
+        state.workers_to_tasks[proc] = std::make_pair(task_spec.TaskId(), callback);
       }
+    } else {
+      PopWorkerCallbackExecution(callback, nullptr, status);
     }
     return proc;
   };
@@ -958,8 +972,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       // Because we found a worker that can perform this task,
       // we can remove it from dedicated_workers_to_tasks.
       state.dedicated_workers_to_tasks.erase(worker->GetProcess());
-      state.tasks_with_dedicated_workers.erase(task_spec.TaskId());
-    } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
+    } else {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
       std::vector<std::string> dynamic_options = {};
@@ -969,13 +982,11 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
 
       // create runtime env.
       if (task_spec.HasRuntimeEnv()) {
-        state.tasks_with_pending_runtime_envs.emplace(task_spec.TaskId());
         agent_manager_->CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(),
             [start_worker_process_fn, callback, &state, task_spec, dynamic_options,
              allocated_instances_serialized_json](
                 bool done, const std::string &serialized_runtime_env_context) {
-              state.tasks_with_pending_runtime_envs.erase(task_spec.TaskId());
               if (!done) {
                 // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
                 // failed.
@@ -987,12 +998,11 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                 return;
               }
               start_worker_process_fn(task_spec, state, dynamic_options, true,
-                                      GetRuntimeEnvHash(task_spec),
                                       task_spec.SerializedRuntimeEnv(),
                                       serialized_runtime_env_context, callback);
             });
       } else {
-        proc = start_worker_process_fn(task_spec, state, dynamic_options, true, 0, "", "",
+        proc = start_worker_process_fn(task_spec, state, dynamic_options, true, "", "",
                                        callback);
       }
     }
@@ -1000,7 +1010,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     // Find an available worker which is already assigned to this job and which has
     // the specified runtime env.
     // Try to pop the most recently pushed worker.
-    const int runtime_env_hash = GetRuntimeEnvHash(task_spec);
+    const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
     for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
          it++) {
       if (task_spec.GetLanguage() != it->first->GetLanguage() ||
@@ -1036,7 +1046,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         // create runtime env.
         agent_manager_->CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, callback, &state, task_spec, runtime_env_hash](
+            [start_worker_process_fn, callback, &state, task_spec](
                 bool successful, const std::string &serialized_runtime_env_context) {
               if (!successful) {
                 // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
@@ -1048,19 +1058,14 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                 callback(nullptr, Status::RuntimeEnvCreationFailed(oss.str()));
                 return;
               }
-              start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash,
+              start_worker_process_fn(task_spec, state, {}, false,
                                       task_spec.SerializedRuntimeEnv(),
                                       serialized_runtime_env_context, callback);
             });
       } else {
-        proc = start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash, "",
-                                       "", callback);
+        proc = start_worker_process_fn(task_spec, state, {}, false, "", "", callback);
       }
     }
-  }
-
-  if (worker == nullptr && proc.IsValid()) {
-    WarnAboutSize();
   }
 
   if (worker) {
@@ -1099,9 +1104,9 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
     RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
                    << backlog_size << " and soft limit " << num_workers_soft_limit_;
     for (int i = 0; i < num_needed; i++) {
-      StartWorkerProcess(
-          task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(),
-          [](const std::shared_ptr<WorkerInterface> worker, Status status) {});
+      Status status;
+      StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
+                         task_spec.JobId(), &status);
     }
   }
 }
@@ -1251,17 +1256,6 @@ void WorkerPool::WarnAboutSize() {
   }
 }
 
-bool WorkerPool::HasPendingWorkerForTask(const Language &language,
-                                         const TaskID &task_id) {
-  auto &state = GetStateForLanguage(language);
-  auto runtime_env_it = state.tasks_with_pending_runtime_envs.find(task_id);
-  if (runtime_env_it != state.tasks_with_pending_runtime_envs.end()) {
-    return true;
-  }
-  auto it = state.tasks_with_dedicated_workers.find(task_id);
-  return it != state.tasks_with_dedicated_workers.end();
-}
-
 void WorkerPool::TryStartIOWorkers(const Language &language) {
   TryStartIOWorkers(language, rpc::WorkerType::RESTORE_WORKER);
   TryStartIOWorkers(language, rpc::WorkerType::SPILL_WORKER);
@@ -1288,9 +1282,9 @@ void WorkerPool::TryStartIOWorkers(const Language &language,
       expected_workers_num = max_workers_to_start;
     }
     for (; expected_workers_num > 0; expected_workers_num--) {
-      Process proc = StartWorkerProcess(
-          ray::Language::PYTHON, worker_type, JobID::Nil(),
-          [](const std::shared_ptr<WorkerInterface> worker, Status status) {});
+      Status status;
+      Process proc =
+          StartWorkerProcess(ray::Language::PYTHON, worker_type, JobID::Nil(), &status);
       if (!proc.IsValid()) {
         // We may hit the maximum worker start up concurrency limit. Stop.
         return;

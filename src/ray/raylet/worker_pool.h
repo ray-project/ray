@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <boost/asio/io_service.hpp>
+#include <boost/functional/hash.hpp>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -41,7 +42,7 @@ using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
 using PopWorkerCallback =
-    std::function<void(const std::shared_ptr<WorkerInterface> worker, Status status)>;
+    std::function<bool(const std::shared_ptr<WorkerInterface> worker, Status status)>;
 
 /// \class WorkerPoolInterface
 ///
@@ -191,8 +192,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// announces its port.
   ///
   /// \param[in] worker The worker which is started.
-  /// \return True If the worker available.
-  bool OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker);
+  /// \return void
+  void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Register a new driver.
   ///
@@ -367,9 +368,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///                             worker pool abstraction. Outside this class, workers
   ///                             will have rpc::WorkerType instead.
   /// \param job_id The ID of the job to which the started worker process belongs.
-  /// \param task_id The ID of the task which triggers the worker process starting.
-  /// \param callback The callback function that executed when gets the result of
-  /// worker popping.
+  /// \param status The output status of work process starting.
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \param serialized_runtime_env The runtime environment for the started worker
   /// \param allocated_instances_serialized_json The allocated resource instances
@@ -378,8 +377,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// it means we didn't start a process.
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
-      const PopWorkerCallback &callback, const TaskID &task_id = TaskID::Nil(),
-      const std::vector<std::string> &dynamic_options = {},
+      Status *status /*output*/, const std::vector<std::string> &dynamic_options = {},
       const int runtime_env_hash = 0, const std::string &serialized_runtime_env = "{}",
       std::unordered_map<std::string, std::string> override_environment_variables = {},
       const std::string &serialized_runtime_env_context = "{}",
@@ -419,10 +417,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     int num_starting_workers;
     /// The type of the worker.
     rpc::WorkerType worker_type;
-    /// The id of task which triggers this worker process starting.
-    TaskID task_id;
-    /// The callback function of PopWorker.
-    PopWorkerCallback callback;
   };
 
   /// An internal data structure that maintains the pool state per language.
@@ -452,13 +446,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// the process. The shim process PID is the same with worker process PID, except
     /// starting worker process in container.
     std::unordered_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
+    ///
+    std::unordered_map<Process, std::pair<TaskID, PopWorkerCallback>> workers_to_tasks;
     /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
-    std::unordered_map<Process, TaskID> dedicated_workers_to_tasks;
-    /// All tasks that have associated dedicated workers.
-    std::unordered_set<TaskID> tasks_with_dedicated_workers;
-    /// All tasks that have pending runtime envs.
-    std::unordered_set<TaskID> tasks_with_pending_runtime_envs;
+    std::unordered_map<Process, std::pair<TaskID, PopWorkerCallback>>
+        dedicated_workers_to_tasks;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -541,9 +534,14 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// worker types (SPILL_WORKER and RESTORE_WORKER and UTIL_WORKER).
   bool IsIOWorkerType(const rpc::WorkerType &worker_type);
 
-  void PopWorkerCallbackExecution(const PopWorkerCallback &callback,
-                                  std::shared_ptr<WorkerInterface> worker,
-                                  Status status = Status::OK());
+  inline void PopWorkerCallbackExecution(const PopWorkerCallback &callback,
+                                         std::shared_ptr<WorkerInterface> worker,
+                                         Status status = Status::OK());
+
+  void TryToCallbackTask(
+      std::unordered_map<Process, std::pair<TaskID, PopWorkerCallback>> &workers_to_tasks,
+      const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
+      const Status &status, bool *found, bool *used, TaskID *task_id);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;

@@ -2,7 +2,6 @@
 
 #include <google/protobuf/map.h>
 
-#include <boost/functional/hash.hpp>
 #include <boost/range/join.hpp>
 
 #include "ray/stats/stats.h"
@@ -149,6 +148,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
   // tasks from being dispatched.
   for (auto shapes_it = tasks_to_dispatch_.begin();
        shapes_it != tasks_to_dispatch_.end();) {
+    auto &scheduling_class = shapes_it->first;
     auto &dispatch_queue = shapes_it->second;
     bool is_infeasible = false;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
@@ -156,17 +156,10 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
-
-      if (work->dispatch_finished) {
-        work_it = dispatch_queue.erase(work_it);
-        continue;
-      } else if (work->waiting_worker_popped) {
+      if (work->status == WorkStatus::SCHEDULED) {
         work_it++;
         continue;
       }
-
-      const auto runtime_env_worker_key =
-          std::make_pair(spec.JobId().Hash(), spec.GetRuntimeEnvHash());
 
       bool args_missing = false;
       bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
@@ -246,18 +239,14 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
               cluster_resource_scheduler_->SerializedTaskResourceInstances(
                   allocated_instances);
         }
-        work->waiting_worker_popped = true;
-        pending_workers_index_.emplace(task_id, work);
+        work->status = WorkStatus::SCHEDULED;
         worker_pool_.PopWorker(
             spec,
-            [this, allocated_instances, task_id, runtime_env_worker_key](
-                const std::shared_ptr<WorkerInterface> worker, Status status) {
-              auto it = pending_workers_index_.find(task_id);
-              RAY_CHECK(it != pending_workers_index_.end());
-              const auto &work = it->second;
+            [this, allocated_instances, task_id, scheduling_class, work](
+                const std::shared_ptr<WorkerInterface> worker, Status status) -> bool {
               const auto &reply = work->reply;
               const auto &callback = work->callback;
-              const auto &canceled = work->canceled;
+              bool canceled = work->status == WorkStatus::CANCELLED;
               if (canceled || !worker) {
                 if (canceled) {
                   RAY_LOG(DEBUG)
@@ -278,8 +267,10 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                 // Worker processes spin up pretty quickly, so it's not worth trying to
                 // spill this task.
                 ReleaseTaskArgs(task_id);
-                // TODO(guyang.sgy): re-schedule the task by status code.
-                work->waiting_worker_popped = false;
+                // TODO(guyang.sgy): If status.IsRuntimeEnvCreationFailed(), re-schedule
+                // the task to other nodes.
+                work->status = WorkStatus::WAITING;
+                return false;
               } else {
                 RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
                                << worker->WorkerId();
@@ -291,9 +282,21 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                   task_dependency_manager_.RemoveTaskDependencies(
                       task.GetTaskSpecification().TaskId());
                 }
-                work->dispatch_finished = true;
+                auto shapes_it = tasks_to_dispatch_.find(scheduling_class);
+                RAY_CHECK(shapes_it != tasks_to_dispatch_.end());
+                auto &dispatch_queue = shapes_it->second;
+                bool erased = false;
+                for (auto work_it = dispatch_queue.begin();
+                     work_it != dispatch_queue.end(); work_it++) {
+                  if (*work_it == work) {
+                    dispatch_queue.erase(work_it);
+                    erased = true;
+                    break;
+                  }
+                }
+                RAY_CHECK(erased);
+                return true;
               }
-              pending_workers_index_.erase(task_id);
             },
             allocated_instances_serialized_json);
         work_it++;
@@ -335,10 +338,9 @@ void ClusterTaskManager::QueueAndScheduleTask(
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
   metric_tasks_queued_++;
-  auto work = std::make_shared<Work>(
-      Work{task, reply,
-           [send_reply_callback] { send_reply_callback(Status::OK(), nullptr, nullptr); },
-           false, false, false});
+  auto work = std::make_shared<Work>(task, reply, [send_reply_callback] {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  });
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
@@ -523,12 +525,6 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
       const auto &task = (*work_it)->task;
       if (task.GetTaskSpecification().TaskId() == task_id) {
-        if ((*work_it)->dispatch_finished) {
-          RAY_LOG(INFO) << "Canceling Task  " << task_id
-                        << " failed because task already dispatched.";
-          work_queue.erase(work_it);
-          return false;
-        }
         RemoveFromBacklogTracker(task);
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from dispatch queue.";
         ReplyCancelled(*work_it);
@@ -536,7 +532,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
         }
-        (*work_it)->canceled = true;
+        (*work_it)->status = WorkStatus::CANCELLED;
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_dispatch_.erase(shapes_it);
@@ -603,9 +599,6 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
   for (const auto &shapes_it : boost::join(tasks_to_dispatch_, tasks_to_schedule_)) {
     auto &work_queue = shapes_it.second;
     for (const auto &work_it : work_queue) {
-      if (work_it->dispatch_finished) {
-        continue;
-      }
       Task task = work_it->task;
       if (task.GetTaskSpecification().IsActorCreationTask()) {
         if (num_reported++ > kMaxPendingActorsToReport) {
@@ -810,9 +803,6 @@ bool ClusterTaskManager::AnyPendingTasks(Task *exemplar, bool *any_pending,
   for (const auto &shapes_it : boost::join(tasks_to_dispatch_, tasks_to_schedule_)) {
     auto &work_queue = shapes_it.second;
     for (const auto &work_it : work_queue) {
-      if (work_it->dispatch_finished) {
-        continue;
-      }
       const auto &task = work_it->task;
       if (task.GetTaskSpecification().IsActorCreationTask()) {
         *num_pending_actor_creation += 1;
@@ -841,18 +831,8 @@ std::string ClusterTaskManager::DebugStr() const {
       infeasible_tasks_.begin(), infeasible_tasks_.end(), (size_t)0, accumulator);
   size_t num_tasks_to_schedule = std::accumulate(
       tasks_to_schedule_.begin(), tasks_to_schedule_.end(), (size_t)0, accumulator);
-  auto dispatch_accumulator =
-      [](size_t state, const std::pair<int, std::deque<std::shared_ptr<Work>>> &pair) {
-        for (const auto &work_it : pair.second) {
-          if (!work_it->dispatch_finished) {
-            state++;
-          }
-        }
-        return state;
-      };
-  size_t num_tasks_to_dispatch =
-      std::accumulate(tasks_to_dispatch_.begin(), tasks_to_dispatch_.end(), (size_t)0,
-                      dispatch_accumulator);
+  size_t num_tasks_to_dispatch = std::accumulate(
+      tasks_to_dispatch_.begin(), tasks_to_dispatch_.end(), (size_t)0, accumulator);
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
   buffer << "Infeasible queue length: " << num_infeasible_tasks << "\n";
