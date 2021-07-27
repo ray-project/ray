@@ -133,7 +133,7 @@ class ActorManager {
   /// actor. \return True if the handle was added and False if we already had a handle to
   /// the same actor.
   bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                         const std::string actor_name, const TaskID &caller_id,
+                         const std::string &actor_name, const TaskID &caller_id,
                          const std::string &call_site, const rpc::Address &caller_address,
                          bool is_detached);
 
@@ -173,7 +173,7 @@ class ActorManager {
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                      const std::string actor_name, bool is_owner_handle,
+                      const std::string &actor_name, bool is_owner_handle,
                       const TaskID &caller_id, const std::string &call_site,
                       const rpc::Address &caller_address, const ActorID &actor_id,
                       const ObjectID &actor_creation_return_id);

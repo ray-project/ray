@@ -50,7 +50,7 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
 }
 
 bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                     const std::string actor_name,
+                                     const std::string &actor_name,
                                      const TaskID &caller_id,
                                      const std::string &call_site,
                                      const rpc::Address &caller_address,
@@ -71,7 +71,7 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
 }
 
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                  const std::string actor_name, bool is_owner_handle,
+                                  const std::string &actor_name, bool is_owner_handle,
                                   const TaskID &caller_id, const std::string &call_site,
                                   const rpc::Address &caller_address,
                                   const ActorID &actor_id,
@@ -90,7 +90,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                   std::placeholders::_1, std::placeholders::_2);
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
         actor_id, actor_notification_callback,
-        [this, &actor_id, &actor_name](Status status) {
+        [this, &actor_id, actor_name](Status status) {
           if (status.ok() && !actor_name.empty()) {
             actor_name_to_ids_cache_.emplace(actor_name, actor_id);
           }
