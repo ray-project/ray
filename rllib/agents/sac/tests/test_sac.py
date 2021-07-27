@@ -130,7 +130,7 @@ class TestSAC(unittest.TestCase):
         env = "ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv"
         config["env_config"] = {"config": {"repeat_delay": 0}}
 
-        for _ in framework_iterator(config, frameworks="torch"):
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = sac.SACTrainer(config=config, env=env)
             num_iterations = 50
             learnt = False

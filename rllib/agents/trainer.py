@@ -551,7 +551,8 @@ class Trainer(Trainable):
         config = config or {}
 
         # Trainers allow env ids to be passed directly to the constructor.
-        self._env_id = self._register_if_needed(env or config.get("env"))
+        self._env_id = self._register_if_needed(
+            env or config.get("env"), config)
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -696,8 +697,7 @@ class Trainer(Trainable):
         # Merge the supplied config with the class default, but store the
         # user-provided one.
         self.raw_user_config = config
-        self.config = Trainer.merge_trainer_configs(self._default_config,
-                                                    config)
+        self.config = self.merge_trainer_configs(self._default_config, config)
 
         # Check and resolve DL framework settings.
         # Enable eager/tracing support.
@@ -1197,6 +1197,7 @@ class Trainer(Trainable):
                 observation_space=observation_space,
                 action_space=action_space,
                 config=config,
+                policy_config=self.config,
                 policy_mapping_fn=policy_mapping_fn,
                 policies_to_train=policies_to_train,
             )
@@ -1412,7 +1413,7 @@ class Trainer(Trainable):
                     f"but got {type(policies[pid].config)}!")
 
         framework = config.get("framework")
-        # Multi-GPU setting: Must use TFMultiGPU if tf.
+        # Multi-GPU setting: Must use MultiGPUTrainOneStep if tf.
         if config.get("num_gpus", 0) > 1:
             if framework in ["tfe", "tf2"]:
                 raise ValueError("`num_gpus` > 1 not supported yet for "
@@ -1423,7 +1424,8 @@ class Trainer(Trainable):
                     "Consider `simple_optimizer=False`.")
             config["simple_optimizer"] = framework == "torch"
         # Auto-setting: Use simple-optimizer for torch/tfe or multiagent,
-        # otherwise: TFMultiGPU (if supported by the algo's execution plan).
+        # otherwise: MultiGPUTrainOneStep (if supported by the algo's execution
+        # plan).
         elif simple_optim_setting == DEPRECATED_VALUE:
             # Non-TF: Must use simple optimizer.
             if framework != "tf":
@@ -1610,12 +1612,26 @@ class Trainer(Trainable):
             "that were generated via the `ray.rllib.agents.trainer_template."
             "build_trainer()` function!")
 
-    def _register_if_needed(self, env_object: Union[str, EnvType, None]):
+    def _register_if_needed(self, env_object: Union[str, EnvType, None],
+                            config):
         if isinstance(env_object, str):
             return env_object
         elif isinstance(env_object, type):
             name = env_object.__name__
-            register_env(name, lambda config: env_object(config))
+
+            # Add convenience `_get_spaces` method.
+
+            def _get_spaces(s):
+                return s.observation_space, s.action_space
+
+            env_object._get_spaces = _get_spaces
+
+            if config.get("remote_worker_envs"):
+                register_env(
+                    name,
+                    lambda cfg: ray.remote(num_cpus=0)(env_object).remote(cfg))
+            else:
+                register_env(name, lambda config: env_object(config))
             return name
         elif env_object is None:
             return None

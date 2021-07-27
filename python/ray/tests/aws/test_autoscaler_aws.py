@@ -2,9 +2,12 @@ import copy
 
 import pytest
 
+from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_KIND, \
+    NODE_KIND_HEAD, NODE_KIND_WORKER, TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler._private.aws.config import _get_vpc_id_or_die, \
     bootstrap_aws, log_to_cli, \
     DEFAULT_AMI
+from ray.autoscaler._private.providers import _get_node_provider
 import ray.tests.aws.utils.stubs as stubs
 import ray.tests.aws.utils.helpers as helpers
 from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
@@ -12,7 +15,7 @@ from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
     DEFAULT_SG_WITH_RULES_AUX_SUBNET, AUX_SG, \
     DEFAULT_SG_WITH_RULES, DEFAULT_SG_WITH_NAME, \
     DEFAULT_SG_WITH_NAME_AND_RULES, CUSTOM_IN_BOUND_RULES, \
-    DEFAULT_KEY_PAIR, DEFAULT_INSTANCE_PROFILE
+    DEFAULT_KEY_PAIR, DEFAULT_INSTANCE_PROFILE, DEFAULT_CLUSTER_NAME
 
 
 def test_use_subnets_in_only_one_vpc(iam_client_stub, ec2_client_stub):
@@ -456,6 +459,119 @@ def test_log_to_cli(iam_client_stub, ec2_client_stub):
     log_to_cli(config)
     iam_client_stub.assert_no_pending_responses()
     ec2_client_stub.assert_no_pending_responses()
+
+
+def test_network_interfaces(ec2_client_stub, iam_client_stub,
+                            ec2_client_stub_fail_fast,
+                            ec2_client_stub_max_retries):
+
+    # use default stubs to skip ahead to subnet configuration
+    stubs.configure_iam_role_default(iam_client_stub)
+    stubs.configure_key_pair_default(ec2_client_stub)
+
+    # given the security groups associated with our network interfaces...
+    sgids = ["sg-00000000", "sg-11111111", "sg-22222222", "sg-33333333"]
+    security_groups = []
+    suffix = 0
+    for sgid in sgids:
+        sg = copy.deepcopy(DEFAULT_SG)
+        sg["GroupName"] += f"-{suffix}"
+        sg["GroupId"] = sgid
+        security_groups.append(sg)
+        suffix += 1
+    # expect to describe all security groups to ensure they share the same VPC
+    stubs.describe_sgs_by_id(ec2_client_stub, sgids, security_groups)
+
+    # use a default stub to skip subnet configuration
+    stubs.configure_subnet_default(ec2_client_stub)
+
+    # given our mocks and an example config file as input...
+    # expect the config to be loaded, validated, and bootstrapped successfully
+    config = helpers.bootstrap_aws_example_config_file(
+        "example-network-interfaces.yaml")
+
+    # instantiate a new node provider
+    new_provider = _get_node_provider(
+        config["provider"],
+        DEFAULT_CLUSTER_NAME,
+        False,
+    )
+
+    head_name = config["head_node_type"]
+    for name, node_type in config["available_node_types"].items():
+        node_cfg = node_type["node_config"]
+        node_kind = NODE_KIND_HEAD if name is head_name else NODE_KIND_WORKER
+        tags = {
+            TAG_RAY_NODE_KIND: node_kind,
+            TAG_RAY_LAUNCH_CONFIG: "test-ray-launch-config",
+            TAG_RAY_USER_NODE_TYPE: name,
+        }
+        # given our bootstrapped node config as input to create a new node...
+        # expect to first describe all stopped instances that could be reused
+        stubs.describe_instances_with_any_filter_consumer(
+            ec2_client_stub_max_retries)
+        # given no stopped EC2 instances to reuse...
+        # expect to create new nodes with the given network interface config
+        stubs.run_instances_with_network_interfaces_consumer(
+            ec2_client_stub_fail_fast,
+            node_cfg["NetworkInterfaces"],
+        )
+        new_provider.create_node(node_cfg, tags, 1)
+
+    iam_client_stub.assert_no_pending_responses()
+    ec2_client_stub.assert_no_pending_responses()
+    ec2_client_stub_fail_fast.assert_no_pending_responses()
+    ec2_client_stub_max_retries.assert_no_pending_responses()
+
+
+def test_network_interface_conflict_keys():
+    # If NetworkInterfaces are defined, SubnetId and SecurityGroupIds
+    # can't be specified in the same node type config.
+    conflict_kv_pairs = [("SubnetId", "subnet-0000000"),
+                         ("SubnetIds", ["subnet-0000000", "subnet-1111111"]),
+                         ("SecurityGroupIds", ["sg-1234abcd", "sg-dcba4321"])]
+    expected_error_msg = "If NetworkInterfaces are defined, subnets and " \
+                         "security groups must ONLY be given in each " \
+                         "NetworkInterface."
+    for conflict_kv_pair in conflict_kv_pairs:
+        config = helpers.load_aws_example_config_file(
+            "example-network-interfaces.yaml")
+        head_name = config["head_node_type"]
+        head_node_cfg = config["available_node_types"][head_name][
+            "node_config"]
+        head_node_cfg[conflict_kv_pair[0]] = conflict_kv_pair[1]
+        with pytest.raises(ValueError, match=expected_error_msg):
+            helpers.bootstrap_aws_config(config)
+
+
+def test_network_interface_missing_subnet():
+    # If NetworkInterfaces are defined, each must have a subnet ID
+    expected_error_msg = "NetworkInterfaces are defined but at least one is " \
+                         "missing a subnet. Please ensure all interfaces " \
+                         "have a subnet assigned."
+    config = helpers.load_aws_example_config_file(
+        "example-network-interfaces.yaml")
+    for name, node_type in config["available_node_types"].items():
+        node_cfg = node_type["node_config"]
+        for network_interface_cfg in node_cfg["NetworkInterfaces"]:
+            network_interface_cfg.pop("SubnetId")
+            with pytest.raises(ValueError, match=expected_error_msg):
+                helpers.bootstrap_aws_config(config)
+
+
+def test_network_interface_missing_security_group():
+    # If NetworkInterfaces are defined, each must have security groups
+    expected_error_msg = "NetworkInterfaces are defined but at least one is " \
+                         "missing a security group. Please ensure all " \
+                         "interfaces have a security group assigned."
+    config = helpers.load_aws_example_config_file(
+        "example-network-interfaces.yaml")
+    for name, node_type in config["available_node_types"].items():
+        node_cfg = node_type["node_config"]
+        for network_interface_cfg in node_cfg["NetworkInterfaces"]:
+            network_interface_cfg.pop("Groups")
+            with pytest.raises(ValueError, match=expected_error_msg):
+                helpers.bootstrap_aws_config(config)
 
 
 if __name__ == "__main__":
