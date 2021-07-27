@@ -963,6 +963,45 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     shutil.rmtree(dir_path)
 
 
+def test_zipped_json_read(ray_start_regular_shared, tmp_path):
+    # Single file.
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(tmp_path, "test1.json.gz")
+    df1.to_json(path1, compression="gzip", orient="records", lines=True)
+    ds = ray.experimental.data.read_json(path1)
+    assert df1.equals(ray.get(ds.to_pandas())[0])
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert ds.input_files() == [path1]
+    assert ds.schema() is None
+
+    # Two files, parallelism=2.
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(tmp_path, "test2.json.gz")
+    df2.to_json(path2, compression="gzip", orient="records", lines=True)
+    ds = ray.experimental.data.read_json([path1, path2], parallelism=2)
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert pd.concat([df1, df2]).equals(dsdf)
+    # Test metadata ops.
+    for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
+        BlockAccessor.for_block(ray.get(block)).size_bytes()
+
+    # Directory and file, two files.
+    dir_path = os.path.join(tmp_path, "test_json_dir")
+    os.mkdir(dir_path)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(dir_path, "data0.json.gz")
+    df1.to_json(path1, compression="gzip", orient="records", lines=True)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(tmp_path, "data1.json.gz")
+    df2.to_json(path2, compression="gzip", orient="records", lines=True)
+    ds = ray.experimental.data.read_json([dir_path, path2])
+    df = pd.concat([df1, df2])
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert df.equals(dsdf)
+    shutil.rmtree(dir_path)
+
+
 def test_json_write(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_json_dir")
 
