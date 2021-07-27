@@ -11,20 +11,10 @@ from ray.experimental.workflow.common import (Workflow, WorkflowStatus,
 from ray.experimental.workflow.step_executor import commit_step
 from ray.experimental.workflow.storage import get_global_storage
 from ray.experimental.workflow.workflow_access import (
-    MANAGEMENT_ACTOR_NAME, flatten_workflow_output, replace_workflow_output,
+    MANAGEMENT_ACTOR_NAME, flatten_workflow_output,
     get_or_create_management_actor)
 
 logger = logging.getLogger(__name__)
-
-
-def _is_virtual_actor(workflow_id: str) -> bool:
-    # TODO(suquark): faster way to determine if it is a virtual actor.
-    ws = workflow_storage.get_workflow_storage(workflow_id)
-    try:
-        ws.load_actor_class_body()
-        return True
-    except Exception:
-        return False
 
 
 def run(entry_workflow: Workflow,
@@ -76,11 +66,7 @@ def resume(workflow_id: str) -> ray.ObjectRef:
         workflow_manager.run_or_resume.remote(
             workflow_id, ignore_existing=False))
     logger.info(f"Workflow job {workflow_id} resumed.")
-
-    if _is_virtual_actor(workflow_id):
-        return replace_workflow_output(workflow_id, result.output, None)
-    else:
-        return flatten_workflow_output(workflow_id, result.state)
+    return flatten_workflow_output(workflow_id, result.state)
 
 
 def get_output(workflow_id: str) -> ray.ObjectRef:
@@ -163,10 +149,7 @@ def resume_all(with_failed: bool) -> List[Tuple[str, ray.ObjectRef]]:
     async def _resume_one(wid: str) -> Tuple[str, Optional[ray.ObjectRef]]:
         try:
             result = await workflow_manager.run_or_resume.remote(wid)
-            if _is_virtual_actor(wid):
-                obj = replace_workflow_output(wid, result.output, None)
-            else:
-                obj = flatten_workflow_output(wid, result.state)
+            obj = flatten_workflow_output(wid, result.state)
             return wid, obj
         except Exception:
             logger.error(f"Failed to resume workflow {wid}")

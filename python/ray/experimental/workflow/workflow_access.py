@@ -50,42 +50,6 @@ def flatten_workflow_output(workflow_id: str,
     return ray.put(_SelfDereferenceObject(workflow_id, workflow_output))
 
 
-def _resolve_and_replace_result(workflow_id: str, result: ray.ObjectRef,
-                                replace: Any):
-    _resolve_workflow_output(workflow_id, result)
-    return replace
-
-
-class _ReplaceSelfDereferenceObject:
-    """A object that dereferences itself during deserialization, but
-    replace the result with another result."""
-
-    def __init__(self, workflow_id: str, nested_ref: ray.ObjectRef,
-                 replace: Any):
-        self.workflow_id = workflow_id
-        self.nested_ref = nested_ref
-        self.replace = replace
-
-    def __reduce__(self):
-        return _resolve_and_replace_result, (self.workflow_id, self.nested_ref,
-                                             self.replace)
-
-
-def replace_workflow_output(workflow_id: str, workflow_output: ray.ObjectRef,
-                            replace: Any) -> ray.ObjectRef:
-    """Converts the nested ref to a direct ref of an object.
-
-    Args:
-        workflow_id: The ID of a workflow.
-        workflow_output: A (nested) object ref of the workflow output.
-
-    Returns:
-        A direct ref of an object.
-    """
-    return ray.put(
-        _ReplaceSelfDereferenceObject(workflow_id, workflow_output, replace))
-
-
 def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef) -> Any:
     """Resolve the output of a workflow.
 

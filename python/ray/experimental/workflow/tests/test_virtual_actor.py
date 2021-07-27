@@ -214,7 +214,7 @@ def test_actor_writer_2(workflow_start_regular, tmp_path):
     assert 23 == actor.val.run()
     Path(incr_err).unlink()
     obj = workflow.resume("sync_counter")
-    assert ray.get(obj) is None
+    assert 25 == ray.get(obj)[0]
     assert 25 == actor.val.run()
 
 
