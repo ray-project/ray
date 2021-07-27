@@ -75,7 +75,7 @@ public final class Ray extends RayCall {
    * @param actor The actor to assign ownership.
    * @return A ObjectRef instance that represents the in-store object.
    */
-  public static <T> ObjectRef<T> put(T obj, BaseActorHandle actor) {
+  public static <T> ObjectRef<T> put(T obj, BaseActorHandle ownerActor) {
     return internal().put(obj, actor);
   }
 
