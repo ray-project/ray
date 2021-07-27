@@ -1,5 +1,5 @@
 from collections import defaultdict, namedtuple, Counter
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict, List, Set, FrozenSet
 import copy
 import logging
 import math
@@ -219,17 +219,17 @@ class StandardAutoscaler:
         last_used = self.load_metrics.last_used_time_by_ip
         horizon = now - (60 * self.config["idle_timeout_minutes"])
 
-        nodes_to_terminate: Dict[NodeID, bool] = []
+        nodes_to_terminate: List[bool] = []
         node_type_counts = collections.defaultdict(int)
         # Sort based on last used to make sure to keep min_workers that
         # were most recently used. Otherwise, _keep_min_workers_of_node_type
         # might keep a node that should be terminated.
         sorted_node_ids = self._sort_based_on_last_used(nodes, last_used)
         # Don't terminate nodes needed by request_resources()
-        nodes_allowed_to_terminate: Dict[NodeID, bool] = {}
+        nodes_not_allowed_to_terminate: FrozenSet[NodeID] = {}
         if self.load_metrics.get_resource_requests():
-            nodes_allowed_to_terminate = self._get_nodes_allowed_to_terminate(
-                sorted_node_ids)
+            nodes_not_allowed_to_terminate = \
+                self._get_nodes_needed_for_request_resources(sorted_node_ids)
 
         nodes_to_keep: List[NodeID] = []
 
@@ -260,7 +260,7 @@ class StandardAutoscaler:
             should_keep_or_terminate = self._keep_worker_of_node_type(
                 node_id, node_type_counts)
             if ((should_keep_or_terminate == KeepOrTerminate.keep
-                 or not nodes_allowed_to_terminate.get(node_id, True))
+                 or node_id in nodes_not_allowed_to_terminate)
                     and self.launch_config_ok(node_id)):
                 keep_node(node_id)
                 continue
@@ -425,20 +425,20 @@ class StandardAutoscaler:
 
         return sorted(nodes, key=last_time_used, reverse=True)
 
-    def _get_nodes_allowed_to_terminate(
-            self, sorted_node_ids: List[NodeID]) -> Dict[NodeID, bool]:
+    def _get_nodes_needed_for_request_resources(
+            self, sorted_node_ids: List[NodeID]) -> FrozenSet[NodeID]:
         # TODO(ameer): try merging this with resource_demand_scheduler
         # code responsible for adding nodes for request_resources().
-        """Returns the nodes allowed to terminate for request_resources().
+        """Returns the nodes NOT allowed to terminate due to request_resources().
 
         Args:
             sorted_node_ids: the node ids sorted based on last used (LRU last).
 
         Returns:
-            nodes_allowed_to_terminate: whether the node id is allowed to
-                terminate or not.
+            FrozenSet[NodeID]: a set of nodes (node ids) that 
+            we should NOT terminate.
         """
-        nodes_allowed_to_terminate: Dict[NodeID, bool] = {}
+        nodes_not_allowed_to_terminate: Set[NodeID] = set()
         head_node_resources: ResourceDict = copy.deepcopy(
             self.available_node_types[self.config["head_node_type"]][
                 "resources"])
@@ -495,10 +495,10 @@ class StandardAutoscaler:
                 # No resources of the node were needed for request_resources().
                 # max_node_resources[i] is an empty dict for legacy yamls
                 # before the node is connected.
-                nodes_allowed_to_terminate[node_id] = True
+                pass
             else:
-                nodes_allowed_to_terminate[node_id] = False
-        return nodes_allowed_to_terminate
+                nodes_not_allowed_to_terminate.add(node_id)
+        return frozenset(nodes_not_allowed_to_terminate)
 
     def _keep_worker_of_node_type(
             self, node_id: NodeID,
