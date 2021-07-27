@@ -1,3 +1,28 @@
+"""Abstractions around GCP resources and nodes.
+
+The logic has been abstracted away here to allow for different GCP resources
+(API endpoints), which can differ widely, making it impossible to use
+the same logic for everything.
+
+Classes inheriting from ``GCPResource`` represent different GCP resources -
+API endpoints that allow for nodes to be created, removed, listed and
+otherwise managed. Those classes contain methods abstracting GCP REST API
+calls.
+Each resource has a corresponding node type, represented by a
+class inheriting from ``GCPNode``. Those classes are essentially dicts
+with some extra methods. The instances of those classes will be created
+from API responses.
+
+The ``GCPNodeType`` enum is a lightweight way to classify nodes.
+
+Currently, Compute and TPU resources & nodes are supported.
+
+In order to add support for new resources, create classes inheriting from
+``GCPResource`` and ``GCPNode``, update the ``GCPNodeType`` enum,
+update the ``_generate_node_name`` method and finally update the
+node provider.
+"""
+
 from typing import List, Optional, Tuple, Union
 import logging
 import abc
@@ -28,7 +53,7 @@ POLL_INTERVAL = 5
 def _retry_on_exception(exception: Union[Exception, Tuple[Exception]],
                         regex: Optional[str] = None,
                         max_retries: int = MAX_POLLS,
-                        retry_interval: int = POLL_INTERVAL):
+                        retry_interval_s: int = POLL_INTERVAL):
     """Retry a function call n-times for as long as it throws an exception."""
 
     def dec(func):
@@ -48,7 +73,7 @@ def _retry_on_exception(exception: Union[Exception, Tuple[Exception]],
                 ret = try_catch_exc()
                 if not isinstance(ret, Exception):
                     break
-                time.sleep(retry_interval)
+                time.sleep(retry_interval_s)
             if isinstance(ret, Exception):
                 raise ret
             return ret
@@ -94,7 +119,8 @@ class GCPNodeType(Enum):
         """Provided a node name, determine the type.
 
         This expects the name to be in format '[NAME]-[UUID]-[TYPE]',
-        where [TYPE] is either 'compute' or 'tpu'."""
+        where [TYPE] is either 'compute' or 'tpu'.
+        """
         return GCPNodeType(name.split("-")[-1])
 
 
@@ -105,8 +131,9 @@ class GCPNode(UserDict, metaclass=abc.ABCMeta):
     RUNNING_STATUSES = None
     STATUS_FIELD = None
 
-    def __init__(self, dict: dict, resource: "GCPResource", **kwargs) -> None:
-        super().__init__(dict, **kwargs)
+    def __init__(self, base_dict: dict, resource: "GCPResource",
+                 **kwargs) -> None:
+        super().__init__(base_dict, **kwargs)
         self.resource = resource
         assert isinstance(self.resource, GCPResource)
 
@@ -285,7 +312,7 @@ class GCPCompute(GCPResource):
         return result
 
     def list_instances(self, label_filters: Optional[dict] = None
-                       ) -> List["GCPComputeNode"]:
+                       ) -> List[GCPComputeNode]:
         label_filters = label_filters or {}
 
         if label_filters:
@@ -325,7 +352,7 @@ class GCPCompute(GCPResource):
         instances = response.get("items", [])
         return [GCPComputeNode(i, self) for i in instances]
 
-    def get_instance(self, node_id: str) -> "GCPComputeNode":
+    def get_instance(self, node_id: str) -> GCPComputeNode:
         instance = self.resource.instances().get(
             project=self.project_id,
             zone=self.availability_zone,
@@ -439,7 +466,7 @@ class GCPTPU(GCPResource):
         return result
 
     def list_instances(
-            self, label_filters: Optional[dict] = None) -> List["GCPTPUNode"]:
+            self, label_filters: Optional[dict] = None) -> List[GCPTPUNode]:
         response = self.resource.projects().locations().nodes().list(
             parent=self.path).execute()
 
@@ -468,7 +495,7 @@ class GCPTPU(GCPResource):
 
         return instances
 
-    def get_instance(self, node_id: str) -> "GCPTPUNode":
+    def get_instance(self, node_id: str) -> GCPTPUNode:
         instance = self.resource.projects().locations().nodes().get(
             name=node_id).execute()
 
@@ -478,7 +505,7 @@ class GCPTPU(GCPResource):
     # MAX_POLLS times
     @_retry_on_exception(HttpError, "unable to queue the operation")
     def set_labels(self,
-                   node: GCPNode,
+                   node: GCPTPUNode,
                    labels: dict,
                    wait_for_operation: bool = True) -> dict:
         body = {

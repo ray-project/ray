@@ -59,12 +59,13 @@ def get_node_type(node: dict) -> GCPNodeType:
     if "machineType" not in node and "acceleratorType" not in node:
         raise ValueError(
             "Invalid node. For a Compute instance, 'machineType' is "
-            "required."
+            "required. "
             "For a TPU instance, 'acceleratorType' and no 'machineType' "
-            "is required.")
+            "is required. "
+            f"Got {list(node)}")
 
     if "machineType" not in node and "acceleratorType" in node:
-        # remove after TPU support is added!
+        # remove after TPU pod support is added!
         if node["acceleratorType"] not in ("v2-8", "v3-8"):
             raise ValueError(
                 "For now, only v2-8' and 'v3-8' accelerator types are "
@@ -208,14 +209,14 @@ def construct_clients_from_provider_config(provider_config):
         logger.debug("gcp_credentials not found in cluster yaml file. "
                      "Falling back to GOOGLE_APPLICATION_CREDENTIALS "
                      "environment variable.")
-        tpu = _create_tpu() if provider_config.get(HAS_TPU_PROVIDER_FIELD,
-                                                   False) else None
+        tpu_resource = _create_tpu() if provider_config.get(
+            HAS_TPU_PROVIDER_FIELD, False) else None
         # If gcp_credentials is None, then discovery.build will search for
         # credentials in the local environment.
         return _create_crm(), \
             _create_iam(), \
             _create_compute(), \
-            tpu
+            tpu_resource
 
     assert ("type" in gcp_credentials), \
         "gcp_credentials cluster yaml field missing 'type' field."
@@ -240,13 +241,13 @@ def construct_clients_from_provider_config(provider_config):
         # Otherwise the credentials type must be credentials_token.
         credentials = OAuthCredentials(credentials_field)
 
-    tpu = _create_tpu(credentials) if provider_config.get(
+    tpu_resource = _create_tpu(credentials) if provider_config.get(
         HAS_TPU_PROVIDER_FIELD, False) else None
 
     return _create_crm(credentials), \
         _create_iam(credentials), \
         _create_compute(credentials), \
-        tpu
+        tpu_resource
 
 
 def bootstrap_gcp(config):
@@ -489,7 +490,8 @@ def _configure_subnet(config, compute):
     }]
 
     for node_config in node_configs:
-        # The not applicable key will be removed during creation
+        # The not applicable key will be removed during node creation
+
         # compute
         if "networkInterfaces" not in node_config:
             node_config["networkInterfaces"] = copy.deepcopy(
