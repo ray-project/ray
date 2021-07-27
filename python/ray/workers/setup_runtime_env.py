@@ -19,7 +19,8 @@ from ray._private.conda import (get_conda_activate_commands,
 from ray._private.utils import try_to_create_directory
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
-from ray.workers.pluggable_runtime_env import RuntimeEnvContext, get_hook_logger
+from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
+                                               get_hook_logger)
 
 logger = logging.getLogger(__name__)
 parser = argparse.ArgumentParser()

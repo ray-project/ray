@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import threading
 from ray._private.ray_logging import setup_component_logger
 from typing import Dict
 
@@ -55,6 +54,9 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             def run_setup_with_logger():
                 runtime_env: dict = json.loads(serialized_runtime_env or "{}")
                 per_job_logger = self.get_or_create_logger(request.job_id)
+                # Here we set the logger context for the setup hook execution.
+                # The logger needs to be thread local because there can be
+                # setup hooks ran for arbitrary job in arbitrary threads.
                 with using_thread_local_logger(per_job_logger):
                     env_context = self._setup(runtime_env, session_dir)
                 return env_context

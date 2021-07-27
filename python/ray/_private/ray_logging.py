@@ -48,8 +48,11 @@ def setup_component_logger(*,
         filename(str): Name of the file to write logs.
         max_bytes(int): Same argument as RotatingFileHandler's maxBytes.
         backup_count(int): Same argument as RotatingFileHandler's backupCount.
+        logger_name(str, optional): used to create or get the correspoding
+            logger in getLogger call. It will get the root logger by default.
+    Returns:
+        logger (logging.Logger): the created or modified logger.
     """
-    # Get the root logger.
     logger = logging.getLogger(logger_name)
     if type(logging_level) is str:
         logging_level = logging.getLevelName(logging_level.upper())

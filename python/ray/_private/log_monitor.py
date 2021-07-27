@@ -137,10 +137,11 @@ class LogMonitor:
         monitor_log_paths = glob.glob(f"{self.logs_dir}/monitor.log")
         # If gcs server restarts, there can be multiple log files.
         gcs_err_path = glob.glob(f"{self.logs_dir}/gcs_server*.err")
-        # runtime_env setup process is loggerd here
-        runtime_env_setup_path = glob.glob(f"{self.logs_dir}/runtime_env*.log")
+        # runtime_env setup process is logged here
+        runtime_env_setup_paths = glob.glob(
+            f"{self.logs_dir}/runtime_env*.log")
         for file_path in (log_file_paths + raylet_err_paths + gcs_err_path +
-                          monitor_log_paths + runtime_env_setup_path):
+                          monitor_log_paths + runtime_env_setup_paths):
             if os.path.isfile(
                     file_path) and file_path not in self.log_filenames:
                 job_match = JOB_LOG_PATTERN.match(file_path)
@@ -151,6 +152,8 @@ class LogMonitor:
                     job_id = None
                     worker_pid = None
 
+                # Perform existence check first because most file will not be
+                # including runtime_env. This saves some cpu cycle.
                 if "runtime_env" in file_path:
                     runtime_env_job_match = RUNTIME_ENV_SETUP_PATTERN.match(
                         file_path)
