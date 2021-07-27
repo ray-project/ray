@@ -171,7 +171,6 @@ class MultiGPUTrainOneStep:
                     policy_id].load_batch_into_buffer(
                         batch, buffer_index=0)
 
-        import time #TODO
         # Execute minibatch SGD on loaded data.
         with learn_timer:
             fetches = {}
@@ -188,13 +187,10 @@ class MultiGPUTrainOneStep:
                         # Learn on the pre-loaded data in the buffer.
                         # Note: For minibatch SGD, the data is an offset into
                         # the pre-loaded entire train batch.
-                        t0 = time.time()
                         batch_fetches = policy.learn_on_loaded_batch(
                             permutation[batch_index] *
                             self.per_device_batch_size,
                             buffer_index=0)
-                        t0 = time.time() - t0
-                        print(f"single batch update took: {t0}s")
 
                         # No towers: Single CPU.
                         if "tower_0" not in batch_fetches:

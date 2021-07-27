@@ -1437,8 +1437,9 @@ class Trainer(Trainable):
                 from ray.rllib.policy.torch_policy import TorchPolicy
                 default_policy_cls = None if trainer_obj_or_none is None else \
                     getattr(trainer_obj_or_none, "_policy_class", None)
-                if any((p[0] or default_policy_cls) is None or not issubclass(
-                        p[0] or default_policy_cls, (DynamicTFPolicy, TorchPolicy))
+                if any((p[0] or default_policy_cls) is None
+                       or not issubclass(p[0] or default_policy_cls,
+                                         (DynamicTFPolicy, TorchPolicy))
                        for p in config["multiagent"]["policies"].values()):
                     config["simple_optimizer"] = True
                 else:

@@ -79,16 +79,18 @@ class SampleBatch(dict):
         self.get_interceptor = None
 
         # Clear out None seq-lens.
-        if self.get("seq_lens") is None or self.get("seq_lens") == []:
+        seq_lens_ = self.get("seq_lens")
+        if seq_lens_ is None or \
+                (isinstance(seq_lens_, list) and len(seq_lens_) == 0):
             self.pop("seq_lens", None)
         # Numpyfy seq_lens if list.
-        elif isinstance(self.get("seq_lens"), list):
-            self["seq_lens"] = np.array(self["seq_lens"], dtype=np.int32)
+        elif isinstance(seq_lens_, list):
+            self["seq_lens"] = seq_lens_ = np.array(seq_lens_, dtype=np.int32)
 
-        if self.max_seq_len is None and self.get("seq_lens") is not None and \
-                not (tf and tf.is_tensor(self["seq_lens"])) and \
-                len(self["seq_lens"]) > 0:
-            self.max_seq_len = max(self["seq_lens"])
+        if self.max_seq_len is None and seq_lens_ is not None and \
+                not (tf and tf.is_tensor(seq_lens_)) and \
+                len(seq_lens_) > 0:
+            self.max_seq_len = max(seq_lens_)
 
         if self.is_training is None:
             self.is_training = self.pop("is_training", False)
@@ -318,8 +320,8 @@ class SampleBatch(dict):
             SampleBatch: A new SampleBatch, which has a slice of this batch's
                 data.
         """
-        deprecation_warning("SampleBatch.slice()", "SampleBatch[start:stop]",
-                            error=False)
+        deprecation_warning(
+            "SampleBatch.slice()", "SampleBatch[start:stop]", error=False)
 
         if self.get("seq_lens") is not None and len(self["seq_lens"]) > 0:
             if start < 0:
@@ -644,13 +646,15 @@ class SampleBatch(dict):
                 start = start_seq_len * self.max_seq_len
                 stop = stop_seq_len * self.max_seq_len
             data = {
-                k: v[start:stop] if k != "seq_lens" and not k.startswith("state_in_") else v[start_seq_len:stop_seq_len]
+                k: v[start:stop]
+                if k != "seq_lens" and not k.startswith("state_in_") else
+                v[start_seq_len:stop_seq_len]
                 for k, v in self.items()
             }
             return SampleBatch(
                 data,
                 _is_training=self.is_training,
-                _time_major = self.time_major,
+                _time_major=self.time_major,
             )
         else:
             start, stop = slice_.start, slice_.stop
@@ -658,7 +662,7 @@ class SampleBatch(dict):
             return SampleBatch(
                 data,
                 _is_training=self.is_training,
-                _time_major = self.time_major,
+                _time_major=self.time_major,
             )
 
     def _get_slice_indices(self, slice_size):

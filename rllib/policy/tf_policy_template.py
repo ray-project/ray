@@ -53,8 +53,7 @@ def build_tf_policy(
         extra_learn_fetches_fn: Optional[Callable[[Policy], Dict[
             str, TensorType]]] = None,
         validate_spaces: Optional[Callable[
-            [PolicyID, gym.Space, gym.Space, TrainerConfigDict],
-            None]] = None,
+            [PolicyID, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
         before_init: Optional[Callable[
             [Policy, gym.Space, gym.Space, TrainerConfigDict], None]] = None,
         before_loss_init: Optional[Callable[[

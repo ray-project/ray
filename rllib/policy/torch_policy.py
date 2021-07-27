@@ -530,7 +530,9 @@ class TorchPolicy(Policy):
             )
 
         # 3) Load splits into the given buffer (consisting of n GPUs).
-        slices = [slice.to_device(self.devices[i]) for i, slice in enumerate(slices)]
+        slices = [
+            slice.to_device(self.devices[i]) for i, slice in enumerate(slices)
+        ]
         self._loaded_batches[buffer_index] = slices
 
         # Return loaded samples per-device.
@@ -564,13 +566,18 @@ class TorchPolicy(Policy):
 
         # Get the correct slice of the already loaded batch to use,
         # based on offset and batch size.
-        batch_size = self.config.get("sgd_minibatch_size",
-                                     self.config["train_batch_size"])
-        if batch_size >= len(self._loaded_batches[buffer_index]):
+        device_batch_size = \
+            self.config.get(
+                "sgd_minibatch_size", self.config["train_batch_size"]) // \
+            len(self.devices)
+        if device_batch_size >= sum(
+                len(s) for s in self._loaded_batches[buffer_index]):
             device_batches = self._loaded_batches[buffer_index]
         else:
-            device_batches = [b[offset:offset + batch_size]
-                              for b in self._loaded_batches[buffer_index]]
+            device_batches = [
+                b[offset:offset + device_batch_size]
+                for b in self._loaded_batches[buffer_index]
+            ]
 
         # Do the (maybe parallelized) gradient calculation step.
         tower_outputs = self._multi_gpu_parallel_grad_calc(device_batches)
@@ -581,9 +588,8 @@ class TorchPolicy(Policy):
             if tower_outputs[0][0][i] is not None:
                 all_grads.append(
                     torch.mean(
-                        torch.stack([
-                            t[0][i].to(self.device) for t in tower_outputs
-                        ]),
+                        torch.stack(
+                            [t[0][i].to(self.device) for t in tower_outputs]),
                         dim=0))
             else:
                 all_grads.append(None)
@@ -594,7 +600,6 @@ class TorchPolicy(Policy):
         self.apply_gradients(_directStepOptimizerSingleton)
 
         batch_fetches = {}
-        #grad_info["allreduce_latency"] /= len(self._optimizers)
         for i, batch in enumerate(device_batches):
             batch_fetches[f"tower_{i}"] = {
                 LEARNER_STATS_KEY: self.extra_grad_info(batch)
@@ -603,7 +608,7 @@ class TorchPolicy(Policy):
         #TODO: do this per tower as well.
         #fetches = self.extra_compute_grad_fetches()
 
-        return batch_fetches  #all_grads, dict(fetches, **{LEARNER_STATS_KEY: grad_info})
+        return batch_fetches
 
     @with_lock
     @override(Policy)
@@ -611,16 +616,9 @@ class TorchPolicy(Policy):
     def compute_gradients(self,
                           postprocessed_batch: SampleBatch) -> ModelGradients:
 
-        #TODO: Move to end of MultiGPUTrainOneStep
-        # Multi-GPU case: Slice inputs into n (roughly) equal batches.
-        #if len(self.devices) > 1:
-        #    # Copy weights of main model to all towers.
-        #    state_dict = self.model.state_dict()
-        #    for tower in self.model_gpu_towers:
-        #        tower.load_state_dict(state_dict)
-
         # Do the (maybe parallelized) gradient calculation step.
-        tower_outputs = self._multi_gpu_parallel_grad_calc(batches)
+        tower_outputs = self._multi_gpu_parallel_grad_calc(
+            [postprocessed_batch])
 
         # Multi device (GPU) case.
         if len(self.devices) > 1:
@@ -649,7 +647,7 @@ class TorchPolicy(Policy):
             all_grads, grad_info = tower_outputs[0]
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
-        grad_info.update(self.extra_grad_info(batches[0]))
+        grad_info.update(self.extra_grad_info(postprocessed_batch))
 
         fetches = self.extra_compute_grad_fetches()
 
