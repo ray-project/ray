@@ -36,7 +36,7 @@ def test_start(ray_start_2_cpus):
     assert len(e.worker_group) == 2
 
 
-def test_shutdown():
+def test_shutdown(ray_start_2_cpus):
     config = BackendConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
@@ -46,7 +46,7 @@ def test_shutdown():
         next(e.execute(lambda: 1))
 
 
-def test_execute():
+def test_execute(ray_start_2_cpus):
     config = BackendConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
@@ -57,7 +57,7 @@ def test_execute():
     assert e.return_values == [1, 1]
 
 
-def test_execute_worker_failure():
+def test_execute_worker_failure(ray_start_2_cpus):
     config = BackendConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
@@ -128,7 +128,7 @@ def test_execute_with_results(ray_start_2_cpus):
     execute_with_results(lambda: "x")
 
 
-def test_execute_slow_worker():
+def test_execute_slow_worker(ray_start_2_cpus):
     def slow_train():
         import time
         time.sleep(5)
