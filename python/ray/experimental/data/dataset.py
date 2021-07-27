@@ -29,6 +29,7 @@ from ray.experimental.data.impl.compute import get_compute, cache_wrapper, \
     CallableClass
 from ray.experimental.data.impl.progress_bar import ProgressBar
 from ray.experimental.data.impl.shuffle import simple_shuffle
+from ray.experimental.data.impl.sort import sort_impl
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
 
@@ -449,9 +450,10 @@ class Dataset(Generic[T]):
         ]
 
     def sort(self,
-             key: Union[None, str, List[str], Callable[[T], Any]],
+             key: Union[None, str, List[str], Callable[[T], Any]] = None,
              descending: bool = False) -> "Dataset[T]":
-        """Sort the dataset by the specified key columns or key function.
+        """Sort the dataset by the specified key column or key function.
+        (experimental support)
 
         This is a blocking operation.
 
@@ -459,27 +461,29 @@ class Dataset(Generic[T]):
             >>> # Sort using the entire record as the key.
             >>> ds.sort()
 
-            >>> # Sort by a single column.
-            >>> ds.sort("field1")
-
-            >>> # Sort by multiple columns.
-            >>> ds.sort(["field1", "field2"])
+            >>> # Sort by a single column in descending order.
+            >>> ds.sort("field1", descending=True)
 
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["field1"] % 100)
 
-        Time complexity: O(dataset size / parallelism)
+            >>> # Sort by multiple columns (not yet supported).
+            >>> ds.sort([("field1", "ascending"), ("field2", "descending)])
+
+        Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: Either a single Arrow column name, a list of Arrow column
-                names, a function that returns a sortable key given each
-                record as an input, or None to sort by the entire record.
+            key:
+                - For Arrow tables, key must be a single column name.
+                - For datasets of Python objects, key can be either a lambda
+                  function that returns a comparison key to sort by, or None
+                  to sort by the original value.
             descending: Whether to sort in descending order.
 
         Returns:
-            The sorted dataset.
+            A new, sorted dataset.
         """
-        raise NotImplementedError  # P2
+        return Dataset(sort_impl(self._blocks, key, descending))
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
