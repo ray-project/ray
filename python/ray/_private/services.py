@@ -1159,6 +1159,11 @@ def start_dashboard(require_dashboard,
 
         # Make sure the process can start.
         try:
+            # These checks have to come first because aiohttp looks
+            # for opencensus, too, and raises a different error otherwise.
+            import opencensus  # noqa: F401
+            import prometheus_client  # noqa: F401
+
             import aiohttp  # noqa: F401
             import aioredis  # noqa: F401
             import aiohttp_cors  # noqa: F401

@@ -17,7 +17,7 @@ By changing ``ray.init()`` to ``ray.init("ray://<host>:<port>")``, you can conne
    import ray
 
    # Starting the Ray client. This connects to a remote Ray cluster.
-   ray.init("ray://<head_node_host>:10001").connect()
+   ray.init("ray://<head_node_host>:10001")
 
    # Normal Ray code follows
    @ray.remote
