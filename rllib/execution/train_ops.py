@@ -155,7 +155,7 @@ class MultiGPUTrainOneStep:
         learn_timer = metrics.timers[LEARN_ON_BATCH_TIMER]
         # Load data into GPUs.
         with load_timer:
-            num_loaded_tuples = {}
+            num_loaded_samples = {}
             for policy_id, batch in samples.policy_batches.items():
                 # Not a policy-to-train.
                 if policy_id not in self.local_worker.policies_to_train:
@@ -167,18 +167,19 @@ class MultiGPUTrainOneStep:
                 # Load the entire train batch into the Policy's only buffer
                 # (idx=0). Policies only have >1 buffers, if we are training
                 # asynchronously.
-                num_loaded_tuples[policy_id] = self.local_worker.policy_map[
+                num_loaded_samples[policy_id] = self.local_worker.policy_map[
                     policy_id].load_batch_into_buffer(
                         batch, buffer_index=0)
 
+        import time #TODO
         # Execute minibatch SGD on loaded data.
         with learn_timer:
             fetches = {}
-            for policy_id, tuples_per_device in num_loaded_tuples.items():
+            for policy_id, samples_per_device in num_loaded_samples.items():
                 policy = self.local_worker.policy_map[policy_id]
                 num_batches = max(
                     1,
-                    int(tuples_per_device) // int(self.per_device_batch_size))
+                    int(samples_per_device) // int(self.per_device_batch_size))
                 logger.debug("== sgd epochs for {} ==".format(policy_id))
                 batch_fetches_all_towers = []
                 for _ in range(self.num_sgd_iter):
@@ -187,10 +188,13 @@ class MultiGPUTrainOneStep:
                         # Learn on the pre-loaded data in the buffer.
                         # Note: For minibatch SGD, the data is an offset into
                         # the pre-loaded entire train batch.
+                        t0 = time.time()
                         batch_fetches = policy.learn_on_loaded_batch(
                             permutation[batch_index] *
                             self.per_device_batch_size,
                             buffer_index=0)
+                        t0 = time.time() - t0
+                        print(f"single batch update took: {t0}s")
 
                         # No towers: Single CPU.
                         if "tower_0" not in batch_fetches:

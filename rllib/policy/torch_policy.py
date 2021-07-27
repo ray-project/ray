@@ -491,38 +491,119 @@ class TorchPolicy(Policy):
             batch: SampleBatch,
             buffer_index: int = 0,
     ) -> int:
-        # If not zero-padded yet, do this here on the CPU before
-        # splitting loading.
-        if not isinstance(batch, SampleBatch) or not batch.zero_padded:
+        assert isinstance(batch, SampleBatch) and batch.zero_padded is False
+
+        # Set the is_training flag of the batch.
+        batch.is_training = True
+
+        # Shortcut for 1 CPU only: Store batch in `self._loaded_batches`.
+        if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
+            assert buffer_index == 0
             pad_batch_to_sequences_of_same_size(
-                batch,
+                batch=batch,
+                max_seq_len=self.max_seq_len,
+                shuffle=False,
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
+            self._loaded_batches[0] = [batch]
+            return len(batch)
+
+        # Batch (len=28, seq-lens=[4, 7, 4, 10, 3]):
+        # 0123 0123456 0123 0123456789ABC
+
+        # 1) split into n per-GPU sub batches (n=2).
+        # [0123 0123456] [012] [3 0123456789 ABC]
+        # (len=14, 14 seq-lens=[4, 7, 3] [1, 10, 3])
+        slices = batch.timeslices(num_slices=len(self.devices))
+
+        # 2) zero-padding (max-seq-len=10).
+        # - [0123000000 0123456000 0120000000]
+        # - [3000000000 0123456789 ABC0000000]
+        for slice in slices:
+            pad_batch_to_sequences_of_same_size(
+                batch=slice,
                 max_seq_len=self.max_seq_len,
                 shuffle=False,
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
             )
 
-        # Shortcut for 1 CPU only: Store batch in
+        # 3) Load splits into the given buffer (consisting of n GPUs).
+        slices = [slice.to_device(self.devices[i]) for i, slice in enumerate(slices)]
+        self._loaded_batches[buffer_index] = slices
+
+        # Return loaded samples per-device.
+        return len(slices[0])
+
+    @override(Policy)
+    @DeveloperAPI
+    def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
+        if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
+            assert buffer_index == 0
+        return len(self._loaded_batches[buffer_index])
+
+    @override(Policy)
+    @DeveloperAPI
+    def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
+        # Shortcut for 1 CPU only: Batch should already be stored in
         # `self._loaded_single_cpu_batch`.
         if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
             assert buffer_index == 0
-            self._loaded_batches[0] = [batch]
-        # For multi-GPU, split the batch into n slices (n=#GPUs).
-        # and move each one to its respective GPU.
-        else:
-            from ray.rllib.utils.sgd import minibatches
-            batches = list(
-                minibatches(
-                    batch,
-                    len(batch) // len(self.devices),
-                    shuffle=False))
-            self._loaded_batches[buffer_index] = []
-            for i, b in enumerate(batches):
-                TODO:
-                self._loaded_batches[buffer_index].append(
-                    b.to_device(self.devices[i], self.view_requirements))
 
-        return len(batch)
+        if not self._loaded_batches[buffer_index]:
+            raise ValueError(
+                "Must call Policy.load_batch_into_buffer() before "
+                "Policy.learn_on_loaded_batch()!")
+
+        if len(self.devices) > 1:
+            # Copy weights of main model to all towers.
+            state_dict = self.model.state_dict()
+            for tower in self.model_gpu_towers:
+                tower.load_state_dict(state_dict)
+
+        # Get the correct slice of the already loaded batch to use,
+        # based on offset and batch size.
+        batch_size = self.config.get("sgd_minibatch_size",
+                                     self.config["train_batch_size"])
+        if batch_size >= len(self._loaded_batches[buffer_index]):
+            device_batches = self._loaded_batches[buffer_index]
+        else:
+            device_batches = [b[offset:offset + batch_size]
+                              for b in self._loaded_batches[buffer_index]]
+
+        # Do the (maybe parallelized) gradient calculation step.
+        tower_outputs = self._multi_gpu_parallel_grad_calc(device_batches)
+
+        # Mean-reduce gradients over GPU-towers.
+        all_grads = []
+        for i in range(len(tower_outputs[0][0])):
+            if tower_outputs[0][0][i] is not None:
+                all_grads.append(
+                    torch.mean(
+                        torch.stack([
+                            t[0][i].to(self.device) for t in tower_outputs
+                        ]),
+                        dim=0))
+            else:
+                all_grads.append(None)
+        # Set main model's grads to mean-reduced values.
+        for i, p in enumerate(self.model.parameters()):
+            p.grad = all_grads[i]
+
+        self.apply_gradients(_directStepOptimizerSingleton)
+
+        batch_fetches = {}
+        #grad_info["allreduce_latency"] /= len(self._optimizers)
+        for i, batch in enumerate(device_batches):
+            batch_fetches[f"tower_{i}"] = {
+                LEARNER_STATS_KEY: self.extra_grad_info(batch)
+            }
+
+        #TODO: do this per tower as well.
+        #fetches = self.extra_compute_grad_fetches()
+
+        return batch_fetches  #all_grads, dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
     @with_lock
     @override(Policy)
@@ -530,38 +611,13 @@ class TorchPolicy(Policy):
     def compute_gradients(self,
                           postprocessed_batch: SampleBatch) -> ModelGradients:
 
-        # For multi-GPU, split the batch into n slices (n=#GPUs).
-        #if len(self.devices) == 1:
-        #    batches = [postprocessed_batch]
-        #else:
-        #    from ray.rllib.utils.sgd import minibatches
-        #    batches = list(
-        #        minibatches(
-        #            postprocessed_batch,
-        #            len(postprocessed_batch) // len(self.devices),
-        #            shuffle=False))
-
-        #if not isinstance(postprocessed_batch, SampleBatch) or \
-        #        not postprocessed_batch.zero_padded:
-        #    for b in batches:
-        #        pad_batch_to_sequences_of_same_size(
-        #            b,
-        #            max_seq_len=self.max_seq_len,
-        #            shuffle=False,
-        #            batch_divisibility_req=self.batch_divisibility_req,
-        #            view_requirements=self.view_requirements,
-        #        )
-
-        #for b, d in zip(batches, self.devices):
-        #    b.is_training = True
-        #    self._lazy_tensor_dict(b, device=d)
-
+        #TODO: Move to end of MultiGPUTrainOneStep
         # Multi-GPU case: Slice inputs into n (roughly) equal batches.
-        if len(self.devices) > 1:
-            # Copy weights of main model to all towers.
-            state_dict = self.model.state_dict()
-            for tower in self.model_gpu_towers:
-                tower.load_state_dict(state_dict)
+        #if len(self.devices) > 1:
+        #    # Copy weights of main model to all towers.
+        #    state_dict = self.model.state_dict()
+        #    for tower in self.model_gpu_towers:
+        #        tower.load_state_dict(state_dict)
 
         # Do the (maybe parallelized) gradient calculation step.
         tower_outputs = self._multi_gpu_parallel_grad_calc(batches)

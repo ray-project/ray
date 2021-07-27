@@ -932,10 +932,11 @@ class TFMultiGPUTowerStack:
         sess.run([t.init_op for t in self._towers], feed_dict=feed_dict)
 
         self.num_tuples_loaded = truncated_len
-        tuples_per_device = truncated_len // len(self.devices)
-        assert tuples_per_device > 0, "No data loaded?"
-        assert tuples_per_device % self._loaded_per_device_batch_size == 0
-        return tuples_per_device
+        samples_per_device = truncated_len // len(self.devices)
+        assert samples_per_device > 0, "No data loaded?"
+        assert samples_per_device % self._loaded_per_device_batch_size == 0
+        # Return loaded samples per-device.
+        return samples_per_device
 
     def optimize(self, sess, batch_index):
         """Run a single step of SGD.
