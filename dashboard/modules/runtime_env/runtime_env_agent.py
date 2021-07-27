@@ -40,9 +40,9 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         self._runtime_env_dir = dashboard_agent.runtime_env_dir
         self._setup = import_attr(dashboard_agent.runtime_env_setup_hook)
         runtime_env.PKG_DIR = dashboard_agent.runtime_env_dir
-        # Maps a serialized runtime env dict to the result of creating the env.
-        # RuntimeEnvContext arising from the creation of the env.
-        self._created_env_cache: Dict[str, CreatedEnvResult] = dict()
+        # Cache the results of creating envs to avoid repeatedly calling into
+        # conda and other slow calls.
+        self._env_cache: Dict[str, CreatedEnvResult] = dict()
 
     async def CreateRuntimeEnv(self, request, context):
         async def _setup_runtime_env(serialized_env, session_dir):
@@ -52,9 +52,9 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                                               session_dir)
 
         serialized_env = request.serialized_runtime_env
-        if serialized_env in self._created_env_cache:
-            serialized_context = self._created_env_cache[serialized_env]
-            result = self._created_env_cache[serialized_env]
+        if serialized_env in self._env_cache:
+            serialized_context = self._env_cache[serialized_env]
+            result = self._env_cache[serialized_env]
             if result.success:
                 context = result.result
                 logger.info("Runtime env already created successfully. "
@@ -95,14 +95,14 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 "Runtime env creation failed for %d times, "
                 "don't retry any more.",
                 runtime_env_consts.RUNTIME_ENV_RETRY_TIMES)
-            self._failed_env_cache[serialized_env] = CreatedEnvResult(
+            self._env_cache[serialized_env] = CreatedEnvResult(
                 False, error_message)
             return runtime_env_agent_pb2.CreateRuntimeEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message=error_message)
 
         serialized_context = runtime_env_context.serialize()
-        self._created_env_cache[serialized_env] = CreatedEnvResult(
+        self._env_cache[serialized_env] = CreatedEnvResult(
             True, serialized_context)
         logger.info("Successfully created runtime env: %s, the context: %s",
                     serialized_env, serialized_context)
