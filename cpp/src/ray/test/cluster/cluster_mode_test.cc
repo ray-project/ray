@@ -187,6 +187,31 @@ TEST(RayClusterModeTest, MaxConcurrentTest) {
   EXPECT_EQ(*object3.Get(), "ok");
 }
 
+TEST(RayClusterModeTest, ResourcesManagementTest) {
+  auto actor1 =
+      Ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetResources({{"CPU", 1.0}}).Remote();
+  auto r1 = actor1.Task(&Counter::Plus1).Remote();
+  EXPECT_EQ(*r1.Get(), 1);
+
+  auto actor2 = Ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+                    .SetResources({{"CPU", 100.0}})
+                    .Remote();
+  auto r2 = actor2.Task(&Counter::Plus1).Remote();
+  std::vector<ObjectRef<int>> objects{r2};
+  WaitResult<int> result = Ray::Wait(objects, 1, 1000);
+  EXPECT_EQ(result.ready.size(), 0);
+  EXPECT_EQ(result.unready.size(), 1);
+
+  auto r3 = Ray::Task(Return1).SetResource("CPU", 1.0).Remote();
+  EXPECT_EQ(*r3.Get(), 1);
+
+  auto r4 = Ray::Task(Return1).SetResource("CPU", 100.0).Remote();
+  std::vector<ObjectRef<int>> objects1{r4};
+  WaitResult<int> result2 = Ray::Wait(objects1, 1, 1000);
+  EXPECT_EQ(result2.ready.size(), 0);
+  EXPECT_EQ(result2.unready.size(), 1);
+}
+
 int main(int argc, char **argv) {
   gflags::ParseCommandLineFlags(&argc, &argv, false);
   cmd_argc = &argc;
