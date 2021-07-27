@@ -11,6 +11,17 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
+class BaseWorker:
+    """A class to execute arbitrary functions. Does not hold any state."""
+
+    def execute(self, func: Callable[[], T]) -> T:
+        """Executes the input function and returns the output.
+        Args:
+            func(Callable): A function that does not take any arguments.
+        """
+        return func()
+
+
 class WorkerGroup:
     """Group of Ray Actors that can execute arbitrary functions.
 
@@ -140,14 +151,3 @@ class WorkerGroup:
 
         """
         return ray.get(self.execute_async(func))
-
-
-class BaseWorker:
-    """A class to execute arbitrary functions. Does not hold any state."""
-
-    def execute(self, func: Callable[[], T]) -> T:
-        """Executes the input function and returns the output.
-        Args:
-            func(Callable): A function that does not take any arguments.
-        """
-        return func()
