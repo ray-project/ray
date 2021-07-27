@@ -28,7 +28,7 @@ class WorkerGroup:
 
     Example:
 
-        .. code_block:: python
+    .. code_block:: python
 
         worker_group = WorkerGroup(num_workers=2)
         output = worker_group.execute(lambda: 1)
