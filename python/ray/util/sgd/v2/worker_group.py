@@ -56,6 +56,7 @@ class WorkerGroup:
         self.num_cpus_per_worker = num_cpus_per_worker
         self.num_gpus_per_worker = num_gpus_per_worker
         self.workers = []
+        self.start()
 
     def start(self):
         """Starts all the workers in this worker group."""
@@ -68,7 +69,7 @@ class WorkerGroup:
             num_gpus=self.num_gpus_per_worker)(BaseWorker)
         self.workers = [remote_cls.remote() for _ in range(self.num_workers)]
 
-    def shutdown(self, graceful_shutdown_timeout_s: float = 5):
+    def shutdown(self, patience_s: float = 5):
         """Shutdown all the workers in this worker group.
 
         Args:
@@ -78,14 +79,14 @@ class WorkerGroup:
                 this is less than or equal to 0, immediately force kill all
                 workers.
         """
-        if graceful_shutdown_timeout_s <= 0:
+        if patience_s <= 0:
             for worker in self.workers:
                 ray.kill(worker)
         else:
             done_refs = [w.__ray_terminate__.remote() for w in self.workers]
             # Wait for actors to die gracefully.
             done, not_done = ray.wait(
-                done_refs, timeout=graceful_shutdown_timeout_s)
+                done_refs, timeout=patience_s)
             if not_done:
                 # If all actors are not able to die gracefully, then kill them.
                 for worker in self.workers:
