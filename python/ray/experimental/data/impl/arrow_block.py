@@ -1,4 +1,5 @@
 import collections
+import random
 from typing import Iterator, List, Union, Tuple, Any, TypeVar, TYPE_CHECKING
 
 try:
@@ -6,7 +7,7 @@ try:
 except ImportError:
     pyarrow = None
 
-from ray.experimental.data.block import Block, BlockAccessor
+from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
 from ray.experimental.data.impl.block_builder import BlockBuilder, \
     SimpleBlockBuilder
 
@@ -14,6 +15,10 @@ if TYPE_CHECKING:
     import pandas
 
 T = TypeVar("T")
+
+# An Arrow block can be sorted by a list of (column, asc/desc) pairs,
+# e.g. [("column1", "ascending"), ("column2", "descending")]
+SortKeyT = List[Tuple[str, str]]
 
 
 class ArrowRow:
@@ -171,3 +176,49 @@ class ArrowBlockAccessor(BlockAccessor):
     @staticmethod
     def builder() -> ArrowBlockBuilder[T]:
         return ArrowBlockBuilder()
+
+    def sample(self, n_samples: int, key: SortKeyT) -> List[T]:
+        k = min(n_samples, self._table.num_rows)
+        indices = random.sample(range(self._table.num_rows), k)
+        return self._table.select([k[0] for k in key]).take(indices)
+
+    def sort_and_partition(self, boundaries: List[T], key: SortKeyT,
+                           descending: bool) -> List["Block[T]"]:
+        if len(key) > 1:
+            raise NotImplementedError(
+                "sorting by multiple columns is not supported yet")
+
+        import pyarrow.compute as pac
+
+        indices = pac.sort_indices(self._table, sort_keys=key)
+        table = self._table.take(indices)
+        if len(boundaries) == 0:
+            return [table]
+
+        # For each boundary value, count the number of items that are less
+        # than it. Since the block is sorted, these counts partition the items
+        # such that boundaries[i] <= x < boundaries[i + 1] for each x in
+        # partition[i]. If `descending` is true, `boundaries` would also be
+        # in descending order and we only need to count the number of items
+        # *greater than* the boundary value instead.
+        col, _ = key[0]
+        comp_fn = pac.greater if descending else pac.less
+        boundary_indices = [
+            pac.sum(comp_fn(table[col], b)).as_py() for b in boundaries
+        ]
+        ret = []
+        prev_i = 0
+        for i in boundary_indices:
+            ret.append(table.slice(prev_i, i - prev_i))
+            prev_i = i
+        ret.append(table.slice(prev_i))
+        return ret
+
+    @staticmethod
+    def merge_sorted_blocks(
+            blocks: List[Block[T]], key: SortKeyT,
+            _descending: bool) -> Tuple[Block[T], BlockMetadata]:
+        ret = pyarrow.concat_tables(blocks)
+        indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
+        ret = ret.take(indices)
+        return ret, ArrowBlockAccessor(ret).get_metadata(None)
