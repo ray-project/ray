@@ -136,8 +136,7 @@ def read_datasource(datasource: Datasource[T],
 
         @ray.remote
         def get_schema(block: Block) -> Any:
-            return BlockAccessor.for_block(block).get_metadata(
-                input_files=None).schema
+            return BlockAccessor.for_block(block).schema()
 
         schema0 = ray.get(get_schema.remote(next(iter(block_list))))
         block_list.set_metadata(
