@@ -231,7 +231,7 @@ class StandardAutoscaler:
             nodes_allowed_to_terminate = self._get_nodes_allowed_to_terminate(
                 sorted_node_ids)
 
-        nodes_to_keep = []
+        nodes_to_keep: List[NodeID] = []
 
         def keep_node(node_id: NodeID) -> None:
             # Update per-type counts.
@@ -241,7 +241,7 @@ class StandardAutoscaler:
                 node_type_counts[node_type] += 1
             nodes_to_keep.append(node_id)
 
-        def terminate_node(node_id: NodeID, reason: str) -> None:
+        def schedule_node_termination(node_id: NodeID, reason: str) -> None:
             logger.info("StandardAutoscaler: "
                         "{}: Terminating {} node.".format(node_id, reason))
             self.event_summarizer.add(
@@ -265,27 +265,28 @@ class StandardAutoscaler:
                 keep_node(node_id)
                 continue
             if should_keep_or_terminate == KeepOrTerminate.terminate:
-                terminate_node(node_id, "max_workers_per_type")
+                schedule_node_termination(node_id, "max_workers_per_type")
                 continue
 
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon:
-                terminate_node(node_id, "idle")
+                schedule_node_termination(node_id, "idle")
             elif not self.launch_config_ok(node_id):
-                terminate_node(node_id, "outdated")
+                schedule_node_termination(node_id, "outdated")
             else:
                 keep_node(node_id)
                 nodes_we_could_terminate.append(node_id)
+
         # Terminate nodes if there are too many
         num_nodes_to_terminate = (
             len(nodes_to_keep) - self.config["max_workers"])
         num_nodes_to_terminate = min(num_nodes_to_terminate,
                                      len(nodes_we_could_terminate))
-        extra_nodes_to_terminate = nodes_we_could_terminate[
-            -num_nodes_to_terminate:] if num_nodes_to_terminate > 0 else []
-
-        for node_id in extra_nodes_to_terminate:
-            terminate_node(node_id, "max workers")
+        if num_nodes_to_terminate > 0:
+            extra_nodes_to_terminate = nodes_we_could_terminate[
+                -num_nodes_to_terminate:]
+            for node_id in extra_nodes_to_terminate:
+                schedule_node_termination(node_id, "max workers")
 
         if nodes_to_terminate:
             self._terminate_nodes_and_cleanup(nodes_to_terminate)
