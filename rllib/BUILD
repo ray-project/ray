@@ -2436,6 +2436,7 @@ py_test(
 
 py_test(
     name = "examples/remote_envs_with_inference_done_on_main_node_tf",
+    main = "examples/remote_envs_with_inference_done_on_main_node.py",
     tags = ["examples", "examples_R"],
     size = "medium",
     srcs = ["examples/remote_envs_with_inference_done_on_main_node.py"],
@@ -2444,6 +2445,7 @@ py_test(
 
 py_test(
     name = "examples/remote_envs_with_inference_done_on_main_node_torch",
+    main = "examples/remote_envs_with_inference_done_on_main_node.py",
     tags = ["examples", "examples_R"],
     size = "medium",
     srcs = ["examples/remote_envs_with_inference_done_on_main_node.py"],
