@@ -934,7 +934,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.HasRuntimeEnv()) {
         state.tasks_with_pending_runtime_envs.emplace(task_spec.TaskId());
         agent_manager_->CreateRuntimeEnv(
-            task_spec.SerializedRuntimeEnv(),
+            task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
             [start_worker_process_fn, &state, task_spec, dynamic_options,
              allocated_instances_serialized_json](
                 bool done, const std::string &serialized_runtime_env_context) {
@@ -994,7 +994,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.HasRuntimeEnv()) {
         // create runtime env.
         agent_manager_->CreateRuntimeEnv(
-            task_spec.SerializedRuntimeEnv(),
+            task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
             [start_worker_process_fn, &state, task_spec, runtime_env_hash](
                 bool successful, const std::string &serialized_runtime_env_context) {
               if (!successful) {
