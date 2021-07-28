@@ -26,7 +26,8 @@ GcsResourceManager::GcsResourceManager(
       gcs_pub_sub_(gcs_pub_sub),
       gcs_table_storage_(gcs_table_storage),
       redis_broadcast_enabled_(redis_broadcast_enabled),
-      max_broadcasting_batch_size_(RayConfig::instance().resource_broadcast_batch_size()) {
+      max_broadcasting_batch_size_(
+          RayConfig::instance().resource_broadcast_batch_size()) {
   if (redis_broadcast_enabled_) {
     periodical_runner_.RunFnPeriodically(
         [this] { SendBatchedResourceUsage(); },
