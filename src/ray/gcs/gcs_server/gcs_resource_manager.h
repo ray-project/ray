@@ -206,6 +206,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
 
+  /// Max batch size for broadcasting
+  size_t max_broadcasting_batch_size_;
+
   /// Debug info.
   enum CountType {
     GET_RESOURCES_REQUEST = 0,

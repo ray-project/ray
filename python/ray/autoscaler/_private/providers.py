@@ -35,7 +35,7 @@ def _import_gcp(provider_config):
 
 
 def _import_azure(provider_config):
-    from ray.autoscaler._private.azure.node_provider import AzureNodeProvider
+    from ray.autoscaler._private._azure.node_provider import AzureNodeProvider
     return AzureNodeProvider
 
 

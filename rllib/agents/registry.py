@@ -116,6 +116,11 @@ def _import_sac():
     return sac.SACTrainer, sac.DEFAULT_CONFIG
 
 
+def _import_rnnsac():
+    from ray.rllib.agents import sac
+    return sac.RNNSACTrainer, sac.RNNSAC_DEFAULT_CONFIG
+
+
 def _import_simple_q():
     from ray.rllib.agents import dqn
     return dqn.SimpleQTrainer, dqn.simple_q.DEFAULT_CONFIG
@@ -155,6 +160,7 @@ ALGORITHMS = {
     "QMIX": _import_qmix,
     "R2D2": _import_r2d2,
     "SAC": _import_sac,
+    "RNNSAC": _import_rnnsac,
     "SimpleQ": _import_simple_q,
     "TD3": _import_td3,
 }

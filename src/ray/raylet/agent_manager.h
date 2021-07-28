@@ -35,7 +35,9 @@ typedef std::function<std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
     const std::string &ip_address, int port)>
     RuntimeEnvAgentClientFactoryFn;
 
-typedef std::function<void(bool successful)> CreateRuntimeEnvCallback;
+typedef std::function<void(bool successful,
+                           const std::string &serialized_runtime_env_context)>
+    CreateRuntimeEnvCallback;
 typedef std::function<void()> DeleteRuntimeEnvCallback;
 
 class AgentManager : public rpc::AgentManagerServiceHandler {
@@ -62,7 +64,7 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
 
   /// Request agent to create runtime env.
   /// \param[in] runtime_env The runtime env.
-  void CreateRuntimeEnv(const std::string &serialized_runtime_env,
+  void CreateRuntimeEnv(const JobID &job_id, const std::string &serialized_runtime_env,
                         CreateRuntimeEnvCallback callback);
 
   /// Request agent to delete runtime env.

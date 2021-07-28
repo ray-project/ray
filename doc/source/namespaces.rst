@@ -80,3 +80,15 @@ will not have access to actors in other namespaces.
      a future job to manually connect to an existing anonymous namespace, but
      it is not recommended.
 
+
+Getting the current namespace
+-----------------------------
+You can access to the current namespace using :ref:`runtime_context APIs <runtime-context-apis>`.
+
+.. code-block:: python
+
+    import ray
+    ray.init(address="auto", namespace="colors")
+    # Will print the information about "colors" namespace
+    print(ray.get_runtime_context().namespace)
+

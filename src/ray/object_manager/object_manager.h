@@ -33,6 +33,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/object_manager/chunk_object_reader.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
@@ -40,7 +41,6 @@
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/pull_manager.h"
 #include "ray/object_manager/push_manager.h"
-#include "ray/object_manager/spilled_object.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -198,13 +198,13 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_directory An object implementing the object directory interface.
   explicit ObjectManager(
       instrumented_io_context &main_service, const NodeID &self_node_id,
-      const ObjectManagerConfig &config,
-      std::shared_ptr<ObjectDirectoryInterface> object_directory,
+      const ObjectManagerConfig &config, ObjectDirectoryInterface *object_directory,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
       SpillObjectsCallback spill_objects_callback,
       std::function<void()> object_store_full_callback,
-      AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback);
+      AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
+      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object);
 
   ~ObjectManager();
 
@@ -369,14 +369,12 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// The internal implementation of pushing an object.
   ///
-  /// \param chunk_reader Read the chunk into push_request's data fields; return
+  /// \param object_id The object's id.
+  /// \param node_id The remote node's id.
+  /// \param chunk_reader Chunk reader used to read a chunk of the object
   /// Status::OK() if the read succeeded.
-  /// \param release_chunk_callback Notify that a chunk is no longer needed.
-  void PushObjectInternal(
-      const ObjectID &object_id, const NodeID &node_id, uint64_t total_data_size,
-      uint64_t metadata_size, uint64_t num_chunks, rpc::Address owner_address,
-      std::function<ray::Status(uint64_t, rpc::PushRequest &)> chunk_reader,
-      std::function<void(uint64_t)> release_chunk_callback);
+  void PushObjectInternal(const ObjectID &object_id, const NodeID &node_id,
+                          std::shared_ptr<ChunkObjectReader> chunk_reader);
 
   /// Send one chunk of the object to remote object manager
   ///
@@ -384,26 +382,16 @@ class ObjectManager : public ObjectManagerInterface,
   /// contains only one chunk
   /// \param push_id Unique push id to indicate this push request
   /// \param object_id Object id
-  /// \param owner_address The address of the object's owner
   /// \param node_id The id of the receiver.
-  /// \param data_size Data size
-  /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index of this object chunk, start with 0
   /// \param rpc_client Rpc client used to send message to remote object manager
-  /// \param chunk_reader Read the chunk into push_request's data fields; return
-  /// Status::OK() if the read succeeded.
-  /// \param release_chunk_callback Notify that a chunk is no longer needed.
-  /// \param on_complete Callback to run on completion.
-  void SendObjectChunk(
-      const UniqueID &push_id, const ObjectID &object_id,
-      const rpc::Address &owner_address, const NodeID &node_id, uint64_t total_data_size,
-      uint64_t metadata_size, uint64_t chunk_index,
-      std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
-      std::function<void(const Status &)> on_complete,
-      std::function<ray::Status(/*chunk_index*/ uint64_t,
-                                /*push_request*/ rpc::PushRequest &)>
-          chunk_reader,
-      std::function<void(/*chunk_index*/ uint64_t)> release_chunk_callback);
+  /// \param on_complete Callback when the chunk is sent
+  /// \param chunk_reader Chunk reader used to read a chunk of the object
+  void SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
+                       const NodeID &node_id, uint64_t chunk_index,
+                       std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
+                       std::function<void(const Status &)> on_complete,
+                       std::shared_ptr<ChunkObjectReader> chunk_reader);
 
   /// Handle starting, running, and stopping asio rpc_service.
   void StartRpcService();
@@ -460,8 +448,10 @@ class ObjectManager : public ObjectManagerInterface,
 
   NodeID self_node_id_;
   const ObjectManagerConfig config_;
-  std::shared_ptr<ObjectDirectoryInterface> object_directory_;
-  // Object store runner.
+  /// The object directory interface to access object information.
+  ObjectDirectoryInterface *object_directory_;
+
+  /// Object store runner.
   ObjectStoreRunner object_store_internal_;
 
   ObjectBufferPool buffer_pool_;
@@ -544,11 +534,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// The total number of chunks that we failed to receive because they were
   /// no longer needed by any worker or task on this node.
   size_t num_chunks_received_cancelled_ = 0;
-
-  /// The total number of chunks that we failed to receive because they are
-  /// still needed, but accepting them would put us over the pull manager's
-  /// threshold. The threshold is needed to throttle incoming objects.
-  size_t num_chunks_received_thrashed_ = 0;
 
   /// The total number of chunks that we failed to receive because we could not
   /// create the object in plasma. This is usually due to out-of-memory in

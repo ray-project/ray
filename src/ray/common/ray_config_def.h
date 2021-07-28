@@ -103,13 +103,21 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// spilling).
 RAY_CONFIG(bool, plasma_unlimited, true)
 
+/// DEBUG-ONLY: Min number of pulls to keep active. Only supports values {0, 1}.
+RAY_CONFIG(int, pull_manager_min_active_pulls, 1)
+
+/// DEBUG-ONLY: Whether to exclude actively pulled objects from spilling and eviction.
+RAY_CONFIG(bool, pull_manager_pin_active_objects, true)
+
 /// Whether to use the hybrid scheduling policy, or one of the legacy spillback
 /// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
 /// then spread via weighted (by critical resource usage).
 RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
 RAY_CONFIG(float, scheduler_spread_threshold,
-           env_float("RAY_SCHEDULER_SPREAD_THRESHOLD", 0.5))
+           getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
+               ? std::stof(getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
+               : 0.5)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -247,7 +255,10 @@ RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // mutually exlusive.
 RAY_CONFIG(bool, pull_based_resource_reporting, true)
 // Feature flag to use grpc instead of redis for resource broadcast.
-RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
+// TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
+RAY_CONFIG(bool, grpc_based_resource_broadcast, false)
+// Feature flag to enable grpc based pubsub in GCS.
+RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
@@ -347,7 +358,7 @@ RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
 /// JSON configuration that describes the external storage. This is passed to
 /// Python IO workers to determine how to store/restore an object to/from
 /// external storage.
-RAY_CONFIG(string_type, object_spilling_config, "")
+RAY_CONFIG(std::string, object_spilling_config, "")
 
 /// Whether to enable automatic object spilling. If enabled, then
 /// Ray will choose objects to spill when the object store is out of
@@ -362,6 +373,10 @@ RAY_CONFIG(int, max_io_workers, 4)
 /// The minimum object size that can be spilled by each spill operation. 100 MB by
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
+
+/// If set to less than 1.0, Ray will start spilling objects when existing objects
+/// take more than this percentage of the available memory.
+RAY_CONFIG(float, object_spilling_threshold, 1.0)
 
 /// Maximum number of objects that can be fused into a single file.
 RAY_CONFIG(int64_t, max_fused_object_count, 2000)
@@ -416,3 +431,32 @@ RAY_CONFIG(bool, gcs_task_scheduling_enabled,
                getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") == std::string("true"))
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
+
+/// If enabled, raylet will report resources only when resources are changed.
+RAY_CONFIG(bool, enable_light_weight_resource_report, true)
+
+// The number of seconds to wait for the Raylet to start. This is normally
+// fast, but when RAY_preallocate_plasma_memory=1 is set, it may take some time
+// (a few GB/s) to populate all the pages on Raylet startup.
+RAY_CONFIG(uint32_t, raylet_start_wait_time_s,
+           getenv("RAY_preallocate_plasma_memory") != nullptr &&
+                   getenv("RAY_preallocate_plasma_memory") == std::string("1")
+               ? 120
+               : 10)
+
+/// The scheduler will treat these predefined resource types as unit_instance.
+/// Default predefined_unit_instance_resources is "GPU".
+/// When set it to "CPU,GPU", we will also treat CPU as unit_instance.
+RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
+
+/// The scheduler will treat these custom resource types as unit_instance.
+/// Default custom_unit_instance_resources is empty.
+/// When set it to "FPGA", we will treat FPGA as unit_instance.
+RAY_CONFIG(std::string, custom_unit_instance_resources, "")
+
+// Maximum size of the batches when broadcasting resources to raylet.
+RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
+
+// If enabled and worker stated in container, the container will add
+// resource limit.
+RAY_CONFIG(bool, worker_resource_limits_enabled, false)

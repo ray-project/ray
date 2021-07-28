@@ -87,7 +87,7 @@ if __name__ == "__main__":
     else:
         maze = WindyMazeEnv(None)
 
-        def policy_mapping_fn(agent_id):
+        def policy_mapping_fn(agent_id, episode, **kwargs):
             if agent_id.startswith("low_level_"):
                 return "low_level_policy"
             else:

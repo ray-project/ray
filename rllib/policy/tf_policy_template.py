@@ -224,7 +224,7 @@ def build_tf_policy(
                 if before_loss_init:
                     before_loss_init(policy, obs_space, action_space, config)
 
-                if extra_action_out_fn is None:
+                if extra_action_out_fn is None or policy._is_tower:
                     extra_action_fetches = {}
                 else:
                     extra_action_fetches = extra_action_out_fn(policy)

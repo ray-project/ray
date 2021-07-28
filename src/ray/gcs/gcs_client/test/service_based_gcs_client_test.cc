@@ -29,9 +29,13 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
  public:
   ServiceBasedGcsClientTest() {
     RayConfig::instance().initialize(
-        "ping_gcs_rpc_server_max_retries,60;maximum_gcs_destroyed_actor_cached_count,10;"
-        "maximum_gcs_dead_node_cached_count,10;"
-        "grpc_based_resource_broadcast,false");
+        R"(
+{
+  "ping_gcs_rpc_server_max_retries": 60,
+  "maximum_gcs_destroyed_actor_cached_count": 10,
+  "maximum_gcs_dead_node_cached_count": 10
+}
+  )");
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -1439,9 +1443,8 @@ int main(int argc, char **argv) {
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 4);
+  RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
   ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

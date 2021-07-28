@@ -33,7 +33,7 @@ py_test(
 
 py_test(
     name = "test_get_deployment",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -65,7 +65,7 @@ py_test(
 
 py_test(
     name = "test_metrics",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -131,7 +131,7 @@ py_test(
 
 py_test(
     name = "test_failure",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -140,7 +140,7 @@ py_test(
 
 py_test(
     name = "test_handle",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -167,7 +167,7 @@ py_test(
 
 py_test(
     name = "test_router",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "flaky"],
     deps = [":serve_lib"],
@@ -199,7 +199,7 @@ py_test(
 
 py_test(
     name = "test_cluster",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
@@ -223,6 +223,14 @@ py_test(
 
 py_test(
     name = "test_fastapi",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_runtime_env",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],
@@ -300,7 +308,7 @@ py_test(
 
 py_test(
     name = "tutorial_rllib",
-    size = "medium",
+    size = "small",
     srcs = glob(["examples/doc/*.py"]),
     tags = ["exclusive"],
     deps = [":serve_lib"]
