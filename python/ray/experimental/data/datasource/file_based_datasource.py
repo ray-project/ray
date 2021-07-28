@@ -54,7 +54,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 fs = fs.unwrap()
             builder = DelegatingArrowBlockBuilder()
             for read_path in read_paths:
-                with fs.open_input_file(read_path) as f:
+                with fs.open_input_stream(read_path) as f:
                     data = read_file(f, read_path, **reader_args)
                     if isinstance(data, pa.Table):
                         builder.add_block(data)
