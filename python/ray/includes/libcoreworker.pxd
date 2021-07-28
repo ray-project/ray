@@ -86,7 +86,7 @@ cdef extern from "ray/core_worker/context.h" nogil:
         const c_string &GetCurrentSerializedRuntimeEnv()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
-    cdef cppclass CActorHandle "ray::ActorHandle":
+    cdef cppclass CActorHandle "ray::core::ActorHandle":
         CActorID GetActorID() const
         CJobID CreationJobID() const
         CLanguage ActorLanguage() const
