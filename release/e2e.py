@@ -1027,6 +1027,8 @@ def run_test_config(
                 Key: Name
                 Value: S3 URL
     """
+    session_url = None
+    runtime = None
     # Todo (mid-term): Support other cluster definitions
     #  (not only cluster configs)
     cluster_config_rel_path = test_config["cluster"].get(
