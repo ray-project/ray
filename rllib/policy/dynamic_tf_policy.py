@@ -241,7 +241,7 @@ class DynamicTFPolicy(TFPolicy):
                 True, (), name="is_exploring")
 
         # Placeholder for `is_training` flag.
-        self._input_dict["is_training"] = self._get_is_training_placeholder()
+        self._input_dict.is_training = self._get_is_training_placeholder()
 
         # Multi-GPU towers do not need any action computing/exploration
         # graphs.
@@ -266,7 +266,7 @@ class DynamicTFPolicy(TFPolicy):
                     prev_reward_batch=self._input_dict.get(
                         SampleBatch.PREV_REWARDS),
                     explore=explore,
-                    is_training=self._input_dict["is_training"])
+                    is_training=self._input_dict.is_training)
             # Distribution generation is customized, e.g., DQN, DDPG.
             else:
                 if action_distribution_fn:
@@ -284,7 +284,7 @@ class DynamicTFPolicy(TFPolicy):
                                 seq_lens=self._seq_lens,
                                 explore=explore,
                                 timestep=timestep,
-                                is_training=in_dict["is_training"])
+                                is_training=in_dict.is_training)
                     # Trying the old way (to stay backward compatible).
                     # TODO: Remove in future.
                     except TypeError as e:
@@ -301,7 +301,7 @@ class DynamicTFPolicy(TFPolicy):
                                     prev_reward_batch=in_dict.get(
                                         SampleBatch.PREV_REWARDS),
                                     explore=explore,
-                                    is_training=in_dict["is_training"])
+                                    is_training=in_dict.is_training)
                         else:
                             raise e
 
@@ -378,6 +378,9 @@ class DynamicTFPolicy(TFPolicy):
                         TFMultiGPUTowerStack(policy=self) for i in range(
                             self.config.get("num_multi_gpu_tower_stacks", 1))
                     ]
+
+            # Initialize again after loss and tower init.
+            self.get_session().run(tf1.global_variables_initializer())
 
     @override(TFPolicy)
     @DeveloperAPI
@@ -553,6 +556,7 @@ class DynamicTFPolicy(TFPolicy):
 
         return SampleBatch(input_dict, seq_lens=self._seq_lens), dummy_batch
 
+    @override(Policy)
     def _initialize_loss_from_dummy_batch(
             self, auto_remove_unneeded_view_reqs: bool = True,
             stats_fn=None) -> None:
@@ -574,10 +578,11 @@ class DynamicTFPolicy(TFPolicy):
             if key not in self.view_requirements:
                 logger.info("Adding extra-action-fetch `{}` to "
                             "view-reqs.".format(key))
-                self.view_requirements[key] = \
-                    ViewRequirement(space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:],
-                        dtype=value.dtype))
+                self.view_requirements[key] = ViewRequirement(
+                    space=gym.spaces.Box(
+                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype),
+                    used_for_compute_actions=False,
+                )
         dummy_batch = self._dummy_batch
 
         logger.info("Testing `postprocess_trajectory` w/ dummy batch.")
@@ -590,10 +595,14 @@ class DynamicTFPolicy(TFPolicy):
                 self._input_dict[key] = get_placeholder(
                     value=dummy_batch[key], name=key)
             if key not in self.view_requirements:
-                self.view_requirements[key] = \
-                    ViewRequirement(space=gym.spaces.Box(
-                        -1.0, 1.0, shape=dummy_batch[key].shape[1:],
-                        dtype=dummy_batch[key].dtype))
+                self.view_requirements[key] = ViewRequirement(
+                    space=gym.spaces.Box(
+                        -1.0,
+                        1.0,
+                        shape=dummy_batch[key].shape[1:],
+                        dtype=dummy_batch[key].dtype),
+                    used_for_compute_actions=False,
+                )
 
         train_batch = SampleBatch(
             dict(self._input_dict, **self._loss_input_dict))
@@ -686,9 +695,6 @@ class DynamicTFPolicy(TFPolicy):
             for k, v in self._loss_input_dict.items()
             if (v not in self._state_inputs and v != self._seq_lens)
         }
-
-        # Initialize again after loss init.
-        self.get_session().run(tf1.global_variables_initializer())
 
     def _do_loss_init(self, train_batch: SampleBatch):
         loss = self._loss_fn(self, self.model, self.dist_class, train_batch)

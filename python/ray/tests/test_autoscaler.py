@@ -1967,6 +1967,57 @@ class AutoscalingTest(unittest.TestCase):
         time.sleep(1)
         assert len(runner.calls) == num_calls
 
+    def testTerminateUnhealthyWorkers2(self):
+        """Tests finer details of termination of unhealthy workers when
+        node updaters are disabled.
+
+        Specifically, test that newly up-to-date nodes which haven't sent a
+        heartbeat are marked active.
+        """
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["provider"]["disable_node_updaters"] = True
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        for _ in range(10):
+            autoscaler.update()
+            # Nodes stay in uninitialized state because no one has finished
+            # updating them.
+            self.waitForNodes(
+                2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED})
+        nodes = self.provider.non_terminated_nodes({})
+        ips = [self.provider.internal_ip(node) for node in nodes]
+        # No heartbeats recorded yet.
+        assert not any(ip in lm.last_heartbeat_time_by_ip for ip in ips)
+        for node in nodes:
+            self.provider.set_node_tags(
+                node, {TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
+        # Nodes marked active after up-to-date status detected.
+        assert all(ip in lm.last_heartbeat_time_by_ip for ip in ips)
+        # Nodes are kept.
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        # Mark nodes unhealthy.
+        for ip in ips:
+            lm.last_heartbeat_time_by_ip[ip] = 0
+        autoscaler.update()
+        # Unhealthy nodes are gone.
+        self.waitForNodes(0)
+        autoscaler.update()
+        # IPs pruned
+        assert lm.last_heartbeat_time_by_ip == {}
+
     def testExternalNodeScaler(self):
         config = SMALL_CLUSTER.copy()
         config["provider"] = {

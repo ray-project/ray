@@ -230,6 +230,14 @@ py_test(
 )
 
 py_test(
+    name = "test_runtime_env",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_cli",
     size = "small",
     srcs = serve_tests_srcs,

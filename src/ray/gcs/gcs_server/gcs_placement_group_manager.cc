@@ -249,13 +249,14 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
   RAY_LOG(INFO) << "Successfully created placement group " << placement_group->GetName()
                 << ", id: " << placement_group->GetPlacementGroupID();
   placement_group->UpdateState(rpc::PlacementGroupTableData::CREATED);
+  // Mark the scheduling done firstly.
+  MarkSchedulingDone();
   auto placement_group_id = placement_group->GetPlacementGroupID();
   RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
       placement_group_id, placement_group->GetPlacementGroupTableData(),
       [this, placement_group_id](Status status) {
         RAY_CHECK_OK(status);
 
-        MarkSchedulingDone();
         SchedulePendingPlacementGroups();
 
         // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
