@@ -963,6 +963,45 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     shutil.rmtree(dir_path)
 
 
+def test_zipped_json_read(ray_start_regular_shared, tmp_path):
+    # Single file.
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(tmp_path, "test1.json.gz")
+    df1.to_json(path1, compression="gzip", orient="records", lines=True)
+    ds = ray.experimental.data.read_json(path1)
+    assert df1.equals(ray.get(ds.to_pandas())[0])
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert ds.input_files() == [path1]
+    assert ds.schema() is None
+
+    # Two files, parallelism=2.
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(tmp_path, "test2.json.gz")
+    df2.to_json(path2, compression="gzip", orient="records", lines=True)
+    ds = ray.experimental.data.read_json([path1, path2], parallelism=2)
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert pd.concat([df1, df2]).equals(dsdf)
+    # Test metadata ops.
+    for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
+        BlockAccessor.for_block(ray.get(block)).size_bytes()
+
+    # Directory and file, two files.
+    dir_path = os.path.join(tmp_path, "test_json_dir")
+    os.mkdir(dir_path)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(dir_path, "data0.json.gz")
+    df1.to_json(path1, compression="gzip", orient="records", lines=True)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(tmp_path, "data1.json.gz")
+    df2.to_json(path2, compression="gzip", orient="records", lines=True)
+    ds = ray.experimental.data.read_json([dir_path, path2])
+    df = pd.concat([df1, df2])
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert df.equals(dsdf)
+    shutil.rmtree(dir_path)
+
+
 def test_json_write(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_json_dir")
 
@@ -1095,6 +1134,48 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
         pd.concat([pd.read_csv(file_path),
                    pd.read_csv(file_path2)]))
     shutil.rmtree(path)
+
+
+def test_sort_simple(ray_start_regular_shared):
+    num_items = 100
+    parallelism = 4
+    xs = list(range(num_items))
+    random.shuffle(xs)
+    ds = ray.experimental.data.from_items(xs, parallelism=parallelism)
+    assert ds.sort().take(num_items) == list(range(num_items))
+    assert ds.sort(descending=True).take(num_items) == list(
+        reversed(range(num_items)))
+    assert ds.sort(key=lambda x: -x).take(num_items) == list(
+        reversed(range(num_items)))
+
+
+@pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
+def test_sort_arrow(ray_start_regular_shared, num_items, parallelism):
+    a = list(reversed(range(num_items)))
+    b = [f"{x:03}" for x in range(num_items)]
+    shard = int(np.ceil(num_items / parallelism))
+    offset = 0
+    dfs = []
+    while offset < num_items:
+        dfs.append(
+            pd.DataFrame({
+                "a": a[offset:offset + shard],
+                "b": b[offset:offset + shard]
+            }))
+        offset += shard
+    if offset < num_items:
+        dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
+    ds = ray.experimental.data.from_pandas([ray.put(df) for df in dfs])
+
+    def assert_sorted(sorted_ds, expected_rows):
+        assert [tuple(row.values())
+                for row in sorted_ds.iter_rows()] == list(expected_rows)
+
+    assert_sorted(ds.sort(key="a"), zip(reversed(a), reversed(b)))
+    assert_sorted(ds.sort(key="b"), zip(a, b))
+    assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
+    assert_sorted(
+        ds.sort(key=[("b", "descending")]), zip(reversed(a), reversed(b)))
 
 
 if __name__ == "__main__":
