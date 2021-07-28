@@ -433,9 +433,8 @@ def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
     def commands_verifier(calls):
         for call in calls:
             if len(call[1]) > 0:
-                for _ in call[1][0]:
-                    if " ray stop; " in _:
-                        return True
+                if any(" ray stop; " in token for token in call[1][0]):
+                    return True
         return False
 
     with _setup_popen_mock(commands_mock, commands_verifier):
