@@ -295,7 +295,6 @@ cc_library(
         ],
     }),
     hdrs = [
-        "src/ray/object_manager/plasma/allocator.h",
         "src/ray/object_manager/plasma/client.h",
         "src/ray/object_manager/plasma/common.h",
         "src/ray/object_manager/plasma/compat.h",

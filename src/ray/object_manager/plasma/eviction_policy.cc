@@ -90,7 +90,7 @@ int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
   return bytes_evicted;
 }
 
-EvictionPolicy::EvictionPolicy(PlasmaStoreInfo *store_info, IAllocator &allocator)
+EvictionPolicy::EvictionPolicy(PlasmaStoreInfo *store_info, const IAllocator &allocator)
     : pinned_memory_bytes_(0),
       store_info_(store_info),
       allocator_(allocator),

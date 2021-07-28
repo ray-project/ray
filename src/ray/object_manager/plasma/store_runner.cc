@@ -101,7 +101,9 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
     // should be part of PlasmaAllocator contruction.
     auto allocation = PlasmaAllocator::GetInstance().Allocate(
         PlasmaAllocator::GetInstance().GetFootprintLimit() - 256 * sizeof(size_t));
-    RAY_CHECK(allocation.has_value());
+    RAY_CHECK(allocation.has_value())
+        << "Plasma store initial allocation failed. Probably not enough space in "
+        << plasma_directory_;
     // This will unmap the file, but the next one created will be as large
     // as this one (this is an implementation detail of dlmalloc).
     PlasmaAllocator::GetInstance().Free(allocation.value());

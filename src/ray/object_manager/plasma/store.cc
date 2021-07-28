@@ -358,8 +358,10 @@ PlasmaError PlasmaStore::CreateObject(const ObjectID &object_id,
   }
 
   RAY_LOG(DEBUG) << "create object " << object_id << " succeeded";
-  auto ptr = std::make_unique<ObjectTableEntry>(std::move(allocation.value()));
-  entry = store_info_.objects.emplace(object_id, std::move(ptr)).first->second.get();
+  auto object_table_entry =
+      std::make_unique<ObjectTableEntry>(std::move(allocation.value()));
+  entry = store_info_.objects.emplace(object_id, std::move(object_table_entry))
+              .first->second.get();
   entry->data_size = data_size;
   entry->metadata_size = metadata_size;
   entry->state = ObjectState::PLASMA_CREATED;

@@ -98,7 +98,7 @@ class EvictionPolicy {
   /// \param store_info Information about the Plasma store that is exposed
   ///        to the eviction policy.
   /// \param allocator Memory allocator.
-  explicit EvictionPolicy(PlasmaStoreInfo *store_info, IAllocator &allocator);
+  explicit EvictionPolicy(PlasmaStoreInfo *store_info, const IAllocator &allocator);
 
   /// Destroy an eviction policy.
   virtual ~EvictionPolicy() {}
@@ -175,7 +175,7 @@ class EvictionPolicy {
   /// Pointer to the plasma store info.
   PlasmaStoreInfo *store_info_;
 
-  IAllocator &allocator_;
+  const IAllocator &allocator_;
 
   /// Datastructure for the LRU cache.
   LRUCache cache_;

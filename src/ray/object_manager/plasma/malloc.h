@@ -41,6 +41,11 @@ struct MmapRecord {
 /// and size.
 extern std::unordered_map<void *, MmapRecord> mmap_records;
 
-/// private function, only used by PlasmaAllocator
-bool GetMallocMapinfo(void *addr, MEMFD_TYPE *fd, int64_t *map_length, ptrdiff_t *offset);
+/// private function, only used by PlasmaAllocator to look up Mmap information
+/// given an address allocated by dlmalloc.
+///
+/// \return true if look up succeed. false means the address is not allocated
+/// by dlmalloc.
+bool GetMallocMapinfo(const void *const addr, MEMFD_TYPE *fd, int64_t *map_length,
+                      ptrdiff_t *offset);
 }  // namespace plasma

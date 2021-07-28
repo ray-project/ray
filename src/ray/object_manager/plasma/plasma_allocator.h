@@ -24,7 +24,8 @@
 namespace plasma {
 
 // PlasmaAllocator that allocates memory from mmaped file to
-// enable memory sharing between processes.
+// enable memory sharing between processes. It's not thread
+// safe and can only be created once per process.
 //
 // PlasmaAllocator is optimized for linux. On linux,
 // the Allocate call allocates memory from a pre-mmap file
@@ -42,13 +43,18 @@ class PlasmaAllocator : public IAllocator {
 
   /// On linux, it allocates memory from a pre-mmaped file from /dev/shm.
   /// On other system, it allocates memory from a pre-mmaped file on disk.
-  /// return null if running out of space.
+  /// NOTE: due to fragmentation, there is a possibility that the
+  /// allocator has the capacity but fails to fulfill the allocation
+  /// request.
   ///
   /// \param bytes Number of bytes.
   /// \return allocated memory. returns empty if not enough space.
   absl::optional<Allocation> Allocate(size_t bytes) override;
 
-  /// Fallback allocate memory from disk mmaped file.
+  /// Fallback allocate memory from disk mmaped file. This is useful
+  /// when we running out of memory but still want to allocate memory
+  /// with sub-optimal peformance.
+  ///
   /// On linux with fallocate support, it returns null if running out of
   /// space; On linux without fallocate it raises SIGBUS interrupt.
   /// TODO(scv119): On other system the behavior is undefined.
@@ -58,7 +64,7 @@ class PlasmaAllocator : public IAllocator {
   absl::optional<Allocation> FallbackAllocate(size_t bytes) override;
 
   /// Frees the memory space pointed to by mem, which must have been returned by
-  /// a previous call to Allocate/FallbackAllocate or it yield undefined behavior.
+  /// a previous call to Allocate/FallbackAllocate or it yields undefined behavior.
   ///
   /// \param allocation allocation to free.
   void Free(const Allocation &allocation) override;
