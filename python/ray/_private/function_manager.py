@@ -31,6 +31,7 @@ from ray.util.inspect import (
     is_static_method,
 )
 
+# TODO(sang): Include function arg name to function name?
 FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
                                    ["function", "function_name", "max_calls"])
 """FunctionExecutionInfo: A named tuple storing remote function information."""

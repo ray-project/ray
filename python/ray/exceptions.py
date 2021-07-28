@@ -72,7 +72,8 @@ class RayTaskError(RayError):
                  cause,
                  proctitle=None,
                  pid=None,
-                 ip=None):
+                 ip=None,
+                 label=None):
         """Initialize a RayTaskError."""
         import ray
 
@@ -88,6 +89,7 @@ class RayTaskError(RayError):
         self.ip = ip or ray.util.get_node_ip_address()
         self.function_name = function_name
         self.traceback_str = traceback_str
+        self.label = label or self.proctitle
         # TODO(edoakes): should we handle non-serializable exception objects?
         self.cause = cause
         assert traceback_str is not None
@@ -133,17 +135,37 @@ class RayTaskError(RayError):
         """Format a RayTaskError as a string."""
         lines = self.traceback_str.strip().split("\n")
         out = []
+        # We try not to print the error line if it is in worker
+        # because that contains the internal implemenation of Ray
+        # which is unnecessary for users.
         in_worker = False
         for line in lines:
             if line.startswith("Traceback "):
                 out.append(f"{colorama.Fore.CYAN}"
                            f"{self.proctitle}"
                            f"{colorama.Fore.RESET} "
-                           f"(pid={self.pid}, ip={self.ip})")
+                           f"(pid={self.pid}, ip={self.ip}"
+                           f", label={self.label})")
             elif in_worker:
                 in_worker = False
-            elif "ray/worker.py" in line or "ray/function_manager.py" in line:
+            elif ("ray/worker.py" in line
+                  or "ray/_private/function_manager.py" in line
+                  or "_private/client_mode_hook.py" in line):
+                # Skip internal files that could be printed.
+                # Otherwise, users will see unnecessary stacktrace from
+                # Ray internal code.
                 in_worker = True
+            elif "ray/_raylet.pyx" in line:
+                in_worker = True
+                if "ray._raylet.raise_if_dependency_failed" in line:
+                    # It means the current task is failed
+                    # due to the dependency failure.
+                    # Print out an user-friendly
+                    # message to explain that..
+                    out.append(
+                        f"{colorama.Fore.YELLOW}  The task, "
+                        f"{self.proctitle}, failed because the "
+                        f"below input task has failed.{colorama.Fore.RESET}")
             else:
                 out.append(line)
         return "\n".join(out)

@@ -949,9 +949,10 @@ class ActorHandle:
         return self._ray_method_signatures.keys()
 
     def __repr__(self):
-        return (f"Actor("
-                f"{self._ray_actor_creation_function_descriptor.class_name},"
-                f"{self._actor_id.hex()})")
+        return ("Actor("
+                "class_name="
+                f"{self._ray_actor_creation_function_descriptor.class_name}, "
+                f"actor_id={self._actor_id.hex()}")
 
     @property
     def _actor_id(self):

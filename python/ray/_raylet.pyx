@@ -576,13 +576,24 @@ cdef execute_task(
 
             backtrace = ray._private.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
+
+            # Generate the actor repr from the handle if the failure was
+            # an actor creation task or actor task.
+            actor_handle = None
+            if <int>task_type != <int>TASK_TYPE_NORMAL_TASK:
+                actor_id = core_worker.get_actor_id()
+                actor_handle = core_worker.get_actor_handle(actor_id)
+            task_error_label = repr(actor_handle) if actor_handle else None
+
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error.cause, proctitle=title)
+                                              error.cause, proctitle=title,
+                                              label=task_error_label)
             else:
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error, proctitle=title)
+                                              error, proctitle=title,
+                                              label=task_error_label)
             errors = []
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)
