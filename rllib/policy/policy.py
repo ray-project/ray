@@ -54,8 +54,9 @@ PolicySpec = namedtuple(
         # Overrides defined keys in the main Trainer config.
         # If None, use {}.
         "config",
-    ])
-# From 3.7 on, we could pass `defaults` into the above constructor.
+    ])  # defaults=(None, None, None, None)
+# TODO: From 3.7 on, we could pass `defaults` into the above constructor.
+#  We still support py3.6.
 PolicySpec.__new__.__defaults__ = (None, None, None, None)
 
 
@@ -170,7 +171,7 @@ class Policy(metaclass=ABCMeta):
                 actions (TensorType): Batch of output actions, with shape like
                     [BATCH_SIZE, ACTION_SHAPE].
                 state_outs (List[TensorType]): List of RNN state output
-                    batches, if any, with shape like [STATE_SIZE, BATCH_SIZE].
+                    batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
                 info (List[dict]): Dictionary of extra feature batches, if any,
                     with shape like
                     {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
@@ -317,7 +318,7 @@ class Policy(metaclass=ABCMeta):
                 actions (TensorType): Batch of output actions, with shape
                     like [BATCH_SIZE, ACTION_SHAPE].
                 state_outs (List[TensorType]): List of RNN state output
-                    batches, if any, with shape like [STATE_SIZE, BATCH_SIZE].
+                    batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
                 info (dict): Dictionary of extra feature batches, if any, with
                     shape like
                     {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
@@ -694,13 +695,13 @@ class Policy(metaclass=ABCMeta):
         # Default view requirements (equal to those that we would use before
         # the trajectory view API was introduced).
         return {
-            SampleBatch.OBS: ViewRequirement(
-                space=self.observation_space, used_for_compute_actions=True),
+            SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.NEXT_OBS: ViewRequirement(
                 data_col=SampleBatch.OBS,
                 shift=1,
                 space=self.observation_space),
-            SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
+            SampleBatch.ACTIONS: ViewRequirement(
+                space=self.action_space, used_for_compute_actions=False),
             # For backward compatibility with custom Models that don't specify
             # these explicitly (will be removed by Policy if not used).
             SampleBatch.PREV_ACTIONS: ViewRequirement(
@@ -919,6 +920,11 @@ class Policy(metaclass=ABCMeta):
                 if "state_in_0" in view_reqs:
                     self.is_recurrent = lambda: True
 
+        # Make sure auto-generated init-state view requirements get added
+        # to both Policy and Model, no matter what.
+        view_reqs = [view_reqs] + ([self.view_requirements] if hasattr(
+            self, "view_requirements") else [])
+
         for i, state in enumerate(init_state):
             # Allow `state` to be either a Space (use zeros as initial values)
             # or any value (e.g. a dict or a non-zero tensor).
@@ -929,15 +935,16 @@ class Policy(metaclass=ABCMeta):
                     fw.all(state == 0.0) else state
             else:
                 space = state
-            view_reqs["state_in_{}".format(i)] = ViewRequirement(
-                "state_out_{}".format(i),
-                shift=-1,
-                used_for_compute_actions=True,
-                batch_repeat_value=self.config.get("model", {}).get(
-                    "max_seq_len", 1),
-                space=space)
-            view_reqs["state_out_{}".format(i)] = ViewRequirement(
-                space=space, used_for_training=True)
+            for vr in view_reqs:
+                vr["state_in_{}".format(i)] = ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    used_for_compute_actions=True,
+                    batch_repeat_value=self.config.get("model", {}).get(
+                        "max_seq_len", 1),
+                    space=space)
+                vr["state_out_{}".format(i)] = ViewRequirement(
+                    space=space, used_for_training=True)
 
     # TODO: (sven) Deprecate this in favor of `save()`.
     def export_checkpoint(self, export_dir: str) -> None:

@@ -65,7 +65,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
                        std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
                        std::function<void()> starting_worker_timeout_callback,
-                       const std::function<double()> get_time)
+                       int ray_debugger_external, const std::function<double()> get_time)
     : io_service_(&io_service),
       node_id_(node_id),
       node_address_(node_address),
@@ -73,6 +73,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
       starting_worker_timeout_callback_(starting_worker_timeout_callback),
+      ray_debugger_external(ray_debugger_external),
       first_job_registered_python_worker_count_(0),
       first_job_driver_wait_num_python_workers_(std::min(
           num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
@@ -321,6 +322,10 @@ Process WorkerPool::StartWorkerProcess(
     if (serialized_runtime_env_context != "{}" && serialized_runtime_env_context != "") {
       worker_command_args.push_back("--serialized-runtime-env-context=" +
                                     serialized_runtime_env_context);
+    }
+
+    if (ray_debugger_external) {
+      worker_command_args.push_back("--ray-debugger-external");
     }
   }
 
@@ -929,7 +934,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.HasRuntimeEnv()) {
         state.tasks_with_pending_runtime_envs.emplace(task_spec.TaskId());
         agent_manager_->CreateRuntimeEnv(
-            task_spec.SerializedRuntimeEnv(),
+            task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
             [start_worker_process_fn, &state, task_spec, dynamic_options,
              allocated_instances_serialized_json](
                 bool done, const std::string &serialized_runtime_env_context) {
@@ -989,7 +994,7 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.HasRuntimeEnv()) {
         // create runtime env.
         agent_manager_->CreateRuntimeEnv(
-            task_spec.SerializedRuntimeEnv(),
+            task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
             [start_worker_process_fn, &state, task_spec, runtime_env_hash](
                 bool successful, const std::string &serialized_runtime_env_context) {
               if (!successful) {

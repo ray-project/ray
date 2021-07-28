@@ -1,6 +1,8 @@
 import asyncio
 import json
 import logging
+from ray._private.ray_logging import setup_component_logger
+from typing import Dict
 
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
@@ -10,7 +12,8 @@ import ray.new_dashboard.modules.runtime_env.runtime_env_consts \
     as runtime_env_consts
 import ray._private.runtime_env as runtime_env
 from ray._private.utils import import_attr
-from ray.workers.pluggable_runtime_env import RuntimeEnvContext
+from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
+                                               using_thread_local_logger)
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +31,48 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         self._session_dir = dashboard_agent.session_dir
         self._runtime_env_dir = dashboard_agent.runtime_env_dir
         self._setup = import_attr(dashboard_agent.runtime_env_setup_hook)
+        self._logging_params = dashboard_agent.logging_params
+        self._per_job_logger_cache = dict()
         runtime_env.PKG_DIR = dashboard_agent.runtime_env_dir
+        # Maps a serialized runtime env dict to the serialized
+        # RuntimeEnvContext arising from the creation of the env.
+        self._created_env_cache: Dict[str, str] = dict()
+
+    def get_or_create_logger(self, job_id: bytes):
+        job_id = job_id.decode()
+        if job_id not in self._per_job_logger_cache:
+            params = self._logging_params.copy()
+            params["filename"] = f"runtime_env_setup-{job_id}.log"
+            params["logger_name"] = f"runtime_env_{job_id}"
+            per_job_logger = setup_component_logger(**params)
+            self._per_job_logger_cache[job_id] = per_job_logger
+        return self._per_job_logger_cache[job_id]
 
     async def CreateRuntimeEnv(self, request, context):
         async def _setup_runtime_env(serialized_runtime_env, session_dir):
+            # This function will be ran inside a thread
+            def run_setup_with_logger():
+                runtime_env: dict = json.loads(serialized_runtime_env or "{}")
+                per_job_logger = self.get_or_create_logger(request.job_id)
+                # Here we set the logger context for the setup hook execution.
+                # The logger needs to be thread local because there can be
+                # setup hooks ran for arbitrary job in arbitrary threads.
+                with using_thread_local_logger(per_job_logger):
+                    env_context = self._setup(runtime_env, session_dir)
+                return env_context
+
             loop = asyncio.get_event_loop()
-            runtime_env: dict = json.loads(serialized_runtime_env or "{}")
-            return await loop.run_in_executor(None, self._setup, runtime_env,
-                                              session_dir)
+            return await loop.run_in_executor(None, run_setup_with_logger)
+
+        serialized_env = request.serialized_runtime_env
+        if serialized_env in self._created_env_cache:
+            serialized_context = self._created_env_cache[serialized_env]
+            logger.info("Runtime env already created. Env: %s, context: %s",
+                        serialized_env,
+                        self._created_env_cache[serialized_env])
+            return runtime_env_agent_pb2.CreateRuntimeEnvReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
+                serialized_runtime_env_context=serialized_context)
 
         logger.info("Creating runtime env: %s.",
                     request.serialized_runtime_env)
@@ -68,6 +105,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 error_message=error_message)
 
         serialized_context = runtime_env_context.serialize()
+        self._created_env_cache[serialized_env] = serialized_context
         logger.info("Successfully created runtime env: %s, the context: %s",
                     request.serialized_runtime_env, serialized_context)
         return runtime_env_agent_pb2.CreateRuntimeEnvReply(

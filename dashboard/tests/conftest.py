@@ -52,3 +52,19 @@ def small_event_line_limit():
     os.environ["EVENT_READ_LINE_LENGTH_LIMIT"] = "1024"
     yield 1024
     os.environ.pop("EVENT_READ_LINE_LENGTH_LIMIT", None)
+
+
+@pytest.fixture
+def fast_gcs_failure_detection():
+    # This ensures that these environment vars are not set.
+    assert "GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR" not in os.environ
+    assert "GCS_CHECK_ALIVE_INTERVAL_SECONDS" not in os.environ
+    assert "GCS_RETRY_CONNECT_INTERVAL_SECONDS" not in os.environ
+
+    os.environ["GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR"] = "2"
+    os.environ["GCS_CHECK_ALIVE_INTERVAL_SECONDS"] = "1"
+    os.environ["GCS_RETRY_CONNECT_INTERVAL_SECONDS"] = "1"
+    yield
+    os.environ.pop("GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR", None)
+    os.environ.pop("GCS_CHECK_ALIVE_INTERVAL_SECONDS", None)
+    os.environ.pop("GCS_RETRY_CONNECT_INTERVAL_SECONDS", None)
