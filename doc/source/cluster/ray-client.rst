@@ -19,7 +19,7 @@ By changing ``ray.init()`` to ``ray.init("ray://<host>:<port>")``, you can conne
    # Starting the Ray client. This connects to a remote Ray cluster.
    # If you're using a version of Ray prior to 1.5, use the ClientBuilder API
    # instead.
-   ray.init("ray://<head_node_host>:10001").connect()
+   ray.init("ray://<head_node_host>:10001")
 
    # Normal Ray code follows
    @ray.remote
@@ -130,4 +130,4 @@ Starting a connection on older Ray versions
 
 If you encounter ``socket.gaierror: [Errno -2] Name or service not known`` when using ``ray.init("ray://...")`` then you may be on a version of Ray prior to 1.5 that does not support starting client connections through ``ray.init``. If this is the case, see the `1.4.1 docs <https://docs.ray.io/en/releases-1.4.1/cluster/ray-client.html>`_ for Ray client.
 
-Alternatively, you might be calling ``ray.init("local")`` instead of "local://". 
+Alternatively, you might be calling ``ray.init("local")`` instead of "local://".
