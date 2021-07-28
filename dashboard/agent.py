@@ -63,7 +63,8 @@ class DashboardAgent(object):
                  metrics_export_port=None,
                  node_manager_port=None,
                  object_store_name=None,
-                 raylet_name=None):
+                 raylet_name=None,
+                 logging_params=None):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
         self.ip = node_ip_address
@@ -79,6 +80,7 @@ class DashboardAgent(object):
         self.node_manager_port = node_manager_port
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
+        self.logging_params = logging_params
         self.node_id = os.environ["RAY_NODE_ID"]
         # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
         # only used for fate-sharing with the raylet and we need a different
@@ -328,13 +330,14 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     try:
-        setup_component_logger(
+        logging_params = dict(
             logging_level=args.logging_level,
             logging_format=args.logging_format,
             log_dir=args.log_dir,
             filename=args.logging_filename,
             max_bytes=args.logging_rotate_bytes,
             backup_count=args.logging_rotate_backup_count)
+        setup_component_logger(**logging_params)
 
         # The dashboard is currently broken on Windows.
         # https://github.com/ray-project/ray/issues/14026.
@@ -359,7 +362,8 @@ if __name__ == "__main__":
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,
             object_store_name=args.object_store_name,
-            raylet_name=args.raylet_name)
+            raylet_name=args.raylet_name,
+            logging_params=logging_params)
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())

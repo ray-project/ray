@@ -11,6 +11,14 @@ py_test(
     deps = [":sgd_v2_lib"]
 )
 
+py_test(
+    name = "test_worker_group",
+    size = "small",
+    srcs = ["tests/test_worker_group.py"],
+    tags = ["exclusive"],
+    deps = [":sgd_v2_lib"]
+)
+
 
 
 # This is a dummy test dependency that causes the above tests to be

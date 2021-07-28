@@ -157,20 +157,19 @@ py_test(
 )
 
 # CQL
-# Skipping due to high flakiness.
-#py_test(
-#    name = "run_regression_tests_pendulum_cql_tf",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["learning_tests_tf", "learning_tests_pendulum", "flaky"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    # Include the zipped json data file as well.
-#    data = [
-#        "tuned_examples/cql/pendulum-cql.yaml",
-#        "tests/data/pendulum/enormous.zip",
-#    ],
-#    args = ["--yaml-dir=tuned_examples/cql"]
-#)
+py_test(
+    name = "run_regression_tests_pendulum_cql_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_pendulum", "flaky"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tuned_examples/cql/pendulum-cql.yaml",
+        "tests/data/pendulum/enormous.zip",
+    ],
+    args = ["--yaml-dir=tuned_examples/cql"]
+)
 
 py_test(
     name = "run_regression_tests_pendulum_cql_torch",
@@ -505,16 +504,15 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac"]
 )
 
-# Skipping due to high flakiness.
-#py_test(
-#    name = "run_regression_tests_pendulum_sac_torch",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["learning_tests_torch", "learning_tests_pendulum", "flaky"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/sac/pendulum-sac.yaml"],
-#    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
-#)
+py_test(
+    name = "run_regression_tests_pendulum_sac_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_pendulum", "flaky"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/pendulum-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
+)
 
 py_test(
     name = "run_regression_tests_transformed_actions_pendulum_sac_tf",
@@ -1378,13 +1376,12 @@ py_test(
 # Tag: utils
 # --------------------------------------------------------------------
 
-# Skipping due to high flakiness.
-#py_test(
-#    name = "test_curiosity",
-#    tags = ["utils", "flaky"],
-#    size = "large",
-#    srcs = ["utils/exploration/tests/test_curiosity.py"]
-#)
+py_test(
+    name = "test_curiosity",
+    tags = ["utils", "flaky"],
+    size = "large",
+    srcs = ["utils/exploration/tests/test_curiosity.py"]
+)
 
 py_test(
     name = "test_explorations",
@@ -2216,6 +2213,24 @@ py_test(
     size = "small",
     srcs = ["examples/custom_torch_policy.py"],
     args = ["--stop-iters=2", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_vector_env_tf",
+    main = "examples/custom_vector_env.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_vector_env.py"],
+    args = ["--as-test", "--stop-reward=40.0"]
+)
+
+py_test(
+    name = "examples/custom_vector_env_torch",
+    main = "examples/custom_vector_env.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_vector_env.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=40.0"]
 )
 
 py_test(

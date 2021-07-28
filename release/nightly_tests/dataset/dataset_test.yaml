@@ -11,4 +11,4 @@
     timeout: 600
     prepare: sleep 0
     script: python inference.py
-    
+  
