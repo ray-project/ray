@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, Iterator, TypeVar, List, Any
+from typing import Callable, TypeVar, List
 
 import ray
 from ray.exceptions import RayActorError
@@ -8,6 +8,7 @@ from ray.util.sgd.v2.worker_group import WorkerGroup
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
+
 
 class BackendConfig:
     """Parent class for configurations of backends (torch, horovod, etc.)"""
@@ -112,9 +113,12 @@ class BackendExecutor:
 
 
 class BackendInterface:
-    def on_start(self, worker_group: WorkerGroup, backend_config: BackendConfig):
+    def on_start(self, worker_group: WorkerGroup,
+                 backend_config: BackendConfig):
         raise NotImplementedError
-    def on_shutdown(self, worker_group: WorkerGroup, backend_config: BackendConfig):
+
+    def on_shutdown(self, worker_group: WorkerGroup,
+                    backend_config: BackendConfig):
         raise NotImplementedError
 
 

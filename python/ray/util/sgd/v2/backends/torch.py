@@ -8,7 +8,7 @@ import socket
 from typing import Optional
 
 import ray
-from ray.util.sgd.v2.backends.backend import BackendExecutor, BackendConfig
+from ray.util.sgd.v2.backends.backend import BackendConfig
 
 from python.ray.util.sgd.v2.backends.backend import BackendInterface
 from python.ray.util.sgd.v2.worker_group import WorkerGroup
@@ -97,23 +97,25 @@ def get_address():
     port = find_free_port()
     return addr, port
 
+
 def shutdown_torch():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
+
 class TorchBackend(BackendInterface):
     def on_start(self, worker_group: WorkerGroup, backend_config: TorchConfig):
         if len(worker_group) > 1:
-            master_addr, master_port = worker_group.execute_single(0,
-                                                                   get_address)
+            master_addr, master_port = worker_group.execute_single(
+                0, get_address)
             if backend_config.init_method == "env":
 
                 def set_env_vars(addr, port):
                     os.environ["MASTER_ADDR"] = addr
                     os.environ["MASTER_PORT"] = port
 
-                worker_group.execute(set_env_vars, addr=master_addr,
-                                         port=master_port)
+                worker_group.execute(
+                    set_env_vars, addr=master_addr, port=master_port)
                 url = "env://"
             elif backend_config.init_method == "tcp":
                 url = f"tcp://{master_addr}:{master_port}"
@@ -123,12 +125,16 @@ class TorchBackend(BackendInterface):
                     f"{backend_config.init_method} is not supported.")
 
             for i in range(len(worker_group)):
-                worker_group.execute_single(i, setup_torch_process_group,
-                                            backend=backend_config.backend,
-                                            world_rank=i, world_size=len(
-                        worker_group), init_method=url,
-                                            timeout_s=backend_config.timeout_s)
+                worker_group.execute_single(
+                    i,
+                    setup_torch_process_group,
+                    backend=backend_config.backend,
+                    world_rank=i,
+                    world_size=len(worker_group),
+                    init_method=url,
+                    timeout_s=backend_config.timeout_s)
 
-    def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchConfig):
+    def on_shutdown(self, worker_group: WorkerGroup,
+                    backend_config: TorchConfig):
         worker_group.exexute_single(0, dist.destroy_process_group)
         worker_group.execute(shutdown_torch)
