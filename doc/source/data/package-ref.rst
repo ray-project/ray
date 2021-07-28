@@ -1,5 +1,5 @@
-Datasets API Reference
-======================
+Dataset API Reference
+=====================
 
 Creating a Dataset
 ------------------
