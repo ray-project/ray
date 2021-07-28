@@ -8,6 +8,9 @@ Datasets execute their transformations synchronously in blocking calls. However,
 
 A DatasetPipeline is an unified iterator over a (potentially infinite) sequence of Ray Datasets. Conceptually it is similar to a `Spark DStream <https://spark.apache.org/docs/latest/streaming-programming-guide.html#discretized-streams-dstreams>`__. Ray computes each dataset on-demand and stitches their output together into a single iterator where data can be pulled from. DatasetPipeline implements most of the same transformation and output methods as Datasets (e.g., map, filter, split, iter_rows, to_torch, etc.).
 
+Creating a DatasetPipeline
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 A DatasetPipeline can be constructed in two ways: either by pipelining an existing Dataset (via ``Dataset.pipeline``), or generating repeats of an existing Dataset (via ``Dataset.repeat``). Similar to Datasets, you can freely pass DatasetPipelines between Ray tasks, actors, and libraries. Get started by pipelining an integer Dataset:
 
 .. code-block:: python
