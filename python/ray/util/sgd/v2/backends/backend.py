@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class BackendConfig:
-    """Parent class for configurations of backends (torch, horovod, etc.)"""
+    """Parent class for configurations of training backend."""
 
     @property
     def backend_name(self):
@@ -25,7 +25,7 @@ class BackendConfig:
 
 
 class BackendExecutor:
-    """Main execution class for SGD backends (torch, tensorflow, etc.).
+    """Main execution class for training backends.
 
     This class holds a worker group and is responsible for executing the
     training function on the workers, and collecting intermediate results
@@ -50,7 +50,7 @@ class BackendExecutor:
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
 
-        self.worker_group = DeactivatedWorkerGroup()
+        self.worker_group = InactiveWorkerGroup()
 
     def start(self, initialization_hook: Callable):
         """Starts the worker group."""
@@ -63,8 +63,6 @@ class BackendExecutor:
     def run(self, train_func: Callable[[], T]) -> List[T]:
         """Executes training function on all workers and yield results.
 
-        The provided function must have any required arguments.
-
         Args:
             train_func (Callable): The training function to run on each
                 worker. It must not have any required arguments.
@@ -75,9 +73,9 @@ class BackendExecutor:
         # Run the training function asynchronously.
         training_futures = self.worker_group.execute_async(train_func)
 
-        return self.get_handle_failure(training_futures)
+        return self.get_with_failure_handling(training_futures)
 
-    def get_handle_failure(self, remote_values):
+    def get_with_failure_handling(self, remote_values):
         """Gets the remote values while handling for worker failures.
 
         Args:
@@ -109,7 +107,7 @@ class BackendExecutor:
         """Shuts down the workers in the worker group."""
         self._backend.on_shutdown(self.worker_group)
         self.worker_group.shutdown()
-        self.worker_group = DeactivatedWorkerGroup()
+        self.worker_group = InactiveWorkerGroup()
 
 
 class BackendInterface:
@@ -122,7 +120,7 @@ class BackendInterface:
         raise NotImplementedError
 
 
-class DeactivatedWorkerGroup:
+class InactiveWorkerGroup(WorkerGroup):
     def __getattr__(self, *args, **kwargs):
         raise RuntimeError(
             "This Trainer is not active. It is either shutdown already or "

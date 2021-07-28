@@ -70,7 +70,7 @@ def test_execute_worker_failure(ray_start_2_cpus):
 
 @pytest.mark.parametrize("init_method", ["env", "tcp"])
 def test_torch_start_shutdown(ray_start_2_cpus, init_method):
-    torch_config = TorchConfig(init_method=init_method)
+    torch_config = TorchConfig(backedn="gloo", init_method=init_method)
     e = TorchExecutor(torch_config, num_workers=2)
 
     def check_process_group():

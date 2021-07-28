@@ -2,16 +2,14 @@ from dataclasses import dataclass
 import logging
 import os
 
-from contextlib import closing
 from datetime import timedelta
-import socket
 from typing import Optional
 
-import ray
 from ray.util.sgd.v2.backends.backend import BackendConfig
 
-from python.ray.util.sgd.v2.backends.backend import BackendInterface
-from python.ray.util.sgd.v2.worker_group import WorkerGroup
+from ray.util.sgd.v2.backends.backend import BackendInterface
+from ray.util.sgd.v2.worker_group import WorkerGroup
+from ray.util.sgd.v2.utils import get_address_and_port
 
 try:
     import torch
@@ -27,18 +25,22 @@ logger = logging.getLogger(__name__)
 class TorchConfig(BackendConfig):
     """Configuration for torch process group setup.
 
+    See https://pytorch.org/docs/stable/distributed.html for more info.
+
     Args:
-        backend (str): The backend (nccl, gloo, etc.) to use for training.
-            If set to None, nccl will be used for GPU training, else gloo
+        backend (str): The backend to use for training.
+            See `torch.distributed.init_process_group` for more info and
+            valid values.
+            If set to None, nccl will be used if GPUs are requested, else gloo
             will be used.
         init_method (str): The initialization method to use. Either "env"
             for environment variable initialization or "tcp" for TCP
             initialization. Defaults to "env".
-        timeout_s (timedelta): Seconds for process group operations to timeout.
+        timeout_s (int): Seconds for process group operations to timeout.
     """
     backend: Optional[str] = None
     init_method: str = "env"
-    timeout_s: timedelta = timedelta(0, 1800)
+    timeout_s: int = 1800
 
     def __post_init__(self):
         if torch is None:
@@ -52,18 +54,11 @@ class TorchConfig(BackendConfig):
         return TorchBackend
 
 
-def find_free_port():
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(("", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
-
-
 def setup_torch_process_group(backend: str,
                               world_rank: int,
                               world_size: int,
                               init_method: str = None,
-                              timeout_s: timedelta = timedelta(0, 1800)):
+                              timeout_s: int = 1800):
     """Connects the distributed PyTorch backend.
 
     Args:
@@ -89,13 +84,7 @@ def setup_torch_process_group(backend: str,
         init_method=init_method,
         rank=world_rank,
         world_size=world_size,
-        timeout=timeout_s)
-
-
-def get_address():
-    addr = ray.util.get_node_ip_address()
-    port = find_free_port()
-    return addr, port
+        timeout=timedelta(0, timeout_s))
 
 
 def shutdown_torch():
@@ -105,9 +94,9 @@ def shutdown_torch():
 
 class TorchBackend(BackendInterface):
     def on_start(self, worker_group: WorkerGroup, backend_config: TorchConfig):
-        if len(worker_group) > 1:
+        if len(worker_group) > 1 and dist.is_available():
             master_addr, master_port = worker_group.execute_single(
-                0, get_address)
+                0, get_address_and_port)
             if backend_config.init_method == "env":
 
                 def set_env_vars(addr, port):
@@ -122,7 +111,8 @@ class TorchBackend(BackendInterface):
             else:
                 raise ValueError(
                     f"The provided init_method ("
-                    f"{backend_config.init_method} is not supported.")
+                    f"{backend_config.init_method}) is not supported. Must "
+                    f"be either 'env' or 'tcp'.")
 
             for i in range(len(worker_group)):
                 worker_group.execute_single(
@@ -133,8 +123,11 @@ class TorchBackend(BackendInterface):
                     world_size=len(worker_group),
                     init_method=url,
                     timeout_s=backend_config.timeout_s)
+        else:
+            logger.info("Distributed torch is not being used.")
 
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: TorchConfig):
-        worker_group.exexute_single(0, dist.destroy_process_group)
+        if len(worker_group):
+            worker_group.exexute_single(0, dist.destroy_process_group)
         worker_group.execute(shutdown_torch)
