@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 parser = argparse.ArgumentParser()
 
 parser.add_argument(
+    "--worker-entrypoint",
+    type=str,
+    help="the worker entrypoint: python,java etc. ")
+
+parser.add_argument(
     "--serialized-runtime-env",
     type=str,
     help="the serialized parsed runtime env dict")
@@ -139,7 +144,7 @@ def setup_worker(input_args):
     args, remaining_args = parser.parse_known_args(args=input_args)
 
     commands = []
-    py_executable: str = sys.executable
+    worker_executable: str = args.worker_entrypoint
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
     runtime_env_context: RuntimeEnvContext = None
 
@@ -154,7 +159,7 @@ def setup_worker(input_args):
 
     # activate conda
     if runtime_env_context and runtime_env_context.conda_env_name:
-        py_executable = "python"
+        worker_executable = "python"
         conda_activate_commands = get_conda_activate_commands(
             runtime_env_context.conda_env_name)
         if (conda_activate_commands):
@@ -168,7 +173,7 @@ def setup_worker(input_args):
 
     commands += [
         " ".join(
-            [f"exec {py_executable}"] + remaining_args +
+            [f"exec {worker_executable}"] + remaining_args +
             # Pass the runtime for working_dir setup.
             # We can't do it in shim process here because it requires
             # connection to gcs.
