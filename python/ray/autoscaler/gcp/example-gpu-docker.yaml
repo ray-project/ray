@@ -72,7 +72,7 @@ available_node_types:
                   # See https://cloud.google.com/compute/docs/images for more images
                   sourceImage: projects/deeplearning-platform-release/global/images/family/common-cu110
             guestAccelerators:
-              - acceleratorType: projects/<project_id>/zones/us-west1-b/acceleratorTypes/nvidia-tesla-k80
+              - acceleratorType: nvidia-tesla-k80
                 acceleratorCount: 1
             metadata:
               items:
@@ -105,7 +105,7 @@ available_node_types:
                   # See https://cloud.google.com/compute/docs/images for more images
                   sourceImage: projects/deeplearning-platform-release/global/images/family/common-cu110
             guestAccelerators:
-              - acceleratorType: projects/<project_id>/zones/us-west1-b/acceleratorTypes/nvidia-tesla-k80
+              - acceleratorType: nvidia-tesla-k80
                 acceleratorCount: 1
             metadata:
               items:
