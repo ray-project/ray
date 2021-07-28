@@ -36,7 +36,7 @@ template <typename... Args>
 ObjectRef<boost::callable_traits::return_type_t<F>> ActorTaskCaller<F>::Remote(
     Args &&... args) {
   using ReturnType = boost::callable_traits::return_type_t<F>;
-  ray::api::StaticCheck<F, Args...>();
+  ray::internal::StaticCheck<F, Args...>();
 
   ray::serializer::Arguments::WrapArgs(&args_, std::forward<Args>(args)...);
   auto returned_object_id = runtime_->CallActor(remote_function_holder_, id_, args_);

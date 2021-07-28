@@ -38,7 +38,7 @@ template <typename F>
 template <typename... Args>
 ObjectRef<boost::callable_traits::return_type_t<F>> TaskCaller<F>::Remote(
     Args &&... args) {
-  ray::api::StaticCheck<F, Args...>();
+  ray::internal::StaticCheck<F, Args...>();
   using ReturnType = boost::callable_traits::return_type_t<F>;
   ray::serializer::Arguments::WrapArgs(&args_, std::forward<Args>(args)...);
   auto returned_object_id = runtime_->Call(remote_function_holder_, args_);

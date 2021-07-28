@@ -31,7 +31,7 @@ class ActorCreator {
 template <typename F>
 template <typename... Args>
 ray::ActorHandle<GetActorType<F>> ActorCreator<F>::Remote(Args &&... args) {
-  ray::api::StaticCheck<F, Args...>();
+  ray::internal::StaticCheck<F, Args...>();
   ray::serializer::Arguments::WrapArgs(&args_, std::forward<Args>(args)...);
   auto returned_actor_id = runtime_->CreateActor(remote_function_holder_, args_);
   return ray::ActorHandle<GetActorType<F>>(returned_actor_id);
