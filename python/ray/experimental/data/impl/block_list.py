@@ -11,6 +11,9 @@ class BlockList(Iterable[ObjectRef[Block]]):
         self._blocks = blocks
         self._metadata = metadata
 
+    def set_metadata(self, i: int, metadata: BlockMetadata) -> None:
+        self._metadata[i] = metadata
+
     def get_metadata(self) -> List[BlockMetadata]:
         return self._metadata.copy()
 
