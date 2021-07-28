@@ -19,6 +19,9 @@ class BackendConfig:
     def validate(self, name):
         assert name == self.backend_name(), (name, self.backend_name)
 
+    def get_backend_cls(self):
+        raise NotImplementedError
+
 
 class BackendExecutor:
     """Main execution class for SGD backends (torch, tensorflow, etc.).
@@ -41,19 +44,22 @@ class BackendExecutor:
                  num_cpus_per_worker: float = 1,
                  num_gpus_per_worker: float = 0):
         self._backend_config = backend_config
+        self._backend = self._backend_config.get_backend_cls()
         self._num_workers = num_workers
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
 
         self.worker_group = DeactivatedWorkerGroup()
 
-    def start(self):
+    def start(self, initialization_hook: Callable):
         """Starts the worker group."""
         self.worker_group = WorkerGroup(self._num_workers,
                                         self._num_cpus_per_worker,
                                         self._num_gpus_per_worker)
+        self.worker_group.execute(initialization_hook)
+        self._backend.on_start()
 
-    def execute(self, train_func: Callable[[], T]) -> List[T]:
+    def run(self, train_func: Callable[[], T]) -> List[T]:
         """Executes training function on all workers and yield results.
 
         The provided function must have any required arguments.
@@ -100,23 +106,16 @@ class BackendExecutor:
 
     def shutdown(self):
         """Shuts down the workers in the worker group."""
+        self._backend.on_shutdown(self.worker_group)
         self.worker_group.shutdown()
         self.worker_group = DeactivatedWorkerGroup()
 
-    def run(self, train_func: Callable[[], T]) -> List[T]:
-        """Run full start/execute/shutdown flow.
 
-        Args:
-            train_func (Callable): The training function to run on each
-                worker. It must accept ``config`` as an argument.
-
-        Yields:
-            A list of values passed to ``sgd.report()`` from each worker.
-        """
-        self.start()
-        return_vals = self.execute(train_func)
-        self.shutdown()
-        return return_vals
+class BackendInterface:
+    def on_start(self, worker_group: WorkerGroup, backend_config: BackendConfig):
+        raise NotImplementedError
+    def on_shutdown(self, worker_group: WorkerGroup, backend_config: BackendConfig):
+        raise NotImplementedError
 
 
 class DeactivatedWorkerGroup:

@@ -10,6 +10,9 @@ from typing import Optional
 import ray
 from ray.util.sgd.v2.backends.backend import BackendExecutor, BackendConfig
 
+from python.ray.util.sgd.v2.backends.backend import BackendInterface
+from python.ray.util.sgd.v2.worker_group import WorkerGroup
+
 try:
     import torch
     import torch.distributed as dist
@@ -44,6 +47,9 @@ class TorchConfig(BackendConfig):
 
     def backend_name(self):
         return "torch"
+
+    def get_backend_cls(self):
+        return TorchBackend
 
 
 def find_free_port():
@@ -86,62 +92,43 @@ def setup_torch_process_group(backend: str,
         timeout=timeout_s)
 
 
+def get_address():
+    addr = ray.util.get_node_ip_address()
+    port = find_free_port()
+    return addr, port
+
 def shutdown_torch():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-
-class TorchExecutor(BackendExecutor):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._backend_config.validate(name="torch")
-
-        if self._backend_config.backend is None:
-            if self._num_gpus_per_worker > 0:
-                self.backend = "nccl"
-            else:
-                self.backend = "gloo"
-
-    def start(self):
-        super().start()
-        if self._num_workers > 1:
-
-            def get_address():
-                addr = ray.util.get_node_ip_address()
-                port = find_free_port()
-                return addr, port
-
-            master_addr, master_port = self.worker_group.execute_single(
-                0, get_address)
-
-            if self._backend_config.init_method == "env":
+class TorchBackend(BackendInterface):
+    def on_start(self, worker_group: WorkerGroup, backend_config: TorchConfig):
+        if len(worker_group) > 1:
+            master_addr, master_port = worker_group.execute_single(0,
+                                                                   get_address)
+            if backend_config.init_method == "env":
 
                 def set_env_vars(addr, port):
                     os.environ["MASTER_ADDR"] = addr
-                    os.environ["MASTER_PORT"] = str(port)
+                    os.environ["MASTER_PORT"] = port
 
-                self.worker_group.execute(
-                    set_env_vars, addr=master_addr, port=master_port)
+                worker_group.execute(set_env_vars, addr=master_addr,
+                                         port=master_port)
                 url = "env://"
-            elif self._backend_config == "tcp":
+            elif backend_config.init_method == "tcp":
                 url = f"tcp://{master_addr}:{master_port}"
             else:
                 raise ValueError(
                     f"The provided init_method ("
-                    f"{self._backend_config.init_method} is not supported.")
+                    f"{backend_config.init_method} is not supported.")
 
-            for i in range(len(self.worker_group)):
-                self.worker_group.execute_single(
-                    i,
-                    setup_torch_process_group,
-                    backend=self.backend,
-                    world_rank=i,
-                    world_size=len(self.worker_group),
-                    init_method=url,
-                    timeout_s=self._backend_config.timeout_s)
+            for i in range(len(worker_group)):
+                worker_group.execute_single(i, setup_torch_process_group,
+                                            backend=backend_config.backend,
+                                            world_rank=i, world_size=len(
+                        worker_group), init_method=url,
+                                            timeout_s=backend_config.timeout_s)
 
-    def shutdown(self):
-        self.worker_group.execute_single(
-            0, torch.distributed.destroy_process_group)
-        self.worker_group.execute(shutdown_torch)
-        super().shutdown()
+    def on_shutdown(self, worker_group: WorkerGroup, backend_config: TorchConfig):
+        worker_group.exexute_single(0, dist.destroy_process_group)
+        worker_group.execute(shutdown_torch)
