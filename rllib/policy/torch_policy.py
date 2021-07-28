@@ -566,8 +566,8 @@ class TorchPolicy(Policy):
             else:
                 batch = self._loaded_batches[0][0][offset:offset +
                                                    device_batch_size]
-
             return self.learn_on_batch(batch)
+
 
         if len(self.devices) > 1:
             # Copy weights of main model to all towers.
