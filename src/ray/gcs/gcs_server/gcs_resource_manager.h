@@ -207,7 +207,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
 
   /// Max batch size for broadcasting
-  size_t max_broadcasting_batch_nums_;
+  size_t max_broadcasting_batch_size_;
 
   /// Debug info.
   enum CountType {
