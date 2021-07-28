@@ -84,7 +84,7 @@ start_time = time.time()
 
 print("Downloading...")
 ds = ray.experimental.data.read_binary_files(
-    "s3://anyscale-data/small-images/", parallelism=400)
+    "s3://anyscale-data/small-images/", parallelism=1000)
 ds = ds.limit(100 * 1000)
 
 end_download_time = time.time()
