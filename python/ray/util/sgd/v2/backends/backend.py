@@ -9,19 +9,6 @@ T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
-
-def fetch_next():
-    """Fetch next item from result queue on each worker."""
-    # TODO: Implement along with sgd.report()
-    return None
-
-
-def fetch_all():
-    """Fetch all items from result queue on each worker."""
-    # TODO: Implement along with sgd.report()
-    return [None]
-
-
 class BackendConfig:
     """Parent class for configurations of backends (torch, horovod, etc.)"""
 
@@ -66,7 +53,7 @@ class BackendExecutor:
                                         self._num_cpus_per_worker,
                                         self._num_gpus_per_worker)
 
-    def execute(self, train_func: Callable[[], T]) -> Iterator[Any]:
+    def execute(self, train_func: Callable[[], T]) -> List[T]:
         """Executes training function on all workers and yield results.
 
         The provided function must have any required arguments.
@@ -81,50 +68,7 @@ class BackendExecutor:
         # Run the training function asynchronously.
         training_futures = self.worker_group.execute_async(train_func)
 
-        not_ready = True
-        # While the training function has not yet finished.
-        while not_ready:
-            # Attempt to get intermediate results.
-            result_futures = self.worker_group.execute_async(fetch_next)
-
-            result_ready = []
-            result_not_ready = True
-            while result_not_ready:
-                # Check every second to see if results are ready.
-                result_ready, result_not_ready = ray.wait(
-                    result_futures,
-                    num_returns=len(self.worker_group),
-                    timeout=1)
-
-                # Also check if training function has finished.
-                ready, not_ready = ray.wait(
-                    training_futures,
-                    num_returns=len(self.worker_group),
-                    timeout=0)
-                # Break if all workers have finished the training function.
-                if len(ready) == len(self.worker_group):
-                    break
-
-            # If some workers already have results ready, then get the results.
-            if result_ready:
-                yield self.get_handle_failure(result_futures)
-
-        # Training function has finished on all workers.
-        # Get remainder of results from queue.
-        all_result_futures = self.worker_group.execute_async(fetch_all)
-        all_results = self.get_handle_failure(all_result_futures)
-
-        if all_results:
-            if not all(len(r) == len(all_results[0]) for r in all_results):
-                raise RuntimeError("There is a mismatch in results returned "
-                                   "by the training function. Make sure "
-                                   "``sgd.report`` is called the same number "
-                                   "of times on all workers.")
-            for i in range(len(all_results[0])):
-                yield [r[i] for r in all_results]
-
-        # Store the return values as an attribute so caller can access.
-        self.return_values = self.get_handle_failure(training_futures)
+        return self.get_handle_failure(training_futures)
 
     def get_handle_failure(self, remote_values):
         """Gets the remote values while handling for worker failures.
@@ -141,7 +85,7 @@ class BackendExecutor:
         try:
             while len(unfinished) > 0:
                 finished, unfinished = ray.wait(unfinished)
-                finished = ray.get(finished)
+                ray.get(finished)
         except RayActorError as exc:
             logger.exception(str(exc))
             self.handle_failure()
@@ -170,8 +114,9 @@ class BackendExecutor:
             A list of values passed to ``sgd.report()`` from each worker.
         """
         self.start()
-        self.execute(train_func)
+        return_vals = self.execute(train_func)
         self.shutdown()
+        return return_vals
 
 
 class DeactivatedWorkerGroup:
