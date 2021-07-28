@@ -69,8 +69,6 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
     "use_tmux",
 ])
 
-redis_pool = {}
-
 
 def serialize_config(config):
     return base64.b64encode(json.dumps(config).encode("utf-8")).decode("utf-8")
@@ -406,17 +404,24 @@ def create_redis_client(redis_address, password=None):
     Returns:
         A Redis client.
     """
-    global redis_pool
-    redis_ip_address, redis_port = redis_address.split(":")
-    if redis_address in redis_pool:
-        pool = redis_pool[redis_address]
+    if not hasattr(create_redis_client, "instances"):
+        create_redis_client.instances = {}
     else:
-        pool = redis.ConnectionPool(
-            host=redis_ip_address, port=int(redis_port), password=password)
-        redis_pool[redis_address] = pool
+        cli = create_redis_client.instances.get(redis_address)
+        if cli is not None:
+            try:
+                cli.ping()
+                return cli
+            except redis.ConnectionError:
+                create_redis_client.instances.pop(redis_address)
+
+    redis_ip_address, redis_port = redis_address.split(":")
     # For this command to work, some other client (on the same machine
     # as Redis) must have run "CONFIG SET protected-mode no".
-    return redis.Redis(connection_pool=pool)
+    create_redis_client.instances[redis_address] = redis.StrictRedis(
+        host=redis_ip_address, port=int(redis_port), password=password)
+
+    return create_redis_client.instances[redis_address]
 
 
 def start_ray_process(command,
@@ -847,7 +852,7 @@ def start_redis(node_ip_address,
             redis_executable,
             port=port,
             password=password,
-            redis_max_clients=redis_max_clients or 50000,
+            redis_max_clients=redis_max_clients,
             num_retries=num_retries,
             # Below we use None to indicate no limit on the memory of the
             # primary Redis shard.
@@ -1024,6 +1029,11 @@ def _start_redis_instance(executable,
     # number of Redis clients.
     if redis_max_clients is not None:
         redis_client.config_set("maxclients", str(redis_max_clients))
+    else:
+        import resource
+        limit = min(resource.getrlimit(resource.RLIMIT_NOFILE))
+        logger.info(f"Set redis client limit to {limit}")
+        redis_client.config_set("maxclients", str(limit))
     elif resource is not None:
         # If redis_max_clients is not provided, determine the current ulimit.
         # We will use this to attempt to raise the maximum number of Redis
