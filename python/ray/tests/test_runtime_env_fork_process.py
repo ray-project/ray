@@ -40,5 +40,30 @@ def test_fork_process_in_runtime_env(ray_start_cluster):
     assert result == 1
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Fork API is not supported on Windows")
+def test_unified_fork_process(ray_start_cluster):
+    cluster = ray_start_cluster
+    directory = os.path.dirname(os.path.realpath(__file__))
+    # The job runs without runtime env, the raylet still use setup_worker
+    # to start worker.
+    setup_worker_path = os.path.join(directory, "mock_setup_worker.py")
+    cluster.add_node(num_cpus=1, setup_worker_path=setup_worker_path)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    class Actor():
+        def __init__(self):
+            pass
+
+        def get_shim_pid(self):
+            return os.environ["worker-shim-pid"]
+
+    a1 = Actor.options().remote()
+    obj_ref1 = a1.get_shim_pid.remote()
+    result = ray.get(obj_ref1)
+    assert result
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

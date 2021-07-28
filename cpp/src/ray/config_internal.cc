@@ -32,6 +32,8 @@ DEFINE_string(ray_logs_dir, "", "Logs dir for workers.");
 
 DEFINE_string(ray_node_ip_address, "", "The ip address for this node.");
 
+DEFINE_string(serialized_runtime_env, "{}", "The serialized parsed runtime env dict.");
+
 namespace ray {
 namespace api {
 
