@@ -29,7 +29,7 @@ void LocalModeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
   auto status = memory_store_->Put(
       ::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()), object_id);
   if (!status) {
-    throw RayException("Put object error");
+    throw ray::exception::RayException("Put object error");
   }
 }
 
@@ -49,7 +49,7 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> LocalModeObjectStore::GetRaw(
       memory_store_->Get(ids, (int)ids.size(), timeout_ms,
                          *local_mode_ray_tuntime_.GetWorkerContext(), false, &results);
   if (!status.ok()) {
-    throw RayException("Get object error: " + status.ToString());
+    throw ray::exception::RayException("Get object error: " + status.ToString());
   }
   RAY_CHECK(results.size() == ids.size());
   std::vector<std::shared_ptr<msgpack::sbuffer>> result_sbuffers;
@@ -75,7 +75,7 @@ std::vector<bool> LocalModeObjectStore::Wait(const std::vector<ObjectID> &ids,
       memory_store_->Wait(memory_object_ids, num_objects, timeout_ms,
                           *local_mode_ray_tuntime_.GetWorkerContext(), &ready);
   if (!status.ok()) {
-    throw RayException("Wait object error: " + status.ToString());
+    throw ray::exception::RayException("Wait object error: " + status.ToString());
   }
   std::vector<bool> result;
   result.reserve(ids.size());

@@ -85,7 +85,7 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
     RAY_LOG(DEBUG) << "Execute function " << func_name << " ok.";
     return std::make_pair(ray::Status::OK(),
                           std::make_shared<msgpack::sbuffer>(std::move(result)));
-  } catch (ray::api::RayException &e) {
+  } catch (ray::exception::RayException &e) {
     return std::make_pair(ray::Status::NotFound(e.what()), nullptr);
   }
 }

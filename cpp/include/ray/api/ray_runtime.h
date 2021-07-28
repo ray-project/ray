@@ -18,7 +18,7 @@ struct RemoteFunctionHolder {
   RemoteFunctionHolder(F func) {
     auto func_name = ray::internal::FunctionManager::Instance().GetFunctionName(func);
     if (func_name.empty()) {
-      throw RayException(
+      throw ray::exception::RayException(
           "Function not found. Please use RAY_REMOTE to register this function.");
     }
     function_name = std::move(func_name);

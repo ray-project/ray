@@ -51,7 +51,7 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
   auto status = core_worker.CreateActor(BuildRayFunction(invocation), invocation.args,
                                         actor_options, "", &actor_id);
   if (!status.ok()) {
-    throw RayException("Create actor error");
+    throw ray::exception::RayException("Create actor error");
   }
   return actor_id;
 }
