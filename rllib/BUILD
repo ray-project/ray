@@ -2216,6 +2216,24 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_vector_env_tf",
+    main = "examples/custom_vector_env.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_vector_env.py"],
+    args = ["--as-test", "--stop-reward=40.0"]
+)
+
+py_test(
+    name = "examples/custom_vector_env_torch",
+    main = "examples/custom_vector_env.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_vector_env.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=40.0"]
+)
+
+py_test(
     name = "examples/deterministic_training_tf",
     main = "examples/deterministic_training.py",
     tags = ["examples", "examples_D"],
