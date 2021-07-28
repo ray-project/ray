@@ -436,7 +436,7 @@ class StandardAutoscaler:
             sorted_node_ids: the node ids sorted based on last used (LRU last).
 
         Returns:
-            FrozenSet[NodeID]: a set of nodes (node ids) that 
+            FrozenSet[NodeID]: a set of nodes (node ids) that
             we should NOT terminate.
         """
         nodes_not_allowed_to_terminate: Set[NodeID] = set()
