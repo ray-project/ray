@@ -1,5 +1,5 @@
-from typing import TypeVar, List, Generic, Iterator, Any, Union, Optional, \
-    TYPE_CHECKING
+from typing import TypeVar, List, Generic, Iterator, Tuple, Any, Union, \
+    Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas
@@ -118,3 +118,19 @@ class BlockAccessor(Generic[T]):
             return SimpleBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {}".format(block))
+
+    def sample(self, n_samples: int, key: Any) -> "Block[T]":
+        """Return a random sample of items from this block."""
+        raise NotImplementedError
+
+    def sort_and_partition(self, boundaries: List[T], key: Any,
+                           descending: bool) -> List["Block[T]"]:
+        """Return a list of sorted partitions of this block."""
+        raise NotImplementedError
+
+    @staticmethod
+    def merge_sorted_blocks(
+            blocks: List["Block[T]"], key: Any,
+            descending: bool) -> Tuple[Block[T], BlockMetadata]:
+        """Return a sorted block by merging a list of sorted blocks."""
+        raise NotImplementedError

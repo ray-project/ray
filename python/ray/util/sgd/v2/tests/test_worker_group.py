@@ -51,7 +51,9 @@ def test_worker_restart(ray_start_2_cpus):
     wg = WorkerGroup(num_workers=2)
     with pytest.raises(RuntimeError):
         wg.start()
-    wg.shutdown()
+    # Avoid race condition.
+    time.sleep(1)
+    wg.shutdown(0)
     wg.start()
     wg.execute(lambda: 1)
 
@@ -69,7 +71,6 @@ def test_execute(ray_start_2_cpus):
     outputs = wg.execute(lambda: 1)
     assert len(outputs) == 2
     assert all(o == 1 for o in outputs)
-
 
 def test_execute_args(ray_start_2_cpus):
     wg = WorkerGroup(num_workers=2)
@@ -103,7 +104,6 @@ def test_bad_resources(ray_start_2_cpus):
 
     with pytest.raises(ValueError):
         WorkerGroup(num_gpus_per_worker=-1)
-
 
 if __name__ == "__main__":
     import pytest

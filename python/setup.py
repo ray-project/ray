@@ -94,7 +94,6 @@ else:
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
-    "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
@@ -157,10 +156,12 @@ if setup_spec.type == SetupType.RAY:
             "jsonschema",  # noqa
             "requests",  # noqa
             "gpustat",  # noqa
+            "opencensus",  # noqa
+            "prometheus_client >= 0.7.1",  # noqa
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
-        "k8s": ["kubernetes"],
+        "k8s": ["kubernetes", "urllib3"],
         "observability": [
             "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
             "opentelemetry-exporter-otlp==1.1.0"
@@ -198,8 +199,6 @@ if setup_spec.type == SetupType.RAY:
         "protobuf >= 3.15.3",
         "pyyaml",
         "redis >= 3.5.0",
-        "opencensus",
-        "prometheus_client >= 0.7.1",
     ]
 
 

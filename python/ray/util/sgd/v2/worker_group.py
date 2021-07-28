@@ -1,5 +1,10 @@
 import logging
 from typing import Callable, List, TypeVar
+<<<<<<< HEAD
+=======
+
+from inspect import signature
+>>>>>>> d01e1c15c81b568d0e0b956c356fb26b77b0aa79
 
 import ray
 from ray.types import ObjectRef
@@ -8,6 +13,15 @@ T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
+class BaseWorker:
+    """A class to execute arbitrary functions. Does not hold any state."""
+
+    def execute(self, func: Callable[[], T]) -> T:
+        """Executes the input function and returns the output.
+        Args:
+            func(Callable): A function that does not take any arguments.
+        """
+        return func()
 
 class WorkerGroup:
     """Group of Ray Actors that can execute arbitrary functions.
@@ -75,7 +89,7 @@ class WorkerGroup:
         """Shutdown all the workers in this worker group.
 
         Args:
-            graceful_shutdown_timeout_s (float): Attempt a graceful shutdown
+            patience_s (float): Attempt a graceful shutdown
                 of the workers for this many seconds. Fallback to force kill
                 if graceful shutdown is not complete after this time. If
                 this is less than or equal to 0, immediately force kill all
@@ -99,7 +113,7 @@ class WorkerGroup:
         logger.debug("Shutdown successful.")
         self.workers = []
 
-    def execute_async(self, func: Callable[[], T], *args,
+    def execute_async(self, func: Callable[..., T], *args,
                       **kwargs) -> List[ObjectRef]:
         """Execute ``func`` on each worker and return the futures.
 
@@ -120,7 +134,7 @@ class WorkerGroup:
 
         return [w.execute.remote(func, *args, **kwargs) for w in self.workers]
 
-    def execute(self, func: Callable[[], T], *args, **kwargs) -> List[T]:
+    def execute(self, func: Callable[..., T], *args, **kwargs) -> List[T]:
         """Execute ``func`` on each worker and return the outputs of ``func``.
 
         Args:
@@ -134,7 +148,7 @@ class WorkerGroup:
         """
         return ray.get(self.execute_async(func, *args, **kwargs))
 
-    def execute_single(self, worker_index: int, func: Callable[[], T], *args,
+    def execute_single(self, worker_index: int, func: Callable[..., T], *args,
                        **kwargs) -> T:
         """Execute ``func`` on worker with index ``worker_index``.
 
@@ -155,15 +169,3 @@ class WorkerGroup:
 
     def __len__(self):
         return len(self.workers)
-
-
-class BaseWorker:
-    """A class to execute arbitrary functions. Does not hold any state."""
-
-    def execute(self, func: Callable[[], T], *args, **kwargs) -> T:
-        """Executes the input function and returns the output.
-        Args:
-            func(Callable): A function that does not take any arguments.
-            args, kwargs: Passed directly into func
-        """
-        return func(*args, **kwargs)
