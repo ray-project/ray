@@ -35,13 +35,14 @@ class AbstractRayRuntime : public RayRuntime {
                          int timeout_ms);
 
   std::string Call(const RemoteFunctionHolder &remote_function_holder,
-                   std::vector<ray::api::TaskArg> &args);
+                   std::vector<ray::serializer::TaskArg> &args);
 
   std::string CreateActor(const RemoteFunctionHolder &remote_function_holder,
-                          std::vector<ray::api::TaskArg> &args);
+                          std::vector<ray::serializer::TaskArg> &args);
 
   std::string CallActor(const RemoteFunctionHolder &remote_function_holder,
-                        const std::string &actor, std::vector<ray::api::TaskArg> &args);
+                        const std::string &actor,
+                        std::vector<ray::serializer::TaskArg> &args);
 
   void AddLocalReference(const std::string &id);
 

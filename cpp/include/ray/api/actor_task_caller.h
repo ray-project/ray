@@ -26,7 +26,7 @@ class ActorTaskCaller {
   ray::api::RayRuntime *runtime_;
   std::string id_;
   ray::api::RemoteFunctionHolder remote_function_holder_;
-  std::vector<ray::api::TaskArg> args_;
+  std::vector<ray::serializer::TaskArg> args_;
 };
 
 // ---------- implementation ----------
@@ -38,7 +38,7 @@ ObjectRef<boost::callable_traits::return_type_t<F>> ActorTaskCaller<F>::Remote(
   using ReturnType = boost::callable_traits::return_type_t<F>;
   ray::api::StaticCheck<F, Args...>();
 
-  ray::api::Arguments::WrapArgs(&args_, std::forward<Args>(args)...);
+  ray::serializer::Arguments::WrapArgs(&args_, std::forward<Args>(args)...);
   auto returned_object_id = runtime_->CallActor(remote_function_holder_, id_, args_);
   return ObjectRef<ReturnType>(returned_object_id);
 }

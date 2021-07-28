@@ -108,7 +108,8 @@ inline std::vector<std::string> ObjectRefsToObjectIDs(
 
 template <typename T>
 inline ray::ObjectRef<T> Put(const T &obj) {
-  auto buffer = std::make_shared<msgpack::sbuffer>(ray::Serializer::Serialize(obj));
+  auto buffer =
+      std::make_shared<msgpack::sbuffer>(ray::serializer::Serializer::Serialize(obj));
   auto id = ray::internal::RayRuntime()->Put(buffer);
   return ray::ObjectRef<T>(id);
 }
@@ -124,8 +125,8 @@ inline std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids) 
   std::vector<std::shared_ptr<T>> return_objects;
   return_objects.reserve(result.size());
   for (auto it = result.begin(); it != result.end(); it++) {
-    auto obj =
-        ray::Serializer::Deserialize<std::shared_ptr<T>>((*it)->data(), (*it)->size());
+    auto obj = ray::serializer::Serializer::Deserialize<std::shared_ptr<T>>(
+        (*it)->data(), (*it)->size());
     return_objects.push_back(std::move(obj));
   }
   return return_objects;

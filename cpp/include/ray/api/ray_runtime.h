@@ -40,12 +40,12 @@ class RayRuntime {
                                  int timeout_ms) = 0;
 
   virtual std::string Call(const RemoteFunctionHolder &remote_function_holder,
-                           std::vector<ray::api::TaskArg> &args) = 0;
+                           std::vector<ray::serializer::TaskArg> &args) = 0;
   virtual std::string CreateActor(const RemoteFunctionHolder &remote_function_holder,
-                                  std::vector<ray::api::TaskArg> &args) = 0;
+                                  std::vector<ray::serializer::TaskArg> &args) = 0;
   virtual std::string CallActor(const RemoteFunctionHolder &remote_function_holder,
                                 const std::string &actor,
-                                std::vector<ray::api::TaskArg> &args) = 0;
+                                std::vector<ray::serializer::TaskArg> &args) = 0;
   virtual void AddLocalReference(const std::string &id) = 0;
   virtual void RemoveLocalReference(const std::string &id) = 0;
 };
