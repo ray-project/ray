@@ -75,13 +75,13 @@ WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_object
 /// \param[in] args The function arguments passed by a value or ObjectRef.
 /// \return TaskCaller.
 template <typename F>
-ray::api::TaskCaller<F> Task(F func);
+ray::call::TaskCaller<F> Task(F func);
 
 /// Generic version of creating an actor
 /// It is used for creating an actor, such as: ActorCreator<Counter> creator =
 /// Ray::Actor(Counter::FactoryCreate<int>).Remote(1);
 template <typename F>
-ray::api::ActorCreator<F> Actor(F create_func);
+ray::call::ActorCreator<F> Actor(F create_func);
 
 static std::once_flag is_inited_;
 
@@ -89,10 +89,10 @@ template <typename T>
 std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids);
 
 template <typename FuncType>
-ray::api::TaskCaller<FuncType> TaskInternal(FuncType &func);
+ray::call::TaskCaller<FuncType> TaskInternal(FuncType &func);
 
 template <typename FuncType>
-ray::api::ActorCreator<FuncType> CreateActorInternal(FuncType &func);
+ray::call::ActorCreator<FuncType> CreateActorInternal(FuncType &func);
 
 // --------- inline implementation ------------
 
@@ -155,28 +155,28 @@ inline WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num
 }
 
 template <typename FuncType>
-inline ray::api::TaskCaller<FuncType> TaskInternal(FuncType &func) {
+inline ray::call::TaskCaller<FuncType> TaskInternal(FuncType &func) {
   ray::api::RemoteFunctionHolder remote_func_holder(func);
-  return ray::api::TaskCaller<FuncType>(ray::internal::RayRuntime().get(),
-                                        std::move(remote_func_holder));
+  return ray::call::TaskCaller<FuncType>(ray::internal::RayRuntime().get(),
+                                         std::move(remote_func_holder));
 }
 
 template <typename FuncType>
-inline ray::api::ActorCreator<FuncType> CreateActorInternal(FuncType &create_func) {
+inline ray::call::ActorCreator<FuncType> CreateActorInternal(FuncType &create_func) {
   ray::api::RemoteFunctionHolder remote_func_holder(create_func);
-  return ray::api::ActorCreator<FuncType>(ray::internal::RayRuntime().get(),
-                                          std::move(remote_func_holder));
+  return ray::call::ActorCreator<FuncType>(ray::internal::RayRuntime().get(),
+                                           std::move(remote_func_holder));
 }
 
 /// Normal task.
 template <typename F>
-ray::api::TaskCaller<F> Task(F func) {
+ray::call::TaskCaller<F> Task(F func) {
   return TaskInternal<F>(func);
 }
 
 /// Creating an actor.
 template <typename F>
-ray::api::ActorCreator<F> Actor(F create_func) {
+ray::call::ActorCreator<F> Actor(F create_func) {
   return CreateActorInternal<F>(create_func);
 }
 

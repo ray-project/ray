@@ -6,15 +6,15 @@
 #include <ray/api/static_check.h>
 
 namespace ray {
-namespace api {
+namespace call {
 
 template <typename F>
 class ActorTaskCaller {
  public:
   ActorTaskCaller() = default;
 
-  ActorTaskCaller(RayRuntime *runtime, std::string id,
-                  RemoteFunctionHolder remote_function_holder)
+  ActorTaskCaller(ray::api::RayRuntime *runtime, std::string id,
+                  ray::api::RemoteFunctionHolder remote_function_holder)
       : runtime_(runtime),
         id_(id),
         remote_function_holder_(std::move(remote_function_holder)) {}
@@ -23,9 +23,9 @@ class ActorTaskCaller {
   ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args &&... args);
 
  private:
-  RayRuntime *runtime_;
+  ray::api::RayRuntime *runtime_;
   std::string id_;
-  RemoteFunctionHolder remote_function_holder_;
+  ray::api::RemoteFunctionHolder remote_function_holder_;
   std::vector<ray::api::TaskArg> args_;
 };
 
@@ -36,12 +36,12 @@ template <typename... Args>
 ObjectRef<boost::callable_traits::return_type_t<F>> ActorTaskCaller<F>::Remote(
     Args &&... args) {
   using ReturnType = boost::callable_traits::return_type_t<F>;
-  StaticCheck<F, Args...>();
+  ray::api::StaticCheck<F, Args...>();
 
-  Arguments::WrapArgs(&args_, std::forward<Args>(args)...);
+  ray::api::Arguments::WrapArgs(&args_, std::forward<Args>(args)...);
   auto returned_object_id = runtime_->CallActor(remote_function_holder_, id_, args_);
   return ObjectRef<ReturnType>(returned_object_id);
 }
 
-}  // namespace api
+}  // namespace call
 }  // namespace ray
