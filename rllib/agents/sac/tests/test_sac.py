@@ -77,7 +77,6 @@ class TestSAC(unittest.TestCase):
         config["prioritized_replay"] = True
         config["rollout_fragment_length"] = 10
         config["train_batch_size"] = 10
-        config["framework"] = "torch"
         # If we use default buffer size (1e6), the buffer will take up
         # 169.445 GB memory, which is beyond travis-ci's current (Mar 19, 2021)
         # available system memory (8.34816 GB).
@@ -91,7 +90,7 @@ class TestSAC(unittest.TestCase):
         image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
         simple_space = Box(-1.0, 1.0, shape=(3, ))
 
-        for fw in ["torch"]:
+        for fw in framework_iterator(config):
             # Test for different env types (discrete w/ and w/o image, + cont).
             for env in [
                     RandomEnv,
@@ -102,8 +101,8 @@ class TestSAC(unittest.TestCase):
                 if env == RandomEnv:
                     config["env_config"] = {
                         "observation_space": Tuple(
-                            (simple_space,
-                             Discrete(2), image_space)),
+                            [simple_space,
+                             Discrete(2), image_space]),
                         "action_space": Box(-1.0, 1.0, shape=(1, )),
                     }
                 else:
