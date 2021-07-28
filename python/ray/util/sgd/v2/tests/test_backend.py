@@ -6,6 +6,8 @@ from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.backends.torch import TorchConfig, TorchExecutor
 
+from ray.util.sgd.v2.backends.backend import InactiveWorkerGroupError
+
 
 @pytest.fixture
 def ray_start_2_cpus():
@@ -30,7 +32,7 @@ def gen_execute_special(special_f):
 def test_start(ray_start_2_cpus):
     config = BackendConfig()
     e = BackendExecutor(config, num_workers=2)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(InactiveWorkerGroupError):
         e.run(lambda: 1)
     e.start()
     assert len(e.worker_group) == 2
@@ -42,7 +44,7 @@ def test_shutdown(ray_start_2_cpus):
     e.start()
     assert len(e.worker_group) == 2
     e.shutdown()
-    with pytest.raises(RuntimeError):
+    with pytest.raises(InactiveWorkerGroupError):
         e.run(lambda: 1)
 
 

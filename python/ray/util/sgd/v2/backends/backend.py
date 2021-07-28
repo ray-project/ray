@@ -120,9 +120,10 @@ class BackendInterface:
         raise NotImplementedError
 
 
+class InactiveWorkerGroupError(Exception):
+    """Raised when underlying worker group is inactive."""
+
+
 class InactiveWorkerGroup(WorkerGroup):
     def __getattr__(self, *args, **kwargs):
-        raise RuntimeError(
-            "This Trainer is not active. It is either shutdown already or "
-            "never started in the first place. Either create a new Trainer "
-            "or start this one.")
+        raise InactiveWorkerGroupError()

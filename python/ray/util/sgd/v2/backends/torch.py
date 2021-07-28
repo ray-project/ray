@@ -95,6 +95,15 @@ def shutdown_torch():
 class TorchBackend(BackendInterface):
     def on_start(self, worker_group: WorkerGroup, backend_config: TorchConfig):
         if len(worker_group) > 1 and dist.is_available():
+            # Set the appropriate training backend.
+            if backend_config.backend is None:
+                if worker_group.num_gpus_per_worker > 0:
+                    backend = "nccl"
+                else:
+                    backend = "gloo"
+            else:
+                backend = backend_config.backend
+
             master_addr, master_port = worker_group.execute_single(
                 0, get_address_and_port)
             if backend_config.init_method == "env":
@@ -118,7 +127,7 @@ class TorchBackend(BackendInterface):
                 worker_group.execute_single(
                     i,
                     setup_torch_process_group,
-                    backend=backend_config.backend,
+                    backend=backend,
                     world_rank=i,
                     world_size=len(worker_group),
                     init_method=url,
