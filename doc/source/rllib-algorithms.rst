@@ -673,8 +673,8 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
    :end-before: __sphinx_doc_end__
 
 
-Contextual Bandits (contrib/bandits)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Contextual Bandits (contrib/agents/bandits)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The Multi-armed bandit (MAB) problem provides a simplified RL setting that
 involves learning to act under one situation only, i.e. the state is fixed.
@@ -705,7 +705,7 @@ It constructs a confidence region around the weights of the linear
 regression model and uses this confidence ellipsoid to estimate the
 uncertainty of action values.
 
-Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/examples/simple_context_bandit.py>`__, `ParametricItemRecoEnv <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/examples/tune_LinUCB_train_recommendation.py>`__.
+Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/contrib/agents/bandits/examples/simple_context_bandit.py>`__, `ParametricItemRecoEnv <https://github.com/ray-project/ray/blob/master/rllib/contrib/agents/bandits/examples/tune_LinUCB_train_recommendation.py>`__.
 
 **LinUCB-specific configs** (see also `common configs <rllib-training
 .html#common-parameters>`__):
@@ -729,7 +729,7 @@ prior on the weights and a Gaussian likelihood function. For deciding which
 action to take, the agent samples weights for each arm, using
 the posterior distributions, and plays the arm that produces the highest reward.
 
-Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/examples/simple_context_bandit.py>`__, `WheelBandit <https://github.com/ray-project/ray/blob/master/rllib/contrib/bandits/examples/tune_LinTS_train_wheel_env.py>`__.
+Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob/master/rllib/contrib/agents/bandits/examples/simple_context_bandit.py>`__, `WheelBandit <https://github.com/ray-project/ray/blob/master/rllib/contrib/agents/bandits/examples/tune_LinTS_train_wheel_env.py>`__.
 
 **LinTS-specific configs** (see also `common configs <rllib-training
 .html#common-parameters>`__):

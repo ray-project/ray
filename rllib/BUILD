@@ -2660,25 +2660,25 @@ py_test(
 )
 
 py_test(
-    name = "contrib/bandits/examples/lin_ts_train_wheel_env",
-    main = "contrib/bandits/examples/LinTS_train_wheel_env.py",
+    name = "contrib/agents/bandits/examples/lin_ts_train_wheel_env",
+    main = "contrib/agents/bandits/examples/LinTS_train_wheel_env.py",
     tags = ["examples", "examples_U"],
     size = "small",
-    srcs = ["contrib/bandits/examples/LinTS_train_wheel_env.py"],
+    srcs = ["contrib/agents/bandits/examples/LinTS_train_wheel_env.py"],
 )
 
 py_test(
-    name = "contrib/bandits/examples/tune_lin_ts_train_wheel_env",
-    main = "contrib/bandits/examples/tune_LinTS_train_wheel_env.py",
+    name = "contrib/agents/bandits/examples/tune_lin_ts_train_wheel_env",
+    main = "contrib/agents/bandits/examples/tune_LinTS_train_wheel_env.py",
     tags = ["examples", "examples_U"],
     size = "small",
-    srcs = ["contrib/bandits/examples/tune_LinTS_train_wheel_env.py"],
+    srcs = ["contrib/agents/bandits/examples/tune_LinTS_train_wheel_env.py"],
 )
 
 py_test(
-    name = "contrib/bandits/examples/tune_lin_ucb_train_recommendation",
-    main = "contrib/bandits/examples/tune_LinUCB_train_recommendation.py",
+    name = "contrib/agents/bandits/examples/tune_lin_ucb_train_recommendation",
+    main = "contrib/agents/bandits/examples/tune_LinUCB_train_recommendation.py",
     tags = ["examples", "examples_U"],
     size = "small",
-    srcs = ["contrib/bandits/examples/tune_LinUCB_train_recommendation.py"],
+    srcs = ["contrib/agents/bandits/examples/tune_LinUCB_train_recommendation.py"],
 )
