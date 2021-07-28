@@ -71,6 +71,7 @@ available_node_types:
                   diskSizeGb: 50
                   # See https://cloud.google.com/compute/docs/images for more images
                   sourceImage: projects/deeplearning-platform-release/global/images/family/common-cu110
+            # Make sure to set scheduling->onHostMaintenance to TERMINATE when GPUs are present
             guestAccelerators:
               - acceleratorType: nvidia-tesla-k80
                 acceleratorCount: 1
@@ -104,6 +105,7 @@ available_node_types:
                   diskSizeGb: 50
                   # See https://cloud.google.com/compute/docs/images for more images
                   sourceImage: projects/deeplearning-platform-release/global/images/family/common-cu110
+            # Make sure to set scheduling->onHostMaintenance to TERMINATE when GPUs are present
             guestAccelerators:
               - acceleratorType: nvidia-tesla-k80
                 acceleratorCount: 1
