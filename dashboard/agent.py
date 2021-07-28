@@ -178,8 +178,14 @@ class DashboardAgent(object):
 
         runner = aiohttp.web.AppRunner(app)
         await runner.setup()
-        site = aiohttp.web.TCPSite(runner, self.ip, self.listen_port)
-        await site.start()
+        try:
+            site = aiohttp.web.TCPSite(runner, self.ip, self.listen_port)
+            await site.start()
+        except OSError:
+            logger.exception("Error while trying to start HTTP Server:")
+            logger.info("Attempting to launch HTTP Server with IP: `0.0.0.0`")
+            site = aiohttp.web.TCPSite(runner, "0.0.0.0", self.listen_port)
+            await site.start()
         http_host, http_port, *_ = site._server.sockets[0].getsockname()
         logger.info("Dashboard agent http address: %s:%s", http_host,
                     http_port)
