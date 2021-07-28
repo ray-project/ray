@@ -1029,11 +1029,6 @@ def _start_redis_instance(executable,
     # number of Redis clients.
     if redis_max_clients is not None:
         redis_client.config_set("maxclients", str(redis_max_clients))
-    else:
-        import resource
-        limit = min(resource.getrlimit(resource.RLIMIT_NOFILE))
-        logger.info(f"Set redis client limit to {limit}")
-        redis_client.config_set("maxclients", str(limit))
     elif resource is not None:
         # If redis_max_clients is not provided, determine the current ulimit.
         # We will use this to attempt to raise the maximum number of Redis
