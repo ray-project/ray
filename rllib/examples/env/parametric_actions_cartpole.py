@@ -118,8 +118,8 @@ class ParametricActionsCartPoleNoEmbeddings(gym.Env):
         else:
             raise ValueError(
                 "Chosen action was not one of the non-zero action embeddings",
-                action, self.valid_avail_actions_mask,
-                self.left_idx, self.right_idx)
+                action, self.valid_avail_actions_mask, self.left_idx,
+                self.right_idx)
         orig_obs, rew, done, info = self.wrapped.step(actual_action)
         obs = {
             "valid_avail_actions_mask": self.valid_avail_actions_mask,

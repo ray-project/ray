@@ -34,7 +34,7 @@ parser.add_argument(
     choices=["tf", "tf2", "tfe"],
     default="tf",
     help="The DL framework specifier (torch not supported yet "
-         "due to lack of model).")
+    "due to lack of model).")
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-reward", type=float, default=150.0)
@@ -44,8 +44,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
-    register_env(
-        "pa_cartpole", lambda _: ParametricActionsCartPoleNoEmbeddings(10))
+    register_env("pa_cartpole",
+                 lambda _: ParametricActionsCartPoleNoEmbeddings(10))
 
     ModelCatalog.register_custom_model(
         "pa_model", ParametricActionsModelThatLearnsEmbeddings)
@@ -81,7 +81,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, stop=stop, config=config, verbose=1)
+    results = tune.run(args.run, stop=stop, config=config, verbose=2)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

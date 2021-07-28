@@ -128,7 +128,7 @@ class ParametricActionsModelThatLearnsEmbeddings(DistributionalQTFModel):
             obs_space, action_space, num_outputs, model_config, name, **kw)
 
         action_ids_shifted = tf.constant(
-            range(1, num_outputs + 1), dtype=tf.float32)
+            list(range(1, num_outputs + 1)), dtype=tf.float32)
 
         obs_cart = tf.keras.layers.Input(shape=true_obs_shape, name="obs_cart")
         valid_avail_actions_mask = tf.keras.layers.Input(
