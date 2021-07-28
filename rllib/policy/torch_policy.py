@@ -568,7 +568,6 @@ class TorchPolicy(Policy):
                                                    device_batch_size]
             return self.learn_on_batch(batch)
 
-
         if len(self.devices) > 1:
             # Copy weights of main model to all towers.
             state_dict = self.model.state_dict()
