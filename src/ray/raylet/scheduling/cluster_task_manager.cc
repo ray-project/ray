@@ -247,7 +247,29 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
               const auto &reply = work->reply;
               const auto &callback = work->callback;
               bool canceled = work->status == WorkStatus::CANCELLED;
-              if (canceled || !worker) {
+
+              auto erase_from_dispatch_queue_fn =
+                  [this](const std::shared_ptr<Work> &work,
+                         const SchedulingClass &scheduling_class) {
+                    auto shapes_it = tasks_to_dispatch_.find(scheduling_class);
+                    RAY_CHECK(shapes_it != tasks_to_dispatch_.end());
+                    auto &dispatch_queue = shapes_it->second;
+                    bool erased = false;
+                    for (auto work_it = dispatch_queue.begin();
+                         work_it != dispatch_queue.end(); work_it++) {
+                      if (*work_it == work) {
+                        dispatch_queue.erase(work_it);
+                        erased = true;
+                        break;
+                      }
+                    }
+                    if (dispatch_queue.empty()) {
+                      tasks_to_dispatch_.erase(shapes_it);
+                    }
+                    RAY_CHECK(erased);
+                  };
+
+              if (canceled || !worker || status.IsJobHasFinished()) {
                 if (canceled) {
                   RAY_LOG(DEBUG)
                       << "Task " << task_id
@@ -267,9 +289,13 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                 // Worker processes spin up pretty quickly, so it's not worth trying to
                 // spill this task.
                 ReleaseTaskArgs(task_id);
-                // TODO(guyang.sgy): If status.IsRuntimeEnvCreationFailed(), re-schedule
-                // the task to other nodes.
-                work->status = WorkStatus::WAITING;
+                if (status.IsJobHasFinished() && !canceled) {
+                  erase_from_dispatch_queue_fn(work, scheduling_class);
+                } else {
+                  // TODO(guyang.sgy): If status.IsRuntimeEnvCreationFailed(), re-schedule
+                  // the task to other nodes.
+                  work->status = WorkStatus::WAITING;
+                }
                 return false;
               } else {
                 RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
@@ -282,19 +308,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                   task_dependency_manager_.RemoveTaskDependencies(
                       task.GetTaskSpecification().TaskId());
                 }
-                auto shapes_it = tasks_to_dispatch_.find(scheduling_class);
-                RAY_CHECK(shapes_it != tasks_to_dispatch_.end());
-                auto &dispatch_queue = shapes_it->second;
-                bool erased = false;
-                for (auto work_it = dispatch_queue.begin();
-                     work_it != dispatch_queue.end(); work_it++) {
-                  if (*work_it == work) {
-                    dispatch_queue.erase(work_it);
-                    erased = true;
-                    break;
-                  }
-                }
-                RAY_CHECK(erased);
+                erase_from_dispatch_queue_fn(work, scheduling_class);
                 return true;
               }
             },

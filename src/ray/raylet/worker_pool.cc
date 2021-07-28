@@ -727,13 +727,22 @@ void WorkerPool::TryToCallbackTask(
     const Status &status, bool *found, bool *used, TaskID *task_id) {
   *found = false;
   *used = false;
+  Status callback_status = status;
   auto it = workers_to_tasks.find(proc);
   if (it != workers_to_tasks.end()) {
+    auto job_id = worker->GetAssignedJobId();
     *found = true;
     *task_id = it->second.first;
     const auto &callback = it->second.second;
     RAY_CHECK(callback);
-    *used = callback(worker, status);
+    if (finished_jobs_.count(job_id) > 0) {
+      std::ostringstream oss;
+      oss << "Call back to a task of finished job, task id = " << *task_id
+          << ", job id = " << job_id;
+      RAY_LOG(DEBUG) << oss.str();
+      callback_status = Status::JobHasFinished(oss.str());
+    }
+    *used = callback(worker, callback_status);
     workers_to_tasks.erase(it);
   }
 }

@@ -270,8 +270,8 @@ class WorkerPoolMock : public WorkerPool {
     std::promise<bool> promise;
     this->PopWorker(
         task_spec,
-        [&popped_worker, push_workers, &promise](
-            const std::shared_ptr<WorkerInterface> worker, Status status) -> bool {
+        [&popped_worker, &promise](const std::shared_ptr<WorkerInterface> worker,
+                                   Status status) -> bool {
           popped_worker = worker;
           promise.set_value(true);
           return true;
