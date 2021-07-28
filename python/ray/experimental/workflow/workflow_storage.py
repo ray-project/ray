@@ -240,28 +240,21 @@ class WorkflowStorage:
         try:
             metadata = await self._storage.load_step_input_metadata(
                 self._workflow_id, step_id)
-            input_object_refs = metadata["object_refs"]
-            input_workflows = metadata["workflows"]
-            input_workflow_refs = metadata["workflow_refs"]
-            max_retries = metadata.get("max_retries")
-            catch_exceptions = metadata.get("catch_exceptions")
-            ray_options = metadata.get("ray_options", {})
-            step_type = StepType[metadata.get("step_type")]
+            return StepInspectResult(
+                args_valid=field_list.args_exists,
+                func_body_valid=field_list.func_body_exists,
+                object_refs=metadata["object_refs"],
+                workflows=metadata["workflows"],
+                workflow_refs=metadata["workflow_refs"],
+                max_retries=metadata.get("max_retries"),
+                catch_exceptions=metadata.get("catch_exceptions"),
+                ray_options=metadata.get("ray_options", {}),
+                step_type=StepType[metadata.get("step_type")],
+            )
         except storage.DataLoadError:
             return StepInspectResult(
                 args_valid=field_list.args_exists,
                 func_body_valid=field_list.func_body_exists)
-        return StepInspectResult(
-            args_valid=field_list.args_exists,
-            func_body_valid=field_list.func_body_exists,
-            object_refs=input_object_refs,
-            workflows=input_workflows,
-            workflow_refs=input_workflow_refs,
-            max_retries=max_retries,
-            catch_exceptions=catch_exceptions,
-            ray_options=ray_options,
-            step_type=step_type,
-        )
 
     async def _write_step_inputs(self, step_id: StepID,
                                  inputs: WorkflowData) -> None:
