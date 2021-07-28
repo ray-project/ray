@@ -14,16 +14,16 @@ class ActorCreator {
  public:
   ActorCreator() {}
 
-  ActorCreator(ray::api::RayRuntime *runtime,
-               ray::api::RemoteFunctionHolder remote_function_holder)
+  ActorCreator(ray::runtime::RayRuntime *runtime,
+               ray::runtime::RemoteFunctionHolder remote_function_holder)
       : runtime_(runtime), remote_function_holder_(std::move(remote_function_holder)) {}
 
   template <typename... Args>
   ray::ActorHandle<GetActorType<F>> Remote(Args &&... args);
 
  private:
-  ray::api::RayRuntime *runtime_;
-  ray::api::RemoteFunctionHolder remote_function_holder_;
+  ray::runtime::RayRuntime *runtime_;
+  ray::runtime::RemoteFunctionHolder remote_function_holder_;
   std::vector<ray::serializer::TaskArg> args_;
 };
 

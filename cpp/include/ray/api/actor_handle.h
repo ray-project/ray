@@ -52,8 +52,8 @@ ray::call::ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
   static_assert(
       std::is_same<ActorType, Self>::value || std::is_base_of<Self, ActorType>::value,
       "class types must be same");
-  ray::api::RemoteFunctionHolder remote_func_holder(actor_func);
-  return ray::call::ActorTaskCaller<F>(internal::RayRuntime().get(), id_,
+  ray::runtime::RemoteFunctionHolder remote_func_holder(actor_func);
+  return ray::call::ActorTaskCaller<F>(internal::GetRayRuntime().get(), id_,
                                        std::move(remote_func_holder));
 }
 

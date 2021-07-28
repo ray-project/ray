@@ -5,7 +5,7 @@
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
-namespace api {
+namespace runtime {
 
 RayFunction BuildRayFunction(InvocationSpec &invocation) {
   auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
@@ -60,5 +60,5 @@ ObjectID NativeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation) {
   return Submit(invocation);
 }
 
-}  // namespace api
+}  // namespace runtime
 }  // namespace ray

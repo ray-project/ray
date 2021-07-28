@@ -27,11 +27,11 @@ inline void CheckResult(const std::shared_ptr<msgpack::sbuffer> &packed_object) 
 
 inline void CopyAndAddReference(std::string &dest_id, const std::string &id) {
   dest_id = id;
-  ray::internal::RayRuntime()->AddLocalReference(id);
+  ray::internal::GetRayRuntime()->AddLocalReference(id);
 }
 
 inline void SubReference(const std::string &id) {
-  ray::internal::RayRuntime()->RemoveLocalReference(id);
+  ray::internal::GetRayRuntime()->RemoveLocalReference(id);
 }
 
 /// Represents an object in the object store..
@@ -72,7 +72,7 @@ class ObjectRef {
 // ---------- implementation ----------
 template <typename T>
 inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object) {
-  auto packed_object = internal::RayRuntime()->Get(object.ID());
+  auto packed_object = internal::GetRayRuntime()->Get(object.ID());
   CheckResult(packed_object);
 
   return ray::serializer::Serializer::Deserialize<std::shared_ptr<T>>(
@@ -132,7 +132,7 @@ class ObjectRef<void> {
   ///
   /// \return shared pointer of the result.
   void Get() const {
-    auto packed_object = internal::RayRuntime()->Get(id_);
+    auto packed_object = internal::GetRayRuntime()->Get(id_);
     CheckResult(packed_object);
   }
 

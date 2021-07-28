@@ -13,8 +13,8 @@ class ActorTaskCaller {
  public:
   ActorTaskCaller() = default;
 
-  ActorTaskCaller(ray::api::RayRuntime *runtime, std::string id,
-                  ray::api::RemoteFunctionHolder remote_function_holder)
+  ActorTaskCaller(ray::runtime::RayRuntime *runtime, std::string id,
+                  ray::runtime::RemoteFunctionHolder remote_function_holder)
       : runtime_(runtime),
         id_(id),
         remote_function_holder_(std::move(remote_function_holder)) {}
@@ -23,9 +23,9 @@ class ActorTaskCaller {
   ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args &&... args);
 
  private:
-  ray::api::RayRuntime *runtime_;
+  ray::runtime::RayRuntime *runtime_;
   std::string id_;
-  ray::api::RemoteFunctionHolder remote_function_holder_;
+  ray::runtime::RemoteFunctionHolder remote_function_holder_;
   std::vector<ray::serializer::TaskArg> args_;
 };
 

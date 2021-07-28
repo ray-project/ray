@@ -7,7 +7,7 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-namespace api {
+namespace runtime {
 
 /// IP address by which the local node can be reached *from* the `address`.
 ///
@@ -168,5 +168,5 @@ void ProcessHelper::RayStop() {
   }
 }
 
-}  // namespace api
+}  // namespace runtime
 }  // namespace ray

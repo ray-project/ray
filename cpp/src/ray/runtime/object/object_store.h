@@ -8,7 +8,7 @@
 #include "ray/common/id.h"
 
 namespace ray {
-namespace api {
+namespace runtime {
 
 class ObjectStore {
  public:
@@ -82,5 +82,5 @@ class ObjectStore {
   virtual std::vector<std::shared_ptr<msgpack::sbuffer>> GetRaw(
       const std::vector<ObjectID> &ids, int timeout_ms) = 0;
 };
-}  // namespace api
+}  // namespace runtime
 }  // namespace ray

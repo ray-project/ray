@@ -11,7 +11,7 @@
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
-namespace api {
+namespace runtime {
 
 void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
                                ObjectID *object_id) {
@@ -95,5 +95,5 @@ void NativeObjectStore::RemoveLocalReference(const std::string &id) {
     core_worker.RemoveLocalReference(ObjectID::FromBinary(id));
   }
 }
-}  // namespace api
+}  // namespace runtime
 }  // namespace ray

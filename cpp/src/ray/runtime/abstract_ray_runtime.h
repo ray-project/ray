@@ -15,7 +15,7 @@
 #include "ray/core_worker/core_worker.h"
 
 namespace ray {
-namespace api {
+namespace runtime {
 
 class AbstractRayRuntime : public RayRuntime {
  public:
@@ -69,5 +69,5 @@ class AbstractRayRuntime : public RayRuntime {
   static std::shared_ptr<AbstractRayRuntime> abstract_ray_runtime_;
   void Execute(const TaskSpecification &task_spec);
 };
-}  // namespace api
+}  // namespace runtime
 }  // namespace ray

@@ -26,7 +26,7 @@ msgpack::sbuffer PackError(std::string error_msg) {
   return sbuffer;
 }
 }  // namespace internal
-namespace api {
+namespace runtime {
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::abstract_ray_runtime_ = nullptr;
 
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
@@ -181,5 +181,5 @@ void AbstractRayRuntime::RemoveLocalReference(const std::string &id) {
   }
 }
 
-}  // namespace api
+}  // namespace runtime
 }  // namespace ray

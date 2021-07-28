@@ -5,7 +5,7 @@
 #include "ray/core_worker/core_worker.h"
 
 namespace ray {
-namespace api {
+namespace runtime {
 
 class ProcessHelper {
  public:
@@ -25,5 +25,5 @@ class ProcessHelper {
  private:
   ProcessHelper(){};
 };
-}  // namespace api
+}  // namespace runtime
 }  // namespace ray

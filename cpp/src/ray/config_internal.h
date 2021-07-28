@@ -6,7 +6,7 @@
 #include "ray/core_worker/common.h"
 
 namespace ray {
-namespace api {
+namespace runtime {
 
 enum class RunMode { SINGLE_PROCESS, CLUSTER };
 
@@ -55,5 +55,5 @@ class ConfigInternal {
   ConfigInternal(){};
 };
 
-}  // namespace api
+}  // namespace runtime
 }  // namespace ray

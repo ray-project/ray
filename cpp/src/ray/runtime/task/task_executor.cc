@@ -55,7 +55,7 @@ GetRemoteFunctions() {
 }
 }  // namespace internal
 
-namespace api {
+namespace runtime {
 
 std::shared_ptr<msgpack::sbuffer> TaskExecutor::current_actor_ = nullptr;
 
@@ -191,5 +191,5 @@ void TaskExecutor::Invoke(
   }
 }
 
-}  // namespace api
+}  // namespace runtime
 }  // namespace ray

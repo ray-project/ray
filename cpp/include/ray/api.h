@@ -110,7 +110,7 @@ template <typename T>
 inline ray::ObjectRef<T> Put(const T &obj) {
   auto buffer =
       std::make_shared<msgpack::sbuffer>(ray::serializer::Serializer::Serialize(obj));
-  auto id = ray::internal::RayRuntime()->Put(buffer);
+  auto id = ray::internal::GetRayRuntime()->Put(buffer);
   return ray::ObjectRef<T>(id);
 }
 
@@ -121,7 +121,7 @@ inline std::shared_ptr<T> Get(const ray::ObjectRef<T> &object) {
 
 template <typename T>
 inline std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids) {
-  auto result = ray::internal::RayRuntime()->Get(ids);
+  auto result = ray::internal::GetRayRuntime()->Get(ids);
   std::vector<std::shared_ptr<T>> return_objects;
   return_objects.reserve(result.size());
   for (auto it = result.begin(); it != result.end(); it++) {
@@ -142,7 +142,8 @@ template <typename T>
 inline WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_objects,
                           int timeout_ms) {
   auto object_ids = ObjectRefsToObjectIDs<T>(objects);
-  auto results = ray::internal::RayRuntime()->Wait(object_ids, num_objects, timeout_ms);
+  auto results =
+      ray::internal::GetRayRuntime()->Wait(object_ids, num_objects, timeout_ms);
   std::list<ray::ObjectRef<T>> readys;
   std::list<ray::ObjectRef<T>> unreadys;
   for (size_t i = 0; i < results.size(); i++) {
@@ -157,15 +158,15 @@ inline WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num
 
 template <typename FuncType>
 inline ray::call::TaskCaller<FuncType> TaskInternal(FuncType &func) {
-  ray::api::RemoteFunctionHolder remote_func_holder(func);
-  return ray::call::TaskCaller<FuncType>(ray::internal::RayRuntime().get(),
+  ray::runtime::RemoteFunctionHolder remote_func_holder(func);
+  return ray::call::TaskCaller<FuncType>(ray::internal::GetRayRuntime().get(),
                                          std::move(remote_func_holder));
 }
 
 template <typename FuncType>
 inline ray::call::ActorCreator<FuncType> CreateActorInternal(FuncType &create_func) {
-  ray::api::RemoteFunctionHolder remote_func_holder(create_func);
-  return ray::call::ActorCreator<FuncType>(ray::internal::RayRuntime().get(),
+  ray::runtime::RemoteFunctionHolder remote_func_holder(create_func);
+  return ray::call::ActorCreator<FuncType>(ray::internal::GetRayRuntime().get(),
                                            std::move(remote_func_holder));
 }
 

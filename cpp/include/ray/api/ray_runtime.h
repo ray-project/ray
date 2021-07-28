@@ -10,7 +10,7 @@
 #include <vector>
 
 namespace ray {
-namespace api {
+namespace runtime {
 
 struct RemoteFunctionHolder {
   RemoteFunctionHolder() = default;
@@ -49,5 +49,5 @@ class RayRuntime {
   virtual void AddLocalReference(const std::string &id) = 0;
   virtual void RemoveLocalReference(const std::string &id) = 0;
 };
-}  // namespace api
+}  // namespace runtime
 }  // namespace ray

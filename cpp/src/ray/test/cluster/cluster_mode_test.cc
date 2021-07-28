@@ -18,8 +18,8 @@ DEFINE_int32(redis_port, 6379, "");
 TEST(RayClusterModeTest, FullTest) {
   ray::RayConfig config;
   if (FLAGS_external_cluster) {
-    ray::api::ProcessHelper::GetInstance().StartRayNode(FLAGS_redis_port,
-                                                        FLAGS_redis_password);
+    ray::runtime::ProcessHelper::GetInstance().StartRayNode(FLAGS_redis_port,
+                                                            FLAGS_redis_password);
     config.address = "127.0.0.1:" + std::to_string(FLAGS_redis_port);
     config.redis_password_ = FLAGS_redis_password;
   }
@@ -137,7 +137,7 @@ TEST(RayClusterModeTest, FullTest) {
   ray::Shutdown();
 
   if (FLAGS_external_cluster) {
-    ray::api::ProcessHelper::GetInstance().StopRayNode();
+    ray::runtime::ProcessHelper::GetInstance().StopRayNode();
   }
 }
 

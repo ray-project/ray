@@ -8,7 +8,7 @@
 #include "./task/native_task_submitter.h"
 
 namespace ray {
-namespace api {
+namespace runtime {
 
 NativeRayRuntime::NativeRayRuntime() {
   object_store_ = std::unique_ptr<ObjectStore>(new NativeObjectStore());
@@ -16,5 +16,5 @@ NativeRayRuntime::NativeRayRuntime() {
   task_executor_ = std::make_unique<TaskExecutor>(*this);
 }
 
-}  // namespace api
+}  // namespace runtime
 }  // namespace ray

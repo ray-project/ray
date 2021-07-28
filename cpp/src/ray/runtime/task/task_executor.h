@@ -28,7 +28,7 @@ GetRemoteFunctions();
 BOOST_DLL_ALIAS(internal::GetRemoteFunctions, GetRemoteFunctions);
 }  // namespace internal
 
-namespace api {
+namespace runtime {
 
 class AbstractRayRuntime;
 
@@ -70,5 +70,5 @@ class TaskExecutor {
   AbstractRayRuntime &abstract_ray_tuntime_;
   static std::shared_ptr<msgpack::sbuffer> current_actor_;
 };
-}  // namespace api
+}  // namespace runtime
 }  // namespace ray

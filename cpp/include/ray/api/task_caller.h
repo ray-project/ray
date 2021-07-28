@@ -11,15 +11,15 @@ class TaskCaller {
  public:
   TaskCaller();
 
-  TaskCaller(ray::api::RayRuntime *runtime,
-             ray::api::RemoteFunctionHolder remote_function_holder);
+  TaskCaller(ray::runtime::RayRuntime *runtime,
+             ray::runtime::RemoteFunctionHolder remote_function_holder);
 
   template <typename... Args>
   ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args &&... args);
 
  private:
-  ray::api::RayRuntime *runtime_;
-  ray::api::RemoteFunctionHolder remote_function_holder_{};
+  ray::runtime::RayRuntime *runtime_;
+  ray::runtime::RemoteFunctionHolder remote_function_holder_{};
   std::string function_name_;
   std::vector<ray::serializer::TaskArg> args_;
 };
@@ -30,8 +30,8 @@ template <typename F>
 TaskCaller<F>::TaskCaller() {}
 
 template <typename F>
-TaskCaller<F>::TaskCaller(ray::api::RayRuntime *runtime,
-                          ray::api::RemoteFunctionHolder remote_function_holder)
+TaskCaller<F>::TaskCaller(ray::runtime::RayRuntime *runtime,
+                          ray::runtime::RemoteFunctionHolder remote_function_holder)
     : runtime_(runtime), remote_function_holder_(std::move(remote_function_holder)) {}
 
 template <typename F>

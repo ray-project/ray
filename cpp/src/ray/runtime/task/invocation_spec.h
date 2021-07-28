@@ -8,7 +8,7 @@
 #include "ray/common/task/task_util.h"
 
 namespace ray {
-namespace api {
+namespace runtime {
 
 class InvocationSpec {
  public:
@@ -20,5 +20,5 @@ class InvocationSpec {
   RemoteFunctionHolder remote_function_holder;
   std::vector<std::unique_ptr<::ray::TaskArg>> args;
 };
-}  // namespace api
+}  // namespace runtime
 }  // namespace ray
