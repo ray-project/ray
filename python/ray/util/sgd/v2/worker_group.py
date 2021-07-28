@@ -1,10 +1,5 @@
 import logging
 from typing import Callable, List, TypeVar
-<<<<<<< HEAD
-=======
-
-from inspect import signature
->>>>>>> d01e1c15c81b568d0e0b956c356fb26b77b0aa79
 
 import ray
 from ray.types import ObjectRef
@@ -12,6 +7,7 @@ from ray.types import ObjectRef
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
+
 
 class BaseWorker:
     """A class to execute arbitrary functions. Does not hold any state."""
@@ -22,6 +18,7 @@ class BaseWorker:
             func(Callable): A function that does not take any arguments.
         """
         return func()
+
 
 class WorkerGroup:
     """Group of Ray Actors that can execute arbitrary functions.

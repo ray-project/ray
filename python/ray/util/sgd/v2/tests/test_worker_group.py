@@ -72,6 +72,7 @@ def test_execute(ray_start_2_cpus):
     assert len(outputs) == 2
     assert all(o == 1 for o in outputs)
 
+
 def test_execute_args(ray_start_2_cpus):
     wg = WorkerGroup(num_workers=2)
     outputs = wg.execute(lambda x: x, 1)
@@ -104,6 +105,7 @@ def test_bad_resources(ray_start_2_cpus):
 
     with pytest.raises(ValueError):
         WorkerGroup(num_gpus_per_worker=-1)
+
 
 if __name__ == "__main__":
     import pytest
