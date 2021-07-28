@@ -1,5 +1,6 @@
 import os
 import random
+import requests
 import shutil
 import time
 
@@ -15,7 +16,7 @@ import ray
 
 from ray.tests.conftest import *  # noqa
 from ray.experimental.data.datasource import DummyOutputDatasource
-from ray.experimental.data.block import Block
+from ray.experimental.data.block import BlockAccessor
 import ray.experimental.data.tests.util as util
 
 
@@ -257,8 +258,17 @@ def test_to_pandas(ray_start_regular_shared):
 
 def test_to_arrow(ray_start_regular_shared):
     n = 5
+
+    # Zero-copy.
     df = pd.DataFrame({"value": list(range(n))})
     ds = ray.experimental.data.range_arrow(n)
+    dfds = pd.concat(
+        [t.to_pandas() for t in ray.get(ds.to_arrow())], ignore_index=True)
+    assert df.equals(dfds)
+
+    # Conversion.
+    df = pd.DataFrame({0: list(range(n))})
+    ds = ray.experimental.data.range(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow())], ignore_index=True)
     assert df.equals(dfds)
@@ -269,7 +279,7 @@ def test_get_blocks(ray_start_regular_shared):
     assert len(blocks) == 10
     out = []
     for b in ray.get(blocks):
-        out.extend(list(b.iter_rows()))
+        out.extend(list(BlockAccessor.for_block(b).iter_rows()))
     out = sorted(out)
     assert out == list(range(10)), out
 
@@ -315,6 +325,11 @@ def test_parquet_read(ray_start_regular_shared, tmp_path):
     assert sorted(values) == [[1, "a"], [2, "b"], [3, "c"], [4, "e"], [5, "f"],
                               [6, "g"]]
 
+    # Test column selection.
+    ds = ray.experimental.data.read_parquet(str(tmp_path), columns=["one"])
+    values = [s["one"] for s in ds.take()]
+    assert sorted(values) == [1, 2, 3, 4, 5, 6]
+
 
 def test_parquet_write(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -351,31 +366,6 @@ def test_pyarrow(ray_start_regular_shared):
         .take() == [{"b": 2}, {"b": 20}]
 
 
-def test_uri_parser():
-    from ray.experimental.data.read_api import _parse_paths
-    fs, path = _parse_paths("/local/path")
-    assert path == "/local/path"
-    assert fs.type_name == "local"
-
-    fs, path = _parse_paths("./")
-    assert path == "./"
-    assert fs.type_name == "local"
-
-    fs, path = _parse_paths("s3://bucket/dir")
-    assert path == "bucket/dir"
-    assert fs.type_name == "s3"
-
-    fs, path = _parse_paths(["s3://bucket/dir_1", "s3://bucket/dir_2"])
-    assert path == ["bucket/dir_1", "bucket/dir_2"]
-    assert fs.type_name == "s3"
-
-    with pytest.raises(ValueError):
-        _parse_paths(["s3://bucket/dir_1", "/path/local"])
-
-    with pytest.raises(ValueError):
-        _parse_paths([])
-
-
 def test_read_binary_files(ray_start_regular_shared):
     with util.gen_bin_files(10) as (_, paths):
         ds = ray.experimental.data.read_binary_files(paths, parallelism=10)
@@ -388,6 +378,17 @@ def test_read_binary_files(ray_start_regular_shared):
         assert "bytes" in str(ds), ds
 
 
+def test_read_binary_files_with_fs(ray_start_regular_shared):
+    with util.gen_bin_files(10) as (tempdir, paths):
+        # All the paths are absolute, so we want the root file system.
+        fs, _ = pa.fs.FileSystem.from_uri("/")
+        ds = ray.experimental.data.read_binary_files(
+            paths, filesystem=fs, parallelism=10)
+        for i, item in enumerate(ds.iter_rows()):
+            expected = open(paths[i], "rb").read()
+            assert expected == item
+
+
 def test_read_binary_files_with_paths(ray_start_regular_shared):
     with util.gen_bin_files(10) as (_, paths):
         ds = ray.experimental.data.read_binary_files(
@@ -398,15 +399,17 @@ def test_read_binary_files_with_paths(ray_start_regular_shared):
             assert expected == item
 
 
-def test_read_binary_files_with_fs(ray_start_regular_shared):
-    with util.gen_bin_files(10) as (tempdir, paths):
-        # All the paths are absolute, so we want the root file system.
-        fs, _ = pa.fs.FileSystem.from_uri("/")
-        ds = ray.experimental.data.read_binary_files(
-            paths, filesystem=fs, parallelism=10)
-        for i, item in enumerate(ds.iter_rows()):
-            expected = open(paths[i], "rb").read()
-            assert expected == item
+# TODO(Clark): Hitting S3 in CI is currently broken due to some AWS
+# credentials issue, unskip this test once that's fixed or once ported to moto.
+@pytest.mark.skip(reason="Shouldn't hit S3 in CI")
+def test_read_binary_files_s3(ray_start_regular_shared):
+    ds = ray.experimental.data.read_binary_files(
+        ["s3://anyscale-data/small-files/0.dat"])
+    item = ds.take(1).pop()
+    expected = requests.get(
+        "https://anyscale-data.s3.us-west-2.amazonaws.com/small-files/0.dat"
+    ).content
+    assert item == expected
 
 
 def test_iter_batches_basic(ray_start_regular_shared):
@@ -431,7 +434,6 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # blocks format.
     for batch, df in zip(ds.iter_batches(batch_format="_blocks"), dfs):
-        assert isinstance(batch, Block)
         assert batch.to_pandas().equals(df)
 
     # Batch size.
@@ -827,7 +829,6 @@ def test_to_tf_feature_columns(ray_start_regular_shared):
 
 def test_to_torch(ray_start_regular_shared):
     import torch
-    from torch.utils.data import DataLoader
     df1 = pd.DataFrame({
         "one": [1, 2, 3],
         "two": [1.0, 2.0, 3.0],
@@ -842,52 +843,19 @@ def test_to_torch(ray_start_regular_shared):
     df = pd.concat([df1, df2, df3])
     ds = ray.experimental.data.from_pandas(
         [ray.put(df1), ray.put(df2), ray.put(df3)])
-    torchd = ds.to_torch(label_column="label")
-
-    dataloader = DataLoader(torchd, batch_size=3)
+    torchd = ds.to_torch(label_column="label", batch_size=3)
 
     num_epochs = 2
     for _ in range(num_epochs):
         iterations = []
-        for batch in iter(dataloader):
+        for batch in iter(torchd):
             iterations.append(torch.cat((*batch[0], batch[1]), axis=1).numpy())
         combined_iterations = np.concatenate(iterations)
         assert np.array_equal(np.sort(df.values), np.sort(combined_iterations))
 
 
-def test_to_torch_multiple_workers(ray_start_regular_shared):
-    import torch
-    from torch.utils.data import DataLoader
-    df1 = pd.DataFrame({
-        "one": [1, 2, 3],
-        "two": [1.0, 2.0, 3.0],
-        "label": [1.0, 2.0, 3.0]
-    })
-    df2 = pd.DataFrame({
-        "one": [4, 5, 6],
-        "two": [4.0, 5.0, 6.0],
-        "label": [4.0, 5.0, 6.0]
-    })
-    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
-    df = pd.concat([df1, df2, df3])
-    ds = ray.experimental.data.from_pandas(
-        [ray.put(df1), ray.put(df2), ray.put(df3)])
-    torchd = ds.to_torch(label_column="label")
-
-    dataloader = DataLoader(torchd, batch_size=1, num_workers=2)
-
-    iterations = []
-    for batch in iter(dataloader):
-        numpy_batch = torch.cat((*batch[0], batch[1]), axis=1).numpy()
-        assert np.all(np.isin(numpy_batch, df.values))
-        iterations.append(numpy_batch)
-
-    assert len(iterations) == len(df.values)
-
-
 def test_to_torch_feature_columns(ray_start_regular_shared):
     import torch
-    from torch.utils.data import DataLoader
     df1 = pd.DataFrame({
         "one": [1, 2, 3],
         "two": [1.0, 2.0, 3.0],
@@ -902,12 +870,10 @@ def test_to_torch_feature_columns(ray_start_regular_shared):
     df = pd.concat([df1, df2, df3]).drop("two", axis=1)
     ds = ray.experimental.data.from_pandas(
         [ray.put(df1), ray.put(df2), ray.put(df3)])
-    torchd = ds.to_torch("label", feature_columns=["one"])
+    torchd = ds.to_torch("label", feature_columns=["one"], batch_size=3)
     iterations = []
 
-    dataloader = DataLoader(torchd, batch_size=3)
-
-    for batch in iter(dataloader):
+    for batch in iter(torchd):
         iterations.append(torch.cat((*batch[0], batch[1]), axis=1).numpy())
     combined_iterations = np.concatenate(iterations)
     assert np.array_equal(df.values, combined_iterations)
@@ -934,7 +900,7 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     assert pd.concat([df1, df2]).equals(dsdf)
     # Test metadata ops.
     for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
-        ray.get(block).size_bytes() == meta.size_bytes
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
@@ -997,6 +963,45 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     shutil.rmtree(dir_path)
 
 
+def test_zipped_json_read(ray_start_regular_shared, tmp_path):
+    # Single file.
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(tmp_path, "test1.json.gz")
+    df1.to_json(path1, compression="gzip", orient="records", lines=True)
+    ds = ray.experimental.data.read_json(path1)
+    assert df1.equals(ray.get(ds.to_pandas())[0])
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert ds.input_files() == [path1]
+    assert ds.schema() is None
+
+    # Two files, parallelism=2.
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(tmp_path, "test2.json.gz")
+    df2.to_json(path2, compression="gzip", orient="records", lines=True)
+    ds = ray.experimental.data.read_json([path1, path2], parallelism=2)
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert pd.concat([df1, df2]).equals(dsdf)
+    # Test metadata ops.
+    for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
+        BlockAccessor.for_block(ray.get(block)).size_bytes()
+
+    # Directory and file, two files.
+    dir_path = os.path.join(tmp_path, "test_json_dir")
+    os.mkdir(dir_path)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(dir_path, "data0.json.gz")
+    df1.to_json(path1, compression="gzip", orient="records", lines=True)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(tmp_path, "data1.json.gz")
+    df2.to_json(path2, compression="gzip", orient="records", lines=True)
+    ds = ray.experimental.data.read_json([dir_path, path2])
+    df = pd.concat([df1, df2])
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert df.equals(dsdf)
+    shutil.rmtree(dir_path)
+
+
 def test_json_write(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_json_dir")
 
@@ -1044,7 +1049,7 @@ def test_csv_read(ray_start_regular_shared, tmp_path):
     assert df.equals(dsdf)
     # Test metadata ops.
     for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
-        ray.get(block).size_bytes() == meta.size_bytes
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
@@ -1129,6 +1134,48 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
         pd.concat([pd.read_csv(file_path),
                    pd.read_csv(file_path2)]))
     shutil.rmtree(path)
+
+
+def test_sort_simple(ray_start_regular_shared):
+    num_items = 100
+    parallelism = 4
+    xs = list(range(num_items))
+    random.shuffle(xs)
+    ds = ray.experimental.data.from_items(xs, parallelism=parallelism)
+    assert ds.sort().take(num_items) == list(range(num_items))
+    assert ds.sort(descending=True).take(num_items) == list(
+        reversed(range(num_items)))
+    assert ds.sort(key=lambda x: -x).take(num_items) == list(
+        reversed(range(num_items)))
+
+
+@pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
+def test_sort_arrow(ray_start_regular_shared, num_items, parallelism):
+    a = list(reversed(range(num_items)))
+    b = [f"{x:03}" for x in range(num_items)]
+    shard = int(np.ceil(num_items / parallelism))
+    offset = 0
+    dfs = []
+    while offset < num_items:
+        dfs.append(
+            pd.DataFrame({
+                "a": a[offset:offset + shard],
+                "b": b[offset:offset + shard]
+            }))
+        offset += shard
+    if offset < num_items:
+        dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
+    ds = ray.experimental.data.from_pandas([ray.put(df) for df in dfs])
+
+    def assert_sorted(sorted_ds, expected_rows):
+        assert [tuple(row.values())
+                for row in sorted_ds.iter_rows()] == list(expected_rows)
+
+    assert_sorted(ds.sort(key="a"), zip(reversed(a), reversed(b)))
+    assert_sorted(ds.sort(key="b"), zip(a, b))
+    assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
+    assert_sorted(
+        ds.sort(key=[("b", "descending")]), zip(reversed(a), reversed(b)))
 
 
 if __name__ == "__main__":

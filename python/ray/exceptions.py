@@ -1,10 +1,9 @@
 import os
 from traceback import format_exception
 
-import colorama
-
 import ray.cloudpickle as pickle
 from ray.core.generated.common_pb2 import RayException, Language, PYTHON
+import colorama
 import setproctitle
 
 

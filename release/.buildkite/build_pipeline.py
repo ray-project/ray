@@ -73,6 +73,9 @@ CORE_NIGHTLY_TESTS = {
         "single_node",
         "object_store",
     ],
+    "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
+        "inference",
+    ]
 }
 
 NIGHTLY_TESTS = {
@@ -128,6 +131,9 @@ NIGHTLY_TESTS = {
         "ft_small_non_elastic",
         "distributed_api_test",
     ],
+    "~/ray/release/serve_tests/serve_tests.yaml": [
+        "single_deployment_1k_noop_replica",
+    ],
 }
 
 WEEKLY_TESTS = {
@@ -157,8 +163,8 @@ WEEKLY_TESTS = {
         "many_tasks_serialized_ids",
         "node_failures",
         "pbt",
-        # "serve",
-        # "serve_failure",
+        "serve",
+        "serve_failure",
     ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
         "network_overhead",

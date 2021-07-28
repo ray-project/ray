@@ -1,32 +1,51 @@
-import os
-import subprocess
-import sys
-import time
-
-import pytest
 import ray
+import time
+import pytest
+from ray.test_utils import (run_string_as_driver_nonblocking,
+                            run_string_as_driver)
+from ray.tests.conftest import *  # noqa
+from ray.experimental import workflow
+
+driver_script = """
+import time
 from ray.experimental import workflow
 
 
-@pytest.mark.skip(reason="Blocked by issue #16951, where the exiting of "
-                  "driver kills the task launched by a detached "
-                  "named actor.")
-def test_workflow_lifetime():
-    subprocess.run(["ray start --head"], shell=True)
+@workflow.step
+def foo(x):
     time.sleep(1)
-    script = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "driver_terminated.py")
-    sleep_duration = 5
-    proc = subprocess.Popen([sys.executable, script, str(sleep_duration)])
-    # TODO(suquark): also test killing the driver after fixing
-    # https://github.com/ray-project/ray/issues/16951
-    # now we only let the driver exit normally
-    proc.wait()
-    time.sleep(1)
-    # connect to the cluster
-    ray.init(address="auto", namespace="workflow")
+    if x < 20:
+        return foo.step(x + 1)
+    else:
+        return 20
+
+
+if __name__ == "__main__":
+    workflow.init()
+    output = foo.step(0).run_async(workflow_id="driver_terminated")
+    time.sleep({})
+"""
+
+
+def test_workflow_lifetime_1(call_ray_start, reset_workflow):
+    # Case 1: driver exits normally
+    run_string_as_driver(driver_script.format(5))
+    workflow.init()
     output = workflow.get_output("driver_terminated")
     assert ray.get(output) == 20
-    ray.shutdown()
-    subprocess.run(["ray stop"], shell=True)
+
+
+def test_workflow_lifetime_2(call_ray_start, reset_workflow):
+    # Case 2: driver terminated
+    proc = run_string_as_driver_nonblocking(driver_script.format(100))
+    time.sleep(10)
+    proc.kill()
     time.sleep(1)
+    workflow.init()
+    output = workflow.get_output("driver_terminated")
+    assert ray.get(output) == 20
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

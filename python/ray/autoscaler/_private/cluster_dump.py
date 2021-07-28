@@ -1,7 +1,7 @@
 from typing import Optional, List, Sequence, Tuple
 
 import os
-import psutil
+
 import re
 import subprocess
 import sys
@@ -13,11 +13,15 @@ import yaml
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 
+import ray  # noqa: F401
 from ray.autoscaler._private.cli_logger import cli_logger
 
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, NODE_KIND_HEAD, \
     NODE_KIND_WORKER
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 MAX_PARALLEL_SSH_WORKERS = 8
 DEFAULT_SSH_USER = "ubuntu"

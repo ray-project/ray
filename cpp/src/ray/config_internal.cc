@@ -85,6 +85,14 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
     gflags::ShutDownCommandLineFlags();
   }
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
+    if (redis_ip.empty()) {
+      auto ray_address_env = std::getenv("RAY_ADDRESS");
+      if (ray_address_env) {
+        RAY_LOG(DEBUG) << "Initialize Ray cluster address to \"" << ray_address_env
+                       << "\" from environment variable \"RAY_ADDRESS\".";
+        SetRedisAddress(ray_address_env);
+      }
+    }
     if (code_search_path.empty()) {
       auto program_path = boost::dll::program_location().parent_path();
       RAY_LOG(INFO) << "No code search path found yet. "
