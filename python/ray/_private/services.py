@@ -412,7 +412,7 @@ def create_redis_client(redis_address, password=None):
             try:
                 cli.ping()
                 return cli
-            except redis.ConnectionError:
+            except Exception:
                 create_redis_client.instances.pop(redis_address)
 
     redis_ip_address, redis_port = redis_address.split(":")
