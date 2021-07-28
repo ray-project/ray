@@ -19,16 +19,22 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.examples.env.my_parametric_actions_cartpole import \
-    MyParametricActionsCartPole
-from ray.rllib.examples.models.my_parametric_actions_model import \
-    MyParametricActionsModel
+from ray.rllib.examples.env.parametric_actions_cartpole import \
+    ParametricActionsCartPoleNoEmbeddings
+from ray.rllib.examples.models.parametric_actions_model import \
+    ParametricActionsModelThatLearnsEmbeddings
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe"],
+    default="tf",
+    help="The DL framework specifier (torch not supported yet "
+         "due to lack of model).")
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=200)
 parser.add_argument("--stop-reward", type=float, default=150.0)
@@ -38,8 +44,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
-    register_env("pa_cartpole", lambda _: MyParametricActionsCartPole(10))
-    ModelCatalog.register_custom_model("pa_model", MyParametricActionsModel)
+    register_env(
+        "pa_cartpole", lambda _: ParametricActionsCartPoleNoEmbeddings(10))
+
+    ModelCatalog.register_custom_model(
+        "pa_model", ParametricActionsModelThatLearnsEmbeddings)
 
     if args.run == "DQN":
         cfg = {
@@ -62,7 +71,7 @@ if __name__ == "__main__":
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "num_workers": 0,
-            "framework": "tf2",
+            "framework": args.framework,
         },
         **cfg)
 
@@ -71,7 +80,7 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
         "episode_reward_mean": args.stop_reward,
     }
-    
+
     results = tune.run(args.run, stop=stop, config=config, verbose=1)
 
     if args.as_test:
