@@ -38,7 +38,7 @@ def explained_variance(y, pred):
 
 
 def get_gpu_devices():
-    """Returns a list of GPU device names, e.g. ["/gpu:0", "/gpu:1"].
+    """Returns a list of GPU device names, e.g. ["/device:GPU:0", "/device:GPU:1"].
 
     Supports both tf1.x and tf2.x.
     """
@@ -51,7 +51,7 @@ def get_gpu_devices():
             gpus = tf.config.list_physical_devices("GPU")
         except Exception:
             gpus = tf.config.experimental.list_physical_devices("GPU")
-        return gpus
+        return [x.name for x in gpus]
 
 
 def get_placeholder(*, space=None, value=None, name=None, time_axis=False):

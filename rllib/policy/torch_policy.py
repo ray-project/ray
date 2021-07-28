@@ -151,19 +151,16 @@ class TorchPolicy(Policy):
         else:
             logger.info("TorchPolicy (worker={}) running on {} GPU(s).".format(
                 worker_idx if worker_idx > 0 else "local", config["num_gpus"]))
-            gpu_ids = ray.get_gpu_ids()
+            gpu_ids = list(map("cuda:{}".format, range(torch.cuda.device_count())))
             self.devices = [
-                torch.device("cuda:{}".format(i))
-                for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]
+                torch.device(gpu_id)
+                for i, gpu_id in enumerate(gpu_ids) if i < config["num_gpus"]
             ]
             self.device = self.devices[0]
-            ids = [
-                id_ for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]
-            ]
             self.model_gpu_towers = []
-            for i, _ in enumerate(ids):
+            for device in self.devices:
                 model_copy = copy.deepcopy(model)
-                self.model_gpu_towers.append(model_copy.to(self.devices[i]))
+                self.model_gpu_towers.append(model_copy.to(device))
             self.model = self.model_gpu_towers[0]
 
         # Lock used for locking some methods on the object-level.
@@ -985,7 +982,7 @@ class DirectStepOptimizer:
         return DirectStepOptimizer._instance
 
     def __eq__(self, other):
-        return type(self) == type(other)
+        return isinstance(self, type(other))
 
     def __repr__(self):
         return "DirectStepOptimizer"

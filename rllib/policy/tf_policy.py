@@ -162,9 +162,9 @@ class TFPolicy(Policy):
         else:
             logger.info("TFPolicy (worker={}) running on {} GPU(s).".format(
                 worker_idx if worker_idx > 0 else "local", num_gpus))
-            gpu_ids = ray.get_gpu_ids()
+            gpu_ids = get_gpu_devices()
             self.devices = [
-                f"/gpu:{i}" for i, _ in enumerate(gpu_ids) if i < num_gpus
+                gpu_id for i, gpu_id in enumerate(gpu_ids) if i < num_gpus
             ]
 
         # Disable env-info placeholder.
