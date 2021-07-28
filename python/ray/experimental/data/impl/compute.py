@@ -43,7 +43,8 @@ class TaskPool(ComputeStrategy):
         kwargs = remote_args.copy()
         kwargs["num_returns"] = 2
 
-        # Lazy init to avoid circular import.
+        # Lazy init to avoid circular import. TODO(ekl) move these into a
+        # separate remote functions file.
         global _remote_fn
         if _remote_fn is None:
             _remote_fn = ray.remote(map_block)

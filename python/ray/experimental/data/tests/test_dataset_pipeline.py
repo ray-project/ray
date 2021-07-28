@@ -1,4 +1,5 @@
 import os
+import time
 
 import pytest
 import pandas as pd
@@ -40,6 +41,19 @@ def test_basic_pipeline(ray_start_regular_shared):
     for _ in range(2):
         assert pipe.count() == 100
     assert pipe.sum() == 450
+
+
+def test_incremental_take(ray_start_regular_shared):
+
+    # Can read incrementally even if future results are delaye.d
+    def block_on_ones(x: int) -> int:
+        if x == 1:
+            time.sleep(999999)
+        return x
+
+    pipe = ray.experimental.data.range(2).pipeline(parallelism=1)
+    pipe = pipe.map(block_on_ones)
+    assert pipe.take(1) == [0]
 
 
 def test_from_iterable(ray_start_regular_shared):
