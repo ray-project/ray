@@ -102,7 +102,7 @@ class TaskSettingCallback(DefaultCallbacks):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(num_cpus=6, local_mode=True)
+    ray.init(num_cpus=6)
 
     config = {
         # Specify your custom (single, non-vectorized) env directly as a
