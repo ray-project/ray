@@ -149,7 +149,9 @@ class WorkflowManagementActor:
 
         Args:
             workflow_id: The ID of the workflow.
-            ignore_existing: Ignore we already have an existing output.
+            ignore_existing: Ignore we already have an existing output. When
+            set false, raise an exception if there has already been a workflow
+            running with this id
 
         Returns:
             Workflow execution result that contains the state and output.
