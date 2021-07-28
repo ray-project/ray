@@ -7,7 +7,6 @@
 #include "plus.h"
 
 using namespace ray;
-using namespace ::ray::api;
 
 int *cmd_argc = nullptr;
 char ***cmd_argv = nullptr;
@@ -19,7 +18,8 @@ DEFINE_int32(redis_port, 6379, "");
 TEST(RayClusterModeTest, FullTest) {
   ray::RayConfig config;
   if (FLAGS_external_cluster) {
-    ProcessHelper::GetInstance().StartRayNode(FLAGS_redis_port, FLAGS_redis_password);
+    ray::api::ProcessHelper::GetInstance().StartRayNode(FLAGS_redis_port,
+                                                        FLAGS_redis_password);
     config.address = "127.0.0.1:" + std::to_string(FLAGS_redis_port);
     config.redis_password_ = FLAGS_redis_password;
   }
@@ -137,7 +137,7 @@ TEST(RayClusterModeTest, FullTest) {
   ray::Shutdown();
 
   if (FLAGS_external_cluster) {
-    ProcessHelper::GetInstance().StopRayNode();
+    ray::api::ProcessHelper::GetInstance().StopRayNode();
   }
 }
 

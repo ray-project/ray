@@ -6,7 +6,6 @@
 
 /// using namespace
 using namespace ray;
-using namespace ::ray::api;
 
 /// general function of user code
 int Return1() { return 1; }

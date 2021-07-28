@@ -5,8 +5,6 @@
 #include <chrono>
 #include <thread>
 
-using namespace ray::api;
-
 int slow_function(int i) {
   std::this_thread::sleep_for(std::chrono::seconds(i));
   return i;

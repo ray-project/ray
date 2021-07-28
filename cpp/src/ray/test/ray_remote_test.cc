@@ -20,7 +20,6 @@
 #include "cpp/src/ray/util/function_helper.h"
 
 using namespace ray;
-using namespace ray::api;
 using namespace ray::internal;
 
 int Return() { return 1; }

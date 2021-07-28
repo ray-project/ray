@@ -8,7 +8,6 @@
 #include "ray/util/logging.h"
 
 using namespace ray;
-using namespace ray::api;
 
 int Return1() { return 1; }
 int Plus1(int x) { return x + 1; }
