@@ -1172,8 +1172,7 @@ Status CoreWorker::SealExisting(const ObjectID &object_id, bool pin_object,
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
-                       std::vector<std::shared_ptr<RayObject>> *results,
-                       bool plasma_objects_only) {
+                       std::vector<std::shared_ptr<RayObject>> *results) {
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
@@ -1183,24 +1182,20 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto start_time = current_time_ms();
 
-  if (!plasma_objects_only) {
-    if (!memory_object_ids.empty()) {
-      RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, timeout_ms, worker_context_,
-                                           &result_map, &got_exception));
-    }
+  if (!memory_object_ids.empty()) {
+    RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, timeout_ms, worker_context_,
+                                         &result_map, &got_exception));
+  }
 
-    // Erase any objects that were promoted to plasma from the results. These get
-    // requests will be retried at the plasma store.
-    for (auto it = result_map.begin(); it != result_map.end();) {
-      auto current = it++;
-      if (current->second->IsInPlasmaError()) {
-        RAY_LOG(DEBUG) << current->first << " in plasma, doing fetch-and-get";
-        plasma_object_ids.insert(current->first);
-        result_map.erase(current);
-      }
+  // Erase any objects that were promoted to plasma from the results. These get
+  // requests will be retried at the plasma store.
+  for (auto it = result_map.begin(); it != result_map.end();) {
+    auto current = it++;
+    if (current->second->IsInPlasmaError()) {
+      RAY_LOG(DEBUG) << current->first << " in plasma, doing fetch-and-get";
+      plasma_object_ids.insert(current->first);
+      result_map.erase(current);
     }
-  } else {
-    plasma_object_ids = std::move(memory_object_ids);
   }
 
   if (!got_exception) {
