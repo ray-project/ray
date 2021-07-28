@@ -9,7 +9,6 @@
 #include <utility>
 
 namespace ray {
-namespace api {
 
 template <typename T>
 class ObjectRef;
@@ -21,7 +20,7 @@ inline void CheckResult(const std::shared_ptr<msgpack::sbuffer> &packed_object) 
     auto tp = Serializer::Deserialize<std::tuple<int, std::string>>(
         packed_object->data(), packed_object->size(), 1);
     std::string err_msg = std::get<1>(tp);
-    throw RayException(err_msg);
+    throw ray::api::RayException(err_msg);
   }
 }
 
@@ -142,5 +141,5 @@ class ObjectRef<void> {
  private:
   std::string id_;
 };
-}  // namespace api
+
 }  // namespace ray

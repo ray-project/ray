@@ -49,9 +49,10 @@ class DefaultActorCreator : public ActorCreatorInterface {
     auto promise = std::make_shared<std::promise<void>>();
     auto status = gcs_client_->Actors().AsyncRegisterActor(
         task_spec, [promise](const Status &status) { promise->set_value(); });
-    if (status.ok() && promise->get_future().wait_for(std::chrono::seconds(
-                           RayConfig::instance().gcs_server_request_timeout_seconds())) !=
-                           std::future_status::ready) {
+    if (status.ok() &&
+        promise->get_future().wait_for(std::chrono::seconds(
+            ::RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+            std::future_status::ready) {
       std::ostringstream stream;
       stream << "There was timeout in registering an actor. It is probably "
                 "because GCS server is dead or there's a high load there.";
@@ -99,7 +100,7 @@ class ActorManager {
   /// \param[in] caller_id The caller's task ID
   /// \param[in] call_site The caller's site.
   /// \return The ActorID of the deserialized handle.
-  ActorID RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+  ActorID RegisterActorHandle(std::unique_ptr<core::ActorHandle> actor_handle,
                               const ObjectID &outer_object_id, const TaskID &caller_id,
                               const std::string &call_site,
                               const rpc::Address &caller_address);
@@ -109,7 +110,7 @@ class ActorManager {
   /// \param[in] actor_id The actor handle to get.
   /// \return reference to the actor_handle's pointer.
   /// NOTE: Returned actorHandle should not be stored anywhere.
-  std::shared_ptr<ActorHandle> GetActorHandle(const ActorID &actor_id);
+  std::shared_ptr<core::ActorHandle> GetActorHandle(const ActorID &actor_id);
 
   /// Check if an actor handle that corresponds to an actor_id exists.
   /// \param[in] actor_id The actor id of a handle.
@@ -132,7 +133,7 @@ class ActorManager {
   /// \param[in] is_detached Whether or not the actor of a handle is detached (named)
   /// actor. \return True if the handle was added and False if we already had a handle to
   /// the same actor.
-  bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+  bool AddNewActorHandle(std::unique_ptr<core::ActorHandle> actor_handle,
                          const TaskID &caller_id, const std::string &call_site,
                          const rpc::Address &caller_address, bool is_detached);
 
@@ -167,10 +168,10 @@ class ActorManager {
   /// \param[in] actor_creation_return_id object id of this actor creation
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
-  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle, bool is_owner_handle,
-                      const TaskID &caller_id, const std::string &call_site,
-                      const rpc::Address &caller_address, const ActorID &actor_id,
-                      const ObjectID &actor_creation_return_id);
+  bool AddActorHandle(std::unique_ptr<core::ActorHandle> actor_handle,
+                      bool is_owner_handle, const TaskID &caller_id,
+                      const std::string &call_site, const rpc::Address &caller_address,
+                      const ActorID &actor_id, const ObjectID &actor_creation_return_id);
 
   /// Handle actor state notification published from GCS.
   ///
@@ -193,7 +194,7 @@ class ActorManager {
 
   /// Map from actor ID to a handle to that actor.
   /// Actor handle is a logical abstraction that holds actor handle's states.
-  absl::flat_hash_map<ActorID, std::shared_ptr<ActorHandle>> actor_handles_
+  absl::flat_hash_map<ActorID, std::shared_ptr<core::ActorHandle>> actor_handles_
       GUARDED_BY(mutex_);
 };
 

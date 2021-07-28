@@ -7,7 +7,6 @@
 #include "boost/optional.hpp"
 
 namespace ray {
-namespace api {
 
 class RayConfig {
  public:
@@ -30,5 +29,4 @@ class RayConfig {
   boost::optional<std::string> redis_password_;
 };
 
-}  // namespace api
 }  // namespace ray

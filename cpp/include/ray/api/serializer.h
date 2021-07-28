@@ -6,7 +6,6 @@
 #include <msgpack.hpp>
 
 namespace ray {
-namespace api {
 
 class Serializer {
  public:
@@ -53,5 +52,4 @@ class Serializer {
   }
 };
 
-}  // namespace api
 }  // namespace ray

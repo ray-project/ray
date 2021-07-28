@@ -6,7 +6,6 @@
 #include <ray/api/object_ref.h>
 
 namespace ray {
-namespace api {
 
 /// \param T The type of object.
 template <typename T>
@@ -21,5 +20,5 @@ class WaitResult {
              std::list<ObjectRef<T>> &&unready_objects)
       : ready(ready_objects), unready(unready_objects){};
 };
-}  // namespace api
+
 }  // namespace ray

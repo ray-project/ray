@@ -54,6 +54,9 @@ class AbstractRayRuntime : public RayRuntime {
   const std::unique_ptr<WorkerContext> &GetWorkerContext();
 
   static std::shared_ptr<AbstractRayRuntime> GetInstance();
+  static std::shared_ptr<AbstractRayRuntime> DoInit();
+
+  static void DoShutdown();
 
  protected:
   std::unique_ptr<WorkerContext> worker_;
@@ -63,13 +66,7 @@ class AbstractRayRuntime : public RayRuntime {
 
  private:
   static std::shared_ptr<AbstractRayRuntime> abstract_ray_runtime_;
-  static std::shared_ptr<AbstractRayRuntime> DoInit();
-
-  static void DoShutdown();
-
   void Execute(const TaskSpecification &task_spec);
-
-  friend class Ray;
 };
 }  // namespace api
 }  // namespace ray

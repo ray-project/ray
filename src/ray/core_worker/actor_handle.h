@@ -24,7 +24,7 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-
+namespace core {
 class ActorHandle {
  public:
   ActorHandle(ray::rpc::ActorHandle inner)
@@ -100,4 +100,5 @@ class ActorHandle {
   FRIEND_TEST(ZeroNodeTest, TestActorHandle);
 };
 
+}  // namespace core
 }  // namespace ray

@@ -32,17 +32,17 @@ namespace internal {
 template <typename T>
 inline static std::enable_if_t<!std::is_pointer<T>::value, msgpack::sbuffer>
 PackReturnValue(T result) {
-  return ray::api::Serializer::Serialize(std::move(result));
+  return ray::Serializer::Serialize(std::move(result));
 }
 
 template <typename T>
 inline static std::enable_if_t<std::is_pointer<T>::value, msgpack::sbuffer>
 PackReturnValue(T result) {
-  return ray::api::Serializer::Serialize((uint64_t)result);
+  return ray::Serializer::Serialize((uint64_t)result);
 }
 
 inline static msgpack::sbuffer PackVoid() {
-  return ray::api::Serializer::Serialize(msgpack::type::nil_t());
+  return ray::Serializer::Serialize(msgpack::type::nil_t());
 }
 
 msgpack::sbuffer PackError(std::string error_msg);
@@ -132,7 +132,7 @@ struct Invoker {
       }
 
       uint64_t actor_ptr =
-          ray::api::Serializer::Deserialize<uint64_t>(ptr->data(), ptr->size());
+          ray::Serializer::Deserialize<uint64_t>(ptr->data(), ptr->size());
       using Self = boost::callable_traits::class_of_t<Function>;
       Self *self = (Self *)actor_ptr;
       result = Invoker<Function>::CallMember<RetrunType>(func, self, std::move(tp));
@@ -150,7 +150,7 @@ struct Invoker {
  private:
   template <typename T>
   static inline T ParseArg(char *data, size_t size, bool &is_ok) {
-    auto pair = ray::api::Serializer::DeserializeWhenNil<T>(data, size);
+    auto pair = ray::Serializer::DeserializeWhenNil<T>(data, size);
     is_ok = pair.first;
     return pair.second;
   }

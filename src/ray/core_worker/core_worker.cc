@@ -1753,7 +1753,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       "", /* debugger_breakpoint */
       actor_creation_options.serialized_runtime_env, override_environment_variables);
 
-  auto actor_handle = std::make_unique<ActorHandle>(
+  auto actor_handle = std::make_unique<core::ActorHandle>(
       actor_id, GetCallerId(), rpc_address_, job_id, /*actor_cursor=*/return_ids[0],
       function.GetLanguage(), function.GetFunctionDescriptor(), extension_data,
       actor_creation_options.max_task_retries);
@@ -2012,7 +2012,7 @@ void CoreWorker::RemoveActorHandleReference(const ActorID &actor_id) {
 
 ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized,
                                                       const ObjectID &outer_object_id) {
-  std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
+  std::unique_ptr<core::ActorHandle> actor_handle(new core::ActorHandle(serialized));
   return actor_manager_->RegisterActorHandle(std::move(actor_handle), outer_object_id,
                                              GetCallerId(), CurrentCallSite(),
                                              rpc_address_);
@@ -2026,13 +2026,14 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id, std::string *ou
   return Status::OK();
 }
 
-std::shared_ptr<const ActorHandle> CoreWorker::GetActorHandle(
+std::shared_ptr<const core::ActorHandle> CoreWorker::GetActorHandle(
     const ActorID &actor_id) const {
   return actor_manager_->GetActorHandle(actor_id);
 }
 
-std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorHandle(
-    const std::string &name, const std::string &ray_namespace) {
+std::pair<std::shared_ptr<const core::ActorHandle>, Status>
+CoreWorker::GetNamedActorHandle(const std::string &name,
+                                const std::string &ray_namespace) {
   RAY_CHECK(!name.empty());
   if (options_.is_local_mode) {
     return GetNamedActorHandleLocalMode(name);
@@ -2051,7 +2052,7 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
       [this, &actor_id, name, ready_promise](
           Status status, const boost::optional<rpc::ActorTableData> &result) {
         if (status.ok() && result) {
-          auto actor_handle = std::make_unique<ActorHandle>(*result);
+          auto actor_handle = std::make_unique<core::ActorHandle>(*result);
           actor_id = actor_handle->GetActorID();
           actor_manager_->AddNewActorHandle(std::move(actor_handle), GetCallerId(),
                                             CurrentCallSite(), rpc_address_,
@@ -2127,7 +2128,7 @@ CoreWorker::ListNamedActors(bool all_namespaces) {
   return std::make_pair(actors, status);
 }
 
-std::pair<std::shared_ptr<const ActorHandle>, Status>
+std::pair<std::shared_ptr<const core::ActorHandle>, Status>
 CoreWorker::GetNamedActorHandleLocalMode(const std::string &name) {
   auto it = local_mode_named_actor_registry_.find(name);
   if (it == local_mode_named_actor_registry_.end()) {
@@ -2246,8 +2247,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
     {
-      std::unique_ptr<ActorHandle> self_actor_handle(
-          new ActorHandle(task_spec.GetSerializedActorHandle()));
+      std::unique_ptr<core::ActorHandle> self_actor_handle(
+          new core::ActorHandle(task_spec.GetSerializedActorHandle()));
       // Register the handle to the current actor itself.
       actor_manager_->RegisterActorHandle(std::move(self_actor_handle), ObjectID::Nil(),
                                           GetCallerId(), CurrentCallSite(), rpc_address_);
