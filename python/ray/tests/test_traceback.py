@@ -3,7 +3,7 @@ import ray
 from ray.exceptions import RayTaskError, RayActorError
 """This module tests stacktrace of Ray.
 
-There are total 4 different stacktrace types in Ray.
+There are total 3 different stacktrace types in Ray.
 
 1. Not nested task (including actor creation) or actor task failure.
 2. Chained task + actor task failure.

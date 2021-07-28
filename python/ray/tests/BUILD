@@ -112,6 +112,7 @@ py_test_module_list(
     "test_numba.py",
     "test_queue.py",
     "test_ray_shutdown.py",
+    "test_traceback.py",
     "test_unhandled_error.py",
     "test_top_level_api.py",
     "test_list_actors.py",
