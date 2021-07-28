@@ -65,11 +65,11 @@ DEFINE_bool(huge_pages, false, "Whether enable huge pages");
 #ifndef RAYLET_TEST
 
 int main(int argc, char *argv[]) {
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0],
-                                         ray::RayLogLevel::INFO,
+  InitShutdownRAII ray_log_shutdown_raii(ray::core::RayLog::StartRayLog,
+                                         ray::core::RayLog::ShutDownRayLog, argv[0],
+                                         ray::core::RayLogLevel::INFO,
                                          /*log_dir=*/"");
-  ray::RayLog::InstallFailureSignalHandler();
+  ray::core::RayLog::InstallFailureSignalHandler();
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   const std::string raylet_socket_name = FLAGS_raylet_socket_name;

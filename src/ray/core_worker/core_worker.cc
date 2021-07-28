@@ -132,9 +132,9 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     if (!global_worker_id_.IsNil()) {
       app_name << "-" << global_worker_id_;
     }
-    RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, options_.log_dir);
+    core::RayLog::StartRayLog(app_name.str(), core::RayLogLevel::INFO, options_.log_dir);
     if (options_.install_failure_signal_handler) {
-      RayLog::InstallFailureSignalHandler();
+      core::RayLog::InstallFailureSignalHandler();
     }
   } else {
     RAY_CHECK(options_.log_dir.empty())
@@ -199,7 +199,7 @@ CoreWorkerProcess::~CoreWorkerProcess() {
   // Shutdown stats module if worker process exits.
   ray::stats::Shutdown();
   if (options_.enable_logging) {
-    RayLog::ShutDownRayLog();
+    core::RayLog::ShutDownRayLog();
   }
 }
 
@@ -408,7 +408,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     RAY_LOG(ERROR) << "Failed to register worker " << worker_id << " to Raylet. "
                    << raylet_client_status;
     if (options_.enable_logging) {
-      RayLog::ShutDownRayLog();
+      core::RayLog::ShutDownRayLog();
     }
     // Quit the process immediately.
     _Exit(1);
@@ -2852,7 +2852,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
                      "a worker...";
     Disconnect();
     if (options_.enable_logging) {
-      RayLog::ShutDownRayLog();
+      core::RayLog::ShutDownRayLog();
     }
     // NOTE(hchen): Use `_Exit()` to force-exit this process without doing cleanup.
     // `exit()` will destruct static objects in an incorrect order, which will lead to
@@ -2891,7 +2891,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
              "hosted in a dedicated worker process.";
     }
     if (options_.enable_logging) {
-      RayLog::ShutDownRayLog();
+      core::RayLog::ShutDownRayLog();
     }
     // NOTE(hchen): Use `_Exit()` to force-exit this process without doing cleanup.
     // `exit()` will destruct static objects in an incorrect order, which will lead to

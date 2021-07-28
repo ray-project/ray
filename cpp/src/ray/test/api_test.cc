@@ -49,7 +49,7 @@ RAY_REMOTE(Counter::FactoryCreate, &Counter::Plus1, &Counter::Plus, &Counter::Tr
 
 TEST(RayApiTest, LogTest) {
   auto log_path = boost::filesystem::current_path().string() + "/tmp/";
-  ray::RayLog::StartRayLog("cpp_worker", ray::RayLogLevel::DEBUG, log_path);
+  ray::core::RayLog::StartRayLog("cpp_worker", ray::core::RayLogLevel::DEBUG, log_path);
   std::array<std::string, 3> str_arr{"debug test", "info test", "warning test"};
   RAYLOG(DEBUG) << str_arr[0];
   RAYLOG(INFO) << str_arr[1];

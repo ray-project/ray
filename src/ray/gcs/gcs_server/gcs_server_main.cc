@@ -32,10 +32,10 @@ DEFINE_bool(retry_redis, false, "Whether we retry to connect to the redis.");
 DEFINE_string(node_ip_address, "", "The ip address of the node.");
 
 int main(int argc, char *argv[]) {
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0],
-                                         ray::RayLogLevel::INFO, /*log_dir=*/"");
-  ray::RayLog::InstallFailureSignalHandler();
+  InitShutdownRAII ray_log_shutdown_raii(ray::core::RayLog::StartRayLog,
+                                         ray::core::RayLog::ShutDownRayLog, argv[0],
+                                         ray::core::RayLogLevel::INFO, /*log_dir=*/"");
+  ray::core::RayLog::InstallFailureSignalHandler();
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   const std::string redis_address = FLAGS_redis_address;
