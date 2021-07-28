@@ -1,4 +1,3 @@
-from gym.spaces import Box, Discrete
 import os
 from pathlib import Path
 import re
@@ -52,7 +51,7 @@ def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
                      rllib_dir, algo, checkpoint_path, tmp_dir)).read()
         if not os.path.exists(tmp_dir + "/rollouts_10steps.pkl"):
             sys.exit(1)
-        print("rollout output (10 steps) exists!".format(checkpoint_path))
+        print("rollout output (10 steps) exists!")
 
         # Test rolling out 1 episode.
         if test_episode_rollout:
@@ -61,7 +60,7 @@ def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
                          rllib_dir, algo, checkpoint_path, tmp_dir)).read()
             if not os.path.exists(tmp_dir + "/rollouts_1episode.pkl"):
                 sys.exit(1)
-            print("rollout output (1 ep) exists!".format(checkpoint_path))
+            print("rollout output (1 ep) exists!")
 
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
@@ -88,7 +87,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
                       rllib_dir, tmp_dir, algo) +
                   "--config=\"{\\\"num_gpus\\\": 0, \\\"num_workers\\\": 1, "
                   "\\\"evaluation_config\\\": {\\\"explore\\\": false}" + fw_ +
-                  "}\" " + "--stop=\"{\\\"episode_reward_mean\\\": 190.0}\"" +
+                  "}\" " + "--stop=\"{\\\"episode_reward_mean\\\": 150.0}\"" +
                   " --env={}".format(env))
 
         # Find last checkpoint and use that for the rollout.
@@ -115,8 +114,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
                 rllib_dir, algo, tmp_dir, last_checkpoint)).read()[:-1]
         if not os.path.exists(tmp_dir + "/rollouts_n_steps.pkl"):
             sys.exit(1)
-        print("Rollout output exists -> Checking reward ...".format(
-            checkpoint_path))
+        print("Rollout output exists -> Checking reward ...")
         episodes = result.split("\n")
         mean_reward = 0.0
         num_episodes = 0
@@ -127,7 +125,7 @@ def learn_test_plus_rollout(algo, env="CartPole-v0"):
                 num_episodes += 1
         mean_reward /= num_episodes
         print("Rollout's mean episode reward={}".format(mean_reward))
-        assert mean_reward >= 190.0
+        assert mean_reward >= 150.0
 
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
@@ -148,11 +146,8 @@ def learn_test_multi_agent_plus_rollout(algo):
         print("RLlib dir = {}\nexists={}".format(rllib_dir,
                                                  os.path.exists(rllib_dir)))
 
-        def policy_fn(agent):
-            return "pol{}".format(agent)
-
-        observation_space = Box(float("-inf"), float("inf"), (4, ))
-        action_space = Discrete(2)
+        def policy_fn(agent_id, episode, **kwargs):
+            return "pol{}".format(agent_id)
 
         config = {
             "num_gpus": 0,
@@ -163,14 +158,11 @@ def learn_test_multi_agent_plus_rollout(algo):
             "framework": fw,
             "env": MultiAgentCartPole,
             "multiagent": {
-                "policies": {
-                    "pol0": (None, observation_space, action_space, {}),
-                    "pol1": (None, observation_space, action_space, {}),
-                },
+                "policies": {"pol0", "pol1"},
                 "policy_mapping_fn": policy_fn,
             },
         }
-        stop = {"episode_reward_mean": 180.0}
+        stop = {"episode_reward_mean": 150.0}
         tune.run(
             algo,
             config=config,
@@ -208,8 +200,7 @@ def learn_test_multi_agent_plus_rollout(algo):
                 rllib_dir, algo, tmp_dir, last_checkpoint)).read()[:-1]
         if not os.path.exists(tmp_dir + "/rollouts_n_steps.pkl"):
             sys.exit(1)
-        print("Rollout output exists -> Checking reward ...".format(
-            checkpoint_path))
+        print("Rollout output exists -> Checking reward ...")
         episodes = result.split("\n")
         mean_reward = 0.0
         num_episodes = 0
@@ -220,31 +211,37 @@ def learn_test_multi_agent_plus_rollout(algo):
                 num_episodes += 1
         mean_reward /= num_episodes
         print("Rollout's mean episode reward={}".format(mean_reward))
-        assert mean_reward >= 190.0
+        assert mean_reward >= 150.0
 
         # Cleanup.
         os.popen("rm -rf \"{}\"".format(tmp_dir)).read()
 
 
-class TestRolloutSimple(unittest.TestCase):
+class TestRolloutSimple1(unittest.TestCase):
     def test_a3c(self):
         rollout_test("A3C")
 
     def test_ddpg(self):
         rollout_test("DDPG", env="Pendulum-v0")
 
+
+class TestRolloutSimple2(unittest.TestCase):
     def test_dqn(self):
         rollout_test("DQN")
 
     def test_es(self):
         rollout_test("ES")
 
+
+class TestRolloutSimple3(unittest.TestCase):
     def test_impala(self):
         rollout_test("IMPALA", env="CartPole-v0")
 
     def test_ppo(self):
         rollout_test("PPO", env="CartPole-v0", test_episode_rollout=True)
 
+
+class TestRolloutSimple4(unittest.TestCase):
     def test_sac(self):
         rollout_test("SAC", env="Pendulum-v0")
 

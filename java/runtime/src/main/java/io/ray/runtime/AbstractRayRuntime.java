@@ -1,7 +1,6 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
@@ -296,7 +295,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
     List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
-      Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
+      Preconditions.checkState(options.jvmOptions == null || options.jvmOptions.size() == 0);
     }
     BaseActorHandle actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;

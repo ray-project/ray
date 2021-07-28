@@ -1,5 +1,5 @@
 [flake8]
-exclude = 
+exclude =
   python/ray/core/generated/
   streaming/python/generated
   doc/source/conf.py
@@ -7,6 +7,8 @@ exclude =
   python/ray/thirdparty_files/
   python/build/
   python/.eggs/
+  python/ray/_private/thirdparty/*
+  python/ray/experimental/workflow/tests/mock_server.py
 max-line-length = 79
 inline-quotes = "
 ignore =

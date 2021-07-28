@@ -51,6 +51,7 @@ DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
+DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 #ifdef __linux__
@@ -95,6 +96,7 @@ int main(int argc, char *argv[]) {
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
   const std::string resource_dir = FLAGS_resource_dir;
+  const int ray_debugger_external = FLAGS_ray_debugger_external;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
@@ -199,14 +201,11 @@ int main(int argc, char *argv[]) {
             RayConfig::instance().raylet_report_resources_period_milliseconds();
         node_manager_config.record_metrics_period_ms =
             RayConfig::instance().metrics_report_interval_ms() / 2;
-        node_manager_config.fair_queueing_enabled =
-            RayConfig::instance().fair_queueing_enabled();
-        node_manager_config.automatic_object_deletion_enabled =
-            RayConfig::instance().automatic_object_deletion_enabled();
         node_manager_config.store_socket_name = store_socket_name;
         node_manager_config.temp_dir = temp_dir;
         node_manager_config.session_dir = session_dir;
         node_manager_config.resource_dir = resource_dir;
+        node_manager_config.ray_debugger_external = ray_debugger_external;
         node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
         node_manager_config.min_spilling_size = RayConfig::instance().min_spilling_size();
 
@@ -221,13 +220,14 @@ int main(int argc, char *argv[]) {
             RayConfig::instance().object_manager_pull_timeout_ms();
         object_manager_config.push_timeout_ms =
             RayConfig::instance().object_manager_push_timeout_ms();
-        if (object_store_memory < 0) {
+        if (object_store_memory <= 0) {
           RAY_LOG(FATAL) << "Object store memory should be set.";
         }
         object_manager_config.object_store_memory = object_store_memory;
         object_manager_config.max_bytes_in_flight =
             RayConfig::instance().object_manager_max_bytes_in_flight();
         object_manager_config.plasma_directory = plasma_directory;
+        object_manager_config.fallback_directory = temp_dir;
         object_manager_config.huge_pages = huge_pages;
 
         object_manager_config.rpc_service_threads_number =

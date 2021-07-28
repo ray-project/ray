@@ -1,3 +1,4 @@
+import copy
 import functools
 import gym
 import logging
@@ -5,25 +6,33 @@ import numpy as np
 import os
 import time
 import threading
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+import tree  # pip install dm_tree
+from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union, \
+    TYPE_CHECKING
 
+import ray
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
-from ray.rllib.utils import force_list
+from ray.rllib.utils import force_list, NullContextManager
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.schedules import PiecewiseSchedule
+from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.typing import ModelGradients, ModelWeights, TensorType, \
     TrainerConfigDict
 
-torch, _ = try_import_torch()
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import MultiAgentEpisode  # noqa
+
+torch, nn = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
@@ -105,13 +114,57 @@ class TorchPolicy(Policy):
         """
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
-        if torch.cuda.is_available():
-            logger.info("TorchPolicy running on GPU.")
-            self.device = torch.device("cuda")
-        else:
-            logger.info("TorchPolicy running on CPU.")
+
+        # Log device and worker index.
+        from ray.rllib.evaluation.rollout_worker import get_global_worker
+        worker = get_global_worker()
+        worker_idx = worker.worker_index if worker else 0
+
+        # Create multi-GPU model towers, if necessary.
+        # - The central main model will be stored under self.model, residing
+        #   on self.device.
+        # - Each GPU will have a copy of that model under
+        #   self.model_gpu_towers, matching the devices in self.devices.
+        # - Parallelization is done by splitting the train batch and passing
+        #   it through the model copies in parallel, then averaging over the
+        #   resulting gradients, applying these averages on the main model and
+        #   updating all towers' weights from the main model.
+        # - In case of just one device (1 (fake) GPU or 1 CPU), no
+        #   parallelization will be done.
+        # TODO: (sven) implement data pre-loading and n loader buffers for
+        #  torch.
+        if config["_fake_gpus"] or config["num_gpus"] == 0 or \
+                not torch.cuda.is_available():
+            logger.info("TorchPolicy (worker={}) running on {}.".format(
+                worker_idx if worker_idx > 0 else "local",
+                "{} fake-GPUs".format(config["num_gpus"])
+                if config["_fake_gpus"] else "CPU"))
             self.device = torch.device("cpu")
-        self.model = model.to(self.device)
+            self.devices = [
+                self.device for _ in range(config["num_gpus"] or 1)
+            ]
+            self.model_gpu_towers = [
+                model if i == 0 else copy.deepcopy(model)
+                for i in range(config["num_gpus"] or 1)
+            ]
+            self.model = model
+        else:
+            logger.info("TorchPolicy (worker={}) running on {} GPU(s).".format(
+                worker_idx if worker_idx > 0 else "local", config["num_gpus"]))
+            gpu_ids = ray.get_gpu_ids()
+            self.devices = [
+                torch.device("cuda:{}".format(i))
+                for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]
+            ]
+            self.device = self.devices[0]
+            ids = [
+                id_ for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]
+            ]
+            self.model_gpu_towers = []
+            for i, _ in enumerate(ids):
+                model_copy = copy.deepcopy(model)
+                self.model_gpu_towers.append(model_copy.to(self.devices[i]))
+            self.model = self.model_gpu_towers[0]
 
         # Lock used for locking some methods on the object-level.
         # This prevents possible race conditions when calling the model
@@ -131,6 +184,17 @@ class TorchPolicy(Policy):
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
         self._optimizers = force_list(self.optimizer())
+        # Store, which params (by index within the model's list of
+        # parameters) should be updated per optimizer.
+        # Maps optimizer idx to set or param indices.
+        self.multi_gpu_param_groups: List[Set[int]] = []
+        main_params = {p: i for i, p in enumerate(self.model.parameters())}
+        for o in self._optimizers:
+            param_indices = []
+            for pg_idx, pg in enumerate(o.param_groups):
+                for p in pg["params"]:
+                    param_indices.append(main_params[p])
+            self.multi_gpu_param_groups.append(set(param_indices))
 
         self.dist_class = action_distribution_class
         self.action_sampler_fn = action_sampler_fn
@@ -312,8 +376,10 @@ class TorchPolicy(Policy):
             state_batches: Optional[List[TensorType]] = None,
             prev_action_batch: Optional[Union[List[TensorType],
                                               TensorType]] = None,
-            prev_reward_batch: Optional[Union[List[
-                TensorType], TensorType]] = None) -> TensorType:
+            prev_reward_batch: Optional[Union[List[TensorType],
+                                              TensorType]] = None,
+            actions_normalized: bool = True,
+    ) -> TensorType:
 
         if self.action_sampler_fn and self.action_distribution_fn is None:
             raise ValueError("Cannot compute log-prob/likelihood w/o an "
@@ -375,7 +441,13 @@ class TorchPolicy(Policy):
                                             seq_lens)
 
             action_dist = dist_class(dist_inputs, self.model)
-            log_likelihoods = action_dist.logp(input_dict[SampleBatch.ACTIONS])
+
+            # Normalize actions if necessary.
+            actions = input_dict[SampleBatch.ACTIONS]
+            if not actions_normalized and self.config["normalize_actions"]:
+                actions = normalize_action(actions, self.action_space_struct)
+
+            log_likelihoods = action_dist.logp(actions)
 
             return log_likelihoods
 
@@ -412,84 +484,72 @@ class TorchPolicy(Policy):
     def compute_gradients(self,
                           postprocessed_batch: SampleBatch) -> ModelGradients:
 
+        # For multi-GPU, split the batch into n slices (n=#GPUs).
+        if len(self.devices) == 1:
+            batches = [postprocessed_batch]
+        else:
+            from ray.rllib.utils.sgd import minibatches
+            batches = list(
+                minibatches(
+                    postprocessed_batch,
+                    len(postprocessed_batch) // len(self.devices),
+                    shuffle=False))
+
         if not isinstance(postprocessed_batch, SampleBatch) or \
                 not postprocessed_batch.zero_padded:
-            pad_batch_to_sequences_of_same_size(
-                postprocessed_batch,
-                max_seq_len=self.max_seq_len,
-                shuffle=False,
-                batch_divisibility_req=self.batch_divisibility_req,
-                view_requirements=self.view_requirements,
-            )
-        else:
-            postprocessed_batch["seq_lens"] = postprocessed_batch.seq_lens
+            for b in batches:
+                pad_batch_to_sequences_of_same_size(
+                    b,
+                    max_seq_len=self.max_seq_len,
+                    shuffle=False,
+                    batch_divisibility_req=self.batch_divisibility_req,
+                    view_requirements=self.view_requirements,
+                )
 
-        # Mark the batch as "is_training" so the Model can use this
-        # information.
-        postprocessed_batch.is_training = True
-        train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        for b, d in zip(batches, self.devices):
+            b.is_training = True
+            self._lazy_tensor_dict(b, device=d)
 
-        # Calculate the actual policy loss.
-        loss_out = force_list(
-            self._loss(self, self.model, self.dist_class, train_batch))
+        # Multi-GPU case: Slice inputs into n (roughly) equal batches.
+        if len(self.devices) > 1:
+            # Copy weights of main model to all towers.
+            state_dict = self.model.state_dict()
+            for tower in self.model_gpu_towers:
+                tower.load_state_dict(state_dict)
 
-        # Call Model's custom-loss with Policy loss outputs and train_batch.
-        if self.model:
-            loss_out = self.model.custom_loss(loss_out, train_batch)
+        # Do the (maybe parallelized) gradient calculation step.
+        tower_outputs = self._multi_gpu_parallel_grad_calc(batches)
 
-        # Give Exploration component that chance to modify the loss (or add
-        # its own terms).
-        if hasattr(self, "exploration"):
-            loss_out = self.exploration.get_exploration_loss(
-                loss_out, train_batch)
-
-        assert len(loss_out) == len(self._optimizers)
-
-        # assert not any(torch.isnan(l) for l in loss_out)
-        fetches = self.extra_compute_grad_fetches()
-
-        # Loop through all optimizers.
-        grad_info = {"allreduce_latency": 0.0}
-
-        all_grads = []
-        for i, opt in enumerate(self._optimizers):
-            # Erase gradients in all vars of this optimizer.
-            opt.zero_grad()
-            # Recompute gradients of loss over all variables.
-            loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
-            grad_info.update(self.extra_grad_process(opt, loss_out[i]))
-
-            grads = []
-            # Note that return values are just references;
-            # Calling zero_grad would modify the values.
-            for param_group in opt.param_groups:
-                for p in param_group["params"]:
-                    if p.grad is not None:
-                        grads.append(p.grad)
-                        all_grads.append(p.grad.data.cpu().numpy())
-                    else:
-                        all_grads.append(None)
-
-            if self.distributed_world_size:
-                start = time.time()
-                if torch.cuda.is_available():
-                    # Sadly, allreduce_coalesced does not work with CUDA yet.
-                    for g in grads:
-                        torch.distributed.all_reduce(
-                            g, op=torch.distributed.ReduceOp.SUM)
+        # Multi device (GPU) case.
+        if len(self.devices) > 1:
+            # Mean-reduce over GPU-towers.
+            all_grads = []
+            for i in range(len(tower_outputs[0][0])):
+                if tower_outputs[0][0][i] is not None:
+                    all_grads.append(
+                        torch.mean(
+                            torch.stack([
+                                t[0][i].to(self.device) for t in tower_outputs
+                            ]),
+                            dim=0))
                 else:
-                    torch.distributed.all_reduce_coalesced(
-                        grads, op=torch.distributed.ReduceOp.SUM)
-
-                for param_group in opt.param_groups:
-                    for p in param_group["params"]:
-                        if p.grad is not None:
-                            p.grad /= self.distributed_world_size
-
-                grad_info["allreduce_latency"] += time.time() - start
+                    all_grads.append(None)
+            # Set main model's grads to mean-reduced values.
+            for i, p in enumerate(self.model.parameters()):
+                p.grad = all_grads[i]
+            # Reduce stats over towers as well.
+            from ray.rllib.execution.train_ops import all_tower_reduce
+            grad_info = tree.map_structure_with_path(
+                lambda p, *t: all_tower_reduce(p, *t),
+                *[t[1] for t in tower_outputs])
+        # Single device case.
+        else:
+            all_grads, grad_info = tower_outputs[0]
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
-        grad_info.update(self.extra_grad_info(train_batch))
+        grad_info.update(self.extra_grad_info(batches[0]))
+
+        fetches = self.extra_compute_grad_fetches()
 
         return all_grads, dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
@@ -504,7 +564,10 @@ class TorchPolicy(Policy):
             assert len(self._optimizers) == 1
             for g, p in zip(gradients, self.model.parameters()):
                 if g is not None:
-                    p.grad = torch.from_numpy(g).to(self.device)
+                    if torch.is_tensor(g):
+                        p.grad = g.to(self.device)
+                    else:
+                        p.grad = torch.from_numpy(g).to(self.device)
 
             self._optimizers[0].step()
 
@@ -547,20 +610,25 @@ class TorchPolicy(Policy):
         for i, o in enumerate(self._optimizers):
             optim_state_dict = convert_to_non_torch_type(o.state_dict())
             state["_optimizer_variables"].append(optim_state_dict)
+        # Add exploration state.
+        state["_exploration_state"] = \
+            self.exploration.get_state()
         return state
 
     @override(Policy)
     @DeveloperAPI
-    def set_state(self, state: object) -> None:
-        state = state.copy()  # shallow copy
+    def set_state(self, state: dict) -> None:
         # Set optimizer vars first.
-        optimizer_vars = state.pop("_optimizer_variables", None)
+        optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars:
             assert len(optimizer_vars) == len(self._optimizers)
             for o, s in zip(self._optimizers, optimizer_vars):
                 optim_state_dict = convert_to_torch_tensor(
                     s, device=self.device)
                 o.load_state_dict(optim_state_dict)
+        # Set exploration's state.
+        if hasattr(self, "exploration") and "_exploration_state" in state:
+            self.exploration.set_state(state=state["_exploration_state"])
         # Then the Policy's (NN) weights.
         super().set_state(state)
 
@@ -646,7 +714,8 @@ class TorchPolicy(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def export_model(self, export_dir: str) -> None:
+    def export_model(self, export_dir: str,
+                     onnx: Optional[int] = None) -> None:
         """Exports the Policy's Model to local directory for serving.
 
         Creates a TorchScript model and saves it.
@@ -654,31 +723,55 @@ class TorchPolicy(Policy):
         Args:
             export_dir (str): Local writable directory or filename.
         """
-        dummy_inputs = self._lazy_tensor_dict(self._dummy_batch.data)
+        self._lazy_tensor_dict(self._dummy_batch)
         # Provide dummy state inputs if not an RNN (torch cannot jit with
         # returned empty internal states list).
-        if "state_in_0" not in dummy_inputs:
-            dummy_inputs["state_in_0"] = dummy_inputs["seq_lens"] = np.array(
-                [1.0])
+        if "state_in_0" not in self._dummy_batch:
+            self._dummy_batch["state_in_0"] = \
+                self._dummy_batch["seq_lens"] = np.array([1.0])
+
         state_ins = []
         i = 0
-        while "state_in_{}".format(i) in dummy_inputs:
-            state_ins.append(dummy_inputs["state_in_{}".format(i)])
+        while "state_in_{}".format(i) in self._dummy_batch:
+            state_ins.append(self._dummy_batch["state_in_{}".format(i)])
             i += 1
-        seq_lens = dummy_inputs["seq_lens"]
-        dummy_inputs = {k: dummy_inputs[k] for k in dummy_inputs.keys()}
-        traced = torch.jit.trace(self.model,
-                                 (dummy_inputs, state_ins, seq_lens))
+        dummy_inputs = {
+            k: self._dummy_batch[k]
+            for k in self._dummy_batch.keys() if k != "is_training"
+        }
+
         if not os.path.exists(export_dir):
             os.makedirs(export_dir)
-        file_name = os.path.join(export_dir, "model.pt")
-        traced.save(file_name)
 
+        seq_lens = self._dummy_batch["seq_lens"]
+        if onnx:
+            file_name = os.path.join(export_dir, "model.onnx")
+            torch.onnx.export(
+                self.model, (dummy_inputs, state_ins, seq_lens),
+                file_name,
+                export_params=True,
+                opset_version=onnx,
+                do_constant_folding=True,
+                input_names=list(dummy_inputs.keys()) +
+                ["state_ins", "seq_lens"],
+                output_names=["output", "state_outs"],
+                dynamic_axes={
+                    k: {
+                        0: "batch_size"
+                    }
+                    for k in list(dummy_inputs.keys()) +
+                    ["state_ins", "seq_lens"]
+                })
+        else:
+            traced = torch.jit.trace(self.model,
+                                     (dummy_inputs, state_ins, seq_lens))
+            file_name = os.path.join(export_dir, "model.pt")
+            traced.save(file_name)
+
+    # TODO: (sven) Deprecate this in favor of `save()`.
     @override(Policy)
-    @DeveloperAPI
     def export_checkpoint(self, export_dir: str) -> None:
-        """TODO(sven): implement for torch.
-        """
+        deprecation_warning("export_checkpoint", "save")
         raise NotImplementedError
 
     @override(Policy)
@@ -687,13 +780,138 @@ class TorchPolicy(Policy):
         """Imports weights into torch model."""
         return self.model.import_from_h5(import_file)
 
-    def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch):
+    def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch, device=None):
         # TODO: (sven): Keep for a while to ensure backward compatibility.
         if not isinstance(postprocessed_batch, SampleBatch):
             postprocessed_batch = SampleBatch(postprocessed_batch)
         postprocessed_batch.set_get_interceptor(
-            functools.partial(convert_to_torch_tensor, device=self.device))
+            functools.partial(
+                convert_to_torch_tensor, device=device or self.device))
         return postprocessed_batch
+
+    def _multi_gpu_parallel_grad_calc(self, sample_batches):
+        """Performs a parallelized loss and gradient calculation over the batch.
+
+        Splits up the given train batch into n shards (n=number of this
+        Policy's devices) and passes each data shard (in parallel) through
+        the loss function using the individual devices' models
+        (self.model_gpu_towers). Then returns each tower's outputs.
+
+        Args:
+            sample_batches (List[SampleBatch]): A list of SampleBatch shards to
+                calculate loss and gradients for.
+
+        Returns:
+            List[Tuple[List[TensorType], StatsDict]]: A list (one item per
+                device) of 2-tuples with 1) gradient list and 2) stats dict.
+        """
+        assert len(self.model_gpu_towers) == len(sample_batches)
+        lock = threading.Lock()
+        results = {}
+        grad_enabled = torch.is_grad_enabled()
+
+        def _worker(shard_idx, model, sample_batch, device):
+            torch.set_grad_enabled(grad_enabled)
+            try:
+                with NullContextManager(
+                ) if device.type == "cpu" else torch.cuda.device(device):
+                    loss_out = force_list(
+                        self._loss(self, model, self.dist_class, sample_batch))
+
+                    # Call Model's custom-loss with Policy loss outputs and
+                    # train_batch.
+                    loss_out = model.custom_loss(loss_out, sample_batch)
+
+                    assert len(loss_out) == len(self._optimizers)
+
+                    # Loop through all optimizers.
+                    grad_info = {"allreduce_latency": 0.0}
+
+                    parameters = list(model.parameters())
+                    all_grads = [None for _ in range(len(parameters))]
+                    for opt_idx, opt in enumerate(self._optimizers):
+                        # Erase gradients in all vars of the tower that this
+                        # optimizer would affect.
+                        param_indices = self.multi_gpu_param_groups[opt_idx]
+                        for param_idx, param in enumerate(parameters):
+                            if param_idx in param_indices and \
+                                    param.grad is not None:
+                                param.grad.data.zero_()
+                        # Recompute gradients of loss over all variables.
+                        loss_out[opt_idx].backward(retain_graph=True)
+                        grad_info.update(
+                            self.extra_grad_process(opt, loss_out[opt_idx]))
+
+                        grads = []
+                        # Note that return values are just references;
+                        # Calling zero_grad would modify the values.
+                        for param_idx, param in enumerate(parameters):
+                            if param_idx in param_indices:
+                                if param.grad is not None:
+                                    grads.append(param.grad)
+                                all_grads[param_idx] = param.grad
+
+                        if self.distributed_world_size:
+                            start = time.time()
+                            if torch.cuda.is_available():
+                                # Sadly, allreduce_coalesced does not work with
+                                # CUDA yet.
+                                for g in grads:
+                                    torch.distributed.all_reduce(
+                                        g, op=torch.distributed.ReduceOp.SUM)
+                            else:
+                                torch.distributed.all_reduce_coalesced(
+                                    grads, op=torch.distributed.ReduceOp.SUM)
+
+                            for param_group in opt.param_groups:
+                                for p in param_group["params"]:
+                                    if p.grad is not None:
+                                        p.grad /= self.distributed_world_size
+
+                            grad_info[
+                                "allreduce_latency"] += time.time() - start
+
+                with lock:
+                    results[shard_idx] = (all_grads, grad_info)
+            except Exception as e:
+                with lock:
+                    results[shard_idx] = ValueError(
+                        e.args[0] + "\n" +
+                        "In tower {} on device {}".format(shard_idx, device))
+
+        # Single device (GPU) or fake-GPU case (serialize for better
+        # debugging).
+        if len(self.devices) == 1 or self.config["_fake_gpus"]:
+            for shard_idx, (model, sample_batch, device) in enumerate(
+                    zip(self.model_gpu_towers, sample_batches, self.devices)):
+                _worker(shard_idx, model, sample_batch, device)
+                # Raise errors right away for better debugging.
+                last_result = results[len(results) - 1]
+                if isinstance(last_result, ValueError):
+                    raise last_result
+        # Multi device (GPU) case: Parallelize via threads.
+        else:
+            threads = [
+                threading.Thread(
+                    target=_worker,
+                    args=(shard_idx, model, sample_batch, device))
+                for shard_idx, (model, sample_batch, device) in enumerate(
+                    zip(self.model_gpu_towers, sample_batches, self.devices))
+            ]
+
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+        # Gather all threads' outputs and return.
+        outputs = []
+        for shard_idx in range(len(sample_batches)):
+            output = results[shard_idx]
+            if isinstance(output, Exception):
+                raise output
+            outputs.append(results[shard_idx])
+        return outputs
 
 
 # TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)
@@ -704,20 +922,22 @@ class LearningRateSchedule:
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
-        self.cur_lr = lr
+        self._lr_schedule = None
         if lr_schedule is None:
-            self.lr_schedule = ConstantSchedule(lr, framework=None)
+            self.cur_lr = lr
         else:
-            self.lr_schedule = PiecewiseSchedule(
+            self._lr_schedule = PiecewiseSchedule(
                 lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
+            self.cur_lr = self._lr_schedule.value(0)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
-        self.cur_lr = self.lr_schedule.value(global_vars["timestep"])
-        for opt in self._optimizers:
-            for p in opt.param_groups:
-                p["lr"] = self.cur_lr
+        if self._lr_schedule:
+            self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
+            for opt in self._optimizers:
+                for p in opt.param_groups:
+                    p["lr"] = self.cur_lr
 
 
 @DeveloperAPI
@@ -726,30 +946,30 @@ class EntropyCoeffSchedule:
 
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
-        self.entropy_coeff = entropy_coeff
-
+        self._entropy_coeff_schedule = None
         if entropy_coeff_schedule is None:
-            self.entropy_coeff_schedule = ConstantSchedule(
-                entropy_coeff, framework=None)
+            self.entropy_coeff = entropy_coeff
         else:
             # Allows for custom schedule similar to lr_schedule format
             if isinstance(entropy_coeff_schedule, list):
-                self.entropy_coeff_schedule = PiecewiseSchedule(
+                self._entropy_coeff_schedule = PiecewiseSchedule(
                     entropy_coeff_schedule,
                     outside_value=entropy_coeff_schedule[-1][-1],
                     framework=None)
             else:
                 # Implements previous version but enforces outside_value
-                self.entropy_coeff_schedule = PiecewiseSchedule(
+                self._entropy_coeff_schedule = PiecewiseSchedule(
                     [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
                     outside_value=0.0,
                     framework=None)
+            self.entropy_coeff = self._entropy_coeff_schedule.value(0)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
-        self.entropy_coeff = self.entropy_coeff_schedule.value(
-            global_vars["timestep"])
+        if self._entropy_coeff_schedule is not None:
+            self.entropy_coeff = self._entropy_coeff_schedule.value(
+                global_vars["timestep"])
 
 
 @DeveloperAPI

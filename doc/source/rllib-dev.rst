@@ -4,7 +4,7 @@ Contributing to RLlib
 Development Install
 -------------------
 
-You can develop RLlib locally without needing to compile Ray by using the `setup-dev.py <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__ script. This sets up links between the ``rllib`` dir in your git repo and the one bundled with the ``ray`` package. However if you have installed ray from source using [these instructions](https://docs.ray.io/en/master/installation.html) then do not this as these steps should have already created this symlink. When using this script, make sure that your git branch is in sync with the installed Ray binaries (i.e., you are up-to-date on `master <https://github.com/ray-project/ray>`__ and have the latest `wheel <https://docs.ray.io/en/master/installation.html>`__ installed.)
+You can develop RLlib locally without needing to compile Ray by using the `setup-dev.py <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__ script. This sets up links between the ``rllib`` dir in your git repo and the one bundled with the ``ray`` package. However if you have installed ray from source using `these instructions <https://docs.ray.io/en/master/installation.html>`__ then do not this as these steps should have already created this symlink. When using this script, make sure that your git branch is in sync with the installed Ray binaries (i.e., you are up-to-date on `master <https://github.com/ray-project/ray>`__ and have the latest `wheel <https://docs.ray.io/en/master/installation.html>`__ installed.)
 
 API Stability
 -------------
@@ -77,3 +77,18 @@ After registration, you can run and visualize training progress using ``rllib tr
 
     rllib train --run=contrib/RandomAgent --env=CartPole-v0
     tensorboard --logdir=~/ray_results
+
+Debugging your Algorithms
+-------------------------
+
+Finding Memory Leaks In Workers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Keeping the memory usage of long running workers stable can be challenging. The ``MemoryTrackingCallbacks`` class can be used to track memory usage of workers.
+
+.. autoclass:: ray.rllib.agents.callbacks.MemoryTrackingCallbacks
+
+The objects with the top 20 memory usage in the workers will be added as custom metrics. These can then be monitored using tensorboard or other metrics integrations like Weights and Biases: 
+
+.. image:: MemoryTrackingCallbacks.png
+

@@ -117,6 +117,13 @@ def test_gpu_node_util_score():
     assert _utilization_score({"GPU": 1, "CPU": 1}, [{"GPU": 1}]) == (0.0, 0.5)
 
 
+def test_zero_resource():
+    # Test edge case of node type with all zero resource values.
+    assert _utilization_score({"CPU": 0, "custom": 0}, [{"custom": 1}]) is None
+    # Just check that we don't have a division-by-zero error.
+    _utilization_score({"CPU": 0, "custom": 1}, [{"custom": 1}])
+
+
 def test_bin_pack():
     assert get_bin_pack_residual([], [{"GPU": 2}, {"GPU": 2}])[0] == \
         [{"GPU": 2}, {"GPU": 2}]

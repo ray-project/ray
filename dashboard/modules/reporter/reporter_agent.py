@@ -30,10 +30,12 @@ IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
 
 try:
     import gpustat.core as gpustat
-except ImportError:
+except (ModuleNotFoundError, ImportError):
     gpustat = None
-    logger.warning(
-        "Install gpustat with 'pip install gpustat' to enable GPU monitoring.")
+    logger.warning("`gpustat` package is not installed. GPU monitoring is "
+                   "not available. In Ray 1.4+, the Ray CLI, autoscaler, and "
+                   "dashboard will only be usable via `pip install 'ray["
+                   "default]'`. Please update your install command")
 
 
 def recursive_asdict(o):
@@ -240,7 +242,15 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep,
             ray._private.utils.get_user_temp_dir(),
         ]
-        return {x: psutil.disk_usage(x) for x in dirs}
+        if IN_KUBERNETES_POD:
+            # If in a K8s pod, disable disk display by passing in dummy values.
+            return {
+                x: psutil._common.sdiskusage(
+                    total=1, used=0, free=1, percent=0.0)
+                for x in dirs
+            }
+        else:
+            return {x: psutil.disk_usage(x) for x in dirs}
 
     def _get_workers(self):
         raylet_proc = self._get_raylet_proc()

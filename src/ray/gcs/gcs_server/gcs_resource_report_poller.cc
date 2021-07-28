@@ -4,7 +4,6 @@ namespace ray {
 namespace gcs {
 
 GcsResourceReportPoller::GcsResourceReportPoller(
-    std::shared_ptr<GcsResourceManager> gcs_resource_manager,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
     std::function<void(const rpc::ResourcesData &)> handle_resource_report,
     std::function<int64_t(void)> get_current_time_milli,
@@ -15,7 +14,6 @@ GcsResourceReportPoller::GcsResourceReportPoller(
     : ticker_(polling_service_),
       max_concurrent_pulls_(RayConfig::instance().gcs_max_concurrent_resource_pulls()),
       inflight_pulls_(0),
-      gcs_resource_manager_(gcs_resource_manager),
       raylet_client_pool_(raylet_client_pool),
       handle_resource_report_(handle_resource_report),
       get_current_time_milli_(get_current_time_milli),
@@ -39,7 +37,9 @@ void GcsResourceReportPoller::Start() {
     RAY_LOG(DEBUG) << "GCSResourceReportPoller has stopped. This should only happen if "
                       "the cluster has stopped";
   }});
-  ticker_.RunFnPeriodically([this] { TryPullResourceReport(); }, 10);
+  ticker_.RunFnPeriodically(
+      [this] { TryPullResourceReport(); }, 10,
+      "GcsResourceReportPoller.deadline_timer.pull_resource_report");
 }
 
 void GcsResourceReportPoller::Stop() {
@@ -91,8 +91,6 @@ void GcsResourceReportPoller::TryPullResourceReport() {
   absl::MutexLock guard(&mutex_);
   int64_t cur_time = get_current_time_milli_();
 
-  RAY_LOG(DEBUG) << "Trying to pull inflight_pulls " << inflight_pulls_ << "/"
-                 << max_concurrent_pulls_ << ", queue size: " << to_pull_queue_.size();
   while (inflight_pulls_ < max_concurrent_pulls_ && !to_pull_queue_.empty()) {
     auto to_pull = to_pull_queue_.front();
     if (cur_time < to_pull->next_pull_time) {

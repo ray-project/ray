@@ -49,6 +49,8 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
+  Status AsyncGetNextJobID(const ItemCallback<JobID> &callback) override;
+
  private:
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
@@ -76,8 +78,12 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) override;
 
   Status AsyncGetByName(
-      const std::string &name,
+      const std::string &name, const std::string &ray_namespace,
       const OptionalItemCallback<rpc::ActorTableData> &callback) override;
+
+  Status AsyncListNamedActors(
+      bool all_namespaces, const std::string &ray_namespace,
+      const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback) override;
 
   Status AsyncRegisterActor(const TaskSpecification &task_spec,
                             const StatusCallback &callback) override;
@@ -454,7 +460,7 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
 
   Status AsyncGetByName(
-      const std::string &name,
+      const std::string &name, const std::string &ray_namespace,
       const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) override;
 
   Status AsyncGetAll(
@@ -462,6 +468,28 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
 
   Status AsyncWaitUntilReady(const PlacementGroupID &placement_group_id,
                              const StatusCallback &callback) override;
+
+ private:
+  ServiceBasedGcsClient *client_impl_;
+};
+
+class ServiceBasedInternalKVAccessor : public InternalKVAccessor {
+ public:
+  explicit ServiceBasedInternalKVAccessor(ServiceBasedGcsClient *client_impl);
+  ~ServiceBasedInternalKVAccessor() override = default;
+
+  Status AsyncInternalKVKeys(
+      const std::string &prefix,
+      const OptionalItemCallback<std::vector<std::string>> &callback) override;
+  Status AsyncInternalKVGet(const std::string &key,
+                            const OptionalItemCallback<std::string> &callback) override;
+  Status AsyncInternalKVPut(const std::string &key, const std::string &value,
+                            bool overwrite,
+                            const OptionalItemCallback<int> &callback) override;
+  Status AsyncInternalKVExists(const std::string &key,
+                               const OptionalItemCallback<bool> &callback) override;
+  Status AsyncInternalKVDel(const std::string &key,
+                            const StatusCallback &callback) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;

@@ -3,7 +3,7 @@ PyTorch policy class used for SAC.
 """
 
 import gym
-from gym.spaces import Discrete
+from gym.spaces import Box, Discrete
 import logging
 from typing import Dict, List, Optional, Tuple, Type, Union
 
@@ -12,6 +12,7 @@ import ray.experimental.tf_utils
 from ray.rllib.agents.sac.sac_tf_policy import build_sac_model, \
     postprocess_trajectory, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import \
     TorchDistributionWrapper, TorchDirichlet
@@ -32,22 +33,33 @@ F = nn.functional
 logger = logging.getLogger(__name__)
 
 
-def _get_dist_class(config: TrainerConfigDict, action_space: gym.spaces.Space
-                    ) -> Type[TorchDistributionWrapper]:
+def _get_dist_class(policy: Policy,
+                    config: TrainerConfigDict,
+                    action_space: gym.spaces.Space) -> \
+                    Type[TorchDistributionWrapper]:
     """Helper function to return a dist class based on config and action space.
 
     Args:
+        policy (Policy): The policy for which to return the action
+            dist class.
         config (TrainerConfigDict): The Trainer's config dict.
         action_space (gym.spaces.Space): The action space used.
 
     Returns:
         Type[TFActionDistribution]: A TF distribution class.
     """
-    if isinstance(action_space, Discrete):
+    if hasattr(policy, "dist_class") and policy.dist_class is not None:
+        return policy.dist_class
+    elif config["model"].get("custom_action_dist"):
+        action_dist_class, _ = ModelCatalog.get_action_dist(
+            action_space, config["model"], framework="torch")
+        return action_dist_class
+    elif isinstance(action_space, Discrete):
         return TorchCategorical
     elif isinstance(action_space, Simplex):
         return TorchDirichlet
     else:
+        assert isinstance(action_space, Box)
         if config["normalize_actions"]:
             return TorchSquashedGaussian if \
                 not config["_use_beta_distribution"] else TorchBeta
@@ -75,7 +87,7 @@ def build_sac_model_and_action_dist(
             `policy.target_model`.
     """
     model = build_sac_model(policy, obs_space, action_space, config)
-    action_dist_class = _get_dist_class(config, action_space)
+    action_dist_class = _get_dist_class(policy, config, action_space)
     return model, action_dist_class
 
 
@@ -132,7 +144,8 @@ def action_distribution_fn(
     # policy components.
     distribution_inputs = model.get_policy_output(model_out)
     # Get a distribution class to be used with the just calculated dist-inputs.
-    action_dist_class = _get_dist_class(policy.config, policy.action_space)
+    action_dist_class = _get_dist_class(policy, policy.config,
+                                        policy.action_space)
 
     return distribution_inputs, action_dist_class, []
 
@@ -206,7 +219,8 @@ def actor_critic_loss(
     # Continuous actions case.
     else:
         # Sample single actions from distribution.
-        action_dist_class = _get_dist_class(policy.config, policy.action_space)
+        action_dist_class = _get_dist_class(policy, policy.config,
+                                            policy.action_space)
         action_dist_t = action_dist_class(
             model.get_policy_output(model_out_t), policy.model)
         policy_t = action_dist_t.sample() if not deterministic else \
@@ -301,7 +315,12 @@ def actor_critic_loss(
     policy.q_t = q_t
     policy.policy_t = policy_t
     policy.log_pis_t = log_pis_t
-    policy.td_error = td_error
+
+    # Store td-error in model, such that for multi-GPU, we do not override
+    # them during the parallel loss phase. TD-error tensor in final stats
+    # can then be concatenated and retrieved for each individual batch item.
+    model.td_error = td_error
+
     policy.actor_loss = actor_loss
     policy.critic_loss = critic_loss
     policy.alpha_loss = alpha_loss
@@ -324,9 +343,15 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     Returns:
         Dict[str, TensorType]: The stats dict.
     """
+    td_error = torch.cat(
+        [
+            getattr(t, "td_error", torch.tensor([0.0]))
+            for t in policy.model_gpu_towers
+        ],
+        dim=0)
     return {
-        "td_error": policy.td_error,
-        "mean_td_error": torch.mean(policy.td_error),
+        "td_error": td_error,
+        "mean_td_error": torch.mean(td_error),
         "actor_loss": torch.mean(policy.actor_loss),
         "critic_loss": torch.mean(torch.stack(policy.critic_loss)),
         "alpha_loss": torch.mean(policy.alpha_loss),

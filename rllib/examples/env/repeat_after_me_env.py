@@ -6,11 +6,14 @@ import random
 class RepeatAfterMeEnv(gym.Env):
     """Env in which the observation at timestep minus n must be repeated."""
 
-    def __init__(self, config):
+    def __init__(self, config=None):
+        config = config or {}
         self.observation_space = Discrete(2)
         self.action_space = Discrete(2)
+        # Note: Set `repeat_delay` to 0 for simply repeating the seen
+        # observation (no delay).
         self.delay = config.get("repeat_delay", 1)
-        assert self.delay >= 1, "`repeat_delay` must be at least 1!"
+        self.episode_len = config.get("episode_len", 100)
         self.history = []
 
     def reset(self):
@@ -22,7 +25,7 @@ class RepeatAfterMeEnv(gym.Env):
             reward = 1
         else:
             reward = -1
-        done = len(self.history) > 100
+        done = len(self.history) > self.episode_len
         return self._next_obs(), reward, done, {}
 
     def _next_obs(self):

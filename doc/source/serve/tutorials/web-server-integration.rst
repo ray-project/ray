@@ -11,6 +11,11 @@ We give two examples, one using a `FastAPI <https://fastapi.tiangolo.com/>`__ we
 Scaling Up a FastAPI Application
 --------------------------------
 
+.. warning::
+
+  With the introduction of the new Deployments API in Ray 1.4.0, this tutorial no longer describes the best practice for integrating Ray Serve with FastAPI, and will soon be removed.
+  For details on the new and improved FastAPI integration, please see :ref:`serve-fastapi-http`.
+
 For this example, you must have either `Pytorch <https://pytorch.org/>`_ or `Tensorflow <https://www.tensorflow.org/>`_ installed, as well as `Huggingface Transformers <https://github.com/huggingface/transformers>`_ and `FastAPI <https://fastapi.tiangolo.com/>`_.  For example:
 
 .. code-block:: bash
@@ -19,7 +24,7 @@ For this example, you must have either `Pytorch <https://pytorch.org/>`_ or `Ten
 
 Here’s a simple FastAPI web server. It uses Huggingface Transformers to auto-generate text based on a short initial input using `OpenAI’s GPT-2 model <https://openai.com/blog/better-language-models/>`_.
 
-.. literalinclude:: ../../../../python/ray/serve/examples/doc/fastapi/fastapi.py
+.. literalinclude:: ../../../../python/ray/serve/examples/doc/fastapi/fastapi_simple.py
 
 To scale this up, we define a Ray Serve backend containing our text model and call it from Python using a ServeHandle:
 
@@ -66,16 +71,10 @@ Here's how to run this example:
 
 1. Run ``ray start --head`` to start a local Ray cluster in the background.
 
-2. In the directory where the example files are saved, run ``python deploy_serve.py`` to deploy our Ray Serve endpoint.
+2. In the directory where the example files are saved, run ``python aiohttp_deploy_serve.py`` to deploy our Ray Serve endpoint.
 
-.. note::
-  Because we have omitted the keyword argument ``route`` in ``serve.create_endpoint()``, our endpoint will not be exposed over HTTP by Ray Serve.
+3. Run ``gunicorn aiohttp_app:app --worker-class aiohttp.GunicornWebWorker`` to start the AIOHTTP app using gunicorn.
 
-3. Run ``gunicorn aiohttp_app:app --worker-class aiohttp.GunicornWebWorker --bind localhost:8001`` to start the AIOHTTP app using gunicorn. We bind to port 8001 because the Ray Dashboard is already using port 8000 by default.
-
-.. tip::
-  You can change the Ray Dashboard port with the command ``ray start --dashboard-port XXXX``.
-
-4. To test out the server, run ``curl localhost:8001/dummy-model``.  This should output ``Model received data: dummy input``.
+4. To test out the server, run ``curl localhost:8000/dummy-model``.  This should output ``Model received data: dummy input``.
 
 5. For cleanup, you can press Ctrl-C to stop the Gunicorn server, and run ``ray stop`` to stop the background Ray cluster.

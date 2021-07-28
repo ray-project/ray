@@ -73,13 +73,8 @@ message PythonFunctionDescriptor {
 
 /// Function descriptor for C/C++.
 message CppFunctionDescriptor {
-  /// Dynamic library name which contains the remote function.
-  string lib_name = 1;
-  /// Remote function offset from base address.
-  string function_offset = 2;
-  /// Executable function offset from base address.
-  string exec_function_offset = 3;
-  string function_name = 4;
+  /// Remote function name.
+  string function_name = 1;
 }
 
 // A union wrapper for various function descriptor types.
@@ -135,10 +130,13 @@ message RayException {
   string formatted_exception_string = 3;
 }
 
-/// The runtime environment descrive all the runtime pacakges needed to
+/// The runtime environment describes all the runtime packages needed to
 /// run some task or actor.
 message RuntimeEnv {
-  repeated string uris = 1;
+  /// The raw json passed from user
+  string raw_json = 1;
+  /// Uris used in this runtime env
+  repeated string uris = 2;
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -198,6 +196,8 @@ message TaskSpec {
   // Breakpoint if this task should drop into the debugger when it starts executing
   // and "" if the task should not drop into the debugger.
   bytes debugger_breakpoint = 23;
+  // Serialized JSON string of the parsed runtime environment dict for this task.
+  string serialized_runtime_env = 24;
 }
 
 message Bundle {
@@ -239,6 +239,31 @@ message ObjectReference {
   Address owner_address = 2;
 }
 
+message ObjectReferenceCount {
+  // The reference that the worker has or had a reference to.
+  ObjectReference reference = 1;
+  // Whether the worker is still using the ObjectID locally. This means that
+  // it has a copy of the ObjectID in the language frontend, has a pending task
+  // that depends on the object, and/or owns an ObjectID that is in scope and
+  // that contains the ObjectID.
+  bool has_local_ref = 2;
+  // Any other borrowers that the worker created (by passing the ID on to them).
+  repeated Address borrowers = 3;
+  // The borrower may have returned the object ID nested inside the return
+  // value of a task that it executed. This list contains all task returns that
+  // were owned by a process other than the borrower. Then, the process that
+  // owns the task's return value is also a borrower for as long as it has the
+  // task return ID in scope. Note that only the object ID and owner address
+  // are used for elements in this list.
+  repeated ObjectReference stored_in_objects = 4;
+  // The borrowed object ID that contained this object, if any. This is used
+  // for nested object IDs.
+  bytes contained_in_borrowed_id = 5;
+  // The object IDs that this object contains, if any. This is used for nested
+  // object IDs.
+  repeated bytes contains = 6;
+}
+
 // Argument in the task.
 message TaskArg {
   // A pass-by-ref argument.
@@ -274,10 +299,14 @@ message ActorCreationTaskSpec {
   bool is_detached = 7;
   // Globally-unique name of the actor. Should only be populated when is_detached is true.
   string name = 8;
+  // The namespace of the actor. Should only be populated when is_detached is true.
+  string ray_namespace = 9;
   // Whether the actor use async actor calls.
-  bool is_asyncio = 9;
+  bool is_asyncio = 10;
   // Field used for storing application-level extensions to the actor definition.
-  string extension_data = 10;
+  string extension_data = 11;
+  // Serialized bytes of the Handle to the actor that will be created by this task.
+  bytes serialized_actor_handle = 12;
 }
 
 // Task spec of an actor task.
@@ -452,7 +481,10 @@ enum WorkerExitType {
   PLACEMENT_GROUP_REMOVED = 3;
   // Worker exit due to exceptions in creation task.
   CREATION_TASK_ERROR = 4;
+  // Worker killed by raylet if it has been idle for too long.
+  IDLE_EXIT = 5;
 }
+
 ///////////////////////////////////////////////////////////////////////////////
 /* Please do not modify/remove/change the following enum to maintain
 backwards compatibility in autoscaler. This is necessary to make sure we can
@@ -474,3 +506,9 @@ enum PlacementStrategy {
   STRICT_SPREAD = 3;
 }
 ///////////////////////////////////////////////////////////////////////////////
+
+// Info about a named actor.
+message NamedActorInfo {
+  string ray_namespace = 1;
+  string name = 2;
+}

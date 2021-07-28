@@ -369,14 +369,13 @@ If we instantiate an actor, we can pass the handle around to various tasks.
 Named Actors
 ------------
 
-An actor can be given a globally unique name.
+An actor can be given a unique name within their :ref:`namespace <namespaces-guide>`.
 This allows you to retrieve the actor from any job in the Ray cluster.
 This can be useful if you cannot directly
 pass the actor handle to the task that needs it, or if you are trying to
 access an actor launched by another driver.
 Note that the actor will still be garbage-collected if no handles to it
 exist. See :ref:`actor-lifetimes` for more details.
-
 
 .. tabs::
 
@@ -415,6 +414,34 @@ exist. See :ref:`actor-lifetimes` for more details.
       // Retrieve the actor later somewhere in the same job
       Optional<ActorHandle<Counter>> counter = Ray.getActor("some_name_in_job");
       Assert.assertTrue(counter.isPresent());
+
+.. note::
+
+     Named actors are only accessible in the same namespace. 
+
+    .. code-block:: python
+
+        import ray
+
+        @ray.remote
+        class Actor:
+          pass
+
+        # driver_1.py
+        # Job 1 creates an actor, "orange" in the "colors" namespace.
+        ray.init(address="auto", namespace="colors")
+        Actor.options(name="orange", lifetime="detached")
+
+        # driver_2.py
+        # Job 2 is now connecting to a different namespace.
+        ray.init(address="auto", namespace="fruit")
+        # This fails because "orange" was defined in the "colors" namespace.
+        ray.get_actor("orange")
+
+        # driver_3.py
+        # Job 3 connects to the original "colors" namespace
+        ray.init(address="auto", namespace="colors")
+        # This returns the "orange" actor we created in the first job.
 
 .. _actor-lifetimes:
 

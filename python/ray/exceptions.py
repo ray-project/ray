@@ -1,10 +1,9 @@
 import os
 from traceback import format_exception
 
-import colorama
-
 import ray.cloudpickle as pickle
 from ray.core.generated.common_pb2 import RayException, Language, PYTHON
+import colorama
 import setproctitle
 
 
@@ -263,6 +262,11 @@ class PlasmaObjectNotAvailable(RayError):
     pass
 
 
+class AsyncioActorExit(RayError):
+    """Raised when an asyncio actor intentionally exits via exit_actor()."""
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -272,4 +276,5 @@ RAY_EXCEPTION_TYPES = [
     ObjectStoreFullError,
     ObjectLostError,
     GetTimeoutError,
+    AsyncioActorExit,
 ]

@@ -4,6 +4,8 @@
 
 #include <future>
 #include <thread>
+#include "boost/filesystem.hpp"
+#include "ray/util/logging.h"
 
 using namespace ray::api;
 
@@ -13,6 +15,8 @@ int Plus1(int x) { return x + 1; }
 int Plus(int x, int y) { return x + y; }
 
 int Triple(int x, int y, int z) { return x + y + z; }
+
+RAY_REMOTE(Return1, Plus1, Plus, Triple);
 
 class Counter {
  public:
@@ -39,8 +43,36 @@ class Counter {
   }
 };
 
+RAY_REMOTE(Counter::FactoryCreate, &Counter::Plus1, &Counter::Plus, &Counter::Triple,
+           &Counter::Add);
+
+TEST(RayApiTest, LogTest) {
+  auto log_path = boost::filesystem::current_path().string() + "/tmp/";
+  ray::RayLog::StartRayLog("cpp_worker", ray::RayLogLevel::DEBUG, log_path);
+  std::array<std::string, 3> str_arr{"debug test", "info test", "warning test"};
+  RAYLOG(DEBUG) << str_arr[0];
+  RAYLOG(INFO) << str_arr[1];
+  RAYLOG(WARNING) << str_arr[2];
+  RAY_CHECK(true);
+
+  for (auto &it : boost::filesystem::directory_iterator(log_path)) {
+    if (!boost::filesystem::is_directory(it)) {
+      std::ifstream in(it.path().string(), std::ios::binary);
+      std::string line;
+      for (int i = 0; i < 3; i++) {
+        std::getline(in, line);
+        EXPECT_TRUE(line.find(str_arr[i]) != std::string::npos);
+      }
+    }
+  }
+
+  boost::filesystem::remove_all(log_path);
+}
+
 TEST(RayApiTest, PutTest) {
-  Ray::Init();
+  RayConfig config;
+  config.local_mode = true;
+  Ray::Init(config);
 
   auto obj1 = Ray::Put(1);
   auto i1 = obj1.Get();
@@ -48,7 +80,9 @@ TEST(RayApiTest, PutTest) {
 }
 
 TEST(RayApiTest, StaticGetTest) {
-  Ray::Init();
+  RayConfig config;
+  config.local_mode = true;
+  Ray::Init(config);
   /// `Get` member function
   auto obj_ref1 = Ray::Put(100);
   auto res1 = obj_ref1.Get();
@@ -61,12 +95,14 @@ TEST(RayApiTest, StaticGetTest) {
 }
 
 TEST(RayApiTest, WaitTest) {
-  Ray::Init();
+  RayConfig config;
+  config.local_mode = true;
+  Ray::Init(config);
   auto r0 = Ray::Task(Return1).Remote();
   auto r1 = Ray::Task(Plus1).Remote(3);
   auto r2 = Ray::Task(Plus).Remote(2, 3);
-  std::vector<ObjectID> objects = {r0.ID(), r1.ID(), r2.ID()};
-  WaitResult result = Ray::Wait(objects, 3, 1000);
+  std::vector<ObjectRef<int>> objects = {r0, r1, r2};
+  WaitResult<int> result = Ray::Wait(objects, 3, 1000);
   EXPECT_EQ(result.ready.size(), 3);
   EXPECT_EQ(result.unready.size(), 0);
   std::vector<std::shared_ptr<int>> getResult = Ray::Get<int>(objects);
@@ -114,13 +150,15 @@ TEST(RayApiTest, CallWithObjectTest) {
 }
 
 TEST(RayApiTest, ActorTest) {
-  Ray::Init();
+  RayConfig config;
+  config.local_mode = true;
+  Ray::Init(config);
   ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate).Remote();
-  auto rt1 = actor.Task(&Counter::Add, 1).Remote();
-  auto rt2 = actor.Task(&Counter::Add, 2).Remote();
-  auto rt3 = actor.Task(&Counter::Add, 3).Remote();
-  auto rt4 = actor.Task(&Counter::Add, rt3).Remote();
-  auto rt5 = actor.Task(&Counter::Triple, 1, 2, 3).Remote();
+  auto rt1 = actor.Task(&Counter::Add).Remote(1);
+  auto rt2 = actor.Task(&Counter::Add).Remote(2);
+  auto rt3 = actor.Task(&Counter::Add).Remote(3);
+  auto rt4 = actor.Task(&Counter::Add).Remote(rt3);
+  auto rt5 = actor.Task(&Counter::Triple).Remote(1, 2, 3);
 
   int return1 = *(rt1.Get());
   int return2 = *(rt2.Get());
@@ -147,7 +185,9 @@ TEST(RayApiTest, CompareWithFuture) {
   int rt2 = f2.get();
 
   // Ray API
-  Ray::Init();
+  RayConfig config;
+  config.local_mode = true;
+  Ray::Init(config);
   auto f3 = Ray::Task(Plus1).Remote(1);
   int rt3 = *f3.Get();
 

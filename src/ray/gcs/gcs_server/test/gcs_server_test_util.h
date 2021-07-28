@@ -22,7 +22,6 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
-#include "ray/gcs/gcs_server/gcs_actor_schedule_strategy.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
@@ -240,9 +239,20 @@ struct GcsServerMocker {
     void GetSystemConfig(const ray::rpc::ClientCallback<ray::rpc::GetSystemConfigReply>
                              &callback) override {}
 
-    /// ResourceRequestInterface
+    void GetGcsServerAddress(
+        const ray::rpc::ClientCallback<ray::rpc::GetGcsServerAddressReply> &callback)
+        override {}
+
+    /// ResourceUsageInterface
     void RequestResourceReport(
         const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override {
+      RAY_CHECK(false) << "Unused";
+    };
+
+    /// ResourceUsageInterface
+    void UpdateResourceUsage(
+        std::string &address,
+        const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override {
       RAY_CHECK(false) << "Unused";
     };
 
@@ -267,9 +277,9 @@ struct GcsServerMocker {
     std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};
   };
 
-  class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
+  class MockedRayletBasedActorScheduler : public gcs::RayletBasedActorScheduler {
    public:
-    using gcs::GcsActorScheduler::GcsActorScheduler;
+    using gcs::RayletBasedActorScheduler::RayletBasedActorScheduler;
 
     void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
                                      std::shared_ptr<rpc::GcsNodeInfo> node) {

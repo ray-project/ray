@@ -3,14 +3,18 @@ import logging
 from typing import Dict, Any, List, Optional, Tuple, Union
 
 from ray._raylet import (
-    Count as CythonCount,
+    Sum as CythonCount,
     Histogram as CythonHistogram,
     Gauge as CythonGauge,
 )  # noqa: E402
+# Sum is used for CythonCount because it allows incrementing by positive
+# values that are different from one.
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class Metric:
     """The parent class of custom metrics.
 
@@ -144,6 +148,7 @@ class Metric:
         }
 
 
+@DeveloperAPI
 class Counter(Metric):
     """A cumulative metric that is monotonically increasing.
 
@@ -186,6 +191,7 @@ class Counter(Metric):
         self.record(value, tags=tags, _internal=True)
 
 
+@DeveloperAPI
 class Count(Counter):
     """The count of the number of metric points.
 
@@ -209,6 +215,7 @@ class Count(Counter):
         super().__init__(name, description, tag_keys)
 
 
+@DeveloperAPI
 class Histogram(Metric):
     """Tracks the size and number of events in buckets.
 
@@ -233,8 +240,9 @@ class Histogram(Metric):
         super().__init__(name, description, tag_keys)
         if boundaries is None or len(boundaries) == 0:
             raise ValueError(
-                "boundaries argument should be provided when using the "
-                "Histogram class. e.g., Histogram(boundaries=[1.0, 2.0])")
+                "boundaries argument should be provided when using "
+                "the Histogram class. e.g., "
+                "Histogram(\"name\", boundaries=[1.0, 2.0])")
         self.boundaries = boundaries
         self._metric = CythonHistogram(self._name, self._description,
                                        self.boundaries, self._tag_keys)
@@ -267,6 +275,7 @@ class Histogram(Metric):
         return info
 
 
+@DeveloperAPI
 class Gauge(Metric):
     """Gauges keep the last recorded value and drop everything before.
 

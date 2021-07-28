@@ -67,16 +67,19 @@ def load_package(config_path: str) -> "_RuntimePackage":
     runtime_env = config["runtime_env"]
 
     # Autofill working directory by uploading to GCS storage.
-    if "working_dir" not in runtime_env:
+    if "_packaging_uri" not in runtime_env:
         pkg_name = runtime_support.get_project_package_name(
-            working_dir=base_dir, modules=[])
+            working_dir=base_dir, py_modules=[], excludes=[])
         pkg_uri = runtime_support.Protocol.GCS.value + "://" + pkg_name
 
         def do_register_package():
             if not runtime_support.package_exists(pkg_uri):
                 tmp_path = os.path.join(_pkg_tmp(), "_tmp{}".format(pkg_name))
                 runtime_support.create_project_package(
-                    working_dir=base_dir, modules=[], output_path=tmp_path)
+                    working_dir=base_dir,
+                    py_modules=[],
+                    excludes=[],
+                    output_path=tmp_path)
                 # TODO(ekl) does this get garbage collected correctly with the
                 # current job id?
                 runtime_support.push_package(pkg_uri, tmp_path)
@@ -88,7 +91,7 @@ def load_package(config_path: str) -> "_RuntimePackage":
             do_register_package()
         else:
             ray.worker._post_init_hooks.append(do_register_package)
-        runtime_env["working_dir"] = pkg_uri
+        runtime_env["_packaging_uri"] = pkg_uri
 
     # Autofill conda config.
     conda_yaml = os.path.join(base_dir, "conda.yaml")
@@ -98,17 +101,10 @@ def load_package(config_path: str) -> "_RuntimePackage":
                 "Both conda.yaml and conda: section found in package")
         runtime_env["conda"] = yaml.safe_load(open(conda_yaml).read())
 
-    if "stub_file" in config:
-        # TODO(ekl) remove this path
-        print("Warning: stub_file is deprecated, use interface_file instead")
-        interface_file = config["stub_file"]
-    else:
-        interface_file = config["interface_file"]
-
     pkg = _RuntimePackage(
         name=config["name"],
         desc=config["description"],
-        interface_file=os.path.join(base_dir, interface_file),
+        interface_file=os.path.join(base_dir, config["interface_file"]),
         runtime_env=runtime_env)
     return pkg
 

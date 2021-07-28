@@ -25,10 +25,7 @@ class TestPG(unittest.TestCase):
         config["num_workers"] = 0
         num_iterations = 2
 
-        for fw in framework_iterator(config):
-            # For tf, build with fake-GPUs.
-            config["_fake_gpus"] = fw == "tf"
-            config["num_gpus"] = 2 if fw == "tf" else 0
+        for _ in framework_iterator(config):
             trainer = pg.PGTrainer(config=config, env="CartPole-v0")
             for i in range(num_iterations):
                 print(trainer.train())
@@ -43,23 +40,24 @@ class TestPG(unittest.TestCase):
         config["num_gpus"] = 2
         config["_fake_gpus"] = True
 
-        config["framework"] = "tf"
         # Mimic tuned_example for PG CartPole.
         config["model"]["fcnet_hiddens"] = [64]
         config["model"]["fcnet_activation"] = "linear"
 
-        trainer = pg.PGTrainer(config=config, env="CartPole-v0")
-        num_iterations = 200
-        learnt = False
-        for i in range(num_iterations):
-            results = trainer.train()
-            print("reward={}".format(results["episode_reward_mean"]))
-            # Make this test quite short (75.0).
-            if results["episode_reward_mean"] > 75.0:
-                learnt = True
-                break
-        assert learnt, "PG multi-GPU (with fake-GPUs) did not learn CartPole!"
-        trainer.stop()
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+            trainer = pg.PGTrainer(config=config, env="CartPole-v0")
+            num_iterations = 300
+            learnt = False
+            for i in range(num_iterations):
+                results = trainer.train()
+                print("reward={}".format(results["episode_reward_mean"]))
+                # Make this test quite short (75.0).
+                if results["episode_reward_mean"] > 65.0:
+                    learnt = True
+                    break
+            assert learnt,\
+                "PG multi-GPU (with fake-GPUs) did not learn CartPole!"
+            trainer.stop()
 
     def test_pg_loss_functions(self):
         """Tests the PG loss function math."""
@@ -70,7 +68,7 @@ class TestPG(unittest.TestCase):
         config["model"]["fcnet_activation"] = "linear"
 
         # Fake CartPole episode of n time steps.
-        train_batch = {
+        train_batch = SampleBatch({
             SampleBatch.OBS: np.array([[0.1, 0.2, 0.3,
                                         0.4], [0.5, 0.6, 0.7, 0.8],
                                        [0.9, 1.0, 1.1, 1.2]]),
@@ -79,7 +77,7 @@ class TestPG(unittest.TestCase):
             SampleBatch.DONES: np.array([False, False, True]),
             SampleBatch.EPS_ID: np.array([1234, 1234, 1234]),
             SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
-        }
+        })
 
         for fw, sess in framework_iterator(config, session=True):
             dist_cls = (Categorical if fw != "torch" else TorchCategorical)

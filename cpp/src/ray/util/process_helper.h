@@ -1,16 +1,18 @@
 #pragma once
-#include <ray/api/ray_config.h>
 #include <string>
-#include "ray/core.h"
+
+#include "../config_internal.h"
+#include "ray/core_worker/core_worker.h"
 
 namespace ray {
 namespace api {
 
 class ProcessHelper {
  public:
-  void RayStart(std::shared_ptr<RayConfig> config,
-                CoreWorkerOptions::TaskExecutionCallback callback);
-  void RayStop(std::shared_ptr<RayConfig> config);
+  void RayStart(CoreWorkerOptions::TaskExecutionCallback callback);
+  void RayStop();
+  void StartRayNode(int redis_port, std::string redis_password);
+  void StopRayNode();
 
   static ProcessHelper &GetInstance() {
     static ProcessHelper processHelper;

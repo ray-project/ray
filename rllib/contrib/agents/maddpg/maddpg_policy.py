@@ -230,7 +230,8 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
 
         # _____ TensorFlow Initialization
 
-        self.sess = tf1.get_default_session()
+        sess = tf1.get_default_session()
+        assert sess
 
         def _make_loss_inputs(placeholders):
             return [(ph.name.split("/")[-1].split(":")[0], ph)
@@ -244,7 +245,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             obs_space,
             act_space,
             config=config,
-            sess=self.sess,
+            sess=sess,
             obs_input=obs_ph_n[agent_id],
             sampled_action=act_sampler,
             loss=actor_loss + critic_loss,
@@ -254,7 +255,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         del self.view_requirements["prev_actions"]
         del self.view_requirements["prev_rewards"]
 
-        self.sess.run(tf1.global_variables_initializer())
+        self.get_session().run(tf1.global_variables_initializer())
 
         # Hard initial update
         self.update_target(1.0)
@@ -297,12 +298,13 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         var_list = []
         for var in self.vars.values():
             var_list += var
-        return self.sess.run(var_list)
+        return {"_state": self.get_session().run(var_list)}
 
     @override(TFPolicy)
     def set_weights(self, weights):
-        self.sess.run(
-            self.update_vars, feed_dict=dict(zip(self.vars_ph, weights)))
+        self.get_session().run(
+            self.update_vars,
+            feed_dict=dict(zip(self.vars_ph, weights["_state"])))
 
     @override(Policy)
     def get_state(self):
@@ -376,6 +378,6 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
 
     def update_target(self, tau=None):
         if tau is not None:
-            self.sess.run(self.update_target_vars, {self.tau: tau})
+            self.get_session().run(self.update_target_vars, {self.tau: tau})
         else:
-            self.sess.run(self.update_target_vars)
+            self.get_session().run(self.update_target_vars)

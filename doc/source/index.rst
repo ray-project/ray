@@ -121,22 +121,24 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
     .. code-block:: shell
 
-      bazel build //cpp/example:example
+      pip install -e python --verbose
+      cd cpp/example/
+      bazel build //:example
 
     | Option 1: run the example directly with a dynamic library path. It will start a Ray cluster automatically.
 
     .. code-block:: shell
 
       ray stop
-      ./bazel-bin/cpp/example/example --dynamic-library-path=bazel-bin/cpp/example/example.so
+      ./bazel-bin/example 
 
     | Option 2: connect to an existing Ray cluster with a known redis address (e.g. `127.0.0.1:6379`).
 
     .. code-block:: shell
 
       ray stop
-      ray start --head --port 6379 --redis-password 5241590000000000 --node-manager-port 62665
-      ./bazel-bin/cpp/example/example --dynamic-library-path=bazel-bin/cpp/example/example.so --redis-address=127.0.0.1:6379
+      ray start --head
+      RAY_ADDRESS=127.0.0.1:6379 ./bazel-bin/example
 
     .. literalinclude:: ../../cpp/example/example.cc
        :language: cpp
@@ -239,17 +241,20 @@ Papers
    configure.rst
    ray-dashboard.rst
    Tutorial and Examples <auto_examples/overview.rst>
+   Design patterns and anti-patterns <ray-design-patterns/index.rst>
    package-ref.rst
 
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Clusters/Autoscaler
+   :caption: Multi-node Ray
 
    cluster/index.rst
    cluster/quickstart.rst
+   cluster/guide.rst
    cluster/reference.rst
    cluster/cloud.rst
+   cluster/ray-client.rst
    cluster/deploy.rst
 
 .. toctree::
@@ -263,12 +268,23 @@ Papers
    serve/http-servehandle.rst
    serve/deployment.rst
    serve/ml-models.rst
-   serve/advanced-traffic.rst
    serve/performance.rst
    serve/architecture.rst
    serve/tutorials/index.rst
    serve/faq.rst
    serve/package-ref.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: -1
+   :caption: Ray Data Processing
+
+   data/dataset.rst
+   data/package-ref.rst
+   data/dask-on-ray.rst
+   data/mars-on-ray.rst
+   data/modin/index.rst
+   data/raydp.rst
 
 .. toctree::
    :hidden:
@@ -309,20 +325,9 @@ Papers
    raysgd/raysgd.rst
    raysgd/raysgd_pytorch.rst
    raysgd/raysgd_tensorflow.rst
-   raysgd/raysgd_dataset.rst
    raysgd/raysgd_ptl.rst
    raysgd/raysgd_tune.rst
    raysgd/raysgd_ref.rst
-
-.. toctree::
-   :hidden:
-   :maxdepth: -1
-   :caption: Data Processing
-
-   modin/index.rst
-   dask-on-ray.rst
-   mars-on-ray.rst
-   raydp.rst
 
 .. toctree::
    :hidden:
@@ -331,9 +336,9 @@ Papers
 
    multiprocessing.rst
    joblib.rst
-   iter.rst
    xgboost-ray.rst
-   ray-client.rst
+   lightgbm-ray.rst
+   ray-collective.rst
 
 .. toctree::
    :hidden:
@@ -343,6 +348,7 @@ Papers
    ray-metrics.rst
    ray-debugging.rst
    ray-logging.rst
+   ray-tracing.rst
 
 .. toctree::
    :hidden:

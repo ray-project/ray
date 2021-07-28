@@ -346,8 +346,8 @@ class RSSM(nn.Module):
         for index in range(len(action)):
             # Tuple of post and prior
             last = self.obs_step(last[0], action[index], embed[index])
-            [o.append(l) for l, o in zip(last[0], posts)]
-            [o.append(l) for l, o in zip(last[1], priors)]
+            [o.append(s) for s, o in zip(last[0], posts)]
+            [o.append(s) for s, o in zip(last[1], priors)]
 
         prior = [torch.stack(x, dim=0) for x in priors]
         post = [torch.stack(x, dim=0) for x in posts]
@@ -379,7 +379,7 @@ class RSSM(nn.Module):
         last = state
         for index in indices:
             last = self.img_step(last, action[index])
-            [o.append(l) for l, o in zip(last, priors)]
+            [o.append(s) for s, o in zip(last, priors)]
 
         prior = [torch.stack(x, dim=0) for x in priors]
         prior = [e.permute(1, 0, 2) for e in prior]
@@ -521,7 +521,7 @@ class DreamerModel(TorchModelV2, nn.Module):
         outputs = [[] for i in range(len(start))]
         for _ in range(horizon):
             last = next_state(last)
-            [o.append(l) for l, o in zip(last, outputs)]
+            [o.append(s) for s, o in zip(last, outputs)]
         outputs = [torch.stack(x, dim=0) for x in outputs]
 
         imag_feat = self.dynamics.get_feature(outputs)

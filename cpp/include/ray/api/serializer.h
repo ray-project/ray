@@ -48,9 +48,8 @@ class Serializer {
   }
 
   static bool HasError(char *data, size_t size) {
-    size_t off = 0;
-    msgpack::unpacked unpacked = msgpack::unpack(data, 1, off);
-    return unpacked.get().is_nil() && size > off;
+    msgpack::unpacked unpacked = msgpack::unpack(data, size);
+    return unpacked.get().is_nil() && size > 1;
   }
 };
 

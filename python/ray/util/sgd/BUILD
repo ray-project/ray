@@ -3,6 +3,22 @@
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
 py_test(
+    name = "test_client",
+    size = "large",
+    srcs = ["tests/test_client.py"],
+    tags = ["exclusive", "client"],
+    deps = [":sgd_lib"]
+)
+
+py_test(
+    name = "test_placement_groups",
+    size = "medium",
+    srcs = ["tests/test_placement_groups.py"],
+    tags = ["exclusive"],
+    deps = [":sgd_lib"]
+)
+
+py_test(
     name = "test_ptl",
     size = "large",
     srcs = ["tests/test_ptl.py"],
@@ -19,11 +35,52 @@ py_test(
 )
 
 py_test(
+    name = "test_tensorflow_client_mode",
+    size = "small",
+    main = "test_tensorflow.py",
+    srcs = ["tests/test_tensorflow.py"],
+    tags = ["exclusive", "tf", "client_unit_tests", "client"]
+)
+
+py_test(
     name = "test_torch",
     size = "large",
     srcs = ["tests/test_torch.py"],
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
+)
+
+py_test(
+    name = "test_torch_2",
+    size = "large",
+    srcs = ["tests/test_torch_2.py"],
+    tags = ["exclusive", "pytorch"],
+    deps = [":sgd_lib"],
+)
+
+py_test(
+    name = "test_torch_3",
+    size = "large",
+    srcs = ["tests/test_torch_3.py"],
+    tags = ["exclusive", "pytorch"],
+    deps = [":sgd_lib"],
+)
+
+py_test(
+    name = "test_torch_basic",
+    size = "small",
+    srcs = ["tests/test_torch_basic.py"],
+    tags = ["exclusive", "pytorch"],
+    deps = [":sgd_lib"]
+)
+
+py_test(
+    name = "test_torch_basic_client_mode",
+    main = "test_torch_basic.py",
+    size = "small",
+    srcs = ["tests/test_torch_basic.py"],
+    tags = ["exclusive", "pytorch", "client", "client_unit_tests"],
+    deps = [":sgd_lib"]
 )
 
 py_test(
@@ -41,7 +98,6 @@ py_test(
     tags = ["exclusive", "pytorch"],
     deps = [":sgd_lib"],
 )
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/util/sgd/tf/examples directory.
 # Please keep these sorted alphabetically.
@@ -140,14 +196,14 @@ py_test(
     args = ["--smoke-test"]
 )
 
-# py_test(
-#     name = "dcgan",
-#     size = "small",
-#     srcs = ["torch/examples/dcgan.py"],
-#     tags = ["exclusive", "pytorch"],
-#     deps = [":sgd_lib"],
-#     args = ["--smoke-test", "--num-workers=2"]
-# )
+py_test(
+    name = "dcgan",
+    size = "small",
+    srcs = ["torch/examples/dcgan.py"],
+    tags = ["exclusive", "pytorch"],
+    deps = [":sgd_lib"],
+    args = ["--smoke-test", "--num-workers=2"]
+)
 
 py_test(
     name = "raysgd_torch_signatures",
@@ -232,14 +288,14 @@ py_test(
     args = ["--no-gpu", "--mock-data", "--smoke-test", "--ray-num-workers=2", "--model=mobilenetv3_small_075", "data"]
 )
 
-# py_test(
-#     name = "mnist-ptl",
-#     size = "small",
-#     srcs = ["torch/examples/pytorch-lightning/mnist-ptl.py"],
-#     tags = ["exclusive", "pytorch", "pytorch-lightning"],
-#     deps = [":sgd_lib"],
-#     args = ["--smoke-test"]
-# )
+py_test(
+    name = "mnist-ptl",
+    size = "small",
+    srcs = ["torch/examples/pytorch-lightning/mnist-ptl.py"],
+    tags = ["exclusive", "pytorch", "pytorch-lightning"],
+    deps = [":sgd_lib"],
+    args = ["--smoke-test"]
+)
 
 # --------------------------------------------------------------------
 # SGD related tests from the ../../../../release directory.
@@ -259,5 +315,5 @@ py_test(
 # re-run if any of these files changes.
 py_library(
     name = "sgd_lib",
-    srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
+    srcs = glob(["**/*.py"], exclude=["tests/*.py", "v2/*"]),
 )

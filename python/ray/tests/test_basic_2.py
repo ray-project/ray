@@ -561,6 +561,39 @@ def test_actor_concurrent(ray_start_regular_shared):
     assert r1 == r2 == r3
 
 
+def test_actor_max_concurrency(ray_start_regular_shared):
+    """
+    Test that an actor of max_concurrency=N should only run
+    N tasks at most concurrently.
+    """
+    CONCURRENCY = 3
+
+    @ray.remote
+    class ConcurentActor:
+        def __init__(self):
+            self.threads = set()
+
+        def call(self):
+            # Record the current thread that runs this function.
+            self.threads.add(threading.current_thread())
+
+        def get_num_threads(self):
+            return len(self.threads)
+
+    @ray.remote
+    def call(actor):
+        for _ in range(CONCURRENCY * 100):
+            ray.get(actor.call.remote())
+        return
+
+    actor = ConcurentActor.options(max_concurrency=CONCURRENCY).remote()
+    # Start many concurrent tasks that will call the actor many times.
+    ray.get([call.remote(actor) for _ in range(CONCURRENCY * 10)])
+
+    # Check that the number of threads shouldn't be greater than CONCURRENCY.
+    assert ray.get(actor.get_num_threads.remote()) <= CONCURRENCY
+
+
 def test_wait(ray_start_regular_shared):
     @ray.remote
     def f(delay):

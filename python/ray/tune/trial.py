@@ -31,13 +31,6 @@ from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
-if "MAX_LEN_IDENTIFIER" in os.environ:
-    logger.error(
-        "The MAX_LEN_IDENTIFIER environment variable is deprecated and will "
-        "be removed in the future. Use TUNE_MAX_LEN_IDENTIFIER instead.")
-MAX_LEN_IDENTIFIER = int(
-    os.environ.get("TUNE_MAX_LEN_IDENTIFIER",
-                   os.environ.get("MAX_LEN_IDENTIFIER", 130)))
 
 
 class Location:
@@ -64,6 +57,7 @@ class ExportFormat:
     """
     CHECKPOINT = "checkpoint"
     MODEL = "model"
+    ONNX = "onnx"
     H5 = "h5"
 
     @staticmethod
@@ -77,7 +71,7 @@ class ExportFormat:
             formats[i] = formats[i].strip().lower()
             if formats[i] not in [
                     ExportFormat.CHECKPOINT, ExportFormat.MODEL,
-                    ExportFormat.H5
+                    ExportFormat.ONNX, ExportFormat.H5
             ]:
                 raise TuneError("Unsupported import/export format: " +
                                 formats[i])
@@ -119,11 +113,17 @@ class TrialInfo:
     Attributes:
         trial_name (str): String name of the current trial.
         trial_id (str): trial_id of the trial
+        trial_resources (Resources|PlacementGroupFactory): resources used
+            by trial.
     """
 
-    def __init__(self, trial):
+    def __init__(self, trial: "Trial"):
         self._trial_name = str(trial)
         self._trial_id = trial.trial_id
+        if trial.uses_placement_groups:
+            self._trial_resources = trial.placement_group_factory
+        else:
+            self._trial_resources = trial.resources
 
     @property
     def trial_name(self):
@@ -132,6 +132,15 @@ class TrialInfo:
     @property
     def trial_id(self):
         return self._trial_id
+
+    @property
+    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+        return self._trial_resources
+
+    @trial_resources.setter
+    def trial_resources(
+            self, new_resources: Union[Resources, PlacementGroupFactory]):
+        self._trial_resources = new_resources
 
 
 def create_logdir(dirname, local_dir):
@@ -194,6 +203,7 @@ class Trial:
                  placement_group_factory=None,
                  stopping_criterion=None,
                  remote_checkpoint_dir=None,
+                 sync_to_cloud=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  sync_on_checkpoint=True,
@@ -290,6 +300,7 @@ class Trial:
             self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
         else:
             self.remote_checkpoint_dir_prefix = None
+        self.sync_to_cloud = sync_to_cloud
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self.keep_checkpoints_num = keep_checkpoints_num
@@ -303,6 +314,7 @@ class Trial:
         self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
+        self.has_new_resources = False
 
         # AutoML fields
         self.results = None
@@ -316,7 +328,7 @@ class Trial:
         if trial_dirname_creator:
             self.custom_dirname = trial_dirname_creator(self)
             if os.path.sep in self.custom_dirname:
-                raise ValueError(f"Trial dirname must not contain '/'. "
+                raise ValueError("Trial dirname must not contain '/'. "
                                  "Got {self.custom_dirname}")
 
         self._state_json = None
@@ -441,6 +453,8 @@ class Trial:
         self._setup_resources()
 
         self.invalidate_json_state()
+
+        self.has_new_resources = True
 
     def set_runner(self, runner):
         self.runner = runner
@@ -628,6 +642,13 @@ class Trial:
         if self.custom_dirname:
             generated_dirname = self.custom_dirname
         else:
+            if "MAX_LEN_IDENTIFIER" in os.environ:
+                logger.error("The MAX_LEN_IDENTIFIER environment variable is "
+                             "deprecated and will be removed in the future. "
+                             "Use TUNE_MAX_LEN_IDENTIFIER instead.")
+            MAX_LEN_IDENTIFIER = int(
+                os.environ.get("TUNE_MAX_LEN_IDENTIFIER",
+                               os.environ.get("MAX_LEN_IDENTIFIER", 130)))
             generated_dirname = f"{str(self)}_{self.experiment_tag}"
             generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
             generated_dirname += f"_{date_str()}"

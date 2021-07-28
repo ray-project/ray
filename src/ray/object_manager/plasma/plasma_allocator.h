@@ -32,6 +32,11 @@ class PlasmaAllocator {
   /// \return Pointer to allocated memory.
   static void *Memalign(size_t alignment, size_t bytes);
 
+  // Same as MemAlign, but allocates pages from the filesystem. The footprint limit
+  // is not enforced for these allocations, but allocations here are still tracked
+  // and count towards the limit.
+  static void *DiskMemalignUnlimited(size_t alignment, size_t bytes);
+
   /// Frees the memory space pointed to by mem, which must have been returned by
   /// a previous call to Memalign()
   ///
@@ -53,8 +58,13 @@ class PlasmaAllocator {
   /// \return Number of bytes allocated by Plasma so far.
   static int64_t Allocated();
 
+  /// Get the number of bytes fallback allocated by Plasma so far.
+  /// \return Number of bytes fallback allocated by Plasma so far.
+  static int64_t FallbackAllocated();
+
  private:
   static int64_t allocated_;
+  static int64_t fallback_allocated_;
   static int64_t footprint_limit_;
 };
 

@@ -48,11 +48,31 @@ OPPONENT_OBS = "opponent_obs"
 OPPONENT_ACTION = "opponent_action"
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--torch", action="store_true")
-parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=100)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
-parser.add_argument("--stop-reward", type=float, default=7.99)
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=100,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=7.99,
+    help="Reward at which we stop training.")
 
 
 class CentralizedValueMixin:
@@ -83,7 +103,7 @@ def centralized_critic_postprocessing(policy,
         sample_batch[OPPONENT_ACTION] = opponent_batch[SampleBatch.ACTIONS]
 
         # overwrite default VF prediction with the central VF
-        if args.torch:
+        if args.framework == "torch":
             sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(
                 convert_to_torch_tensor(
                     sample_batch[SampleBatch.CUR_OBS], policy.device),
@@ -202,7 +222,7 @@ if __name__ == "__main__":
 
     ModelCatalog.register_custom_model(
         "cc_model", TorchCentralizedCriticModel
-        if args.torch else CentralizedCriticModel)
+        if args.framework == "torch" else CentralizedCriticModel)
 
     config = {
         "env": TwoStepGame,
@@ -213,18 +233,19 @@ if __name__ == "__main__":
         "multiagent": {
             "policies": {
                 "pol1": (None, Discrete(6), TwoStepGame.action_space, {
-                    "framework": "torch" if args.torch else "tf",
+                    "framework": args.framework,
                 }),
                 "pol2": (None, Discrete(6), TwoStepGame.action_space, {
-                    "framework": "torch" if args.torch else "tf",
+                    "framework": args.framework,
                 }),
             },
-            "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
+            "policy_mapping_fn": (
+                lambda aid, **kwargs: "pol1" if aid == 0 else "pol2"),
         },
         "model": {
             "custom_model": "cc_model",
         },
-        "framework": "torch" if args.torch else "tf",
+        "framework": args.framework,
     }
 
     stop = {

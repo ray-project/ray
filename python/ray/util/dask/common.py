@@ -7,7 +7,7 @@ import ray
 
 from dask.base import quote
 from dask.core import get as get_sync
-from dask.compatibility import apply
+from dask.utils import apply
 
 try:
     from dataclasses import is_dataclass, fields as dataclass_fields
@@ -22,7 +22,7 @@ except ImportError:
 
 def unpack_object_refs(*args):
     """
-    Extract `ray.ObjectRef`s from a set of potentially arbitrarily nested
+    Extract Ray object refs from a set of potentially arbitrarily nested
     Python objects.
 
     Intended use is to find all Ray object references in a set of (possibly

@@ -9,7 +9,7 @@ Windows wheels are now available, but :ref:`Windows support <windows-support>` i
 Official Releases
 -----------------
 
-You can install the latest official version of Ray as follows. Official releases are produced according to the `release process doc <https://github.com/ray-project/ray/blob/master/doc/dev/RELEASE_PROCESS.rst>`__.
+You can install the latest official version of Ray as follows. Official releases are produced according to the `release process doc <https://github.com/ray-project/ray/blob/master/release/RELEASE_PROCESS.rst>`__.
 
 .. code-block:: bash
 
@@ -310,6 +310,12 @@ Replace ``<shm-size>`` with a limit appropriate for your system, for example
 ``512M`` or ``2G``. A good estimate for this is to use roughly 30% of your available memory (this is
 what Ray uses internally for its Object Store). The ``-t`` and ``-i`` options here are required to support
 interactive use of the container.
+
+If you use a GPU version Docker image, remember to add ``--gpus all`` option. Replace ``<ray-version>`` with your target ray version in the following command:
+
+.. code-block:: bash
+
+  docker run --shm-size=<shm-size> -t -i --gpus all rayproject/ray:<ray-version>-gpu
 
 **Note:** Ray requires a **large** amount of shared memory because each object
 store keeps all of its objects in shared memory, so the amount of shared memory

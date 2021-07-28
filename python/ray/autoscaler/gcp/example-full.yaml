@@ -115,6 +115,11 @@ available_node_types:
             # Comment this out to use on-demand.
             scheduling:
               - preemptible: true
+            # Un-Comment this to launch workers with the Service Account of the Head Node
+            # serviceAccounts:
+            # - email: ray-autoscaler-sa-v1@<project_id>.iam.gserviceaccount.com
+            #   scopes:
+            #   - https://www.googleapis.com/auth/cloud-platform
 
     # Additional options can be found in in the compute docs at
     # https://cloud.google.com/compute/docs/reference/rest/v1/instances/insert
@@ -162,7 +167,7 @@ setup_commands: []
     # below with a git checkout <your_sha> (and possibly a recompile).
     # To run the nightly version of ray (as opposed to the latest), either use a rayproject docker image
     # that has the "nightly" (e.g. "rayproject/ray-ml:nightly-gpu") or uncomment the following line:
-    # - pip install -U "ray[full] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+    # - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
 
 
 # Custom commands that will be run on the head node after common setup.

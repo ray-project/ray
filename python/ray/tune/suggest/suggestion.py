@@ -2,7 +2,7 @@ import copy
 import glob
 import logging
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 from ray.util.debug import log_once
 
@@ -183,6 +183,32 @@ class Searcher:
         """
         raise NotImplementedError
 
+    def add_evaluated_point(self,
+                            parameters: Dict,
+                            value: float,
+                            error: bool = False,
+                            pruned: bool = False,
+                            intermediate_values: Optional[List[float]] = None):
+        """Pass results from a point that has been evaluated separately.
+
+        This method allows for information from outside the
+        suggest - on_trial_complete loop to be passed to the search
+        algorithm.
+        This functionality depends on the underlying search algorithm
+        and may not be always available.
+
+        Args:
+            parameters (dict): Parameters used for the trial.
+            value (float): Metric value obtained in the trial.
+            error (bool): True if the training process raised an error.
+            pruned (bool): True if trial was pruned.
+            intermediate_values (list): List of metric values for
+                intermediate iterations of the result. None if not
+                applicable.
+
+        """
+        raise NotImplementedError
+
     def save(self, checkpoint_path: str):
         """Save state to path for this search algorithm.
 
@@ -341,7 +367,15 @@ class ConcurrencyLimiter(Searcher):
         self.max_concurrent = max_concurrent
         self.batch = batch
         self.live_trials = set()
+        self.num_unfinished_live_trials = 0
         self.cached_results = {}
+
+        if not isinstance(searcher, Searcher):
+            raise RuntimeError(
+                f"The `ConcurrencyLimiter` only works with `Searcher` "
+                f"objects (got {type(searcher)}). Please try to pass "
+                f"`max_concurrent` to the search generator directly.")
+
         super(ConcurrencyLimiter, self).__init__(
             metric=self.searcher.metric, mode=self.searcher.mode)
 
@@ -358,6 +392,7 @@ class ConcurrencyLimiter(Searcher):
         suggestion = self.searcher.suggest(trial_id)
         if suggestion not in (None, Searcher.FINISHED):
             self.live_trials.add(trial_id)
+            self.num_unfinished_live_trials += 1
         return suggestion
 
     def on_trial_complete(self,
@@ -368,7 +403,8 @@ class ConcurrencyLimiter(Searcher):
             return
         elif self.batch:
             self.cached_results[trial_id] = (result, error)
-            if len(self.cached_results) == self.max_concurrent:
+            self.num_unfinished_live_trials -= 1
+            if self.num_unfinished_live_trials <= 0:
                 # Update the underlying searcher once the
                 # full batch is completed.
                 for trial_id, (result, error) in self.cached_results.items():
@@ -376,12 +412,23 @@ class ConcurrencyLimiter(Searcher):
                         trial_id, result=result, error=error)
                     self.live_trials.remove(trial_id)
                 self.cached_results = {}
+                self.num_unfinished_live_trials = 0
             else:
                 return
         else:
             self.searcher.on_trial_complete(
                 trial_id, result=result, error=error)
             self.live_trials.remove(trial_id)
+            self.num_unfinished_live_trials -= 1
+
+    def add_evaluated_point(self,
+                            parameters: Dict,
+                            value: float,
+                            error: bool = False,
+                            pruned: bool = False,
+                            intermediate_values: Optional[List[float]] = None):
+        return self.searcher.add_evaluated_point(parameters, value, error,
+                                                 pruned, intermediate_values)
 
     def get_state(self) -> Dict:
         state = self.__dict__.copy()

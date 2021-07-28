@@ -61,7 +61,9 @@ class ClusterTaskManagerInterface {
   ///
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  virtual void FillResourceUsage(rpc::ResourcesData &data) = 0;
+  virtual void FillResourceUsage(
+      rpc::ResourcesData &data,
+      const std::shared_ptr<SchedulingResources> &last_reported_resources = nullptr) = 0;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///
@@ -99,9 +101,6 @@ class ClusterTaskManagerInterface {
   virtual void QueueAndScheduleTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) = 0;
 
-  /// Schedule infeasible tasks.
-  virtual void ScheduleInfeasibleTasks() = 0;
-
   /// Return if any tasks are pending resource acquisition.
   ///
   /// \param[in] exemplar An example task that is deadlocking.
@@ -114,12 +113,13 @@ class ClusterTaskManagerInterface {
                                int *num_pending_tasks) const = 0;
 
   /// The helper to dump the debug state of the cluster task manater.
-  ///
-  /// As the NodeManager inherites from ClusterTaskManager and the
-  /// `cluster_task_manager_->DebugString()` is invoked inside
-  /// `NodeManager::DebugString()`, which will leads to infinite loop and cause stack
-  /// overflow, so we should rename `DebugString` to `DebugStr` to avoid this.
   virtual std::string DebugStr() const = 0;
+
+  /// Report high frequency scheduling metrics.
+  virtual void RecordMetrics() = 0;
+
+  /// Calculate normal task resources.
+  virtual ResourceSet CalcNormalTaskResources() const = 0;
 };
 }  // namespace raylet
 }  // namespace ray

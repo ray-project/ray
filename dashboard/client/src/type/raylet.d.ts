@@ -25,4 +25,6 @@ export type Raylet = {
   state: string;
   startTime: number;
   terminateTime: number;
+  objectStoreAvailableMemory: number;
+  objectStoreUsedMemory: number;
 };

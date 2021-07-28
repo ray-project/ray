@@ -6,7 +6,6 @@
 #include <boost/asio/post.hpp>
 #include <memory>
 
-#include "../../util/address_helper.h"
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
@@ -23,17 +22,8 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   /// We just reuse the TaskSpecification class and make the single process mode work.
   /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
   /// We will enhance this after implement the cluster mode.
-  if (dynamic_library_base_addr == 0) {
-    dynamic_library_base_addr =
-        GetBaseAddressOfLibraryFromAddr((void *)invocation.fptr.function_pointer);
-  }
-  auto func_offset =
-      (size_t)(invocation.fptr.function_pointer - dynamic_library_base_addr);
-  auto exec_func_offset =
-      (size_t)(invocation.fptr.exec_function_pointer - dynamic_library_base_addr);
   auto functionDescriptor = FunctionDescriptorBuilder::BuildCpp(
-      "SingleProcess", std::to_string(func_offset), std::to_string(exec_func_offset),
-      invocation.fptr.function_name);
+      invocation.remote_function_holder.function_name);
   rpc::Address address;
   std::unordered_map<std::string, double> required_resources;
   std::unordered_map<std::string, double> required_placement_resources;
@@ -49,7 +39,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {
     invocation.actor_id = local_mode_ray_tuntime_.GetNextActorID();
-    builder.SetActorCreationTaskSpec(invocation.actor_id);
+    builder.SetActorCreationTaskSpec(invocation.actor_id, "");
   } else if (invocation.task_type == TaskType::ACTOR_TASK) {
     const TaskID actor_creation_task_id =
         TaskID::ForActorCreationTask(invocation.actor_id);
@@ -79,8 +69,8 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
     /// TODO(Guyang Song): Handle task dependencies.
     /// Execute actor task directly in the main thread because we must guarantee the actor
     /// task executed by calling order.
-    TaskExecutor::Invoke(task_specification, actor, runtime, dynamic_library_base_addr,
-                         actor_contexts_, actor_contexts_mutex_);
+    TaskExecutor::Invoke(task_specification, actor, runtime, actor_contexts_,
+                         actor_contexts_mutex_);
   } else {
     boost::asio::post(*thread_pool_.get(),
                       std::bind(
@@ -88,9 +78,9 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
                             if (mutex) {
                               absl::MutexLock lock(mutex.get());
                             }
-                            TaskExecutor::Invoke(
-                                ts, actor, runtime, dynamic_library_base_addr,
-                                this->actor_contexts_, this->actor_contexts_mutex_);
+                            TaskExecutor::Invoke(ts, actor, runtime,
+                                                 this->actor_contexts_,
+                                                 this->actor_contexts_mutex_);
                           },
                           std::move(task_specification)));
   }

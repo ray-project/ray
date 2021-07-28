@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 
+import os
 import numpy as np
 import pytest
 
@@ -145,6 +146,11 @@ def test_running_function_on_all_workers(ray_start_regular):
 
     assert "fake_directory" == ray.get(get_path1.remote())[-1]
 
+    # the function should only run on the current driver once.
+    assert sys.path[-1] == "fake_directory"
+    if len(sys.path) > 1:
+        assert sys.path[-2] != "fake_directory"
+
     def f(worker_info):
         sys.path.pop(-1)
 
@@ -160,11 +166,14 @@ def test_running_function_on_all_workers(ray_start_regular):
     assert "fake_directory" not in ray.get(get_path2.remote())
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="ray.timeline")
+@pytest.mark.skipif(
+    "RAY_PROFILING" not in os.environ,
+    reason="Only tested in client/profiling build.")
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f():
-        with ray.profile("custom_event", extra_data={"name": "custom name"}):
+        with ray.profiling.profile(
+                "custom_event", extra_data={"name": "custom name"}):
             pass
 
     ray.put(1)
@@ -263,7 +272,7 @@ def test_object_transfer_dump(ray_start_cluster):
     # The profiling information only flushes once every second.
     time.sleep(1.1)
 
-    transfer_dump = ray.object_transfer_timeline()
+    transfer_dump = ray.state.object_transfer_timeline()
     # Make sure the transfer dump can be serialized with JSON.
     json.loads(json.dumps(transfer_dump))
     assert len(transfer_dump) >= num_nodes**2

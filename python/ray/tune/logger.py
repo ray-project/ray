@@ -584,7 +584,8 @@ class TBXLoggerCallback(LoggerCallback):
     """
 
     # NoneType is not supported on the last TBX release yet.
-    VALID_HPARAMS = (str, bool, np.bool8, int, np.integer, float, list)
+    VALID_HPARAMS = (str, bool, int, float, list)
+    VALID_NP_HPARAMS = (np.bool8, np.float32, np.float64, np.int32, np.int64)
 
     def __init__(self):
         try:
@@ -679,10 +680,18 @@ class TBXLoggerCallback(LoggerCallback):
             if isinstance(v, self.VALID_HPARAMS)
         }
 
+        np_params = {
+            k: v.tolist()
+            for k, v in flat_params.items()
+            if isinstance(v, self.VALID_NP_HPARAMS)
+        }
+
+        scrubbed_params.update(np_params)
+
         removed = {
             k: v
             for k, v in flat_params.items()
-            if not isinstance(v, self.VALID_HPARAMS)
+            if not isinstance(v, self.VALID_HPARAMS + self.VALID_NP_HPARAMS)
         }
         if removed:
             logger.info(

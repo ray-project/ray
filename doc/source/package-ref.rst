@@ -64,6 +64,14 @@ ray.cancel
 
 .. autofunction:: ray.cancel
 
+.. _ray-get_actor-ref:
+
+
+ray.get_actor
+~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.get_actor
+
 .. _ray-get_gpu_ids-ref:
 
 ray.get_gpu_ids
@@ -208,12 +216,6 @@ Debugging APIs
 .. autofunction:: ray.util.pdb.set_trace
 
 .. autofunction:: ray.util.inspect_serializability
-
-Experimental APIs
------------------
-
-.. automodule:: ray.experimental
-   :members:
 
 .. _ray-cli:
 

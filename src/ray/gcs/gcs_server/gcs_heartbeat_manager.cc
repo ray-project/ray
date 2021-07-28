@@ -51,7 +51,8 @@ void GcsHeartbeatManager::Start() {
         if (!is_started_) {
           periodical_runner_.RunFnPeriodically(
               [this] { DetectDeadNodes(); },
-              RayConfig::instance().raylet_heartbeat_period_milliseconds());
+              RayConfig::instance().raylet_heartbeat_period_milliseconds(),
+              "GcsHeartbeatManager.deadline_timer.detect_dead_nodes");
           is_started_ = true;
         }
       },
@@ -84,6 +85,13 @@ void GcsHeartbeatManager::HandleReportHeartbeat(
   }
 
   iter->second = num_heartbeats_timeout_;
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
+void GcsHeartbeatManager::HandleCheckAlive(const rpc::CheckAliveRequest &request,
+                                           rpc::CheckAliveReply *reply,
+                                           rpc::SendReplyCallback send_reply_callback) {
+  reply->set_seq(request.seq());
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 

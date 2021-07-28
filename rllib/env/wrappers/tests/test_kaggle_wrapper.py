@@ -1,11 +1,10 @@
-from kaggle_environments.utils import structify
 import unittest
-
-from ray.rllib.env.wrappers.kaggle_wrapper import KaggleFootballMultiAgentEnv
 
 
 class TestKaggleFootballMultiAgentEnv(unittest.TestCase):
     def test_football_env(self):
+        from ray.rllib.env.wrappers.kaggle_wrapper import \
+            KaggleFootballMultiAgentEnv
         env = KaggleFootballMultiAgentEnv()
         obs = env.reset()
         self.assertEqual(list(obs.keys()), ["agent0", "agent1"])
@@ -21,6 +20,8 @@ class TestKaggleFootballMultiAgentEnv(unittest.TestCase):
         self.assertEqual(info, {"agent0": {}, "agent1": {}})
 
     def test_football_env_run_30_steps(self):
+        from ray.rllib.env.wrappers.kaggle_wrapper import \
+            KaggleFootballMultiAgentEnv
         env = KaggleFootballMultiAgentEnv()
 
         # use the built-in agents in the kaggle environment
@@ -39,6 +40,8 @@ class TestKaggleFootballMultiAgentEnv(unittest.TestCase):
             num_steps_completed += 1
 
     def test_kaggle_football_agent_spaces(self):
+        from ray.rllib.env.wrappers.kaggle_wrapper import \
+            KaggleFootballMultiAgentEnv
         env = KaggleFootballMultiAgentEnv()
         obs = env.reset()
         action_space, obs_space = env.build_agent_spaces()
@@ -55,6 +58,8 @@ class TestKaggleFootballMultiAgentEnv(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    from kaggle_environments.utils import structify
     import sys
     import pytest
+
     sys.exit(pytest.main(["-v", __file__]))

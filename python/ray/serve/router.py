@@ -1,7 +1,9 @@
 import asyncio
+import pickle
 import itertools
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional
+import random
 
 from ray.actor import ActorHandle
 from ray.serve.common import BackendTag, EndpointTag, TrafficPolicy
@@ -30,6 +32,16 @@ class RequestMetadata:
 
     is_shadow_query: bool = False
 
+    # Determines whether or not the backend implementation will be presented
+    # with a ServeRequest object or directly passed args and kwargs. This is
+    # used to maintain backward compatibility and will be removed in the
+    # future.
+    use_serve_request: bool = True
+
+    # This flag will be set to true if the input argument is manually pickled
+    # and it needs to be deserialized by the backend worker.
+    http_arg_is_pickled: bool = False
+
     def __post_init__(self):
         self.http_headers.setdefault("X-Serve-Call-Method", self.call_method)
         self.http_headers.setdefault("X-Serve-Shard-Key", self.shard_key)
@@ -40,9 +52,6 @@ class Query:
     args: List[Any]
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
-
-    # Fields used by backend worker to perform timing measurement.
-    tick_enter_replica: Optional[float] = None
 
 
 class ReplicaSet:
@@ -113,8 +122,12 @@ class ReplicaSet:
             del self.in_flight_queries[removed_replica_handle]
 
         if len(added) > 0 or len(removed) > 0:
-            self.replica_iterator = itertools.cycle(
-                self.in_flight_queries.keys())
+            # Shuffle the keys to avoid synchronization across clients.
+            handles = list(self.in_flight_queries.keys())
+            random.shuffle(handles)
+            self.replica_iterator = itertools.cycle(handles)
+            logger.debug(
+                f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
             self.config_updated_event.set()
 
     def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
@@ -132,7 +145,7 @@ class ReplicaSet:
                          f"to replica {replica}.")
             # Directly passing args because it might contain an ObjectRef.
             tracker_ref, user_ref = replica.handle_request.remote(
-                query.metadata, *query.args, **query.kwargs)
+                pickle.dumps(query.metadata), *query.args, **query.kwargs)
             self.in_flight_queries[replica].add(tracker_ref)
             return user_ref
         return None
@@ -185,7 +198,7 @@ class ReplicaSet:
         return assigned_ref
 
 
-class Router:
+class EndpointRouter:
     def __init__(
             self,
             controller_handle: ActorHandle,

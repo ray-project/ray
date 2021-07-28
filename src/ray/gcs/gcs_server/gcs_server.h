@@ -15,16 +15,20 @@
 #pragma once
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
+#include "ray/pubsub/publisher.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -43,6 +47,8 @@ struct GcsServerConfig {
   bool enable_sharding_conn = true;
   std::string node_ip_address;
   bool pull_based_resource_reporting;
+  bool grpc_based_resource_broadcast;
+  bool grpc_pubsub_enabled;
 };
 
 class GcsNodeManager;
@@ -94,7 +100,7 @@ class GcsServer {
   void InitGcsResourceScheduler();
 
   /// Initialize gcs job manager.
-  void InitGcsJobManager();
+  void InitGcsJobManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs actor manager.
   void InitGcsActorManager(const GcsInitData &gcs_init_data);
@@ -114,8 +120,17 @@ class GcsServer {
   /// Initialize stats handler.
   void InitStatsHandler();
 
+  /// Initialize KV manager.
+  void InitKVManager();
+
+  // Init RuntimeENv manager
+  void InitRuntimeEnvManager();
+
   /// Initialize resource report polling.
   void InitResourceReportPolling(const GcsInitData &gcs_init_data);
+
+  /// Initialize resource report broadcasting.
+  void InitResourceReportBroadcasting(const GcsInitData &gcs_init_data);
 
   /// Install event listeners.
   void InstallEventListeners();
@@ -186,18 +201,28 @@ class GcsServer {
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
   /// Resource report poller.
   std::unique_ptr<GcsResourceReportPoller> gcs_resource_report_poller_;
+  /// Resource report broadcaster.
+  std::unique_ptr<GrpcBasedResourceBroadcaster> grpc_based_resource_broadcaster_;
   /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Worker info service.
   std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Placement Group info handler and service.
   std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
+  /// Global KV storage handler and service.
+  std::unique_ptr<GcsInternalKVManager> kv_manager_;
+  std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  /// Grpc based pubsub.
+  std::shared_ptr<pubsub::Publisher> grpc_pubsub_publisher_;
+  /// Grpc based pubsub's periodical runner.
+  PeriodicalRunner pubsub_periodical_runner_;
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
   /// Gcs service state flag, which is used for ut.
   bool is_started_ = false;
   bool is_stopped_ = false;
