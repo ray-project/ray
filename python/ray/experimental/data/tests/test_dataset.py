@@ -325,6 +325,11 @@ def test_parquet_read(ray_start_regular_shared, tmp_path):
     assert sorted(values) == [[1, "a"], [2, "b"], [3, "c"], [4, "e"], [5, "f"],
                               [6, "g"]]
 
+    # Test column selection.
+    ds = ray.experimental.data.read_parquet(str(tmp_path), columns=["one"])
+    values = [s["one"] for s in ds.take()]
+    assert sorted(values) == [1, 2, 3, 4, 5, 6]
+
 
 def test_parquet_write(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -373,16 +378,6 @@ def test_read_binary_files(ray_start_regular_shared):
         assert "bytes" in str(ds), ds
 
 
-def test_read_binary_files_with_paths(ray_start_regular_shared):
-    with util.gen_bin_files(10) as (_, paths):
-        ds = ray.experimental.data.read_binary_files(
-            paths, include_paths=True, parallelism=10)
-        for i, (path, item) in enumerate(ds.iter_rows()):
-            assert path == paths[i]
-            expected = open(paths[i], "rb").read()
-            assert expected == item
-
-
 def test_read_binary_files_with_fs(ray_start_regular_shared):
     with util.gen_bin_files(10) as (tempdir, paths):
         # All the paths are absolute, so we want the root file system.
@@ -394,6 +389,19 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
             assert expected == item
 
 
+def test_read_binary_files_with_paths(ray_start_regular_shared):
+    with util.gen_bin_files(10) as (_, paths):
+        ds = ray.experimental.data.read_binary_files(
+            paths, include_paths=True, parallelism=10)
+        for i, (path, item) in enumerate(ds.iter_rows()):
+            assert path == paths[i]
+            expected = open(paths[i], "rb").read()
+            assert expected == item
+
+
+# TODO(Clark): Hitting S3 in CI is currently broken due to some AWS
+# credentials issue, unskip this test once that's fixed or once ported to moto.
+@pytest.mark.skip(reason="Shouldn't hit S3 in CI")
 def test_read_binary_files_s3(ray_start_regular_shared):
     ds = ray.experimental.data.read_binary_files(
         ["s3://anyscale-data/small-files/0.dat"])
@@ -881,7 +889,7 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
-    assert ds.schema() is None
+    assert "{one: int64, two: string}" in str(ds), ds
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -955,6 +963,44 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     shutil.rmtree(dir_path)
 
 
+def test_zipped_json_read(ray_start_regular_shared, tmp_path):
+    # Single file.
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(tmp_path, "test1.json.gz")
+    df1.to_json(path1, compression="gzip", orient="records", lines=True)
+    ds = ray.experimental.data.read_json(path1)
+    assert df1.equals(ray.get(ds.to_pandas())[0])
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert ds.input_files() == [path1]
+
+    # Two files, parallelism=2.
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(tmp_path, "test2.json.gz")
+    df2.to_json(path2, compression="gzip", orient="records", lines=True)
+    ds = ray.experimental.data.read_json([path1, path2], parallelism=2)
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert pd.concat([df1, df2]).equals(dsdf)
+    # Test metadata ops.
+    for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
+        BlockAccessor.for_block(ray.get(block)).size_bytes()
+
+    # Directory and file, two files.
+    dir_path = os.path.join(tmp_path, "test_json_dir")
+    os.mkdir(dir_path)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(dir_path, "data0.json.gz")
+    df1.to_json(path1, compression="gzip", orient="records", lines=True)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(tmp_path, "data1.json.gz")
+    df2.to_json(path2, compression="gzip", orient="records", lines=True)
+    ds = ray.experimental.data.read_json([dir_path, path2])
+    df = pd.concat([df1, df2])
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert df.equals(dsdf)
+    shutil.rmtree(dir_path)
+
+
 def test_json_write(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_json_dir")
 
@@ -990,7 +1036,7 @@ def test_csv_read(ray_start_regular_shared, tmp_path):
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
-    assert ds.schema() is None
+    assert "{one: int64, two: string}" in str(ds), ds
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -1089,30 +1135,46 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
     shutil.rmtree(path)
 
 
-# TODO: this shouldn't be making network calls
-def test_uri_parser():
-    from ray.experimental.data.read_api import _parse_paths
-    fs, path = _parse_paths("/local/path")
-    assert path == "/local/path"
-    assert fs.type_name == "local"
+def test_sort_simple(ray_start_regular_shared):
+    num_items = 100
+    parallelism = 4
+    xs = list(range(num_items))
+    random.shuffle(xs)
+    ds = ray.experimental.data.from_items(xs, parallelism=parallelism)
+    assert ds.sort().take(num_items) == list(range(num_items))
+    assert ds.sort(descending=True).take(num_items) == list(
+        reversed(range(num_items)))
+    assert ds.sort(key=lambda x: -x).take(num_items) == list(
+        reversed(range(num_items)))
 
-    fs, path = _parse_paths("./")
-    assert path == "./"
-    assert fs.type_name == "local"
 
-    fs, path = _parse_paths("s3://bucket/dir")
-    assert path == "bucket/dir"
-    assert fs.type_name == "s3"
+@pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
+def test_sort_arrow(ray_start_regular_shared, num_items, parallelism):
+    a = list(reversed(range(num_items)))
+    b = [f"{x:03}" for x in range(num_items)]
+    shard = int(np.ceil(num_items / parallelism))
+    offset = 0
+    dfs = []
+    while offset < num_items:
+        dfs.append(
+            pd.DataFrame({
+                "a": a[offset:offset + shard],
+                "b": b[offset:offset + shard]
+            }))
+        offset += shard
+    if offset < num_items:
+        dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
+    ds = ray.experimental.data.from_pandas([ray.put(df) for df in dfs])
 
-    fs, path = _parse_paths(["s3://bucket/dir_1", "s3://bucket/dir_2"])
-    assert path == ["bucket/dir_1", "bucket/dir_2"]
-    assert fs.type_name == "s3"
+    def assert_sorted(sorted_ds, expected_rows):
+        assert [tuple(row.values())
+                for row in sorted_ds.iter_rows()] == list(expected_rows)
 
-    with pytest.raises(ValueError):
-        _parse_paths(["s3://bucket/dir_1", "/path/local"])
-
-    with pytest.raises(ValueError):
-        _parse_paths([])
+    assert_sorted(ds.sort(key="a"), zip(reversed(a), reversed(b)))
+    assert_sorted(ds.sort(key="b"), zip(a, b))
+    assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
+    assert_sorted(
+        ds.sort(key=[("b", "descending")]), zip(reversed(a), reversed(b)))
 
 
 if __name__ == "__main__":

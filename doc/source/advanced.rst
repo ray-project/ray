@@ -504,7 +504,7 @@ The runtime env is inheritable, so it will apply to all tasks/actors within a jo
 
 If a child actor or task specifies a new ``runtime_env``, it will be merged with the parent’s ``runtime_env`` via a simple dict update.  
 For example, if ``runtime_env["pip"]`` is specified, it will override the ``runtime_env["pip"]`` field of the parent.
-The one exception is the field ``runtime_env["env_vars"]``.  This field will be `merged` with the ```runtime_env["env_vars"]`` dict of the parent.  
+The one exception is the field ``runtime_env["env_vars"]``.  This field will be `merged` with the ``runtime_env["env_vars"]`` dict of the parent.  
 This allows for an environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
 
 Here are some examples of runtime envs combining multiple options:

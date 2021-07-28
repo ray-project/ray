@@ -299,8 +299,6 @@ class ObjectManager : public ObjectManagerInterface,
     return static_cast<double>(used_memory_) / config_.object_store_memory;
   }
 
-  bool PullManagerHasPullsQueued() const { return pull_manager_->HasPullsQueued(); }
-
  private:
   friend class TestObjectManager;
 

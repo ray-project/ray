@@ -75,11 +75,9 @@ std::vector<double> VectorFixedPointToVectorDouble(
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
     StringIdMap &string_to_int_map,
-    const std::unordered_map<std::string, double> &resource_map,
-    bool requires_object_store_memory) {
+    const std::unordered_map<std::string, double> &resource_map) {
   ResourceRequest resource_request;
 
-  resource_request.requires_object_store_memory = requires_object_store_memory;
   resource_request.predefined_resources.resize(PredefinedResources_MAX);
 
   for (auto const &resource : resource_map) {
@@ -202,13 +200,7 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
   return highest;
 }
 
-bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
-                                bool ignore_pull_manager_at_capacity) const {
-  if (!ignore_pull_manager_at_capacity && resource_request.requires_object_store_memory &&
-      object_pulls_queued) {
-    RAY_LOG(DEBUG) << "At pull manager capacity";
-    return false;
-  }
+bool NodeResources::IsAvailable(const ResourceRequest &resource_request) const {
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (i >= this->predefined_resources.size()) {
@@ -222,7 +214,6 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     const auto &demand = resource_request.predefined_resources[i];
 
     if (resource < demand) {
-      RAY_LOG(DEBUG) << "At resource capacity";
       return false;
     }
   }
@@ -236,7 +227,6 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
       return false;
     }
   }
-
   return true;
 }
 

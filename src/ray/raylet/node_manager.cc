@@ -183,6 +183,12 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                    config.worker_commands,
                    /*starting_worker_timeout_callback=*/
                    [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+                   /*runtime_env_setup_failed_callback=*/
+                   [this](const TaskID &task_id) {
+                     RAY_CHECK(cluster_task_manager_->CancelTask(
+                         task_id, /*runtime_env_setup_failed=*/true));
+                   },
+                   config.ray_debugger_external,
                    /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
@@ -287,8 +293,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   cluster_resource_scheduler_ =
       std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
           self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap(),
-          [this]() { return object_manager_.GetUsedMemory(); },
-          [this]() { return object_manager_.PullManagerHasPullsQueued(); }));
+          [this]() { return object_manager_.GetUsedMemory(); }));
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
@@ -2258,9 +2263,6 @@ rpc::ObjectStoreStats AccumulateStoreStats(
                                       cur_store.num_local_objects());
     store_stats.set_consumed_bytes(store_stats.consumed_bytes() +
                                    cur_store.consumed_bytes());
-    if (cur_store.object_pulls_queued()) {
-      store_stats.set_object_pulls_queued(true);
-    }
   }
   return store_stats;
 }

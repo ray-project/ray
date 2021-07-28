@@ -1,20 +1,21 @@
 import logging
-from typing import Optional, List, Tuple, Union, TYPE_CHECKING
+from typing import Optional, List, Tuple, Union, Any, TYPE_CHECKING
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.experimental.data.impl.arrow_block import ArrowRow
+from ray.experimental.data.impl.arrow_block import (
+    ArrowRow, DelegatingArrowBlockBuilder)
 from ray.experimental.data.impl.block_list import BlockMetadata
-from ray.experimental.data.datasource.datasource import (Datasource, ReadTask)
+from ray.experimental.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
+class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     """File-based datasource, for reading and writing files.
 
     This class should not be used directly, and should instead be subclassed
@@ -24,11 +25,13 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
     Current subclasses: JSONDatasource, CSVDatasource
     """
 
-    def prepare_read(self,
-                     parallelism: int,
-                     paths: Union[str, List[str]],
-                     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-                     **reader_args) -> List[ReadTask]:
+    def prepare_read(
+            self,
+            parallelism: int,
+            paths: Union[str, List[str]],
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+            schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+            **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
         """
         import pyarrow as pa
@@ -49,11 +52,15 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
             logger.debug(f"Reading {len(read_paths)} files.")
             if isinstance(fs, _S3FileSystemWrapper):
                 fs = fs.unwrap()
-            tables = []
+            builder = DelegatingArrowBlockBuilder()
             for read_path in read_paths:
-                with fs.open_input_file(read_path) as f:
-                    tables.append(read_file(f, **reader_args))
-            return pa.concat_tables(tables)
+                with fs.open_input_stream(read_path) as f:
+                    data = read_file(f, read_path, **reader_args)
+                    if isinstance(data, pa.Table):
+                        builder.add_block(data)
+                    else:
+                        builder.add(data)
+            return builder.build()
 
         read_tasks = [
             ReadTask(
@@ -62,7 +69,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
                 BlockMetadata(
                     num_rows=None,
                     size_bytes=sum(file_sizes),
-                    schema=None,
+                    schema=schema,
                     input_files=read_paths)) for read_paths, file_sizes in zip(
                         np.array_split(paths, parallelism),
                         np.array_split(file_sizes, parallelism))
@@ -71,7 +78,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
 
         return read_tasks
 
-    def _read_file(self, f, **reader_args):
+    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         """Reads a single file, passing all kwargs to the reader.
 
         This method should be implemented by subclasses.
@@ -114,6 +121,9 @@ def _expand_directory(path: str,
         filtered_paths.append((file_path, file_))
     # We sort the paths to guarantee a stable order.
     return zip(*sorted(filtered_paths, key=lambda x: x[0]))
+
+
+# TODO(Clark): Add unit test coverage of _resolve_paths_and_filesystem.
 
 
 def _resolve_paths_and_filesystem(

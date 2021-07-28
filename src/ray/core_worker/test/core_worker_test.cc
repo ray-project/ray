@@ -919,7 +919,7 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 7);
+  RAY_CHECK(argc == 6);
   ray::TEST_RAYLET_EXEC_PATH = std::string(argv[1]);
 
   auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
@@ -932,6 +932,5 @@ int main(int argc, char **argv) {
 
   ray::TEST_REDIS_CLIENT_EXEC_PATH = std::string(argv[4]);
   ray::TEST_REDIS_SERVER_EXEC_PATH = std::string(argv[5]);
-  ray::TEST_REDIS_MODULE_LIBRARY_PATH = std::string(argv[6]);
   return RUN_ALL_TESTS();
 }

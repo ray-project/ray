@@ -1,5 +1,5 @@
-from typing import TypeVar, List, Generic, Iterator, Any, Union, Optional, \
-    TYPE_CHECKING
+from typing import TypeVar, List, Generic, Iterator, Tuple, Any, Union, \
+    Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas
@@ -10,18 +10,11 @@ from ray.util.annotations import DeveloperAPI
 
 T = TypeVar("T")
 
-
-# TODO(ekl) this is a dummy generic ref type for documentation purposes only.
-# It adds Generic[T] to pyarrow.Table so we can define Block[T] below.
-class _ArrowTable(Generic[T]):
-    pass
-
-
 # Represents a batch of rows to be stored in the Ray object store.
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
-Block = Union[List[T], _ArrowTable[T]]
+Block = Union[List[T], "pyarrow.Table"]
 
 
 @DeveloperAPI
@@ -68,7 +61,7 @@ class BlockAccessor(Generic[T]):
         """Iterate over the rows of this block."""
         raise NotImplementedError
 
-    def slice(self, start: int, end: int, copy: bool) -> "Block[T]":
+    def slice(self, start: int, end: int, copy: bool) -> Block:
         """Return a slice of this block.
 
         Args:
@@ -111,7 +104,7 @@ class BlockAccessor(Generic[T]):
         raise NotImplementedError
 
     @staticmethod
-    def for_block(block: Block[T]) -> "BlockAccessor[T]":
+    def for_block(block: Block) -> "BlockAccessor[T]":
         """Create a block accessor for the given block."""
         import pyarrow
 
@@ -125,3 +118,19 @@ class BlockAccessor(Generic[T]):
             return SimpleBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {}".format(block))
+
+    def sample(self, n_samples: int, key: Any) -> "Block[T]":
+        """Return a random sample of items from this block."""
+        raise NotImplementedError
+
+    def sort_and_partition(self, boundaries: List[T], key: Any,
+                           descending: bool) -> List["Block[T]"]:
+        """Return a list of sorted partitions of this block."""
+        raise NotImplementedError
+
+    @staticmethod
+    def merge_sorted_blocks(
+            blocks: List["Block[T]"], key: Any,
+            descending: bool) -> Tuple[Block[T], BlockMetadata]:
+        """Return a sorted block by merging a list of sorted blocks."""
+        raise NotImplementedError

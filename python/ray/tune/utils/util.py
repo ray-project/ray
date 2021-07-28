@@ -284,7 +284,12 @@ def deep_update(original,
 
 
 def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
-    dt = copy.deepcopy(dt)
+    """Flatten dict.
+
+    Output and input are of the same dict type.
+    Input dict remains the same after the operation.
+    """
+    dt = copy.copy(dt)
     if prevent_delimiter and any(delimiter in key for key in dt):
         # Raise if delimiter is any of the keys
         raise ValueError(
@@ -297,7 +302,7 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
             if isinstance(value, dict):
                 for subkey, v in value.items():
                     if prevent_delimiter and delimiter in subkey:
-                        # Raise  if delimiter is in any of the subkeys
+                        # Raise if delimiter is in any of the subkeys
                         raise ValueError(
                             "Found delimiter `{}` in key when trying to "
                             "flatten array. Please avoid using the delimiter "
