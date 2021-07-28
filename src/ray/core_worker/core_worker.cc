@@ -929,17 +929,22 @@ void CoreWorker::CheckForRayletFailure() {
 }
 
 void CoreWorker::InternalHeartbeat() {
-  absl::MutexLock lock(&mutex_);
-
   // Retry tasks.
-  while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
-    auto &spec = to_resubmit_.front().second;
+  std::vector<TaskSpecification> tasks_to_resubmit;
+  {
+    absl::MutexLock lock(&mutex_);
+    while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
+      tasks_to_resubmit.push_back(std::move(to_resubmit_.front().second));
+      to_resubmit_.pop_front();
+    }
+  }
+
+  for (auto &spec : tasks_to_resubmit) {
     if (spec.IsActorTask()) {
       RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
     } else {
       RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
     }
-    to_resubmit_.pop_front();
   }
 
   // Check timeout tasks that are waiting for death info.
