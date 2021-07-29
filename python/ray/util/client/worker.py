@@ -103,6 +103,20 @@ class Worker:
         self._conn_state = grpc.ChannelConnectivity.IDLE
         self._converted: Dict[str, ClientStub] = {}
 
+        if ":" in conn_str:
+            port = conn_str.split(":")[1]
+            if port == "6379":
+                warnings.warn(
+                    "Attempting to connect to port 6379 with Ray client. "
+                    "6379 is the default port for attaching a driver to "
+                    "the head node. If you have issues connecting, it may "
+                    "be because you're using the wrong port. The default port"
+                    "for the client server is 10001, and may be configured "
+                    "to a different value if `ray start --head` was called "
+                    "with the flag `--ray-client-server-port`. Otherwise, if "
+                    "you want to attach a driver to the head node, then call "
+                    "ray.init(\"<head_ip>:6379\") instead.", UserWarning)
+
         if secure:
             credentials = grpc.ssl_channel_credentials()
             self.channel = grpc.secure_channel(
@@ -153,7 +167,13 @@ class Worker:
         # it means we've used up our retries and
         # should error back to the user.
         if not service_ready:
-            raise ConnectionError("ray client connection timeout")
+            raise ConnectionError(
+                "Ray client connection timeout. If your network connection is "
+                "working, then this could be caused by connecting to the "
+                "wrong port. The client server listens on port 10001 by "
+                "default, but may have been configured to a different value "
+                "by the `--ray-client-server-port` flag when "
+                "`ray start --head` was called.")
 
         # Initialize the streams to finish protocol negotiation.
         self.data_client = DataClient(self.channel, self._client_id,

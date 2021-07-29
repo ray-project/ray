@@ -7,6 +7,7 @@ import io
 import json
 import logging
 import os
+import warnings
 import redis
 import sys
 import threading
@@ -617,12 +618,22 @@ def init(
 
         ray.init()
 
-    To connect to an existing Ray cluster, use this as follows (substituting
-    in the appropriate address):
+    To connect a driver to an existing Ray cluster, use this as follows
+    (substituting in the appropriate address):
 
     .. code-block:: python
 
         ray.init(address="123.45.67.89:6379")
+
+    To connect to an existing Ray cluster using Ray client, specify a protocol
+    in the address:
+
+    .. code-block:: python
+
+        ray.init(address="ray://123.45.67.89:10001")
+
+    More details on Ray client usage can be found at
+    https://docs.ray.io/en/master/cluster/ray-client.html
 
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
@@ -714,10 +725,11 @@ def init(
             and the API is subject to change.
 
     Returns:
-        If the provided address included a protocol (e.g. "ray://1.2.3.4")
-        then a ClientContext is returned with information such as settings,
-        server versions for ray and python, and the dashboard_url.
-        Otherwise, returns address information about the started processes.
+        If the provided address includes a protocol, for example by prepending
+        "ray://" to the address to get "ray://1.2.3.4:10001", then a
+        ClientContext is returned with information such as settings, server
+        versions for ray and python, and the dashboard_url. Otherwise,
+        returns address information about the started processes.
 
     Raises:
         Exception: An exception is raised if an inappropriate combination of
@@ -804,7 +816,14 @@ def init(
     raylet_ip_address = node_ip_address
 
     if address:
-        redis_address, _, _ = services.validate_redis_address(address)
+        redis_address, _, redis_port = services.validate_redis_address(address)
+        if redis_port == 10001:
+            warnings.warn(
+                "Attempting to connect to redis at port 10001. 10001 is "
+                "the default port for the Ray client server. If you have "
+                "issues connecting, you may have meant to connect using Ray "
+                "client by prepending the address with \"ray://\", i.e. "
+                "`ray.init(\"ray://<head_node_ip>:10001\")`.", UserWarning)
     else:
         redis_address = None
 
@@ -916,12 +935,21 @@ def init(
             lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port)
-        _global_node = ray.node.Node(
-            ray_params,
-            head=False,
-            shutdown_at_exit=False,
-            spawn_reaper=False,
-            connect_only=True)
+        try:
+            _global_node = ray.node.Node(
+                ray_params,
+                head=False,
+                shutdown_at_exit=False,
+                spawn_reaper=False,
+                connect_only=True)
+        except redis.exceptions.InvalidResponse as e:
+            raise RuntimeError(
+                "The following error occurred while connecting to redis: "
+                f"{str(e)}\nThis is likely because the port specified by "
+                f"address `{redis_address}`` wasn't the port of the redis "
+                "server. You may have meant to connect to the Ray client "
+                "server instead, in which case try prepending \"ray://\" to "
+                f"the address instead (\"ray://{redis_address}\")")
 
     if driver_mode == SCRIPT_MODE and job_config:
         # Rewrite the URI. Note the package isn't uploaded to the URI until
