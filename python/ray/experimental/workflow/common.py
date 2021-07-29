@@ -17,7 +17,10 @@ WorkflowOutputType = ObjectRef
 
 @dataclass
 class WorkflowRef:
-    """This class represents a dynamic reference of a workflow output."""
+    """This class represents a dynamic reference of a workflow output.
+
+    See 'step_executor._resolve_dynamic_workflow_refs' for how we handle
+    workflow refs."""
     # The ID of the step that produces the output of the workflow.
     step_id: StepID
 
