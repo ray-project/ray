@@ -44,6 +44,15 @@ def _resolve_object_ref(ref: ObjectRef) -> Tuple[Any, ObjectRef]:
 
 
 def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
+    """Get the output of a workflow step with the step ID at runtime.
+
+    We lookup the output by the following order:
+    1. Query cached step output in the workflow manager. Fetch the physical
+       output object.
+    2. If failed to fetch the physical output object, look into the storage
+       to see whether the output is checkpointed. Load the checkpoint.
+    3. If failed to load the checkpoint, resume the step and get the output.
+    """
     workflow_manager = get_or_create_management_actor()
     context = workflow_context.get_workflow_step_context()
     workflow_id = context.workflow_id
@@ -51,8 +60,8 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
     workflow_ref_mapping = []
     for workflow_ref in workflow_refs:
         step_ref = ray.get(
-            workflow_manager.get_cached_step.remote(workflow_id,
-                                                    workflow_ref.step_id))
+            workflow_manager.get_cached_step_output.remote(
+                workflow_id, workflow_ref.step_id))
         get_cached_step = False
         if step_ref is not None:
             try:
@@ -347,6 +356,9 @@ def _workflow_step_executor(
 
 @dataclass
 class _BakedWorkflowInputs:
+    """This class stores pre-processed inputs for workflow step execution.
+    Especially, all input workflows to the workflow step will be scheduled,
+    and their outputs (ObjectRefs) replace the original workflows."""
     args: "ObjectRef"
     workflow_outputs: "List[ObjectRef]"
     object_refs: "List[ObjectRef]"

@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, TYPE_CHECKING
+from typing import Any, Dict, List, Tuple, TYPE_CHECKING
 
 from dataclasses import dataclass
 import ray
@@ -117,8 +117,11 @@ class WorkflowManagementActor:
     def __init__(self, store: "storage.Storage"):
         self._store = store
         self._workflow_outputs: Dict[str, LatestWorkflowOutput] = {}
-        # Cache step output.
-        self._step_output_cache: Dict[str, LatestWorkflowOutput] = {}
+        # Cache step output. It is used for step output lookup of
+        # "WorkflowRef". The dictionary entry is removed when the status of
+        # a step is marked as finished (successful or failed).
+        self._step_output_cache: Dict[Tuple[str, str],
+                                      LatestWorkflowOutput] = {}
         self._actor_initialized: Dict[str, ray.ObjectRef] = {}
         self._step_status: Dict[str, Dict[str, common.WorkflowStatus]] = {}
 
@@ -126,8 +129,8 @@ class WorkflowManagementActor:
         """Get hte storage URL."""
         return self._store.storage_url
 
-    def get_cached_step(self, workflow_id: str,
-                        step_id: "StepID") -> ray.ObjectRef:
+    def get_cached_step_output(self, workflow_id: str,
+                               step_id: "StepID") -> ray.ObjectRef:
         """Get the cached result of a step.
 
         Args:
