@@ -178,6 +178,9 @@ class ArrowBlockAccessor(BlockAccessor):
         return ArrowBlockBuilder()
 
     def sample(self, n_samples: int, key: SortKeyT) -> List[T]:
+        if key is None or callable(key):
+            raise NotImplementedError(
+                "Arrow sort key must be a column name, was: {}".format(key))
         k = min(n_samples, self._table.num_rows)
         indices = random.sample(range(self._table.num_rows), k)
         return self._table.select([k[0] for k in key]).take(indices)

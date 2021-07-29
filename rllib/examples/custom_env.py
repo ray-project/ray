@@ -22,7 +22,6 @@ import random
 
 import ray
 from ray import tune
-from ray.tune import grid_search
 from ray.rllib.agents import ppo
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.models import ModelCatalog
@@ -32,6 +31,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune import grid_search
 from ray.tune.logger import pretty_print
 
 tf1, tf, tfv = try_import_tf()
