@@ -1,5 +1,5 @@
 import logging
-from typing import List, Any, Union, Optional, Tuple, Callable, TypeVar, \
+from typing import List, Any, Dict, Union, Optional, Tuple, Callable, TypeVar, \
     TYPE_CHECKING
 
 if TYPE_CHECKING:
