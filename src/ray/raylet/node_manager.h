@@ -295,7 +295,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
   /// \return Void.
-  void FinishAssignedActorCreationTask(WorkerInterface &worker, const Task &task);
+  void FinishAssignedActorCreationTask(WorkerInterface &worker,
+                                       const ray::core::Task &task);
 
   /// Handle blocking gets of objects. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
@@ -583,7 +584,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// print.
   ///
   /// \param task Task that is infeasible
-  void PublishInfeasibleTaskError(const Task &task) const;
+  void PublishInfeasibleTaskError(const ray::core::Task &task) const;
 
   /// Get pointers to objects stored in plasma. They will be
   /// released once the returned references go out of scope.

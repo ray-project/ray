@@ -39,6 +39,7 @@ namespace ray {
 
 namespace raylet {
 
+using namespace ray::core;
 using ::testing::_;
 
 class MockWorkerPool : public WorkerPoolInterface {
