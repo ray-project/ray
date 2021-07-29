@@ -29,7 +29,7 @@ class TorchConfig(BackendConfig):
 
     Args:
         backend (str): The backend to use for training.
-            See `torch.distributed.init_process_group` for more info and
+            See ``torch.distributed.init_process_group`` for more info and
             valid values.
             If set to None, nccl will be used if GPUs are requested, else gloo
             will be used.

@@ -84,7 +84,7 @@ class BackendExecutor:
                 a SGD training loop in multiple parallel actor calls.
 
         Returns:
-            The objects represented the passed in ObjectRefs.
+            The resolved objects represented by the passed in ObjectRefs.
         """
         unfinished = remote_values
         try:
