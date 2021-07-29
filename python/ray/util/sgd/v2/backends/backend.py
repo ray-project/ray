@@ -90,6 +90,8 @@ class BackendExecutor:
         try:
             while len(unfinished) > 0:
                 finished, unfinished = ray.wait(unfinished)
+                # If a failure occurs the ObjectRef will be marked as finished.
+                # Calling ray.get will expose the failure as a RayActorError.
                 ray.get(finished)
         except RayActorError as exc:
             logger.exception(str(exc))
