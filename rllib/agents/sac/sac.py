@@ -174,9 +174,6 @@ def validate_config(config: TrainerConfigDict) -> None:
     Raises:
         ValueError: In case something is wrong with the config.
     """
-    if config["num_gpus"] > 1 and config["framework"] != "torch":
-        raise ValueError("`num_gpus` > 1 not yet supported for tf-SAC!")
-
     if config["use_state_preprocessor"] != DEPRECATED_VALUE:
         deprecation_warning(
             old="config['use_state_preprocessor']", error=False)
@@ -184,11 +181,6 @@ def validate_config(config: TrainerConfigDict) -> None:
 
     if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
         raise ValueError("`grad_clip` value must be > 0.0!")
-
-    if config["simple_optimizer"] != DEPRECATED_VALUE or \
-            config["simple_optimizer"] is False:
-        logger.warning("`simple_optimizer` must be True (or unset) for SAC!")
-        config["simple_optimizer"] = True
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
@@ -215,4 +207,5 @@ SACTrainer = GenericOffPolicyTrainer.with_updates(
     validate_config=validate_config,
     default_policy=SACTFPolicy,
     get_policy_class=get_policy_class,
+    allow_unknown_subkeys=["Q_model", "policy_model"],
 )

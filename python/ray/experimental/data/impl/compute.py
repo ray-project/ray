@@ -1,18 +1,38 @@
-from typing import TypeVar, Iterable, Any, Union
+from typing import TypeVar, Iterable, Any, Union, Callable
 
 import ray
-from ray.experimental.data.block import Block, BlockMetadata, ObjectRef
+from ray.types import ObjectRef
+from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.progress_bar import ProgressBar
 
 T = TypeVar("T")
 U = TypeVar("U")
 
+# A class type that implements __call__.
+CallableClass = type
+
 
 class ComputeStrategy:
     def apply(self, fn: Any,
-              blocks: Iterable[Block[T]]) -> Iterable[ObjectRef[Block]]:
+              blocks: Iterable[Block]) -> Iterable[ObjectRef[Block]]:
         raise NotImplementedError
+
+
+# Remote version of map_block, lazily initialized to avoid circular import.
+_remote_fn = None
+
+
+def map_block(block: Block, meta: BlockMetadata,
+              fn: Any) -> (Block, BlockMetadata):
+    new_block = fn(block)
+    accessor = BlockAccessor.for_block(new_block)
+    new_meta = BlockMetadata(
+        num_rows=accessor.num_rows(),
+        size_bytes=accessor.size_bytes(),
+        schema=accessor.schema(),
+        input_files=meta.input_files)
+    return new_block, new_meta
 
 
 class TaskPool(ComputeStrategy):
@@ -23,18 +43,14 @@ class TaskPool(ComputeStrategy):
         kwargs = remote_args.copy()
         kwargs["num_returns"] = 2
 
-        @ray.remote(**kwargs)
-        def wrapped_fn(block: Block, meta: BlockMetadata):
-            new_block = fn(block)
-            new_meta = BlockMetadata(
-                num_rows=new_block.num_rows(),
-                size_bytes=new_block.size_bytes(),
-                schema=new_block.schema(),
-                input_files=meta.input_files)
-            return new_block, new_meta
+        # Lazy init to avoid circular import. TODO(ekl) move these into a
+        # separate remote functions file.
+        global _remote_fn
+        if _remote_fn is None:
+            _remote_fn = ray.remote(map_block)
 
         refs = [
-            wrapped_fn.remote(b, m)
+            _remote_fn.options(**kwargs).remote(b, m, fn)
             for b, m in zip(blocks, blocks.get_metadata())
         ]
         new_blocks, new_metadata = zip(*refs)
@@ -45,33 +61,41 @@ class TaskPool(ComputeStrategy):
 
 
 class ActorPool(ComputeStrategy):
+    def __init__(self):
+        self.workers = []
+
+    def __del__(self):
+        for w in self.workers:
+            w.__ray_terminate__.remote()
+
     def apply(self, fn: Any, remote_args: dict,
-              blocks: Iterable[Block[T]]) -> Iterable[ObjectRef[Block]]:
+              blocks: Iterable[Block]) -> Iterable[ObjectRef[Block]]:
 
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
-        class Worker:
+        class BlockWorker:
             def ready(self):
                 return "ok"
 
             @ray.method(num_returns=2)
-            def process_block(self, block: Block[T], meta: BlockMetadata
-                              ) -> (Block[U], BlockMetadata):
+            def process_block(self, block: Block,
+                              meta: BlockMetadata) -> (Block, BlockMetadata):
                 new_block = fn(block)
+                accessor = BlockAccessor.for_block(new_block)
                 new_metadata = BlockMetadata(
-                    num_rows=new_block.num_rows(),
-                    size_bytes=new_block.size_bytes(),
-                    schema=new_block.schema(),
+                    num_rows=accessor.num_rows(),
+                    size_bytes=accessor.size_bytes(),
+                    schema=accessor.schema(),
                     input_files=meta.input_files)
                 return new_block, new_metadata
 
-        if "num_cpus" not in remote_args:
+        if not remote_args:
             remote_args["num_cpus"] = 1
-        Worker = ray.remote(**remote_args)(Worker)
+        BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
-        workers = [Worker.remote()]
+        self.workers = [BlockWorker.remote()]
         metadata_mapping = {}
-        tasks = {w.ready.remote(): w for w in workers}
+        tasks = {w.ready.remote(): w for w in self.workers}
         ready_workers = set()
         blocks_in = [(b, m) for (b, m) in zip(blocks, blocks.get_metadata())]
         blocks_out = []
@@ -80,14 +104,14 @@ class ActorPool(ComputeStrategy):
             ready, _ = ray.wait(
                 list(tasks), timeout=0.01, num_returns=1, fetch_local=False)
             if not ready:
-                if len(ready_workers) / len(workers) > 0.8:
-                    w = Worker.remote()
-                    workers.append(w)
+                if len(ready_workers) / len(self.workers) > 0.8:
+                    w = BlockWorker.remote()
+                    self.workers.append(w)
                     tasks[w.ready.remote()] = w
                     map_bar.set_description(
                         "Map Progress ({} actors {} pending)".format(
                             len(ready_workers),
-                            len(workers) - len(ready_workers)))
+                            len(self.workers) - len(ready_workers)))
                 continue
 
             [obj_id] = ready
@@ -111,6 +135,29 @@ class ActorPool(ComputeStrategy):
         new_metadata = ray.get([metadata_mapping[b] for b in blocks_out])
         map_bar.close()
         return BlockList(blocks_out, new_metadata)
+
+
+def cache_wrapper(fn: Union[CallableClass, Callable[[Any], Any]]
+                  ) -> Callable[[Any], Any]:
+    """Implements caching of stateful callables.
+
+    Args:
+        fn: Either a plain function or class of a stateful callable.
+
+    Returns:
+        A plain function with per-process initialization cached as needed.
+    """
+    if isinstance(fn, CallableClass):
+
+        def _fn(item: Any) -> Any:
+            if ray.data._cached_fn is None or ray.data._cached_cls != fn:
+                ray.data._cached_cls = fn
+                ray.data._cached_fn = fn()
+            return ray.data._cached_fn(item)
+
+        return _fn
+    else:
+        return fn
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:

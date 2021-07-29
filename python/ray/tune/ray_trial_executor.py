@@ -451,8 +451,8 @@ class RayTrialExecutor(TrialExecutor):
             if not runner:
                 return False
         trial.set_runner(runner)
-        self.restore(trial, checkpoint)
         self._notify_trainable_of_new_resources_if_needed(trial)
+        self.restore(trial, checkpoint)
         self.set_status(trial, Trial.RUNNING)
 
         if trial in self._staged_trials:
@@ -475,7 +475,7 @@ class RayTrialExecutor(TrialExecutor):
                 with warn_if_slow("update_resources"):
                     try:
                         ray.get(
-                            trainable.update_resources.remote(
+                            trainable._update_resources.remote(
                                 trial.placement_group_factory if trial.
                                 uses_placement_groups else trial.resources),
                             timeout=DEFAULT_GET_TIMEOUT)
@@ -921,7 +921,8 @@ class RayTrialExecutor(TrialExecutor):
                     total_resources.get(name, 0.),
                     self._avail_resources.get_res_total(name), name)
                 for name in self._avail_resources.custom_resources
-                if not name.startswith(ray.resource_spec.NODE_ID_PREFIX)
+                if not name.startswith(ray.resource_spec.NODE_ID_PREFIX) and (
+                    total_resources.get(name, 0.) > 0 or "_group_" not in name)
             ])
             if customs:
                 status += " ({})".format(customs)

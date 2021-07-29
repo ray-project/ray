@@ -198,15 +198,18 @@ class TestRNNSequencing(unittest.TestCase):
             ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_1"))
         if batch0["sequences"][0][0][0] > batch1["sequences"][0][0][0]:
             batch0, batch1 = batch1, batch0  # sort minibatches
-        self.assertEqual(batch0["seq_lens"].tolist(), [4, 4])
-        self.assertEqual(batch1["seq_lens"].tolist(), [4, 3])
+        self.assertEqual(batch0["seq_lens"].tolist(), [4, 4, 2])
+        self.assertEqual(batch1["seq_lens"].tolist(), [2, 3, 4, 1])
         check(batch0["sequences"], [
             [[0], [1], [2], [3]],
             [[4], [5], [6], [7]],
+            [[8], [9], [0], [0]],
         ])
         check(batch1["sequences"], [
-            [[8], [9], [10], [11]],
+            [[10], [11], [0], [0]],
             [[12], [13], [14], [0]],
+            [[0], [1], [2], [3]],
+            [[4], [0], [0], [0]],
         ])
 
         # second epoch: 20 observations get split into 2 minibatches of 8
@@ -217,15 +220,17 @@ class TestRNNSequencing(unittest.TestCase):
             ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_3"))
         if batch2["sequences"][0][0][0] > batch3["sequences"][0][0][0]:
             batch2, batch3 = batch3, batch2
-        self.assertEqual(batch2["seq_lens"].tolist(), [4, 4])
-        self.assertEqual(batch3["seq_lens"].tolist(), [2, 4])
+        self.assertEqual(batch2["seq_lens"].tolist(), [4, 4, 2])
+        self.assertEqual(batch3["seq_lens"].tolist(), [4, 4, 2])
         check(batch2["sequences"], [
-            [[5], [6], [7], [8]],
-            [[9], [10], [11], [12]],
+            [[0], [1], [2], [3]],
+            [[4], [5], [6], [7]],
+            [[8], [9], [0], [0]],
         ])
         check(batch3["sequences"], [
+            [[5], [6], [7], [8]],
+            [[9], [10], [11], [12]],
             [[13], [14], [0], [0]],
-            [[0], [1], [2], [3]],
         ])
 
 

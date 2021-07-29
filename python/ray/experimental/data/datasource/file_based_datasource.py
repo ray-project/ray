@@ -1,17 +1,21 @@
 import logging
-from typing import Optional, List, Tuple, Union, TYPE_CHECKING
+from typing import Optional, List, Tuple, Union, Any, TYPE_CHECKING
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.experimental.data.impl.arrow_block import ArrowRow, ArrowBlock
+from ray.experimental.data.impl.arrow_block import (
+    ArrowRow, DelegatingArrowBlockBuilder)
 from ray.experimental.data.impl.block_list import BlockMetadata
-from ray.experimental.data.datasource.datasource import (Datasource, ReadTask)
+from ray.experimental.data.datasource.datasource import Datasource, ReadTask
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
-class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
+@DeveloperAPI
+class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
     """File-based datasource, for reading and writing files.
 
     This class should not be used directly, and should instead be subclassed
@@ -21,11 +25,13 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
     Current subclasses: JSONDatasource, CSVDatasource
     """
 
-    def prepare_read(self,
-                     parallelism: int,
-                     paths: Union[str, List[str]],
-                     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-                     **reader_args) -> List[ReadTask]:
+    def prepare_read(
+            self,
+            parallelism: int,
+            paths: Union[str, List[str]],
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+            schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
+            **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
         """
         import pyarrow as pa
@@ -37,21 +43,33 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
 
         read_file = self._read_file
 
-        def read_files(read_paths: List[str]):
+        if isinstance(filesystem, pa.fs.S3FileSystem):
+            filesystem = _S3FileSystemWrapper(filesystem)
+
+        def read_files(
+                read_paths: List[str],
+                fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper]):
             logger.debug(f"Reading {len(read_paths)} files.")
-            tables = []
+            if isinstance(fs, _S3FileSystemWrapper):
+                fs = fs.unwrap()
+            builder = DelegatingArrowBlockBuilder()
             for read_path in read_paths:
-                with filesystem.open_input_file(read_path) as f:
-                    tables.append(read_file(f, **reader_args))
-            return ArrowBlock(pa.concat_tables(tables))
+                with fs.open_input_stream(read_path) as f:
+                    data = read_file(f, read_path, **reader_args)
+                    if isinstance(data, pa.Table):
+                        builder.add_block(data)
+                    else:
+                        builder.add(data)
+            return builder.build()
 
         read_tasks = [
             ReadTask(
-                lambda read_paths=read_paths: read_files(read_paths),
+                lambda read_paths=read_paths: read_files(
+                    read_paths, filesystem),
                 BlockMetadata(
                     num_rows=None,
                     size_bytes=sum(file_sizes),
-                    schema=None,
+                    schema=schema,
                     input_files=read_paths)) for read_paths, file_sizes in zip(
                         np.array_split(paths, parallelism),
                         np.array_split(file_sizes, parallelism))
@@ -60,7 +78,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, int]]):
 
         return read_tasks
 
-    def _read_file(self, f, **reader_args):
+    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         """Reads a single file, passing all kwargs to the reader.
 
         This method should be implemented by subclasses.
@@ -105,6 +123,9 @@ def _expand_directory(path: str,
     return zip(*sorted(filtered_paths, key=lambda x: x[0]))
 
 
+# TODO(Clark): Add unit test coverage of _resolve_paths_and_filesystem.
+
+
 def _resolve_paths_and_filesystem(
         paths: Union[str, List[str]],
         filesystem: "pyarrow.fs.FileSystem" = None
@@ -136,6 +157,10 @@ def _resolve_paths_and_filesystem(
 
     resolved_paths = []
     for path in paths:
+        if filesystem is not None:
+            # If we provide a filesystem, _resolve_filesystem_and_path will not
+            # slice off the protocol from the provided URI/path when resolved.
+            path = _unwrap_protocol(path)
         resolved_filesystem, resolved_path = _resolve_filesystem_and_path(
             path, filesystem)
         if filesystem is None:
@@ -159,3 +184,30 @@ def _resolve_paths_and_filesystem(
         else:
             raise FileNotFoundError(path)
     return expanded_paths, file_infos, filesystem
+
+
+def _unwrap_protocol(path):
+    """
+    Slice off any protocol prefixes on path.
+    """
+    parsed = urlparse(path)
+    return parsed.netloc + parsed.path
+
+
+class _S3FileSystemWrapper:
+    def __init__(self, fs: "pyarrow.fs.S3FileSystem"):
+        self._fs = fs
+
+    def unwrap(self):
+        return self._fs
+
+    @classmethod
+    def _reconstruct(cls, fs_reconstruct, fs_args):
+        # Implicitly trigger S3 subsystem initialization by importing
+        # pyarrow.fs.
+        import pyarrow.fs  # noqa: F401
+
+        return cls(fs_reconstruct(*fs_args))
+
+    def __reduce__(self):
+        return _S3FileSystemWrapper._reconstruct, self._fs.__reduce__()

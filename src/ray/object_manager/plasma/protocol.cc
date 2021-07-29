@@ -557,6 +557,9 @@ Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[]
   std::vector<flatbuffers::Offset<fb::CudaHandle>> handles;
   for (int64_t i = 0; i < num_objects; ++i) {
     const PlasmaObject &object = plasma_objects[object_ids[i]];
+    RAY_LOG(DEBUG) << "Sending object info, id: " << object_ids[i]
+                   << " data_size: " << object.data_size
+                   << " metadata_size: " << object.metadata_size;
     objects.push_back(PlasmaObjectSpec(FD2INT(object.store_fd.first),
                                        object.store_fd.second, object.data_offset,
                                        object.data_size, object.metadata_offset,

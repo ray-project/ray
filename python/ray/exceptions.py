@@ -1,10 +1,9 @@
 import os
 from traceback import format_exception
 
-import colorama
-
 import ray.cloudpickle as pickle
 from ray.core.generated.common_pb2 import RayException, Language, PYTHON
+import colorama
 import setproctitle
 
 
@@ -268,6 +267,16 @@ class AsyncioActorExit(RayError):
     pass
 
 
+class RuntimeEnvSetupError(RayError):
+    """Raised when a runtime environment fails to be set up."""
+
+    def __str__(self):
+        return (
+            "The runtime environment for this task or actor failed to be "
+            "installed. Corresponding error logs should have been streamed "
+            "to the driver's STDOUT.")
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -278,4 +287,5 @@ RAY_EXCEPTION_TYPES = [
     ObjectLostError,
     GetTimeoutError,
     AsyncioActorExit,
+    RuntimeEnvSetupError,
 ]

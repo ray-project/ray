@@ -198,7 +198,6 @@ int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_
                                                 int64_t node_id,
                                                 const NodeResources &resources) const {
   int violations = 0;
-
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (resource_request.predefined_resources[i] >
@@ -593,6 +592,42 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
   }
 }
 
+std::string ClusterResourceScheduler::SerializedTaskResourceInstances(
+    std::shared_ptr<TaskResourceInstances> task_allocation) const {
+  bool has_added_resource = false;
+  std::stringstream buffer;
+  buffer << "{";
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    std::vector<FixedPoint> resource = task_allocation->predefined_resources[i];
+    if (resource.empty()) {
+      continue;
+    }
+    if (has_added_resource) {
+      buffer << ",";
+    }
+    std::string resource_name = ResourceEnumToString(static_cast<PredefinedResources>(i));
+    buffer << "\"" << resource_name << "\":";
+    bool is_unit_instance = predefined_unit_instance_resources_.find(i) !=
+                            predefined_unit_instance_resources_.end();
+    if (!is_unit_instance) {
+      buffer << resource[0];
+    } else {
+      buffer << "[";
+      for (size_t i = 0; i < resource.size(); i++) {
+        buffer << resource[i];
+        if (i < resource.size() - 1) {
+          buffer << ", ";
+        }
+      }
+      buffer << "]";
+    }
+    has_added_resource = true;
+  }
+  // TODO (chenk008): add custom_resources
+  buffer << "}";
+  return buffer.str();
+}
+
 std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
   buffer << "\nLocal id: " << local_node_id_;
@@ -772,7 +807,6 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
   if (nodes_.find(local_node_id_) == nodes_.end()) {
     return false;
   }
-
   task_allocation->predefined_resources.resize(PredefinedResources_MAX);
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (resource_request.predefined_resources[i] > 0) {

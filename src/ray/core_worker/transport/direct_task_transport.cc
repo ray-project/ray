@@ -204,9 +204,9 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
   // ids. In fact, if we allow stealing among workers with the same address/worker id, we
   // will also necessarily enable self-stealing.
   if ((victim_addr == thief_addr) || victim_addr.worker_id == thief_addr.worker_id) {
-    RAY_LOG(INFO) << "No victim available with address distinct from thief!";
-    RAY_LOG(INFO) << "victim_addr.worker_id: " << victim_addr.worker_id
-                  << " thief_addr.worker_id: " << thief_addr.worker_id;
+    RAY_LOG(DEBUG) << "No victim available with address distinct from thief!";
+    RAY_LOG(DEBUG) << "victim_addr.worker_id: " << victim_addr.worker_id
+                   << " thief_addr.worker_id: " << thief_addr.worker_id;
     return false;
   }
 
@@ -505,7 +505,23 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
         pending_lease_request = std::make_pair(nullptr, TaskID::Nil());
 
         if (status.ok()) {
-          if (reply.canceled()) {
+          if (reply.runtime_env_setup_failed()) {
+            // If the runtime_env failed to be set up, we fail all of the pending
+            // tasks in the queue. This makes an implicit assumption that runtime_env
+            // failures are not transient -- we may consider adding some retries
+            // in the future.
+            auto &task_queue = scheduling_key_entry.task_queue;
+            while (!task_queue.empty()) {
+              auto &task_spec = task_queue.front();
+              RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
+                  task_spec.TaskId(), task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED,
+                  nullptr));
+              task_queue.pop_front();
+            }
+            if (scheduling_key_entry.CanDelete()) {
+              scheduling_key_entries_.erase(scheduling_key);
+            }
+          } else if (reply.canceled()) {
             RAY_LOG(DEBUG) << "Lease canceled " << task_id;
             RequestNewWorkerIfNeeded(scheduling_key);
           } else if (!reply.worker_address().raylet_id().empty()) {
@@ -625,7 +641,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
                                                  bool force_kill, bool recursive) {
-  RAY_LOG(INFO) << "Killing task: " << task_spec.TaskId();
+  RAY_LOG(INFO) << "Cancelling a task: " << task_spec.TaskId()
+                << " force_kill: " << force_kill << " recursive: " << recursive;
   const SchedulingKey scheduling_key(
       task_spec.GetSchedulingClass(), task_spec.GetDependencyIds(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),

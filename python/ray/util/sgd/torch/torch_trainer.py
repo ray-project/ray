@@ -412,8 +412,9 @@ class TorchTrainer:
                 in case of shared cluster usage. Defaults to 3.
             info (dict): Optional dictionary passed to the training
                 operator for ``train_epoch`` and ``train_batch``.
-            dataset (Dataset): Optional dataset to train with. If specified,
-                the dataloader passed in via data_creator will be ignored.
+            dataset (sgd.Dataset): Optional dataset to train with. If
+                specified, the dataloader passed in via data_creator will be
+                ignored.
 
         Returns:
             (dict | list) A dictionary of metrics for training.
