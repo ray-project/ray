@@ -64,13 +64,13 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
 
   /// Request agent to create runtime env.
   /// \param[in] runtime_env The runtime env.
-  void CreateRuntimeEnv(const std::string &serialized_runtime_env,
-                        CreateRuntimeEnvCallback callback);
+  virtual void CreateRuntimeEnv(const std::string &serialized_runtime_env,
+                                CreateRuntimeEnvCallback callback);
 
   /// Request agent to delete runtime env.
   /// \param[in] runtime_env The runtime env.
-  void DeleteRuntimeEnv(const std::string &serialized_runtime_env,
-                        DeleteRuntimeEnvCallback callback);
+  virtual void DeleteRuntimeEnv(const std::string &serialized_runtime_env,
+                                DeleteRuntimeEnvCallback callback);
 
  private:
   void StartAgent();
