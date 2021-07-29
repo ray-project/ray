@@ -76,7 +76,8 @@ void GrpcServer::Run() {
       // Create a buffer of 100 calls for each RPC handler.
       // TODO(edoakes): a small buffer should be fine and seems to have better
       // performance, but we don't currently handle backpressure on the client.
-      for (int j = 0; j < 100; j++) {
+      for (int j = 0; j < RayConfig::instance().grpc_server_call_size_per_factory();
+           j++) {
         entry->CreateCall();
       }
     }

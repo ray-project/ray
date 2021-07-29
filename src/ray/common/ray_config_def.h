@@ -460,3 +460,6 @@ RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
 // If enabled and worker stated in container, the container will add
 // resource limit.
 RAY_CONFIG(bool, worker_resource_limits_enabled, false)
+
+/// ServerCall instance number of each ServerCallFactory
+RAY_CONFIG(int, grpc_server_call_size_per_factory, 1000)
