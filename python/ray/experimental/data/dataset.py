@@ -392,6 +392,8 @@ class Dataset(Generic[T]):
                 f"The length of locality_hints {len(locality_hints)} "
                 "doesn't equal the number of splits {n}.")
 
+        # TODO(ekl) we could do better than truncation here. This could be a
+        # problem if block sizes are very skewed.
         def equalize(splits: List[Dataset[T]]) -> List[Dataset[T]]:
             if not equal:
                 return splits
