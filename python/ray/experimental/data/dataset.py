@@ -315,7 +315,10 @@ class Dataset(Generic[T]):
         new_blocks = simple_shuffle(self._blocks, num_blocks)
         return Dataset(new_blocks)
 
-    def split(self, n: int, *,
+    def split(self,
+              n: int,
+              *,
+              equal_split_sizes: bool = False,
               locality_hints: List[Any] = None) -> List["Dataset[T]"]:
         """Split the dataset into ``n`` disjoint pieces.
 
@@ -332,6 +335,9 @@ class Dataset(Generic[T]):
 
         Args:
             n: Number of child datasets to return.
+            equal_split_sizes: Whether to guarantee each split has an equal
+                number of records. This may drop records if they cannot be
+                divided equally among the splits.
             locality_hints: A list of Ray actor handles of size ``n``. The
                 system will try to co-locate the blocks of the ith dataset
                 with the ith actor to maximize data locality.
@@ -346,6 +352,9 @@ class Dataset(Generic[T]):
             raise ValueError(
                 f"The length of locality_hints {len(locality_hints)} "
                 "doesn't equal the number of splits {n}.")
+
+        if equal_split_sizes:
+            raise NotImplementedError  # P1
 
         block_refs = list(self._blocks)
         metadata_mapping = {
@@ -460,28 +469,26 @@ class Dataset(Generic[T]):
             for actor in locality_hints
         ]
 
-    def random_shuffle(self,
-                       *,
-                       num_blocks: int = None,
-                       equal_block_sizes: bool = False,
-                       seed: int = None) -> "Dataset[T]":
+    def random_shuffle(self, *, seed: int = None,
+                       num_blocks: int = None) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
         This is a blocking operation similar to repartition().
 
         Examples:
-            >>> # Shuffle this dataset into one with 100 equi-sized blocks.
-            >>> ds.random_shuffle(num_blocks=100, equal_block_sizes=True)
+            >>> # Shuffle this dataset randomly.
+            >>> ds.random_shuffle()
+
+            >>> # Shuffle this dataset with a fixed random seed.
+            >>> ds.random_shuffle(seed=12345)
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            num_blocks: The number of output blocks after the shuffle, or None
-                to retain the number of blocks.
-            equal_block_sizes: If True, the output blocks will be truncated
-                to have an identical number of rows each.
             seed: Fix the random seed to use, otherwise one will be chosen
                 based on system randomness.
+            num_blocks: The number of output blocks after the shuffle, or None
+                to retain the number of blocks.
 
         Returns:
             The shuffled dataset.
