@@ -628,8 +628,6 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
 void ClusterTaskManager::FillResourceUsage(
     rpc::ResourcesData &data,
     const std::shared_ptr<SchedulingResources> &last_reported_resources) {
-  // Dispatch one more time to clear the finished tasks in dispatch queue.
-  ScheduleAndDispatchTasks();
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
   }
