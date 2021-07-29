@@ -103,7 +103,7 @@ enum class StatusCode : char {
   TransientObjectStoreFull = 25,
   // worker pool status
   JobNotStarted = 30,
-  JobHasFinished = 31,
+  OwnerFailed = 31,
   SoManyStartingWorkerProcesses = 32,
   WorkerPendingRegistration = 33,
   RuntimeEnvCreationFailed = 34,
@@ -215,8 +215,8 @@ class RAY_EXPORT Status {
     return Status(StatusCode::JobNotStarted, msg);
   }
 
-  static Status JobHasFinished(const std::string &msg) {
-    return Status(StatusCode::JobHasFinished, msg);
+  static Status OwnerFailed(const std::string &msg) {
+    return Status(StatusCode::OwnerFailed, msg);
   }
 
   static Status SoManyStartingWorkerProcesses(const std::string &msg) {
@@ -266,7 +266,7 @@ class RAY_EXPORT Status {
     return code() == StatusCode::TransientObjectStoreFull;
   }
   bool IsJobNotStarted() const { return code() == StatusCode::JobNotStarted; }
-  bool IsJobHasFinished() const { return code() == StatusCode::JobHasFinished; }
+  bool IsOwnerFailed() const { return code() == StatusCode::OwnerFailed; }
   bool IsSoManyStartingWorkerProcesses() const {
     return code() == StatusCode::SoManyStartingWorkerProcesses;
   }

@@ -175,6 +175,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
     : self_node_id_(self_node_id),
       io_service_(io_service),
       gcs_client_(gcs_client),
+      is_owner_alive_(
+          [this](const WorkerID &owner_worker_id, const NodeID &owner_node_id) {
+            return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
+                     failed_nodes_cache_.count(owner_node_id) > 0);
+          }),
       worker_pool_(io_service, self_node_id_, config.node_manager_address,
                    config.num_workers_soft_limit,
                    config.num_initial_python_workers_for_first_job,
@@ -184,7 +189,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                    /*starting_worker_timeout_callback=*/
                    [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
                    config.ray_debugger_external,
-                   /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
+                   /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+                   is_owner_alive_),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
@@ -293,11 +299,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
   };
-  auto is_owner_alive = [this](const WorkerID &owner_worker_id,
-                               const NodeID &owner_node_id) {
-    return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
-             failed_nodes_cache_.count(owner_node_id) > 0);
-  };
   auto announce_infeasible_task = [this](const Task &task) {
     PublishInfeasibleTaskError(task);
   };
@@ -317,7 +318,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
       self_node_id_,
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
-      dependency_manager_, is_owner_alive, get_node_info_func, announce_infeasible_task,
+      dependency_manager_, is_owner_alive_, get_node_info_func, announce_infeasible_task,
       worker_pool_, leased_workers_,
       [this](const std::vector<ObjectID> &object_ids,
              std::vector<std::unique_ptr<RayObject>> *results) {

@@ -135,6 +135,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time.
+  /// \param is_owner_alive: A callback which returns if the owner process is alive
+  /// (according to our ownership model).
   WorkerPool(instrumented_io_context &io_service, const NodeID node_id,
              const std::string node_address, int num_workers_soft_limit,
              int num_initial_python_workers_for_first_job,
@@ -143,7 +145,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              std::function<void()> starting_worker_timeout_callback,
-             int ray_debugger_external, const std::function<double()> get_time);
+             int ray_debugger_external, const std::function<double()> get_time,
+             std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -370,6 +373,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param job_id The ID of the job to which the started worker process belongs.
   /// \param status The output status of work process starting.
   /// \param dynamic_options The dynamic options that we should add for worker command.
+  /// \param runtime_env_hash The hash of runtime env.
   /// \param serialized_runtime_env The runtime environment for the started worker
   /// \param allocated_instances_serialized_json The allocated resource instances
   //  json string.
@@ -419,6 +423,17 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     rpc::WorkerType worker_type;
   };
 
+  struct TaskWaitingForWorkerInfo {
+    /// The id of task.
+    TaskID task_id;
+    /// The callback function which should be called when worker registered.
+    PopWorkerCallback callback;
+    /// The address who leased worker for this task.
+    rpc::Address owner_address;
+    /// The flag of detached actor.
+    bool is_detached_actor;
+  };
+
   /// An internal data structure that maintains the pool state per language.
   struct State {
     /// The commands and arguments used to start the worker process
@@ -446,12 +461,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// the process. The shim process PID is the same with worker process PID, except
     /// starting worker process in container.
     std::unordered_map<Process, StartingWorkerProcessInfo> starting_worker_processes;
-    ///
-    std::unordered_map<Process, std::pair<TaskID, PopWorkerCallback>> workers_to_tasks;
+    /// A map for looking up the task by the pid of starting worker process.
+    std::unordered_map<Process, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
     /// A map for looking up the task with dynamic options by the pid of
-    /// worker. Note that this is used for the dedicated worker processes.
-    std::unordered_map<Process, std::pair<TaskID, PopWorkerCallback>>
-        dedicated_workers_to_tasks;
+    /// starting worker process. Note that this is used for the dedicated worker
+    /// processes.
+    std::unordered_map<Process, TaskWaitingForWorkerInfo>
+        starting_dedicated_workers_to_tasks;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -539,7 +555,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
                                          Status status = Status::OK());
 
   void TryToCallbackTask(
-      std::unordered_map<Process, std::pair<TaskID, PopWorkerCallback>> &workers_to_tasks,
+      std::unordered_map<Process, TaskWaitingForWorkerInfo> &workers_to_tasks,
       const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
       const Status &status, bool *found, bool *used, TaskID *task_id);
 
@@ -606,6 +622,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::function<double()> get_time_;
   /// Agent manager.
   std::shared_ptr<AgentManager> agent_manager_;
+  /// Function to check if the owner is alive on a given node.
+  std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
 };
 
 }  // namespace raylet

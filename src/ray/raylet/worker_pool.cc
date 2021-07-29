@@ -57,15 +57,15 @@ namespace ray {
 
 namespace raylet {
 
-WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id,
-                       const std::string node_address, int num_workers_soft_limit,
-                       int num_initial_python_workers_for_first_job,
-                       int maximum_startup_concurrency, int min_worker_port,
-                       int max_worker_port, const std::vector<int> &worker_ports,
-                       std::shared_ptr<gcs::GcsClient> gcs_client,
-                       const WorkerCommandMap &worker_commands,
-                       std::function<void()> starting_worker_timeout_callback,
-                       int ray_debugger_external, const std::function<double()> get_time)
+WorkerPool::WorkerPool(
+    instrumented_io_context &io_service, const NodeID node_id,
+    const std::string node_address, int num_workers_soft_limit,
+    int num_initial_python_workers_for_first_job, int maximum_startup_concurrency,
+    int min_worker_port, int max_worker_port, const std::vector<int> &worker_ports,
+    std::shared_ptr<gcs::GcsClient> gcs_client, const WorkerCommandMap &worker_commands,
+    std::function<void()> starting_worker_timeout_callback, int ray_debugger_external,
+    const std::function<double()> get_time,
+    std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive)
     : io_service_(&io_service),
       node_id_(node_id),
       node_address_(node_address),
@@ -79,7 +79,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
           num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
       num_initial_python_workers_for_first_job_(num_initial_python_workers_for_first_job),
       periodical_runner_(io_service),
-      get_time_(get_time) {
+      get_time_(get_time),
+      is_owner_alive_(is_owner_alive) {
   RAY_CHECK(maximum_startup_concurrency > 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
@@ -358,7 +359,6 @@ Process WorkerPool::StartWorkerProcess(
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   stats::ProcessStartupTimeMs.Record(duration.count());
   stats::NumWorkersStarted.Record(1);
-
   RAY_LOG(INFO) << "Started worker process of " << workers_to_start
                 << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
@@ -394,11 +394,11 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
           bool found;
           bool used;
           TaskID task_id;
-          TryToCallbackTask(state.dedicated_workers_to_tasks, proc, nullptr, status,
-                            &found, &used, &task_id);
+          TryToCallbackTask(state.starting_dedicated_workers_to_tasks, proc, nullptr,
+                            status, &found, &used, &task_id);
           if (!found) {
-            TryToCallbackTask(state.workers_to_tasks, proc, nullptr, status, &found,
-                              &used, &task_id);
+            TryToCallbackTask(state.starting_workers_to_tasks, proc, nullptr, status,
+                              &found, &used, &task_id);
           }
           state.starting_worker_processes.erase(it);
           if (IsIOWorkerType(worker_type)) {
@@ -722,28 +722,32 @@ void WorkerPool::PopDeleteWorker(
 }
 
 void WorkerPool::TryToCallbackTask(
-    std::unordered_map<Process, std::pair<TaskID, PopWorkerCallback>> &workers_to_tasks,
+    std::unordered_map<Process, TaskWaitingForWorkerInfo> &starting_workers_to_tasks,
     const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
     const Status &status, bool *found, bool *used, TaskID *task_id) {
   *found = false;
   *used = false;
   Status callback_status = status;
-  auto it = workers_to_tasks.find(proc);
-  if (it != workers_to_tasks.end()) {
-    auto job_id = worker->GetAssignedJobId();
+  auto it = starting_workers_to_tasks.find(proc);
+  if (it != starting_workers_to_tasks.end()) {
     *found = true;
-    *task_id = it->second.first;
-    const auto &callback = it->second.second;
+    *task_id = it->second.task_id;
+    const auto &callback = it->second.callback;
+    const auto &owner_address = it->second.owner_address;
+    const auto is_detached_actor = it->second.is_detached_actor;
+
+    const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+    const auto owner_node_id = NodeID::FromBinary(owner_address.raylet_id());
+
     RAY_CHECK(callback);
-    if (finished_jobs_.count(job_id) > 0) {
+    if (!is_detached_actor && !is_owner_alive_(owner_worker_id, owner_node_id)) {
       std::ostringstream oss;
-      oss << "Call back to a task of finished job, task id = " << *task_id
-          << ", job id = " << job_id;
+      oss << "Call back to an owner failed task, task id = " << *task_id;
       RAY_LOG(DEBUG) << oss.str();
-      callback_status = Status::JobHasFinished(oss.str());
+      callback_status = Status::OwnerFailed(oss.str());
     }
     *used = callback(worker, callback_status);
-    workers_to_tasks.erase(it);
+    starting_workers_to_tasks.erase(it);
   }
 }
 
@@ -755,8 +759,8 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   bool found;
   bool used;
   TaskID task_id;
-  TryToCallbackTask(state.dedicated_workers_to_tasks, worker->GetShimProcess(), worker,
-                    Status::OK(), &found, &used, &task_id);
+  TryToCallbackTask(state.starting_dedicated_workers_to_tasks, worker->GetShimProcess(),
+                    worker, Status::OK(), &found, &used, &task_id);
   if (found) {
     // The worker is used for the actor creation task with dynamic options.
     if (!used) {
@@ -767,7 +771,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     return;
   }
 
-  TryToCallbackTask(state.workers_to_tasks, worker->GetShimProcess(), worker,
+  TryToCallbackTask(state.starting_workers_to_tasks, worker->GetShimProcess(), worker,
                     Status::OK(), &found, &used, &task_id);
   // The worker is not used for the actor creation task with dynamic options.
   if (!used) {
@@ -936,7 +940,6 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
-  Process proc;
   auto start_worker_process_fn = [this, allocated_instances_serialized_json](
                                      const TaskSpecification &task_spec, State &state,
                                      std::vector<std::string> dynamic_options,
@@ -953,11 +956,13 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     if (status.ok()) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();
+      auto task_info = TaskWaitingForWorkerInfo{task_spec.TaskId(), callback,
+                                                task_spec.CallerAddress(),
+                                                task_spec.IsDetachedActor()};
       if (dedicated) {
-        state.dedicated_workers_to_tasks[proc] =
-            std::make_pair(task_spec.TaskId(), callback);
+        state.starting_dedicated_workers_to_tasks[proc] = std::move(task_info);
       } else {
-        state.workers_to_tasks[proc] = std::make_pair(task_spec.TaskId(), callback);
+        state.starting_workers_to_tasks[proc] = std::move(task_info);
       }
     } else {
       PopWorkerCallbackExecution(callback, nullptr, status);
@@ -978,9 +983,6 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       // There is an idle dedicated worker for this task.
       worker = std::move(it->second);
       state.idle_dedicated_workers.erase(it);
-      // Because we found a worker that can perform this task,
-      // we can remove it from dedicated_workers_to_tasks.
-      state.dedicated_workers_to_tasks.erase(worker->GetProcess());
     } else {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
@@ -1009,8 +1011,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
               }
             });
       } else {
-        proc = start_worker_process_fn(task_spec, state, dynamic_options, true, "", "",
-                                       callback);
+        start_worker_process_fn(task_spec, state, dynamic_options, true, "", "",
+                                callback);
       }
     }
   } else {
@@ -1068,7 +1070,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
               }
             });
       } else {
-        proc = start_worker_process_fn(task_spec, state, {}, false, "", "", callback);
+        start_worker_process_fn(task_spec, state, {}, false, "", "", callback);
       }
     }
   }

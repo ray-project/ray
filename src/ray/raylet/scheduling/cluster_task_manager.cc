@@ -269,7 +269,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                     RAY_CHECK(erased);
                   };
 
-              if (canceled || !worker || status.IsJobHasFinished()) {
+              if (canceled || !worker || status.IsOwnerFailed()) {
                 if (canceled) {
                   RAY_LOG(DEBUG)
                       << "Task " << task_id
@@ -289,7 +289,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                 // Worker processes spin up pretty quickly, so it's not worth trying to
                 // spill this task.
                 ReleaseTaskArgs(task_id);
-                if (status.IsJobHasFinished() && !canceled) {
+                if (status.IsOwnerFailed() && !canceled) {
                   erase_from_dispatch_queue_fn(work, scheduling_class);
 
                 } else if (status.IsRuntimeEnvCreationFailed()) {

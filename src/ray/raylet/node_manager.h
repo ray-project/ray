@@ -626,6 +626,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// Class to send heartbeat to GCS.
   std::unique_ptr<HeartbeatSender> heartbeat_sender_;
+  /// Function to check if the owner is alive on a given node.
+  std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
   /// A pool of workers.
   WorkerPool worker_pool_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
