@@ -618,22 +618,12 @@ def init(
 
         ray.init()
 
-    To connect a driver to an existing Ray cluster, use this as follows
-    (substituting in the appropriate address):
+    To connect to an existing Ray cluster, use this as follows (substituting
+    in the appropriate address):
 
     .. code-block:: python
 
         ray.init(address="123.45.67.89:6379")
-
-    To connect to an existing Ray cluster using Ray client, specify a protocol
-    in the address:
-
-    .. code-block:: python
-
-        ray.init(address="ray://123.45.67.89:10001")
-
-    More details on Ray client usage can be found at
-    https://docs.ray.io/en/master/cluster/ray-client.html
 
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
@@ -725,11 +715,10 @@ def init(
             and the API is subject to change.
 
     Returns:
-        If the provided address includes a protocol, for example by prepending
-        "ray://" to the address to get "ray://1.2.3.4:10001", then a
-        ClientContext is returned with information such as settings, server
-        versions for ray and python, and the dashboard_url. Otherwise,
-        returns address information about the started processes.
+        If the provided address included a protocol (e.g. "ray://1.2.3.4")
+        then a ClientContext is returned with information such as settings,
+        server versions for ray and python, and the dashboard_url.
+        Otherwise, returns address information about the started processes.
 
     Raises:
         Exception: An exception is raised if an inappropriate combination of
