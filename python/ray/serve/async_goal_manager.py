@@ -9,8 +9,6 @@ from ray.serve.utils import logger
 
 class AsyncGoalManager:
     """
-    Class to help ServeController to manage desirable states of replica.
-
     Essentially a dictionary of <goal_id, asyncio.Future> within
     ServeController's event loop with APIs to facilitate common calls.
     """
@@ -39,17 +37,23 @@ class AsyncGoalManager:
         # TODO: Maybe we can switch this to fut.done() instead ?
         return goal_id not in self._pending_goals
 
+    def fail_goal(self, goal_id) -> None:
+        future = self._pending_goals.pop(goal_id, None)
+        future.set_exception(Exception(f"Goal {goal_id} failed to complete."))
+
     async def wait_for_goal(self, goal_id: GoalId) -> None:
         start = time.time()
         if goal_id not in self._pending_goals:
             logger.debug(f"Goal {goal_id} not found")
             return
+
+        fut = self._pending_goals[goal_id]
         try:
-            await self._pending_goals[goal_id]
+            await fut
         except Exception as e:
             # Exception thrown won't stop controller main loop, only
             # handled by goal_id's final status
-            self._pending_goals[goal_id].set_exception(e)
+            fut.set_exception(e)
 
         logger.debug(
             f"Waiting for goal {goal_id} took {time.time() - start} seconds")
