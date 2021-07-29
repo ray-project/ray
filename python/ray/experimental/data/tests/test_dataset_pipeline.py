@@ -22,7 +22,8 @@ def test_pipeline_actors(shutdown_only):
 
 def test_incremental_take(shutdown_only):
     ray.init(num_cpus=2)
-    # Can read incrementally even if future results are delaye.d
+
+    # Can read incrementally even if future results are delayed.
     def block_on_ones(x: int) -> int:
         if x == 1:
             time.sleep(999999)
