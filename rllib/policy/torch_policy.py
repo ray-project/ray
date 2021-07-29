@@ -151,7 +151,26 @@ class TorchPolicy(Policy):
         else:
             logger.info("TorchPolicy (worker={}) running on {} GPU(s).".format(
                 worker_idx if worker_idx > 0 else "local", config["num_gpus"]))
-            gpu_ids = ray.get_gpu_ids()
+            # We are a remote worker (WORKER_MODE=1):
+            # GPUs should be assigned to us by ray.
+            from ray.worker import global_worker
+            if global_worker.mode == 1:
+                gpu_ids = ray.get_gpu_ids()
+            # In case, we are running this Policy directly on the driver and
+            # thus no GPUs have been assigned (ray.get_gpu_ids() returns []),
+            # derive the GPUs from asking `torch` directly.
+            else:
+                gpu_ids = list(range(torch.cuda.device_count()))
+
+            if not gpu_ids:
+                raise ValueError(
+                    "TorchPolicy was not able to find any GPU IDs, even "
+                    "though torch.cuda.is_available()=True!")
+            elif len(gpu_ids) < config["num_gpus"]:
+                raise ValueError(
+                    "TorchPolicy was not able to find enough GPU IDs! Found "
+                    f"{gpu_ids}, but num_gpus={config['num_gpus']}.")
+
             self.devices = [
                 torch.device("cuda:{}".format(i))
                 for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]

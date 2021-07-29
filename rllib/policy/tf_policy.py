@@ -150,9 +150,10 @@ class TFPolicy(Policy):
         worker_idx = self.config.get("worker_index", 0)
         num_gpus = config["num_gpus"] if worker_idx == 0 \
             else config["num_gpus_per_worker"]
+        gpu_ids = get_gpu_devices()
 
         # No GPU configured, fake GPUs, or none available.
-        if config["_fake_gpus"] or num_gpus == 0 or not get_gpu_devices():
+        if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
             logger.info("TFPolicy (worker={}) running on {}.".format(
                 worker_idx
                 if worker_idx > 0 else "local", f"{num_gpus} fake-GPUs"
@@ -162,7 +163,22 @@ class TFPolicy(Policy):
         else:
             logger.info("TFPolicy (worker={}) running on {} GPU(s).".format(
                 worker_idx if worker_idx > 0 else "local", num_gpus))
-            gpu_ids = ray.get_gpu_ids()
+
+            # We are a remote worker (WORKER_MODE=1):
+            # GPUs should be assigned to us by ray.
+            from ray.worker import global_worker
+            if global_worker.mode == 1:
+                gpu_ids = ray.get_gpu_ids()
+
+            if not gpu_ids:
+                raise ValueError(
+                    "TFPolicy was not able to find any GPU IDs, even "
+                    "though torch.cuda.is_available()=True!")
+            elif len(gpu_ids) < config["num_gpus"]:
+                raise ValueError(
+                    "TFPolicy was not able to find enough GPU IDs! Found "
+                    f"{gpu_ids}, but num_gpus={config['num_gpus']}.")
+
             self.devices = [
                 f"/gpu:{i}" for i, _ in enumerate(gpu_ids) if i < num_gpus
             ]
