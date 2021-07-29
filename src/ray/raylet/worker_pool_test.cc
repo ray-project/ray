@@ -99,7 +99,7 @@ class MockAgentManager : public AgentManager {
                    bool start_agent = true)
       : AgentManager(options, delay_executor, runtime_env_agent_client_factory,
                      start_agent){};
-  void CreateRuntimeEnv(const std::string &serialized_runtime_env,
+  void CreateRuntimeEnv(const JobID &job_id, const std::string &serialized_runtime_env,
                         CreateRuntimeEnvCallback callback) override {
     queued_callbacks.push(callback);
   };
