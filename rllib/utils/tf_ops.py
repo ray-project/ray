@@ -45,13 +45,16 @@ def get_gpu_devices():
     if tfv == 1:
         from tensorflow.python.client import device_lib
         local_device_protos = device_lib.list_local_devices()
-        return [x.name for x in local_device_protos if x.device_type == "GPU"]
+        return [x.name for x in local_device_protos if
+                x.device_type in ["GPU", "XLA_GPU"]]
     else:
         try:
-            gpus = tf.config.list_physical_devices("GPU")
+            gpus = tf.config.list_physical_devices("GPU") + \
+                   tf.config.list_physical_devices("XLA_GPU")
         except Exception:
-            gpus = tf.config.experimental.list_physical_devices("GPU")
-        return gpus
+            gpus = tf.config.experimental.list_physical_devices("GPU") + \
+                   tf.config.experimental.list_physical_devices("XLA_GPU")
+        return [g.name for g in gpus]
 
 
 def get_placeholder(*, space=None, value=None, name=None, time_axis=False):
