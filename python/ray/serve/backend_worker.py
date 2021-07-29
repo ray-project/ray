@@ -131,7 +131,7 @@ class RayServeReplica:
 
     def __init__(self, _callable: Callable, backend_config: BackendConfig,
                  is_function: bool, controller_handle: ActorHandle) -> None:
-        self.backend_tag = ray.serve.api.get_replica_context().backend_tag
+        self.backend_tag = ray.serve.api.get_replica_context().deployment
         self.replica_tag = ray.serve.api.get_replica_context().replica_tag
         self.callable = _callable
         self.is_function = is_function

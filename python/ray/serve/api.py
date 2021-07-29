@@ -987,19 +987,17 @@ def get_handle(
 
 @PublicAPI
 def get_replica_context() -> ReplicaContext:
-    """When called from a backend, returns the backend tag and replica tag.
-
-    When not called from a backend, returns None.
+    """If called from a deployment, returns the deployment and replica tag.
 
     A replica tag uniquely identifies a single replica for a Ray Serve
-    backend at runtime.  Replica tags are of the form
-    `<backend tag>#<random letters>`.
+    deployment at runtime.  Replica tags are of the form
+    `<deployment_name>#<random letters>`.
 
     Raises:
-        RayServeException: if not called from within a Ray Serve backend
+        RayServeException: if not called from within a Ray Serve deployment.
     Example:
-        >>> serve.get_replica_context().backend_tag # my_backend
-        >>> serve.get_replica_context().replica_tag # my_backend#krcwoa
+        >>> serve.get_replica_context().deployment # deployment_name
+        >>> serve.get_replica_context().replica_tag # deployment_name#krcwoa
     """
     if _INTERNAL_REPLICA_CONTEXT is None:
         raise RayServeException("`serve.get_replica_context()` "
