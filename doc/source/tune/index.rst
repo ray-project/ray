@@ -17,7 +17,7 @@ Tune is a Python library for experiment execution and hyperparameter tuning at a
 * Choose among state of the art algorithms such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>`, :ref:`BayesOptSearch <bayesopt>`, :ref:`HyperBand/ASHA <tune-scheduler-hyperband>`.
 * Move your models from training to serving on the same infrastructure with `Ray Serve`_.
 
-.. _`Ray Serve`: serve/index.html
+.. _`Ray Serve`: ../serve/index.html
 
 **Want to get started?** Head over to the :doc:`Key Concepts page </tune/key-concepts>`.
 

@@ -973,8 +973,8 @@ def exec_cluster(config_file: str,
         docker_config=config.get("docker"))
     shutdown_after_run = False
     if cmd and stop:
-        cmd += "; ".join([
-            "ray stop",
+        cmd = "; ".join([
+            cmd, "ray stop",
             "ray teardown ~/ray_bootstrap_config.yaml --yes --workers-only"
         ])
         shutdown_after_run = True
