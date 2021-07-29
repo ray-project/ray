@@ -1,6 +1,5 @@
 from typing import Callable, List
 
-import ray
 from ray.types import ObjectRef
 from ray.experimental.data.block import Block, BlockMetadata, T
 from ray.experimental.data.impl.block_list import BlockList
@@ -8,13 +7,11 @@ from ray.experimental.data.impl.block_list import BlockList
 
 class LazyBlockList(BlockList[T]):
     def __init__(self, calls: Callable[[], ObjectRef[Block]],
-                 metadata: List[BlockMetadata], max_concurrency: int):
+                 metadata: List[BlockMetadata]):
         assert len(calls) == len(metadata), (calls, metadata)
-        self._metadata = metadata
         self._calls = calls
-        self._max_concurrency = max_concurrency
-
-        self._materialized = []
+        self._blocks = [calls[0]()] if calls else []
+        self._metadata = metadata
 
     def __len__(self):
         return len(self._calls)
@@ -22,19 +19,27 @@ class LazyBlockList(BlockList[T]):
     def __iter__(self):
         outer = self
 
-        def gen():
-            nonlocal outer
-            for i in range(len(self._calls)):
-                outer._ensure_concurrency()
-                to_return = outer._materialized[i]
-                ray.wait([to_return], fetch_local=False)
-                yield outer._materialized[i]
+        class Iter:
+            def __init__(self):
+                self._pos = -1
 
-        return gen()
+            def __iter__(self):
+                return self
 
-    def _ensure_concurrency(self):
-        start = len(self._materialized)
-        end_of_buffer = len(self._materialized) + self._max_concurrency
-        end = min(len(self._calls), end_of_buffer)
-        for i in range(start, end):
-            self._materialized.append(self._calls[i]())
+            def __next__(self):
+                self._pos += 1
+                if self._pos < len(outer._calls):
+                    return outer._get_or_compute(self._pos)
+                raise StopIteration
+
+        return Iter()
+
+    def _get_or_compute(self, i: int) -> ObjectRef[Block]:
+        assert i < len(self._calls), i
+        # Check if we need to compute more blocks.
+        if i >= len(self._blocks):
+            start = len(self._blocks)
+            # Exponentially increase the number of blocks computed per batch.
+            for c in self._calls[start:max(i + 1, start * 2)]:
+                self._blocks.append(c())
+        return self._blocks[i]
