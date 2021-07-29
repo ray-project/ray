@@ -78,6 +78,7 @@ def validate_config(config: Dict[str, Any]) -> None:
     try:
         import jsonschema
     except (ModuleNotFoundError, ImportError) as e:
+        # Don't log a warning message here. Logging be handled by upstream.
         raise e from None
 
     try:
