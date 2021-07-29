@@ -96,15 +96,15 @@ class WorkflowData:
 
 @dataclass
 class WorkflowExecutionResult:
-    # State is the part of result to persist in a storage and pass to the
-    # next step.
-    state: "ObjectRef"
-    # Output is the part of result to return to the user but does not
-    # require persistence.
-    output: "ObjectRef"
+    """Dataclass for holding workflow execution result."""
+    # Part of result to persist in a storage and pass to the next step.
+    persisted_output: "ObjectRef"
+    # Part of result to return to the user but does not require persistence.
+    volatile_output: "ObjectRef"
 
     def __reduce__(self):
-        return WorkflowExecutionResult, (self.state, self.output)
+        return WorkflowExecutionResult, (self.persisted_output,
+                                         self.volatile_output)
 
 
 @dataclass

@@ -70,7 +70,8 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
                                f"{workflow_ref.step_id}. Trying to resume it. "
                                f"Current step: '{current_step_id}'")
                 step_ref = recovery.resume_workflow_step(
-                    workflow_id, workflow_ref.step_id, storage_url).state
+                    workflow_id, workflow_ref.step_id,
+                    storage_url).persisted_output
                 output, _ = _resolve_object_ref(step_ref)
         workflow_ref_mapping.append(output)
     return workflow_ref_mapping
@@ -157,17 +158,17 @@ def execute_workflow(
 
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
-    state, output = _workflow_step_executor.options(
+    persisted_output, volatile_output = _workflow_step_executor.options(
         **workflow_data.ray_options).remote(
             workflow_data.step_type, workflow_data.func_body,
             workflow_context.get_workflow_step_context(), workflow.id,
             baked_inputs, outer_most_step_id, workflow_data.catch_exceptions,
             workflow_data.max_retries, last_step_of_workflow)
 
-    if not isinstance(state, WorkflowOutputType):
+    if not isinstance(persisted_output, WorkflowOutputType):
         raise TypeError("Unexpected return type of the workflow.")
 
-    result = WorkflowExecutionResult(state, output)
+    result = WorkflowExecutionResult(persisted_output, volatile_output)
     workflow._result = result
     workflow._executed = True
     return result
@@ -197,20 +198,21 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
               **kwargs) -> Tuple[Any, Any]:
     """Wrap the function and execute it.
 
-    It returns two parts, state and output. State is the part of result
-    to persist in a storage and pass to the next step. Output is the part
-    of result to return to the user but does not require persistence.
+    It returns two parts, persisted_output (p-out) and volatile_output (v-out).
+    P-out is the part of result to persist in a storage and pass to the
+    next step. V-out is the part of result to return to the user but does not
+    require persistence.
 
     This table describes their relationships
 
     +-----------------------------+-------+--------+----------------------+
-    | Step Type                   | state | output | catch exception into |
+    | Step Type                   | p-out | v-out  | catch exception into |
     +-----------------------------+-------+--------+----------------------+
-    | Function Step               | Y     | N      | state                |
+    | Function Step               | Y     | N      | p-out                |
     +-----------------------------+-------+--------+----------------------+
-    | Virtual Actor Step          | Y     | Y      | output               |
+    | Virtual Actor Step          | Y     | Y      | v-out                |
     +-----------------------------+-------+--------+----------------------+
-    | Readonly Virtual Actor Step | N     | Y      | output               |
+    | Readonly Virtual Actor Step | N     | Y      | v-out                |
     +-----------------------------+-------+--------+----------------------+
 
     Args:
@@ -244,12 +246,13 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
 
     if catch_exceptions:
         if step_type == StepType.FUNCTION:
-            state, output = (result, exception), None
+            persisted_output, volatile_output = (result, exception), None
         elif step_type == StepType.ACTOR_METHOD:
             # virtual actors do not persist exception
-            state, output = result[0], (result[1], exception)
+            persisted_output, volatile_output = result[0], (result[1],
+                                                            exception)
         elif step_type == StepType.READONLY_ACTOR_METHOD:
-            state, output = None, (result, exception)
+            persisted_output, volatile_output = None, (result, exception)
         else:
             raise ValueError(f"Unknown StepType '{step_type}'")
     else:
@@ -260,22 +263,22 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
                 logger.info(get_step_status_info(status))
             raise exception
         if step_type == StepType.FUNCTION:
-            state, output = result, None
+            persisted_output, volatile_output = result, None
         elif step_type == StepType.ACTOR_METHOD:
-            state, output = result
+            persisted_output, volatile_output = result
         elif step_type == StepType.READONLY_ACTOR_METHOD:
-            state, output = None, result
+            persisted_output, volatile_output = None, result
         else:
             raise ValueError(f"Unknown StepType '{step_type}'")
 
-    is_nested = isinstance(state, Workflow)
+    is_nested = isinstance(persisted_output, Workflow)
     if step_type != StepType.FUNCTION and is_nested:
         # TODO(suquark): Support returning a workflow inside
         # a virtual actor.
         raise TypeError("Only a workflow step function "
                         "can return a workflow.")
 
-    return state, output
+    return persisted_output, volatile_output
 
 
 @ray.remote(num_returns=2)
@@ -306,15 +309,16 @@ def _workflow_step_executor(
     """
     workflow_context.update_workflow_step_context(context, step_id)
     args, kwargs = _resolve_step_inputs(baked_inputs)
-    state, output = _wrap_run(func, step_type, step_id, catch_exceptions,
-                              max_retries, *args, **kwargs)
+    persisted_output, volatile_output = _wrap_run(func, step_type, step_id,
+                                                  catch_exceptions,
+                                                  max_retries, *args, **kwargs)
 
     if step_type != StepType.READONLY_ACTOR_METHOD:
         store = workflow_storage.get_workflow_storage()
         # Save workflow output
-        commit_step(store, step_id, state, outer_most_step_id)
+        commit_step(store, step_id, persisted_output, outer_most_step_id)
         # We MUST execute the workflow after saving the output.
-        if isinstance(state, Workflow):
+        if isinstance(persisted_output, Workflow):
             if step_type == StepType.FUNCTION:
                 # Passing down outer most step so inner nested steps would
                 # access the same outer most step.
@@ -325,8 +329,9 @@ def _workflow_step_executor(
                     # workflow steps.
                     outer_most_step_id = workflow_context.get_current_step_id()
                 # execute sub-workflow
-                state = execute_workflow(state, outer_most_step_id,
-                                         last_step_of_workflow).state
+                persisted_output = execute_workflow(
+                    persisted_output, outer_most_step_id,
+                    last_step_of_workflow).persisted_output
             else:
                 # TODO(suquark): Support returning a workflow inside
                 # a virtual actor.
@@ -337,7 +342,7 @@ def _workflow_step_executor(
             store.advance_progress(step_id)
         _record_step_status(step_id, WorkflowStatus.SUCCESSFUL)
     logger.info(get_step_status_info(WorkflowStatus.SUCCESSFUL))
-    return state, output
+    return persisted_output, volatile_output
 
 
 @dataclass
@@ -350,7 +355,7 @@ class _BakedWorkflowInputs:
     @classmethod
     def from_workflow_inputs(cls, inputs: "WorkflowInputs"):
         workflow_outputs = [
-            execute_workflow(w).state for w in inputs.workflows
+            execute_workflow(w).persisted_output for w in inputs.workflows
         ]
         return cls(inputs.args, workflow_outputs, inputs.object_refs,
                    inputs.workflow_refs)

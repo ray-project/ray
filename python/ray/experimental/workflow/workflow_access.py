@@ -164,8 +164,8 @@ class WorkflowManagementActor:
         result = recovery.resume_workflow_step(workflow_id, step_id,
                                                self._store.storage_url)
 
-        latest_output = LatestWorkflowOutput(result.state, workflow_id,
-                                             step_id)
+        latest_output = LatestWorkflowOutput(result.persisted_output,
+                                             workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output
         self._step_output_cache[workflow_id, step_id] = latest_output
 
@@ -281,14 +281,14 @@ class WorkflowManagementActor:
         step_id = wf_store.get_entrypoint_step_id()
         result = recovery.resume_workflow_step(workflow_id, step_id,
                                                self._store.storage_url)
-        latest_output = LatestWorkflowOutput(result.state, workflow_id,
-                                             step_id)
+        latest_output = LatestWorkflowOutput(result.persisted_output,
+                                             workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         wf_store.save_workflow_meta(
             common.WorkflowMetaData(common.WorkflowStatus.RUNNING))
         self._step_status.setdefault(workflow_id, {})
-        return result.state
+        return result.persisted_output
 
     def get_running_workflow(self) -> List[str]:
         return list(self._workflow_outputs.keys())

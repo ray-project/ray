@@ -121,7 +121,7 @@ def _resume_workflow_step_executor(
             from ray.experimental.workflow.step_executor import (
                 execute_workflow)
             result = execute_workflow(r, last_step_of_workflow=True)
-            return result.state, result.output
+            return result.persisted_output, result.volatile_output
     return wf_store.load_step_output(r), None
 
 
@@ -141,9 +141,9 @@ def resume_workflow_step(workflow_id: str, step_id: "StepID",
     Returns:
         The execution result of the workflow, represented by Ray ObjectRef.
     """
-    state, output = _resume_workflow_step_executor.remote(
+    persisted_output, volatile_output = _resume_workflow_step_executor.remote(
         workflow_id, step_id, store_url)
-    return WorkflowExecutionResult(state, output)
+    return WorkflowExecutionResult(persisted_output, volatile_output)
 
 
 def get_latest_output(workflow_id: str, store: storage.Storage) -> Any:

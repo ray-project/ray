@@ -416,7 +416,7 @@ class VirtualActor:
         with workflow_context.workflow_step_context(self._actor_id,
                                                     self._storage.storage_url):
             if readonly:
-                return execute_workflow(wf).output
+                return execute_workflow(wf).volatile_output
             else:
                 return wf.run_async(self._actor_id)
 

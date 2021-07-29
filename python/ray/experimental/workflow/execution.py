@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import Set, List, Tuple, Optional
+from typing import Set, List, Tuple, Optional, TYPE_CHECKING
 
 import ray
 
@@ -13,6 +13,9 @@ from ray.experimental.workflow.storage import get_global_storage
 from ray.experimental.workflow.workflow_access import (
     MANAGEMENT_ACTOR_NAME, flatten_workflow_output,
     get_or_create_management_actor)
+
+if TYPE_CHECKING:
+    from ray.experimental.workflow.step_executor import WorkflowExecutionResult
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +45,12 @@ def run(entry_workflow: Workflow,
     # ensures caller of 'run()' holds the reference to the workflow
     # result. Otherwise if the actor removes the reference of the
     # workflow output, the caller may fail to resolve the result.
-    result = ray.get(
+    result: "WorkflowExecutionResult" = ray.get(
         workflow_manager.run_or_resume.remote(workflow_id, ignore_existing))
     if entry_workflow.data.step_type == StepType.FUNCTION:
-        return flatten_workflow_output(workflow_id, result.state)
+        return flatten_workflow_output(workflow_id, result.persisted_output)
     else:
-        return flatten_workflow_output(workflow_id, result.output)
+        return flatten_workflow_output(workflow_id, result.volatile_output)
 
 
 # TODO(suquark): support recovery with ObjectRef inputs.
@@ -62,11 +65,11 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     # ensures caller of 'run()' holds the reference to the workflow
     # result. Otherwise if the actor removes the reference of the
     # workflow output, the caller may fail to resolve the result.
-    result = ray.get(
+    result: "WorkflowExecutionResult" = ray.get(
         workflow_manager.run_or_resume.remote(
             workflow_id, ignore_existing=False))
     logger.info(f"Workflow job {workflow_id} resumed.")
-    return flatten_workflow_output(workflow_id, result.state)
+    return flatten_workflow_output(workflow_id, result.persisted_output)
 
 
 def get_output(workflow_id: str) -> ray.ObjectRef:
@@ -148,8 +151,9 @@ def resume_all(with_failed: bool) -> List[Tuple[str, ray.ObjectRef]]:
 
     async def _resume_one(wid: str) -> Tuple[str, Optional[ray.ObjectRef]]:
         try:
-            result = await workflow_manager.run_or_resume.remote(wid)
-            obj = flatten_workflow_output(wid, result.state)
+            result: "WorkflowExecutionResult" = (
+                await workflow_manager.run_or_resume.remote(wid))
+            obj = flatten_workflow_output(wid, result.persisted_output)
             return wid, obj
         except Exception:
             logger.error(f"Failed to resume workflow {wid}")
