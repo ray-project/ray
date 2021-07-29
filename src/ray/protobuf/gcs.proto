@@ -19,6 +19,7 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 
 option java_package = "io.ray.runtime.generated";
+option go_package = "github.com/ray-project/ray-go-worker/pkg/generated";
 
 // These indexes are mapped to table names in backend storage.
 enum TablePrefix {

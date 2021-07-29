@@ -1475,8 +1475,20 @@ def start_raylet(redis_address,
         f"--logging-rotate-backup-count={backup_count}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
+
+    golang_worker_command = [
+        "/root/ray/golang/worker",
+        f"--node-manager-address={node_ip_address}",
+        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--object-store-socket-name={plasma_store_name}",
+        f"--raylet-socket-name={raylet_name}",
+        f"--session-dir={session_dir}",
+        f"--redis-address={redis_address}",
+    ]
+
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
+        golang_worker_command += [f"--redis-password={redis_password}"]
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.
@@ -1529,6 +1541,8 @@ def start_raylet(redis_address,
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
         f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
+        # TODO
+        f"--golang_worker_command={subprocess.list2cmdline(golang_worker_command)}",  # noqa
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",

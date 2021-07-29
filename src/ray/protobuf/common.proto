@@ -17,12 +17,14 @@ syntax = "proto3";
 package ray.rpc;
 
 option java_package = "io.ray.runtime.generated";
+option go_package = "github.com/ray-project/ray-go-worker/pkg/generated";
 
 // Language of a task or worker.
 enum Language {
   PYTHON = 0;
   JAVA = 1;
   CPP = 2;
+  GOLANG = 3;
 }
 
 // Type of a worker.

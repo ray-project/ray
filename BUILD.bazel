@@ -1918,6 +1918,35 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "libcore_worker_library_go.so",
+    srcs = glob([
+        "src/ray/core_worker/lib/golang/*.h",
+        "src/ray/core_worker/lib/golang/*.cpp",
+    ]),
+    copts = COPTS,
+    linkopts = select({
+        "@bazel_tools//src/conditions:darwin": [
+            "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
+        ],
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
+        ],
+    }),
+    linkshared = 1,
+    linkstatic = 1,
+    deps = [
+        "//:core_worker_lib",
+        "//:exported_streaming_internal",
+        "//:global_state_accessor_lib",
+        "//:src/ray/ray_exported_symbols.lds",
+        "//:src/ray/ray_version_script.lds",
+        "//:stats_lib",
+    ],
+)
+
 filegroup(
     name = "python_sources",
     srcs = glob([
