@@ -227,19 +227,19 @@ def test_fills_out_amis_and_iam(iam_client_stub, ec2_client_stub):
 
     defaults_filled = bootstrap_aws(config)
 
-    ami = DEFAULT_AMI.get(config.get("provider", {}).get("region"))
+    ami = DEFAULT_AMI.get(defaults_filled.get("provider", {}).get("region"))
 
     for node_type in defaults_filled["available_node_types"].values():
         node_config = node_type["node_config"]
         assert node_config.get("ImageId") == ami
 
     # Correctly configured IAM role
-    assert (config["head_node"]["IamInstanceProfile"] == {
+    assert (defaults_filled["head_node"]["IamInstanceProfile"] == {
         "Arn": DEFAULT_INSTANCE_PROFILE["Arn"]
     })
     # Workers of the head's type do not get the IAM role.
     head_type = config["head_node_type"]
-    assert "IamInstanceProfile" not in config["available_node_types"][
+    assert "IamInstanceProfile" not in defaults_filled["available_node_types"][
         head_type]
 
     iam_client_stub.assert_no_pending_responses()
@@ -361,7 +361,7 @@ def test_create_sg_multinode(iam_client_stub, ec2_client_stub):
     # name and in bound rules
     assert bootstrapped_config["provider"]["security_group"][
         "GroupName"] == DEFAULT_SG_WITH_NAME_AND_RULES["GroupName"]
-    assert config["provider"]["security_group"][
+    assert bootstrapped_config["provider"]["security_group"][
         "IpPermissions"] == CUSTOM_IN_BOUND_RULES
 
     # Confirming correct security group got filled for head and workers

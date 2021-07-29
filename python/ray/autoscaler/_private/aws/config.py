@@ -201,6 +201,9 @@ def log_to_cli(config: Dict[str, Any]) -> None:
 
 
 def bootstrap_aws(config):
+    # create a copy of the input config to modify
+    config = copy.deepcopy(config)
+
     # Log warnings if user included deprecated `head_node` or `worker_nodes`
     # fields. Raise error if no `available_node_types`
     check_legacy_fields(config)
@@ -773,7 +776,7 @@ def _configure_from_launch_template(config: Dict[str, Any]) -> Dict[str, Any]:
     available node type's into their parent node config. Any parameters
     specified in node config override the same parameters in the launch
     template, in compliance with the behavior of the ec2.create_instances
-    API. The config to bootstrap is modified in place.
+    API.
 
     Args:
         config (Dict[str, Any]): config to bootstrap
@@ -787,10 +790,14 @@ def _configure_from_launch_template(config: Dict[str, Any]) -> Dict[str, Any]:
         template [name|id] and version, or more than one launch template is
         found.
     """
+    # create a copy of the input config to modify
+    config = copy.deepcopy(config)
+    node_types = config["available_node_types"]
 
     # iterate over sorted node types to support deterministic unit test stubs
-    for _, node_type in sorted(config["available_node_types"].items()):
-        config = _configure_node_type_from_launch_template(config, node_type)
+    for name, node_type in sorted(node_types.items()):
+        node_types[name] = _configure_node_type_from_launch_template(
+            config, node_type)
     return config
 
 
@@ -799,8 +806,37 @@ def _configure_node_type_from_launch_template(
     """
     Merges any launch template data referenced by the given node type's
     node config into the parent node config. Any parameters specified in
-    node config override the same parameters in the launch template. The
-    config to bootstrap is modified in place.
+    node config override the same parameters in the launch template.
+
+    Args:
+        config (Dict[str, Any]): config to bootstrap
+        node_type (Dict[str, Any]): node type config to bootstrap
+    Returns:
+        node_type (Dict[str, Any]): The input config with all launch template
+        data merged into the node config of the input node type. If no
+        launch template data is found, then the config is returned
+        unchanged.
+    Raises:
+        ValueError: If no launch template is found for the given launch
+        template [name|id] and version, or more than one launch template is
+        found.
+    """
+    # create a copy of the input config to modify
+    node_type = copy.deepcopy(node_type)
+
+    node_cfg = node_type["node_config"]
+    if "LaunchTemplate" in node_cfg:
+        node_type["node_config"] = \
+            _configure_node_cfg_from_launch_template(config, node_cfg)
+    return node_type
+
+
+def _configure_node_cfg_from_launch_template(
+        config: Dict[str, Any], node_cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Merges any launch template data referenced by the given node type's
+    node config into the parent node config. Any parameters specified in
+    node config override the same parameters in the launch template.
 
     Note that this merge is simply a bidirectional dictionary update, from
     the node config to the launch template data, and from the launch
@@ -814,20 +850,18 @@ def _configure_node_type_from_launch_template(
 
     Args:
         config (Dict[str, Any]): config to bootstrap
-        node_type (Dict[str, Any]): node type config to bootstrap
+        node_cfg (Dict[str, Any]): node config to bootstrap
     Returns:
-        config (Dict[str, Any]): The input config with all launch template
-        data merged into the node config of the input node type. If no
-        launch template data is found, then the config is returned
-        unchanged.
+        node_cfg (Dict[str, Any]): The input node config merged with all launch
+        template data. If no launch template data is found, then the node
+        config is returned unchanged.
     Raises:
         ValueError: If no launch template is found for the given launch
         template [name|id] and version, or more than one launch template is
         found.
     """
-    node_cfg = node_type["node_config"]
-    if "LaunchTemplate" not in node_cfg:
-        return config
+    # create a copy of the input config to modify
+    node_cfg = copy.deepcopy(node_cfg)
 
     ec2 = _client("ec2", config)
     kwargs = copy.deepcopy(node_cfg["LaunchTemplate"])
@@ -849,15 +883,14 @@ def _configure_node_type_from_launch_template(
     # copy all new launch template parameters back to node config
     node_cfg.update(lt_data)
 
-    return config
+    return node_cfg
 
 
 def _configure_from_network_interfaces(config: Dict[str, Any]) \
         -> Dict[str, Any]:
     """
     Copies all network interface subnet and security group IDs up to their
-    parent node config for each available node type. The config to bootstrap
-    is modified in place.
+    parent node config for each available node type.
 
     Args:
         config (Dict[str, Any]): config to bootstrap
@@ -872,23 +905,26 @@ def _configure_from_network_interfaces(config: Dict[str, Any]) \
         doesn't have a subnet defined, or [3] any network interface doesn't
         have a security group defined.
     """
-    for node_type in config["available_node_types"].values():
-        config = _configure_node_type_from_network_interface(config, node_type)
+    # create a copy of the input config to modify
+    config = copy.deepcopy(config)
+
+    node_types = config["available_node_types"]
+    for name, node_type in node_types.items():
+        node_types[name] = _configure_node_type_from_network_interface(
+            node_type)
     return config
 
 
-def _configure_node_type_from_network_interface(
-        config: Dict[str, Any], node_type: Dict[str, Any]) -> Dict[str, Any]:
+def _configure_node_type_from_network_interface(node_type: Dict[str, Any]) \
+        -> Dict[str, Any]:
     """
     Copies all network interface subnet and security group IDs up to the
-    parent node config for the given node type. The config to bootstrap is
-    modified in place.
+    parent node config for the given node type.
 
     Args:
-        config (Dict[str, Any]): config to bootstrap
         node_type (Dict[str, Any]): node type config to bootstrap
     Returns:
-        config (Dict[str, Any]): The input config with all network interface
+        node_type (Dict[str, Any]): The input config with all network interface
         subnet and security group IDs copied into the node config of the
         given node type. If no network interfaces are found, then the
         config is returned unchanged.
@@ -898,27 +934,36 @@ def _configure_node_type_from_network_interface(
         doesn't have a subnet defined, or [3] any network interface doesn't
         have a security group defined.
     """
+    # create a copy of the input config to modify
+    node_type = copy.deepcopy(node_type)
+
     node_cfg = node_type["node_config"]
-    if "NetworkInterfaces" not in node_cfg:
-        return config
-    _configure_subnets_and_groups_from_network_interfaces(node_cfg)
-    return config
+    if "NetworkInterfaces" in node_cfg:
+        node_type["node_config"] = \
+            _configure_subnets_and_groups_from_network_interfaces(node_cfg)
+    return node_type
 
 
 def _configure_subnets_and_groups_from_network_interfaces(
-        node_cfg: Dict[str, Any]) -> None:
+        node_cfg: Dict[str, Any]) -> Dict[str, Any]:
     """
     Copies all network interface subnet and security group IDs into their
-    parent node config. The node config to bootstrap is modified in place.
+    parent node config.
 
     Args:
         node_cfg (Dict[str, Any]): node config to bootstrap
+    Returns:
+        node_cfg (Dict[str, Any]): node config with all copied network
+        interface subnet and security group IDs
     Raises:
         ValueError: If [1] subnet and security group IDs exist at both the
         node config and network interface levels, [2] any network interface
         doesn't have a subnet defined, or [3] any network interface doesn't
         have a security group defined.
     """
+    # create a copy of the input config to modify
+    node_cfg = copy.deepcopy(node_cfg)
+
     # If NetworkInterfaces are defined, SubnetId and SecurityGroupIds
     # can't be specified in the same node type config.
     conflict_keys = ["SubnetId", "SubnetIds", "SecurityGroupIds"]
@@ -940,13 +985,15 @@ def _configure_subnets_and_groups_from_network_interfaces(
     node_cfg["SubnetIds"] = subnets
     node_cfg["SecurityGroupIds"] = list(itertools.chain(*security_groups))
 
+    return node_cfg
+
 
 def _subnets_in_network_config(config: Dict[str, Any]) -> List[str]:
     """
     Returns all subnet IDs found in the given node config's network interfaces.
 
     Args:
-        config: node config
+        config (Dict[str, Any]): node config
     Returns:
         subnet_ids (List[str]): List of subnet IDs for all network interfaces,
         or an empty list if no network interfaces are defined. An empty string
@@ -964,7 +1011,7 @@ def _security_groups_in_network_config(config: Dict[str, Any]) \
     interfaces.
 
     Args:
-        config: node config
+        config (Dict[str, Any]): node config
     Returns:
         security_group_ids (List[List[str]]): List of security group ID lists
         for all network interfaces, or an empty list if no network interfaces

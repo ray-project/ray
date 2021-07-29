@@ -58,7 +58,7 @@ def apply_node_provider_config_updates(config, node_cfg, node_type_name,
                                        max_count):
     """
     Applies default updates made by AWSNodeProvider to node_cfg during node
-    creation.
+    creation. This should only be used for testing purposes.
 
     Args:
         config: autoscaler config
