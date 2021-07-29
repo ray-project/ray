@@ -15,8 +15,9 @@ if TYPE_CHECKING:
 
 # Operations that can be naively applied per dataset in the pipeline.
 PER_DATASET_OPS = [
-    "map", "map_batches", "flat_map", "filter", "repartition", "sort",
-    "write_json", "write_csv", "write_parquet", "write_datasource"
+    "map", "map_batches", "flat_map", "filter", "repartition",
+    "random_shuffle", "sort", "write_json", "write_csv", "write_parquet",
+    "write_datasource"
 ]
 
 # Similar to above but we should force evaluation immediately.

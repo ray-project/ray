@@ -1205,6 +1205,26 @@ def test_random_shuffle(ray_start_regular_shared):
     assert r1 != r0, (r1, r0)
 
 
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_equal_split(ray_start_regular_shared, pipelined):
+    r1 = maybe_pipeline(ray.data.range(10), pipelined).split(3, equal=True)
+    assert all(s.count() == 3 for s in r1)
+
+    ds = ray.data.range(10)
+    if pipelined:
+        r2 = ds.repeat(1).split(3, equal=False)
+
+        @ray.remote(num_cpus=0)
+        def count(s):
+            return s.count()
+
+        counts = [ray.get(count.remote(s)) for s in r2]
+        assert not all([c == 3 for c in counts])
+    else:
+        r2 = ds.split(3, equal=False)
+        assert not all(s.count() == 3 for s in r2)
+
+
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
 def test_sort_arrow(ray_start_regular_shared, num_items, parallelism):
     a = list(reversed(range(num_items)))
