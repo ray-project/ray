@@ -114,7 +114,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   // In never-OOM mode, fallback to allocating from the filesystem. Note that these
   // allocations will be run with dlmallopt(M_MMAP_THRESHOLD, 0) set by
   // plasma_allocator.cc.
-  if (allocated_once && RayConfig::instance().plasma_unlimited()) {
+  if (allocated_once && ray::core::RayConfig::instance().plasma_unlimited()) {
     file_template = plasma_config->fallback_directory;
   }
 
@@ -143,7 +143,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   // which avoids work when accessing the pages later. However it causes long pauses
   // when mmapping the files. Only supported on Linux.
   auto flags = MAP_SHARED;
-  if (RayConfig::instance().preallocate_plasma_memory()) {
+  if (ray::core::RayConfig::instance().preallocate_plasma_memory()) {
     if (!MAP_POPULATE) {
       RAY_LOG(FATAL) << "MAP_POPULATE is not supported on this platform.";
     }
@@ -154,7 +154,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
 #ifdef __linux__
   // For fallback allocation, use fallocate to ensure follow up access to this
   // mmaped file doesn't cause SIGBUS. Only supported on Linux.
-  if (allocated_once && RayConfig::instance().plasma_unlimited()) {
+  if (allocated_once && ray::core::RayConfig::instance().plasma_unlimited()) {
     RAY_LOG(DEBUG) << "Preallocating fallback allocation using fallocate";
     int ret = fallocate(*fd, /*mode*/ 0, /*offset*/ 0, size);
     if (ret != 0) {
@@ -193,7 +193,7 @@ void *fake_mmap(size_t size) {
   // after the initial allocation. Allow allocations done by
   // PlasmaAllocator::DiskMemalignUnlimited(), which sets mmap_threshold to zero prior to
   // calling dlmemalign().
-  if (RayConfig::instance().plasma_unlimited() && allocated_once &&
+  if (ray::core::RayConfig::instance().plasma_unlimited() && allocated_once &&
       mparams.mmap_threshold > 0) {
     RAY_LOG(DEBUG) << "fake_mmap called once already, refusing to overcommit: " << size;
     return MFAIL;

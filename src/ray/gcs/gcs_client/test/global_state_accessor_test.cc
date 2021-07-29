@@ -236,7 +236,8 @@ TEST_F(GlobalStateAccessorTest, TestGetAllResourceUsage) {
 }
 
 TEST_F(GlobalStateAccessorTest, TestProfileTable) {
-  int profile_count = RayConfig::instance().maximum_profile_table_rows_count() + 1;
+  int profile_count =
+      ray::core::RayConfig::instance().maximum_profile_table_rows_count() + 1;
   ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);
   for (int index = 0; index < profile_count; ++index) {
     auto node_id = NodeID::FromRandom();
@@ -248,7 +249,7 @@ TEST_F(GlobalStateAccessorTest, TestProfileTable) {
     WaitReady(promise.get_future(), timeout_ms_);
   }
   ASSERT_EQ(global_state_->GetAllProfileInfo().size(),
-            RayConfig::instance().maximum_profile_table_rows_count());
+            ray::core::RayConfig::instance().maximum_profile_table_rows_count());
 }
 
 TEST_F(GlobalStateAccessorTest, TestObjectTable) {

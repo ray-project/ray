@@ -181,7 +181,8 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
     // The legacy scheduling policy is easier to reason about for testing purposes. See
     // `scheduling_policy_test.cc` for comprehensive testing of the hybrid scheduling
     // policy.
-    RayConfig::instance().initialize(R"({"scheduler_hybrid_scheduling": false})");
+    ray::core::RayConfig::instance().initialize(
+        R"({"scheduler_hybrid_scheduling": false})");
   }
 
   void Shutdown() {}
@@ -503,7 +504,7 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesWithCpuUnitTest) {
-  RayConfig::instance().initialize(
+  ray::core::RayConfig::instance().initialize(
       R"(
 {
   "predefined_unit_instance_resources": "CPU,GPU"
@@ -533,7 +534,7 @@ TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesWithCpuUnitTest) 
 }
 
 TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesTest) {
-  RayConfig::instance().initialize(
+  ray::core::RayConfig::instance().initialize(
       R"(
 {
   "predefined_unit_instance_resources": "GPU"
@@ -1177,7 +1178,7 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
-  RayConfig::instance().initialize(
+  ray::core::RayConfig::instance().initialize(
       R"(
 {
   "custom_unit_instance_resources": "FPGA"
@@ -1226,7 +1227,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) 
       R"({"CPU":20000,"memory":40000,"GPU":[10000, 10000]})";
   ASSERT_EQ(serialized_string == expected_serialized_string, true);
 
-  RayConfig::instance().initialize(
+  ray::core::RayConfig::instance().initialize(
       R"(
 {
   "predefined_unit_instance_resources": "CPU,GPU"
@@ -1247,7 +1248,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) 
   ASSERT_EQ(instance_serialized_string == expected_instance_serialized_string, true);
 
   // reset global config
-  RayConfig::instance().initialize(
+  ray::core::RayConfig::instance().initialize(
       R"(
 {
   "predefined_unit_instance_resources": "GPU"

@@ -115,10 +115,10 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
       free_ports_->push(port);
     }
   }
-  if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
+  if (ray::core::RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
     periodical_runner_.RunFnPeriodically(
         [this] { TryKillingIdleWorkers(); },
-        RayConfig::instance().kill_idle_workers_interval_ms(),
+        ray::core::RayConfig::instance().kill_idle_workers_interval_ms(),
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
 }
@@ -277,12 +277,12 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   if (IsIOWorkerType(worker_type)) {
-    RAY_CHECK(!RayConfig::instance().object_spilling_config().empty());
+    RAY_CHECK(!ray::core::RayConfig::instance().object_spilling_config().empty());
     RAY_LOG(DEBUG) << "Adding object spill config "
-                   << RayConfig::instance().object_spilling_config();
+                   << ray::core::RayConfig::instance().object_spilling_config();
     worker_command_args.push_back(
         "--object-spilling-config=" +
-        absl::Base64Escape(RayConfig::instance().object_spilling_config()));
+        absl::Base64Escape(ray::core::RayConfig::instance().object_spilling_config()));
   }
 
   ProcessEnvironment env;
@@ -361,8 +361,9 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
                                               const Language &language,
                                               const rpc::WorkerType worker_type) {
   auto timer = std::make_shared<boost::asio::deadline_timer>(
-      *io_service_, boost::posix_time::seconds(
-                        RayConfig::instance().worker_register_timeout_seconds()));
+      *io_service_,
+      boost::posix_time::seconds(
+          ray::core::RayConfig::instance().worker_register_timeout_seconds()));
   // Capture timer in lambda to copy it once, so that it can avoid destructing timer.
   timer->async_wait(
       [timer, language, proc, worker_type, this](const boost::system::error_code e) {
@@ -747,7 +748,7 @@ void WorkerPool::TryKillingIdleWorkers() {
     }
 
     if (now - idle_pair.second <
-        RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+        ray::core::RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
       break;
     }
 
@@ -773,7 +774,7 @@ void WorkerPool::TryKillingIdleWorkers() {
     for (const auto &worker : workers_in_the_same_process) {
       if (worker_state.idle.count(worker) == 0 ||
           now - idle_of_all_languages_map_[worker] <
-              RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+              ray::core::RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
         // Another worker in this process isn't idle, or hasn't been idle for a while, so
         // this process can't be killed.
         can_be_killed = false;
@@ -869,7 +870,7 @@ int GetRuntimeEnvHash(const TaskSpecification &task_spec) {
   // We add required_resource instead of allocated_instances because allocated_instances
   // may contains resource ID.
   std::unordered_map<std::string, double> required_resource{};
-  if (RayConfig::instance().worker_resource_limits_enabled()) {
+  if (ray::core::RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = task_spec.GetRequiredResources().GetResourceMap();
   }
   const WorkerCacheKey env = {task_spec.OverrideEnvironmentVariables(),
@@ -1232,7 +1233,7 @@ void WorkerPool::TryStartIOWorkers(const Language &language,
   int available_io_workers_num = io_worker_state.num_starting_io_workers +
                                  io_worker_state.registered_io_workers.size();
   int max_workers_to_start =
-      RayConfig::instance().max_io_workers() - available_io_workers_num;
+      ray::core::RayConfig::instance().max_io_workers() - available_io_workers_num;
   // Compare first to prevent unsigned underflow.
   if (io_worker_state.pending_io_tasks.size() > io_worker_state.idle_io_workers.size()) {
     int expected_workers_num =

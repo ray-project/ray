@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
   const std::string node_ip_address = FLAGS_node_ip_address;
   gflags::ShutDownCommandLineFlags();
 
-  RayConfig::instance().initialize(config_list);
+  ray::core::RayConfig::instance().initialize(config_list);
 
   auto promise = std::make_shared<std::promise<void>>();
   std::thread([=] {
@@ -97,17 +97,18 @@ int main(int argc, char *argv[]) {
   gcs_server_config.grpc_server_name = "GcsServer";
   gcs_server_config.grpc_server_port = gcs_server_port;
   gcs_server_config.grpc_server_thread_num =
-      RayConfig::instance().gcs_server_rpc_server_thread_num();
+      ray::core::RayConfig::instance().gcs_server_rpc_server_thread_num();
   gcs_server_config.redis_address = redis_address;
   gcs_server_config.redis_port = redis_port;
   gcs_server_config.redis_password = redis_password;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
   gcs_server_config.pull_based_resource_reporting =
-      RayConfig::instance().pull_based_resource_reporting();
+      ray::core::RayConfig::instance().pull_based_resource_reporting();
   gcs_server_config.grpc_based_resource_broadcast =
-      RayConfig::instance().grpc_based_resource_broadcast();
-  gcs_server_config.grpc_pubsub_enabled = RayConfig::instance().gcs_grpc_based_pubsub();
+      ray::core::RayConfig::instance().grpc_based_resource_broadcast();
+  gcs_server_config.grpc_pubsub_enabled =
+      ray::core::RayConfig::instance().gcs_grpc_based_pubsub();
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is

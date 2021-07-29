@@ -34,8 +34,8 @@ ClusterTaskManager::ClusterTaskManager(
       get_node_info_(get_node_info),
       announce_infeasible_task_(announce_infeasible_task),
       max_resource_shapes_per_load_report_(
-          RayConfig::instance().max_resource_shapes_per_load_report()),
-      report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
+          ray::core::RayConfig::instance().max_resource_shapes_per_load_report()),
+      report_worker_backlog_(ray::core::RayConfig::instance().report_worker_backlog()),
       worker_pool_(worker_pool),
       leased_workers_(leased_workers),
       get_task_arguments_(get_task_arguments),
@@ -241,7 +241,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         // The local node has the available resources to run the task, so we should run
         // it.
         std::string allocated_instances_serialized_json = "{}";
-        if (RayConfig::instance().worker_resource_limits_enabled()) {
+        if (ray::core::RayConfig::instance().worker_resource_limits_enabled()) {
           allocated_instances_serialized_json =
               cluster_resource_scheduler_->SerializedTaskResourceInstances(
                   allocated_instances);
@@ -751,7 +751,7 @@ void ClusterTaskManager::FillResourceUsage(
     }
   }
 
-  if (RayConfig::instance().enable_light_weight_resource_report()) {
+  if (ray::core::RayConfig::instance().enable_light_weight_resource_report()) {
     // Check whether resources have been changed.
     std::unordered_map<std::string, double> local_resource_map(
         data.resource_load().begin(), data.resource_load().end());

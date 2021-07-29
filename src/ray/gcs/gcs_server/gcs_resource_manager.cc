@@ -29,7 +29,7 @@ GcsResourceManager::GcsResourceManager(
   if (redis_broadcast_enabled_) {
     periodical_runner_.RunFnPeriodically(
         [this] { SendBatchedResourceUsage(); },
-        RayConfig::instance().raylet_report_resources_period_milliseconds(),
+        ray::core::RayConfig::instance().raylet_report_resources_period_milliseconds(),
         "GcsResourceManager.deadline_timer.send_batched_resource_usage");
   }
 }
@@ -183,7 +183,7 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   resources_data->CopyFrom(data);
 
-  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
+  if (ray::core::RayConfig::instance().gcs_task_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, *resources_data);
   } else {
     if (node_resource_usages_.count(node_id) == 0 ||
@@ -231,7 +231,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
         aggregate_demand.set_num_infeasible_requests_queued(
             aggregate_demand.num_infeasible_requests_queued() +
             demand.num_infeasible_requests_queued());
-        if (RayConfig::instance().report_worker_backlog()) {
+        if (ray::core::RayConfig::instance().report_worker_backlog()) {
           aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
                                             demand.backlog_size());
         }
@@ -388,7 +388,7 @@ void GcsResourceManager::GetResourceUsageBatchForBroadcast(
   resources_buffer_proto_.Swap(&buffer);
   while (!resources_buffer_.empty() &&
          buffer.ByteSizeLong() <
-             RayConfig::instance().resource_broadcast_batch_size_bytes()) {
+             ray::core::RayConfig::instance().resource_broadcast_batch_size_bytes()) {
     auto element = std::begin(resources_buffer_);
     buffer.add_batch()->mutable_data()->Swap(&element->second);
     resources_buffer_.erase(element);
@@ -399,7 +399,7 @@ void GcsResourceManager::GetResourceUsageBatchForBroadcast_Locked(
     rpc::ResourceUsageBatchData &buffer) {
   while (!resources_buffer_.empty() &&
          buffer.ByteSizeLong() <
-             RayConfig::instance().resource_broadcast_batch_size_bytes()) {
+             ray::core::RayConfig::instance().resource_broadcast_batch_size_bytes()) {
     auto element = std::begin(resources_buffer_);
     buffer.add_batch()->Swap(&element->second);
     resources_buffer_.erase(element);

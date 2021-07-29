@@ -5,7 +5,7 @@ from libcpp.unordered_map cimport unordered_map
 
 
 cdef extern from "ray/common/ray_config.h" nogil:
-    cdef cppclass RayConfig "RayConfig":
+    cdef cppclass RayConfig "ray::core::RayConfig":
         @staticmethod
         RayConfig &instance()
 

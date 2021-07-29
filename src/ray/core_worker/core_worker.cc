@@ -151,7 +151,8 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
 
   RAY_LOG(INFO) << "Constructing CoreWorkerProcess. pid: " << getpid();
 
-  // NOTE(kfstorm): any initialization depending on RayConfig must happen after this line.
+  // NOTE(kfstorm): any initialization depending on ray::core::RayConfig must happen after
+  // this line.
   InitializeSystemConfig();
 
   if (options_.num_workers == 1) {
@@ -176,9 +177,10 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "core_worker"},
                                             {ray::stats::VersionKey, "2.0.0.dev0"}};
 
-  // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
-  // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
-  // for java worker or in constructor of CoreWorker for python worker.
+  // NOTE(lingxuan.zlx): We assume ray::core::RayConfig is initialized before it's used.
+  // ray::core::RayConfig is generated in
+  // Java_io_ray_runtime_RayNativeRuntime_nativeInitialize for java worker or in
+  // constructor of CoreWorker for python worker.
   ray::stats::Init(global_tags, options_.metrics_agent_port);
 
 #ifndef _WIN32
@@ -236,7 +238,8 @@ void CoreWorkerProcess::InitializeSystemConfig() {
             RAY_LOG(FATAL) << "Failed to get the system config from Raylet: " << status;
           } else {
             std::this_thread::sleep_for(std::chrono::milliseconds(
-                RayConfig::instance().raylet_client_connect_timeout_milliseconds()));
+                ray::core::RayConfig::instance()
+                    .raylet_client_connect_timeout_milliseconds()));
             get_once(num_attempts - 1);
           }
         } else {
@@ -246,12 +249,12 @@ void CoreWorkerProcess::InitializeSystemConfig() {
       });
     };
 
-    get_once(RayConfig::instance().raylet_client_num_connect_attempts());
+    get_once(ray::core::RayConfig::instance().raylet_client_num_connect_attempts());
     io_service.run();
   });
   thread.join();
 
-  RayConfig::instance().initialize(promise.get_future().get());
+  ray::core::RayConfig::instance().initialize(promise.get_future().get());
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
@@ -359,7 +362,7 @@ void CoreWorkerProcess::RunTaskExecutionLoop() {
 
 CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)
     : options_(options),
-      get_call_site_(RayConfig::instance().record_ref_creation_sites()
+      get_call_site_(ray::core::RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
                          : nullptr),
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
@@ -489,11 +492,12 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   object_info_publisher_ = std::make_unique<pubsub::Publisher>(
       /*periodical_runner=*/&periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
-      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
+      /*subscriber_timeout_ms=*/ray::core::RayConfig::instance().subscriber_timeout_ms(),
+      /*publish_batch_size_=*/ray::core::RayConfig::instance().publish_batch_size());
   object_info_subscriber_ = std::make_unique<pubsub::Subscriber>(
       /*subscriber_id=*/GetWorkerID(),
-      /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
+      /*max_command_batch_size*/
+      ray::core::RayConfig::instance().max_command_batch_size(),
       // /*publisher_client_pool=*/*(core_worker_client_pool_.get()),
       /*get_client=*/
       [this](const rpc::Address &address) {
@@ -505,7 +509,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       rpc_address_,
       /*object_info_publisher=*/object_info_publisher_.get(),
       /*object_info_subscriber=*/object_info_subscriber_.get(),
-      RayConfig::instance().lineage_pinning_enabled(), [this](const rpc::Address &addr) {
+      ray::core::RayConfig::instance().lineage_pinning_enabled(),
+      [this](const rpc::Address &addr) {
         return std::shared_ptr<rpc::CoreWorkerClient>(
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
@@ -513,7 +518,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   if (options_.worker_type == ray::WorkerType::WORKER) {
     periodical_runner_.RunFnPeriodically(
         [this] { CheckForRayletFailure(); },
-        RayConfig::instance().raylet_death_check_interval_milliseconds());
+        ray::core::RayConfig::instance().raylet_death_check_interval_milliseconds());
   }
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
@@ -564,7 +569,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         if (delay) {
           // Retry after a delay to emulate the existing Raylet reconstruction
           // behaviour. TODO(ekl) backoff exponentially.
-          uint32_t delay = RayConfig::instance().task_retry_delay_ms();
+          uint32_t delay = ray::core::RayConfig::instance().task_retry_delay_ms();
           RAY_LOG(ERROR) << "Will resubmit task after a " << delay
                          << "ms delay: " << spec.DebugString();
           absl::MutexLock lock(&mutex_);
@@ -627,7 +632,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     }
     return addr;
   };
-  auto lease_policy = RayConfig::instance().locality_aware_leasing_enabled()
+  auto lease_policy = ray::core::RayConfig::instance().locality_aware_leasing_enabled()
                           ? std::shared_ptr<LeasePolicyInterface>(
                                 std::make_shared<LocalityAwareLeasePolicy>(
                                     reference_counter_, node_addr_factory, rpc_address_))
@@ -637,8 +642,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   direct_task_submitter_ = std::make_unique<CoreWorkerDirectTaskSubmitter>(
       rpc_address_, local_raylet_client_, core_worker_client_pool_, raylet_client_factory,
       std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
-      RayConfig::instance().worker_lease_timeout_milliseconds(), std::move(actor_creator),
-      RayConfig::instance().max_tasks_in_flight_per_worker(),
+      ray::core::RayConfig::instance().worker_lease_timeout_milliseconds(),
+      std::move(actor_creator),
+      ray::core::RayConfig::instance().max_tasks_in_flight_per_worker(),
       boost::asio::steady_timer(io_service_));
   auto report_locality_data_callback =
       [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations,
@@ -693,7 +699,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                          /*contained_object_ids=*/{}, object_id,
                          /*pin_object=*/pin_object));
       },
-      RayConfig::instance().lineage_pinning_enabled());
+      ray::core::RayConfig::instance().lineage_pinning_enabled());
 
   // Start the IO thread after all other members have been initialized, in case
   // the thread calls back into any of our members.
@@ -706,12 +712,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         local_raylet_client_->AnnounceWorkerPort(core_worker_server_->GetPort()));
   }
   // Used to detect if the object is in the plasma store.
-  max_direct_call_object_size_ = RayConfig::instance().max_direct_call_object_size();
+  max_direct_call_object_size_ =
+      ray::core::RayConfig::instance().max_direct_call_object_size();
 
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
-      RayConfig::instance().event_stats_print_interval_ms();
-  if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
+      ray::core::RayConfig::instance().event_stats_print_interval_ms();
+  if (event_stats_print_interval_ms != -1 &&
+      ray::core::RayConfig::instance().event_stats()) {
     periodical_runner_.RunFnPeriodically(
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n" << io_service_.StatsString() << "\n\n";
@@ -1026,7 +1034,7 @@ void CoreWorker::GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner
   rpc::GetObjectStatusReply object_status;
   // Optimization: if the object exists, serialize and inline its status. This also
   // resolves some race conditions in resource release (#16025).
-  if (RayConfig::instance().inline_object_status_in_refs()) {
+  if (ray::core::RayConfig::instance().inline_object_status_in_refs()) {
     auto existing_object = memory_store_->GetIfExists(object_id);
     if (existing_object != nullptr) {
       PopulateObjectStatus(object_id, existing_object, &object_status);
@@ -1075,7 +1083,7 @@ Status CoreWorker::Put(const RayObject &object,
                        const ObjectID &object_id, bool pin_object) {
   bool object_exists;
   if (options_.is_local_mode ||
-      (RayConfig::instance().put_small_object_in_memory_store() &&
+      (ray::core::RayConfig::instance().put_small_object_in_memory_store() &&
        static_cast<int64_t>(object.GetSize()) < max_direct_call_object_size_)) {
     RAY_LOG(DEBUG) << "Put " << object_id << " in memory store";
     RAY_CHECK(memory_store_->Put(object, object_id));
@@ -1153,7 +1161,7 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
   }
 
   if ((options_.is_local_mode ||
-       (RayConfig::instance().put_small_object_in_memory_store() &&
+       (ray::core::RayConfig::instance().put_small_object_in_memory_store() &&
         static_cast<int64_t>(data_size) < max_direct_call_object_size_)) &&
       owned_by_us) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
@@ -1792,8 +1800,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     if (actor_creation_options.max_restarts == -1) {
       max_retries = -1;
     } else {
-      max_retries = std::max((int64_t)RayConfig::instance().actor_creation_min_retries(),
-                             actor_creation_options.max_restarts);
+      max_retries =
+          std::max((int64_t)ray::core::RayConfig::instance().actor_creation_min_retries(),
+                   actor_creation_options.max_restarts);
     }
     task_manager_->AddPendingTask(rpc_address_, task_spec, CurrentCallSite(),
                                   max_retries);
@@ -1833,7 +1842,7 @@ Status CoreWorker::CreatePlacementGroup(
       [status_promise](const Status &status) { status_promise->set_value(status); }));
   auto status_future = status_promise->get_future();
   if (status_future.wait_for(std::chrono::seconds(
-          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+          ray::core::RayConfig::instance().gcs_server_request_timeout_seconds())) !=
       std::future_status::ready) {
     std::ostringstream stream;
     stream << "There was timeout in creating the placement group of id "
@@ -1854,7 +1863,7 @@ Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_
       [status_promise](const Status &status) { status_promise->set_value(status); }));
   auto status_future = status_promise->get_future();
   if (status_future.wait_for(std::chrono::seconds(
-          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+          ray::core::RayConfig::instance().gcs_server_request_timeout_seconds())) !=
       std::future_status::ready) {
     std::ostringstream stream;
     stream << "There was timeout in removing the placement group of id "
@@ -2067,7 +2076,7 @@ CoreWorker::GetNamedActorHandle(const std::string &name,
   // Block until the RPC completes. Set a timeout to avoid hangs if the
   // GCS service crashes.
   if (ready_promise->get_future().wait_for(std::chrono::seconds(
-          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+          ray::core::RayConfig::instance().gcs_server_request_timeout_seconds())) !=
       std::future_status::ready) {
     std::ostringstream stream;
     stream << "There was timeout in getting the actor handle, "
@@ -2115,7 +2124,7 @@ CoreWorker::ListNamedActors(bool all_namespaces) {
   // GCS service crashes.
   Status status;
   if (ready_promise->get_future().wait_for(std::chrono::seconds(
-          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+          ray::core::RayConfig::instance().gcs_server_request_timeout_seconds())) !=
       std::future_status::ready) {
     std::ostringstream stream;
     stream << "There was timeout in getting the list of named actors, "

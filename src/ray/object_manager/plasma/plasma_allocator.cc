@@ -40,7 +40,7 @@ int64_t PlasmaAllocator::allocated_ = 0;
 int64_t PlasmaAllocator::fallback_allocated_ = 0;
 
 void *PlasmaAllocator::Memalign(size_t alignment, size_t bytes) {
-  if (!RayConfig::instance().plasma_unlimited()) {
+  if (!ray::core::RayConfig::instance().plasma_unlimited()) {
     // We only check against the footprint limit in limited allocation mode.
     // In limited mode: the check is done here; dlmemalign never returns nullptr.
     // In unlimited mode: dlmemalign returns nullptr once the initial /dev/shm block
@@ -80,7 +80,8 @@ void PlasmaAllocator::Free(void *mem, size_t bytes) {
   RAY_LOG(DEBUG) << "deallocating " << bytes << " at " << mem;
   dlfree(mem);
   allocated_ -= bytes;
-  if (RayConfig::instance().plasma_unlimited() && IsOutsideInitialAllocation(mem)) {
+  if (ray::core::RayConfig::instance().plasma_unlimited() &&
+      IsOutsideInitialAllocation(mem)) {
     fallback_allocated_ -= bytes;
   }
 }

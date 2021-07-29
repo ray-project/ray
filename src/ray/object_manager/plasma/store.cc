@@ -149,10 +149,10 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
       delete_object_callback_(delete_object_callback),
       delay_on_oom_ms_(delay_on_oom_ms),
       object_spilling_threshold_(object_spilling_threshold),
-      usage_log_interval_ns_(RayConfig::instance().object_store_usage_log_interval_s() *
-                             1e9),
+      usage_log_interval_ns_(
+          ray::core::RayConfig::instance().object_store_usage_log_interval_s() * 1e9),
       create_request_queue_(
-          /*oom_grace_period_s=*/RayConfig::instance().oom_grace_period_s(),
+          /*oom_grace_period_s=*/ray::core::RayConfig::instance().oom_grace_period_s(),
           spill_objects_callback, object_store_full_callback,
           /*get_time=*/
           []() { return absl::GetCurrentTimeNanos(); },
@@ -161,8 +161,9 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, std::string dire
   store_info_.fallback_directory = fallback_directory;
   store_info_.hugepages_enabled = hugepages_enabled;
   const auto event_stats_print_interval_ms =
-      RayConfig::instance().event_stats_print_interval_ms();
-  if (event_stats_print_interval_ms > 0 && RayConfig::instance().event_stats()) {
+      ray::core::RayConfig::instance().event_stats_print_interval_ms();
+  if (event_stats_print_interval_ms > 0 &&
+      ray::core::RayConfig::instance().event_stats()) {
     PrintDebugDump();
   }
 }
@@ -248,7 +249,7 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_s
   }
 
   // Fallback to allocating from the filesystem.
-  if (pointer == nullptr && RayConfig::instance().plasma_unlimited() &&
+  if (pointer == nullptr && ray::core::RayConfig::instance().plasma_unlimited() &&
       fallback_allocator) {
     RAY_LOG(INFO)
         << "Shared memory store full, falling back to allocating from filesystem: "
@@ -997,8 +998,9 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
 void PlasmaStore::PrintDebugDump() const {
   RAY_LOG(INFO) << GetDebugDump();
 
-  stats_timer_ = execute_after(io_context_, [this]() { PrintDebugDump(); },
-                               RayConfig::instance().event_stats_print_interval_ms());
+  stats_timer_ =
+      execute_after(io_context_, [this]() { PrintDebugDump(); },
+                    ray::core::RayConfig::instance().event_stats_print_interval_ms());
 }
 
 std::string PlasmaStore::GetDebugDump() const {

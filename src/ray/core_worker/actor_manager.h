@@ -51,7 +51,7 @@ class DefaultActorCreator : public ActorCreatorInterface {
         task_spec, [promise](const Status &status) { promise->set_value(); });
     if (status.ok() &&
         promise->get_future().wait_for(std::chrono::seconds(
-            ::RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+            ray::core::RayConfig::instance().gcs_server_request_timeout_seconds())) !=
             std::future_status::ready) {
       std::ostringstream stream;
       stream << "There was timeout in registering an actor. It is probably "

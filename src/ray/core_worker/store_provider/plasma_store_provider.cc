@@ -65,7 +65,8 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   } else {
     get_current_call_site_ = []() { return "<no callsite callback>"; };
   }
-  object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
+  object_store_full_delay_ms_ =
+      ray::core::RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
   RAY_CHECK_OK(store_client_.Connect(store_socket));
   if (warmup) {
@@ -246,7 +247,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
-  int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
+  int64_t batch_size = ray::core::RayConfig::instance().worker_fetch_request_size();
   std::vector<ObjectID> batch_ids;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
 
@@ -286,8 +287,9 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       batch_ids.push_back(id);
     }
 
-    int64_t batch_timeout = std::max(RayConfig::instance().get_timeout_milliseconds(),
-                                     int64_t(10 * batch_ids.size()));
+    int64_t batch_timeout =
+        std::max(ray::core::RayConfig::instance().get_timeout_milliseconds(),
+                 int64_t(10 * batch_ids.size()));
     if (remaining_timeout >= 0) {
       batch_timeout = std::min(remaining_timeout, batch_timeout);
       remaining_timeout -= batch_timeout;
@@ -318,8 +320,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
         return status;
       }
     }
-    if (RayConfig::instance().yield_plasma_lock_workaround() && !should_break &&
-        remaining.size() > 0) {
+    if (ray::core::RayConfig::instance().yield_plasma_lock_workaround() &&
+        !should_break && remaining.size() > 0) {
       // Yield the plasma lock to other threads. This is a temporary workaround since we
       // are holding the lock for a long time, so it can easily starve inbound RPC
       // requests to Release() buffers which only require holding the lock for brief
@@ -352,7 +354,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
   int64_t remaining_timeout = timeout_ms;
   while (!should_break) {
     WaitResultPair result_pair;
-    int64_t call_timeout = RayConfig::instance().get_timeout_milliseconds();
+    int64_t call_timeout = ray::core::RayConfig::instance().get_timeout_milliseconds();
     if (remaining_timeout >= 0) {
       call_timeout = std::min(remaining_timeout, call_timeout);
       remaining_timeout -= call_timeout;
@@ -403,13 +405,14 @@ CoreWorkerPlasmaStoreProvider::UsedObjectsList() const {
 
 void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
     int num_attempts, const absl::flat_hash_set<ObjectID> &remaining) {
-  if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
+  if (num_attempts %
+          ray::core::RayConfig::instance().object_store_get_warn_per_num_attempts() ==
       0) {
     std::ostringstream oss;
     size_t printed = 0;
     for (auto &id : remaining) {
-      if (printed >=
-          RayConfig::instance().object_store_get_max_ids_to_print_in_warning()) {
+      if (printed >= ray::core::RayConfig::instance()
+                         .object_store_get_max_ids_to_print_in_warning()) {
         break;
       }
       if (printed > 0) {

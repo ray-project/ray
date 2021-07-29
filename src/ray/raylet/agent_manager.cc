@@ -68,8 +68,9 @@ void AgentManager::StartAgent() {
     // The worker failed to start. This is a fatal error.
     RAY_LOG(FATAL) << "Failed to start agent with return value " << ec << ": "
                    << ec.message();
-    RAY_UNUSED(delay_executor_([this] { StartAgent(); },
-                               RayConfig::instance().agent_restart_interval_ms()));
+    RAY_UNUSED(
+        delay_executor_([this] { StartAgent(); },
+                        ray::core::RayConfig::instance().agent_restart_interval_ms()));
     return;
   }
 
@@ -77,7 +78,8 @@ void AgentManager::StartAgent() {
     SetThreadName("agent.monitor");
     RAY_LOG(INFO) << "Monitor agent process with pid " << child.GetId()
                   << ", register timeout "
-                  << RayConfig::instance().agent_register_timeout_ms() << "ms.";
+                  << ray::core::RayConfig::instance().agent_register_timeout_ms()
+                  << "ms.";
     auto timer = delay_executor_(
         [this, child]() mutable {
           if (agent_pid_ != child.GetId()) {
@@ -86,15 +88,16 @@ void AgentManager::StartAgent() {
             child.Kill();
           }
         },
-        RayConfig::instance().agent_register_timeout_ms());
+        ray::core::RayConfig::instance().agent_register_timeout_ms());
 
     int exit_code = child.Wait();
     timer->cancel();
 
     RAY_LOG(WARNING) << "Agent process with pid " << child.GetId()
                      << " exit, return value " << exit_code;
-    RAY_UNUSED(delay_executor_([this] { StartAgent(); },
-                               RayConfig::instance().agent_restart_interval_ms()));
+    RAY_UNUSED(
+        delay_executor_([this] { StartAgent(); },
+                        ray::core::RayConfig::instance().agent_restart_interval_ms()));
   });
   monitor_thread.detach();
 }
@@ -107,7 +110,7 @@ void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
         << serialized_runtime_env;
     delay_executor_([this, serialized_runtime_env,
                      callback] { CreateRuntimeEnv(serialized_runtime_env, callback); },
-                    RayConfig::instance().agent_manager_retry_interval_ms());
+                    ray::core::RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
   rpc::CreateRuntimeEnvRequest request;
@@ -133,7 +136,7 @@ void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
               [this, serialized_runtime_env, callback] {
                 CreateRuntimeEnv(serialized_runtime_env, callback);
               },
-              RayConfig::instance().agent_manager_retry_interval_ms());
+              ray::core::RayConfig::instance().agent_manager_retry_interval_ms());
         }
       });
 }
@@ -146,7 +149,7 @@ void AgentManager::DeleteRuntimeEnv(const std::string &serialized_runtime_env,
         << serialized_runtime_env;
     delay_executor_([this, serialized_runtime_env,
                      callback] { DeleteRuntimeEnv(serialized_runtime_env, callback); },
-                    RayConfig::instance().agent_manager_retry_interval_ms());
+                    ray::core::RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
   rpc::DeleteRuntimeEnvRequest request;
@@ -172,7 +175,7 @@ void AgentManager::DeleteRuntimeEnv(const std::string &serialized_runtime_env,
               [this, serialized_runtime_env, callback] {
                 DeleteRuntimeEnv(serialized_runtime_env, callback);
               },
-              RayConfig::instance().agent_manager_retry_interval_ms());
+              ray::core::RayConfig::instance().agent_manager_retry_interval_ms());
         }
       });
 }
