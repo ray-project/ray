@@ -226,6 +226,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
   void AssertNoLeaks() {
     ASSERT_TRUE(task_manager_.tasks_to_schedule_.empty());
+    ASSERT_TRUE(task_manager_.tasks_to_dispatch_.empty());
     ASSERT_TRUE(task_manager_.waiting_tasks_index_.empty());
     ASSERT_TRUE(task_manager_.waiting_task_queue_.empty());
     ASSERT_TRUE(task_manager_.infeasible_tasks_.empty());
@@ -233,7 +234,6 @@ class ClusterTaskManagerTest : public ::testing::Test {
     ASSERT_TRUE(task_manager_.pinned_task_arguments_.empty());
     ASSERT_EQ(task_manager_.pinned_task_arguments_bytes_, 0);
     ASSERT_TRUE(dependency_manager_.subscribed_tasks.empty());
-    ASSERT_TRUE(task_manager_.tasks_to_dispatch_.empty());
   }
 
   void AssertPinnedTaskArgumentsPresent(const Task &task) {
@@ -375,8 +375,8 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
 
 TEST_F(ClusterTaskManagerTest, BlockedWorkerDiesTest) {
   /*
-   Tests the edge case in which a worker crashes while it's blocked. In this case, its
-   CPU resources should not be double freed.
+   Tests the edge case in which a worker crashes while it's blocked. In this case, its CPU
+   resources should not be double freed.
    */
   Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply;
@@ -825,8 +825,7 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
         // RAY_LOG(ERROR) << "==========================";
         // RAY_LOG(ERROR) << expected_load[0] << "\t"
         //                << load.num_infeasible_requests_queued();
-        // RAY_LOG(ERROR) << expected_load[1] << "\t" <<
-        load.num_ready_requests_queued();
+        // RAY_LOG(ERROR) << expected_load[1] << "\t" << load.num_ready_requests_queued();
         // RAY_LOG(ERROR) << expected_load[2] << "\t" << shape["CPU"];
         // RAY_LOG(ERROR) << expected_load[3] << "\t" << shape["GPU"];
         // RAY_LOG(ERROR) << expected_load[4] << "\t" << shape.size();
@@ -929,9 +928,8 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
 
 TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
   /*
-    Test the race condition in which the owner of a task dies while the task is
-    pending. This is the essence of
-    test_actor_advanced.py::test_pending_actor_removed_by_owner
+    Test the race condition in which the owner of a task dies while the task is pending.
+    This is the essence of test_actor_advanced.py::test_pending_actor_removed_by_owner
    */
   Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
   rpc::RequestWorkerLeaseReply reply;
@@ -1184,13 +1182,6 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
   task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
   ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
             task1.GetTaskSpecification().TaskId());
-
-  // task_manager_.ScheduleAndDispatchTasks();
-  // pool_.TryToCallback();
-  // ASSERT_FALSE(callback_occurred2);
-  // ASSERT_EQ(task_manager_.tasks_to_schedule_.size(), 0);
-  // ASSERT_EQ(task_manager_.tasks_to_dispatch_.size(), 0);
-  // ASSERT_EQ(task_manager_.infeasible_tasks_.size(), 1);
 }
 
 TEST_F(ClusterTaskManagerTest, RleaseAndReturnWorkerCpuResources) {
