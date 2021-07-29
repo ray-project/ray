@@ -1287,8 +1287,6 @@ TEST_F(WorkerPoolTest, NoSpuriousWorkerStartupDuringEnvInstall) {
 
   // Worker does not start until the CreateRuntimeEnvCallback is invoked.
   ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
-  agent_manager->PopAndInvokeCallback();
-  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
 
   // Pop another worker for a task with a runtime env.
   worker_pool_->PopWorker(normal_task_spec);
@@ -1305,8 +1303,8 @@ TEST_F(WorkerPoolTest, NoSpuriousWorkerStartupDuringEnvInstall) {
   // Finish installing runtime env, call CreateRuntimeEnvCallback.
   agent_manager->PopAndInvokeCallback();
 
-  // Only one additional worker process is started, for a total of two.
-  ASSERT_EQ(worker_pool_->GetProcessSize(), 2);
+  // Only one worker process is started.
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
 }
 
 }  // namespace raylet
