@@ -152,13 +152,6 @@ class ServerCallImpl : public ServerCall {
 
   void HandleRequestImpl() {
     state_ = ServerCallState::PROCESSING;
-    // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
-    // a different thread, and will cause `this` to be deleted.
-    const auto &factory = factory_;
-    // Create a new `ServerCall` to accept the next incoming request.
-    // We create this before handling the request so that the it can be populated by
-    // the completion queue in the background if a new request comes in.
-    factory.CreateCall();
     (service_handler_.*handle_request_function_)(
         request_, &reply_,
         [this](Status status, std::function<void()> success,

@@ -132,6 +132,10 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
         server_call->OnReplyFailed();
       }
+      // Create a new `ServerCall` to accept the next incoming request.
+      // We create this before handling the request so that the it can be populated by
+      // the completion queue in the background if a new request comes in.
+      factory.CreateCall();
       delete_call = true;
     }
     if (delete_call) {
