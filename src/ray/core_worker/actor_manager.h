@@ -127,6 +127,7 @@ class ActorManager {
   /// actor handle.
   ///
   /// \param actor_handle The handle to the actor.
+  /// \param actor_name Actor name used to cache named actor.
   /// \param[in] caller_id The caller's task ID
   /// \param[in] call_site The caller's site.
   /// \param[in] is_detached Whether or not the actor of a handle is detached (named)
@@ -163,6 +164,7 @@ class ActorManager {
   /// they are submitted.
   ///
   /// \param actor_handle The handle to the actor.
+  /// \param actor_name Actor name used to cache named actor.
   /// \param is_owner_handle Whether this is the owner's handle to the actor.
   /// The owner is the creator of the actor and is responsible for telling the
   /// actor to disconnect once all handles are out of scope.

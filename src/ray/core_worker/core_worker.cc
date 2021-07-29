@@ -1715,8 +1715,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
+  // Note we need set `actor_name` to empty string as we don't need to cache this one.
   RAY_CHECK(actor_manager_->AddNewActorHandle(
-      std::move(actor_handle), actor_name, GetCallerId(), CurrentCallSite(), rpc_address_,
+      std::move(actor_handle), /*actor_name=*/"", GetCallerId(), CurrentCallSite(), rpc_address_,
       actor_creation_options.is_detached))
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
@@ -1984,7 +1985,8 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
     return GetNamedActorHandleLocalMode(name);
   }
 
-  ActorID actor_id = actor_manager_->GetCachedNamedActorID(name);
+  std::string namespace_to_use = ray_namespace.empty() ? job_config_->ray_namespace() : ray_namespace;
+  ActorID actor_id = actor_manager_->GetCachedNamedActorID(namespace_to_use + "-" + name);
   if (actor_id.IsNil()) {
     // This call needs to be blocking because we can't return until the actor
     // handle is created, which requires the response from the RPC. This is
@@ -1994,14 +1996,14 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
     std::shared_ptr<std::promise<void>> ready_promise =
         std::make_shared<std::promise<void>>(std::promise<void>());
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
-        name, ray_namespace.empty() ? job_config_->ray_namespace() : ray_namespace,
+        name, namespace_to_use,
         [this, &actor_id, name, ready_promise](
             Status status, const boost::optional<rpc::ActorTableData> &result) {
           if (status.ok() && result) {
             auto actor_handle = std::make_unique<ActorHandle>(*result);
             actor_id = actor_handle->GetActorID();
             actor_manager_->AddNewActorHandle(std::move(actor_handle),
-                                              result.get().name(), GetCallerId(),
+                                              result.get().ray_namespace() + "-" + result.get().name(), GetCallerId(),
                                               CurrentCallSite(), rpc_address_,
                                               /*is_detached*/ true);
           } else {
