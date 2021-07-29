@@ -352,7 +352,7 @@ class Dataset(Generic[T]):
     def split(self,
               n: int,
               *,
-              equal_split_sizes: bool = False,
+              equal: bool = False,
               locality_hints: List[Any] = None) -> List["Dataset[T]"]:
         """Split the dataset into ``n`` disjoint pieces.
 
@@ -369,7 +369,7 @@ class Dataset(Generic[T]):
 
         Args:
             n: Number of child datasets to return.
-            equal_split_sizes: Whether to guarantee each split has an equal
+            equal: Whether to guarantee each split has an equal
                 number of records. This may drop records if they cannot be
                 divided equally among the splits.
             locality_hints: A list of Ray actor handles of size ``n``. The
@@ -387,8 +387,11 @@ class Dataset(Generic[T]):
                 f"The length of locality_hints {len(locality_hints)} "
                 "doesn't equal the number of splits {n}.")
 
-        if equal_split_sizes:
-            raise NotImplementedError  # P1
+        def equalize(splits: List[Dataset[T]]) -> List[Dataset[T]]:
+            if not equal:
+                return splits
+            lower_bound = min([s.count() for s in splits])
+            return [s.limit(lower_bound) for s in splits]
 
         block_refs = list(self._blocks)
         metadata_mapping = {
@@ -397,12 +400,12 @@ class Dataset(Generic[T]):
         }
 
         if locality_hints is None:
-            return [
+            return equalize([
                 Dataset(
                     BlockList(
                         list(blocks), [metadata_mapping[b] for b in blocks]))
                 for blocks in np.array_split(block_refs, n)
-            ]
+            ])
 
         # If the locality_hints is set, we use a two-round greedy algorithm
         # to co-locate the blocks with the actors based on block
@@ -494,14 +497,14 @@ class Dataset(Generic[T]):
 
         assert len(remaining_block_refs) == 0, len(remaining_block_refs)
 
-        return [
+        return equalize([
             Dataset(
                 BlockList(
                     allocation_per_actor[actor],
                     [metadata_mapping[b]
                      for b in allocation_per_actor[actor]]))
             for actor in locality_hints
-        ]
+        ])
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,

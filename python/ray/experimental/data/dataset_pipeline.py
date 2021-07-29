@@ -105,7 +105,7 @@ class DatasetPipeline(Generic[T]):
     def split(self,
               n: int,
               *,
-              equal_split_sizes: bool = False,
+              equal: bool = False,
               locality_hints: List[Any] = None) -> List["DatasetPipeline[T]"]:
         """Split the pipeline into ``n`` disjoint pipeline shards.
 
@@ -128,7 +128,7 @@ class DatasetPipeline(Generic[T]):
 
         Args:
             n: Number of child pipelines to return.
-            equal_split_sizes: Whether to guarantee each split has an equal
+            equal: Whether to guarantee each split has an equal
                 number of records. This may drop records if they cannot be
                 divided equally among the splits.
             locality_hints: A list of Ray actor handles of size ``n``. The
@@ -139,7 +139,7 @@ class DatasetPipeline(Generic[T]):
             A list of ``n`` disjoint pipeline splits.
         """
         coordinator = PipelineSplitExecutorCoordinator.remote(
-            self, n, equal_split_sizes, locality_hints)
+            self, n, equal, locality_hints)
 
         class SplitIterator:
             def __init__(self, split_index):
