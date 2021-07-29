@@ -1,6 +1,5 @@
 import argparse
 import csv
-import itertools
 import logging
 import os
 import random
@@ -25,7 +24,9 @@ Args = argparse.Namespace
 
 
 def get_args(*args, **kwargs):
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="""
+    TODO
+    """)
     parser.add_argument(
         "--ray_address",
         default="auto",
@@ -34,45 +35,47 @@ def get_args(*args, **kwargs):
     )
     parser.add_argument(
         "--total_data_size",
-        default=512 * 1000 * 1024 * 1024,
+        default=2 * 1000 * 1024 * 1024 * 1024,
         type=ByteCount,
-        help="partition size in bytes",
+        help="total data size in bytes",
     )
     parser.add_argument(
         "--num_mappers",
-        default=128,
+        default=512,
         type=int,
         help="number of map tasks",
+    )
+    parser.add_argument(
+        "--num_mappers_per_round",
+        default=16,
+        type=int,
+        help="number of map tasks per first-stage merge tasks",
     )
     parser.add_argument(
         "--num_reducers",
         default=16,
         type=int,
-        help="number of reduce actors",
+        help="number of second-stage reduce tasks",
     )
     parser.add_argument(
-        "--merge_concurrency",
+        "--num_concurrent_rounds",
         default=4,
         type=int,
-        help="max number of merge tasks per worker node",
-    )
-    parser.add_argument(
-        "--merge_factor",
-        default=16,
-        type=int,
-        help="number of mapper results to buffer before merging",
+        help="max number of rounds of map/merge tasks in flight",
     )
     parser.add_argument(
         "--reducer_input_chunk",
         default=100 * 1024 * 1024,
         type=ByteCount,
-        help="number of bytes to read in memory from each mapper block",
+        help=
+        "number of bytes to read from each mapper block in merge/reduce tasks",
     )
     parser.add_argument(
         "--reducer_output_chunk",
         default=1 * 1024 * 1024,
         type=RecordCount,
-        help="number of bytes to buffer before writing the output to EBS",
+        help=
+        "number of bytes to buffer before writing the output in merge/reduce tasks",
     )
     parser.add_argument(
         "--skip_sorting",
@@ -97,14 +100,13 @@ def get_args(*args, **kwargs):
         "tasks to run", "if no task is specified, will run all tasks")
     tasks = ["generate_input", "sort", "validate_output"]
     for task in tasks:
-        tasks_group.add_argument(
-            f"--{task}", action="store_true", help=f"run task {task}")
+        tasks_group.add_argument(f"--{task}", action="store_true")
 
     args = parser.parse_args(*args, **kwargs)
     # Derive additional arguments.
     args.input_part_size = ByteCount(args.total_data_size / args.num_mappers)
-    assert args.num_mappers % args.merge_factor == 0
-    args.num_merged_mappers = int(args.num_mappers / args.merge_factor)
+    assert args.num_mappers % args.num_mappers_per_round == 0
+    args.num_rounds = int(args.num_mappers / args.num_mappers_per_round)
     args.mount_points = _get_mount_points()
     # If no tasks are specified, run all tasks.
     args_dict = vars(args)
@@ -220,7 +222,6 @@ def mapper(args: Args, boundaries: List[int], path: Path) -> List[np.ndarray]:
         if args.skip_sorting else sortlib.sort_and_partition
     blocks = sort_fn(part, boundaries)
     return [part[offset:offset + size] for offset, size in blocks]
-    # return [ray.put(part[offset:offset + size]) for offset, size in blocks]
 
 
 def _dummy_merge(
@@ -279,7 +280,6 @@ def merge_mapper_blocks(args: Args, reducer_id: PartId, mapper_id: PartId,
                         *blocks: List[np.ndarray]) -> PartInfo:
     part_id = constants.merge_part_ids(reducer_id, mapper_id)
     pinfo = _part_info(args, part_id, kind="temp")
-    # blocks = ray.get(list(blocks))
     M = len(blocks)
 
     def get_block(i, d):
@@ -327,6 +327,9 @@ def _node_res(node: str) -> Dict[str, float]:
 
 
 def _get_placement_groups(args: Args) -> List[ray.PlacementGroupID]:
+    """
+    TODO: document
+    """
     worker_share = args.num_workers / args.num_reducers
     pgs = [
         ray.util.placement_group([{
@@ -340,49 +343,46 @@ def _get_placement_groups(args: Args) -> List[ray.PlacementGroupID]:
 @tracing_utils.timeit("sort", report_time=True)
 def sort_main(args: Args):
     parts = _load_manifest(args, constants.INPUT_MANIFEST_FILE)
+    assert len(parts) == args.num_mappers
     boundaries = sortlib.get_boundaries(args.num_reducers)
     pgs = _get_placement_groups(args)
 
-    opt = {
-        "num_returns": args.num_reducers,
-        "memory": args.input_part_size * 2,
-    }
-    mapper_results = None
+    mapper_opt = {"num_returns": args.num_reducers}
     merge_results = np.empty(
-        (args.num_merged_mappers, args.num_reducers), dtype=object)
-    merge_concurrency = args.merge_concurrency * args.num_workers
-    merge_count = 0
+        (args.num_rounds, args.num_reducers), dtype=object)
 
-    def submit_merge_tasks():
-        nonlocal merge_count
-        if mapper_results is None:
-            return
-        num_extra_tasks = merge_count * args.num_reducers - merge_concurrency
-        if num_extra_tasks > 0:
+    part_id = 0
+    for round in range(args.num_rounds):
+        # Limit the number of in-flight rounds.
+        num_extra_rounds = round - args.num_concurrent_rounds + 1
+        if num_extra_rounds > 0:
             ray.wait(
                 [f for f in merge_results.flatten() if f is not None],
-                num_returns=num_extra_tasks)
-        merge_results[merge_count, :] = [
+                num_returns=num_extra_rounds * args.num_reducers)
+
+        # Submit map tasks.
+        mapper_results = np.empty(
+            (args.num_mappers_per_round, args.num_reducers), dtype=object)
+        for _ in range(args.num_mappers_per_round):
+            _, node, path = parts[part_id]
+            m = part_id % args.num_mappers_per_round
+            if not args.skip_input:
+                mapper_opt.update(_node_res(node))
+            mapper_results[m, :] = mapper.options(**mapper_opt).remote(
+                args, boundaries, path)
+            part_id += 1
+
+        # Submit merge tasks.
+        merge_results[round, :] = [
             merge_mapper_blocks.options(placement_group=pgs[r]).remote(
-                args, r, merge_count, *mapper_results[:, r].tolist())
+                args, r, round, *mapper_results[:, r].tolist())
             for r in range(args.num_reducers)
         ]
-        merge_count += 1
 
-    for part_id, node, path in parts:
-        m = part_id % args.merge_factor
-        if m == 0:
-            submit_merge_tasks()
-            mapper_results = np.empty(
-                (args.merge_factor, args.num_reducers), dtype=object)
-        if not args.skip_input:
-            opt.update(_node_res(node))
-        mapper_results[m, :] = mapper.options(**opt).remote(
-            args, boundaries, path)
-
-    submit_merge_tasks()
+    # Delete local references to mapper results.
     mapper_results = None
 
+    # Submit second-stage reduce tasks.
     reducer_results = [
         final_merge.options(placement_group=pgs[r]).remote(
             args, r, *merge_results[:, r].tolist())
