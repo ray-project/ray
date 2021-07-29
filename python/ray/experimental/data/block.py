@@ -1,6 +1,8 @@
 from typing import TypeVar, List, Generic, Iterator, Tuple, Any, Union, \
     Optional, TYPE_CHECKING
 
+import numpy as np
+
 if TYPE_CHECKING:
     import pandas
     import pyarrow
@@ -10,11 +12,11 @@ from ray.util.annotations import DeveloperAPI
 
 T = TypeVar("T")
 
-# Represents a batch of rows to be stored in the Ray object store.
+# Represents a batch of records to be stored in the Ray object store.
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
-# ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
-Block = Union[List[T], "pyarrow.Table"]
+# ``SimpleBlockAccessor``, ``ArrowBlockAccessor``, and ``TensorBlockAccessor``.
+Block = Union[List[T], np.ndarray, "pyarrow.Table"]
 
 
 @DeveloperAPI
@@ -113,9 +115,13 @@ class BlockAccessor(Generic[T]):
                 ArrowBlockAccessor
             return ArrowBlockAccessor(block)
         elif isinstance(block, list):
-            from ray.experimental.data.impl.block_builder import \
+            from ray.experimental.data.impl.simple_block import \
                 SimpleBlockAccessor
             return SimpleBlockAccessor(block)
+        elif isinstance(block, np.ndarray):
+            from ray.experimental.data.impl.tensor_block import \
+                TensorBlockAccessor
+            return TensorBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {}".format(block))
 

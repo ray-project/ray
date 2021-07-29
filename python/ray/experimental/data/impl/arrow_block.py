@@ -2,14 +2,17 @@ import collections
 import random
 from typing import Iterator, List, Union, Tuple, Any, TypeVar, TYPE_CHECKING
 
+import numpy as np
+
 try:
     import pyarrow
 except ImportError:
     pyarrow = None
 
 from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
-from ray.experimental.data.impl.block_builder import BlockBuilder, \
-    SimpleBlockBuilder
+from ray.experimental.data.impl.block_builder import BlockBuilder
+from ray.experimental.data.impl.simple_block import SimpleBlockBuilder
+from ray.experimental.data.impl.tensor_block import TensorBlockBuilder
 
 if TYPE_CHECKING:
     import pandas
@@ -64,6 +67,8 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
                     self._builder = ArrowBlockBuilder()
                 except (TypeError, pyarrow.lib.ArrowInvalid):
                     self._builder = SimpleBlockBuilder()
+            elif isinstance(item, np.ndarray):
+                self._builder = TensorBlockBuilder()
             else:
                 self._builder = SimpleBlockBuilder()
         self._builder.add(item)

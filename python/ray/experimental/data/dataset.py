@@ -38,7 +38,7 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 # An output type of iter_batches() determined by the batch_format parameter.
-BatchType = Union["pandas.DataFrame", "pyarrow.Table", list]
+BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
 
 logger = logging.getLogger(__name__)
 
@@ -874,7 +874,7 @@ class Dataset(Generic[T]):
             A local iterator over the entire dataset.
         """
         for batch in self.iter_batches(
-                prefetch_blocks=prefetch_blocks, batch_format="_blocks"):
+                prefetch_blocks=prefetch_blocks, batch_format="native"):
             batch = BlockAccessor.for_block(batch)
             for row in batch.iter_rows():
                 yield row
@@ -883,13 +883,13 @@ class Dataset(Generic[T]):
                      *,
                      prefetch_blocks: int = 0,
                      batch_size: int = None,
-                     batch_format: str = "pandas",
+                     batch_format: str = "native",
                      drop_last: bool = False) -> Iterator[BatchType]:
         """Return a local batched iterator over the dataset.
 
         Examples:
-            >>> for pandas_df in ray.data.range(1000000).iter_batches():
-            ...     print(pandas_df)
+            >>> for batch in ray.data.range(1000000).iter_batches():
+            ...     print(batch)
 
         Time complexity: O(1)
 
@@ -898,8 +898,9 @@ class Dataset(Generic[T]):
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
             batch_format: The format in which to return each batch.
-                Specify "pandas" to select ``pandas.DataFrame`` or "pyarrow" to
-                select ``pyarrow.Table``. Default is "pandas".
+                Specify "native" to use the current block format, "pandas" to
+                select ``pandas.DataFrame`` or "pyarrow" to select
+                ``pyarrow.Table``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
@@ -927,14 +928,14 @@ class Dataset(Generic[T]):
             return zip(*iters)
 
         def format_batch(batch: Block, format: str) -> BatchType:
-            if batch_format == "pandas":
+            if batch_format == "native":
+                return batch
+            elif batch_format == "pandas":
                 batch = BlockAccessor.for_block(batch)
                 return batch.to_pandas()
             elif batch_format == "pyarrow":
                 batch = BlockAccessor.for_block(batch)
                 return batch.to_arrow_table()
-            elif batch_format == "_blocks":
-                return batch
             else:
                 raise ValueError(
                     f"The given batch format: {batch_format} "
@@ -1361,7 +1362,8 @@ class Dataset(Generic[T]):
         schema = self.schema()
         if schema is None:
             schema_str = "Unknown schema"
-        elif schema and not isinstance(schema, type):
+        elif schema and not isinstance(schema, type) and not isinstance(
+                schema, dict):
             schema_str = []
             for n, t in zip(schema.names, schema.types):
                 if hasattr(t, "__name__"):
