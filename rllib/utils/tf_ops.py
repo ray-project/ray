@@ -45,8 +45,10 @@ def get_gpu_devices():
     if tfv == 1:
         from tensorflow.python.client import device_lib
         local_device_protos = device_lib.list_local_devices()
-        return [x.name for x in local_device_protos if
-                x.device_type in ["GPU", "XLA_GPU"]]
+        return [
+            x.name for x in local_device_protos
+            if x.device_type in ["GPU", "XLA_GPU"]
+        ]
     else:
         try:
             gpus = tf.config.list_physical_devices("GPU") + \
