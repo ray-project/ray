@@ -133,6 +133,7 @@ NIGHTLY_TESTS = {
     ],
     "~/ray/release/serve_tests/serve_tests.yaml": [
         "single_deployment_1k_noop_replica",
+        "multi_deployment_1k_noop_replica",
     ],
 }
 

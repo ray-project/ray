@@ -324,19 +324,12 @@ Tensor-typed values
 
 Currently Datasets does not have native support for tensor-typed values in records (e.g., TFRecord / Petastorm format / multi-dimensional arrays). This is planned for development.
 
-Pipelining data processing and ML computations
-----------------------------------------------
-
-This feature is planned for development. Please provide your input on this `GitHub RFC <https://github.com/ray-project/ray/issues/16852>`__.
-
 Contributing
 ------------
 
-Contributions to Datasets are welcome! There are many potential improvements, including:
+Contributions to Datasets are `welcome <https://docs.ray.io/en/master/development.html#python-develop>`__! There are many potential improvements, including:
 
 - Supporting more datasources and transforms.
 - Integration with more ecosystem libraries.
 - Adding features that require partitioning such as groupby() and join().
 - Performance optimizations.
-
-Get started with Ray Python development `here <https://docs.ray.io/en/master/development.html#python-develop>`__.
