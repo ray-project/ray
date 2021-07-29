@@ -40,7 +40,7 @@ def test_max_actors():
         for _ in trange(MAX_ACTORS_IN_CLUSTER, desc="Launching actors")
     ]
     remaining = [actor.foo.remote() for actor in actors]
-    pbar = tqdm(total=len(remaining))
+    pbar = tqdm(total=len(remaining), desc="Executing actor.foo")
     while len(remaining) != 0:
         ready, remaining = ray.wait(remaining, num_returns=100)
         for r in ray.get(ready):
