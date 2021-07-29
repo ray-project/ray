@@ -938,7 +938,7 @@ def init(
                 f"address `{redis_address}`` wasn't the port of the redis "
                 "server. You may have meant to connect to the Ray client "
                 "server instead, in which case try prepending \"ray://\" to "
-                f"the address instead (\"ray://{redis_address}\")")
+                f"the address, i.e. \"ray://{redis_address}\"")
 
     if driver_mode == SCRIPT_MODE and job_config:
         # Rewrite the URI. Note the package isn't uploaded to the URI until
