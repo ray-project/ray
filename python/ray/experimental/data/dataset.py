@@ -380,7 +380,12 @@ class Dataset(Generic[T]):
             A list of ``n`` disjoint dataset splits.
         """
         if n <= 0:
-            raise ValueError(f"The num of splits {n} is not positive.")
+            raise ValueError(f"The number of splits {n} is not positive.")
+
+        if n > self.num_blocks() and equal:
+            raise NotImplementedError(
+                f"The number of splits {n} > the number of dataset blocks "
+                f"{self.num_blocks()}, yet an equal split was requested.")
 
         if locality_hints and len(locality_hints) != n:
             raise ValueError(

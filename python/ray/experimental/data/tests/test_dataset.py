@@ -36,6 +36,31 @@ def test_basic_actors(shutdown_only, pipelined):
                          compute="actors").take()) == [1, 2, 3, 4, 5]
 
 
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_equal_split(shutdown_only, pipelined):
+    ray.init(num_cpus=2)
+
+    def range2x(n):
+        if pipelined:
+            return ray.data.range(n).repeat(2)
+        else:
+            return ray.data.range(2 * n)
+
+    def counts(shards):
+        @ray.remote(num_cpus=0)
+        def count(s):
+            return s.count()
+
+        return ray.get([count.remote(s) for s in shards])
+
+    r1 = counts(range2x(10).split(3, equal=True))
+    assert all(c == 6 for c in r1), r1
+
+    r2 = counts(range2x(10).split(3, equal=False))
+    assert all(c >= 6 for c in r2), r2
+    assert not all(c == 6 for c in r2), r2
+
+
 def test_callable_classes(shutdown_only):
     ray.init(num_cpus=1)
     ds = ray.experimental.data.range(10)
@@ -1213,26 +1238,6 @@ def test_random_shuffle(ray_start_regular_shared, pipelined):
         100, parallelism=5).random_shuffle(seed=0).take(999)
     assert r1 == r2, (r1, r2)
     assert r1 != r0, (r1, r0)
-
-
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_equal_split(ray_start_regular_shared, pipelined):
-    r1 = maybe_pipeline(ray.data.range(10), pipelined).split(3, equal=True)
-    assert all(s.count() == 3 for s in r1)
-
-    ds = ray.data.range(10)
-    if pipelined:
-        r2 = ds.repeat(1).split(3, equal=False)
-
-        @ray.remote(num_cpus=0)
-        def count(s):
-            return s.count()
-
-        counts = [ray.get(count.remote(s)) for s in r2]
-        assert not all([c == 3 for c in counts])
-    else:
-        r2 = ds.split(3, equal=False)
-        assert not all(s.count() == 3 for s in r2)
 
 
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
