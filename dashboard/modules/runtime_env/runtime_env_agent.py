@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 import json
 import logging
 from ray._private.ray_logging import setup_component_logger
@@ -18,9 +19,18 @@ from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class CreatedEnvResult:
+    # Whether or not the env was installed correctly.
+    success: bool
+    # If success is True, will be a serialized RuntimeEnvContext
+    # If success is False, will be an error message.
+    result: str
+
+
 class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                       runtime_env_agent_pb2_grpc.RuntimeEnvServiceServicer):
-    """A rpc server to create or delete runtime envs.
+    """An RPC server to create and delete runtime envs.
 
     Attributes:
         dashboard_agent: The DashboardAgent object contains global config.
@@ -34,9 +44,9 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         self._logging_params = dashboard_agent.logging_params
         self._per_job_logger_cache = dict()
         runtime_env.PKG_DIR = dashboard_agent.runtime_env_dir
-        # Maps a serialized runtime env dict to the serialized
-        # RuntimeEnvContext arising from the creation of the env.
-        self._created_env_cache: Dict[str, str] = dict()
+        # Cache the results of creating envs to avoid repeatedly calling into
+        # conda and other slow calls.
+        self._env_cache: Dict[str, CreatedEnvResult] = dict()
 
     def get_or_create_logger(self, job_id: bytes):
         job_id = job_id.decode()
@@ -65,18 +75,26 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             return await loop.run_in_executor(None, run_setup_with_logger)
 
         serialized_env = request.serialized_runtime_env
-        if serialized_env in self._created_env_cache:
-            serialized_context = self._created_env_cache[serialized_env]
-            logger.info("Runtime env already created. Env: %s, context: %s",
-                        serialized_env,
-                        self._created_env_cache[serialized_env])
-            return runtime_env_agent_pb2.CreateRuntimeEnvReply(
-                status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
-                serialized_runtime_env_context=serialized_context)
+        if serialized_env in self._env_cache:
+            serialized_context = self._env_cache[serialized_env]
+            result = self._env_cache[serialized_env]
+            if result.success:
+                context = result.result
+                logger.info("Runtime env already created successfully. "
+                            f"Env: {serialized_env}, context: {context}")
+                return runtime_env_agent_pb2.CreateRuntimeEnvReply(
+                    status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
+                    serialized_runtime_env_context=context)
+            else:
+                error_message = result.result
+                logger.info("Runtime env already failed. "
+                            f"Env: {serialized_env}, err: {error_message}")
+                return runtime_env_agent_pb2.CreateRuntimeEnvReply(
+                    status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                    error_message=error_message)
 
-        logger.info("Creating runtime env: %s.",
-                    request.serialized_runtime_env)
-        runtime_env_dict = json.loads(request.serialized_runtime_env or "{}")
+        logger.info(f"Creating runtime env: {serialized_env}")
+        runtime_env_dict = json.loads(serialized_env or "{}")
         uris = runtime_env_dict.get("uris")
         runtime_env_context: RuntimeEnvContext = None
         error_message = None
@@ -88,7 +106,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     # But we don't initailize internal kv in agent now.
                     pass
                 runtime_env_context = await _setup_runtime_env(
-                    request.serialized_runtime_env, self._session_dir)
+                    serialized_env, self._session_dir)
                 break
             except Exception as ex:
                 logger.exception("Runtime env creation failed.")
@@ -100,14 +118,17 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 "Runtime env creation failed for %d times, "
                 "don't retry any more.",
                 runtime_env_consts.RUNTIME_ENV_RETRY_TIMES)
+            self._env_cache[serialized_env] = CreatedEnvResult(
+                False, error_message)
             return runtime_env_agent_pb2.CreateRuntimeEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message=error_message)
 
         serialized_context = runtime_env_context.serialize()
-        self._created_env_cache[serialized_env] = serialized_context
+        self._env_cache[serialized_env] = CreatedEnvResult(
+            True, serialized_context)
         logger.info("Successfully created runtime env: %s, the context: %s",
-                    request.serialized_runtime_env, serialized_context)
+                    serialized_env, serialized_context)
         return runtime_env_agent_pb2.CreateRuntimeEnvReply(
             status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
             serialized_runtime_env_context=serialized_context)

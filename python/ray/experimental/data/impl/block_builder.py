@@ -83,6 +83,10 @@ class SimpleBlockAccessor(BlockAccessor):
         return SimpleBlockBuilder()
 
     def sample(self, n_samples: int = 1, key: SortKeyT = None) -> List[T]:
+        if not callable(key) and key is not None:
+            raise NotImplementedError(
+                "Python sort key must be either None or a callable "
+                "function, was: {}".format(key))
         k = min(n_samples, len(self._items))
         ret = random.sample(self._items, k)
         if key is None:

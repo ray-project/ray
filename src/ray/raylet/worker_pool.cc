@@ -993,22 +993,20 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       if (task_spec.HasRuntimeEnv()) {
         agent_manager_->CreateRuntimeEnv(
             task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, callback, &state, task_spec, dynamic_options,
+            [this, start_worker_process_fn, callback, &state, task_spec, dynamic_options,
              allocated_instances_serialized_json](
-                bool done, const std::string &serialized_runtime_env_context) {
-              if (!done) {
-                // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
-                // failed.
+                bool success, const std::string &serialized_runtime_env_context) {
+              if (success) {
+                start_worker_process_fn(task_spec, state, dynamic_options, true,
+                                        task_spec.SerializedRuntimeEnv(),
+                                        serialized_runtime_env_context, callback);
+              } else {
                 std::ostringstream oss;
-                oss << "Create runtime env(for dedicated actor) rpc failed. "
-                       "Wait for next time to retry or reschedule.";
+                oss << "Creating runtime environment failed. The "
+                       "corresponding task will be failed.";
                 RAY_LOG(ERROR) << oss.str();
                 callback(nullptr, Status::RuntimeEnvCreationFailed(oss.str()));
-                return;
               }
-              start_worker_process_fn(task_spec, state, dynamic_options, true,
-                                      task_spec.SerializedRuntimeEnv(),
-                                      serialized_runtime_env_context, callback);
             });
       } else {
         proc = start_worker_process_fn(task_spec, state, dynamic_options, true, "", "",
@@ -1055,21 +1053,19 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         // create runtime env.
         agent_manager_->CreateRuntimeEnv(
             task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, callback, &state, task_spec](
+            [this, start_worker_process_fn, callback, &state, task_spec](
                 bool successful, const std::string &serialized_runtime_env_context) {
-              if (!successful) {
-                // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
-                // failed.
+              if (successful) {
+                start_worker_process_fn(task_spec, state, {}, false,
+                                        task_spec.SerializedRuntimeEnv(),
+                                        serialized_runtime_env_context, callback);
+              } else {
                 std::ostringstream oss;
-                oss << "Create runtime env rpc failed. Wait for next time to retry or "
-                       "reschedule.";
+                oss << "Creating runtime environment failed. The "
+                       "corresponding task will be failed.";
                 RAY_LOG(ERROR) << oss.str();
                 callback(nullptr, Status::RuntimeEnvCreationFailed(oss.str()));
-                return;
               }
-              start_worker_process_fn(task_spec, state, {}, false,
-                                      task_spec.SerializedRuntimeEnv(),
-                                      serialized_runtime_env_context, callback);
             });
       } else {
         proc = start_worker_process_fn(task_spec, state, {}, false, "", "", callback);
