@@ -29,7 +29,6 @@ from ray.experimental.data.impl.batcher import Batcher
 from ray.experimental.data.impl.compute import get_compute, cache_wrapper, \
     CallableClass
 from ray.experimental.data.impl.progress_bar import ProgressBar
-from ray.experimental.data.impl.shuffle import simple_shuffle
 from ray.experimental.data.impl.sort import sort_impl
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
@@ -312,7 +311,42 @@ class Dataset(Generic[T]):
             The repartitioned dataset.
         """
 
+        from ray.experimental.data.impl.shuffle import simple_shuffle
+
         new_blocks = simple_shuffle(self._blocks, num_blocks)
+        return Dataset(new_blocks)
+
+    def random_shuffle(self, *, seed: int = None,
+                       num_blocks: int = None) -> "Dataset[T]":
+        """Randomly shuffle the elements of this dataset.
+
+        This is a blocking operation similar to repartition().
+
+        Examples:
+            >>> # Shuffle this dataset randomly.
+            >>> ds.random_shuffle()
+
+            >>> # Shuffle this dataset with a fixed random seed.
+            >>> ds.random_shuffle(seed=12345)
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            seed: Fix the random seed to use, otherwise one will be chosen
+                based on system randomness.
+            num_blocks: The number of output blocks after the shuffle, or None
+                to retain the number of blocks.
+
+        Returns:
+            The shuffled dataset.
+        """
+
+        from ray.experimental.data.impl.shuffle import random_shuffle
+
+        new_blocks = random_shuffle(
+            self._blocks,
+            output_num_blocks=num_blocks or self.num_blocks(),
+            random_seed=seed)
         return Dataset(new_blocks)
 
     def split(self,
@@ -468,33 +502,6 @@ class Dataset(Generic[T]):
                      for b in allocation_per_actor[actor]]))
             for actor in locality_hints
         ]
-
-    def random_shuffle(self, *, seed: int = None,
-                       num_blocks: int = None) -> "Dataset[T]":
-        """Randomly shuffle the elements of this dataset.
-
-        This is a blocking operation similar to repartition().
-
-        Examples:
-            >>> # Shuffle this dataset randomly.
-            >>> ds.random_shuffle()
-
-            >>> # Shuffle this dataset with a fixed random seed.
-            >>> ds.random_shuffle(seed=12345)
-
-        Time complexity: O(dataset size / parallelism)
-
-        Args:
-            seed: Fix the random seed to use, otherwise one will be chosen
-                based on system randomness.
-            num_blocks: The number of output blocks after the shuffle, or None
-                to retain the number of blocks.
-
-        Returns:
-            The shuffled dataset.
-        """
-
-        raise NotImplementedError
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,
