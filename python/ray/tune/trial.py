@@ -27,6 +27,7 @@ from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util import log_once
+from ray.util.annotations import DeveloperAPI
 from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
@@ -49,6 +50,7 @@ class Location:
             return "{}:{}".format(self.hostname, self.pid)
 
 
+@DeveloperAPI
 class ExportFormat:
     """Describes the format to import/export the trial Trainable.
 
@@ -156,6 +158,7 @@ def create_logdir(dirname, local_dir):
     return logdir
 
 
+@DeveloperAPI
 class Trial:
     """A trial object holds the state for one model training run.
 

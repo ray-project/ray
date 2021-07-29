@@ -16,6 +16,7 @@ from ray.tune.result import (DEFAULT_METRIC, EPISODE_REWARD_MEAN,
 from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 try:
     from collections.abc import Mapping, MutableMapping
@@ -36,6 +37,7 @@ except NameError:
     IS_NOTEBOOK = False
 
 
+@PublicAPI
 class ProgressReporter:
     """Abstract class for experiment progress reporting.
 
@@ -71,6 +73,7 @@ class ProgressReporter:
         pass
 
 
+@DeveloperAPI
 class TuneReporterBase(ProgressReporter):
     """Abstract base class for the default Tune reporters.
 
@@ -345,6 +348,7 @@ class TuneReporterBase(ProgressReporter):
         return best_trial, metric
 
 
+@PublicAPI
 class JupyterNotebookReporter(TuneReporterBase):
     """Jupyter notebook-friendly Reporter that can update display in-place.
 
@@ -423,6 +427,7 @@ class JupyterNotebookReporter(TuneReporterBase):
         display(HTML(progress_str))
 
 
+@PublicAPI
 class CLIReporter(TuneReporterBase):
     """Command-line reporter
 
@@ -791,6 +796,7 @@ def _get_trial_info(trial: Trial, parameters: List[str], metrics: List[str]):
     return trial_info
 
 
+@DeveloperAPI
 class TrialProgressCallback(Callback):
     """Reports (prints) intermediate trial progress.
 

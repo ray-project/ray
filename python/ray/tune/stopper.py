@@ -2,12 +2,13 @@ import warnings
 from typing import Dict, Optional
 import time
 from collections import defaultdict, deque
-
 import numpy as np
 
 from ray import logger
+from ray.util.annotations import PublicAPI, Deprecated
 
 
+@PublicAPI
 class Stopper:
     """Base class for implementing a Tune experiment stopper.
 
@@ -45,6 +46,7 @@ class Stopper:
         raise NotImplementedError
 
 
+@PublicAPI
 class CombinedStopper(Stopper):
     """Combine several stoppers via 'OR'.
 
@@ -77,6 +79,7 @@ class CombinedStopper(Stopper):
         return any(s.stop_all() for s in self._stoppers)
 
 
+@PublicAPI
 class NoopStopper(Stopper):
     def __call__(self, trial_id, result):
         return False
@@ -85,6 +88,7 @@ class NoopStopper(Stopper):
         return False
 
 
+@PublicAPI
 class FunctionStopper(Stopper):
     """Provide a custom function to check if trial should be stopped.
 
@@ -117,6 +121,7 @@ class FunctionStopper(Stopper):
         return is_function
 
 
+@PublicAPI
 class MaximumIterationStopper(Stopper):
     """Stop trials after reaching a maximum number of iterations
 
@@ -136,6 +141,7 @@ class MaximumIterationStopper(Stopper):
         return False
 
 
+@PublicAPI
 class ExperimentPlateauStopper(Stopper):
     """Early stop the experiment when a metric plateaued across trials.
 
@@ -214,6 +220,7 @@ class ExperimentPlateauStopper(Stopper):
 
 
 # Deprecate: 1.4
+@Deprecated
 class EarlyStopping(ExperimentPlateauStopper):
     def __init__(self, *args, **kwargs):
         warnings.warn(
@@ -224,6 +231,7 @@ class EarlyStopping(ExperimentPlateauStopper):
         super(EarlyStopping, self).__init__(*args, **kwargs)
 
 
+@PublicAPI
 class TrialPlateauStopper(Stopper):
     """Early stop single trials when they reached a plateau.
 
@@ -309,6 +317,7 @@ class TrialPlateauStopper(Stopper):
         return False
 
 
+@PublicAPI
 class TimeoutStopper(Stopper):
     """Stops all trials after a certain timeout.
 
