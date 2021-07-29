@@ -50,12 +50,13 @@ class BackendExecutor:
 
         self.worker_group = InactiveWorkerGroup()
 
-    def start(self, initialization_hook: Callable):
+    def start(self, initialization_hook: Callable = None):
         """Starts the worker group."""
         self.worker_group = WorkerGroup(self._num_workers,
                                         self._num_cpus_per_worker,
                                         self._num_gpus_per_worker)
-        self.worker_group.execute(initialization_hook)
+        if initialization_hook:
+            self.worker_group.execute(initialization_hook)
         self._backend.on_start(self.worker_group, self._backend_config)
 
     def run(self, train_func: Callable[[], T]) -> List[T]:

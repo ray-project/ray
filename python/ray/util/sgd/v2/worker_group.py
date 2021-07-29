@@ -146,6 +146,24 @@ class WorkerGroup:
         """
         return ray.get(self.execute_async(func, *args, **kwargs))
 
+    def execute_single_async(self, worker_index: int, func: Callable[..., T],
+                             *args, **kwargs) -> ObjectRef:
+        """Execute ``func`` on worker ``worker_index`` and return futures.
+
+        Args:
+            worker_index (int): The index to execute func on.
+            func (Callable): A function to call on the first worker.
+            args, kwargs: Passed directly into func.
+
+        Returns:
+            (ObjectRef) An ObjectRef representing the output of func.
+
+        """
+        if worker_index >= len(self.workers):
+            raise ValueError(f"The provided worker_index {worker_index} is "
+                             f"not valid for {self.num_workers} workers.")
+        return self.workers[worker_index].execute.remote(func, *args, **kwargs)
+
     def execute_single(self, worker_index: int, func: Callable[..., T], *args,
                        **kwargs) -> T:
         """Execute ``func`` on worker with index ``worker_index``.
@@ -159,11 +177,9 @@ class WorkerGroup:
             (T) The output of func.
 
         """
-        if worker_index >= len(self.workers):
-            raise ValueError(f"The provided worker_index {worker_index} is "
-                             f"not valid for {self.num_workers} workers.")
-        return ray.get(self.workers[worker_index].execute.remote(
-            func, *args, **kwargs))
+
+        return ray.get(
+            self.execute_single_async(worker_index, func, *args, **kwargs))
 
     def __len__(self):
         return len(self.workers)

@@ -5,9 +5,8 @@ import os
 from datetime import timedelta
 from typing import Optional
 
-from ray.util.sgd.v2.backends.backend import BackendConfig
-
-from ray.util.sgd.v2.backends.backend import BackendInterface
+import ray
+from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.utils import get_address_and_port
 
@@ -125,20 +124,23 @@ class TorchBackend(BackendInterface):
                     f"{backend_config.init_method}) is not supported. Must "
                     f"be either 'env' or 'tcp'.")
 
+            setup_futures = []
             for i in range(len(worker_group)):
-                worker_group.execute_single(
-                    i,
-                    setup_torch_process_group,
-                    backend=backend,
-                    world_rank=i,
-                    world_size=len(worker_group),
-                    init_method=url,
-                    timeout_s=backend_config.timeout_s)
+                setup_futures.append(
+                    worker_group.execute_single_async(
+                        i,
+                        setup_torch_process_group,
+                        backend=backend,
+                        world_rank=i,
+                        world_size=len(worker_group),
+                        init_method=url,
+                        timeout_s=backend_config.timeout_s))
+            ray.get(setup_futures)
         else:
             logger.info("Distributed torch is not being used.")
 
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: TorchConfig):
         if len(worker_group):
-            worker_group.execute_single(0, dist.destroy_process_group)
+            worker_group.execute(dist.destroy_process_group)
         worker_group.execute(shutdown_torch)

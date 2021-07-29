@@ -6,7 +6,8 @@ from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.backends.torch import TorchConfig
 
-from ray.util.sgd.v2.backends.backend import BackendInterface, InactiveWorkerGroupError
+from ray.util.sgd.v2.backends.backend import BackendInterface, \
+    InactiveWorkerGroupError
 
 
 @pytest.fixture
@@ -28,6 +29,7 @@ def gen_execute_special(special_f):
 
     return execute_async_special
 
+
 class TestConfig(BackendConfig):
     @property
     def backend_name(self):
@@ -37,14 +39,15 @@ class TestConfig(BackendConfig):
     def backend_cls(self):
         return TestBackend
 
+
 class TestBackend(BackendInterface):
-    def on_start(self, worker_group: WorkerGroup,
-                 backend_config: TestConfig):
+    def on_start(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: TestConfig):
         pass
+
 
 def test_start(ray_start_2_cpus):
     config = TestConfig()
@@ -53,6 +56,23 @@ def test_start(ray_start_2_cpus):
         e.run(lambda: 1)
     e.start()
     assert len(e.worker_group) == 2
+
+
+def test_initialization_hook(ray_start_2_cpus):
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=2)
+
+    def init_hook():
+        import os
+        os.environ["TEST"] = "1"
+
+    e.start(initialization_hook=init_hook)
+
+    def check():
+        import os
+        return os.getenv("TEST", "0")
+
+    assert e.run(check) == ["1", "1"]
 
 
 def test_shutdown(ray_start_2_cpus):
