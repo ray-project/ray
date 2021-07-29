@@ -219,19 +219,18 @@ class StandardAutoscaler:
         last_used = self.load_metrics.last_used_time_by_ip
         horizon = now - (60 * self.config["idle_timeout_minutes"])
 
-        nodes_to_terminate: List[bool] = []
+        nodes_to_terminate: List[NodeID] = []
         node_type_counts = collections.defaultdict(int)
         # Sort based on last used to make sure to keep min_workers that
         # were most recently used. Otherwise, _keep_min_workers_of_node_type
         # might keep a node that should be terminated.
         sorted_node_ids = self._sort_based_on_last_used(nodes, last_used)
+
         # Don't terminate nodes needed by request_resources()
         nodes_not_allowed_to_terminate: FrozenSet[NodeID] = {}
         if self.load_metrics.get_resource_requests():
             nodes_not_allowed_to_terminate = \
                 self._get_nodes_needed_for_request_resources(sorted_node_ids)
-
-        nodes_to_keep: List[NodeID] = []
 
         def keep_node(node_id: NodeID) -> None:
             # Update per-type counts and add node_id to nodes_to_keep.
@@ -239,7 +238,6 @@ class StandardAutoscaler:
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
                 node_type_counts[node_type] += 1
-            nodes_to_keep.append(node_id)
 
         def schedule_node_termination(node_id: NodeID, reason: str) -> None:
             # Log, record an event, and add node_id to nodes_to_terminate.
@@ -252,6 +250,7 @@ class StandardAutoscaler:
                 aggregate=operator.add)
             nodes_to_terminate.append(node_id)
 
+        # Nodes that we could terminate, if needed.
         nodes_we_could_terminate: List[NodeID] = []
 
         for node_id in sorted_node_ids:
@@ -279,13 +278,13 @@ class StandardAutoscaler:
                 nodes_we_could_terminate.append(node_id)
 
         # Terminate nodes if there are too many
-        num_nodes_to_terminate = (
-            len(nodes_to_keep) - self.config["max_workers"])
-        num_nodes_to_terminate = min(num_nodes_to_terminate,
-                                     len(nodes_we_could_terminate))
-        if num_nodes_to_terminate > 0:
+        num_extra_nodes_to_terminate = (
+            len(nodes) - len(nodes_to_terminate) - self.config["max_workers"])
+        num_extra_nodes_to_terminate = min(num_extra_nodes_to_terminate,
+                                           len(nodes_we_could_terminate))
+        if num_extra_nodes_to_terminate > 0:
             extra_nodes_to_terminate = nodes_we_could_terminate[
-                -num_nodes_to_terminate:]
+                -num_extra_nodes_to_terminate:]
             for node_id in extra_nodes_to_terminate:
                 schedule_node_termination(node_id, "max workers")
 

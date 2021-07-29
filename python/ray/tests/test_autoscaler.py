@@ -2697,8 +2697,7 @@ MemAvailable:   33000000 kB
             lambda: all(not updater.is_alive()
                         for updater in autoscaler.updaters.values()),
             num_retries=500,
-            fail_msg="Last round of updaters didn't complete on time."
-        )
+            fail_msg="Last round of updaters didn't complete on time.")
         # Check that updaters processed some commands in the last autoscaler
         # update.
         assert len(autoscaler.process_runner.calls) > num_calls,\
