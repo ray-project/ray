@@ -1285,11 +1285,8 @@ TEST_F(WorkerPoolTest, NoSpuriousWorkerStartupDuringEnvInstall) {
   // No idle workers.
   ASSERT_EQ(popped_worker, nullptr);
 
-  // Worker does not start until the CreateRuntimeEnvCallback is invoked.
+  // Worker does not start because CreateRuntimeEnvCallback has not yet been invoked.
   ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
-
-  // Pop another worker for a task with a runtime env.
-  worker_pool_->PopWorker(normal_task_spec);
 
   // Simulate the following situation: before runtime env is done installing,
   // PopWorker is called several more times for the same task.
