@@ -113,7 +113,7 @@ def train_func(config: Dict):
     return loss_results
 
 
-def train_example(num_workers=2, use_gpu=False):
+def train_fashion_mnist(num_workers=1, use_gpu=False):
     trainer = Trainer(
         backend="torch",
         num_workers=num_workers,
@@ -173,4 +173,4 @@ if __name__ == "__main__":
         ray.util.connect(args.server_address)
     else:
         ray.init(address=args.address)
-    train_example(num_workers=args.num_workers, use_gpu=args.use_gpu)
+    train_fashion_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu)

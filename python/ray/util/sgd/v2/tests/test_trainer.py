@@ -5,6 +5,8 @@ import ray
 from ray.util.sgd.v2 import Trainer, TorchConfig
 from ray.util.sgd.v2.examples.train_linear import train_func as \
     linear_train_func
+from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
+    fashion_mnist_train_func
 
 
 @pytest.fixture
@@ -70,7 +72,7 @@ def test_run_config(ray_start_2_cpus):
     assert all(result == "banana" for result in results)
 
 
-def test_torch_basic(ray_start_2_cpus):
+def test_torch_linear(ray_start_2_cpus):
     num_workers = 2
     epochs = 3
 
@@ -85,6 +87,23 @@ def test_torch_basic(ray_start_2_cpus):
     for result in results:
         assert len(result) == epochs
         assert result[-1]["loss"] < result[0]["loss"]
+
+
+def test_torch_fashion_mnist(ray_start_2_cpus):
+    num_workers = 2
+    epochs = 3
+
+    trainer = Trainer("torch", num_workers=num_workers)
+    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
+    trainer.start()
+    results = trainer.run(fashion_mnist_train_func, config)
+    trainer.shutdown()
+
+    assert len(results) == num_workers
+
+    for result in results:
+        assert len(result) == epochs
+        assert result[-1] < result[0]
 
 
 def test_init_failure(ray_start_2_cpus):
