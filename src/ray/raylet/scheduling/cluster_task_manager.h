@@ -22,9 +22,8 @@ namespace raylet {
 /// dispatch/spillback and the callback to trigger it.
 enum WorkStatus {
   WAITING,
-  SCHEDULED,
+  WAITING_FOR_WORKER,
   CANCELLED,
-  SPILLED,
 };
 
 struct Work {

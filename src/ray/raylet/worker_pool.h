@@ -550,9 +550,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// worker types (SPILL_WORKER and RESTORE_WORKER and UTIL_WORKER).
   bool IsIOWorkerType(const rpc::WorkerType &worker_type);
 
-  inline void PopWorkerCallbackExecution(const PopWorkerCallback &callback,
-                                         std::shared_ptr<WorkerInterface> worker,
-                                         Status status = Status::OK());
+  inline void PopWorkerCallbackAsync(const PopWorkerCallback &callback,
+                                     std::shared_ptr<WorkerInterface> worker,
+                                     Status status = Status::OK());
 
   void TryToCallbackTask(
       std::unordered_map<Process, TaskWaitingForWorkerInfo> &workers_to_tasks,

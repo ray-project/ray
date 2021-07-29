@@ -153,9 +153,9 @@ void WorkerPool::SetAgentManager(std::shared_ptr<AgentManager> agent_manager) {
   agent_manager_ = agent_manager;
 }
 
-inline void WorkerPool::PopWorkerCallbackExecution(
-    const PopWorkerCallback &callback, std::shared_ptr<WorkerInterface> worker,
-    Status status) {
+inline void WorkerPool::PopWorkerCallbackAsync(const PopWorkerCallback &callback,
+                                               std::shared_ptr<WorkerInterface> worker,
+                                               Status status) {
   if (callback) {
     // Call back this function asynchronously to make sure executed in different stack.
     io_service_->post([callback, worker, status]() { callback(worker, status); });
@@ -965,7 +965,9 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         state.starting_workers_to_tasks[proc] = std::move(task_info);
       }
     } else {
-      PopWorkerCallbackExecution(callback, nullptr, status);
+      // TODO(guyang.sgy): Wait until a worker is pushed or a worker can be started If
+      // startup concurrency maxed out or job not started.
+      PopWorkerCallbackAsync(callback, nullptr, status);
     }
     return proc;
   };
@@ -1077,7 +1079,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
 
   if (worker) {
     RAY_CHECK(worker->GetAssignedJobId() == task_spec.JobId());
-    PopWorkerCallbackExecution(callback, worker);
+    PopWorkerCallbackAsync(callback, worker);
   }
 }
 

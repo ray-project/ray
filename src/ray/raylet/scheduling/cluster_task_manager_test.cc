@@ -45,8 +45,7 @@ std::promise<bool> global_promise;
 
 class MockWorkerPool : public WorkerPoolInterface {
  public:
-  MockWorkerPool(instrumented_io_context &io_service)
-      : num_pops(0), io_service(io_service) {}
+  MockWorkerPool() : num_pops(0) {}
 
   void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback,
                  const std::string &allocated_instances_serialized_json) {
@@ -93,7 +92,6 @@ class MockWorkerPool : public WorkerPoolInterface {
   std::list<std::shared_ptr<WorkerInterface>> workers;
   std::unordered_map<int, std::list<PopWorkerCallback>> callbacks;
   int num_pops;
-  instrumented_io_context &io_service;
 };
 
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
@@ -172,7 +170,6 @@ class ClusterTaskManagerTest : public ::testing::Test {
   ClusterTaskManagerTest()
       : id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(id_.Binary())),
-        pool_(io_service_),
         is_owner_alive_(true),
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
@@ -202,21 +199,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
                         }
                         return true;
                       },
-                      /*max_pinned_task_arguments_bytes=*/1000) {
-    std::promise<bool> promise;
-    thread_io_service_.reset(new std::thread([this, &promise] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
-      promise.set_value(true);
-      io_service_.run();
-    }));
-    promise.get_future().get();
-  }
-
-  ~ClusterTaskManagerTest() {
-    io_service_.stop();
-    thread_io_service_->join();
-  }
+                      /*max_pinned_task_arguments_bytes=*/1000) {}
 
   RayObject *MakeDummyArg() {
     std::vector<uint8_t> data;
@@ -266,7 +249,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
     int count = 0;
     for (const auto &pair : task_manager_.tasks_to_dispatch_) {
       for (const auto &work : pair.second) {
-        if (work->status == WorkStatus::SCHEDULED) {
+        if (work->status == WorkStatus::WAITING_FOR_WORKER) {
           count++;
         }
       }
@@ -277,8 +260,6 @@ class ClusterTaskManagerTest : public ::testing::Test {
   NodeID id_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
-  instrumented_io_context io_service_;
-  std::unique_ptr<std::thread> thread_io_service_;
   std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 

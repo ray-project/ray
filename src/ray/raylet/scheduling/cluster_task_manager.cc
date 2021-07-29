@@ -156,7 +156,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
-      if (work->status == WorkStatus::SCHEDULED) {
+      if (work->status == WorkStatus::WAITING_FOR_WORKER) {
         work_it++;
         continue;
       }
@@ -239,7 +239,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
               cluster_resource_scheduler_->SerializedTaskResourceInstances(
                   allocated_instances);
         }
-        work->status = WorkStatus::SCHEDULED;
+        work->status = WorkStatus::WAITING_FOR_WORKER;
         worker_pool_.PopWorker(
             spec,
             [this, allocated_instances, task_id, scheduling_class, work](
@@ -247,7 +247,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
               const auto &reply = work->reply;
               const auto &callback = work->callback;
               bool canceled = work->status == WorkStatus::CANCELLED;
-
+              const auto &task = work->task;
+              const auto &spec = task.GetTaskSpecification();
+              bool used = false;
               auto erase_from_dispatch_queue_fn =
                   [this](const std::shared_ptr<Work> &work,
                          const SchedulingClass &scheduling_class) {
@@ -281,13 +283,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                          "to grant the lease "
                       << task_id << ", status = " << status.CodeAsString();
                 }
-                // We've already acquired resources so we need to release them to avoid
-                // double-acquiring when the next invocation of this function tries to
-                // schedule this task.
+                // We've already acquired resources so we need to release them.
                 cluster_resource_scheduler_->ReleaseWorkerResources(allocated_instances);
-                // No worker available, we won't be able to schedule any kind of task.
-                // Worker processes spin up pretty quickly, so it's not worth trying to
-                // spill this task.
+                // Release pinned task args.
                 ReleaseTaskArgs(task_id);
                 if (status.IsOwnerFailed() && !canceled) {
                   erase_from_dispatch_queue_fn(work, scheduling_class);
@@ -295,25 +293,23 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                 } else if (status.IsRuntimeEnvCreationFailed()) {
                   CancelTask(task_id, true);
                 } else {
-                  // TODO(guyang.sgy): If status.IsRuntimeEnvCreationFailed(), re-schedule
-                  // the task to other nodes.
                   work->status = WorkStatus::WAITING;
                 }
-                return false;
+                used = false;
               } else {
                 RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
                                << worker->WorkerId();
-                const auto &task = work->task;
-                const auto &spec = task.GetTaskSpecification();
+
                 Dispatch(worker, leased_workers_, allocated_instances, task, reply,
                          callback);
-                if (!spec.GetDependencies().empty()) {
-                  task_dependency_manager_.RemoveTaskDependencies(
-                      task.GetTaskSpecification().TaskId());
-                }
                 erase_from_dispatch_queue_fn(work, scheduling_class);
-                return true;
+                used = true;
               }
+              if (!spec.GetDependencies().empty()) {
+                task_dependency_manager_.RemoveTaskDependencies(
+                    task.GetTaskSpecification().TaskId());
+              }
+              return used;
             },
             allocated_instances_serialized_json);
         work_it++;
