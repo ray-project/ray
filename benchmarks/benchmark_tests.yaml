@@ -47,7 +47,7 @@
 
 #   cluster:
 #     app_config: app_config.yaml
-#     compute_template: ci_scale_1k_20k.yaml
+#     compute_template: scale_1k_20k/ct_scale_1k_20k.yaml
 
 #   run:
 #     timeout: 3600 # 1hr
