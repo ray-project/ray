@@ -67,7 +67,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 lambda read_paths=read_paths: read_files(
                     read_paths, filesystem),
                 BlockMetadata(
-                    num_rows=None,
+                    num_rows=self._rows_per_file * len(read_paths),
                     size_bytes=sum(file_sizes),
                     schema=schema,
                     input_files=read_paths)) for read_paths, file_sizes in zip(
@@ -77,6 +77,11 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         ]
 
         return read_tasks
+
+    def _rows_per_file(self):
+        """Returns the number of rows per file, or None if unknown.
+        """
+        return None
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         """Reads a single file, passing all kwargs to the reader.
