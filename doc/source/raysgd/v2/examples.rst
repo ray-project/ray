@@ -1,4 +1,5 @@
 :orphan:
+
 .. _sgd-v2-examples:
 
 RaySGD Examples
@@ -25,4 +26,3 @@ Models
 ------
 
 * Example training on Vision model.
-* Example training on

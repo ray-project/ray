@@ -41,7 +41,6 @@ You can run the following on your local machine:
 
         return model._module, all_results
 
-
     trainer = Trainer(
         num_workers=8,
         use_gpu=True,
@@ -55,10 +54,10 @@ You can run the following on your local machine:
 Links
 -----
 
-* :ref:`API reference <TODO>`
-* :ref:`User guide <sgd-v2-user-guide>`
-* :ref:`Architecture <TODO>`
-* :ref:`Examples <TODO>`
+* :ref:`API reference <sgd-api>`
+* :ref:`User guide <sgd-user-guide>`
+* :ref:`Architecture <sgd-arch>`
+* :ref:`Examples <sgd-v2-examples>`
 
 
-Check out the :ref:`user guide here <sgd-user-guide>`
+**Next steps:** Check out the :ref:`user guide here <sgd-user-guide>`

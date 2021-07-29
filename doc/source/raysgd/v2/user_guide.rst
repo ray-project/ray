@@ -1,6 +1,6 @@
 :orphan:
 
-.. _sgd-v2-user-guide:
+.. _sgd-user-guide:
 
 RaySGD User Guide
 =================
@@ -114,15 +114,15 @@ Porting code over to using RaySGD
 
 .. tabs::
 
-    .. pytorch::
+    .. group-tab:: pytorch
 
         TODO. Write about how to convert standard pytorch code to distributed.
 
-    .. tensorflow::
+    .. group-tab:: tensorflow
 
-        TODO. Write about how to convert standard pytorch code to distributed.
+        TODO. Write about how to convert standard tf code to distributed.
 
-    .. horovod::
+    .. group-tab:: horovod
 
         TODO. Write about how to convert code to use horovod.
 
@@ -131,7 +131,7 @@ Porting code over to using RaySGD
 RaySGD Training on a large dataset
 ----------------------------------
 
-SGD provides native support for Ray Datasets. You can pass in a Dataset to RaySGD via `Trainer.run`.
+SGD provides native support for :ref:`Ray Datasets <datasets>`. You can pass in a Dataset to RaySGD via ``Trainer.run``.
 Underneath the hood, RaySGD will automatically shard the given dataset.
 
 
@@ -184,43 +184,125 @@ You can plug all of these into RaySGD with the following interface:
         callbacks=[sgd.MlflowCallback()]
         dataset=dataset)
 
-Here is a list of callbacks that is supported by RaySGD:
+.. Here is a list of callbacks that is supported by RaySGD:
 
-* WandbCallback
-* MlflowCallback
-* TensorboardCallback
-* JsonCallback (Automatically logs given parameters)
-* CSVCallback
+.. * WandbCallback
+.. * MlflowCallback
+.. * TensorboardCallback
+.. * JsonCallback (Automatically logs given parameters)
+.. * CSVCallback
 
 
 .. note:: When using RayTune, these callbacks will not be used.
 
-Running on the cloud
---------------------
+Checkpointing
+-------------
 
-TODO.
+RaySGD provides a way to save state during the training process. This will be useful for:
 
-Implementing fault tolerance
-----------------------------
+1. :ref:`Integration with Ray Tune <tune-sgd>` to use certain Ray Tune schedulers
+2. Running a long-running training job on a cluster of pre-emptible machines/pods.
 
-TODO.
 
+.. code-block:: python
+
+    import ray
+
+    def train_func(*args):
+
+        state = ray.sgd.load_checkpoint()
+        # eventually, optional:
+        for _ in config["num_epochs"]:
+            train(...)
+            ray.sgd.save_checkpoint((model, optimizer, etc))
+        return model
+
+    trainer = Trainer(gpus_per_worker, cpus_per_worker, num_workers=(4, inf))
+    trainer.run(train_func)
+    state = trainer.get_last_checkpoint()
+
+.. Running on the cloud
+.. --------------------
+
+.. Use RaySGD with the Ray cluster launcher by changing the following:
+
+.. .. code-block:: bash
+
+..     ray up cluster.yaml
+
+.. TODO.
+
+
+
+.. Running on pre-emptible machines
+.. --------------------------------
+
+.. You may want to
+
+.. TODO.
+
+
+.. _tune-sgd:
 
 Hyperparameter tuning with RaySGD
 ---------------------------------
 
+Hyperparameter tuning with Ray Tune is natively supported with RaySGD. Specifically, you can take an existing training function and follow these steps:
+
+1. Call ``trainer.to_tune_trainable``, which will produce an object ("Trainable") that will be passed to Ray Tune.
+2. Call ``tune.run(trainable)`` instead of ``trainer.run``. This will invoke the hyperparameter tuning, starting multiple "trials" each with the resource amount specified by the Trainer.
+
+A couple caveats:
+
+* Tune won't handle the ``training_func`` return value correctly. To save your best trained model, you'll need to use the checkpointing API.
+* You should **not** call ``tune.report`` or ``tune.checkpoint_dir`` in your training function.
+
+.. code-block:: python
+
+    import ray
+    from ray import tune
+
+    def training_func(config):
+        dataloader = ray.sgd.get_dataset()\
+            .get_shard(torch.rank())\
+            .to_torch(batch_size=config["batch_size"])
+
+        for i in config["epochs"]:
+            ray.sgd.report(...)  # use same intermediate reporting API
+
+    # Declare the specification for training.
+    trainer = Trainer(gpus_per_worker=2, workers=12)
+    dataset = ray.dataset.pipeline()
+
+    # Convert this to a trainable.
+    trainable = trainer.to_tune_trainable(training_func, dataset=dataset)
+
+    analysis = tune.run(trainable, config={
+        "lr": tune.uniform(), "batch_size": tune.randint(1, 2, 3)}, num_samples=12)
 
 
+Distributed metrics (for Pytorch)
+---------------------------------
 
-Distributed metrics
--------------------
+In real applications, you may want to calcluate optimization metrics besides accuracy and loss: recall, precision, Fbeta, etc.
 
+RaySGD natively supports `TorchMetrics <https://torchmetrics.readthedocs.io/en/latest/>`_, which provides a collection of machine learning metrics for distributed, scalable Pytorch models.
 
+Here is an example:
 
+.. code-block:: python
 
+    import torch
+    import torchmetrics
+    import ray
 
+    def train_func(config):
+        preds = torch.randn(10, 5).softmax(dim=-1)
+        target = torch.randint(5, (10,))
 
+        acc = torchmetrics.functional.accuracy(preds, target)
+        ray.sgd.report(accuracy=acc)
 
+    trainer = Trainer(num_workers=2)
+    trainer.run(train_func, config=None)
 
-
-A
