@@ -117,23 +117,6 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorInfo(JNIEnv *env, jobj
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorAddress(JNIEnv *env, jobject o,
-                                                                  jlong gcs_accessor_ptr,
-                                                                  jbyteArray actorId) {
-  const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
-  auto *gcs_accessor =
-      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
-  auto actor_info = gcs_accessor->GetActorInfo(actor_id);
-  if (actor_info) {
-    ray::rpc::ActorTableData actor_table_data;
-    actor_table_data.ParseFromString(*actor_info);
-    return NativeStringToJavaByteArray(env,
-                                       actor_table_data.address().SerializeAsString());
-  }
-  return nullptr;
-}
-
-JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetPlacementGroupInfo(
     JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jbyteArray placement_group_id_bytes) {
   const auto placement_group_id =

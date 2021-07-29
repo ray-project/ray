@@ -20,17 +20,14 @@
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/gcs/gcs_client/global_state_accessor.h"
 
-ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_id,
-                                ray::ObjectID *out_object_id, bool pin_object = true,
-                                const std::string *address = nullptr) {
+ray::Status PutSerializedObject(
+    JNIEnv *env, jobject obj, ray::ObjectID object_id, ray::ObjectID *out_object_id,
+    bool pin_object = true,
+    const std::unique_ptr<ray::rpc::Address> &owner_address = nullptr) {
   auto native_ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
   RAY_CHECK(native_ray_object != nullptr);
-  std::unique_ptr<ray::rpc::Address> owner_address = nullptr;
-  if (address) {
-    owner_address = std::make_unique<ray::rpc::Address>();
-    owner_address->ParseFromString(*address);
-  }
   size_t data_size = 0;
   if (native_ray_object->HasData()) {
     data_size = native_ray_object->GetData()->Size();
@@ -61,10 +58,10 @@ ray::Status PutSerializedObject(JNIEnv *env, jobject obj, ray::ObjectID object_i
     }
     if (object_id.IsNil()) {
       RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().SealOwned(
-          *out_object_id, pin_object, std::move(owner_address)));
+          *out_object_id, pin_object, owner_address));
     } else {
       RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().SealExisting(
-          *out_object_id, /* pin_object = */ false, std::move(owner_address)));
+          *out_object_id, /* pin_object = */ false, owner_address));
     }
   }
   return ray::Status::OK();
@@ -75,23 +72,37 @@ extern "C" {
 #endif
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2(
-    JNIEnv *env, jclass, jobject obj) {
-  ray::ObjectID object_id;
-  auto status = PutSerializedObject(env, obj, /*object_id=*/ray::ObjectID::Nil(),
-                                    /*out_object_id=*/&object_id, /*pin_object=*/true);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
-  return IdToJavaByteArray<ray::ObjectID>(env, object_id);
-}
-
-JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2_3B(
-    JNIEnv *env, jclass, jobject obj, jbyteArray java_actor_address) {
+    JNIEnv *env, jclass, jobject obj, jbyteArray owner_actor_id_bytes) {
   ray::ObjectID object_id;
-  auto address = JavaByteArrayToNativeString(env, java_actor_address);
+  std::unique_ptr<ray::rpc::Address> owner_address = nullptr;
+  if (owner_actor_id_bytes) {
+    ray::rpc::ActorTableData actor_table_data;
+    {
+      /// Get actor info from GCS synchronously.
+      std::unique_ptr<std::string> serialized_actor_table_data;
+      std::promise<bool> promise;
+      auto gcs_client = ray::CoreWorkerProcess::GetCoreWorker().GetGcsClient();
+      RAY_CHECK_OK(gcs_client->Actors().AsyncGet(
+          ActorID::FromBinary(JavaByteArrayToNativeString(env, owner_actor_id_bytes)),
+          [&serialized_actor_table_data, &promise](
+              const ray::Status &status,
+              const boost::optional<ray::rpc::ActorTableData> &result) {
+            RAY_CHECK_OK(status);
+            if (result) {
+              serialized_actor_table_data.reset(
+                  new std::string(result->SerializeAsString()));
+            }
+            promise.set_value(true);
+          }));
+      promise.get_future().get();
+      actor_table_data.ParseFromString(*serialized_actor_table_data);
+    }
+    owner_address = std::make_unique<ray::rpc::Address>(actor_table_data.address());
+  }
   auto status = PutSerializedObject(env, obj, /*object_id=*/ray::ObjectID::Nil(),
                                     /*out_object_id=*/&object_id, /*pin_object=*/true,
-                                    /*owner_address=*/&address);
+                                    /*owner_address=*/owner_address);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return IdToJavaByteArray<ray::ObjectID>(env, object_id);
 }

@@ -147,10 +147,6 @@ public class GcsClient {
     return actorTableData.getNumRestarts() != 0;
   }
 
-  public byte[] getActorAddress(ActorId actorId) {
-    return globalStateAccessor.getActorAddress(actorId);
-  }
-
   public JobId nextJobId() {
     return JobId.fromBytes(globalStateAccessor.getNextJobID());
   }

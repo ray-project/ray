@@ -3,6 +3,7 @@ package io.ray.runtime.object;
 import com.google.common.base.Preconditions;
 import io.ray.api.ObjectRef;
 import io.ray.api.WaitResult;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
@@ -35,10 +36,10 @@ public abstract class ObjectStore {
    * Put a raw object into object store, and assign ownership to actor.
    *
    * @param obj The ray object.
-   * @param address The address of the actor to assign ownership
+   * @param ownerActorId The id of the actor to assign ownership
    * @return Generated ID of the object.
    */
-  public abstract ObjectId putRaw(NativeRayObject obj, byte[] address);
+  public abstract ObjectId putRaw(NativeRayObject obj, ActorId ownerActorId);
 
   /**
    * Put a raw object with specified ID into object store.
@@ -69,12 +70,12 @@ public abstract class ObjectStore {
    * @param address The address of the actor to assign ownership
    * @return Id of the object.
    */
-  public ObjectId put(Object object, byte[] address) {
+  public ObjectId put(Object object, ActorId ownerActorId) {
     if (object instanceof NativeRayObject) {
       throw new IllegalArgumentException(
           "Trying to put a NativeRayObject. Please use putRaw instead.");
     }
-    return putRaw(ObjectSerializer.serialize(object), address);
+    return putRaw(ObjectSerializer.serialize(object), ownerActorId);
   }
 
   /**

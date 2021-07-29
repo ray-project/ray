@@ -178,7 +178,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
           workerContext.getCurrentTaskId(),
           ownerActor.getId());
     }
-    ObjectId objectId = objectStore.put(obj, gcsClient.getActorAddress(ownerActor.getId()));
+    ObjectId objectId = objectStore.put(obj, ownerActor.getId());
     return new ObjectRefImpl<T>(objectId, (Class<T>) (obj == null ? Object.class : obj.getClass()));
   }
 

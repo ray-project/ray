@@ -1,6 +1,7 @@
 package io.ray.runtime.object;
 
 import com.google.common.base.Preconditions;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
@@ -44,7 +45,7 @@ public class LocalModeObjectStore extends ObjectStore {
   }
 
   @Override
-  public ObjectId putRaw(NativeRayObject obj, byte[] address) {
+  public ObjectId putRaw(NativeRayObject obj, ActorId ownerActorId) {
     throw new UnsupportedOperationException(
         "Assigning owner in Put is not implemented in local mode");
   }
