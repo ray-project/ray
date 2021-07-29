@@ -76,7 +76,7 @@ lack of flexibility.
 Ray Serve solves these problems by giving you a simple web server (and the ability to :ref:`use your own <serve-web-server-integration-tutorial>`) while still handling the complex routing, scaling, and testing logic
 necessary for production deployments.
 
-Beyond scaling up your backends with multiple replicas, Ray Serve also enables:
+Beyond scaling up your deployments with multiple replicas, Ray Serve also enables:
 
 - :ref:`serve-model-composition`---ability to flexibly compose multiple models and independently scale and update each.
 - :ref:`serve-batching`---built in request batching to help you meet your performance objectives.
