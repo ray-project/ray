@@ -184,7 +184,7 @@ class ServerCallImpl : public ServerCall {
     }
   }
 
-  const ServerCallFactory &GetServerCallFactory() { return factory_; }
+  const ServerCallFactory &GetServerCallFactory() override { return factory_; }
 
  private:
   /// Tell gRPC to finish this request and send reply asynchronously.
