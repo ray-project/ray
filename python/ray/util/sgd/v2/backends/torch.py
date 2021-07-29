@@ -47,10 +47,12 @@ class TorchConfig(BackendConfig):
             raise ValueError("`torch` is not installed. "
                              "Please install torch to use this backend.")
 
+    @property
     def backend_name(self):
         return "torch"
 
-    def get_backend_cls(self):
+    @property
+    def backend_cls(self):
         return TorchBackend
 
 
@@ -110,7 +112,7 @@ class TorchBackend(BackendInterface):
 
                 def set_env_vars(addr, port):
                     os.environ["MASTER_ADDR"] = addr
-                    os.environ["MASTER_PORT"] = port
+                    os.environ["MASTER_PORT"] = str(port)
 
                 worker_group.execute(
                     set_env_vars, addr=master_addr, port=master_port)
@@ -138,5 +140,5 @@ class TorchBackend(BackendInterface):
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: TorchConfig):
         if len(worker_group):
-            worker_group.exexute_single(0, dist.destroy_process_group)
+            worker_group.execute_single(0, dist.destroy_process_group)
         worker_group.execute(shutdown_torch)

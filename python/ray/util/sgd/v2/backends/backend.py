@@ -17,10 +17,8 @@ class BackendConfig:
     def backend_name(self):
         raise NotImplementedError
 
-    def validate(self, name):
-        assert name == self.backend_name(), (name, self.backend_name)
-
-    def get_backend_cls(self):
+    @property
+    def backend_cls(self):
         raise NotImplementedError
 
 
@@ -45,7 +43,7 @@ class BackendExecutor:
                  num_cpus_per_worker: float = 1,
                  num_gpus_per_worker: float = 0):
         self._backend_config = backend_config
-        self._backend = self._backend_config.get_backend_cls()
+        self._backend = self._backend_config.backend_cls()
         self._num_workers = num_workers
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
@@ -58,7 +56,7 @@ class BackendExecutor:
                                         self._num_cpus_per_worker,
                                         self._num_gpus_per_worker)
         self.worker_group.execute(initialization_hook)
-        self._backend.on_start()
+        self._backend.on_start(self.worker_group, self._backend_config)
 
     def run(self, train_func: Callable[[], T]) -> List[T]:
         """Executes a training function on all workers.
@@ -108,7 +106,7 @@ class BackendExecutor:
 
     def shutdown(self):
         """Shuts down the workers in the worker group."""
-        self._backend.on_shutdown(self.worker_group)
+        self._backend.on_shutdown(self.worker_group, self._backend_config)
         self.worker_group.shutdown()
         self.worker_group = InactiveWorkerGroup()
 
@@ -127,6 +125,7 @@ class InactiveWorkerGroupError(Exception):
     """Raised when underlying worker group is inactive."""
 
 
-class InactiveWorkerGroup(WorkerGroup):
-    def __getattr__(self, *args, **kwargs):
+class InactiveWorkerGroup():
+    # TODO: fix inheritence. perhaps create WorkerGroupInterface.
+    def __getattribute__(self, *args, **kwargs):
         raise InactiveWorkerGroupError()

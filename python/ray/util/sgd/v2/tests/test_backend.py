@@ -4,9 +4,9 @@ from unittest.mock import patch
 import ray
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
 from ray.util.sgd.v2.worker_group import WorkerGroup
-from ray.util.sgd.v2.backends.torch import TorchConfig, TorchExecutor
+from ray.util.sgd.v2.backends.torch import TorchConfig
 
-from ray.util.sgd.v2.backends.backend import InactiveWorkerGroupError
+from ray.util.sgd.v2.backends.backend import BackendInterface, InactiveWorkerGroupError
 
 
 @pytest.fixture
@@ -28,9 +28,26 @@ def gen_execute_special(special_f):
 
     return execute_async_special
 
+class TestConfig(BackendConfig):
+    @property
+    def backend_name(self):
+        return "test"
+
+    @property
+    def backend_cls(self):
+        return TestBackend
+
+class TestBackend(BackendInterface):
+    def on_start(self, worker_group: WorkerGroup,
+                 backend_config: TestConfig):
+        pass
+
+    def on_shutdown(self, worker_group: WorkerGroup,
+                    backend_config: TestConfig):
+        pass
 
 def test_start(ray_start_2_cpus):
-    config = BackendConfig()
+    config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     with pytest.raises(InactiveWorkerGroupError):
         e.run(lambda: 1)
@@ -39,7 +56,7 @@ def test_start(ray_start_2_cpus):
 
 
 def test_shutdown(ray_start_2_cpus):
-    config = BackendConfig()
+    config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
     assert len(e.worker_group) == 2
@@ -49,7 +66,7 @@ def test_shutdown(ray_start_2_cpus):
 
 
 def test_execute(ray_start_2_cpus):
-    config = BackendConfig()
+    config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
 
@@ -57,7 +74,7 @@ def test_execute(ray_start_2_cpus):
 
 
 def test_execute_worker_failure(ray_start_2_cpus):
-    config = BackendConfig()
+    config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
 
@@ -72,8 +89,9 @@ def test_execute_worker_failure(ray_start_2_cpus):
 
 @pytest.mark.parametrize("init_method", ["env", "tcp"])
 def test_torch_start_shutdown(ray_start_2_cpus, init_method):
-    torch_config = TorchConfig(backedn="gloo", init_method=init_method)
-    e = TorchExecutor(torch_config, num_workers=2)
+    torch_config = TorchConfig(backend="gloo", init_method=init_method)
+    e = BackendExecutor(torch_config, num_workers=2)
+    e.start()
 
     def check_process_group():
         import torch
