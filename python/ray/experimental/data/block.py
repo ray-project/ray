@@ -14,7 +14,7 @@ T = TypeVar("T")
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
-Block = Union[List[T], "pyarrow.Table"]
+Block = Union[List[T], "pyarrow.Table", bytes]
 
 
 @DeveloperAPI
