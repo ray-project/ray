@@ -423,8 +423,8 @@ void CoreWorkerPlasmaStoreProvider::WarnIfFetchHanging(
     RAY_LOG(WARNING)
         << "Objects " << oss.str() << " are still not local after "
         << (duration_ms / 1000) << "s. "
-        << "If this message continues to print, ray.get is likely hung. Please file an "
-           "issue at https://github.com/ray-project/ray/issues/";
+        << "If this message continues to print, ray.get() is likely hung. Please file an "
+           "issue at https://github.com/ray-project/ray/issues/.";
   }
 }
 
