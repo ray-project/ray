@@ -1177,6 +1177,28 @@ def test_sort_simple(ray_start_regular_shared):
         reversed(range(num_items)))
 
 
+def test_random_shuffle(ray_start_regular_shared):
+    r1 = ray.data.range(100).random_shuffle().take()
+    r2 = ray.data.range(100).random_shuffle().take()
+    assert r1 != r2, (r1, r2)
+
+    r1 = ray.data.range(100, parallelism=1).random_shuffle().take()
+    r2 = ray.data.range(100, parallelism=1).random_shuffle().take()
+    assert r1 != r2, (r1, r2)
+
+    r0 = ray.data.range(100, parallelism=5).take()
+    r1 = ray.data.range(100, parallelism=5).random_shuffle(seed=0).take()
+    r2 = ray.data.range(100, parallelism=5).random_shuffle(seed=0).take()
+    assert r1 == r2, (r1, r2)
+    assert r1 != r0, (r1, r0)
+
+    r0 = ray.data.range_arrow(100, parallelism=5).take()
+    r1 = ray.data.range_arrow(100, parallelism=5).random_shuffle(seed=0).take()
+    r2 = ray.data.range_arrow(100, parallelism=5).random_shuffle(seed=0).take()
+    assert r1 == r2, (r1, r2)
+    assert r1 != r0, (r1, r0)
+
+
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
 def test_sort_arrow(ray_start_regular_shared, num_items, parallelism):
     a = list(reversed(range(num_items)))

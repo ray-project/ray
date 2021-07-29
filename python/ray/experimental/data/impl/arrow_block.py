@@ -3,6 +3,7 @@ import random
 from typing import Iterator, List, Union, Tuple, Any, TypeVar, Optional, \
     TYPE_CHECKING
 
+import numpy as np
 try:
     import pyarrow
 except ImportError:
@@ -159,7 +160,8 @@ class ArrowBlockAccessor(BlockAccessor):
             return view
 
     def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
-        raise NotImplementedError
+        random = np.random.RandomState(random_seed)
+        return self._table.take(random.permutation(self.num_rows()))
 
     def schema(self) -> "pyarrow.lib.Schema":
         return self._table.schema
