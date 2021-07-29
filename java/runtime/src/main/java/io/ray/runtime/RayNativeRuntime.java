@@ -174,7 +174,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   public <T> ObjectRef<T> put(T obj, BaseActorHandle ownerActor) {
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug(
-          "Putting Object in Task {} with {} as owner.",
+          "Putting an object in task {} with {} as the owner.",
           workerContext.getCurrentTaskId(),
           ownerActor.getId());
     }

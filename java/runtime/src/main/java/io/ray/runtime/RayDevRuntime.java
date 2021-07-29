@@ -65,7 +65,7 @@ public class RayDevRuntime extends AbstractRayRuntime {
   @Override
   public <T> ObjectRef<T> put(T obj, BaseActorHandle ownerActor) {
     throw new UnsupportedOperationException(
-        "Assigning owner in Put is not implemented in local mode");
+        "Assigning owner in `Ray::put` is not implemented in local mode");
   }
 
   @Override
