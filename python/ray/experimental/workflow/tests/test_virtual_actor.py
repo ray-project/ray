@@ -158,6 +158,8 @@ def test_actor_writer_2(workflow_start_regular, tmp_path):
             self.val_err = val_err
             self.incr_err = incr_err
             self.v = 0
+            if Path(self.val_err).exists():
+                raise ValueError()
 
         @workflow.virtual_actor.readonly
         def val(self):
@@ -183,12 +185,16 @@ def test_actor_writer_2(workflow_start_regular, tmp_path):
             (self.v, self.val_lock, self.incr_lock, self.g_lock, self.val_err,
              self.incr_err) = state
 
+    # trigger error in init
+    Path(val_err).touch()
     actor = SyncCounter.get_or_create("sync_counter", val_lock, incr_lock,
                                       g_lock, val_err, incr_err)
-    ray.get(actor.ready())
+    with pytest.raises(Exception):
+        actor.incr.run()
+    Path(val_err).unlink()
 
-    assert ray.get([actor.incr.run_async() for _ in range(10)]) == list(
-        range(1, 11))
+    assert ray.get([actor.incr.run_async() for _ in range(9)]) == list(
+        range(2, 11))
 
     incr_lock = FileLock(incr_lock)
     incr_lock.acquire()
