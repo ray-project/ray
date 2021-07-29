@@ -57,7 +57,7 @@ class TorchConfig(BackendConfig):
 def setup_torch_process_group(backend: str,
                               world_rank: int,
                               world_size: int,
-                              init_method: str = None,
+                              init_method: str,
                               timeout_s: int = 1800):
     """Connects the distributed PyTorch backend.
 
