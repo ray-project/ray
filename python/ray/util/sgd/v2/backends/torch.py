@@ -112,7 +112,7 @@ class TorchBackend(BackendInterface):
 
                 def set_env_vars(addr, port):
                     os.environ["MASTER_ADDR"] = addr
-                    os.environ["MASTER_PORT"] = port
+                    os.environ["MASTER_PORT"] = str(port)
 
                 worker_group.execute(
                     set_env_vars, addr=master_addr, port=master_port)

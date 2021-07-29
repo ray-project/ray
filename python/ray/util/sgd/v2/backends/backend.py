@@ -125,6 +125,7 @@ class InactiveWorkerGroupError(Exception):
     """Raised when underlying worker group is inactive."""
 
 
-class InactiveWorkerGroup(WorkerGroup):
-    def __getattr__(self, *args, **kwargs):
+class InactiveWorkerGroup():
+    # TODO: fix inheritence. perhaps create WorkerGroupInterface.
+    def __getattribute__(self, *args, **kwargs):
         raise InactiveWorkerGroupError()
