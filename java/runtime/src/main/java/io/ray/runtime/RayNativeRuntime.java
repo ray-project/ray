@@ -2,10 +2,8 @@ package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
-import io.ray.api.ObjectRef;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
-import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.NativeWorkerContext;
@@ -16,7 +14,6 @@ import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.JobConfig;
 import io.ray.runtime.object.NativeObjectStore;
-import io.ray.runtime.object.ObjectRefImpl;
 import io.ray.runtime.runner.RunManager;
 import io.ray.runtime.task.NativeTaskExecutor;
 import io.ray.runtime.task.NativeTaskSubmitter;
@@ -168,18 +165,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     } finally {
       writeLock.unlock();
     }
-  }
-
-  @Override
-  public <T> ObjectRef<T> put(T obj, BaseActorHandle ownerActor) {
-    if (LOGGER.isDebugEnabled()) {
-      LOGGER.debug(
-          "Putting an object in task {} with {} as the owner.",
-          workerContext.getCurrentTaskId(),
-          ownerActor.getId());
-    }
-    ObjectId objectId = objectStore.put(obj, ownerActor.getId());
-    return new ObjectRefImpl<T>(objectId, (Class<T>) (obj == null ? Object.class : obj.getClass()));
   }
 
   @Override

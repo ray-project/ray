@@ -2,7 +2,6 @@ package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
-import io.ray.api.ObjectRef;
 import io.ray.api.id.JobId;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
@@ -60,12 +59,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
       taskSubmitter = null;
     }
     taskExecutor = null;
-  }
-
-  @Override
-  public <T> ObjectRef<T> put(T obj, BaseActorHandle ownerActor) {
-    throw new UnsupportedOperationException(
-        "Assigning owner in `Ray::put` is not implemented in local mode");
   }
 
   @Override

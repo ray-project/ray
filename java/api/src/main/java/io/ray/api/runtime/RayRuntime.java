@@ -36,13 +36,17 @@ public interface RayRuntime {
   <T> ObjectRef<T> put(T obj);
 
   /**
-   * Store an object in the object store, and assign the ownership to an actor.
+   * Store an object in the object store, and assign its ownership to owner. This function is
+   * experimental.
    *
    * @param obj The Java object to be stored.
-   * @param ownerActor The actor to assign ownership
+   * @param owner The actor that should own this object. This allows creating objects with lifetimes
+   *     decoupled from that of the creating process. Note that the owner actor must be passed a
+   *     reference to the object prior to the object creator exiting, otherwise the reference will
+   *     still be lost.
    * @return A ObjectRef instance that represents the in-store object.
    */
-  <T> ObjectRef<T> put(T obj, BaseActorHandle ownerActor);
+  <T> ObjectRef<T> put(T obj, BaseActorHandle owner);
 
   /**
    * Get an object from the object store.

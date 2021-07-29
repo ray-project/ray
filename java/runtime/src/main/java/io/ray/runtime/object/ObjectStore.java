@@ -33,10 +33,11 @@ public abstract class ObjectStore {
   public abstract ObjectId putRaw(NativeRayObject obj);
 
   /**
-   * Put a raw object into object store, and assign ownership to actor.
+   * Put a raw object into object store, and assign its ownership to the actor identified by
+   * ownerActorId.
    *
    * @param obj The ray object.
-   * @param ownerActorId The id of the actor to assign ownership
+   * @param ownerActorId The id of the actor to assign ownership.
    * @return Generated ID of the object.
    */
   public abstract ObjectId putRaw(NativeRayObject obj, ActorId ownerActorId);
@@ -64,10 +65,11 @@ public abstract class ObjectStore {
   }
 
   /**
-   * Serialize and put an object to the object store, and set its owner to an actor.
+   * Serialize and put an object to the object store, and assign its ownership to the actor
+   * identified by ownerActorId.
    *
    * @param object The object to put.
-   * @param address The address of the actor to assign ownership
+   * @param ownerActorId The id of the actor to assign ownership.
    * @return Id of the object.
    */
   public ObjectId put(Object object, ActorId ownerActorId) {
