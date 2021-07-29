@@ -9,6 +9,7 @@ from tqdm import tqdm, trange
 TEST_NUM_NODES = 1000
 MAX_ACTORS_IN_CLUSTER = 20000
 
+
 def num_alive_nodes():
     n = 0
     for node in ray.nodes():
@@ -28,6 +29,7 @@ def scale_to(target):
 def test_max_actors():
     # TODO (Alex): Dynamically set this based on number of cores
     cpus_per_actor = 0.2
+
     @ray.remote(num_cpus=cpus_per_actor)
     class Actor:
         def foo(self):
@@ -38,11 +40,13 @@ def test_max_actors():
         for _ in trange(MAX_ACTORS_IN_CLUSTER, desc="Launching actors")
     ]
     remaining = [actor.foo.remote() for actor in actors]
+    pbar = tqdm(total=len(remaining))
     while len(remaining) != 0:
         ready, remaining = ray.wait(remaining, num_returns=100)
         for r in ray.get(ready):
             assert r is None
-        print(f"Remaining: {len(remaining)}")
+        pbar.update(len(ready))
+
 
 ray.init(address="auto")
 
