@@ -48,8 +48,7 @@ class TensorBlockAccessor(BlockAccessor):
         view = self._tensor[start:end]
         if copy:
             view = view.copy()
-        else:
-            return view
+        return view
 
     def to_pandas(self) -> "pandas.DataFrame":
         import pandas
