@@ -1186,6 +1186,10 @@ def test_random_shuffle(ray_start_regular_shared):
     r2 = ray.data.range(100, parallelism=1).random_shuffle().take()
     assert r1 != r2, (r1, r2)
 
+    r1 = ray.data.range(100).random_shuffle(num_blocks=1).take()
+    r2 = ray.data.range(100).random_shuffle(num_blocks=1).take()
+    assert r1 != r2, (r1, r2)
+
     r0 = ray.data.range(100, parallelism=5).take()
     r1 = ray.data.range(100, parallelism=5).random_shuffle(seed=0).take()
     r2 = ray.data.range(100, parallelism=5).random_shuffle(seed=0).take()

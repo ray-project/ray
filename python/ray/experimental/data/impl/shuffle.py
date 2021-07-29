@@ -75,6 +75,11 @@ def simple_shuffle(input_blocks: BlockList[T],
     map_bar.block_until_complete([x[0] for x in shuffle_map_out])
     map_bar.close()
 
+    # Randomize the reduce order of the blocks.
+    if random_shuffle:
+        random = np.random.RandomState(random_seed)
+        random.shuffle(shuffle_map_out)
+
     reduce_bar = ProgressBar(
         "Shuffle Reduce", position=0, total=output_num_blocks)
     shuffle_reduce_out = [
