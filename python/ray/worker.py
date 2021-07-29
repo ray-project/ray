@@ -938,9 +938,9 @@ def init(
                 "The following error occurred while connecting to redis: "
                 f"{str(e)}\nThis is likely because the port specified by "
                 f"address `{redis_address}`` wasn't the port of the redis "
-                "server. You may have meant to connect to the Ray client "
-                "server instead, in which case try prepending \"ray://\" to "
-                f"the address, i.e. \"ray://{redis_address}\"")
+                "server. If you meant to connect to the Ray client server "
+                'instead, try prepending "ray://" to the address, i.e. '
+                f'"ray://{redis_address}"')
 
     if driver_mode == SCRIPT_MODE and job_config:
         # Rewrite the URI. Note the package isn't uploaded to the URI until
