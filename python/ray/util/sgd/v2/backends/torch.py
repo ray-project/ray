@@ -47,10 +47,12 @@ class TorchConfig(BackendConfig):
             raise ValueError("`torch` is not installed. "
                              "Please install torch to use this backend.")
 
+    @property
     def backend_name(self):
         return "torch"
 
-    def get_backend_cls(self):
+    @property
+    def backend_cls(self):
         return TorchBackend
 
 

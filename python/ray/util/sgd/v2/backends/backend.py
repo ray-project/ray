@@ -17,10 +17,8 @@ class BackendConfig:
     def backend_name(self):
         raise NotImplementedError
 
-    def validate(self, name):
-        assert name == self.backend_name(), (name, self.backend_name)
-
-    def get_backend_cls(self):
+    @property
+    def backend_cls(self):
         raise NotImplementedError
 
 
@@ -45,7 +43,7 @@ class BackendExecutor:
                  num_cpus_per_worker: float = 1,
                  num_gpus_per_worker: float = 0):
         self._backend_config = backend_config
-        self._backend = self._backend_config.get_backend_cls()
+        self._backend = self._backend_config.backend_cls()
         self._num_workers = num_workers
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
