@@ -84,6 +84,8 @@ class ServerCall {
   // Invoked when sending reply fails.
   virtual void OnReplyFailed() = 0;
 
+  virtual const ServerCallFactory &GetServerCallFactory() = 0;
+
   /// Virtual destruct function to make sure subclass would destruct properly.
   virtual ~ServerCall() = default;
 };
@@ -181,6 +183,8 @@ class ServerCallImpl : public ServerCall {
       io_service_.post([callback]() { callback(); }, call_name_ + ".failure_callback");
     }
   }
+
+  const ServerCallFactory &GetServerCallFactory() { return factory_; }
 
  private:
   /// Tell gRPC to finish this request and send reply asynchronously.
