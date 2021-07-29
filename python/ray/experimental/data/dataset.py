@@ -49,8 +49,8 @@ class Dataset(Generic[T]):
 
     Datasets are implemented as a list of ``ObjectRef[Block]``. The block
     also determines the unit of parallelism. The default block type is the
-    ``pyarrow.Table``. tensors are held in ``np.ndarray`` blocks, and other
-    Arrow-incompatible objects are held in ``list`` blocks.
+    ``pyarrow.Table``. Tensor-type objects are held in ``np.ndarray`` blocks,
+    and other Arrow-incompatible objects are held in ``list`` blocks.
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors just like any other object. Datasets support
