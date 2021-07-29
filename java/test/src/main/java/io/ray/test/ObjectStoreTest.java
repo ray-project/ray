@@ -5,6 +5,7 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.runtime.exception.RayTaskException;
+import io.ray.runtime.exception.UnreconstructableException;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.testng.Assert;
@@ -34,6 +35,10 @@ public class ObjectStoreTest extends BaseTest {
     public int set(ObjectRef<Integer> ref) {
       this.ref = ref;
       return 0;
+    }
+
+    public void exit() {
+      Ray.exitActor();
     }
   }
 
@@ -70,25 +75,26 @@ public class ObjectStoreTest extends BaseTest {
     Assert.assertEquals(ints, Ray.get(refs));
   }
 
-  @Test
-  public void testPutWithAssignedOwner() throws Exception {
+  @Test(groups = {"cluster"})
+  public void testOwnerAssignWhenPut() throws Exception {
+    // This test should align with test_owner_assign_when_put in Python
+    ActorHandle<Creator> creator = Ray.actor(Creator::new).remote();
+    ActorHandle<Owner> owner = Ray.actor(Owner::new).remote();
+    ActorHandle<Borrower> borrower = Ray.actor(Borrower::new).remote();
+    Ray.get(owner.task(Owner::warmup).remote());
+    ObjectRef<ObjectRef<Integer>> ref = creator.task(Creator::put, 1, owner).remote();
+    Ray.get(owner.task(Owner::set, ref).remote());
+    creator.task(Creator::exit).remote();
+    Thread.sleep(10000);
+    int data = Ray.get(borrower.task(Borrower::get, ref).remote());
+    Assert.assertEquals(data, 1);
+    owner.task(Owner::exit).remote();
+    Thread.sleep(2000);
     try {
-      ActorHandle<Creator> creator = Ray.actor(Creator::new).remote();
-      ActorHandle<Owner> owner = Ray.actor(Owner::new).remote();
-      ActorHandle<Borrower> borrower = Ray.actor(Borrower::new).remote();
-      Ray.get(owner.task(Owner::warmup).remote());
-      ObjectRef<ObjectRef<Integer>> ref = creator.task(Creator::put, 1, owner).remote();
-      Ray.get(owner.task(Owner::set, ref).remote());
-      creator.task(Creator::exit).remote();
-      Thread.sleep(10000);
-      int data = Ray.get(borrower.task(Borrower::get, ref).remote());
-      Assert.assertEquals(data, 1);
+      // Object should be lost
+      data = Ray.get(borrower.task(Borrower::get, ref).remote());
     } catch (RayTaskException e) {
-      // This will be thrown in local mode test
-      // otherwise it should pass
-      if (!(e.getCause() instanceof IllegalArgumentException)) {
-        throw e;
-      }
+      Assert.assertEquals(e.getCause() instanceof UnreconstructableException, true);
     }
   }
 }
