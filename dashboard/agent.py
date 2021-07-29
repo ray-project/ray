@@ -15,6 +15,8 @@ try:
     import aiohttp.web
     import aiohttp_cors
     from aiohttp import hdrs
+
+    import aioredis  # noqa: F401
 except ImportError:
     print("Not all Ray Dashboard dependencies were found. "
           "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "

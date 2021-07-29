@@ -78,11 +78,6 @@ def validate_config(config: Dict[str, Any]) -> None:
     try:
         import jsonschema
     except (ModuleNotFoundError, ImportError) as e:
-        logger.warning(
-            "Not all Ray autoscaler dependencies were found. "
-            "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
-            "only be usable via `pip install 'ray[default]'`. Please "
-            "update your install command.")
         raise e from None
 
     try:

@@ -313,13 +313,12 @@ def _bootstrap_config(config: Dict[str, Any],
         # the user to manually fill the resources) as we currently support
         # autofilling resources for AWS and Kubernetes only.
         validate_config(config)
-    except (ModuleNotFoundError, ImportError) as e:
+    except (ModuleNotFoundError, ImportError):
         cli_logger.abort(
             "Not all Ray autoscaler dependencies were found. "
             "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
             "only be usable via `pip install 'ray[default]'`. Please "
-            "update your install command.",
-            exc=e)
+            "update your install command.")
     resolved_config = provider_cls.bootstrap_config(config)
 
     if not no_config_cache:
