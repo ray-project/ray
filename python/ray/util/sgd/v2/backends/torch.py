@@ -141,6 +141,6 @@ class TorchBackend(BackendInterface):
 
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: TorchConfig):
-        if len(worker_group):
+        if len(worker_group) > 1:
             worker_group.execute(dist.destroy_process_group)
         worker_group.execute(shutdown_torch)

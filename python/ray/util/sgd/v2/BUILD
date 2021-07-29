@@ -13,11 +13,10 @@ py_test(
 
 py_test(
     name = "test_trainer",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_trainer.py"],
     tags = ["exclusive"],
     deps = [":sgd_v2_lib"]
-)
 
 py_test(
     name = "test_worker_group",

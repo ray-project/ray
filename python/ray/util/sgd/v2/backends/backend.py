@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, TypeVar, List, Optional
+from typing import Callable, TypeVar, List, Dict, Any, Optional
 
 import ray
 from ray.exceptions import RayActorError
@@ -50,7 +50,7 @@ class BackendExecutor:
 
         self.worker_group = InactiveWorkerGroup()
 
-    def start(self, initialization_hook: Optional[Callable] = None):
+    def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the worker group."""
         self.worker_group = WorkerGroup(self._num_workers,
                                         self._num_cpus_per_worker,
@@ -59,19 +59,20 @@ class BackendExecutor:
             self.worker_group.execute(initialization_hook)
         self._backend.on_start(self.worker_group, self._backend_config)
 
-    def run(self, train_func: Callable[[], T]) -> List[T]:
+    def run(self, train_func: Callable[[Dict[str, Any]], T],
+            config: Dict[str, Any]) -> List[T]:
         """Executes a training function on all workers.
 
         Args:
-            train_func (Callable): The training function to run on each
-                worker. It must not have any required arguments.
+            train_func (Callable): The training function to run on each worker.
+            config (Dict): Configurations to pass into ``train_func``.
 
         Returns:
             A list of return values from calling ``train_func`` on each worker.
                 Each item corresponds to the return value from a single worker.
         """
         # Run the training function asynchronously.
-        training_futures = self.worker_group.execute_async(train_func)
+        training_futures = self.worker_group.execute_async(train_func, config)
 
         return self.get_with_failure_handling(training_futures)
 
