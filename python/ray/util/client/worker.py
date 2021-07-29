@@ -5,7 +5,6 @@ to the server.
 import base64
 import json
 import logging
-from python.ray.ray_constants import DEFAULT_CLIENT_SERVER_PORT, DEFAULT_PORT
 import time
 import uuid
 import warnings
@@ -27,6 +26,7 @@ from ray.cloudpickle.compat import pickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.exceptions import GetTimeoutError
+from ray.ray_constants import DEFAULT_CLIENT_SERVER_PORT, DEFAULT_PORT
 from ray.util.client.client_pickler import convert_to_arg
 from ray.util.client.client_pickler import dumps_from_client
 from ray.util.client.client_pickler import loads_from_server

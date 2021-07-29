@@ -7,7 +7,6 @@ import io
 import json
 import logging
 import os
-from python.ray.ray_constants import DEFAULT_CLIENT_SERVER_PORT
 import warnings
 import redis
 import sys
@@ -31,6 +30,7 @@ import ray.serialization as serialization
 import ray._private.services as services
 import ray._private.runtime_env as runtime_env_pkg
 import ray._private.import_thread as import_thread
+from ray.ray_constants import DEFAULT_CLIENT_SERVER_PORT
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 import ray

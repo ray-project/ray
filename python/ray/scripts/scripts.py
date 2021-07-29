@@ -1,4 +1,3 @@
-from python.ray.ray_constants import DEFAULT_CLIENT_SERVER_PORT
 from typing import Optional, Set
 
 import click
@@ -34,6 +33,7 @@ from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
+from ray.ray_constants import DEFAULT_CLIENT_SERVER_PORT
 from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
