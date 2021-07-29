@@ -61,14 +61,14 @@ class BackendExecutor:
         self._backend.on_start()
 
     def run(self, train_func: Callable[[], T]) -> List[T]:
-        """Executes training function on all workers and yield results.
+        """Executes a training function on all workers.
 
         Args:
             train_func (Callable): The training function to run on each
                 worker. It must not have any required arguments.
 
-        Yields:
-            A list of values passed to ``sgd.report()`` from each worker.
+        Returns:
+            A list of return values from calling ``train_func`` on each worker. Each item corresponds to the return value from a single worker.
         """
         # Run the training function asynchronously.
         training_futures = self.worker_group.execute_async(train_func)
