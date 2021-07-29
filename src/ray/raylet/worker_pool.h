@@ -49,11 +49,11 @@ class WorkerPoolInterface {
   /// the worker back onto the pool once the worker has completed its work.
   ///
   /// \param task_spec The returned worker must be able to execute this task.
-  /// \param allocated_instances_serialized_json The allocated resouce instances
+  /// \param allocated_instances_serialized_json The allocated resource instances
   /// json string, it contains resource ID which assigned to this worker.
   /// Instance resource value will be like {"GPU":[10000,0,10000]}, non-instance
   /// resource value will be {"CPU":20000}.
-  /// \return An idle worker with tit he requested task spec. Returns nullptr if no
+  /// \return An idle worker with the requested task spec. Returns nullptr if no
   /// such worker exists.
   virtual std::shared_ptr<WorkerInterface> PopWorker(
       const TaskSpecification &task_spec,
@@ -559,7 +559,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// The number of registered workers of the first job.
   int first_job_registered_python_worker_count_;
 
-  /// The umber of initial Python workers to wait for the first job before the driver
+  /// The number of initial Python workers to wait for the first job before the driver
   /// receives RegisterClientReply.
   int first_job_driver_wait_num_python_workers_;
 
@@ -571,6 +571,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Set of jobs whose drivers have exited.
   absl::flat_hash_set<JobID> finished_jobs_;
+
+  /// Tracks which runtime envs are being installed.
+  std::set<int> pending_runtime_envs_;
 
   /// This map stores the same data as `idle_of_all_languages_`, but in a map structure
   /// for lookup performance.

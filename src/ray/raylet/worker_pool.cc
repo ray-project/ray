@@ -937,12 +937,12 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
             task_spec.SerializedRuntimeEnv(),
             [start_worker_process_fn, &state, task_spec, dynamic_options,
              allocated_instances_serialized_json](
-                bool done, const std::string &serialized_runtime_env_context) {
+                bool successful, const std::string &serialized_runtime_env_context) {
               state.tasks_with_pending_runtime_envs.erase(task_spec.TaskId());
-              if (!done) {
+              if (!successful) {
                 // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
                 // failed.
-                RAY_LOG(ERROR) << "Create runtime env(for dedicated actor) rpc failed. "
+                RAY_LOG(ERROR) << "Create runtime env (for dedicated actor) rpc failed. "
                                   "Wait for next time to retry or reschedule.";
                 return;
               }
@@ -992,20 +992,25 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       // Start a new worker process.
 
       if (task_spec.HasRuntimeEnv()) {
-        // create runtime env.
-        agent_manager_->CreateRuntimeEnv(
-            task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, &state, task_spec, runtime_env_hash](
-                bool successful, const std::string &serialized_runtime_env_context) {
-              if (!successful) {
-                // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
-                // failed.
-                return;
-              }
-              start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash,
-                                      task_spec.SerializedRuntimeEnv(),
-                                      serialized_runtime_env_context);
-            });
+        // create runtime env unless this env is already pending creation.
+        auto it = pending_runtime_envs_.find(runtime_env_hash);
+        if (it == pending_runtime_envs_.end()) {
+          pending_runtime_envs_.insert(runtime_env_hash);
+          agent_manager_->CreateRuntimeEnv(
+              task_spec.SerializedRuntimeEnv(),
+              [this, start_worker_process_fn, &state, task_spec, runtime_env_hash](
+                  bool successful, const std::string &serialized_runtime_env_context) {
+                pending_runtime_envs_.erase(runtime_env_hash);
+                if (!successful) {
+                  // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
+                  // failed.
+                  return;
+                }
+                start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash,
+                                        task_spec.SerializedRuntimeEnv(),
+                                        serialized_runtime_env_context);
+              });
+        }
       } else {
         proc = start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash, "",
                                        "");
