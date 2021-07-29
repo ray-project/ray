@@ -1190,13 +1190,13 @@ def start_dashboard(require_dashboard,
             if require_dashboard:
                 raise ImportError(warning_message)
             else:
-                if log_once("dashboard_failed_import") and os.getenv(
+                if log_once("dashboard_failed_import") and not os.getenv(
                         "RAY_DISABLE_IMPORT_WARNING") == "1":
                     warning_message += " To disable this message set " \
                                        "RAY_DISABLE_IMPORT_WARNING " \
                                        "environment to 1."
                     logger.info(warning_message)
-                    return None, None
+                return None, None
 
         # Start the dashboard process.
         dashboard_dir = "new_dashboard"
