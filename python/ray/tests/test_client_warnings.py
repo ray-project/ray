@@ -71,7 +71,7 @@ def test_attach_driver_to_client_port(call_ray_start):
 
     assert any(f"{DEFAULT_CLIENT_SERVER_PORT} is the default port for the Ray "
                "client server" in str(w.message) for w in warn_list)
-    assert "You may have meant to connect to the Ray client server" \
+    assert "If you meant to connect to the Ray client server" \
         in str(e.value)
 
 
