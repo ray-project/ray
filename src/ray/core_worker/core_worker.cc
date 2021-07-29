@@ -1717,8 +1717,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // WaitForActorOutOfScopeRequest.
   // Note we need set `actor_name` to empty string as we don't need to cache this one.
   RAY_CHECK(actor_manager_->AddNewActorHandle(
-      std::move(actor_handle), /*actor_name=*/"", GetCallerId(), CurrentCallSite(), rpc_address_,
-      actor_creation_options.is_detached))
+      std::move(actor_handle), /*actor_name=*/"", GetCallerId(), CurrentCallSite(),
+      rpc_address_, actor_creation_options.is_detached))
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
@@ -1985,7 +1985,8 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
     return GetNamedActorHandleLocalMode(name);
   }
 
-  std::string namespace_to_use = ray_namespace.empty() ? job_config_->ray_namespace() : ray_namespace;
+  std::string namespace_to_use =
+      ray_namespace.empty() ? job_config_->ray_namespace() : ray_namespace;
   ActorID actor_id = actor_manager_->GetCachedNamedActorID(namespace_to_use + "-" + name);
   if (actor_id.IsNil()) {
     // This call needs to be blocking because we can't return until the actor
@@ -2002,10 +2003,11 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
           if (status.ok() && result) {
             auto actor_handle = std::make_unique<ActorHandle>(*result);
             actor_id = actor_handle->GetActorID();
-            actor_manager_->AddNewActorHandle(std::move(actor_handle),
-                                              result.get().ray_namespace() + "-" + result.get().name(), GetCallerId(),
-                                              CurrentCallSite(), rpc_address_,
-                                              /*is_detached*/ true);
+            actor_manager_->AddNewActorHandle(
+                std::move(actor_handle),
+                result.get().ray_namespace() + "-" + result.get().name(), GetCallerId(),
+                CurrentCallSite(), rpc_address_,
+                /*is_detached*/ true);
           } else {
             // Use a NIL actor ID to signal that the actor wasn't found.
             RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;

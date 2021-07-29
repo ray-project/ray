@@ -141,7 +141,8 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false);
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
     if (!actor_data.name().empty()) {
-      actor_name_to_ids_cache_.erase(actor_data.ray_namespace() + "-" + actor_data.name());
+      actor_name_to_ids_cache_.erase(actor_data.ray_namespace() + "-" +
+                                     actor_data.name());
     }
     std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
     if (actor_data.has_creation_task_exception()) {
