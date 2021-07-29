@@ -1,7 +1,6 @@
 import random
 import sys
-from typing import Callable, Iterator, List, Tuple, Generic, Union, Any,\
-    TYPE_CHECKING
+from typing import Callable, Iterator, List, Tuple, Union, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas

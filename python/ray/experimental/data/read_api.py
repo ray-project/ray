@@ -2,6 +2,7 @@ import logging
 from typing import List, Any, Union, Optional, Tuple, Callable, TypeVar, \
     TYPE_CHECKING
 
+import numpy as np
 if TYPE_CHECKING:
     import pyarrow
     import pandas
@@ -75,7 +76,7 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
         Dataset holding the integers.
     """
     return read_datasource(
-        RangeDatasource(), parallelism=parallelism, n=n, use_arrow=False)
+        RangeDatasource(), parallelism=parallelism, n=n, block_format="list")
 
 
 @PublicAPI(stability="beta")
@@ -97,7 +98,29 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
         Dataset holding the integers as Arrow records.
     """
     return read_datasource(
-        RangeDatasource(), parallelism=parallelism, n=n, use_arrow=True)
+        RangeDatasource(), parallelism=parallelism, n=n, block_format="arrow")
+
+
+@PublicAPI(stability="beta")
+def range_tensor(n: int, *, parallelism: int = 200) -> Dataset[np.ndarray]:
+    """Create a Tensor dataset from a range of integers [0..n).
+
+    Examples:
+        >>> ds = ray.data.range_tensor(1000)
+        >>> ds.map_batches(lambda arr: arr ** 2).show()
+
+    This is similar to range(), but uses np.ndarrays to hold the integers
+    in tensor form. The dataset has overall the shape (n, 1).
+
+    Args:
+        n: The upper bound of the range of integer records.
+        parallelism: The amount of parallelism to use for the dataset.
+
+    Returns:
+        Dataset holding the integers as tensors.
+    """
+    return read_datasource(
+        RangeDatasource(), parallelism=parallelism, n=n, block_format="tensor")
 
 
 @PublicAPI(stability="beta")

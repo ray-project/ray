@@ -130,7 +130,7 @@ class Dataset(Generic[T]):
                     *,
                     batch_size: int = None,
                     compute: Optional[str] = None,
-                    batch_format: str = "pandas",
+                    batch_format: str = "native",
                     **ray_remote_args) -> "Dataset[Any]":
         """Apply the given function to batches of records of this dataset.
 
@@ -164,8 +164,9 @@ class Dataset(Generic[T]):
                 to use entire blocks as batches.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling Ray actor pool.
-            batch_format: Specify "pandas" to select ``pandas.DataFrame`` as
-                the batch format, or "pyarrow" to select ``pyarrow.Table``.
+            batch_format: Specify "native" to use the native block format,
+                "pandas" to select ``pandas.DataFrame`` as the batch format,
+                or "pyarrow" to select ``pyarrow.Table``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -189,7 +190,9 @@ class Dataset(Generic[T]):
                 # Build a block for each batch.
                 end = min(total_rows, start + max_batch_size)
                 view = block.slice(start, end, copy=False)
-                if batch_format == "pandas":
+                if batch_format == "native":
+                    pass
+                elif batch_format == "pandas":
                     view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pyarrow":
                     view = BlockAccessor.for_block(view).to_arrow_table()
@@ -199,9 +202,8 @@ class Dataset(Generic[T]):
                         f"is invalid. Supported batch type: {BatchType}")
 
                 applied = fn(view)
-                if isinstance(applied, list):
-                    applied = applied
-                elif isinstance(applied, pa.Table):
+                if (isinstance(applied, list) or isinstance(applied, pa.Table)
+                        or isinstance(applied, np.ndarray)):
                     applied = applied
                 elif isinstance(applied, pd.core.frame.DataFrame):
                     applied = pa.Table.from_pandas(applied)
@@ -209,7 +211,8 @@ class Dataset(Generic[T]):
                     raise ValueError("The map batch UDF returns a type "
                                      f"{type(applied)}, which is not allowed. "
                                      "The return type must be either list, "
-                                     "pandas.DataFrame, or pyarrow.Table")
+                                     "pandas.DataFrame, np.ndarray, or "
+                                     "pyarrow.Table")
                 builder.add_block(applied)
 
             return builder.build()
@@ -1362,8 +1365,12 @@ class Dataset(Generic[T]):
         schema = self.schema()
         if schema is None:
             schema_str = "Unknown schema"
-        elif schema and not isinstance(schema, type) and not isinstance(
-                schema, dict):
+        elif isinstance(schema, dict):
+            schema_str = "<np.ndarray: shape={}, dtype={}>".format(
+                schema["shape"], schema["dtype"])
+        elif isinstance(schema, type):
+            schema_str = str(schema)
+        else:
             schema_str = []
             for n, t in zip(schema.names, schema.types):
                 if hasattr(t, "__name__"):
@@ -1371,8 +1378,6 @@ class Dataset(Generic[T]):
                 schema_str.append("{}: {}".format(n, t))
             schema_str = ", ".join(schema_str)
             schema_str = "{" + schema_str + "}"
-        else:
-            schema_str = str(schema)
         count = self._meta_count()
         if count is None:
             count = "?"

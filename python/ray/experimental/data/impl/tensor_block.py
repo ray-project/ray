@@ -1,14 +1,11 @@
-import collections
-import random
-from typing import Iterator, List, Union, Tuple, Any, TypeVar, Dict, \
-    TYPE_CHECKING
+from typing import Iterator, List, TypeVar, Dict, TYPE_CHECKING
 
 import numpy as np
 
 if TYPE_CHECKING:
     import pandas
 
-from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
+from ray.experimental.data.block import Block, BlockAccessor
 from ray.experimental.data.impl.block_builder import BlockBuilder
 
 T = TypeVar("T")

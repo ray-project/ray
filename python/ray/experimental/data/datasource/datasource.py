@@ -135,28 +135,36 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
         ... [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     """
 
-    def prepare_read(self, parallelism: int, n: int,
-                     use_arrow: bool) -> List[ReadTask]:
+    def prepare_read(self,
+                     parallelism: int,
+                     n: int,
+                     block_format: str = "list") -> List[ReadTask]:
         read_tasks: List[ReadTask] = []
         block_size = max(1, n // parallelism)
 
         # Example of a read task. In a real datasource, this would pull data
         # from an external system instead of generating dummy data.
         def make_block(start: int, count: int) -> Block:
-            if use_arrow:
+            if block_format == "arrow":
                 return pyarrow.Table.from_arrays(
                     [np.arange(start, start + count)], names=["value"])
+            elif block_format == "tensor":
+                return np.expand_dims(np.arange(start, start + count), 1)
             else:
                 return list(builtins.range(start, start + count))
 
         i = 0
         while i < n:
             count = min(block_size, n - i)
-            if use_arrow:
+            if block_format == "arrow":
                 import pyarrow
                 schema = pyarrow.Table.from_pydict({"value": [0]}).schema
-            else:
+            elif block_format == "tensor":
+                schema = {"dtype": "int64", "shape": (n, )}
+            elif block_format == "list":
                 schema = int
+            else:
+                raise ValueError("Unsupported block type", block_format)
             read_tasks.append(
                 ReadTask(
                     lambda i=i, count=count: make_block(i, count),
