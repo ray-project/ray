@@ -1,10 +1,11 @@
 import pytest
 import asyncio
 import ray
+from ray._private import signature
 from ray.tests.conftest import *  # noqa
 from ray.experimental.workflow import workflow_storage
+from ray.experimental.workflow import storage
 from ray.experimental.workflow.workflow_storage import asyncio_run
-from pytest_lazyfixture import lazy_fixture
 
 
 def some_func(x):
@@ -16,11 +17,8 @@ def some_func2(x):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "raw_storage",
-    [lazy_fixture("filesystem_storage"),
-     lazy_fixture("s3_storage")])
-async def test_raw_storage(workflow_start_regular, raw_storage):
+async def test_raw_storage(workflow_start_regular):
+    raw_storage = storage.get_global_storage()
     workflow_id = test_workflow_storage.__name__
     step_id = "some_step"
     input_metadata = {"2": "c"}
@@ -95,23 +93,26 @@ async def test_raw_storage(workflow_start_regular, raw_storage):
     assert load_step_output == output
 
 
-@pytest.mark.parametrize(
-    "raw_storage",
-    [lazy_fixture("filesystem_storage"),
-     lazy_fixture("s3_storage")])
-def test_workflow_storage(workflow_start_regular, raw_storage):
+def test_workflow_storage(workflow_start_regular):
+    raw_storage = storage.get_global_storage()
     workflow_id = test_workflow_storage.__name__
     step_id = "some_step"
     input_metadata = {
         "name": "test_basic_workflows.append1",
         "object_refs": ["abc"],
-        "workflows": ["def"]
+        "workflows": ["def"],
+        "max_retries": 1,
+        "catch_exceptions": False,
+        "ray_options": {},
     }
     output_metadata = {
         "output_step_id": "a12423",
         "dynamic_output_step_id": "b1234"
     }
-    args = ([1, "2"], {"k": b"543"})
+    flattened_args = [
+        signature.DUMMY_TYPE, 1, signature.DUMMY_TYPE, "2", "k", b"543"
+    ]
+    args = signature.recover_args(flattened_args)
     output = ["the_answer"]
     object_resolved = 42
     obj_ref = ray.put(object_resolved)
@@ -122,7 +123,8 @@ def test_workflow_storage(workflow_start_regular, raw_storage):
                                              input_metadata))
     asyncio_run(
         raw_storage.save_step_func_body(workflow_id, step_id, some_func))
-    asyncio_run(raw_storage.save_step_args(workflow_id, step_id, args))
+    asyncio_run(
+        raw_storage.save_step_args(workflow_id, step_id, flattened_args))
     asyncio_run(raw_storage.save_object_ref(workflow_id, obj_ref))
     asyncio_run(
         raw_storage.save_step_output_metadata(workflow_id, step_id,
@@ -169,7 +171,8 @@ def test_workflow_storage(workflow_start_regular, raw_storage):
         args_valid=True,
         func_body_valid=True,
         object_refs=input_metadata["object_refs"],
-        workflows=input_metadata["workflows"])
+        workflows=input_metadata["workflows"],
+        ray_options={})
     assert inspect_result.is_recoverable()
 
     step_id = "some_step4"
@@ -182,7 +185,8 @@ def test_workflow_storage(workflow_start_regular, raw_storage):
     assert inspect_result == workflow_storage.StepInspectResult(
         func_body_valid=True,
         object_refs=input_metadata["object_refs"],
-        workflows=input_metadata["workflows"])
+        workflows=input_metadata["workflows"],
+        ray_options={})
     assert not inspect_result.is_recoverable()
 
     step_id = "some_step5"
@@ -192,10 +196,17 @@ def test_workflow_storage(workflow_start_regular, raw_storage):
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
         object_refs=input_metadata["object_refs"],
-        workflows=input_metadata["workflows"])
+        workflows=input_metadata["workflows"],
+        ray_options={})
     assert not inspect_result.is_recoverable()
 
     step_id = "some_step6"
     inspect_result = wf_storage.inspect_step(step_id)
+    print(inspect_result)
     assert inspect_result == workflow_storage.StepInspectResult()
     assert not inspect_result.is_recoverable()
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

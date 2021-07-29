@@ -29,6 +29,7 @@ from ray.experimental.data.impl.compute import get_compute, cache_wrapper, \
     CallableClass
 from ray.experimental.data.impl.progress_bar import ProgressBar
 from ray.experimental.data.impl.shuffle import simple_shuffle
+from ray.experimental.data.impl.sort import sort_impl
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
 
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 class Dataset(Generic[T]):
     """Implements a distributed Arrow dataset.
 
-    Datasets are implemented as a list of ``ObjectRef[Block[T]]``. The block
+    Datasets are implemented as a list of ``ObjectRef[Block]``. The block
     also determines the unit of parallelism. The default block type is the
     ``pyarrow.Table``. Arrow-incompatible objects are held in ``list`` blocks.
 
@@ -105,7 +106,7 @@ class Dataset(Generic[T]):
 
         fn = cache_wrapper(fn)
 
-        def transform(block: Block[T]) -> Block[U]:
+        def transform(block: Block) -> Block:
             block = BlockAccessor.for_block(block)
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
@@ -166,7 +167,7 @@ class Dataset(Generic[T]):
 
         fn = cache_wrapper(fn)
 
-        def transform(block: Block[T]) -> Block[U]:
+        def transform(block: Block) -> Block:
             block = BlockAccessor.for_block(block)
             total_rows = block.num_rows()
             max_batch_size = batch_size
@@ -233,7 +234,7 @@ class Dataset(Generic[T]):
 
         fn = cache_wrapper(fn)
 
-        def transform(block: Block[T]) -> Block[U]:
+        def transform(block: Block) -> Block:
             block = BlockAccessor.for_block(block)
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
@@ -270,7 +271,7 @@ class Dataset(Generic[T]):
 
         fn = cache_wrapper(fn)
 
-        def transform(block: Block[T]) -> Block[T]:
+        def transform(block: Block) -> Block:
             block = BlockAccessor.for_block(block)
             builder = block.builder()
             for row in block.iter_rows():
@@ -449,9 +450,10 @@ class Dataset(Generic[T]):
         ]
 
     def sort(self,
-             key: Union[None, str, List[str], Callable[[T], Any]],
+             key: Union[None, str, List[str], Callable[[T], Any]] = None,
              descending: bool = False) -> "Dataset[T]":
-        """Sort the dataset by the specified key columns or key function.
+        """Sort the dataset by the specified key column or key function.
+        (experimental support)
 
         This is a blocking operation.
 
@@ -459,27 +461,29 @@ class Dataset(Generic[T]):
             >>> # Sort using the entire record as the key.
             >>> ds.sort()
 
-            >>> # Sort by a single column.
-            >>> ds.sort("field1")
-
-            >>> # Sort by multiple columns.
-            >>> ds.sort(["field1", "field2"])
+            >>> # Sort by a single column in descending order.
+            >>> ds.sort("field1", descending=True)
 
             >>> # Sort by a key function.
             >>> ds.sort(lambda record: record["field1"] % 100)
 
-        Time complexity: O(dataset size / parallelism)
+            >>> # Sort by multiple columns (not yet supported).
+            >>> ds.sort([("field1", "ascending"), ("field2", "descending)])
+
+        Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: Either a single Arrow column name, a list of Arrow column
-                names, a function that returns a sortable key given each
-                record as an input, or None to sort by the entire record.
+            key:
+                - For Arrow tables, key must be a single column name.
+                - For datasets of Python objects, key can be either a lambda
+                  function that returns a comparison key to sort by, or None
+                  to sort by the original value.
             descending: Whether to sort in descending order.
 
         Returns:
-            The sorted dataset.
+            A new, sorted dataset.
         """
-        raise NotImplementedError  # P2
+        return Dataset(sort_impl(self._blocks, key, descending))
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
@@ -497,13 +501,13 @@ class Dataset(Generic[T]):
         """
 
         @ray.remote
-        def get_num_rows(block: Block[T]) -> int:
+        def get_num_rows(block: Block) -> int:
             block = BlockAccessor.for_block(block)
             return block.num_rows()
 
         @ray.remote(num_returns=2)
-        def truncate(block: Block[T], meta: BlockMetadata,
-                     count: int) -> (Block[T], BlockMetadata):
+        def truncate(block: Block, meta: BlockMetadata,
+                     count: int) -> (Block, BlockMetadata):
             block = BlockAccessor.for_block(block)
             logger.debug("Truncating last block to size: {}".format(count))
             new_block = block.slice(0, count, copy=True)
@@ -583,7 +587,7 @@ class Dataset(Generic[T]):
             return meta_count
 
         @ray.remote
-        def count(block: Block[T]) -> int:
+        def count(block: Block) -> int:
             block = BlockAccessor.for_block(block)
             return block.num_rows()
 
@@ -599,7 +603,7 @@ class Dataset(Generic[T]):
         """
 
         @ray.remote
-        def agg(block: Block[T]) -> int:
+        def agg(block: Block) -> int:
             block = BlockAccessor.for_block(block)
             return sum(block.iter_rows())
 
@@ -1151,7 +1155,7 @@ class Dataset(Generic[T]):
             import pyarrow
             return isinstance(block, pyarrow.Table)
 
-        blocks: List[ObjectRef[Block[T]]] = list(self._blocks)
+        blocks: List[ObjectRef[Block]] = list(self._blocks)
         is_arrow = ray.get(check_is_arrow.remote(blocks[0]))
 
         if is_arrow:
@@ -1165,7 +1169,7 @@ class Dataset(Generic[T]):
         return [block_to_df.remote(block) for block in self._blocks]
 
     @DeveloperAPI
-    def get_blocks(self) -> List[ObjectRef["Block"]]:
+    def get_blocks(self) -> List[ObjectRef[Block]]:
         """Get a list of references to the underlying blocks of this dataset.
 
         This function can be used for zero-copy access to the data.
@@ -1202,7 +1206,7 @@ class Dataset(Generic[T]):
 
     def _block_sizes(self) -> List[int]:
         @ray.remote
-        def query(block: Block[T]) -> int:
+        def query(block: Block) -> int:
             block = BlockAccessor.for_block(block)
             return block.num_rows()
 

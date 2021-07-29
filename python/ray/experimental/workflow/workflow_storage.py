@@ -8,8 +8,10 @@ from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 from dataclasses import dataclass
 
 import ray
+from ray._private import signature
 from ray.experimental.workflow import storage
-from ray.experimental.workflow.common import Workflow, WorkflowInputs, StepID
+from ray.experimental.workflow.common import (Workflow, WorkflowData, StepID,
+                                              WorkflowMetaData, WorkflowStatus)
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 
@@ -37,11 +39,11 @@ class StepInspectResult:
     # The workflows in the inputs of the workflow.
     workflows: Optional[List[str]] = None
     # The num of retry for application exception
-    step_max_retries: int = 1
+    max_retries: int = 1
     # Whether the user want to handle the exception mannually
-    catch_exceptions: Optional[bool] = None
+    catch_exceptions: bool = False
     # ray_remote options
-    ray_options: Dict[str, Any] = None
+    ray_options: Optional[Dict[str, Any]] = None
 
     def is_recoverable(self) -> bool:
         return (self.output_object_valid or self.output_step_id
@@ -98,7 +100,10 @@ class WorkflowStorage:
                 self._storage.save_step_output(self._workflow_id, step_id,
                                                ret))
             dynamic_output_id = step_id
-        if outer_most_step_id is not None:
+        # outer_most_step_id == "" indicates the root step of a workflow.
+        # This would directly update "outputs.json" in the workflow dir,
+        # and we want to avoid it.
+        if outer_most_step_id is not None and outer_most_step_id != "":
             tasks.append(
                 self._update_dynamic_output(outer_most_step_id,
                                             dynamic_output_id))
@@ -134,8 +139,9 @@ class WorkflowStorage:
         """
         with serialization_context.workflow_args_resolving_context(
                 workflows, object_refs):
-            return asyncio_run(
+            flattened_args = asyncio_run(
                 self._storage.load_step_args(self._workflow_id, step_id))
+            return signature.recover_args(flattened_args)
 
     def load_object_ref(self, object_id: str) -> ray.ObjectRef:
         """Load the input object ref.
@@ -230,45 +236,36 @@ class WorkflowStorage:
                 self._workflow_id, step_id)
             input_object_refs = metadata["object_refs"]
             input_workflows = metadata["workflows"]
-            step_max_retries = metadata.get("step_max_retries")
+            max_retries = metadata.get("max_retries")
             catch_exceptions = metadata.get("catch_exceptions")
             ray_options = metadata.get("ray_options", {})
         except storage.DataLoadError:
-            input_object_refs = None
-            input_workflows = None
-            step_max_retries = None
-            catch_exceptions = None
-            ray_options = {}
+            return StepInspectResult(
+                args_valid=field_list.args_exists,
+                func_body_valid=field_list.func_body_exists)
         return StepInspectResult(
             args_valid=field_list.args_exists,
             func_body_valid=field_list.func_body_exists,
             object_refs=input_object_refs,
             workflows=input_workflows,
-            step_max_retries=step_max_retries,
+            max_retries=max_retries,
             catch_exceptions=catch_exceptions,
             ray_options=ray_options,
         )
 
     async def _write_step_inputs(self, step_id: StepID,
-                                 inputs: WorkflowInputs) -> None:
+                                 inputs: WorkflowData) -> None:
         """Save workflow inputs."""
-        f = inputs.func_body
-        metadata = {
-            "name": f.__module__ + "." + f.__qualname__,
-            "object_refs": inputs.object_refs,
-            "workflows": inputs.workflows,
-            "step_max_retries": inputs.step_max_retries,
-            "catch_exceptions": inputs.catch_exceptions,
-            "ray_options": inputs.ray_options,
-        }
+        metadata = inputs.to_metadata()
         with serialization_context.workflow_args_keeping_context():
             # TODO(suquark): in the future we should write to storage directly
             # with plasma store object in memory.
-            args_obj = ray.get(inputs.args)
+            args_obj = ray.get(inputs.inputs.args)
         save_tasks = [
             self._storage.save_step_input_metadata(self._workflow_id, step_id,
                                                    metadata),
-            self._storage.save_step_func_body(self._workflow_id, step_id, f),
+            self._storage.save_step_func_body(self._workflow_id, step_id,
+                                              inputs.func_body),
             self._storage.save_step_args(self._workflow_id, step_id, args_obj)
         ]
         await asyncio.gather(*save_tasks)
@@ -282,7 +279,7 @@ class WorkflowStorage:
         """
         assert not workflow.executed
         tasks = [
-            self._write_step_inputs(w.id, w.get_inputs())
+            self._write_step_inputs(w.id, w.data)
             for w in workflow.iter_workflows_in_dag()
         ]
         asyncio_run(asyncio.gather(*tasks))
@@ -307,6 +304,68 @@ class WorkflowStorage:
         """
         asyncio_run(
             self._storage.save_actor_class_body(self._workflow_id, cls))
+
+    def save_workflow_meta(self, metadata: WorkflowMetaData) -> None:
+        """Save the metadata of the current workflow.
+
+        Args:
+            metadata: WorkflowMetaData of the current workflow.
+
+        Raises:
+            DataSaveError: if we fail to save the class body.
+        """
+        metadata = {
+            "status": metadata.status.value,
+        }
+        asyncio_run(
+            self._storage.save_workflow_meta(self._workflow_id, metadata))
+
+    def load_workflow_meta(self) -> Optional[WorkflowMetaData]:
+        metadata = asyncio_run(
+            self._storage.load_workflow_meta(self._workflow_id))
+        if metadata is None:
+            return None
+        return WorkflowMetaData(status=WorkflowStatus(metadata["status"]))
+
+    async def _list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
+        workflow_ids = await self._storage.list_workflow()
+        metadata = await asyncio.gather(*[
+            self._storage.load_workflow_meta(workflow_id)
+            for workflow_id in workflow_ids
+        ])
+        return [(wid, WorkflowStatus(meta["status"]) if meta else None)
+                for (wid, meta) in zip(workflow_ids, metadata)]
+
+    def list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
+        return asyncio_run(self._list_workflow())
+
+    def advance_progress(self, finished_step_id: "StepID") -> None:
+        """Save the latest progress of a workflow. This is used by a
+        virtual actor.
+
+        Args:
+            finished_step_id: The step that contains the latest output.
+
+        Raises:
+            DataSaveError: if we fail to save the progress.
+        """
+        asyncio_run(
+            self._storage.save_workflow_progress(self._workflow_id, {
+                "step_id": finished_step_id,
+            }))
+
+    def get_latest_progress(self) -> "StepID":
+        """Load the latest progress of a workflow. This is used by a
+        virtual actor.
+
+        Raises:
+            DataLoadError: if we fail to load the progress.
+
+        Returns:
+            The step that contains the latest output.
+        """
+        return asyncio_run(
+            self._storage.load_workflow_progress(self._workflow_id))["step_id"]
 
 
 def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:

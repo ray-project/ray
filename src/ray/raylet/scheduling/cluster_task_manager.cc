@@ -67,9 +67,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // This argument is used to set violation, which is an unsupported feature now.
       int64_t _unused;
       std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-          placement_resources,
-          /*requires_object_store_memory=*/false,
-          task.GetTaskSpecification().IsActorCreationTask(),
+          placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
           /*force_spillback=*/false, &_unused, &is_infeasible);
 
       // There is no node that has available resources to run the request.
@@ -297,9 +295,8 @@ bool ClusterTaskManager::TrySpillback(const Work &work, bool &is_infeasible) {
   int64_t _unused;
   auto placement_resources = spec.GetRequiredPlacementResources().GetResourceMap();
   std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-      placement_resources,
-      /*requires_object_store_memory=*/false, spec.IsActorCreationTask(),
-      /*force_spillback=*/false, &_unused, &is_infeasible);
+      placement_resources, spec.IsActorCreationTask(), /*force_spillback=*/false,
+      &_unused, &is_infeasible);
 
   if (is_infeasible || node_id_string == self_node_id_.Binary() ||
       node_id_string.empty()) {
@@ -471,14 +468,16 @@ void ClusterTaskManager::ReturnWorkerResources(std::shared_ptr<WorkerInterface> 
   ReleaseWorkerResources(worker);
 }
 
-void ReplyCancelled(Work &work) {
+void ReplyCancelled(Work &work, bool runtime_env_setup_failed) {
   auto reply = std::get<1>(work);
   auto callback = std::get<2>(work);
   reply->set_canceled(true);
+  reply->set_runtime_env_setup_failed(runtime_env_setup_failed);
   callback();
 }
 
-bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
+bool ClusterTaskManager::CancelTask(const TaskID &task_id,
+                                    bool runtime_env_setup_failed) {
   // TODO(sang): There are lots of repetitive code around task backlogs. We should
   // refactor them.
   for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
@@ -489,7 +488,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RemoveFromBacklogTracker(task);
         RAY_LOG(DEBUG) << "Canceling task " << task_id;
-        ReplyCancelled(*work_it);
+        ReplyCancelled(*work_it, runtime_env_setup_failed);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_schedule_.erase(shapes_it);
@@ -505,7 +504,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       const auto &task = std::get<0>(*work_it);
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RemoveFromBacklogTracker(task);
-        ReplyCancelled(*work_it);
+        ReplyCancelled(*work_it, runtime_env_setup_failed);
         if (!task.GetTaskSpecification().GetDependencies().empty()) {
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
@@ -526,7 +525,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       const auto &task = std::get<0>(*work_it);
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RemoveFromBacklogTracker(task);
-        ReplyCancelled(*work_it);
+        ReplyCancelled(*work_it, runtime_env_setup_failed);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           infeasible_tasks_.erase(shapes_it);
@@ -540,7 +539,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
   if (iter != waiting_tasks_index_.end()) {
     const auto &task = std::get<0>(*iter->second);
     RemoveFromBacklogTracker(task);
-    ReplyCancelled(*iter->second);
+    ReplyCancelled(*iter->second, runtime_env_setup_failed);
     if (!task.GetTaskSpecification().GetDependencies().empty()) {
       task_dependency_manager_.RemoveTaskDependencies(
           task.GetTaskSpecification().TaskId());
@@ -854,9 +853,7 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
     int64_t _unused;
     bool is_infeasible;
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources,
-        /*requires_object_store_memory=*/false,
-        task.GetTaskSpecification().IsActorCreationTask(),
+        placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
         /*force_spillback=*/false, &_unused, &is_infeasible);
 
     // There is no node that has available resources to run the request.
@@ -1079,8 +1076,6 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 }
 
 void ClusterTaskManager::SpillWaitingTasks() {
-  RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue, num waiting: "
-                 << waiting_task_queue_.size();
   // Try to spill waiting tasks to a remote node, prioritizing those at the end
   // of the queue. Waiting tasks are spilled if there are enough remote
   // resources AND (we have no resources available locally OR their
@@ -1096,7 +1091,6 @@ void ClusterTaskManager::SpillWaitingTasks() {
     it--;
     const auto &task = std::get<0>(*it);
     const auto &task_id = task.GetTaskSpecification().TaskId();
-
     // Check whether this task's dependencies are blocked (not being actively
     // pulled).  If this is true, then we should force the task onto a remote
     // feasible node, even if we have enough resources available locally for
@@ -1108,13 +1102,11 @@ void ClusterTaskManager::SpillWaitingTasks() {
         task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
     int64_t _unused;
     bool is_infeasible;
-    // TODO(swang): The policy currently does not account for the amount of
-    // object store memory availability. Ideally, we should pick the node with
-    // the most memory availability.
+    // TODO(swang): The policy currently does not account for object store
+    // memory availability. Ideally, we should pick the node with the most
+    // memory availability.
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources,
-        /*requires_object_store_memory=*/true,
-        task.GetTaskSpecification().IsActorCreationTask(),
+        placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
         /*force_spillback=*/force_spillback, &_unused, &is_infeasible);
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);

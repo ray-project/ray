@@ -1002,8 +1002,10 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.4", pattern="rsync")
         runner.clear_history()
 
-    def testScaleUp(self):
-        config_path = self.write_config(SMALL_CLUSTER)
+    def ScaleUpHelper(self, disable_node_updaters):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["provider"]["disable_node_updaters"] = disable_node_updaters
+        config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
@@ -1022,12 +1024,32 @@ class AutoscalingTest(unittest.TestCase):
         assert mock_metrics.started_nodes.inc.call_count == 1
         mock_metrics.started_nodes.inc.assert_called_with(2)
         assert mock_metrics.worker_create_node_time.observe.call_count == 2
-
         autoscaler.update()
         self.waitForNodes(2)
 
         # running_workers metric should be set to 2
         mock_metrics.running_workers.set.assert_called_with(2)
+
+        if disable_node_updaters:
+            # Node Updaters have NOT been invoked because they were explicitly
+            # disabled.
+            time.sleep(1)
+            assert len(runner.calls) == 0
+            # Nodes were create in uninitialized and not updated.
+            self.waitForNodes(
+                2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED})
+        else:
+            # Node Updaters have been invoked.
+            self.waitFor(lambda: len(runner.calls) > 0)
+            # The updates failed. Key thing is that the updates completed.
+            self.waitForNodes(
+                2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
+
+    def testScaleUp(self):
+        self.ScaleUpHelper(disable_node_updaters=False)
+
+    def testScaleUpNoUpdaters(self):
+        self.ScaleUpHelper(disable_node_updaters=True)
 
     def testTerminateOutdatedNodesGracefully(self):
         config = SMALL_CLUSTER.copy()
@@ -1888,6 +1910,113 @@ class AutoscalingTest(unittest.TestCase):
         assert ("Restarting 1 nodes of type "
                 "ray-legacy-worker-node-type (lost contact with raylet)." in
                 events), events
+
+    def testTerminateUnhealthyWorkers(self):
+        """Test termination of unhealthy workers, when
+        autoscaler.disable_node_updaters == True.
+
+        Similar to testRecoverUnhealthyWorkers.
+        """
+        config_path = self.write_config(SMALL_CLUSTER)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
+        lm = LoadMetrics()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
+        autoscaler.update()
+        self.waitForNodes(2)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+
+        # Mark a node as unhealthy
+        for _ in range(5):
+            if autoscaler.updaters:
+                time.sleep(0.05)
+                autoscaler.update()
+        assert not autoscaler.updaters
+        num_calls = len(runner.calls)
+        lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
+        # Turn off updaters.
+        autoscaler.disable_node_updaters = True
+        # Reduce min_workers to 1
+        autoscaler.config["available_node_types"][NODE_TYPE_LEGACY_WORKER][
+            "min_workers"] = 1
+        autoscaler.update()
+        # Stopped node metric incremented.
+        mock_metrics.stopped_nodes.inc.assert_called_once_with()
+        # One node left.
+        self.waitForNodes(1)
+
+        # Check the node removal event is generated.
+        autoscaler.update()
+        events = autoscaler.event_summarizer.summary()
+        assert ("Terminating 1 nodes of type "
+                "ray-legacy-worker-node-type (lost contact with raylet)." in
+                events), events
+
+        # No additional runner calls, since updaters were disabled.
+        time.sleep(1)
+        assert len(runner.calls) == num_calls
+
+    def testTerminateUnhealthyWorkers2(self):
+        """Tests finer details of termination of unhealthy workers when
+        node updaters are disabled.
+
+        Specifically, test that newly up-to-date nodes which haven't sent a
+        heartbeat are marked active.
+        """
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["provider"]["disable_node_updaters"] = True
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        for _ in range(10):
+            autoscaler.update()
+            # Nodes stay in uninitialized state because no one has finished
+            # updating them.
+            self.waitForNodes(
+                2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED})
+        nodes = self.provider.non_terminated_nodes({})
+        ips = [self.provider.internal_ip(node) for node in nodes]
+        # No heartbeats recorded yet.
+        assert not any(ip in lm.last_heartbeat_time_by_ip for ip in ips)
+        for node in nodes:
+            self.provider.set_node_tags(
+                node, {TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        autoscaler.update()
+        # Nodes marked active after up-to-date status detected.
+        assert all(ip in lm.last_heartbeat_time_by_ip for ip in ips)
+        # Nodes are kept.
+        self.waitForNodes(
+            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        # Mark nodes unhealthy.
+        for ip in ips:
+            lm.last_heartbeat_time_by_ip[ip] = 0
+        autoscaler.update()
+        # Unhealthy nodes are gone.
+        self.waitForNodes(0)
+        autoscaler.update()
+        # IPs pruned
+        assert lm.last_heartbeat_time_by_ip == {}
 
     def testExternalNodeScaler(self):
         config = SMALL_CLUSTER.copy()

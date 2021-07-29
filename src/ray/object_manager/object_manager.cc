@@ -391,8 +391,8 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
       buffer_pool_.CreateObjectReader(object_id, owner_address);
   Status status = reader_status.second;
   if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to read object " << object_id
-                   << "from Plasma store. It may have been evicted.";
+    RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
+        << "Ignoring stale read request for already deleted object: " << object_id;
     return;
   }
 
@@ -434,8 +434,8 @@ void ObjectManager::PushFromFilesystem(const ObjectID &object_id, const NodeID &
         auto optional_spilled_object =
             SpilledObjectReader::CreateSpilledObjectReader(spilled_url);
         if (!optional_spilled_object.has_value()) {
-          RAY_LOG(ERROR) << "Failed to load spilled object " << object_id
-                         << ". It may have been evicted.";
+          RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
+              << "Ignoring stale read request for already deleted object: " << object_id;
           return;
         }
         auto chunk_object_reader = std::make_shared<ChunkObjectReader>(
@@ -772,9 +772,8 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &ob
     // This object is no longer being actively pulled. Do not create the object.
     return false;
   }
-  std::pair<const ObjectBufferPool::ChunkInfo, ray::Status> chunk_status =
-      buffer_pool_.CreateChunk(object_id, owner_address, data_size, metadata_size,
-                               chunk_index);
+  auto chunk_status = buffer_pool_.CreateChunk(object_id, owner_address, data_size,
+                                               metadata_size, chunk_index);
   if (!pull_manager_->IsObjectActive(object_id)) {
     num_chunks_received_cancelled_++;
     // This object is no longer being actively pulled. Abort the object. We
@@ -785,15 +784,13 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id, const ObjectID &ob
     return false;
   }
 
-  ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
-  if (chunk_status.second.ok()) {
+  if (chunk_status.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
-    std::memcpy(chunk_info.data, data.data(), chunk_info.buffer_length);
-    buffer_pool_.SealChunk(object_id, chunk_index);
+    buffer_pool_.WriteChunk(object_id, chunk_index, data);
     return true;
   } else {
     num_chunks_received_failed_due_to_plasma_++;
-    RAY_LOG(INFO) << "Error receiving chunk:" << chunk_status.second.message();
+    RAY_LOG(INFO) << "Error receiving chunk:" << chunk_status.message();
     return false;
   }
 }
@@ -945,7 +942,6 @@ void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
   stats->set_object_store_bytes_avail(config_.object_store_memory);
   stats->set_num_local_objects(local_objects_.size());
   stats->set_consumed_bytes(plasma::plasma_store_runner->GetConsumedBytes());
-  stats->set_object_pulls_queued(pull_manager_->HasPullsQueued());
 }
 
 void ObjectManager::Tick(const boost::system::error_code &e) {
