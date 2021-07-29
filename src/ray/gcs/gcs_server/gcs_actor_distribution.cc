@@ -21,6 +21,75 @@ namespace ray {
 
 namespace gcs {
 
+GcsJobConfig::GcsJobConfig(const JobID &job_id, uint32_t num_java_workers_per_process,
+                           uint32_t num_initial_java_worker_processes,
+                           uint64_t java_worker_process_default_memory_units,
+                           uint64_t total_memory_units)
+    : job_id_(job_id) {
+  if (num_java_workers_per_process != 0) {
+    num_java_workers_per_process_ = num_java_workers_per_process;
+  }
+
+  num_initial_java_worker_processes_ = num_initial_java_worker_processes;
+
+  if (java_worker_process_default_memory_units > 0) {
+    java_worker_process_default_memory_units_ = java_worker_process_default_memory_units;
+  }
+
+  if (total_memory_units > 0) {
+    total_memory_units_ = total_memory_units;
+  }
+}
+
+std::string GcsJobConfig::ToString() const {
+  std::ostringstream ostr;
+  ostr << "{ job_id: " << job_id_
+       << ", num_java_workers_per_process: " << num_java_workers_per_process_
+       << ", num_initial_java_worker_processes: " << num_initial_java_worker_processes_
+       << ", java_worker_process_default_memory_gb: "
+       << FromMemoryUnitsToGiB(java_worker_process_default_memory_units_)
+       << ", python_worker_process_default_memory_gb: "
+       << FromMemoryUnitsToGiB(python_worker_process_default_memory_units_)
+       << ", total_memory_gb: " << FromMemoryUnitsToGiB(total_memory_units_) << " }";
+  return ostr.str();
+}
+
+GcsActorWorkerAssignment::GcsActorWorkerAssignment(
+    const UniqueID &actor_worker_assignment_id, const NodeID &node_id,
+    const JobID &job_id, Language language, const ResourceSet &acquired_resources,
+    bool is_shared, size_t slot_capacity, bool is_flushed)
+    : actor_worker_assignment_id_(actor_worker_assignment_id),
+      node_id_(node_id),
+      job_id_(job_id),
+      language_(language),
+      acquired_resources_(acquired_resources),
+      is_shared_(is_shared),
+      slot_capacity_(slot_capacity),
+      actor_worker_assignment_status_(is_flushed
+                                          ? ActorWorkerAssignmentStatus::FLUSHED
+                                          : ActorWorkerAssignmentStatus::IN_MEMORY) {
+  if (!is_shared) {
+    RAY_CHECK(slot_capacity == 1);
+  }
+}
+
+std::shared_ptr<GcsActorWorkerAssignment> GcsActorWorkerAssignment::Create(
+    const UniqueID &actor_worker_assignment_id, const NodeID &node_id,
+    const JobID &job_id, Language language, const ResourceSet &acquired_resources,
+    bool is_shared, size_t slot_capacity, bool is_flushed) {
+  return std::make_shared<GcsActorWorkerAssignment>(actor_worker_assignment_id, node_id,
+                                                    job_id, language, acquired_resources,
+                                                    is_shared, slot_capacity, is_flushed);
+}
+
+std::shared_ptr<GcsActorWorkerAssignment> GcsActorWorkerAssignment::Create(
+    const NodeID &node_id, const JobID &job_id, Language language,
+    const ResourceSet &acquired_resources, bool is_shared, size_t slot_capacity,
+    bool is_flushed) {
+  return Create(UniqueID::FromRandom(), node_id, job_id, language, acquired_resources,
+                is_shared, slot_capacity, is_flushed);
+}
+
 const UniqueID &GcsActorWorkerAssignment::GetActorWorkerAssignmentID() const {
   return actor_worker_assignment_id_;
 }
@@ -326,6 +395,24 @@ GcsJobDistribution::GetActorWorkerAssignmentById(
   return actor_worker_assignment;
 }
 
+//////////////////////////////////////////////////////////////////////
+GcsBasedActorScheduler::GcsBasedActorScheduler(
+    instrumented_io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
+    const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+    std::shared_ptr<GcsResourceManager> gcs_resource_manager,
+    std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
+    std::shared_ptr<GcsJobDistribution> gcs_job_distribution,
+    std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
+    std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
+    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+    rpc::ClientFactoryFn client_factory)
+    : GcsActorScheduler(io_context, gcs_actor_table, gcs_node_manager, gcs_pub_sub,
+                        schedule_failure_handler, schedule_success_handler,
+                        raylet_client_pool, client_factory),
+      gcs_resource_manager_(std::move(gcs_resource_manager)),
+      gcs_resource_scheduler_(std::move(gcs_resource_scheduler)),
+      gcs_job_distribution_(std::move(gcs_job_distribution)) {}
+
 NodeID GcsBasedActorScheduler::SelectNode(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetActorWorkerAssignmentID().IsNil());
   bool need_sole_actor_worker_assignment =
@@ -515,7 +602,7 @@ NodeID GcsBasedActorScheduler::GetHighestScoreNodeResource(
   /// Get the highest score node
   LeastResourceScorer scorer;
 
-  double highest_score = -10;
+  double highest_score = std::numeric_limits<double>::lowest();
   auto highest_score_node = NodeID::Nil();
   for (const auto &pair : cluster_map) {
     double least_resource_val = scorer.Score(required_resources, pair.second);

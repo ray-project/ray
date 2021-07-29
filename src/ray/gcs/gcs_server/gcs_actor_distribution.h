@@ -41,38 +41,11 @@ struct GcsJobConfig {
   explicit GcsJobConfig(const JobID &job_id, uint32_t num_java_workers_per_process,
                         uint32_t num_initial_java_worker_processes,
                         uint64_t java_worker_process_default_memory_units,
-                        uint64_t total_memory_units)
-      : job_id_(job_id) {
-    if (num_java_workers_per_process != 0) {
-      num_java_workers_per_process_ = num_java_workers_per_process;
-    }
-
-    num_initial_java_worker_processes_ = num_initial_java_worker_processes;
-
-    if (java_worker_process_default_memory_units > 0) {
-      java_worker_process_default_memory_units_ =
-          java_worker_process_default_memory_units;
-    }
-
-    if (total_memory_units > 0) {
-      total_memory_units_ = total_memory_units;
-    }
-  }
+                        uint64_t total_memory_units);
 
   GcsJobConfig(const JobID &job_id) : job_id_(job_id) {}
 
-  std::string ToString() const {
-    std::ostringstream ostr;
-    ostr << "{ job_id: " << job_id_
-         << ", num_java_workers_per_process: " << num_java_workers_per_process_
-         << ", num_initial_java_worker_processes: " << num_initial_java_worker_processes_
-         << ", java_worker_process_default_memory_gb: "
-         << FromMemoryUnitsToGiB(java_worker_process_default_memory_units_)
-         << ", python_worker_process_default_memory_gb: "
-         << FromMemoryUnitsToGiB(python_worker_process_default_memory_units_)
-         << ", total_memory_gb: " << FromMemoryUnitsToGiB(total_memory_units_) << " }";
-    return ostr.str();
-  }
+  std::string ToString() const;
 
   JobID job_id_;
   // The number of workers per worker process.
@@ -111,21 +84,7 @@ class GcsActorWorkerAssignment
                                     const NodeID &node_id, const JobID &job_id,
                                     Language language,
                                     const ResourceSet &acquired_resources, bool is_shared,
-                                    size_t slot_capacity = 1, bool is_flushed = false)
-      : actor_worker_assignment_id_(actor_worker_assignment_id),
-        node_id_(node_id),
-        job_id_(job_id),
-        language_(language),
-        acquired_resources_(acquired_resources),
-        is_shared_(is_shared),
-        slot_capacity_(slot_capacity),
-        actor_worker_assignment_status_(is_flushed
-                                            ? ActorWorkerAssignmentStatus::FLUSHED
-                                            : ActorWorkerAssignmentStatus::IN_MEMORY) {
-    if (!is_shared) {
-      RAY_CHECK(slot_capacity == 1);
-    }
-  }
+                                    size_t slot_capacity = 1, bool is_flushed = false);
 
   /// Create a GcsActorWorkerAssignment
   ///
@@ -139,11 +98,7 @@ class GcsActorWorkerAssignment
   static std::shared_ptr<GcsActorWorkerAssignment> Create(
       const UniqueID &actor_worker_assignment_id, const NodeID &node_id,
       const JobID &job_id, Language language, const ResourceSet &acquired_resources,
-      bool is_shared, size_t slot_capacity = 1, bool is_flushed = false) {
-    return std::make_shared<GcsActorWorkerAssignment>(
-        actor_worker_assignment_id, node_id, job_id, language, acquired_resources,
-        is_shared, slot_capacity, is_flushed);
-  }
+      bool is_shared, size_t slot_capacity = 1, bool is_flushed = false);
 
   /// Create a GcsActorWorkerAssignment with a random actor worker assignment id.
   ///
@@ -156,10 +111,7 @@ class GcsActorWorkerAssignment
   static std::shared_ptr<GcsActorWorkerAssignment> Create(
       const NodeID &node_id, const JobID &job_id, Language language,
       const ResourceSet &acquired_resources, bool is_shared, size_t slot_capacity = 1,
-      bool is_flushed = false) {
-    return Create(UniqueID::FromRandom(), node_id, job_id, language, acquired_resources,
-                  is_shared, slot_capacity, is_flushed);
-  }
+      bool is_flushed = false);
 
   const UniqueID &GetActorWorkerAssignmentID() const;
 
@@ -211,7 +163,6 @@ class GcsActorWorkerAssignment
   // A flag to identify whether the assignment is flushed to the storage.
   ActorWorkerAssignmentStatus actor_worker_assignment_status_ =
       ActorWorkerAssignmentStatus::IN_MEMORY;
-  std::vector<std::function<void(const ray::Status &)>> flush_callbacks_;
 
   /// IDs of actors that the actor worker assignment acceptted.
   absl::flat_hash_set<ActorID> actor_ids_;
@@ -293,7 +244,6 @@ class GcsJobSchedulingContext {
   NodeToActorWorkerAssignmentsMap node_to_actor_worker_assignments_;
   /// The job claimed resources when submitting.
   SchedulingResources scheduling_resources_;
-  uint64_t last_report_time_ms_ = 0;
 };
 
 /// `GcsJobDistribution` represents job distribution on the cluster nodes.
@@ -360,10 +310,12 @@ class GcsJobDistribution {
       gcs_job_scheduling_factory_;
 };
 
-/// GcsBasedActorScheduler implements a resource-based node selection.
+/// GcsBasedActorScheduler inherits from GcsActorScheduler. Its scheduling strategy is
+/// based on a resource-based node selection. Any rescheduling is also based on GCS,
+/// instead of Raylet-based spillback.
 class GcsBasedActorScheduler : public GcsActorScheduler {
  public:
-  /// Create a GcsActorScheduler
+  /// Create a GcsBasedActorScheduler
   ///
   /// \param io_context The main event loop.
   /// \param gcs_actor_table Used to flush actor info to storage.
@@ -389,13 +341,7 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
       std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-      rpc::ClientFactoryFn client_factory = nullptr)
-      : GcsActorScheduler(io_context, gcs_actor_table, gcs_node_manager, gcs_pub_sub,
-                          schedule_failure_handler, schedule_success_handler,
-                          raylet_client_pool, client_factory),
-        gcs_resource_manager_(std::move(gcs_resource_manager)),
-        gcs_resource_scheduler_(std::move(gcs_resource_scheduler)),
-        gcs_job_distribution_(std::move(gcs_job_distribution)) {}
+      rpc::ClientFactoryFn client_factory = nullptr);
 
   virtual ~GcsBasedActorScheduler() = default;
 

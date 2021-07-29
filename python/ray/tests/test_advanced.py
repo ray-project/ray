@@ -580,7 +580,7 @@ def test_actor_distribution_balance(ray_start_cluster, args):
     for i in range(node_count):
         cluster.add_node(
             memory=1024**3,
-            _system_config={"gcs_task_scheduling_enabled": True}
+            _system_config={"gcs_actor_scheduling_enabled": True}
             if i == 0 else {})
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
@@ -613,7 +613,7 @@ def test_actor_distribution_balance(ray_start_cluster, args):
 def test_schedule_actor_and_normal_task(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
-        memory=1024**3, _system_config={"gcs_task_scheduling_enabled": True})
+        memory=1024**3, _system_config={"gcs_actor_scheduling_enabled": True})
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
@@ -667,7 +667,7 @@ def test_schedule_many_actors_and_normal_tasks(ray_start_cluster):
     for i in range(node_count):
         cluster.add_node(
             memory=node_memory,
-            _system_config={"gcs_task_scheduling_enabled": True}
+            _system_config={"gcs_actor_scheduling_enabled": True}
             if i == 0 else {})
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
@@ -703,7 +703,7 @@ def test_worker_lease_reply_with_resources(ray_start_cluster):
         _system_config={
             "raylet_report_resources_period_milliseconds": 1000000,
             "pull_based_resource_reporting": False,
-            "gcs_task_scheduling_enabled": True,
+            "gcs_actor_scheduling_enabled": True,
         })
     node2 = cluster.add_node(memory=1000 * 1024**2)
     ray.init(address=cluster.address)

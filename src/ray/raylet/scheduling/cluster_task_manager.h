@@ -163,7 +163,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   std::string DebugStr() const override;
 
   /// Check if there are enough available resources for the given input.
-  bool IsLocallySchedulable(const Task &task) override;
+  bool IsLocallySchedulable(const Task &task) const override;
 
   /// Calculate normal task resources.
   ResourceSet CalcNormalTaskResources() const override;

@@ -125,7 +125,7 @@ class GcsActor {
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
 
-  UniqueID GetActorWorkerAssignmentID();
+  UniqueID GetActorWorkerAssignmentID() const;
 
   void SetActorWorkerAssignmentID(const UniqueID &actor_worker_assignment_id);
 

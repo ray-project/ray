@@ -225,7 +225,7 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   gcs_job_manager_->Initialize(gcs_init_data);
 
   // Init job distribution.
-  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     gcs_job_distribution_ = std::make_shared<GcsJobDistribution>(
         /*gcs_job_scheduling_factory=*/
         [](const JobID &job_id) {
@@ -258,7 +258,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
     return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
   };
 
-  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     RAY_CHECK(gcs_resource_manager_ && gcs_resource_scheduler_ && gcs_job_distribution_);
     scheduler = std::make_shared<GcsBasedActorScheduler>(
         main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
@@ -490,7 +490,7 @@ void GcsServer::InstallEventListeners() {
   });
 
   // Install scheduling policy event listeners.
-  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     gcs_resource_manager_->AddResourcesChangedListener([this] {
       main_service_.post([this] {
         // Because resources have been changed, we need to try to schedule the pending

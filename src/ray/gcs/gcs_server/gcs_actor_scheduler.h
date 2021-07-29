@@ -307,8 +307,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   rpc::CoreWorkerClientPool core_worker_clients_;
 };
 
-/// RayletBasedActorScheduler implements a random node selection, while relying on Raylets
-/// for spillback scheduling.
+/// RayletBasedActorScheduler inherits from GcsActorScheduler. Its scheduling strategy is
+/// based on a random node selection, while relying on Raylets for spillback scheduling.
 class RayletBasedActorScheduler : public GcsActorScheduler {
  public:
   using GcsActorScheduler::GcsActorScheduler;

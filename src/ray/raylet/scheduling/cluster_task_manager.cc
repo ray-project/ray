@@ -946,7 +946,7 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to, const Work &work)
   reply->mutable_retry_at_raylet_address()->set_port(node_info_opt->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
 
-  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     reply->set_rejected(true);
   }
 
@@ -1109,7 +1109,7 @@ void ClusterTaskManager::SpillWaitingTasks() {
   }
 }
 
-bool ClusterTaskManager::IsLocallySchedulable(const Task &task) {
+bool ClusterTaskManager::IsLocallySchedulable(const Task &task) const {
   const auto &spec = task.GetTaskSpecification();
   return cluster_resource_scheduler_->IsLocallySchedulable(
       spec.GetRequiredResources().GetResourceMap());

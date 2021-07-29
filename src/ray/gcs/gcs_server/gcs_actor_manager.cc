@@ -95,7 +95,7 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
-UniqueID GcsActor::GetActorWorkerAssignmentID() {
+UniqueID GcsActor::GetActorWorkerAssignmentID() const {
   return UniqueID::FromBinary(actor_table_data_.actor_worker_assignment_id());
 }
 

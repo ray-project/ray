@@ -21,10 +21,7 @@ namespace ray {
 
 /// If the task need a sole actor worker assignment.
 inline bool NeedSoleActorWorkerAssignment(const TaskSpecification &task_spec) {
-  if (task_spec.GetLanguage() == rpc::Language::PYTHON) {
-    return true;
-  }
-  return false;
+  return task_spec.GetLanguage() == rpc::Language::PYTHON;
 }
 
 }  // namespace ray
