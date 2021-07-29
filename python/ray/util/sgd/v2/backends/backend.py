@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, TypeVar, List
+from typing import Callable, TypeVar, List, Optional
 
 import ray
 from ray.exceptions import RayActorError
@@ -50,7 +50,7 @@ class BackendExecutor:
 
         self.worker_group = InactiveWorkerGroup()
 
-    def start(self, initialization_hook: Callable = None):
+    def start(self, initialization_hook: Optional[Callable] = None):
         """Starts the worker group."""
         self.worker_group = WorkerGroup(self._num_workers,
                                         self._num_cpus_per_worker,
