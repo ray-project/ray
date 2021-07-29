@@ -124,6 +124,26 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    # "test_memory_scheduling.py",
+    "test_plasma_unlimited.py",
+    "test_serialization.py",
+    "test_shuffle.py",
+    # "test_stress.py",
+    # "test_stress_sharded.py",
+    "test_object_spilling.py",
+    "test_object_spilling_2.py",
+    # "test_scheduling.py",
+    "test_array.py",
+    "test_object_manager.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "io_layer_test"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
     "test_cli.py",
     "test_failure.py",
     "test_actor_advanced.py",

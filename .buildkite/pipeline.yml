@@ -125,6 +125,24 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...
     - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/serve/...
 
+- label: ":python: (ASAN tests)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_RLLIB_AFFECTED", "RAY_CI_TUNE_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    # - bazel test --config=ci $(./scripts/bazel_export_options)
+    #   --build_tests_only
+    #   --test_tag_filters=flaky
+    #   -- //:all -rllib/... -core_worker_test
+    - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
+      --config=asan-buildkite
+      --test_tag_filters=-kubernetes,-jenkins_only,io_layer_test
+      --test_env=CONDA_EXE
+      --test_env=CONDA_PYTHON_EXE
+      --test_env=CONDA_SHLVL
+      --test_env=CONDA_PREFIX
+      --test_env=CONDA_DEFAULT_ENV
+      python/ray/tests/...
 - label: ":python: (Flaky tests)"
   conditions: ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_RLLIB_AFFECTED", "RAY_CI_TUNE_AFFECTED"]
   commands:
