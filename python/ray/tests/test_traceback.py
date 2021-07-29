@@ -24,7 +24,7 @@ def test_actor_creation_stacktrace(ray_start_regular):
     """Test the actor creation task stacktrace.
 
     Expected output:
-        The actor died because of an error raised in its creation task, ray::A.__init__() (pid=23585, ip=192.168.1.5, label=ray::A.__init__()) # noqa
+        The actor died because of an error raised in its creation task, ray::A.__init__() (pid=23585, ip=192.168.1.5) # noqa
         File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 27, in __init__
             g(3)
         File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 22, in g
@@ -57,7 +57,7 @@ def test_task_stacktrace(ray_start_regular):
     """Test the normal task stacktrace.
 
     Expected output:
-        ray::f() (pid=23839, ip=192.168.1.5, label=ray::f()) # noqa
+        ray::f() (pid=23839, ip=192.168.1.5) # noqa
         File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 63, in f
             return g(c)
         File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 55, in g
@@ -125,7 +125,7 @@ def test_exception_chain(ray_start_regular):
         ray::foo() (pid=24171, ip=192.168.1.5, label=ray::foo()) # noqa
         File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 127, in foo
             return ray.get(bar.remote())
-        ray.exceptions.RayTaskError(ZeroDivisionError): ray::bar() (pid=24186, ip=192.168.1.5, label=ray::bar())
+        ray.exceptions.RayTaskError(ZeroDivisionError): ray::bar() (pid=24186, ip=192.168.1.5)
         File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 123, in bar
             return 1 / 0
         ZeroDivisionError: division by zero
@@ -154,11 +154,11 @@ def test_dep_failure(ray_start_regular):
     """Test the stacktrace genereated due to dependency failures.
     
     Expected output:
-        ray::f() (pid=24413, ip=192.168.1.5, label=ray::f()) # noqa
+        ray::f() (pid=24413, ip=192.168.1.5) # noqa
           The task, ray::f(), failed because the below input task has failed.
-        ray.exceptions.RayTaskError: ray::a() (pid=24413, ip=192.168.1.5, label=ray::a())
+        ray.exceptions.RayTaskError: ray::a() (pid=24413, ip=192.168.1.5)
           The task, ray::a(), failed because the below input task has failed.
-        ray.exceptions.RayTaskError: ray::b() (pid=24413, ip=192.168.1.5, label=ray::b())
+        ray.exceptions.RayTaskError: ray::b() (pid=24413, ip=192.168.1.5)
           File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 159, in b
             raise ValueError("b failed")
         ValueError: b failed
@@ -183,6 +183,68 @@ def test_dep_failure(ray_start_regular):
         error_msg = str(ex)
         error_lines = error_msg.split("\n")
         assert len(error_lines) == 8
+
+
+def test_actor_repr_in_traceback(ray_start_regular):
+    actor_repr = "ABC"
+
+    def g(a):
+        raise ValueError(a)
+
+    @ray.remote
+    class A:
+        def f(self):
+            a = 3
+            b = 4
+            c = a + b
+            return g(c)
+
+    def parse_labels_from_traceback(ex):
+        error_msg = str(ex)
+        error_lines = error_msg.split("\n")
+        traceback_line = error_lines[0]
+        unformatted_labels = traceback_line.split(" ")[1:]
+        print(unformatted_labels)
+        label_dict = {}
+        for label in unformatted_labels:
+            # Remove parenthesis if included.
+            if label.startswith("("):
+                label = label[1:]
+            elif label.endswith(")"):
+                label = label[:-1]
+            print(label)
+            key, value = label.split("=", 1)
+            label_dict[key] = value
+        return label_dict
+
+    # Test the default repr is Actor(repr=[class_name])
+    a = A.remote()
+    try:
+        ray.get(a.f.remote())
+    except ValueError as ex:
+        print(ex)
+        label_dict = parse_labels_from_traceback(ex)
+        assert label_dict["repr"] == "Actor(repr=A)"
+
+    @ray.remote
+    class A:
+        def f(self):
+            a = 3
+            b = 4
+            c = a + b
+            return g(c)
+
+        def __repr__(self):
+            return actor_repr
+
+    # Test if the repr is properly overwritten.
+    a = A.remote()
+    try:
+        ray.get(a.f.remote())
+    except ValueError as ex:
+        print(ex)
+        label_dict = parse_labels_from_traceback(ex)
+        assert label_dict["repr"] == actor_repr
 
 
 if __name__ == "__main__":

@@ -398,6 +398,7 @@ cdef execute_task(
 
     worker = ray.worker.global_worker
     manager = worker.function_actor_manager
+    actor = None
 
     cdef:
         dict execution_infos = manager.execution_infos
@@ -577,23 +578,24 @@ cdef execute_task(
             backtrace = ray._private.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
 
-            # Generate the actor repr from the handle if the failure was
-            # an actor creation task or actor task.
-            actor_handle = None
-            if <int>task_type != <int>TASK_TYPE_NORMAL_TASK:
-                actor_id = core_worker.get_actor_id()
-                actor_handle = core_worker.get_actor_handle(actor_id)
-            task_error_label = repr(actor_handle) if actor_handle else None
+            # Generate the actor repr from the actor class.
+            error_label = repr(actor) if actor else None
+            # If the repr contains the default repr, which is hard to read
+            # we detect it and replace it to a actor handle repr, which is
+            # much more readable.
+            if error_label and error_label == object.__repr__(actor):
+                assert <int>task_type != <int>TASK_TYPE_NORMAL_TASK
+                error_label = "Actor(class_name=" + class_name + ")"
 
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.
                 failure_object = RayTaskError(function_name, backtrace,
                                               error.cause, proctitle=title,
-                                              label=task_error_label)
+                                              label=error_label)
             else:
                 failure_object = RayTaskError(function_name, backtrace,
                                               error, proctitle=title,
-                                              label=task_error_label)
+                                              label=error_label)
             errors = []
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)

@@ -89,7 +89,7 @@ class RayTaskError(RayError):
         self.ip = ip or ray.util.get_node_ip_address()
         self.function_name = function_name
         self.traceback_str = traceback_str
-        self.label = label or self.proctitle
+        self.label = label
         # TODO(edoakes): should we handle non-serializable exception objects?
         self.cause = cause
         assert traceback_str is not None
@@ -141,16 +141,19 @@ class RayTaskError(RayError):
         in_worker = False
         for line in lines:
             if line.startswith("Traceback "):
-                out.append(f"{colorama.Fore.CYAN}"
-                           f"{self.proctitle}"
-                           f"{colorama.Fore.RESET} "
-                           f"(pid={self.pid}, ip={self.ip}"
-                           f", label={self.label})")
+                error_traceback = (f"{colorama.Fore.CYAN}"
+                                   f"{self.proctitle}"
+                                   f"{colorama.Fore.RESET} "
+                                   f"(pid={self.pid}, ip={self.ip}")
+                if self.label:
+                    error_traceback += f", repr={self.label})"
+                else:
+                    error_traceback += ")"
+                out.append(error_traceback)
             elif in_worker:
                 in_worker = False
-            elif ("ray/worker.py" in line
-                  or "ray/_private/function_manager.py" in line
-                  or "_private/client_mode_hook.py" in line):
+            elif ("ray/worker.py" in line or "ray/_private/" in line
+                  or "ray/util/tracing/tracing_helper.py" in line):
                 # Skip internal files that could be printed.
                 # Otherwise, users will see unnecessary stacktrace from
                 # Ray internal code.
@@ -162,10 +165,9 @@ class RayTaskError(RayError):
                     # due to the dependency failure.
                     # Print out an user-friendly
                     # message to explain that..
-                    out.append(
-                        f"{colorama.Fore.YELLOW}  The task, "
-                        f"{self.proctitle}, failed because the "
-                        f"below input task has failed.{colorama.Fore.RESET}")
+                    out.append(f"  The task, "
+                               f"{self.proctitle}, failed because the "
+                               f"below input task has failed.")
             else:
                 out.append(line)
         return "\n".join(out)
