@@ -1192,9 +1192,9 @@ def start_dashboard(require_dashboard,
             else:
                 if log_once("dashboard_failed_import") and not os.getenv(
                         "RAY_DISABLE_IMPORT_WARNING") == "1":
-                    warning_message += " To disable this message set " \
+                    warning_message += " To disable this message, set " \
                                        "RAY_DISABLE_IMPORT_WARNING " \
-                                       "environment to 1."
+                                       "env var to '1'."
                     logger.info(warning_message)
                 return None, None
 
