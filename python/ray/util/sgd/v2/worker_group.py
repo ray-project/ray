@@ -12,12 +12,13 @@ logger = logging.getLogger(__name__)
 class BaseWorker:
     """A class to execute arbitrary functions. Does not hold any state."""
 
-    def execute(self, func: Callable[[], T]) -> T:
+    def execute(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes the input function and returns the output.
         Args:
-            func(Callable): A function that does not take any arguments.
+            func(Callable): The function to execute.
+            args, kwargs: The arguments to pass into func.
         """
-        return func()
+        return func(*args, **kwargs)
 
 
 class WorkerGroup:
