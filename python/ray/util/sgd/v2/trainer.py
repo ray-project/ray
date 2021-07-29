@@ -76,7 +76,7 @@ class Trainer:
         """
         pass
 
-    def execute_single(self, train_func: Callable[[S, ...], T], *args,
+    def execute_single(self, func: Callable[[S, ...], T], *args,
                        **kwargs) -> T:
         """
         Executes a function on a single instance of self.train_cls.
