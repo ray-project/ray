@@ -358,6 +358,9 @@ Tune provides a wrapper function ``tune.with_parameters()`` that allows you to b
 Objects passed with this wrapper will be stored on the Ray object store and will be automatically fetched
 and passed to your trainable as a parameter.
 
+.. tip:: If the objects are small in size or already exist in the Object Store, there's no need to use ``tune.with_parameters()``. You can use partials or pass in directly to ``config`` instead.
+
+
 .. code-block:: python
 
     from ray import tune
