@@ -90,7 +90,7 @@ class RayParams:
             external machines.
         dashboard_port: The port to bind the dashboard server to.
             Defaults to 8265.
-        dashboard_agent_listen_port: The port for dashboard agents to listen on 
+        dashboard_agent_listen_port: The port for dashboard agents to listen on
             for HTTP requests.
         logging_level: Logging level, default will be logging.INFO.
         logging_format: Logging format, default contains a timestamp,
@@ -159,6 +159,7 @@ class RayParams:
                  include_dashboard=None,
                  dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
                  dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
+                 dashboard_agent_listen_port=0,
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
                  plasma_store_socket_name=None,

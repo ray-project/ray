@@ -253,10 +253,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--listen-port",
         required=False,
-        type=int
+        type=int,
         default=0,
-        help="Port to listen on"
-    )
+        help="Port to listen on")
     parser.add_argument(
         "--raylet-name",
         required=True,
