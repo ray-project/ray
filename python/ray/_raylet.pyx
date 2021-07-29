@@ -580,12 +580,6 @@ cdef execute_task(
 
             # Generate the actor repr from the actor class.
             error_label = repr(actor) if actor else None
-            # If the repr contains the default repr, which is hard to read
-            # we detect it and replace it to a actor handle repr, which is
-            # much more readable.
-            if error_label and error_label == object.__repr__(actor):
-                assert <int>task_type != <int>TASK_TYPE_NORMAL_TASK
-                error_label = "Actor(class_name=" + class_name + ")"
 
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.

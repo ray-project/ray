@@ -89,7 +89,7 @@ def test_actor_task_stacktrace(ray_start_regular):
     """Test the actor task stacktrace.
 
     Expected output:
-        ray::A.f() (pid=24029, ip=192.168.1.5, label=Actor(class_name=test_actor_task_stacktrace.<locals>.A, actor_id=99da335726d2f7fa26e5c83201000000) # noqa
+        ray::A.f() (pid=24029, ip=192.168.1.5, repr=<test_traceback.A object at 0x7fe1dde3ec50>) # noqa
         File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 95, in f
             return g(c)
         File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 87, in g
@@ -186,8 +186,23 @@ def test_dep_failure(ray_start_regular):
 
 
 def test_actor_repr_in_traceback(ray_start_regular):
-    actor_repr = "ABC"
+    def parse_labels_from_traceback(ex):
+        error_msg = str(ex)
+        error_lines = error_msg.split("\n")
+        traceback_line = error_lines[0]
+        unformatted_labels = traceback_line.split("(")[2].split(", ")
+        label_dict = {}
+        for label in unformatted_labels:
+            # Remove parenthesis if included.
+            if label.startswith("("):
+                label = label[1:]
+            elif label.endswith(")"):
+                label = label[:-1]
+            key, value = label.split("=", 1)
+            label_dict[key] = value
+        return label_dict
 
+    # Test the default repr is Actor(repr=[class_name])
     def g(a):
         raise ValueError(a)
 
@@ -199,32 +214,19 @@ def test_actor_repr_in_traceback(ray_start_regular):
             c = a + b
             return g(c)
 
-    def parse_labels_from_traceback(ex):
-        error_msg = str(ex)
-        error_lines = error_msg.split("\n")
-        traceback_line = error_lines[0]
-        unformatted_labels = traceback_line.split(" ")[1:]
-        print(unformatted_labels)
-        label_dict = {}
-        for label in unformatted_labels:
-            # Remove parenthesis if included.
-            if label.startswith("("):
-                label = label[1:]
-            elif label.endswith(")"):
-                label = label[:-1]
-            print(label)
-            key, value = label.split("=", 1)
-            label_dict[key] = value
-        return label_dict
+        def get_repr(self):
+            return repr(self)
 
-    # Test the default repr is Actor(repr=[class_name])
     a = A.remote()
     try:
         ray.get(a.f.remote())
     except ValueError as ex:
         print(ex)
         label_dict = parse_labels_from_traceback(ex)
-        assert label_dict["repr"] == "Actor(repr=A)"
+        assert label_dict["repr"] == ray.get(a.get_repr.remote())
+
+    # Test if the repr is properly overwritten.
+    actor_repr = "ABC"
 
     @ray.remote
     class A:
@@ -237,7 +239,6 @@ def test_actor_repr_in_traceback(ray_start_regular):
         def __repr__(self):
             return actor_repr
 
-    # Test if the repr is properly overwritten.
     a = A.remote()
     try:
         ray.get(a.f.remote())
