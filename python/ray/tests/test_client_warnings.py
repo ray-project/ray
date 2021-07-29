@@ -63,7 +63,7 @@ class LoggerSuite(unittest.TestCase):
 
 
 @pytest.mark.parametrize("call_ray_start", ["ray start --head"], indirect=True)
-def testAttachDriverToConnectPort(call_ray_start):
+def test_attach_driver_to_client_port(call_ray_start):
     with pytest.raises(RuntimeError) as e, \
             warnings.catch_warnings(record=True) as warn_list:
         ray.init("localhost:10001")
@@ -77,7 +77,7 @@ def testAttachDriverToConnectPort(call_ray_start):
 
 @pytest.mark.parametrize(
     "call_ray_start", ["ray start --head --port 6379"], indirect=True)
-def testConnectClientToRedisPort(call_ray_start):
+def test_connect_client_to_redis_port(call_ray_start):
     with pytest.raises(ConnectionError), \
             warnings.catch_warnings(record=True) as warn_list:
         ray.init("ray://localhost:6379")
