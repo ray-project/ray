@@ -29,6 +29,7 @@ from ray.experimental.data.impl.batcher import Batcher
 from ray.experimental.data.impl.compute import get_compute, cache_wrapper, \
     CallableClass
 from ray.experimental.data.impl.progress_bar import ProgressBar
+from ray.experimental.data.impl.shuffle import simple_shuffle
 from ray.experimental.data.impl.sort import sort_impl
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.arrow_block import DelegatingArrowBlockBuilder
@@ -311,13 +312,13 @@ class Dataset(Generic[T]):
             The repartitioned dataset.
         """
 
-        from ray.experimental.data.impl.shuffle import simple_shuffle
-
         new_blocks = simple_shuffle(self._blocks, num_blocks)
         return Dataset(new_blocks)
 
-    def random_shuffle(self, *, seed: int = None,
-                       num_blocks: int = None) -> "Dataset[T]":
+    def random_shuffle(self,
+                       *,
+                       seed: Optional[int] = None,
+                       num_blocks: Optional[int] = None) -> "Dataset[T]":
         """Randomly shuffle the elements of this dataset.
 
         This is a blocking operation similar to repartition().
@@ -341,11 +342,10 @@ class Dataset(Generic[T]):
             The shuffled dataset.
         """
 
-        from ray.experimental.data.impl.shuffle import random_shuffle
-
-        new_blocks = random_shuffle(
+        new_blocks = simple_shuffle(
             self._blocks,
-            output_num_blocks=num_blocks or self.num_blocks(),
+            num_blocks or self.num_blocks(),
+            random_shuffle=True,
             random_seed=seed)
         return Dataset(new_blocks)
 
