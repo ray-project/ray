@@ -1,0 +1,56 @@
+cluster_name: distributed-benchmarks-actors
+min_workers: 0
+max_workers: 999999
+
+upscaling_speed: 9999999
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a, us-west-2b, us-west-2c, us-west-2d
+    cache_stopped_nodes: false
+
+auth:
+    ssh_user: ubuntu
+
+
+available_node_types:
+    head_node:
+        node_config:
+            InstanceType: r5dn.16xlarge # Network optimized.
+            ImageId: ami-022761124feec086e
+        resources:
+          CPU: 0
+          node: 1
+        max_workers: 0
+    small_worker_node:
+        node_config:
+            InstanceType: m5.xlarge
+            ImageId: ami-022761124feec086e
+        resources:
+          node: 1
+        max_workers: 999999
+
+head_node_type: head_node
+
+worker_default_node_type: worker_node
+
+file_mounts: {
+    "~/benchmarks": "."
+}
+
+setup_commands:
+  - pip uninstall -y ray
+  - pip install -U "ray[default]@https://ray-wheels.s3.us-west-2.amazonaws.com/master/72abf81900cd3517b37582e84c11b7805c024dec/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl"
+  - pip install tqdm
+
+idle_timeout_minutes: 1
+
+head_start_ray_commands:
+    - ray stop
+    - ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands:
+    - ray stop
+    - ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076

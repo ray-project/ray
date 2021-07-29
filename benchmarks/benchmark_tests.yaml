@@ -40,16 +40,16 @@
     prepare: sleep 0
     script: python distributed/test_distributed.py
 
-- name: test_1k_20k
-  owner:
-    mail: "core@anyscale.com"
-    slack: "@yic"
+# - name: test_1k_20k
+#   owner:
+#     mail: "core@anyscale.com"
+#     slack: "@yic"
 
-  cluster:
-    app_config: app_config.yaml
-    compute_template: distributed_actors.yaml
+#   cluster:
+#     app_config: app_config.yaml
+#     compute_template: ci_scale_1k_20k.yaml
 
-  run:
-    timeout: 3600 # 1hr
-    prepare: sleep 0
-    script: python distributed/test_1k_20k.py
+#   run:
+#     timeout: 3600 # 1hr
+#     prepare: sleep 0
+#     script: python scale_1k_20k/test_1k_20k.py
