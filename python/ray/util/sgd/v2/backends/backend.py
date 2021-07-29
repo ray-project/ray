@@ -68,7 +68,8 @@ class BackendExecutor:
                 worker. It must not have any required arguments.
 
         Returns:
-            A list of return values from calling ``train_func`` on each worker. Each item corresponds to the return value from a single worker.
+            A list of return values from calling ``train_func`` on each worker.
+                Each item corresponds to the return value from a single worker.
         """
         # Run the training function asynchronously.
         training_futures = self.worker_group.execute_async(train_func)
