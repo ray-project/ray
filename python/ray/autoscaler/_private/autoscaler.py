@@ -282,6 +282,9 @@ class StandardAutoscaler:
             len(nodes) - len(nodes_to_terminate) - self.config["max_workers"])
         num_extra_nodes_to_terminate = min(num_extra_nodes_to_terminate,
                                            len(nodes_we_could_terminate))
+        # This is a sanity check: with consistent config (max_workers
+        # not contradicting min_workers per type and resource requests),
+        # num_extra_nodes_to_terminate should be non-negatve.
         if num_extra_nodes_to_terminate > 0:
             extra_nodes_to_terminate = nodes_we_could_terminate[
                 -num_extra_nodes_to_terminate:]
