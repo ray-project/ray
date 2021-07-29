@@ -26,8 +26,9 @@ def scale_to(target):
         sleep(5)
 
 
-def test_max_actors():
-    # TODO (Alex): Dynamically set this based on number of cores
+def test_max_actors_launch():
+    # m5.xlarge has 4 CPUs
+    # We are targeting: 4 / 0.2 = 20 actors per node
     cpus_per_actor = 0.2
 
     @ray.remote(num_cpus=cpus_per_actor)
@@ -39,6 +40,9 @@ def test_max_actors():
         Actor.remote()
         for _ in trange(MAX_ACTORS_IN_CLUSTER, desc="Launching actors")
     ]
+    return actors
+
+def test_actor_ready(actors):
     remaining = [actor.foo.remote() for actor in actors]
     pbar = tqdm(total=len(remaining), desc="Executing actor.foo")
     while len(remaining) != 0:
@@ -60,17 +64,26 @@ available_resources = ray.available_resources()
 assert available_resources == cluster_resources, (
     str(available_resources) + " != " + str(cluster_resources))
 
-actor_start = perf_counter()
-test_max_actors()
-actor_end = perf_counter()
-actor_time = actor_end - actor_start
+actor_launch_start = perf_counter()
+test_max_actors_launch()
+actor_launch_end = perf_counter()
+actor_launch_time = actor_end - actor_start
 
-print(f"Actor time: {actor_time} ({MAX_ACTORS_IN_CLUSTER} actors)")
+actor_ready_start = perf_counter()
+test_actor_ready()
+actor_ready_end = perf_counter()
+actor_ready_time = actor_end - actor_start
+
+print(f"Actor launch time: {actor_launch_time} ({MAX_ACTORS_IN_CLUSTER} actors)")
+print(f"Actor ready time: {actor_ready_time} ({MAX_ACTORS_IN_CLUSTER} actors)")
+print(f"Total time: {actor_launch_time + actor_ready_time} ({MAX_ACTORS_IN_CLUSTER} actors)")
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
     results = {
-        "actor_time": actor_time,
+        "actor_launch_time": actor_launch_time,
+        "actor_ready_time": actor_ready_time,
+        "total_time": actor_launch_time + actor_ready_time,
         "num_actors": MAX_ACTORS_IN_CLUSTER,
         "success": "1"
     }
