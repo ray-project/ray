@@ -288,6 +288,8 @@ class WorkflowManagementActor:
         wf_store.save_workflow_meta(
             common.WorkflowMetaData(common.WorkflowStatus.RUNNING))
         self._step_status.setdefault(workflow_id, {})
+        # "persisted_output" is the return value of a step or the state of
+        # a virtual actor.
         return result.persisted_output
 
     def get_running_workflow(self) -> List[str]:
