@@ -1,3 +1,4 @@
+from python.ray.ray_constants import DEFAULT_CLIENT_SERVER_PORT, DEFAULT_PORT
 import ray
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import TASK_WARNING_THRESHOLD
@@ -66,25 +67,24 @@ class LoggerSuite(unittest.TestCase):
 def test_attach_driver_to_client_port(call_ray_start):
     with pytest.raises(RuntimeError) as e, \
             warnings.catch_warnings(record=True) as warn_list:
-        ray.init("localhost:10001")
+        ray.init(f"localhost:{DEFAULT_CLIENT_SERVER_PORT}")
 
-    assert any(
-        "10001 is the default port for the Ray client server" in str(w.message)
-        for w in warn_list)
+    assert any(f"{DEFAULT_CLIENT_SERVER_PORT} is the default port for the Ray "
+               "client server" in str(w.message) for w in warn_list)
     assert "You may have meant to connect to the Ray client server" \
         in str(e.value)
 
 
 @pytest.mark.parametrize(
-    "call_ray_start", ["ray start --head --port 6379"], indirect=True)
+    "call_ray_start", [f"ray start --head --port {DEFAULT_PORT}"],
+    indirect=True)
 def test_connect_client_to_redis_port(call_ray_start):
     with pytest.raises(ConnectionError), \
             warnings.catch_warnings(record=True) as warn_list:
-        ray.init("ray://localhost:6379")
+        ray.init(f"ray://localhost:{DEFAULT_PORT}")
 
-    assert any(
-        "6379 is the default port for attaching a driver" in str(w.message)
-        for w in warn_list)
+    assert any(f"{DEFAULT_PORT} is the default port for attaching a driver" in
+               str(w.message) for w in warn_list)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import io
 import json
 import logging
 import os
+from python.ray.ray_constants import DEFAULT_CLIENT_SERVER_PORT
 import warnings
 import redis
 import sys
@@ -806,13 +807,14 @@ def init(
 
     if address:
         redis_address, _, redis_port = services.validate_redis_address(address)
-        if redis_port == 10001:
+        if redis_port == DEFAULT_CLIENT_SERVER_PORT:
             warnings.warn(
-                "Attempting to connect to redis at port 10001. 10001 is "
-                "the default port for the Ray client server. If you have "
-                "issues connecting, you may have meant to connect using Ray "
-                "client by prepending the address with \"ray://\", i.e. "
-                "`ray.init(\"ray://<head_node_ip>:10001\")`.", UserWarning)
+                f"Attempting to connect to redis at port {redis_port}. "
+                f"{redis_port} is the default port for the Ray client server. "
+                "If you have issues connecting, you may have meant to connect "
+                'using Ray client by prepending the address with "ray://", '
+                f'i.e. `ray.init("ray://<head_node_ip>:{redis_port}")`.',
+                UserWarning)
     else:
         redis_address = None
 

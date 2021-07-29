@@ -1,5 +1,6 @@
 import logging
 from concurrent import futures
+from python.ray.ray_constants import DEFAULT_CLIENT_SERVER_PORT
 import grpc
 import base64
 from collections import defaultdict
@@ -673,7 +674,11 @@ def main():
     parser.add_argument(
         "--host", type=str, default="0.0.0.0", help="Host IP to bind to")
     parser.add_argument(
-        "-p", "--port", type=int, default=10001, help="Port to bind to")
+        "-p",
+        "--port",
+        type=int,
+        default=DEFAULT_CLIENT_SERVER_PORT,
+        help="Port to bind to")
     parser.add_argument(
         "--mode",
         type=str,
