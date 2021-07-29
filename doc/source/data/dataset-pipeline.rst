@@ -11,7 +11,7 @@ A DatasetPipeline is an unified iterator over a (potentially infinite) sequence 
 Creating a DatasetPipeline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A DatasetPipeline can be constructed in two ways: either by pipelining the execution of an existing Dataset (via ``Dataset.pipeline``), or generating repeats of an existing Dataset (via ``Dataset.repeat``). Similar to Datasets, you can freely pass DatasetPipelines between Ray tasks, actors, and libraries. Get started by pipelining an integer Dataset:
+A DatasetPipeline can be constructed in two ways: either by pipelining the execution of an existing Dataset (via ``Dataset.pipeline``), or generating repeats of an existing Dataset (via ``Dataset.repeat``). Similar to Datasets, you can freely pass DatasetPipelines between Ray tasks, actors, and libraries. Get started with this synthetic data example:
 
 .. code-block:: python
 
