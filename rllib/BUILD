@@ -2442,6 +2442,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/parametric_actions_cartpole_embeddings_learnt_by_model",
+    main = "examples/parametric_actions_cartpole_embeddings_learnt_by_model.py",
+    tags = ["examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/parametric_actions_cartpole_embeddings_learnt_by_model.py"],
+    args = ["--as-test", "--stop-reward=80.0"]
+)
+
+py_test(
     name = "examples/pettingzoo_env",
     main = "examples/pettingzoo_env.py",
     tags = ["examples", "examples_P"],
