@@ -1,6 +1,6 @@
 import logging
-from typing import List, Any, Dict, Union, Optional, Tuple, Callable, TypeVar, \
-    TYPE_CHECKING
+from typing import List, Any, Dict, Union, Optional, Tuple, Callable, \
+    TypeVar, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pyarrow
