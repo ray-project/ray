@@ -88,10 +88,13 @@ class ClusterTaskManagerInterface {
   /// Attempt to cancel an already queued task.
   ///
   /// \param task_id: The id of the task to remove.
+  /// \param runtime_env_setup_failed: If this is being cancelled because the env setup
+  /// failed.
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  virtual bool CancelTask(const TaskID &task_id) = 0;
+  virtual bool CancelTask(const TaskID &task_id,
+                          bool runtime_env_setup_failed = false) = 0;
 
   /// Queue task and schedule. This hanppens when processing the worker lease request.
   ///

@@ -280,6 +280,7 @@ Papers
    :caption: Ray Data Processing
 
    data/dataset.rst
+   data/dataset-pipeline.rst
    data/package-ref.rst
    data/dask-on-ray.rst
    data/mars-on-ray.rst
