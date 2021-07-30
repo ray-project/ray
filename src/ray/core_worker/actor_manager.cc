@@ -92,7 +92,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     direct_actor_submitter_->ConnectActor(actor_id, caller_address, /*num_restarts=*/0);
     return inserted;
   }
-  
+
   if (inserted) {
     // Register a callback to handle actor notifications.
     auto actor_notification_callback =
