@@ -349,6 +349,7 @@ Tensor datasets are also created whenever an array type is returned from a map f
     ds = ray.data.range(10)
     # -> Dataset(num_rows=10, num_blocks=10, schema=<class 'int'>)
 
+    # It is now converted into a Tensor dataset.
     ds = ds.map_batches(lambda x: np.array(x))
     # -> Dataset(num_rows=10, num_blocks=10, schema=<Tensor: shape=(None,), dtype=int64>)
 
