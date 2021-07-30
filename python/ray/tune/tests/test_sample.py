@@ -1023,6 +1023,23 @@ class SearchSpaceTest(unittest.TestCase):
             param.suggest_loguniform("b/z", 1e-4, 1e-2)
         ]
 
+        def optuna_define_by_run(ot_trial):
+            ot_trial.suggest_categorical("a", [2, 3, 4])
+            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
+
+        def optuna_define_by_run_with_constants(ot_trial):
+            ot_trial.suggest_categorical("a", [2, 3, 4])
+            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
+            return {"constant": 1}
+
+        def optuna_define_by_run_invalid(ot_trial):
+            ot_trial.suggest_categorical("a", [2, 3, 4])
+            ot_trial.suggest_int("b/x", 0, 5, 2)
+            ot_trial.suggest_loguniform("b/z", 1e-4, 1e-2)
+            return 1
+
         sampler1 = RandomSampler(seed=1234)
         searcher1 = OptunaSearch(
             space=converted_config, sampler=sampler1, metric="a", mode="max")
@@ -1038,12 +1055,41 @@ class SearchSpaceTest(unittest.TestCase):
             metric="a",
             mode="max")
 
+        sampler4 = RandomSampler(seed=1234)
+        searcher4 = OptunaSearch(
+            space=optuna_define_by_run,
+            sampler=sampler4,
+            metric="a",
+            mode="max")
+
+        sampler5 = RandomSampler(seed=1234)
+        searcher5 = OptunaSearch(
+            space=optuna_define_by_run_with_constants,
+            sampler=sampler5,
+            metric="a",
+            mode="max")
+
+        config_constant = searcher5.suggest("0")
+        self.assertIn("constant", config_constant)
+
+        sampler6 = RandomSampler(seed=1234)
+        searcher6 = OptunaSearch(
+            space=optuna_define_by_run_invalid,
+            sampler=sampler6,
+            metric="a",
+            mode="max")
+
+        with self.assertRaises(TypeError):
+            searcher6.suggest("0")
+
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")
         config3 = searcher3.suggest("0")
+        config4 = searcher4.suggest("0")
 
         self.assertEqual(config1, config2)
         self.assertEqual(config1, config3)
+        self.assertEqual(config1, config4)
         self.assertIn(config1["a"], [2, 3, 4])
         self.assertIn(config1["b"]["x"], list(range(5)))
         self.assertLess(1e-4, config1["b"]["z"])

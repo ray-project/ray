@@ -81,18 +81,22 @@ class OptunaSearch(Searcher):
     You can pass any Optuna sampler, which will be used to generate
     hyperparameter suggestions.
 
-    Please note that this wrapper does not support define-by-run, so the
-    search space will be configured before running the optimization. You will
-    also need to use a Tune trainable (e.g. using the function API) with
-    this wrapper.
-
-    For defining the search space, use ``ray.tune.suggest.optuna.param``
-    (see example).
-
     Args:
-        space (list): Hyperparameter search space definition for Optuna's
-            sampler. This is a list, and samples for the parameters will
-            be obtained in order.
+        space (dict|Callable): Hyperparameter search space definition for
+            Optuna's sampler. This can be either a :class:`dict` with
+            parameter names as keys and ``optuna.distributions`` values,
+            or a Callable - in which case, it should be a define-by-run
+            function using ``optuna.trial`` to obtain the hyperparameter
+            values. The function should return either a :class:`dict` of
+             constant values with names as keys, or None.
+            For more information, see https://optuna.readthedocs.io\
+/en/stable/tutorial/10_key_features/002_configurations.html.
+
+            .. warning::
+                No actual computation should take place in the define-by-run
+                function. Instead, put the training logic inside the train
+                function or Trainable object passed to ``tune.run``.
+
         metric (str): The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
@@ -152,12 +156,28 @@ class OptunaSearch(Searcher):
 
         tune.run(trainable, search_alg=optuna_search)
 
+        # Equivalent Optuna define-by-run function approach:
+
+        def define_search_space(trial: optuna.Trial):
+            trial.suggest_float("a", 6, 8)
+            trial.suggest_float("b", 1e-4, 1e-2, log=True)
+            # training logic goes into trainable, this is just
+            # for search space definition
+
+        optuna_search = OptunaSearch(
+            define_search_space,
+            metric="loss",
+            mode="min")
+
+        tune.run(trainable, search_alg=optuna_search)
+
     .. versionadded:: 0.8.8
 
     """
 
     def __init__(self,
-                 space: Optional[Union[Dict, List[Tuple], Callable]] = None,
+                 space: Optional[Union[Dict, List[Tuple], Callable[
+                     [ot.Trial], Optional[Dict[str, Any]]]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
@@ -259,8 +279,9 @@ class OptunaSearch(Searcher):
         self._setup_study(mode)
         return True
 
-    def _suggest_from_define_by_run_func(self, func: Callable,
-                                         ot_trial: ot.Trial) -> Dict:
+    def _suggest_from_define_by_run_func(
+            self, func: Callable[[ot.Trial], Optional[Dict[str, Any]]],
+            ot_trial: ot.Trial) -> Dict:
         captor = _OptunaTrialSuggestCaptor(ot_trial)
         time_start = time.time()
         ret = func(captor)
