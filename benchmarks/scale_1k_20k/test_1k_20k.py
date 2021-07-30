@@ -78,10 +78,8 @@ actor_ready_time = actor_ready_end - actor_ready_start
 print(
     f"Actor launch time: {actor_launch_time} ({MAX_ACTORS_IN_CLUSTER} actors)")
 print(f"Actor ready time: {actor_ready_time} ({MAX_ACTORS_IN_CLUSTER} actors)")
-print(
-    f"Total time: {actor_launch_time + actor_ready_time}"
-    f" ({MAX_ACTORS_IN_CLUSTER} actors)"
-)
+print(f"Total time: {actor_launch_time + actor_ready_time}"
+      f" ({MAX_ACTORS_IN_CLUSTER} actors)")
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
