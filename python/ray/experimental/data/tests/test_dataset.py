@@ -138,6 +138,44 @@ def test_batch_tensors(ray_start_regular_shared):
     assert df.to_dict().keys() == {0, 1}
 
 
+def test_tensors(ray_start_regular_shared):
+    # Create directly.
+    ds = ray.experimental.data.range_tensor(5, shape=(3, 5))
+    assert str(ds) == ("Dataset(num_rows=5, num_blocks=5, "
+                       "schema=<Tensor: shape=(None, 3, 5), dtype=float64>)")
+
+    # Transform.
+    ds = ds.map_batches(lambda t: np.expand_dims(t, 3))
+    assert str(ds) == (
+        "Dataset(num_rows=5, num_blocks=5, "
+        "schema=<Tensor: shape=(None, 3, 5, 1), dtype=float64>)")
+
+    # Pandas conversion.
+    res = ray.data.range_tensor(10).map_batches(
+        lambda t: t + 2, batch_format="pandas").take(2)
+    assert str(res) == "[ArrowRow({'0': 2.0}), ArrowRow({'0': 3.0})]", res
+
+    # From other formats.
+    ds = ray.data.range(10).map_batches(lambda x: np.array(x))
+    assert str(ds) == ("Dataset(num_rows=10, num_blocks=10, "
+                       "schema=<Tensor: shape=(None,), dtype=int64>)")
+
+
+def test_npio(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_np_dir")
+    os.mkdir(path)
+    ds = ray.data.range_tensor(10, parallelism=2)
+    ds.write_numpy(path)
+    ds = ray.data.read_numpy(path)
+    assert str(ds) == ("Dataset(num_rows=?, num_blocks=2, "
+                       "schema=<Tensor: shape=(None, 1), dtype=float64>)")
+
+    assert str(
+        ds.take()) == ("[array([0.]), array([1.]), array([2.]), "
+                       "array([3.]), array([4.]), array([5.]), array([6.]), "
+                       "array([7.]), array([8.]), array([9.])]"), ds.take()
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_write_datasource(ray_start_regular_shared, pipelined):
     output = DummyOutputDatasource()
