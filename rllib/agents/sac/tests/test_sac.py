@@ -127,6 +127,7 @@ class TestSAC(unittest.TestCase):
         config["_fake_gpus"] = True
         config["clip_actions"] = False
         config["initial_alpha"] = 0.001
+        config["prioritized_replay"] = True
         env = "ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv"
         config["env_config"] = {"config": {"repeat_delay": 0}}
 
@@ -428,9 +429,9 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                atol=0.002)
+                                atol=0.003)
                         else:
-                            check(tf_var, torch_var, atol=0.002)
+                            check(tf_var, torch_var, atol=0.003)
                     # And alpha.
                     check(policy.model.log_alpha,
                           tf_weights["default_policy/log_alpha"])
@@ -445,9 +446,9 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                atol=0.002)
+                                atol=0.003)
                         else:
-                            check(tf_var, torch_var, atol=0.002)
+                            check(tf_var, torch_var, atol=0.003)
             trainer.stop()
 
     def _get_batch_helper(self, obs_size, actions, batch_size):

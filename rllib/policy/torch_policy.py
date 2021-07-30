@@ -558,7 +558,7 @@ class TorchPolicy(Policy):
             len(self.devices)
 
         # Shortcut for 1 CPU only: Batch should already be stored in
-        # `self._loaded_single_cpu_batch`.
+        # `self._loaded_batches`.
         if len(self.devices) == 1 and self.devices[0].type == "cpu":
             assert buffer_index == 0
             if device_batch_size >= len(self._loaded_batches[0][0]):

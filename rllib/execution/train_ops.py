@@ -13,6 +13,7 @@ from ray.rllib.execution.common import \
     LOAD_BATCH_TIMER, NUM_TARGET_UPDATES, STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER, WORKER_UPDATE_TIMER, _check_sample_batch_type, \
     _get_global_vars, _get_shared_metrics
+from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
 from ray.rllib.utils.framework import try_import_tf
@@ -199,9 +200,17 @@ class MultiGPUTrainOneStep:
                             batch_fetches_all_towers.append(
                                 tree.map_structure_with_path(
                                     lambda p, *s: all_tower_reduce(p, *s),
-                                    *(batch_fetches["tower_{}".format(
-                                        tower_num)] for tower_num in range(
-                                            len(self.devices)))))
+                                    *(batch_fetches.pop(
+                                        "tower_{}".format(tower_num))
+                                      for tower_num in range(
+                                          len(self.devices)))))
+                            for k, v in batch_fetches.items():
+                                if k == LEARNER_STATS_KEY:
+                                    for k1, v1 in batch_fetches[k].items():
+                                        batch_fetches_all_towers[-1][
+                                            LEARNER_STATS_KEY][k1] = v1
+                                else:
+                                    batch_fetches_all_towers[-1][k] = v
 
                 # Reduce mean across all minibatch SGD steps (axis=0 to keep
                 # all shapes as-is).
