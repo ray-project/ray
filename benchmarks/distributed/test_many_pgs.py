@@ -44,7 +44,6 @@ def test_many_placement_groups():
         ray.get(pg.ready())
 
     actors = []
-    refs = []
     for pg in tqdm.tqdm(pgs, desc="Scheduling tasks"):
         actors.append(C1.options(placement_group=pg).remote())
         actors.append(C2.options(placement_group=pg).remote())
@@ -74,8 +73,8 @@ test_utils.wait_for_condition(no_resource_leaks)
 rate = MAX_PLACEMENT_GROUPS / (end_time - start_time)
 
 print(
-    f"Sucess! Started {MAX_PLACEMENT_GROUPS} pgs in {end_time - start_time}s. ({rate} pgs/s)"
-)
+    f"Sucess! Started {MAX_PLACEMENT_GROUPS} pgs in {end_time - start_time}s. "
+    f"({rate} pgs/s)")
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")

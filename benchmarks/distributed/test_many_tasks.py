@@ -8,6 +8,7 @@ import tqdm
 
 sleep_time = 300
 
+
 def test_max_running_tasks(num_tasks):
     cpus_per_task = 0.25
 
@@ -16,8 +17,7 @@ def test_max_running_tasks(num_tasks):
         time.sleep(sleep_time)
 
     refs = [
-        task.remote() for _ in tqdm.trange(
-            num_tasks, desc="Launching tasks")
+        task.remote() for _ in tqdm.trange(num_tasks, desc="Launching tasks")
     ]
 
     max_cpus = ray.cluster_resources()["CPU"]
@@ -38,9 +38,7 @@ def test_max_running_tasks(num_tasks):
     threshold = num_tasks * cpus_per_task * 0.9
     assert max_cpus - min_cpus_available > threshold, err_str
 
-    for _ in tqdm.trange(
-            num_tasks,
-            desc="Ensuring all tasks have finished"):
+    for _ in tqdm.trange(num_tasks, desc="Ensuring all tasks have finished"):
         done, refs = ray.wait(refs)
         assert ray.get(done[0]) is None
 
@@ -51,8 +49,7 @@ def no_resource_leaks():
 
 @click.command()
 @click.option(
-    "--num-tasks", required=True, type=int, help="Number of tasks to launch."
-)
+    "--num-tasks", required=True, type=int, help="Number of tasks to launch.")
 def test(num_tasks):
     ray.init(address="auto")
 
@@ -64,9 +61,8 @@ def test(num_tasks):
 
     rate = num_tasks / (end_time - start_time - sleep_time)
 
-    print(
-        f"Sucess! Started {num_tasks} tasks in {end_time - start_time}s. ({rate} tasks/s)"
-    )
+    print(f"Sucess! Started {num_tasks} tasks in {end_time - start_time}s. "
+          f"({rate} tasks/s)")
 
     if "TEST_OUTPUT_JSON" in os.environ:
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
@@ -77,6 +73,7 @@ def test(num_tasks):
             "success": "1"
         }
         json.dump(results, out_file)
+
 
 if __name__ == "__main__":
     test()
