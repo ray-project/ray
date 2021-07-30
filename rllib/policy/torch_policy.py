@@ -130,11 +130,21 @@ class TorchPolicy(Policy):
         # TODO: (sven) implement data pre-loading and n loader buffers for
         #  torch.
 
+        # Get devices to build the graph on.
         worker_idx = self.config.get("worker_index", 0)
-        num_gpus = config["num_gpus"] if worker_idx == 0 \
-            else config["num_gpus_per_worker"]
+        if not config["_fake_gpus"] and \
+                ray.worker._mode() == ray.worker.LOCAL_MODE:
+            num_gpus = 0
+        elif worker_idx == 0:
+            num_gpus = config["num_gpus"]
+        else:
+            num_gpus = config["num_gpus_per_worker"]
         gpu_ids = list(range(torch.cuda.device_count()))
 
+        # Place on one or more CPU(s) when either:
+        # - Fake GPU mode.
+        # - num_gpus=0 (either set by user or we are in local_mode=True).
+        # - no GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
             logger.info("TorchPolicy (worker={}) running on {}.".format(
                 worker_idx
@@ -149,6 +159,11 @@ class TorchPolicy(Policy):
                 for i in range(int(math.ceil(num_gpus)) or 1)
             ]
             self.model = model
+        # Place on one or more actual GPU(s), when:
+        # - num_gpus > 0 (set by user) AND
+        # - local_mode=False AND
+        # - actual GPUs available AND
+        # - non-fake GPU mode.
         else:
             logger.info("TorchPolicy (worker={}) running on {} GPU(s).".format(
                 worker_idx if worker_idx > 0 else "local", num_gpus))

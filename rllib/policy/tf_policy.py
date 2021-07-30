@@ -149,11 +149,19 @@ class TFPolicy(Policy):
 
         # Get devices to build the graph on.
         worker_idx = self.config.get("worker_index", 0)
-        num_gpus = config["num_gpus"] if worker_idx == 0 \
-            else config["num_gpus_per_worker"]
+        if not config["_fake_gpus"] and \
+                ray.worker._mode() == ray.worker.LOCAL_MODE:
+            num_gpus = 0
+        elif worker_idx == 0:
+            num_gpus = config["num_gpus"]
+        else:
+            num_gpus = config["num_gpus_per_worker"]
         gpu_ids = get_gpu_devices()
 
-        # No GPU configured, fake GPUs, or none available.
+        # Place on one or more CPU(s) when either:
+        # - Fake GPU mode.
+        # - num_gpus=0 (either set by user or we are in local_mode=True).
+        # - no GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
             logger.info("TFPolicy (worker={}) running on {}.".format(
                 worker_idx
@@ -162,7 +170,11 @@ class TFPolicy(Policy):
             self.devices = [
                 "/cpu:0" for _ in range(int(math.ceil(num_gpus)) or 1)
             ]
-        # One or more actual GPUs (no fake GPUs).
+        # Place on one or more actual GPU(s), when:
+        # - num_gpus > 0 (set by user) AND
+        # - local_mode=False AND
+        # - actual GPUs available AND
+        # - non-fake GPU mode.
         else:
             logger.info("TFPolicy (worker={}) running on {} GPU(s).".format(
                 worker_idx if worker_idx > 0 else "local", num_gpus))
