@@ -22,7 +22,7 @@ class TestGPUs(unittest.TestCase):
 
         # Expect errors when we run a config w/ num_gpus>0 w/o a GPU
         # and _fake_gpus=False.
-        for num_gpus in [0, 0.1, 1, 4]:
+        for num_gpus in [0, 0.1, 1, actual_gpus_available + 4]:
             print(f"num_gpus={num_gpus}")
             for fake_gpus in [False, True]:
                 print(f"_fake_gpus={fake_gpus}")
@@ -65,12 +65,14 @@ class TestGPUs(unittest.TestCase):
         # Local mode.
         ray.init(local_mode=True)
 
+        actual_gpus_available = torch.cuda.device_count()
+
         config = DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
         config["env"] = "CartPole-v0"
 
         # Expect no errors in local mode.
-        for num_gpus in [0, 0.1, 1, 4]:
+        for num_gpus in [0, 0.1, 1, actual_gpus_available + 4]:
             print(f"num_gpus={num_gpus}")
             for fake_gpus in [False, True]:
                 print(f"_fake_gpus={fake_gpus}")
