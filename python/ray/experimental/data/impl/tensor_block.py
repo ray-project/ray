@@ -64,7 +64,9 @@ class TensorBlockAccessor(BlockAccessor):
         return pyarrow.Tensor.from_numpy(self._tensor)
 
     def schema(self) -> Dict:
-        return {"shape": self._tensor.shape, "dtype": self._tensor.dtype.name}
+        shape = self._tensor.shape
+        shape = (None,) + shape[1:]
+        return {"shape": shape, "dtype": self._tensor.dtype.name}
 
     def num_rows(self) -> int:
         return len(self._tensor)
