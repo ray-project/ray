@@ -163,7 +163,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 import pyarrow
                 schema = pyarrow.Table.from_pydict({"value": [0]}).schema
             elif block_format == "tensor":
-                schema = {"dtype": "int64", "shape": (None, ) + tensor_shape}
+                schema = {"dtype": "float64", "shape": (None, ) + tensor_shape}
             elif block_format == "list":
                 schema = int
             else:
