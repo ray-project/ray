@@ -280,8 +280,15 @@ class StandardAutoscaler:
         # Terminate nodes if there are too many
         num_extra_nodes_to_terminate = (
             len(nodes) - len(nodes_to_terminate) - self.config["max_workers"])
-        num_extra_nodes_to_terminate = min(num_extra_nodes_to_terminate,
-                                           len(nodes_we_could_terminate))
+
+        if num_extra_nodes_to_terminate > len(nodes_we_could_terminate):
+            logger.warning(
+                "StandardAutoscaler: trying to terminate "
+                f"{num_extra_nodes_to_terminate} nodes, while only "
+                f"{len(nodes_we_could_terminate)} are safe to terminate."
+                " Inconsistent config is likely.")
+            num_extra_nodes_to_terminate = len(nodes_we_could_terminate)
+
         # If num_extra_nodes_to_terminate is negative or zero,
         # we would have less than max_workers nodes after terminating
         # nodes_to_terminate and we do not need to terminate anything else.
