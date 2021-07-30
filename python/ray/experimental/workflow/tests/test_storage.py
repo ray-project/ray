@@ -28,6 +28,7 @@ async def test_raw_storage(workflow_start_regular):
     output = ["the_answer"]
     object_resolved = 42
     obj_ref = ray.put(object_resolved)
+    progress_metadata = {"step_id": "the_current_progress"}
     # test creating normal objects
     await asyncio.gather(
         raw_storage.save_step_input_metadata(workflow_id, step_id,
@@ -37,7 +38,8 @@ async def test_raw_storage(workflow_start_regular):
         raw_storage.save_object_ref(workflow_id, obj_ref),
         raw_storage.save_step_output_metadata(workflow_id, step_id,
                                               output_metadata),
-        raw_storage.save_step_output(workflow_id, step_id, output))
+        raw_storage.save_step_output(workflow_id, step_id, output),
+        raw_storage.save_workflow_progress(workflow_id, progress_metadata))
 
     step_status = await raw_storage.get_step_status(workflow_id, step_id)
     assert step_status.args_exists
@@ -47,23 +49,27 @@ async def test_raw_storage(workflow_start_regular):
     assert step_status.func_body_exists
 
     (load_input_metadata, load_step_func_body, load_step_args, load_object_ref,
-     load_step_output_meta, load_step_output) = await asyncio.gather(
+     load_step_output_meta, load_step_output,
+     load_workflow_progress) = await asyncio.gather(
          raw_storage.load_step_input_metadata(workflow_id, step_id),
          raw_storage.load_step_func_body(workflow_id, step_id),
          raw_storage.load_step_args(workflow_id, step_id),
          raw_storage.load_object_ref(workflow_id, obj_ref.hex()),
          raw_storage.load_step_output_metadata(workflow_id, step_id),
-         raw_storage.load_step_output(workflow_id, step_id))
+         raw_storage.load_step_output(workflow_id, step_id),
+         raw_storage.load_workflow_progress(workflow_id))
     assert load_input_metadata == input_metadata
     assert load_step_func_body(33) == 34
     assert load_step_args == args
     assert ray.get(load_object_ref) == object_resolved
     assert load_step_output_meta == output_metadata
     assert load_step_output == output
+    assert load_workflow_progress == progress_metadata
 
     # test overwrite
     input_metadata = [input_metadata, "overwrite"]
     output_metadata = [output_metadata, "overwrite"]
+    progress_metadata = {"step_id": "overwrite"}
     args = (args, "overwrite")
     output = (output, "overwrite")
     object_resolved = (object_resolved, "overwrite")
@@ -77,7 +83,8 @@ async def test_raw_storage(workflow_start_regular):
         raw_storage.save_object_ref(workflow_id, obj_ref),
         raw_storage.save_step_output_metadata(workflow_id, step_id,
                                               output_metadata),
-        raw_storage.save_step_output(workflow_id, step_id, output))
+        raw_storage.save_step_output(workflow_id, step_id, output),
+        raw_storage.save_workflow_progress(workflow_id, progress_metadata))
     (load_input_metadata, load_step_func_body, load_step_args, load_object_ref,
      load_step_output_meta, load_step_output) = await asyncio.gather(
          raw_storage.load_step_input_metadata(workflow_id, step_id),
@@ -85,13 +92,15 @@ async def test_raw_storage(workflow_start_regular):
          raw_storage.load_step_args(workflow_id, step_id),
          raw_storage.load_object_ref(workflow_id, obj_ref.hex()),
          raw_storage.load_step_output_metadata(workflow_id, step_id),
-         raw_storage.load_step_output(workflow_id, step_id))
+         raw_storage.load_step_output(workflow_id, step_id),
+         raw_storage.load_workflow_progress(workflow_id))
     assert load_input_metadata == input_metadata
     assert load_step_func_body(33) == 32
     assert load_step_args == args
     assert ray.get(load_object_ref) == object_resolved
     assert load_step_output_meta == output_metadata
     assert load_step_output == output
+    assert load_workflow_progress == progress_metadata
 
 
 def test_workflow_storage(workflow_start_regular):

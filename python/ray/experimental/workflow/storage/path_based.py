@@ -151,11 +151,11 @@ class PathBasedStorage(Storage):
 
     @data_load_error
     async def load_workflow_progress(self, workflow_id: str) -> Dict[str, Any]:
-        path = self._get_path(workflow_id, STEPS_DIR, STEP_OUTPUTS_METADATA)
+        path = self._get_path(workflow_id, STEPS_DIR, WORKFLOW_PROGRESS)
         return await self._get_object(path, True)
 
     @data_save_error
     async def save_workflow_progress(self, workflow_id: str,
                                      metadata: Dict[str, Any]) -> None:
-        path = self._get_path(workflow_id, STEPS_DIR, STEP_OUTPUTS_METADATA)
+        path = self._get_path(workflow_id, STEPS_DIR, WORKFLOW_PROGRESS)
         await self._put_object(path, metadata, True)
