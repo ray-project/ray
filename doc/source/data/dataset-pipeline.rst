@@ -1,7 +1,7 @@
 Dataset Pipelines
 =================
 
-Concepts
+Overview
 --------
 
 Datasets execute their transformations synchronously in blocking calls. However, it can be useful to overlap dataset computations with output. This can be done with a `DatasetPipeline <package-ref.html#datasetpipeline-api>`__.
