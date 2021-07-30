@@ -11,7 +11,8 @@ import ray
 from ray._private import signature
 from ray.experimental.workflow import storage
 from ray.experimental.workflow.common import (Workflow, WorkflowData, StepID,
-                                              WorkflowMetaData, WorkflowStatus)
+                                              WorkflowMetaData, WorkflowStatus,
+                                              WorkflowRef, StepType)
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
 
@@ -38,12 +39,16 @@ class StepInspectResult:
     object_refs: Optional[List[str]] = None
     # The workflows in the inputs of the workflow.
     workflows: Optional[List[str]] = None
+    # The dynamically referenced workflows in the input of the workflow.
+    workflow_refs: Optional[List[str]] = None
     # The num of retry for application exception
     max_retries: int = 1
     # Whether the user want to handle the exception mannually
     catch_exceptions: bool = False
     # ray_remote options
     ray_options: Optional[Dict[str, Any]] = None
+    # type of workflow step
+    step_type: Optional[StepType] = None
 
     def is_recoverable(self) -> bool:
         return (self.output_object_valid or self.output_step_id
@@ -123,7 +128,8 @@ class WorkflowStorage:
 
     def load_step_args(
             self, step_id: StepID, workflows: List[Any],
-            object_refs: List[ray.ObjectRef]) -> Tuple[List, Dict[str, Any]]:
+            object_refs: List[ray.ObjectRef],
+            workflow_refs: List[WorkflowRef]) -> Tuple[List, Dict[str, Any]]:
         """Load the input arguments of the workflow step. This must be
         done under a serialization context, otherwise the arguments would
         not be reconstructed successfully.
@@ -138,7 +144,7 @@ class WorkflowStorage:
             Args and kwargs.
         """
         with serialization_context.workflow_args_resolving_context(
-                workflows, object_refs):
+                workflows, object_refs, workflow_refs):
             flattened_args = asyncio_run(
                 self._storage.load_step_args(self._workflow_id, step_id))
             return signature.recover_args(flattened_args)
@@ -234,24 +240,21 @@ class WorkflowStorage:
         try:
             metadata = await self._storage.load_step_input_metadata(
                 self._workflow_id, step_id)
-            input_object_refs = metadata["object_refs"]
-            input_workflows = metadata["workflows"]
-            max_retries = metadata.get("max_retries")
-            catch_exceptions = metadata.get("catch_exceptions")
-            ray_options = metadata.get("ray_options", {})
+            return StepInspectResult(
+                args_valid=field_list.args_exists,
+                func_body_valid=field_list.func_body_exists,
+                object_refs=metadata["object_refs"],
+                workflows=metadata["workflows"],
+                workflow_refs=metadata["workflow_refs"],
+                max_retries=metadata.get("max_retries"),
+                catch_exceptions=metadata.get("catch_exceptions"),
+                ray_options=metadata.get("ray_options", {}),
+                step_type=StepType[metadata.get("step_type")],
+            )
         except storage.DataLoadError:
             return StepInspectResult(
                 args_valid=field_list.args_exists,
                 func_body_valid=field_list.func_body_exists)
-        return StepInspectResult(
-            args_valid=field_list.args_exists,
-            func_body_valid=field_list.func_body_exists,
-            object_refs=input_object_refs,
-            workflows=input_workflows,
-            max_retries=max_retries,
-            catch_exceptions=catch_exceptions,
-            ray_options=ray_options,
-        )
 
     async def _write_step_inputs(self, step_id: StepID,
                                  inputs: WorkflowData) -> None:
