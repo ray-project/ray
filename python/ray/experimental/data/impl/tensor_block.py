@@ -65,7 +65,7 @@ class TensorBlockAccessor(BlockAccessor):
 
     def schema(self) -> Dict:
         shape = self._tensor.shape
-        shape = (None,) + shape[1:]
+        shape = (None, ) + shape[1:]
         return {"shape": shape, "dtype": self._tensor.dtype.name}
 
     def num_rows(self) -> int:
