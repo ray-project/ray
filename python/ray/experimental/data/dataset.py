@@ -827,6 +827,38 @@ class Dataset(Generic[T]):
         # Block until writing is done.
         ray.get(refs)
 
+    def write_numpy(self, path: str) -> None:
+        """Write the dataset to npy files.
+
+        This is only supported for datasets of Tensor records.
+        To control the number of files, use ``.repartition()``.
+
+        The format of the output files will be {self._uuid}_{block_idx}.npy,
+        where ``uuid`` is an unique id for the dataset.
+
+        Examples:
+            >>> ds.write_numpy("s3://bucket/path")
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            path: The path to the destination root directory, where npy
+                files will be written to.
+        """
+
+        @ray.remote
+        def numpy_write(write_path: str, block: Block):
+            np.save(open(write_path, "wb"), block)
+
+        refs = [
+            numpy_write.remote(
+                os.path.join(path, f"{self._uuid}_{block_idx:06}.npy"), block)
+            for block_idx, block in enumerate(self._blocks)
+        ]
+
+        # Block until writing is done.
+        ray.get(refs)
+
     def write_datasource(self, datasource: Datasource[T],
                          **write_args) -> None:
         """Write the dataset to a custom datasource.

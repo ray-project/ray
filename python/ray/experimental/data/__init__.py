@@ -1,7 +1,7 @@
 from ray.experimental.data.read_api import from_items, range, range_arrow, \
     range_tensor, read_parquet, read_json, read_csv, read_binary_files, \
     from_dask, from_modin, from_mars, from_pandas, from_arrow, from_spark, \
-    read_datasource
+    read_datasource, read_numpy
 from ray.experimental.data.datasource import Datasource, ReadTask, WriteTask
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.impl.progress_bar import set_progress_bars
@@ -30,6 +30,7 @@ __all__ = [
     "read_csv",
     "read_datasource",
     "read_json",
+    "read_numpy",
     "read_parquet",
     "set_progress_bars",
 ]

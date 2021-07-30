@@ -19,7 +19,7 @@ class ParquetDatasource(Datasource[ArrowRow]):
     Examples:
         >>> source = ParquetDatasource()
         >>> ray.data.read_datasource(source, paths="/path/to/dir").take()
-        ... {"a": 1, "b": "foo"}
+        ... [ArrowRow({"a": 1, "b": "foo"}), ...]
     """
 
     def prepare_read(

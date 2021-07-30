@@ -18,7 +18,7 @@ from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
 from ray.experimental.data.dataset import Dataset
 from ray.experimental.data.datasource import Datasource, RangeDatasource, \
     JSONDatasource, CSVDatasource, ParquetDatasource, BinaryDatasource, \
-    ReadTask
+    NumpyDatasource, ReadTask
 from ray.experimental.data.impl.arrow_block import ArrowRow, \
     DelegatingArrowBlockBuilder
 from ray.experimental.data.impl.block_list import BlockList
@@ -279,6 +279,44 @@ def read_csv(paths: Union[str, List[str]],
         paths=paths,
         filesystem=filesystem,
         **arrow_csv_args)
+
+
+@PublicAPI(stability="beta")
+def read_numpy(paths: Union[str, List[str]],
+               *,
+               filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+               parallelism: int = 200,
+               **numpy_load_args) -> Dataset[np.ndarray]:
+    """Create an Arrow dataset from csv files.
+
+    Examples:
+        >>> # Read a directory of files in remote storage.
+        >>> ray.data.read_numpy("s3://bucket/path")
+
+        >>> # Read multiple local files.
+        >>> ray.data.read_numpy(["/path/to/file1", "/path/to/file2"])
+
+        >>> # Read multiple directories.
+        >>> ray.data.read_numpy(["s3://bucket/path1", "s3://bucket/path2"])
+
+    Args:
+        paths: A single file/directory path or a list of file/directory paths.
+            A list of paths can contain both files and directories.
+        filesystem: The filesystem implementation to read from.
+        parallelism: The amount of parallelism to use for the dataset.
+        numpy_load_args: Other options to pass to np.load.
+
+    Returns:
+        Dataset holding Tensor records read from the specified paths.
+    """
+    return read_datasource(
+        NumpyDatasource(),
+        parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
+        **numpy_load_args)
+
+
 
 
 @PublicAPI(stability="beta")
