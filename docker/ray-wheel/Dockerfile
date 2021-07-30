@@ -2,6 +2,10 @@ ARG GPU
 ARG DOCKER_PREFIX
 
 FROM "$DOCKER_PREFIX"ray-deps:nightly"$GPU"
+# For Click
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+
 #tag::bzl[]
 # Specify bazel (see https://github.com/bazelbuild/bazel/issues/12887)
 ENV USE_BAZEL_VERSION=3.7.2
