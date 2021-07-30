@@ -208,12 +208,14 @@ class Dataset(Generic[T]):
                     applied = applied
                 elif isinstance(applied, pd.core.frame.DataFrame):
                     applied = pa.Table.from_pandas(applied)
+                elif isinstance(applied, pa.Tensor):
+                    applied = applied.to_numpy()
                 else:
-                    raise ValueError("The map batch UDF returns a type "
+                    raise ValueError("The map batches UDF returned a type "
                                      f"{type(applied)}, which is not allowed. "
                                      "The return type must be either list, "
-                                     "pandas.DataFrame, np.ndarray, or "
-                                     "pyarrow.Table")
+                                     "pandas.DataFrame, np.ndarray, "
+                                     "pyarrow.Tensor, or pyarrow.Table")
                 builder.add_block(applied)
 
             return builder.build()

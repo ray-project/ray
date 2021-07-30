@@ -601,7 +601,8 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     table = pa.Table.from_pandas(df)
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
     ds = ray.experimental.data.read_parquet(str(tmp_path))
-    ds_list = ds.map_batches(lambda df: df + 1, batch_size=1).take()
+    ds_list = ds.map_batches(
+        lambda df: df + 1, batch_size=1, batch_format="pandas").take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 3, 4]
     values = [s["two"] for s in ds_list]
@@ -619,7 +620,9 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     # Test batch
     size = 300
     ds = ray.experimental.data.range(size)
-    ds_list = ds.map_batches(lambda df: df + 1, batch_size=17).take(limit=size)
+    ds_list = ds.map_batches(
+        lambda df: df + 1, batch_size=17,
+        batch_format="pandas").take(limit=size)
     for i in range(size):
         # The pandas column is "0", and it originally has rows from 0~299.
         # After the map batch, it should have 1~300.
