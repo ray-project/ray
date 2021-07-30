@@ -9,42 +9,50 @@ class TestGPUs(unittest.TestCase):
     def test_non_existing_gpus_in_non_local_mode(self):
         # Non-local mode.
         ray.init()
-        conf = DEFAULT_CONFIG.copy()
-        conf["num_workers"] = 2
+        config = DEFAULT_CONFIG.copy()
+        config["num_workers"] = 2
 
-        # Expect errors when we run this config (num_gpus>0) w/o a GPU.
-        conf["num_gpus"] = 1
-        for _ in framework_iterator(conf):
-            # Expect that trainer creation causes a num_gpu error.
-            self.assertRaisesRegexp(
-                RuntimeError,
-                "Not enough GPUs found.+for num_gpus=1",
-                lambda: PGTrainer(conf, env="CartPole-v0"),
-            )
-
-        # Same for 2 GPUs.
-        conf["num_gpus"] = 2
-        for _ in framework_iterator(conf, frameworks=("tf", "torch")):
-            # Expect that trainer creation causes a num_gpu error.
-            self.assertRaisesRegexp(
-                RuntimeError,
-                "Not enough GPUs found.+for num_gpus=2",
-                lambda: PGTrainer(conf, env="Pendulum-v0"),
-            )
+        # Expect errors when we run a config w/ num_gpus>0 w/o a GPU
+        # and _fake_gpus=False.
+        for num_gpus in [0, 0.1, 1, 4]:
+            print(f"num_gpus={num_gpus}")
+            for fake_gpus in [False, True]:
+                print(f"_fake_gpus={fake_gpus}")
+                config["num_gpus"] = num_gpus
+                config["_fake_gpus"] = fake_gpus
+                frameworks = ("tf", "torch") if num_gpus > 1 else \
+                    ("tf2", "tf", "torch")
+                for _ in framework_iterator(config, frameworks=frameworks):
+                    # Expect that trainer creation causes a num_gpu error.
+                    if num_gpus != 0 and not fake_gpus:
+                        self.assertRaisesRegexp(
+                            RuntimeError,
+                            f"Not enough GPUs found.+for num_gpus={num_gpus}",
+                            lambda: PGTrainer(config, env="CartPole-v0"),
+                        )
+                    else:
+                        trainer = PGTrainer(config, env="CartPole-v0")
+                        trainer.stop()
         ray.shutdown()
 
     def test_non_existing_gpus_in_local_mode(self):
         # Local mode.
         ray.init(local_mode=True)
-        conf = DEFAULT_CONFIG.copy()
-        conf["num_workers"] = 2
+        config = DEFAULT_CONFIG.copy()
+        config["num_workers"] = 2
 
-        # Expect no errors when we run this config (num_gpus>0) w/o a GPU.
-        conf["num_gpus"] = 1
-        for _ in framework_iterator(conf):
-            # Expect that trainer creation causes a num_gpu error.
-            trainer = PGTrainer(conf, env="CartPole-v0")
-            trainer.stop()
+        # Expect no errors in local mode.
+        for num_gpus in [0, 0.1, 1, 4]:
+            print(f"num_gpus={num_gpus}")
+            for fake_gpus in [False, True]:
+                print(f"_fake_gpus={fake_gpus}")
+                config["num_gpus"] = num_gpus
+                config["_fake_gpus"] = fake_gpus
+                frameworks = ("tf", "torch") if num_gpus > 1 else \
+                    ("tf2", "tf", "torch")
+                for _ in framework_iterator(config, frameworks=frameworks):
+                    trainer = PGTrainer(config, env="CartPole-v0")
+                    trainer.stop()
         ray.shutdown()
 
 

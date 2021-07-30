@@ -1,6 +1,7 @@
 import errno
 import gym
 import logging
+import math
 import numpy as np
 import os
 from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
@@ -158,7 +159,9 @@ class TFPolicy(Policy):
                 worker_idx
                 if worker_idx > 0 else "local", f"{num_gpus} fake-GPUs"
                 if config["_fake_gpus"] else "CPU"))
-            self.devices = ["/cpu:0" for _ in range(num_gpus or 1)]
+            self.devices = [
+                "/cpu:0" for _ in range(int(math.ceil(num_gpus)) or 1)
+            ]
         # One or more actual GPUs (no fake GPUs).
         else:
             logger.info("TFPolicy (worker={}) running on {} GPU(s).".format(

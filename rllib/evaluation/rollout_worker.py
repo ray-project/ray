@@ -547,6 +547,36 @@ class RolloutWorker(ParallelIteratorWorker):
             elif tf1 and policy_config.get("framework") == "tfe":
                 tf1.set_random_seed(seed)
 
+        # Check available number of GPUs.
+        num_gpus = policy_config.get("num_gpus", 0) if \
+            self.worker_index == 0 else \
+            policy_config.get("num_gpus_per_worker", 0)
+        # Error if we don't find enough GPUs.
+        if ray.is_initialized() and \
+                ray.worker._mode() != ray.worker.LOCAL_MODE and \
+                not policy_config.get("_fake_gpus"):
+
+            if policy_config.get("framework") in ["tf2", "tf", "tfe"]:
+                if len(get_tf_gpu_devices()) < num_gpus:
+                    raise RuntimeError(
+                        f"Not enough GPUs found for num_gpus={num_gpus}! "
+                        f"Found only these IDs: {get_tf_gpu_devices()}.")
+            elif policy_config["framework"] == "torch":
+                if torch.cuda.device_count() < num_gpus:
+                    raise RuntimeError(
+                        f"Not enough GPUs found ({torch.cuda.device_count()}) "
+                        f"for num_gpus={num_gpus}!")
+        # Warn, if running in local-mode and actual GPUs (not faked) are
+        # requested.
+        elif ray.is_initialized() and \
+                ray.worker._mode() == ray.worker.LOCAL_MODE and \
+                num_gpus > 0 and not policy_config.get("_fake_gpus"):
+            logger.warning(
+                "You are running ray with `local_mode=True`, but have "
+                f"configured {num_gpus} GPUs to be used! In local mode, "
+                f"Policies are placed on the CPU and the `num_gpus` setting "
+                f"is ignored.")
+
         self._build_policy_map(
             policy_dict,
             policy_config,
@@ -560,25 +590,6 @@ class RolloutWorker(ParallelIteratorWorker):
         for pol in self.policy_map.values():
             if not pol._model_init_state_automatically_added:
                 pol._update_model_view_requirements_from_init_state()
-
-        if (ray.is_initialized()
-                and ray.worker._mode() != ray.worker.LOCAL_MODE):
-
-            num_gpus = policy_config.get("num_gpus", 0) if \
-                self.worker_index == 0 else \
-                policy_config.get("num_gpus_per_worker", 0)
-
-            # Check available number of GPUs and error if we don't find enough.
-            if policy_config.get("framework") in ["tf2", "tf", "tfe"]:
-                if len(get_tf_gpu_devices()) < num_gpus:
-                    raise RuntimeError(
-                        f"Not enough GPUs found for num_gpus={num_gpus}! "
-                        f"Found only these IDs: {get_tf_gpu_devices()}.")
-            elif policy_config["framework"] == "torch":
-                if torch.cuda.device_count() < num_gpus:
-                    raise RuntimeError(
-                        f"Not enough GPUs found ({torch.cuda.device_count()}) "
-                        f"for num_gpus={num_gpus}!")
 
         self.multiagent: bool = set(
             self.policy_map.keys()) != {DEFAULT_POLICY_ID}

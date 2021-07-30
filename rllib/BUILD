@@ -1557,7 +1557,7 @@ py_test(
 py_test(
     name = "tests/test_gpus",
     tags = ["tests_dir", "tests_dir_G"],
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_gpus.py"]
 )
 

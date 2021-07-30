@@ -2,6 +2,7 @@ import copy
 import functools
 import gym
 import logging
+import math
 import numpy as np
 import os
 import time
@@ -141,10 +142,12 @@ class TorchPolicy(Policy):
                 if worker_idx > 0 else "local", "{} fake-GPUs".format(num_gpus)
                 if config["_fake_gpus"] else "CPU"))
             self.device = torch.device("cpu")
-            self.devices = [self.device for _ in range(num_gpus or 1)]
+            self.devices = [
+                self.device for _ in range(int(math.ceil(num_gpus)) or 1)
+            ]
             self.model_gpu_towers = [
                 model if i == 0 else copy.deepcopy(model)
-                for i in range(num_gpus or 1)
+                for i in range(int(math.ceil(num_gpus)) or 1)
             ]
             self.model = model
         else:
