@@ -1,6 +1,9 @@
+import time
 import logging
 import pickle
-from typing import Any, Dict, List, Optional, Tuple, Union
+import functools
+import warnings
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
@@ -35,6 +38,36 @@ class _Param:
 
 
 param = _Param()
+
+
+class _OptunaTrialSuggestCaptor:
+    """Utility to capture returned values from Optuna's suggest_ methods.
+
+    This will wrap around the ``optuna.Trial` object and decorate all
+    `suggest_` callables with a function capturing the returned value,
+    which will be saved in the ``captured_values`` dict.
+    """
+
+    def __init__(self, ot_trial: ot.Trial) -> None:
+        self.ot_trial = ot_trial
+        self.captured_values: Dict[str, Any] = {}
+
+    def _get_wrapper(self, func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            # name is always the first arg for suggest_ methods
+            name = kwargs.get("name", args[0])
+            ret = func(*args, **kwargs)
+            self.captured_values[name] = ret
+            return ret
+
+        return wrapper
+
+    def __getattr__(self, item_name: str) -> Any:
+        item = getattr(self.ot_trial, item_name)
+        if item_name.startswith("suggest_") and callable(item):
+            return self._get_wrapper(item)
+        return item
 
 
 class OptunaSearch(Searcher):
@@ -124,7 +157,7 @@ class OptunaSearch(Searcher):
     """
 
     def __init__(self,
-                 space: Optional[Union[Dict, List[Tuple]]] = None,
+                 space: Optional[Union[Dict, List[Tuple], Callable]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
@@ -199,8 +232,11 @@ class OptunaSearch(Searcher):
             load_if_exists=True)
 
         if self._points_to_evaluate:
-            validate_warmstart(self._space, self._points_to_evaluate,
-                               self._evaluated_rewards)
+            validate_warmstart(
+                self._space,
+                self._points_to_evaluate,
+                self._evaluated_rewards,
+                check_point_name_lengths=not callable(self._space))
             if self._evaluated_rewards:
                 for point, reward in zip(self._points_to_evaluate,
                                          self._evaluated_rewards):
@@ -222,6 +258,36 @@ class OptunaSearch(Searcher):
 
         self._setup_study(mode)
         return True
+
+    def _suggest_from_define_by_run_func(self, func: Callable,
+                                         ot_trial: ot.Trial) -> Dict:
+        captor = _OptunaTrialSuggestCaptor(ot_trial)
+        time_start = time.time()
+        ret = func(captor)
+        time_taken = time.time() - time_start
+        if time_taken > 1:  # arbitrary
+            warnings.warn(
+                "Define-by-run function passed in the `space` argument "
+                f"took {time_taken} seconds to "
+                "run. Ensure that actual computation, training takes "
+                "place inside Tune's train functions or Trainables "
+                "passed to `tune.run`.")
+        if ret is not None:
+            if not isinstance(ret, dict):
+                raise TypeError(
+                    "The return value of the define-by-run function "
+                    "passed in the `space` argument should be "
+                    "either None or a `dict` with `str` keys. "
+                    f"Got {type(ret)}.")
+            if not all(isinstance(k, str) for k in ret.keys()):
+                raise TypeError(
+                    "At least one of the keys in the dict returned by the "
+                    "define-by-run function passed in the `space` argument "
+                    "was not a `str`.")
+        return {
+            **captor.captured_values,
+            **ret
+        } if ret else captor.captured_values
 
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._space:
@@ -249,6 +315,14 @@ class OptunaSearch(Searcher):
                     ot_trial, fn)(*args, **kwargs)
                 for (fn, args, kwargs) in self._space
             }
+        elif callable(self._space):
+            if trial_id not in self._ot_trials:
+                self._ot_trials[trial_id] = self._ot_study.ask()
+
+            ot_trial = self._ot_trials[trial_id]
+
+            params = self._suggest_from_define_by_run_func(
+                self._space, ot_trial)
         else:
             # Use Optuna ask interface (since version 2.6.0)
             if trial_id not in self._ot_trials:
