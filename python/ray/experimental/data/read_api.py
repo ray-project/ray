@@ -103,9 +103,7 @@ def range_arrow(n: int, parallelism: int = 200) -> Dataset[ArrowRow]:
 @PublicAPI(stability="beta")
 def read_datasource(datasource: Datasource[T],
                     parallelism: int = 200,
-                    num_cpus: float = None,
-                    num_gpus: float = None,
-                    resources: Dict[str, float] = None,
+                    remote_args: Dict[str, Any] = None,
                     **read_args) -> Dataset[T]:
     """Read a dataset from a custom data source.
 
@@ -113,10 +111,7 @@ def read_datasource(datasource: Datasource[T],
         datasource: The datasource to read data from.
         parallelism: The requested parallelism of the read.
         read_args: Additional kwargs to pass to the datasource impl.
-        num_cpus: CPU usage of each read task.
-        num_cpus: GPU usage of each read task.
-        resources: Resource usage of each read task.
-
+        remote_args: kwargs passed to @ray.remote in the read tasks.
 
     Returns:
         Dataset holding the data read from the datasource.
@@ -124,9 +119,13 @@ def read_datasource(datasource: Datasource[T],
 
     read_tasks = datasource.prepare_read(parallelism, **read_args)
 
-    @ray.remote(num_cpus=num_cpus, num_gpus=num_gpus, resources=resources)
     def remote_read(task: ReadTask) -> Block:
         return task()
+
+    if remote_args:
+        remote_read = ray.remote(**remote_args)(remote_read)
+    else:
+        remote_read = ray.remote(remote_read)
 
     calls: List[Callable[[], ObjectRef[Block]]] = []
     metadata: List[BlockMetadata] = []
@@ -143,9 +142,7 @@ def read_parquet(paths: Union[str, List[str]],
                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
                  columns: Optional[List[str]] = None,
                  parallelism: int = 200,
-                 num_cpus: float = None,
-                 num_gpus: float = None,
-                 resources: Dict[str, float] = None,
+                 remote_args: Dict[str, Any] = None,
                  **arrow_parquet_args) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from parquet files.
 
@@ -161,9 +158,7 @@ def read_parquet(paths: Union[str, List[str]],
         filesystem: The filesystem implementation to read from.
         columns: A list of column names to read.
         parallelism: The amount of parallelism to use for the dataset.
-        num_cpus: CPU usage of each read task.
-        num_cpus: GPU usage of each read task.
-        resources: Resource usage of each read task.
+        remote_args: kwargs passed to @ray.remote in the read tasks.
         arrow_parquet_args: Other parquet read options to pass to pyarrow.
 
     Returns:
@@ -175,19 +170,14 @@ def read_parquet(paths: Union[str, List[str]],
         paths=paths,
         filesystem=filesystem,
         columns=columns,
-        num_cpus=num_cpus,
-        num_gpus=num_gpus,
-        resources=resources,
-        **arrow_parquet_args)
+        remote_args=remote_args**arrow_parquet_args)
 
 
 @PublicAPI(stability="beta")
 def read_json(paths: Union[str, List[str]],
               filesystem: Optional["pyarrow.fs.FileSystem"] = None,
               parallelism: int = 200,
-              num_cpus: float = None,
-              num_gpus: float = None,
-              resources: Dict[str, float] = None,
+              remote_args: Dict[str, Any] = None,
               **arrow_json_args) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from json files.
 
@@ -206,9 +196,7 @@ def read_json(paths: Union[str, List[str]],
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The amount of parallelism to use for the dataset.
-        num_cpus: CPU usage of each read task.
-        num_cpus: GPU usage of each read task.
-        resources: Resource usage of each read task.
+        remote_args: kwargs passed to @ray.remote in the read tasks.
         arrow_json_args: Other json read options to pass to pyarrow.
 
     Returns:
@@ -219,19 +207,14 @@ def read_json(paths: Union[str, List[str]],
         parallelism=parallelism,
         paths=paths,
         filesystem=filesystem,
-        num_cpus=num_cpus,
-        num_gpus=num_gpus,
-        resources=resources,
-        **arrow_json_args)
+        remote_args=remote_args**arrow_json_args)
 
 
 @PublicAPI(stability="beta")
 def read_csv(paths: Union[str, List[str]],
              filesystem: Optional["pyarrow.fs.FileSystem"] = None,
              parallelism: int = 200,
-             num_cpus: float = None,
-             num_gpus: float = None,
-             resources: Dict[str, float] = None,
+             remote_args: Dict[str, Any] = None,
              **arrow_csv_args) -> Dataset[ArrowRow]:
     """Create an Arrow dataset from csv files.
 
@@ -250,9 +233,7 @@ def read_csv(paths: Union[str, List[str]],
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The amount of parallelism to use for the dataset.
-        num_cpus: CPU usage of each read task.
-        num_cpus: GPU usage of each read task.
-        resources: Resource usage of each read task.
+        remote_args: kwargs passed to @ray.remote in the read tasks.
         arrow_csv_args: Other csv read options to pass to pyarrow.
 
     Returns:
@@ -263,9 +244,7 @@ def read_csv(paths: Union[str, List[str]],
         parallelism=parallelism,
         paths=paths,
         filesystem=filesystem,
-        num_cpus=num_cpus,
-        num_gpus=num_gpus,
-        resources=resources,
+        remote_args=remote_args,
         **arrow_csv_args)
 
 
@@ -275,9 +254,7 @@ def read_binary_files(
         include_paths: bool = False,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         parallelism: int = 200,
-        num_cpus: float = None,
-        num_gpus: float = None,
-        resources: Dict[str, float] = None,
+        remote_args: Dict[str, Any] = None,
 ) -> Dataset[Union[Tuple[str, bytes], bytes]]:
     """Create a dataset from binary files of arbitrary contents.
 
@@ -294,10 +271,8 @@ def read_binary_files(
             dataset records. When specified, the dataset records will be a
             tuple of the file path and the file contents.
         filesystem: The filesystem implementation to read from.
+        remote_args: kwargs passed to @ray.remote in the read tasks.
         parallelism: The amount of parallelism to use for the dataset.
-        num_cpus: CPU usage of each read task.
-        num_cpus: GPU usage of each read task.
-        resources: Resource usage of each read task.
 
     Returns:
         Dataset holding Arrow records read from the specified paths.
@@ -308,9 +283,7 @@ def read_binary_files(
         paths=paths,
         include_paths=include_paths,
         filesystem=filesystem,
-        num_cpus=num_cpus,
-        num_gpus=num_gpus,
-        resources=resources,
+        remote_args=remote_args,
         schema=bytes)
 
 
