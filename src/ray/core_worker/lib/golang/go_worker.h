@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 
-int have_fun();
+void Initialize();
 #ifdef __cplusplus
 }
 #endif
