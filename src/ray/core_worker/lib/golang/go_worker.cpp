@@ -12,7 +12,8 @@ using namespace std;
 __attribute__((visibility("default"))) void go_worker_Initialize(
     int workerMode, char *store_socket, char *raylet_socket, char *log_dir,
     char *node_ip_address, int node_manager_port, char *raylet_ip_address,
-    char *driver_name, int jobId) {
+    char *driver_name, int jobId, char *redis_address, int redis_port,
+    char *redis_password) {
   SayHello((char *)"have_fun friends!");
   std::string serialized_job_config = "";
   ray::CoreWorkerOptions options;
@@ -21,7 +22,8 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
   options.store_socket = store_socket;
   options.raylet_socket = raylet_socket;
   options.job_id = ray::JobID::FromInt(jobId);
-  //  options.gcs_options = ToGcsClientOptions(env, gcsClientOptions);
+  options.gcs_options =
+      ray::gcs::GcsClientOptions(redis_address, redis_port, redis_password);
   options.enable_logging = true;
   options.log_dir = log_dir;
   // TODO (kfstorm): JVM would crash if install_failure_signal_handler was set to true
