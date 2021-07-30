@@ -4,9 +4,25 @@
 # --------------------------------------------------------------------
 
 py_test(
+    name = "test_backend",
+    size = "medium",
+    srcs = ["tests/test_backend.py"],
+    tags = ["exclusive"],
+    deps = [":sgd_v2_lib"]
+)
+
+py_test(
     name = "test_trainer",
     size = "small",
     srcs = ["tests/test_trainer.py"],
+    tags = ["exclusive"],
+    deps = [":sgd_v2_lib"]
+)
+
+py_test(
+    name = "test_worker_group",
+    size = "small",
+    srcs = ["tests/test_worker_group.py"],
     tags = ["exclusive"],
     deps = [":sgd_v2_lib"]
 )

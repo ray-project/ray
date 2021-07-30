@@ -1,21 +1,26 @@
 import ray
 import time
 
-ray.init()
+ray.init(num_gpus=2)
 
-ds = ray.experimental.data.from_items(range(10000))
-
-setup = False
+ds = ray.experimental.data.range(100)
 
 
-def infer(x):
-    global setup
-    if not setup:
-        setup = True
-    time.sleep(.01)
+def preprocess(x):
+    import time
+    time.sleep(.1)
     return x
 
 
-print(ds.count())
-ds = ds.map(infer, compute="actors", num_cpus=0.5)
-ds.show()
+class Model:
+    def __call__(self, x):
+        time.sleep(.1)
+        return x
+
+
+ds = ds.pipeline(parallelism=10) \
+    .map(preprocess) \
+    .map(Model, compute="actors", num_gpus=1)
+
+for x in ds.iter_rows():
+    pass
