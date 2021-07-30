@@ -22,9 +22,9 @@ class TestGPUs(unittest.TestCase):
 
         # Expect errors when we run a config w/ num_gpus>0 w/o a GPU
         # and _fake_gpus=False.
-        for num_gpus in [0, 0.1, 1, actual_gpus_available + 4]:
+        for num_gpus in [0.1, 0, 1, actual_gpus_available + 4]:
             print(f"num_gpus={num_gpus}")
-            #config["num_gpus"] = num_gpus
+            config["num_gpus"] = num_gpus
             #for num_gpus_per_worker in [0, 0.5, 1]:
             #    config["num_gpus_per_worker"] = num_gpus_per_worker
             for fake_gpus in [False, True]:
