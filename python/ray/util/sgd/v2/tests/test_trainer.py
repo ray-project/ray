@@ -27,14 +27,6 @@ def test_start_shutdown(ray_start_2_cpus):
     time.sleep(1)
     assert ray.available_resources()["CPU"] == 2
 
-    trainer = Trainer("torch", num_cpus_per_worker=2)
-    trainer.start()
-    time.sleep(1)
-    assert "CPU" not in ray.available_resources()
-    trainer.shutdown()
-    time.sleep(1)
-    assert ray.available_resources()["CPU"] == 2
-
     trainer = Trainer("torch", num_workers=2)
     trainer.start()
     time.sleep(1)
@@ -117,14 +109,6 @@ def test_init_failure(ray_start_2_cpus):
 def test_start_failure(ray_start_2_cpus):
     with pytest.raises(ValueError):
         trainer = Trainer("torch", num_workers=0)
-        trainer.start()
-
-    with pytest.raises(ValueError):
-        trainer = Trainer("torch", num_cpus_per_worker=-1)
-        trainer.start()
-
-    with pytest.raises(ValueError):
-        trainer = Trainer("torch", num_gpus_per_worker=-1)
         trainer.start()
 
 
