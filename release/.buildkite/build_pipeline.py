@@ -75,7 +75,13 @@ CORE_NIGHTLY_TESTS = {
     ],
     "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
         "inference",
-    ]
+    ],
+    "~/ray/benchmarks/benchmark_tests.yaml": [
+        "many_actors_smoke_test",
+        "many_tasks_smoke_test",
+        "many_pgs_smoke_test",
+        "many_nodes_smoke_test",
+    ],
 }
 
 NIGHTLY_TESTS = {
@@ -134,12 +140,6 @@ NIGHTLY_TESTS = {
     "~/ray/release/serve_tests/serve_tests.yaml": [
         "single_deployment_1k_noop_replica",
         "multi_deployment_1k_noop_replica",
-    ],
-    "~/ray/benchmarks/benchmark_tests.yaml": [
-        "many_actors_smoke_test",
-        "many_tasks_smoke_test",
-        "many_pgs_smoke_test",
-        "many_nodes_smoke_test",
     ],
 }
 

@@ -29,12 +29,3 @@ worker_node_types:
       resources:
         custom_resources:
           node: 1
-    # - name: small_worker
-    #   instance_type: m5.xlarge
-    #   min_workers: 0
-    #   max_workers: 999
-    #   use_spot: false
-    #   resources:
-    #     custom_resources:
-    #       node: 1
-
