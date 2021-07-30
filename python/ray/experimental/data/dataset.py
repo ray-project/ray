@@ -167,7 +167,7 @@ class Dataset(Generic[T]):
                 tasks, or "actors" to use an autoscaling Ray actor pool.
             batch_format: Specify "native" to use the native block format,
                 "pandas" to select ``pandas.DataFrame`` as the batch format,
-                or "pyarrow" to select ``pyarrow.Table``.
+                or "pyarrow" to select ``pyarrow.Table/Tensor``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
