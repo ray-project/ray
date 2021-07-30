@@ -199,8 +199,8 @@ class Dataset(Generic[T]):
                     view = BlockAccessor.for_block(view).to_arrow()
                 else:
                     raise ValueError(
-                        f"The given batch format: {batch_format} "
-                        f"is invalid. Supported batch type: {BatchType}")
+                        "The batch format must be one of 'native', 'pandas', "
+                        "or 'pyarrow', got: {}".format(batch_format))
 
                 applied = fn(view)
                 if (isinstance(applied, list) or isinstance(applied, pa.Table)
