@@ -1,6 +1,9 @@
 """This example demonstrates the usage of Optuna with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
+
+For an example of using an Optuna define-by-run function, see
+:doc:`/tune/examples/optuna_define_by_run_example`.
 """
 import time
 

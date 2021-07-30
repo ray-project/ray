@@ -84,18 +84,18 @@ class OptunaSearch(Searcher):
     Args:
         space (dict|Callable): Hyperparameter search space definition for
             Optuna's sampler. This can be either a :class:`dict` with
-            parameter names as keys and ``optuna.distributions`` values,
+            parameter names as keys and ``optuna.distributions`` as values,
             or a Callable - in which case, it should be a define-by-run
             function using ``optuna.trial`` to obtain the hyperparameter
             values. The function should return either a :class:`dict` of
-             constant values with names as keys, or None.
+            constant values with names as keys, or None.
             For more information, see https://optuna.readthedocs.io\
 /en/stable/tutorial/10_key_features/002_configurations.html.
 
             .. warning::
                 No actual computation should take place in the define-by-run
-                function. Instead, put the training logic inside the train
-                function or Trainable object passed to ``tune.run``.
+                function. Instead, put the training logic inside the function
+                or class trainable passed to ``tune.run``.
 
         metric (str): The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
