@@ -24,7 +24,7 @@ class TestGPUs(unittest.TestCase):
         # and _fake_gpus=False.
         for num_gpus in [0, 0.1, 1, actual_gpus + 4]:
             # Only allow possible num_gpus_per_worker (so test would not
-            # block infinitely).
+            # block infinitely due to a down worker).
             per_worker = [0] if actual_gpus == 0 or actual_gpus < num_gpus \
                 else [0, 0.5, 1]
             for num_gpus_per_worker in per_worker:

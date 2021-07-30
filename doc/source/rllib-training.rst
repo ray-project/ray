@@ -91,20 +91,22 @@ hyperparameter for most algorithms. The Trainer will construct that many "remote
 (`RolloutWorker<https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`__ instances
 that are constructed as ray.remote actors) plus always one "local worker", a ``RolloutWorker`` object that's not a
 ray actor and that lives directly in the Trainer.
-For most algorithms, learning updates are performed on the "local worker" and sample collection from
+For most algorithms, learning updates are performed on the local worker and sample collection from
 one or more environments is performed by the remote workers (in parallel).
 For example, setting ``num_workers=0`` will only create the local worker, in which case both
 sample collection and training will be done by the local worker.
-Setting ``num_workers=5`` will create the local worker and 5 remote workers.
+On the other hand, setting ``num_workers=5`` will create the local worker (responsible for training updates)
+and 5 remote workers (responsible for sample collection).
 
 Since learning is most of the time done on the local worker, it may help to provide one or more GPUs
 to that worker via the ``num_gpus`` setting.
-Similarly, the resource allocation to workers can be controlled via ``num_cpus_per_worker``, ``num_gpus_per_worker``, and ``custom_resources_per_worker``.
+Similarly, the resource allocation to remote workers can be controlled via ``num_cpus_per_worker``, ``num_gpus_per_worker``, and ``custom_resources_per_worker``.
 
 The number of GPUs can be fractional quantities (e.g. 0.5) to allocate only a fraction
 of a GPU. For example, with DQN you can pack five trainers onto one GPU by setting
 ``num_gpus: 0.2``. Check out `this fractional GPU example here<https://github.com/ray-project/ray/blob/master/rllib/examples/fractional_gpus.py>`__
-as well.
+as well that also demonstrates how environments (running on the remote workers) that
+require a GPU can benefit from the ``num_gpus_per_worker`` setting.
 
 For synchronous algorithms like PPO and A2C, the driver and workers can make use of
 the same GPU. To do this for an amount of ``n`` GPUS:
