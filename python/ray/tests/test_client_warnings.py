@@ -63,7 +63,8 @@ class LoggerSuite(unittest.TestCase):
                 "schedule tasks on the server." in cm.warning.args[0]
 
 
-@pytest.mark.parametrize("call_ray_start", ["ray start --head"], indirect=True)
+@pytest.mark.parametrize(
+    "call_ray_start", ["ray start --head --port 0"], indirect=True)
 def test_attach_driver_to_client_port(call_ray_start):
     with pytest.raises(RuntimeError) as e, \
             warnings.catch_warnings(record=True) as warn_list:
