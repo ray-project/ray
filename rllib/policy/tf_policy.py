@@ -166,18 +166,17 @@ class TFPolicy(Policy):
 
             # We are a remote worker (WORKER_MODE=1):
             # GPUs should be assigned to us by ray.
-            from ray.worker import global_worker
-            if global_worker.mode == 1:
+            if ray.worker._mode() == ray.worker.WORKER_MODE:
                 gpu_ids = ray.get_gpu_ids()
 
             if not gpu_ids:
                 raise ValueError(
                     "TFPolicy was not able to find any GPU IDs, even "
                     "though torch.cuda.is_available()=True!")
-            elif len(gpu_ids) < config["num_gpus"]:
+            elif len(gpu_ids) < num_gpus:
                 raise ValueError(
                     "TFPolicy was not able to find enough GPU IDs! Found "
-                    f"{gpu_ids}, but num_gpus={config['num_gpus']}.")
+                    f"{gpu_ids}, but num_gpus={num_gpus}.")
 
             self.devices = [
                 f"/gpu:{i}" for i, _ in enumerate(gpu_ids) if i < num_gpus

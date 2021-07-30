@@ -115,11 +115,6 @@ class TorchPolicy(Policy):
         self.framework = "torch"
         super().__init__(observation_space, action_space, config)
 
-        # Log device and worker index.
-        from ray.rllib.evaluation.rollout_worker import get_global_worker
-        worker = get_global_worker()
-        worker_idx = worker.worker_index if worker else 0
-
         # Create multi-GPU model towers, if necessary.
         # - The central main model will be stored under self.model, residing
         #   on self.device.
@@ -133,52 +128,48 @@ class TorchPolicy(Policy):
         #   parallelization will be done.
         # TODO: (sven) implement data pre-loading and n loader buffers for
         #  torch.
-        if config["_fake_gpus"] or config["num_gpus"] == 0 or \
+
+        worker_idx = self.config.get("worker_index", 0)
+        num_gpus = config["num_gpus"] if worker_idx == 0 \
+            else config["num_gpus_per_worker"]
+        gpu_ids = list(range(torch.cuda.device_count()))
+
+        if config["_fake_gpus"] or num_gpus == 0 or \
                 not torch.cuda.is_available():
             logger.info("TorchPolicy (worker={}) running on {}.".format(
-                worker_idx if worker_idx > 0 else "local",
-                "{} fake-GPUs".format(config["num_gpus"])
+                worker_idx
+                if worker_idx > 0 else "local", "{} fake-GPUs".format(num_gpus)
                 if config["_fake_gpus"] else "CPU"))
             self.device = torch.device("cpu")
-            self.devices = [
-                self.device for _ in range(config["num_gpus"] or 1)
-            ]
+            self.devices = [self.device for _ in range(num_gpus or 1)]
             self.model_gpu_towers = [
                 model if i == 0 else copy.deepcopy(model)
-                for i in range(config["num_gpus"] or 1)
+                for i in range(num_gpus or 1)
             ]
             self.model = model
         else:
             logger.info("TorchPolicy (worker={}) running on {} GPU(s).".format(
-                worker_idx if worker_idx > 0 else "local", config["num_gpus"]))
+                worker_idx if worker_idx > 0 else "local", num_gpus))
             # We are a remote worker (WORKER_MODE=1):
             # GPUs should be assigned to us by ray.
-            from ray.worker import global_worker
-            if global_worker.mode == 1:
+            if ray.worker._mode() == ray.worker.WORKER_MODE:
                 gpu_ids = ray.get_gpu_ids()
-            # In case, we are running this Policy directly on the driver and
-            # thus no GPUs have been assigned (ray.get_gpu_ids() returns []),
-            # derive the GPUs from asking `torch` directly.
-            else:
-                gpu_ids = list(range(torch.cuda.device_count()))
 
             if not gpu_ids:
                 raise ValueError(
                     "TorchPolicy was not able to find any GPU IDs, even "
                     "though torch.cuda.is_available()=True!")
-            elif len(gpu_ids) < config["num_gpus"]:
+            elif len(gpu_ids) < num_gpus:
                 raise ValueError(
                     "TorchPolicy was not able to find enough GPU IDs! Found "
-                    f"{gpu_ids}, but num_gpus={config['num_gpus']}.")
+                    f"{gpu_ids}, but num_gpus={num_gpus}.")
 
             self.devices = [
                 torch.device("cuda:{}".format(i))
-                for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]
+                for i, id_ in enumerate(gpu_ids) if i < num_gpus
             ]
             self.device = self.devices[0]
-            ids = [
-                id_ for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]
-            ]
+            ids = [id_ for i, id_ in enumerate(gpu_ids) if i < num_gpus]
             self.model_gpu_towers = []
             for i, _ in enumerate(ids):
                 model_copy = copy.deepcopy(model)

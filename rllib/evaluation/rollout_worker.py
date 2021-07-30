@@ -563,21 +563,21 @@ class RolloutWorker(ParallelIteratorWorker):
 
         if (ray.is_initialized()
                 and ray.worker._mode() != ray.worker.LOCAL_MODE):
+
+            num_gpus = policy_config["num_gpus"] if self.worker_index == 0 \
+                else policy_config["num_gpus_per_worker"]
+
             # Check available number of GPUs
-            if not ray.get_gpu_ids():
-                logger.debug("Creating policy evaluation worker {}".format(
-                    worker_index) +
-                             " on CPU (please ignore any CUDA init errors)")
-            elif (policy_config["framework"] in ["tf2", "tf", "tfe"] and
-                  not get_tf_gpu_devices()) or \
-                    (policy_config["framework"] == "torch" and
-                     not torch.cuda.is_available()):
-                raise RuntimeError(
-                    "GPUs were assigned to this worker by Ray, but "
-                    "your DL framework ({}) reports GPU acceleration is "
-                    "disabled. This could be due to a bad CUDA- or {} "
-                    "installation.".format(policy_config["framework"],
-                                           policy_config["framework"]))
+            if policy_config["framework"] in ["tf2", "tf", "tfe"]:
+                if len(get_tf_gpu_devices()) < num_gpus:
+                    raise RuntimeError(
+                        f"Not enough GPUs found for num_gpus={num_gpus}! "
+                        f"Found only these IDs: {get_tf_gpu_devices()}.")
+            elif policy_config["framework"] == "torch":
+                if torch.cuda.device_count() < num_gpus:
+                    raise RuntimeError(
+                        f"Not enough GPUs found ({torch.cuda.device_count()}) "
+                        f"for num_gpus={num_gpus}!")
 
         self.multiagent: bool = set(
             self.policy_map.keys()) != {DEFAULT_POLICY_ID}
