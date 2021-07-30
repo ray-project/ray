@@ -206,6 +206,5 @@ def test_actor_killing(shutdown_only):
     assert ray.get(worker_2.foo.remote()) is None
 
 
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
