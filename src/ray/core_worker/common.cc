@@ -42,6 +42,7 @@ std::string LanguageString(Language language) {
     return "cpp";
   } else if (language == Language::GOLANG) {
     return "golang";
+  }
   RAY_CHECK(false);
   return "";
 }

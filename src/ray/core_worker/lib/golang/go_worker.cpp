@@ -1,6 +1,7 @@
 #include "go_worker.h"
 
 #include <iostream>
+#include <stdint.h>
 
 #include "ray/core_worker/core_worker.h"
 #include "ray/gcs/gcs_client/global_state_accessor.h"
@@ -45,8 +46,8 @@ __attribute__((visibility("default"))) void *go_worker_CreateGlobalStateAccessor
   return gcs_accessor;
 }
 
-__attribute__((visibility("default"))) uint32_t go_worker_GetNextJobID(void *p) {
+__attribute__((visibility("default"))) int go_worker_GetNextJobID(void *p) {
   auto *gcs_accessor = static_cast<ray::gcs::GlobalStateAccessor *>(p);
-  const auto &job_id = gcs_accessor->GetNextJobID();
+  auto job_id = gcs_accessor->GetNextJobID();
   return job_id.ToInt();
 }

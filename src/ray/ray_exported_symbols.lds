@@ -31,4 +31,4 @@
 *ray*streaming*
 *aligned_free*
 *aligned_malloc*
-*goInitialize*
+*go_worker*

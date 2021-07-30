@@ -24,5 +24,5 @@ func NewGlobalStateAccessor(redisAddress, redisPassword string) *GlobalStateAcce
 }
 
 func (g *GlobalStateAccessor) GetNextJobID() int {
-    return C.go_worker_GetNextJobID(g.p)
+    return int(C.go_worker_GetNextJobID(g.p))
 }
