@@ -92,11 +92,7 @@ def factorial(n):
         return mul.step(n, factorial.step(n - 1))
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_shared", [{
-        "namespace": "workflow"
-    }], indirect=True)
-def test_basic_workflows(ray_start_regular_shared):
+def test_basic_workflows(workflow_start_regular_shared):
     # This test also shows different "style" of running workflows.
     assert simple_sequential.step().run() == "[source1][append1][append2]"
 
@@ -115,11 +111,7 @@ def test_basic_workflows(ray_start_regular_shared):
     assert factorial.step(10).run() == 3628800
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_shared", [{
-        "namespace": "workflow"
-    }], indirect=True)
-def test_async_execution(ray_start_regular_shared):
+def test_async_execution(workflow_start_regular_shared):
     start = time.time()
     output = blocking.step().run_async()
     duration = time.time() - start
@@ -140,11 +132,7 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef):
     return output
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_shared", [{
-        "namespace": "workflow"
-    }], indirect=True)
-def test_workflow_output_resolving(ray_start_regular_shared):
+def test_workflow_output_resolving(workflow_start_regular_shared):
     # deep nested workflow
     nested_ref = deep_nested.remote(30)
     original_func = workflow_access._resolve_workflow_output
@@ -160,14 +148,86 @@ def test_workflow_output_resolving(ray_start_regular_shared):
     assert ray.get(ref) == 42
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_shared", [{
-        "namespace": "workflow"
-    }], indirect=True)
-def test_run_or_resume_during_running(ray_start_regular_shared):
+def test_run_or_resume_during_running(workflow_start_regular_shared):
     output = simple_sequential.step().run_async(workflow_id="running_workflow")
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         simple_sequential.step().run_async(workflow_id="running_workflow")
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         workflow.resume(workflow_id="running_workflow")
     assert ray.get(output) == "[source1][append1][append2]"
+
+
+def test_step_failure(workflow_start_regular_shared, tmp_path):
+    (tmp_path / "test").write_text("0")
+
+    @workflow.step
+    def unstable_step():
+        v = int((tmp_path / "test").read_text())
+        (tmp_path / "test").write_text(f"{v + 1}")
+        if v < 10:
+            raise ValueError("Invalid")
+        return v
+
+    with pytest.raises(Exception):
+        unstable_step.options(max_retries=-1).step().run()
+
+    with pytest.raises(Exception):
+        unstable_step.options(max_retries=3).step().run()
+    assert 10 == unstable_step.options(max_retries=8).step().run()
+    (tmp_path / "test").write_text("0")
+    (ret, err) = unstable_step.options(
+        max_retries=3, catch_exceptions=True).step().run()
+    assert ret is None
+    assert isinstance(err, ValueError)
+    (ret, err) = unstable_step.options(
+        max_retries=8, catch_exceptions=True).step().run()
+    assert ret == 10
+    assert err is None
+
+
+def test_step_failure_decorator(workflow_start_regular_shared, tmp_path):
+    (tmp_path / "test").write_text("0")
+
+    @workflow.step(max_retries=11)
+    def unstable_step():
+        v = int((tmp_path / "test").read_text())
+        (tmp_path / "test").write_text(f"{v + 1}")
+        if v < 10:
+            raise ValueError("Invalid")
+        return v
+
+    assert unstable_step.step().run() == 10
+
+    (tmp_path / "test").write_text("0")
+
+    @workflow.step(catch_exceptions=True)
+    def unstable_step_exception():
+        v = int((tmp_path / "test").read_text())
+        (tmp_path / "test").write_text(f"{v + 1}")
+        if v < 10:
+            raise ValueError("Invalid")
+        return v
+
+    (ret, err) = unstable_step_exception.step().run()
+    assert ret is None
+    assert err is not None
+
+    (tmp_path / "test").write_text("0")
+
+    @workflow.step(catch_exceptions=True, max_retries=4)
+    def unstable_step_exception():
+        v = int((tmp_path / "test").read_text())
+        (tmp_path / "test").write_text(f"{v + 1}")
+        if v < 10:
+            raise ValueError("Invalid")
+        return v
+
+    (ret, err) = unstable_step_exception.step().run()
+    assert ret is None
+    assert err is not None
+    assert (tmp_path / "test").read_text() == "4"
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

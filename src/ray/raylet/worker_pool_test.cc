@@ -98,7 +98,8 @@ class WorkerPoolMock : public WorkerPool {
                           const WorkerCommandMap &worker_commands)
       : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
                    MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
-                   []() {}, [this]() { return current_time_ms_; }),
+                   []() {}, [](const TaskID &) {}, 0,
+                   [this]() { return current_time_ms_; }),
         last_worker_process_() {
     SetNodeManagerPort(1);
   }
@@ -1159,8 +1160,8 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
                       /*dynamic_options=*/{}, TaskID::Nil(), "mock_runtime_env_2");
 
-  const WorkerCacheKey env1 = {/*override_environment_variables=*/{},
-                               "mock_runtime_env_1"};
+  const WorkerCacheKey env1 = {
+      /*override_environment_variables=*/{}, "mock_runtime_env_1", {}};
   const int runtime_env_hash_1 = env1.IntHash();
 
   // Try to pop worker for task with runtime env 1.

@@ -122,6 +122,9 @@ class Worker:
         # by the worker should drop into the debugger at the specified
         # breakpoint ID.
         self.debugger_get_breakpoint = b""
+        # If True, make the debugger external to the node this worker is
+        # running on.
+        self.ray_debugger_external = False
         self._load_code_from_local = False
         # Used to toggle whether or not logs should be filtered to only those
         # produced in the same job.
@@ -249,7 +252,7 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None):
+    def put_object(self, value, object_ref=None, owner_address=None):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -263,6 +266,7 @@ class Worker:
             value: The value to put in the object store.
             object_ref (ObjectRef): The object ref of the value to be
                 put. If None, one will be generated.
+            owner_address: The serialized address of object's owner.
 
         Returns:
             ObjectRef: The object ref the object was put under.
@@ -294,7 +298,9 @@ class Worker:
         # reference counter.
         return ray.ObjectRef(
             self.core_worker.put_serialized_object(
-                serialized_value, object_ref=object_ref))
+                serialized_value,
+                object_ref=object_ref,
+                owner_address=owner_address))
 
     def raise_errors(self, data_metadata_pairs, object_refs):
         out = self.deserialize_objects(data_metadata_pairs, object_refs)
@@ -493,7 +499,11 @@ def get_gpu_ids():
     assigned_ids = set()
     for resource, assignment in all_resource_ids.items():
         # Handle both normal and placement group GPU resources.
-        if resource == "GPU" or resource.startswith("GPU_group_"):
+        # Note: We should only get the GPU ids from the placement
+        # group resource that does not contain the bundle index!
+        import re
+        if resource == "GPU" or re.match(r"^GPU_group_[0-9A-Za-z]+$",
+                                         resource):
             for resource_id, _ in assignment:
                 assigned_ids.add(resource_id)
 
@@ -669,7 +679,7 @@ def init(
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
-        runtime_env (dict): The runtime environment to use
+        runtime_env (dict): The runtime environment to use for this job.
         internal_config (dict): Dictionary mapping names of a unstable
             parameters to values, e.g. {"redis_password": "1234"}. This is
             only used for initializing a local client (ray.init(local://...)).
@@ -985,6 +995,7 @@ def shutdown(_exiting_interpreter=False):
     if hasattr(global_worker, "gcs_client"):
         del global_worker.gcs_client
     if hasattr(global_worker, "core_worker"):
+        global_worker.core_worker.shutdown()
         del global_worker.core_worker
 
     # Disconnect global state from GCS.
@@ -1219,7 +1230,9 @@ def connect(node,
             namespace=None,
             job_config=None,
             runtime_env_hash=0,
-            worker_shim_pid=0):
+            runtime_env_json="{}",
+            worker_shim_pid=0,
+            ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1235,6 +1248,8 @@ def connect(node,
         runtime_env_hash (int): The hash of the runtime env for this worker.
         worker_shim_pid (int): The PID of the process for setup worker
             runtime env.
+        ray_debugger_host (bool): The host to bind a Ray debugger to on
+            this worker.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1334,6 +1349,8 @@ def connect(node,
     if mode == WORKER_MODE:
         os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
 
+    worker.ray_debugger_external = ray_debugger_external
+
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
@@ -1352,9 +1369,19 @@ def connect(node,
     elif mode == WORKER_MODE:
         # TODO(ekl) get rid of the env var hack and get runtime env from the
         # task spec and/or job config only.
-        uris = os.environ.get("RAY_PACKAGING_URI")
-        uris = [uris] if uris else \
-            worker.core_worker.get_job_config().runtime_env.uris
+        uris = []
+        global_job_config = worker.core_worker.get_job_config()
+        override_runtime_env = json.loads(runtime_env_json)
+
+        if os.environ.get("RAY_PACKAGING_URI"):
+            uris = [os.environ.get("RAY_PACKAGING_URI")]
+        if global_job_config.runtime_env.uris:
+            uris = global_job_config.runtime_env.uris
+        if override_runtime_env.get("uris"):
+            # TODO(simon): should we combine the uris from package and global
+            # job config if they are present?
+            uris = override_runtime_env["uris"]
+
         working_dir = runtime_env_pkg.ensure_runtime_env_setup(uris)
         if working_dir is not None:
             os.chdir(working_dir)
@@ -1585,8 +1612,13 @@ def get(object_refs, *, timeout=None):
         if debugger_breakpoint != b"":
             frame = sys._getframe().f_back
             rdb = ray.util.pdb.connect_ray_pdb(
-                None, None, False, None,
-                debugger_breakpoint.decode() if debugger_breakpoint else None)
+                host=None,
+                port=None,
+                patch_stdstreams=False,
+                quiet=None,
+                breakpoint_uuid=debugger_breakpoint.decode()
+                if debugger_breakpoint else None,
+                debugger_external=worker.ray_debugger_external)
             rdb.set_trace(frame=frame)
 
         return values
@@ -1594,22 +1626,45 @@ def get(object_refs, *, timeout=None):
 
 @PublicAPI
 @client_mode_hook
-def put(value):
+def put(value, *, _owner=None):
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
 
     Args:
         value: The Python object to be stored.
+        _owner: The actor that should own this object. This allows creating
+            objects with lifetimes decoupled from that of the creating process.
+            Note that the owner actor must be passed a reference to the object
+            prior to the object creator exiting, otherwise the reference will
+            still be lost.
 
     Returns:
         The object ref assigned to this value.
     """
     worker = global_worker
     worker.check_connected()
+
+    if _owner is None:
+        serialize_owner_address = None
+    elif isinstance(_owner, ray.actor.ActorHandle):
+        # Ensure `ray.state.state.global_state_accessor` is not None
+        ray.state.state._check_connected()
+        owner_address = ray.gcs_utils.ActorTableData.FromString(
+            ray.state.state.global_state_accessor.get_actor_info(
+                _owner._actor_id)).address
+        if len(owner_address.worker_id) == 0:
+            raise RuntimeError(
+                f"{_owner} is not alive, it's worker_id is empty!")
+        serialize_owner_address = owner_address.SerializeToString()
+    else:
+        raise TypeError(
+            f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
+
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value)
+            object_ref = worker.put_object(
+                value, owner_address=serialize_owner_address)
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "

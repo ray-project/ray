@@ -9,11 +9,7 @@ def signature_check(a, b, c=1):
     pass
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "namespace": "workflow"
-    }], indirect=True)
-def test_signature_check(ray_start_regular):
+def test_signature_check(workflow_start_regular):
     with pytest.raises(TypeError):
         signature_check(1, 2)
 
@@ -33,3 +29,8 @@ def test_signature_check(ray_start_regular):
     signature_check.step(1, 2, c=3)
     signature_check.step(1, b=2, c=3)
     signature_check.step(a=1, b=2, c=3)
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

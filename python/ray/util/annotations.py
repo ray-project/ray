@@ -2,7 +2,7 @@ def PublicAPI(*args, **kwargs):
     """Annotation for documenting public APIs.
 
     Public APIs are classes and methods exposed to end users of Ray. You
-    can expect these APIs to remain backwards compatible even across major Ray
+    can expect these APIs to remain backwards compatible across minor Ray
     releases.
 
     Args:
