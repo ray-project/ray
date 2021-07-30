@@ -4,6 +4,7 @@ from ray.util.sgd.v2.worker_group import WorkerGroup
 
 
 class BackendConfig:
+    """Meta class for implementing a distributed training framework backend."""
     @property
     def backend_name(self):
         raise NotImplementedError
