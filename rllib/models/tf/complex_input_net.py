@@ -153,5 +153,4 @@ class ComplexInputNetwork(TFModelV2):
     def value_function(self):
         return self._value_out
 
-
 # __sphinx_doc_end__
