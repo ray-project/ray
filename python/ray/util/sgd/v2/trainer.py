@@ -21,11 +21,11 @@ class Trainer:
                 a subclass of ``BackendConfig`` can be passed in.
                 Supported ``str`` values: {"torch"}.
             num_workers (int): The number of workers (Ray actors) to launch.
-                Defaults to 1.
-            use_gpu (bool): If True, training will be done on GPUs.
-                Defaults to False.
+                Defaults to 1. Each worker will reserve 1 CPU by default.
+            use_gpu (bool): If True, training will be done on GPUs (1 per
+                worker). Defaults to False.
             resources_per_worker (Optional[Dict]): If specified, the resources
-                defined in the Dict will be reserved for each worker.
+                defined in this Dict will be reserved for each worker.
         """
         pass
 
@@ -38,7 +38,7 @@ class Trainer:
 
         Args:
             initialization_hook (Optional[Callable]): The function to call on
-                each worker when it instantiated.
+                each worker when it is instantiated.
             train_cls (Optional[cls]): The training class that each worker
                 should be instantiated as.
             args, kwargs: The arguments to pass into ``train_cls.__init__``.
@@ -60,8 +60,8 @@ class Trainer:
                 currently there are NO default Callbacks.
         Returns:
             A list of results from the training function. Each value in the
-            list corresponds to the value returned by one call of the training
-            function.
+            list corresponds to the output of the training function from
+            each worker.
         """
         pass
 
@@ -73,6 +73,11 @@ class Trainer:
                 The first argument should be an instance of
                 ``self.train_cls``.
             args, kwargs: The arguments to pass into `func`.
+
+        Returns:
+            A list of results from ``func``. Each value in the
+            list corresponds to the output of ``func`` from
+            each worker.
         """
         pass
 
@@ -84,6 +89,9 @@ class Trainer:
                 The first argument should be an instance of
                 ``self.train_cls``.
             args, kwargs: The arguments to pass into `func`.
+
+        Returns:
+            The output of ``func`` from a single worker.
         """
         pass
 
