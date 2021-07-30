@@ -24,7 +24,6 @@ except ImportError:
     OptunaTrialState = None
     BaseSampler = None
     OptunaTrial = None
-    
 
 from ray.tune.suggest import Searcher
 
