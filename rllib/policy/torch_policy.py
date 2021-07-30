@@ -135,8 +135,7 @@ class TorchPolicy(Policy):
             else config["num_gpus_per_worker"]
         gpu_ids = list(range(torch.cuda.device_count()))
 
-        if config["_fake_gpus"] or num_gpus == 0 or \
-                not torch.cuda.is_available():
+        if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
             logger.info("TorchPolicy (worker={}) running on {}.".format(
                 worker_idx
                 if worker_idx > 0 else "local", "{} fake-GPUs".format(num_gpus)
@@ -158,11 +157,7 @@ class TorchPolicy(Policy):
             if ray.worker._mode() == ray.worker.WORKER_MODE:
                 gpu_ids = ray.get_gpu_ids()
 
-            if not gpu_ids:
-                raise ValueError(
-                    "TorchPolicy was not able to find any GPU IDs, even "
-                    "though torch.cuda.is_available()=True!")
-            elif len(gpu_ids) < num_gpus:
+            if len(gpu_ids) < num_gpus:
                 raise ValueError(
                     "TorchPolicy was not able to find enough GPU IDs! Found "
                     f"{gpu_ids}, but num_gpus={num_gpus}.")
