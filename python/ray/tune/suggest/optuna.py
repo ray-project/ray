@@ -18,10 +18,13 @@ try:
     import optuna as ot
     from optuna.trial import TrialState as OptunaTrialState
     from optuna.samplers import BaseSampler
+    from Optuna import Trial as OptunaTrial
 except ImportError:
     ot = None
     OptunaTrialState = None
     BaseSampler = None
+    OptunaTrial = None
+    
 
 from ray.tune.suggest import Searcher
 
@@ -48,7 +51,7 @@ class _OptunaTrialSuggestCaptor:
     which will be saved in the ``captured_values`` dict.
     """
 
-    def __init__(self, ot_trial: ot.Trial) -> None:
+    def __init__(self, ot_trial: OptunaTrial) -> None:
         self.ot_trial = ot_trial
         self.captured_values: Dict[str, Any] = {}
 
@@ -177,7 +180,7 @@ class OptunaSearch(Searcher):
 
     def __init__(self,
                  space: Optional[Union[Dict, List[Tuple], Callable[
-                     [ot.Trial], Optional[Dict[str, Any]]]]] = None,
+                     [OptunaTrial], Optional[Dict[str, Any]]]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
@@ -280,8 +283,8 @@ class OptunaSearch(Searcher):
         return True
 
     def _suggest_from_define_by_run_func(
-            self, func: Callable[[ot.Trial], Optional[Dict[str, Any]]],
-            ot_trial: ot.Trial) -> Dict:
+            self, func: Callable[[OptunaTrial], Optional[Dict[str, Any]]],
+            ot_trial: OptunaTrial) -> Dict:
         captor = _OptunaTrialSuggestCaptor(ot_trial)
         time_start = time.time()
         ret = func(captor)
