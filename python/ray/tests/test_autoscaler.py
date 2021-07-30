@@ -685,8 +685,8 @@ class AutoscalingTest(unittest.TestCase):
         # Just one node (node_id 1) terminated in the last update.
         # Validates that we didn't try to double-terminate node 0.
         assert (sorted(events) == [
-            'Adding 1 nodes of type ray.worker.new.',
-            'Adding 1 nodes of type ray.worker.old.',
+            "Adding 1 nodes of type ray.worker.new.",
+            "Adding 1 nodes of type ray.worker.old.",
             "Removing 1 nodes of type ray.worker.old (not "
             "in available_node_types: ['ray.head.new', 'ray.worker.new'])."
         ])
