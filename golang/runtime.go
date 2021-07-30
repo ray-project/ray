@@ -13,8 +13,11 @@ func main() {
     //            int workerMode, char *store_socket, char *raylet_socket, char *log_dir,
     //            char *node_ip_address, int node_manager_port, char *raylet_ip_address, char* driver_name)
 
-    C.goInitialize(C.int(1), C.CString("/tmp/ray/session_latest/sockets/plasma_store"), C.CString("/tmp/ray/session_latest/sockets/raylet"),
+    gsa := NewGlobalStateAccessor("127.0.0.1:6379","5241590000000000")
+    jobId := gsa.GetNextJobID()
+    C.go_worker_Initialize(C.int(1), C.CString("/tmp/ray/session_latest/sockets/plasma_store"), C.CString("/tmp/ray/session_latest/sockets/raylet"),
         C.CString("/tmp/ray/session_latest/logs"), C.CString("192.168.121.61"), C.int(40531), C.CString("192.168.121.61"), C.CString("GOLANG"))
+
 }
 
 

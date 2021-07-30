@@ -3,20 +3,22 @@
 #include <iostream>
 
 #include "ray/core_worker/core_worker.h"
+#include "ray/gcs/gcs_client/global_state_accessor.h"
 
 using namespace std;
 
-__attribute__((visibility("default"))) void goInitialize(
+__attribute__((visibility("default"))) void go_worker_Initialize(
     int workerMode, char *store_socket, char *raylet_socket, char *log_dir,
-    char *node_ip_address, int node_manager_port, char *raylet_ip_address, char* driver_name) {
-  SayHello((char*)"have_fun friends!");
+    char *node_ip_address, int node_manager_port, char *raylet_ip_address,
+    char *driver_name, int jobId) {
+  SayHello((char *)"have_fun friends!");
   std::string serialized_job_config = "";
   ray::CoreWorkerOptions options;
   options.worker_type = static_cast<ray::WorkerType>(workerMode);
   options.language = ray::Language::GOLANG;
   options.store_socket = store_socket;
   options.raylet_socket = raylet_socket;
-  //  options.job_id = JavaByteArrayToId<ray::JobID>(env, jobId);
+  options.job_id = ray::JobID::FromInt(jobId);
   //  options.gcs_options = ToGcsClientOptions(env, gcsClientOptions);
   options.enable_logging = true;
   options.log_dir = log_dir;
@@ -34,4 +36,17 @@ __attribute__((visibility("default"))) void goInitialize(
   options.serialized_job_config = serialized_job_config;
   options.metrics_agent_port = -1;
   ray::CoreWorkerProcess::Initialize(options);
+}
+
+__attribute__((visibility("default"))) void *go_worker_CreateGlobalStateAccessor(
+    char *redis_address, char *redis_password) {
+  ray::gcs::GlobalStateAccessor *gcs_accessor =
+      new ray::gcs::GlobalStateAccessor(redis_address, redis_password);
+  return gcs_accessor;
+}
+
+__attribute__((visibility("default"))) uint32_t go_worker_GetNextJobID(void *p) {
+  auto *gcs_accessor = static_cast<ray::gcs::GlobalStateAccessor *>(p);
+  const auto &job_id = gcs_accessor->GetNextJobID();
+  return job_id.ToInt();
 }

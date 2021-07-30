@@ -4,9 +4,14 @@
 extern "C" {
 #endif
 
-void goInitialize(
+void go_worker_Initialize(
     int workerMode, char *store_socket, char *raylet_socket, char *log_dir,
     char *node_ip_address, int node_manager_port, char *raylet_ip_address, char* driver_name);
+
+
+void* go_worker_CreateGlobalStateAccessor(char *redis_address, char *redis_password);
+
+uint32_t go_worker_GetNextJobID(void *p);
 
 void SayHello(char* s);
 
