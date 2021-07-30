@@ -2,6 +2,7 @@ import abc
 from abc import abstractmethod
 
 from dataclasses import dataclass
+import functools
 
 import ray
 from ray.experimental.workflow.common import StepID
@@ -16,6 +17,30 @@ class DataLoadError(Exception):
 
 class DataSaveError(Exception):
     pass
+
+
+def data_load_error(func):
+    @functools.wraps(func)
+    async def _func(*args, **kvargs):
+        try:
+            ret = await func(*args, **kvargs)
+            return ret
+        except Exception as e:
+            raise DataLoadError from e
+
+    return _func
+
+
+def data_save_error(func):
+    @functools.wraps(func)
+    async def _func(*args, **kv_args):
+        try:
+            ret = await func(*args, **kv_args)
+            return ret
+        except Exception as e:
+            raise DataSaveError from e
+
+    return _func
 
 
 @dataclass

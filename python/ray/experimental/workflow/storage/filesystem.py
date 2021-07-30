@@ -1,26 +1,18 @@
 import contextlib
+import itertools
 import json
 import pathlib
-from typing import Any, Dict, Callable, List
+from typing import Any, Dict, List
 import uuid
 
 from ray.experimental.workflow.common import StepID
-from ray.experimental.workflow.storage.base import (
-    Storage, ArgsType, StepStatus, DataLoadError, DataSaveError)
+from ray.experimental.workflow.storage.base import (StepStatus,
+                                                    data_load_error)
+from ray.experimental.workflow.storage.path_based import (
+    PathBasedStorage, STEPS_DIR, STEP_OUTPUT, STEP_OUTPUTS_METADATA,
+    STEP_INPUTS_METADATA, STEP_ARGS, STEP_FUNC_BODY, WORKFLOW_META)
 
 import ray.cloudpickle
-
-# constants used in filesystem
-OBJECTS_DIR = "objects"
-STEPS_DIR = "steps"
-STEP_INPUTS_METADATA = "inputs.json"
-STEP_OUTPUTS_METADATA = "outputs.json"
-STEP_ARGS = "args.pkl"
-STEP_OUTPUT = "output.pkl"
-STEP_FUNC_BODY = "func_body.pkl"
-CLASS_BODY = "class_body.pkl"
-WORKFLOW_META = "workflow_meta.json"
-WORKFLOW_PROGRESS = "progress.json"
 
 
 @contextlib.contextmanager
@@ -127,7 +119,7 @@ def _file_exists(path: pathlib.Path) -> bool:
     return False
 
 
-class FilesystemStorageImpl(Storage):
+class FilesystemStorageImpl(PathBasedStorage):
     """Filesystem implementation for accessing workflow storage.
 
     We do not repeat the same comments for abstract methods in the base class.
@@ -142,115 +134,25 @@ class FilesystemStorageImpl(Storage):
         else:
             self._workflow_root_dir.mkdir()
 
-    async def load_step_input_metadata(self, workflow_id: str,
-                                       step_id: StepID) -> Dict[str, Any]:
-        step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        try:
-            with _open_atomic(step_dir / STEP_INPUTS_METADATA) as f:
+    def _get_path(self, *names: str) -> str:
+        return "/".join(itertools.chain([str(self._workflow_root_dir)], names))
+
+    async def _put_object(self, path: str, data: Any,
+                          is_json: bool = False) -> None:
+        if is_json:
+            with _open_atomic(pathlib.Path(path), "w") as f:
+                return json.dump(data, f)
+        else:
+            with _open_atomic(pathlib.Path(path), "wb") as f:
+                return ray.cloudpickle.dump(data, f)
+
+    async def _get_object(self, path: str, is_json: bool = False) -> Any:
+        if is_json:
+            with _open_atomic(pathlib.Path(path)) as f:
                 return json.load(f)
-        except Exception as e:
-            raise DataLoadError from e
-
-    async def save_step_input_metadata(self, workflow_id: str, step_id: StepID,
-                                       metadata: Dict[str, Any]) -> None:
-        step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        try:
-            with _open_atomic(step_dir / STEP_INPUTS_METADATA, "w") as f:
-                json.dump(metadata, f)
-        except Exception as e:
-            raise DataSaveError from e
-
-    async def load_step_output_metadata(self, workflow_id: str,
-                                        step_id: StepID) -> Dict[str, Any]:
-        step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        try:
-            with _open_atomic(step_dir / STEP_OUTPUTS_METADATA) as f:
-                return json.load(f)
-        except Exception as e:
-            raise DataLoadError from e
-
-    async def save_step_output_metadata(self, workflow_id: str,
-                                        step_id: StepID,
-                                        metadata: Dict[str, Any]) -> None:
-        step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        try:
-            with _open_atomic(step_dir / STEP_OUTPUTS_METADATA, "w") as f:
-                json.dump(metadata, f)
-        except Exception as e:
-            raise DataSaveError from e
-
-    async def load_step_output(self, workflow_id: str, step_id: StepID) -> Any:
-        step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        try:
-            with _open_atomic(step_dir / STEP_OUTPUT, "rb") as f:
+        else:
+            with _open_atomic(pathlib.Path(path), "rb") as f:
                 return ray.cloudpickle.load(f)
-        except Exception as e:
-            raise DataLoadError from e
-
-    async def save_step_output(self, workflow_id: str, step_id: StepID,
-                               output: Any) -> None:
-        step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        try:
-            with _open_atomic(step_dir / STEP_OUTPUT, "wb") as f:
-                ray.cloudpickle.dump(output, f)
-        except Exception as e:
-            raise DataSaveError from e
-
-    async def load_step_func_body(self, workflow_id: str,
-                                  step_id: StepID) -> Callable:
-        step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        try:
-            with _open_atomic(step_dir / STEP_FUNC_BODY, "rb") as f:
-                return ray.cloudpickle.load(f)
-        except Exception as e:
-            raise DataLoadError from e
-
-    async def save_step_func_body(self, workflow_id: str, step_id: StepID,
-                                  func_body: Callable) -> None:
-        step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        try:
-            with _open_atomic(step_dir / STEP_FUNC_BODY, "wb") as f:
-                ray.cloudpickle.dump(func_body, f)
-        except Exception as e:
-            raise DataSaveError from e
-
-    async def load_step_args(self, workflow_id: str,
-                             step_id: StepID) -> ArgsType:
-        step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        try:
-            with _open_atomic(step_dir / STEP_ARGS, "rb") as f:
-                return ray.cloudpickle.load(f)
-        except Exception as e:
-            raise DataLoadError from e
-
-    async def save_step_args(self, workflow_id: str, step_id: StepID,
-                             args: ArgsType) -> None:
-        step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        try:
-            with _open_atomic(step_dir / STEP_ARGS, "wb") as f:
-                ray.cloudpickle.dump(args, f)
-        except Exception as e:
-            raise DataSaveError from e
-
-    async def load_object_ref(self, workflow_id: str,
-                              object_id) -> ray.ObjectRef:
-        objects_dir = self._workflow_root_dir / workflow_id / OBJECTS_DIR
-        try:
-            with _open_atomic(objects_dir / object_id, "rb") as f:
-                obj = ray.cloudpickle.load(f)
-            return ray.put(obj)  # simulate an ObjectRef
-        except Exception as e:
-            raise DataLoadError from e
-
-    async def save_object_ref(self, workflow_id: str,
-                              obj_ref: ray.ObjectRef) -> None:
-        objects_dir = self._workflow_root_dir / workflow_id / OBJECTS_DIR
-        try:
-            obj = ray.get(obj_ref)
-            with _open_atomic(objects_dir / obj_ref.hex(), "wb") as f:
-                ray.cloudpickle.dump(obj, f)
-        except Exception as e:
-            raise DataSaveError from e
 
     async def get_step_status(self, workflow_id: str,
                               step_id: StepID) -> StepStatus:
@@ -267,50 +169,7 @@ class FilesystemStorageImpl(Storage):
     def storage_url(self) -> str:
         return str(self._workflow_root_dir)
 
-    async def load_actor_class_body(self, workflow_id: str) -> type:
-        file_path = self._workflow_root_dir / workflow_id / CLASS_BODY
-        try:
-            with _open_atomic(file_path, "rb") as f:
-                return ray.cloudpickle.load(f)
-        except Exception as e:
-            raise DataLoadError from e
-
-    async def save_actor_class_body(self, workflow_id: str, cls: type) -> None:
-        file_path = self._workflow_root_dir / workflow_id / CLASS_BODY
-        try:
-            with _open_atomic(file_path, "wb") as f:
-                ray.cloudpickle.dump(cls, f)
-        except Exception as e:
-            raise DataSaveError from e
-
-    async def load_workflow_progress(self, workflow_id: str) -> Dict[str, Any]:
-        path = (self._workflow_root_dir / workflow_id / STEPS_DIR /
-                WORKFLOW_PROGRESS)
-        try:
-            with _open_atomic(path) as f:
-                return json.load(f)
-        except Exception as e:
-            raise DataLoadError from e
-
-    async def save_workflow_progress(self, workflow_id: str,
-                                     metadata: Dict[str, Any]) -> None:
-        path = (self._workflow_root_dir / workflow_id / STEPS_DIR /
-                WORKFLOW_PROGRESS)
-        try:
-            with _open_atomic(path, "w") as f:
-                json.dump(metadata, f)
-        except Exception as e:
-            raise DataSaveError from e
-
-    async def save_workflow_meta(self, workflow_id: str,
-                                 metadata: Dict[str, Any]) -> None:
-        file_path = self._workflow_root_dir / workflow_id / WORKFLOW_META
-        try:
-            with _open_atomic(file_path, "w") as f:
-                json.dump(metadata, f)
-        except Exception as e:
-            raise DataSaveError from e
-
+    @data_load_error
     async def load_workflow_meta(self, workflow_id: str) -> Dict[str, Any]:
         file_path = self._workflow_root_dir / workflow_id / WORKFLOW_META
         try:
@@ -318,14 +177,10 @@ class FilesystemStorageImpl(Storage):
                 return json.load(f)
         except FileNotFoundError:
             return None
-        except Exception as e:
-            raise DataLoadError from e
 
+    @data_load_error
     async def list_workflow(self) -> List[str]:
-        try:
-            return [path.name for path in self._workflow_root_dir.iterdir()]
-        except Exception as e:
-            raise DataLoadError from e
+        return [path.name for path in self._workflow_root_dir.iterdir()]
 
     def __reduce__(self):
         return FilesystemStorageImpl, (self._workflow_root_dir, )
