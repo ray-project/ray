@@ -341,6 +341,17 @@ Datasets support tensor-typed values, which are represented in-memory as Arrow t
     ray.data.read_numpy("/tmp/tensor_out")
     # -> Dataset(num_rows=?, num_blocks=200, schema=<Tensor: shape=(None, 3, 5), dtype=float64>)
 
+Tensor datasets are also created whenever an array-type is returned from a UDF:
+
+.. code-block:: python
+
+    # Create a dataset of Python integers.
+    ds = ray.data.range(10)
+    # -> Dataset(num_rows=10, num_blocks=10, schema=<class 'int'>)
+
+    ds = ds.map_batches(lambda x: np.array(x))
+    # -> Dataset(num_rows=10, num_blocks=10, schema=<Tensor: shape=(None,), dtype=int64>)
+
 Limitations: currently tensor-typed values cannot be nested in tabular records (e.g., as in TFRecord / Petastorm format). This is planned for development.
 
 Custom datasources
