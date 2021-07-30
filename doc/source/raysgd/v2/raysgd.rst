@@ -12,8 +12,34 @@ RaySGD is a lightweight library for distributed deep learning, allowing you to s
 The main features are:
 
 - **Ease of use**: Scale your single process training code to a cluster in just a couple lines of code.
-- **Composability**: RaySGD interoperates with Ray Tune to allow you to easily do hyperparameter tuning at scale, and Ray Datasets to allow you to train over large amounts of data.
+- **Composability**: RaySGD interoperates with :ref:`Ray Tune <tune-main>` to tune your distributed model and :ref:`Ray Datasets <datasets>` to train on large amounts of data.
 - **Interactivity**: RaySGD fits in your workflow with support to run from any environment, including seamless Jupyter notebook support.
+
+
+Intro to RaySGD
+---------------
+
+RaySGD is a library that aims to simplify distributed deep learning.
+
+**Frameworks**: RaySGD is built to abstract away the coordination/configuration setup of distributed deep learning frameworks such as Pytorch Distributed and Tensorflow Distributed, allowing users to only focus on implementing training logic.
+
+* For Pytorch, RaySGD automatically handles the construction of the distributed process group.
+* For Tensorflow, RaySGD automatically handles the coordination of the ``TF_CONFIG``. The current implementation assumes that the user will use a MultiWorkerMirroredStrategy, but this will change in the near future.
+* For Horovod, RaySGD automatically handles the construction of the Horovod runtime and Rendezvous server.
+
+**Built for data scientists/ML practitioners**: RaySGD has support for standard ML tools and features that practitioners love:
+
+* Callbacks for early stopping
+* Support for checkpointing
+* Support for Tensorboard, Weights/Biases, and MLflow
+* Jupyter notebooks support.
+
+**Integration with Ray Ecosystem**: Distributed deep learning often comes with a lot of complexity.
+
+
+* Use :ref:`Ray Datasets <datasets>` with RaySGD to handle and train on large amounts of data.
+* Use :ref:`Ray Tune <tune-main>` with RaySGD to leverage cutting edge hyperparameter techniques and distribute both your training and tuning.
+* You can leverage the :ref:`Ray cluster launcher <cluster-cloud>` to launch autoscaling or spot instance clusters to train your model at scale on any cloud.
 
 
 Quickstart

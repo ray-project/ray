@@ -13,6 +13,8 @@ In this guide, we cover examples for the following use cases:
 * How do I run my training on pre-emptible instances (fault tolerance)?
 * How do I monitor my training?
 
+
+
 Quick Start
 -----------
 
