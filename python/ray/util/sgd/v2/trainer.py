@@ -14,6 +14,7 @@ class Trainer:
                  use_gpu: bool = False,
                  resources_per_worker: Optional[Dict[str, float]] = None):
         """A class for distributed training.
+
         Args:
             backend (Union[str, BackendConfig]): The backend used for
                 distributed communication. If configurations are needed,
