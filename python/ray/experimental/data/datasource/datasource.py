@@ -1,5 +1,5 @@
 import builtins
-from typing import Any, Generic, List, Callable, Union
+from typing import Any, Generic, List, Callable, Union, Tuple
 
 import numpy as np
 
@@ -138,7 +138,8 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
     def prepare_read(self,
                      parallelism: int,
                      n: int,
-                     block_format: str = "list") -> List[ReadTask]:
+                     block_format: str = "list",
+                     tensor_shape: Tuple = (1, )) -> List[ReadTask]:
         read_tasks: List[ReadTask] = []
         block_size = max(1, n // parallelism)
 
@@ -149,7 +150,9 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 return pyarrow.Table.from_arrays(
                     [np.arange(start, start + count)], names=["value"])
             elif block_format == "tensor":
-                return np.expand_dims(np.arange(start, start + count), 1)
+                return np.ones(tensor_shape) * np.expand_dims(
+                    np.arange(start, start + count),
+                    tuple(range(1, 1 + len(tensor_shape))))
             else:
                 return list(builtins.range(start, start + count))
 
@@ -160,7 +163,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 import pyarrow
                 schema = pyarrow.Table.from_pydict({"value": [0]}).schema
             elif block_format == "tensor":
-                schema = {"dtype": "int64", "shape": (None, 1)}
+                schema = {"dtype": "int64", "shape": (None, ) + tensor_shape}
             elif block_format == "list":
                 schema = int
             else:

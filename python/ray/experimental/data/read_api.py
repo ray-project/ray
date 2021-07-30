@@ -102,25 +102,31 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
-def range_tensor(n: int, *, parallelism: int = 200) -> Dataset[np.ndarray]:
+def range_tensor(n: int, *, shape: Tuple = (1, ),
+                 parallelism: int = 200) -> Dataset[np.ndarray]:
     """Create a Tensor dataset from a range of integers [0..n).
 
     Examples:
-        >>> ds = ray.data.range_tensor(1000)
+        >>> ds = ray.data.range_tensor(1000, shape=(3, 10))
         >>> ds.map_batches(lambda arr: arr ** 2).show()
 
     This is similar to range(), but uses np.ndarrays to hold the integers
-    in tensor form. The dataset has overall the shape (n, 1).
+    in tensor form. The dataset has overall the shape ``(n,) + shape``.
 
     Args:
         n: The upper bound of the range of integer records.
+        shape: The shape of each record.
         parallelism: The amount of parallelism to use for the dataset.
 
     Returns:
         Dataset holding the integers as tensors.
     """
     return read_datasource(
-        RangeDatasource(), parallelism=parallelism, n=n, block_format="tensor")
+        RangeDatasource(),
+        parallelism=parallelism,
+        n=n,
+        block_format="tensor",
+        tensor_shape=tuple(shape))
 
 
 @PublicAPI(stability="beta")
@@ -282,12 +288,13 @@ def read_csv(paths: Union[str, List[str]],
 
 
 @PublicAPI(stability="beta")
-def read_text(paths: Union[str, List[str]],
-              *,
-              encoding: str = "utf-8",
-              filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-              parallelism: int = 200,
-              ) -> Dataset[str]:
+def read_text(
+        paths: Union[str, List[str]],
+        *,
+        encoding: str = "utf-8",
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        parallelism: int = 200,
+) -> Dataset[str]:
     """Create a dataset from lines stored in text files.
 
     Examples:
