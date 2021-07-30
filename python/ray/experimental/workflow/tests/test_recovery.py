@@ -92,7 +92,7 @@ def test_recovery_complex(workflow_start_regular):
 
 
 def test_recovery_non_exists_workflow(workflow_start_regular):
-    with pytest.raises(RaySystemError):
+    with pytest.raises(ValueError):
         ray.get(workflow.resume("this_workflow_id_does_not_exist"))
 
 
