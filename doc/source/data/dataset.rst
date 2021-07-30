@@ -51,6 +51,9 @@ Datasource Compatibility Matrices
    * - Numpy File Format
      - ``ray.data.read_numpy()``
      - ✅
+   * - Text Files
+     - ``ray.data.read_text()``
+     - ✅
    * - Binary Files
      - ``ray.data.read_binary_files()``
      - ✅

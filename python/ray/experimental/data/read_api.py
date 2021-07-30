@@ -282,6 +282,37 @@ def read_csv(paths: Union[str, List[str]],
 
 
 @PublicAPI(stability="beta")
+def read_text(paths: Union[str, List[str]],
+              *,
+              encoding: str = "utf-8",
+              filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+              parallelism: int = 200,
+              ) -> Dataset[str]:
+    """Create a dataset from lines stored in text files.
+
+    Examples:
+        >>> # Read a directory of files in remote storage.
+        >>> ray.data.read_text("s3://bucket/path")
+
+        >>> # Read multiple local files.
+        >>> ray.data.read_text(["/path/to/file1", "/path/to/file2"])
+
+    Args:
+        paths: A single file path or a list of file paths (or directories).
+        encoding: The encoding of the files (e.g., "utf-8" or "ascii").
+        filesystem: The filesystem implementation to read from.
+        parallelism: The amount of parallelism to use for the dataset.
+
+    Returns:
+        Dataset holding lines of text read from the specified paths.
+    """
+
+    return read_binary_files(
+        paths, filesystem=filesystem, parallelism=parallelism).flat_map(
+            lambda x: x.decode(encoding).split("\n"))
+
+
+@PublicAPI(stability="beta")
 def read_numpy(paths: Union[str, List[str]],
                *,
                filesystem: Optional["pyarrow.fs.FileSystem"] = None,
