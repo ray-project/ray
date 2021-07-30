@@ -137,7 +137,7 @@ if setup_spec.type == SetupType.RAY:
         "pyyaml",
         "scipy",
     ]
-}
+
 if sys.version_info >= (3, 7, 0):
     extras["k8s"].append("kopf")
 
