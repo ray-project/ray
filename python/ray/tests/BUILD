@@ -19,7 +19,6 @@ py_test_module_list(
     "test_advanced_2.py",
     "test_advanced_3.py",
     "test_advanced_4.py",
-    "test_array.py",
     "test_autoscaling_policy.py",
     "test_basic.py",
     "test_basic_2.py",
@@ -55,7 +54,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_memory_scheduling.py",
-    "test_plasma_unlimited.py",
     "test_metrics.py",
     "test_multi_node.py",
     "test_multi_node_2.py",
@@ -71,8 +69,6 @@ py_test_module_list(
     "test_resource_demand_scheduler.py",
     "test_runtime_env_env_vars.py",
     "test_runtime_env_fork_process.py",
-    "test_serialization.py",
-    "test_shuffle.py",
     "test_stress.py",
     "test_stress_sharded.py",
     "test_tempfile.py",
@@ -159,7 +155,6 @@ py_test_module_list(
   files = [
     "test_failure_2.py",
     "test_failure_4.py",
-    "test_object_spilling.py",
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -194,8 +189,6 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_object_spilling_2.py",
-    "test_object_manager.py",
     "test_multi_tenancy.py",
     "test_scheduling.py",
   ],
