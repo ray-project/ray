@@ -80,26 +80,26 @@ class Storage(metaclass=abc.ABCMeta):
     """
 
     @abstractmethod
-    def _get_path(self, *names: str) -> str:
-        """Get path from name sections."""
+    def _make_key(self, *names: str) -> str:
+        """Make key from name sections."""
 
     @abstractmethod
-    async def _put_object(self, path: str, data: Any,
+    async def _put_object(self, key: str, data: Any,
                           is_json: bool = False) -> None:
         """Put object into storage.
 
         Args:
-            path: The path of the object.
+            key: The key of the object.
             data: The object data.
             is_json: True if the object is a json object.
         """
 
     @abstractmethod
-    async def _get_object(self, path: str, is_json: bool = False) -> Any:
+    async def _get_object(self, key: str, is_json: bool = False) -> Any:
         """Get object from storage.
 
         Args:
-            path: The path of the object.
+            key: The key of the object.
             is_json: True if the object is a json object.
 
         Returns:
@@ -121,7 +121,7 @@ class Storage(metaclass=abc.ABCMeta):
         Returns:
             A metadata dict.
         """
-        path = self._get_path(workflow_id, STEPS_DIR, step_id,
+        path = self._make_key(workflow_id, STEPS_DIR, step_id,
                               STEP_INPUTS_METADATA)
         return await self._get_object(path, True)
 
@@ -138,7 +138,7 @@ class Storage(metaclass=abc.ABCMeta):
         Raises:
             DataSaveError: if we fail to save the metadata.
         """
-        path = self._get_path(workflow_id, STEPS_DIR, step_id,
+        path = self._make_key(workflow_id, STEPS_DIR, step_id,
                               STEP_INPUTS_METADATA)
         await self._put_object(path, metadata, True)
 
@@ -157,7 +157,7 @@ class Storage(metaclass=abc.ABCMeta):
         Returns:
             A metadata dict.
         """
-        path = self._get_path(workflow_id, STEPS_DIR, step_id,
+        path = self._make_key(workflow_id, STEPS_DIR, step_id,
                               STEP_OUTPUTS_METADATA)
         return await self._get_object(path, True)
 
@@ -175,7 +175,7 @@ class Storage(metaclass=abc.ABCMeta):
         Raises:
             DataSaveError: if we fail to save the metadata.
         """
-        path = self._get_path(workflow_id, STEPS_DIR, step_id,
+        path = self._make_key(workflow_id, STEPS_DIR, step_id,
                               STEP_OUTPUTS_METADATA)
         await self._put_object(path, metadata, True)
 
@@ -193,7 +193,7 @@ class Storage(metaclass=abc.ABCMeta):
         Returns:
             Output of the workflow step.
         """
-        path = self._get_path(workflow_id, STEPS_DIR, step_id, STEP_OUTPUT)
+        path = self._make_key(workflow_id, STEPS_DIR, step_id, STEP_OUTPUT)
         return await self._get_object(path)
 
     @data_save_error
@@ -208,7 +208,7 @@ class Storage(metaclass=abc.ABCMeta):
         Raises:
             DataSaveError: if we fail to save the output.
         """
-        path = self._get_path(workflow_id, STEPS_DIR, step_id, STEP_OUTPUT)
+        path = self._make_key(workflow_id, STEPS_DIR, step_id, STEP_OUTPUT)
         await self._put_object(path, output)
 
     @data_load_error
@@ -226,7 +226,7 @@ class Storage(metaclass=abc.ABCMeta):
         Returns:
             A callable function.
         """
-        path = self._get_path(workflow_id, STEPS_DIR, step_id, STEP_FUNC_BODY)
+        path = self._make_key(workflow_id, STEPS_DIR, step_id, STEP_FUNC_BODY)
         return await self._get_object(path)
 
     @data_save_error
@@ -242,7 +242,7 @@ class Storage(metaclass=abc.ABCMeta):
         Raises:
             DataSaveError: if we fail to save the function body.
         """
-        path = self._get_path(workflow_id, STEPS_DIR, step_id, STEP_FUNC_BODY)
+        path = self._make_key(workflow_id, STEPS_DIR, step_id, STEP_FUNC_BODY)
         await self._put_object(path, func_body)
 
     @data_load_error
@@ -262,7 +262,7 @@ class Storage(metaclass=abc.ABCMeta):
         Returns:
             Args and kwargs.
         """
-        path = self._get_path(workflow_id, STEPS_DIR, step_id, STEP_ARGS)
+        path = self._make_key(workflow_id, STEPS_DIR, step_id, STEP_ARGS)
         return await self._get_object(path)
 
     @data_save_error
@@ -278,7 +278,7 @@ class Storage(metaclass=abc.ABCMeta):
         Raises:
             DataSaveError: if we fail to save the arguments.
         """
-        path = self._get_path(workflow_id, STEPS_DIR, step_id, STEP_ARGS)
+        path = self._make_key(workflow_id, STEPS_DIR, step_id, STEP_ARGS)
         await self._put_object(path, args)
 
     @data_load_error
@@ -296,7 +296,7 @@ class Storage(metaclass=abc.ABCMeta):
         Returns:
             The object ref.
         """
-        path = self._get_path(workflow_id, OBJECTS_DIR, object_id)
+        path = self._make_key(workflow_id, OBJECTS_DIR, object_id)
         data = await self._get_object(path)
         return ray.put(data)  # simulate an ObjectRef
 
@@ -312,7 +312,7 @@ class Storage(metaclass=abc.ABCMeta):
         Raises:
             DataSaveError: if we fail to save the object ref.
         """
-        path = self._get_path(workflow_id, OBJECTS_DIR, obj_ref.hex())
+        path = self._make_key(workflow_id, OBJECTS_DIR, obj_ref.hex())
         data = await obj_ref
         await self._put_object(path, data)
 
@@ -326,7 +326,7 @@ class Storage(metaclass=abc.ABCMeta):
         Raises:
             DataLoadError: if we fail to load the class body.
         """
-        path = self._get_path(workflow_id, CLASS_BODY)
+        path = self._make_key(workflow_id, CLASS_BODY)
         return await self._get_object(path)
 
     @data_save_error
@@ -340,7 +340,7 @@ class Storage(metaclass=abc.ABCMeta):
         Raises:
             DataSaveError: if we fail to save the class body.
         """
-        path = self._get_path(workflow_id, CLASS_BODY)
+        path = self._make_key(workflow_id, CLASS_BODY)
         await self._put_object(path, cls)
 
     @data_save_error
@@ -355,7 +355,7 @@ class Storage(metaclass=abc.ABCMeta):
         Raises:
             DataSaveError: if we fail to save the metadata.
         """
-        path = self._get_path(workflow_id, WORKFLOW_META)
+        path = self._make_key(workflow_id, WORKFLOW_META)
         await self._put_object(path, metadata, True)
 
     @data_load_error
@@ -373,7 +373,7 @@ class Storage(metaclass=abc.ABCMeta):
             A metadata dict or None.
         """
         try:
-            path = self._get_path(workflow_id, WORKFLOW_META)
+            path = self._make_key(workflow_id, WORKFLOW_META)
             return await self._get_object(path, True)
         except KeyNotFoundError:
             return None
@@ -392,7 +392,7 @@ class Storage(metaclass=abc.ABCMeta):
         Returns:
             Metadata about the workflow progress.
         """
-        path = self._get_path(workflow_id, STEPS_DIR, WORKFLOW_PROGRESS)
+        path = self._make_key(workflow_id, STEPS_DIR, WORKFLOW_PROGRESS)
         return await self._get_object(path, True)
 
     @data_save_error
@@ -408,7 +408,7 @@ class Storage(metaclass=abc.ABCMeta):
         Raises:
             DataSaveError: if we fail to save the progress.
         """
-        path = self._get_path(workflow_id, STEPS_DIR, WORKFLOW_PROGRESS)
+        path = self._make_key(workflow_id, STEPS_DIR, WORKFLOW_PROGRESS)
         await self._put_object(path, metadata, True)
 
     @abstractmethod

@@ -43,10 +43,10 @@ class S3StorageImpl(Storage):
         self._aws_session_token = aws_session_token
         self._config = config
 
-    def _get_path(self, *names: str) -> str:
+    def _make_key(self, *names: str) -> str:
         return "/".join(itertools.chain([self._s3_path], names))
 
-    async def _put_object(self, path: str, data: Any,
+    async def _put_object(self, key: str, data: Any,
                           is_json: bool = False) -> None:
         with tempfile.SpooledTemporaryFile(
                 mode="w+b",
@@ -57,15 +57,15 @@ class S3StorageImpl(Storage):
                 ray.cloudpickle.dump(data, tmp_file)
             tmp_file.seek(0)
             async with self._client() as s3:
-                await s3.upload_fileobj(tmp_file, self._bucket, path)
+                await s3.upload_fileobj(tmp_file, self._bucket, key)
 
-    async def _get_object(self, path: str, is_json: bool = False) -> Any:
+    async def _get_object(self, key: str, is_json: bool = False) -> Any:
         try:
             with tempfile.SpooledTemporaryFile(
                     mode="w+b",
                     max_size=MAX_RECEIVED_DATA_MEMORY_SIZE) as tmp_file:
                 async with self._client() as s3:
-                    obj = await s3.get_object(Bucket=self._bucket, Key=path)
+                    obj = await s3.get_object(Bucket=self._bucket, Key=key)
                     async for chunk in obj["Body"]:
                         tmp_file.write(chunk)
                 tmp_file.seek(0)
@@ -102,7 +102,7 @@ class S3StorageImpl(Storage):
     @data_load_error
     async def get_step_status(self, workflow_id: str,
                               step_id: StepID) -> StepStatus:
-        path = self._get_path(workflow_id, STEPS_DIR, step_id) + "/"
+        path = self._make_key(workflow_id, STEPS_DIR, step_id) + "/"
         async with self._client() as s3:
             response = await s3.list_objects_v2(
                 Bucket=self._bucket, Prefix=path)

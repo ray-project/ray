@@ -133,24 +133,24 @@ class FilesystemStorageImpl(Storage):
         else:
             self._workflow_root_dir.mkdir()
 
-    def _get_path(self, *names: str) -> str:
+    def _make_key(self, *names: str) -> str:
         return "/".join(itertools.chain([str(self._workflow_root_dir)], names))
 
-    async def _put_object(self, path: str, data: Any,
+    async def _put_object(self, key: str, data: Any,
                           is_json: bool = False) -> None:
         if is_json:
-            with _open_atomic(pathlib.Path(path), "w") as f:
+            with _open_atomic(pathlib.Path(key), "w") as f:
                 return json.dump(data, f)
         else:
-            with _open_atomic(pathlib.Path(path), "wb") as f:
+            with _open_atomic(pathlib.Path(key), "wb") as f:
                 return ray.cloudpickle.dump(data, f)
 
-    async def _get_object(self, path: str, is_json: bool = False) -> Any:
+    async def _get_object(self, key: str, is_json: bool = False) -> Any:
         if is_json:
-            with _open_atomic(pathlib.Path(path)) as f:
+            with _open_atomic(pathlib.Path(key)) as f:
                 return json.load(f)
         else:
-            with _open_atomic(pathlib.Path(path), "rb") as f:
+            with _open_atomic(pathlib.Path(key), "rb") as f:
                 return ray.cloudpickle.load(f)
 
     async def get_step_status(self, workflow_id: str,
