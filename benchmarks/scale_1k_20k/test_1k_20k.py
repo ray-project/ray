@@ -42,6 +42,7 @@ def test_max_actors_launch():
     ]
     return actors
 
+
 def test_actor_ready(actors):
     remaining = [actor.foo.remote() for actor in actors]
     pbar = tqdm(total=len(remaining), desc="Executing actor.foo")
@@ -74,9 +75,13 @@ test_actor_ready(actors)
 actor_ready_end = perf_counter()
 actor_ready_time = actor_ready_end - actor_ready_start
 
-print(f"Actor launch time: {actor_launch_time} ({MAX_ACTORS_IN_CLUSTER} actors)")
+print(
+    f"Actor launch time: {actor_launch_time} ({MAX_ACTORS_IN_CLUSTER} actors)")
 print(f"Actor ready time: {actor_ready_time} ({MAX_ACTORS_IN_CLUSTER} actors)")
-print(f"Total time: {actor_launch_time + actor_ready_time} ({MAX_ACTORS_IN_CLUSTER} actors)")
+print(
+    f"Total time: {actor_launch_time + actor_ready_time}"
+    f" ({MAX_ACTORS_IN_CLUSTER} actors)"
+)
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
