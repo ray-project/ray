@@ -356,7 +356,7 @@ class AWSNodeProvider(NodeProvider):
         # SubnetIds is not a real config key: we must resolve to a
         # single SubnetId before invoking the AWS API.
         subnet_ids = conf.pop("SubnetIds")
-
+        security_group_ids = conf.pop("SecurityGroupIds", None)
         for attempt in range(1, BOTO_CREATE_MAX_RETRIES + 1):
             try:
                 subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
@@ -373,7 +373,6 @@ class AWSNodeProvider(NodeProvider):
                     "TagSpecifications": tag_specs
                 })
                 _ = conf.pop("SubnetId", None)
-                security_group_ids = conf.pop("SecurityGroupIds", None)
                 if security_group_ids is not None:
                     conf["NetworkInterfaces"][0]["Groups"] = security_group_ids
 
