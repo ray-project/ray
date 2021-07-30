@@ -7,8 +7,7 @@ Ray Client
 
 The Ray Client is an API that connects a python script to a Ray cluster. Effectively, it allows you to leverage a remote Ray cluster just like you would with Ray running on your local machine.
 
-
-By changing ``ray.init()`` to ``ray.init("ray://<host>:<port>")``, you can connect to a remote cluster and scale out your Ray code, while maintaining the ability to develop interactively in a python shell.
+By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you can connect to a remote cluster and scale out your Ray code, while maintaining the ability to develop interactively in a python shell. **This will only work with Ray 1.5+.** If you're using an older version of ray, see the `1.4.1 docs <https://docs.ray.io/en/releases-1.4.1/cluster/ray-client.html>`_
 
 
 .. code-block:: python
@@ -32,26 +31,10 @@ By changing ``ray.init()`` to ``ray.init("ray://<host>:<port>")``, you can conne
 Client arguments
 ----------------
 
-Ray client is used when the address passed into ``ray.init`` is prefixed with the name of a protocol and ``://``. **This will only work with Ray 1.5+.** If you're using an older version of ray, see the `1.4.1 docs <https://docs.ray.io/en/releases-1.4.1/cluster/ray-client.html>`_. Currently, two protocols are built into ray by default:
+Ray client is used when the address passed into ``ray.init`` is prefixed with ``ray://``. Client mode currently accepts two arguments:
 
-**Local mode** is used when the address is prefixed with ``local://``. If no address is provided, i.e. ``ray.init("local://")``), a local cluster is created and connected to directly by attaching a driver. If an address is provided, i.e. ``ray.init("local://localhost:6379")``, Ray will attempt to attach a driver to an existing cluster at the specified address. Local mode accepts all of the same keywords as ``ray.init`` and uses them to configure the local cluster.
-
-.. code-block:: python
-
-   # Start a local cluster with 2 cpus and expose the dashboard on port 8888
-   ray.init("local://", num_cpus=2, dashboard_port=8888)
-   #....
-
-.. code-block:: python
-
-   # Connect to an existing cluster at localhost:6379
-   ray.init("local://localhost:6379")
-   #....
-
-**Client mode** is used when the address is prefixed with ``ray://``. i.e. ``ray.init("ray://<head_node_host>:10001")``. Client mode connects to an existing Ray Client Server at the given address. Client mode currently accepts two arguments:
-
-   - ``namespace``: Sets the namespace for the session
-   - ``runtime_env``: Sets the `runtime environment <../advanced.html?highlight=runtime environment#runtime-environments-experimental>`_ for the session
+- ``namespace``: Sets the namespace for the session
+- ``runtime_env``: Sets the `runtime environment <../advanced.html?highlight=runtime environment#runtime-environments-experimental>`_ for the session
 
 .. code-block:: python
 
@@ -60,7 +43,14 @@ Ray client is used when the address passed into ``ray.init`` is prefixed with th
    ray.init("ray://1.2.3.4:10001", namespace="my_namespace")
    #....
 
-**Custom protocols** can be created by third parties to extend or alter connection behavior. More details can be found in the source for `client_builder.py <https://github.com/ray-project/ray/blob/master/python/ray/client_builder.py>`_
+When to use Ray client
+----------------------
+
+Ray client should be used when you want to connect a script or an interactive shell session to a **remote** cluster.
+
+* When to use `ray.init()` (non-client connection, no address specified): Use this if you're developing locally and want to automatically create a local cluster and attach directly to it.
+* When to use `ray.init(localhost:<port>)` (non-client connection, local address): Use this if you're developing locally and have already started a local cluster (i.e. `ray start --head` has already been run on your local machine)
+* When to use `ray.init("ray://<head_node_host>:10001")` (Ray client): Use this if you've set up a remote cluster at `<head_node_host>`. This will connect your local script or shell to the cluster. See the section on :ref:`How do you use the Ray client` for more details on settup up your cluster.
 
 How do you use the Ray client?
 ------------------------------
