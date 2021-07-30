@@ -24,7 +24,7 @@ class TestGPUs(unittest.TestCase):
 
         # Same for 2 GPUs.
         conf["num_gpus"] = 2
-        for _ in framework_iterator(conf):
+        for _ in framework_iterator(conf, frameworks=("tf", "torch")):
             # Expect that trainer creation causes a num_gpu error.
             self.assertRaisesRegexp(
                 RuntimeError,

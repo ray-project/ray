@@ -567,7 +567,7 @@ class RolloutWorker(ParallelIteratorWorker):
             num_gpus = policy_config["num_gpus"] if self.worker_index == 0 \
                 else policy_config["num_gpus_per_worker"]
 
-            # Check available number of GPUs
+            # Check available number of GPUs and error if we don't find enough.
             if policy_config["framework"] in ["tf2", "tf", "tfe"]:
                 if len(get_tf_gpu_devices()) < num_gpus:
                     raise RuntimeError(
