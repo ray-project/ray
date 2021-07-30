@@ -16,8 +16,8 @@ By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you
    import ray
 
    # Starting the Ray client. This connects to a remote Ray cluster.
-   # If you're using a version of Ray prior to 1.5, use the ClientBuilder API
-   # instead.
+   # If you're using a version of Ray prior to 1.5, use the 1.4.1 example
+   # instead: https://docs.ray.io/en/releases-1.4.1/cluster/ray-client.html
    ray.init("ray://<head_node_host>:10001")
 
    # Normal Ray code follows
