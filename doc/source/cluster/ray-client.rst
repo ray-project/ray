@@ -48,9 +48,9 @@ When to use Ray client
 
 Ray client should be used when you want to connect a script or an interactive shell session to a **remote** cluster.
 
-* When to use `ray.init()` (non-client connection, no address specified): Use this if you're developing locally and want to automatically create a local cluster and attach directly to it.
-* When to use `ray.init(localhost:<port>)` (non-client connection, local address): Use this if you're developing locally and have already started a local cluster (i.e. `ray start --head` has already been run on your local machine)
-* When to use `ray.init("ray://<head_node_host>:10001")` (Ray client): Use this if you've set up a remote cluster at `<head_node_host>`. This will connect your local script or shell to the cluster. See the section on :ref:`How do you use the Ray client` for more details on settup up your cluster.
+* When to use ``ray.init()`` (non-client connection, no address specified): Use this if you're developing locally and want to automatically create a local cluster and attach directly to it.
+* When to use ``ray.init(localhost:<port>)`` (non-client connection, local address): Use this if you're developing locally and have already started a local cluster (i.e. ``ray start --head`` has already been run on your local machine)
+* When to use ``ray.init("ray://<head_node_host>:10001")`` (Ray client): Use this if you've set up a remote cluster at ``<head_node_host>``. This will connect your local script or shell to the cluster. See the section on :ref:`How do you use the Ray client` for more details on settup up your cluster.
 
 How do you use the Ray client?
 ------------------------------
@@ -119,5 +119,3 @@ Starting a connection on older Ray versions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you encounter ``socket.gaierror: [Errno -2] Name or service not known`` when using ``ray.init("ray://...")`` then you may be on a version of Ray prior to 1.5 that does not support starting client connections through ``ray.init``. If this is the case, see the `1.4.1 docs <https://docs.ray.io/en/releases-1.4.1/cluster/ray-client.html>`_ for Ray client.
-
-Alternatively, you might be calling ``ray.init("local")`` instead of "local://".

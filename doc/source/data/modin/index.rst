@@ -52,7 +52,7 @@ cluster has all dependencies installed.
    import ray
    import ray.util
 
-   ray.util.connect()
+   ray.init("ray://<head_node_host>:10001")
    df = pd.read_parquet("s3://my-bucket/big.parquet")
 
 Modin will automatically use the Ray Client for computation when the file
