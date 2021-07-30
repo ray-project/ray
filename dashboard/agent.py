@@ -255,7 +255,7 @@ if __name__ == "__main__":
         required=False,
         type=int,
         default=0,
-        help="Port to listen on")
+        help="Port for HTTP server to listen on")
     parser.add_argument(
         "--raylet-name",
         required=True,
@@ -369,6 +369,7 @@ if __name__ == "__main__":
             log_dir=args.log_dir,
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,
+            listen_port=args.listen_port,
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name,
             logging_params=logging_params)

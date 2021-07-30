@@ -388,7 +388,7 @@ def debug(address):
     type=int,
     hidden=True,
     default=0,
-    help="the port for dashboard agents to listen on.")
+    help="the port for dashboard agents to listen for http on.")
 @click.option(
     "--block",
     is_flag=True,
