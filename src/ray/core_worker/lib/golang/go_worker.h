@@ -1,5 +1,7 @@
 #ifndef _Included_golang_worker
 #define _Included_golang_worker
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
