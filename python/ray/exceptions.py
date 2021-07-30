@@ -169,7 +169,7 @@ class RayTaskError(RayError):
                                "this task could not be computed:")
             else:
                 out.append(line)
-        return "\n".join(lines)
+        return "\n".join(out)
 
 
 class WorkerCrashedError(RayError):
