@@ -397,7 +397,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # Create an env for this worker.
         if not (worker_index == 0 and num_workers > 0
-                and policy_config["create_env_on_driver"] is False):
+                and not policy_config.get("create_env_on_driver")):
             # Run the `env_creator` function passing the EnvContext.
             self.env = env_creator(env_context)
         if self.env is not None:
@@ -562,7 +562,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     raise RuntimeError(
                         f"Not enough GPUs found for num_gpus={num_gpus}! "
                         f"Found only these IDs: {get_tf_gpu_devices()}.")
-            elif policy_config["framework"] == "torch":
+            elif policy_config.get("framework") == "torch":
                 if torch.cuda.device_count() < num_gpus:
                     raise RuntimeError(
                         f"Not enough GPUs found ({torch.cuda.device_count()}) "
