@@ -13,7 +13,6 @@ from ray import tune
 from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.optuna import OptunaSearch
-import optuna
 
 
 def evaluation_fn(step, width, height, mult=1):
@@ -34,7 +33,7 @@ def easy_objective(config):
         time.sleep(0.1)
 
 
-def define_by_run_func(trial: optuna.Trial) -> Optional[Dict[str, Any]]:
+def define_by_run_func(trial) -> Optional[Dict[str, Any]]:
     """Define-by-run function to create the search space.
 
     Ensure no actual computation takes place here. That should go into
