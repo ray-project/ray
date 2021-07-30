@@ -144,7 +144,7 @@ Get started by creating Datasets from synthetic data using ``ray.data.range()`` 
     
     # Create a Dataset of Python objects.
     ds = ray.data.range(10000)
-    # -> Dataset(num_rows=10000, num_blocks=200, schema=<class 'int'>)
+    # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
 
     ds.take(5)
     # -> [0, 1, 2, 3, 4]
@@ -154,7 +154,7 @@ Get started by creating Datasets from synthetic data using ``ray.data.range()`` 
 
     # Create a Dataset of Arrow records.
     ds = ray.data.from_items([{"col1": i, "col2": str(i)} for i in range(10000)])
-    # -> Dataset(num_rows=10000, num_blocks=200, schema={col1: int64, col2: string})
+    # -> Dataset(num_blocks=200, num_rows=10000, schema={col1: int64, col2: string})
 
     ds.show(5)
     # -> ArrowRow({'col1': 0, 'col2': '0'})
@@ -220,7 +220,7 @@ Datasets can be transformed in parallel using ``.map()``. Transformations are ex
     ds = ray.data.range(10000)
     ds = ds.map(lambda x: x * 2)
     # -> Map Progress: 100%|█████████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
-    # -> Dataset(num_rows=10000, num_blocks=200, schema=<class 'int'>)
+    # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
     ds.take(5)
     # -> [0, 2, 4, 6, 8]
 
@@ -306,11 +306,11 @@ Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is
     # -> [Actor(Worker, ...), Actor(Worker, ...), ...]
 
     ds = ray.data.range(10000)
-    # -> Dataset(num_rows=10000, num_blocks=200, schema=<class 'int'>)
+    # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
 
     shards = ds.split(n=16, locality_hints=workers)
-    # -> [Dataset(num_rows=650, num_blocks=13, schema=<class 'int'>),
-    #     Dataset(num_rows=650, num_blocks=13, schema=<class 'int'>), ...]
+    # -> [Dataset(num_blocks=13, num_rows=650, schema=<class 'int'>),
+    #     Dataset(num_blocks=13, num_rows=650, schema=<class 'int'>), ...]
 
     ray.get([w.train.remote(s) for s in shards])
     # -> [650, 650, ...]
@@ -324,7 +324,7 @@ Datasets support tensor-typed values, which are represented in-memory as Arrow t
 
     # Create a Dataset of tensor-typed values.
     ds = ray.data.range_tensor(10000, shape=(3, 5))
-    # -> Dataset(num_rows=10000, num_blocks=200, schema=<Tensor: shape=(None, 3, 5), dtype=float64>)
+    # -> Dataset(num_blocks=200, num_rows=10000, schema=<Tensor: shape=(None, 3, 5), dtype=float64>)
 
     ds.map_batches(lambda t: t + 2).show(2)
     # -> [[2. 2. 2. 2. 2.]
@@ -339,7 +339,7 @@ Datasets support tensor-typed values, which are represented in-memory as Arrow t
 
     # Read from storage.
     ray.data.read_numpy("/tmp/tensor_out")
-    # -> Dataset(num_rows=?, num_blocks=200, schema=<Tensor: shape=(None, 3, 5), dtype=float64>)
+    # -> Dataset(num_blocks=200, num_rows=?, schema=<Tensor: shape=(None, 3, 5), dtype=float64>)
 
 Tensor datasets are also created whenever an array type is returned from a map function:
 
@@ -347,11 +347,11 @@ Tensor datasets are also created whenever an array type is returned from a map f
 
     # Create a dataset of Python integers.
     ds = ray.data.range(10)
-    # -> Dataset(num_rows=10, num_blocks=10, schema=<class 'int'>)
+    # -> Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)
 
     # It is now converted into a Tensor dataset.
     ds = ds.map_batches(lambda x: np.array(x))
-    # -> Dataset(num_rows=10, num_blocks=10, schema=<Tensor: shape=(None,), dtype=int64>)
+    # -> Dataset(num_blocks=10, num_rows=10, schema=<Tensor: shape=(None,), dtype=int64>)
 
 Limitations: currently tensor-typed values cannot be nested in tabular records (e.g., as in TFRecord / Petastorm format). This is planned for development.
 

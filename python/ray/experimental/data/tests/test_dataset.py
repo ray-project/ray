@@ -130,7 +130,7 @@ def test_batch_tensors(ray_start_regular_shared):
     import torch
     ds = ray.experimental.data.from_items(
         [torch.tensor([0, 0]) for _ in range(40)])
-    res = "Dataset(num_rows=40, num_blocks=40, schema=<class 'torch.Tensor'>)"
+    res = "Dataset(num_blocks=40, num_rows=40, schema=<class 'torch.Tensor'>)"
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
@@ -141,13 +141,13 @@ def test_batch_tensors(ray_start_regular_shared):
 def test_tensors(ray_start_regular_shared):
     # Create directly.
     ds = ray.experimental.data.range_tensor(5, shape=(3, 5))
-    assert str(ds) == ("Dataset(num_rows=5, num_blocks=5, "
+    assert str(ds) == ("Dataset(num_blocks=5, num_rows=5, "
                        "schema=<Tensor: shape=(None, 3, 5), dtype=float64>)")
 
     # Transform.
     ds = ds.map_batches(lambda t: np.expand_dims(t, 3))
     assert str(ds) == (
-        "Dataset(num_rows=5, num_blocks=5, "
+        "Dataset(num_blocks=5, num_rows=5, "
         "schema=<Tensor: shape=(None, 3, 5, 1), dtype=float64>)")
 
     # Pandas conversion.
@@ -157,14 +157,14 @@ def test_tensors(ray_start_regular_shared):
 
     # From other formats.
     ds = ray.data.range(10).map_batches(lambda x: np.array(x))
-    assert str(ds) == ("Dataset(num_rows=10, num_blocks=10, "
+    assert str(ds) == ("Dataset(num_blocks=10, num_rows=10, "
                        "schema=<Tensor: shape=(None,), dtype=int64>)")
     ds = ray.data.range(10).map(lambda x: np.array(x))
-    assert str(ds) == ("Dataset(num_rows=10, num_blocks=10, "
+    assert str(ds) == ("Dataset(num_blocks=10, num_rows=10, "
                        "schema=<Tensor: shape=(None,), dtype=int64>)")
     ds = ray.data.from_items([np.zeros(shape=(2, 2, 2)) for _ in range(4)])
     assert str(ds) == (
-        "Dataset(num_rows=4, num_blocks=4, "
+        "Dataset(num_blocks=4, num_rows=4, "
         "schema=<Tensor: shape=(None, 2, 2, 2), dtype=float64>)"), ds
 
 
@@ -174,7 +174,7 @@ def test_npio(ray_start_regular_shared, tmp_path):
     ds = ray.data.range_tensor(10, parallelism=2)
     ds.write_numpy(path)
     ds = ray.data.read_numpy(path)
-    assert str(ds) == ("Dataset(num_rows=?, num_blocks=2, "
+    assert str(ds) == ("Dataset(num_blocks=2, num_rows=?, "
                        "schema=<Tensor: shape=(None, 1), dtype=float64>)")
 
     assert str(
@@ -228,7 +228,7 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ray.experimental.data.range(1)
     ds = ds.filter(lambda x: x > 1)
     assert str(ds) == \
-        "Dataset(num_rows=0, num_blocks=1, schema=Unknown schema)"
+        "Dataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
 
 
 def test_schema(ray_start_regular_shared):
@@ -237,13 +237,13 @@ def test_schema(ray_start_regular_shared):
     ds3 = ds2.repartition(5)
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
     assert str(ds) == \
-        "Dataset(num_rows=10, num_blocks=10, schema=<class 'int'>)"
+        "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     assert str(ds2) == \
-        "Dataset(num_rows=10, num_blocks=10, schema={value: int64})"
+        "Dataset(num_blocks=10, num_rows=10, schema={value: int64})"
     assert str(ds3) == \
-        "Dataset(num_rows=10, num_blocks=5, schema={value: int64})"
+        "Dataset(num_blocks=5, num_rows=10, schema={value: int64})"
     assert str(ds4) == \
-        "Dataset(num_rows=5, num_blocks=1, schema={a: string, b: double})"
+        "Dataset(num_blocks=1, num_rows=5, schema={a: string, b: double})"
 
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
@@ -413,10 +413,10 @@ def test_parquet_read(ray_start_regular_shared, tmp_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert str(ds) == \
-        "Dataset(num_rows=6, num_blocks=2, " \
+        "Dataset(num_blocks=2, num_rows=6, " \
         "schema={one: int64, two: string})", ds
     assert repr(ds) == \
-        "Dataset(num_rows=6, num_blocks=2, " \
+        "Dataset(num_blocks=2, num_rows=6, " \
         "schema={one: int64, two: string})", ds
     assert len(ds._blocks._blocks) == 1
 

@@ -1466,8 +1466,8 @@ class Dataset(Generic[T]):
         count = self._meta_count()
         if count is None:
             count = "?"
-        return "Dataset(num_rows={}, num_blocks={}, schema={})".format(
-            count, len(self._blocks), schema_str)
+        return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
+            len(self._blocks), count, schema_str)
 
     def __str__(self) -> str:
         return repr(self)
