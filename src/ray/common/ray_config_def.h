@@ -461,5 +461,5 @@ RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
 // resource limit.
 RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 
-/// ServerCall instance number of each ServerCallFactory
-RAY_CONFIG(int, grpc_server_call_size_per_factory, 1000)
+/// ServerCall instance number of each RPC service
+RAY_CONFIG(int64_t, gcs_default_back_pressure_limit_per_service, 100)

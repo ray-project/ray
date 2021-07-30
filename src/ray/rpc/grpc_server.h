@@ -36,6 +36,15 @@ namespace rpc {
           #SERVICE ".grpc_server." #HANDLER));                                  \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
 
+#define RPC_SERVICE_HANDLER_WITH_BACK_PRESSURE(SERVICE, HANDLER, BACK_PRESSURE_NUM) \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                        \
+      new ServerCallFactoryImpl<SERVICE, SERVICE##Handler, HANDLER##Request,        \
+                                HANDLER##Reply>(                                    \
+          service_, &SERVICE::AsyncService::Request##HANDLER, service_handler_,     \
+          &SERVICE##Handler::Handle##HANDLER, cq, main_service_,                    \
+          #SERVICE ".grpc_server." #HANDLER, BACK_PRESSURE_NUM));                   \
+  server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
+
 // Define a void RPC client method.
 #define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
   virtual void Handle##METHOD(const rpc::METHOD##Request &request, \

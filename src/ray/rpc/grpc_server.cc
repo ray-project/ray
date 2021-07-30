@@ -76,8 +76,11 @@ void GrpcServer::Run() {
       // Create a buffer of 100 calls for each RPC handler.
       // TODO(edoakes): a small buffer should be fine and seems to have better
       // performance, but we don't currently handle backpressure on the client.
-      for (int j = 0; j < RayConfig::instance().grpc_server_call_size_per_factory();
-           j++) {
+      int buffer_size = 100;
+      if (entry->GetBackPressureLimit() != -1) {
+        buffer_size = entry->GetBackPressureLimit();
+      }
+      for (int j = 0; j < buffer_size; j++) {
         entry->CreateCall();
       }
     }
@@ -136,10 +139,10 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       delete_call = true;
     }
     if (delete_call) {
-      // Create a new `ServerCall` to accept the next incoming request.
-      // We create this before handling the request so that the it can be populated by
-      // the completion queue in the background if a new request comes in.
-      server_call->GetServerCallFactory().CreateCall();
+      if (server_call->GetServerCallFactory().GetBackPressureLimit() != -1) {
+        // Create a new `ServerCall` to accept the next incoming request.
+        server_call->GetServerCallFactory().CreateCall();
+      }
       delete server_call;
     }
   }
