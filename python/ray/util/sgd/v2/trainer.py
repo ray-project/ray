@@ -27,6 +27,7 @@ class Trainer:
             will be executed during training. If this is not set,
             currently there are NO default Callbacks.
     """
+
     def __init__(self,
                  backend: Union[str, BackendConfig],
                  num_workers: int = 1,
@@ -67,7 +68,7 @@ class Trainer:
     def run(self,
             train_func: Callable[[Dict[str, Any]], T],
             config: Optional[Dict[str, Any]] = None,
-            callbacks: Optional[List[Callback]] = None) -> List[T]:
+            callbacks: Optional[List[SGDCallback]] = None) -> List[T]:
         """Runs a training function in a distributed manner.
 
         Args:
@@ -112,8 +113,7 @@ class Trainer:
         """
         pass
 
-    def to_tune_trainable(self, train_func: Callable[[Dict[str, Any]], T]
-                          ) -> "Trainable":
+    def to_tune_trainable(self, train_func: Callable[[Dict[str, Any]], T]):
         """Creates a Tune trainable object.
 
         Args:
