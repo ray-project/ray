@@ -7,6 +7,10 @@ Architecture
 
 A diagram of the RaySGD architecture is provided below.
 
+.. image:: sgd-arch.svg
+    :width: 70%
+    :align: center
+
 
 Trainer
 -------
@@ -26,7 +30,7 @@ Executor
 The executor is an interface which handles execution of distributed training.
 
 * The executor will handle the creation of an actor group and will be initialized in conjunction with a backend.
-* Worker resources, number of workers, and placement strategy will be passed to the Actor Group.
+* Worker resources, number of workers, and placement strategy will be passed to the Worker Group.
 
 
 Backend
@@ -35,10 +39,9 @@ Backend
 A backend is used in conjunction with the executor to initialize and manage framework-specific communication protocols.
 Each communication library (Torch, Horovod, TensorFlow, etc.) will have a separate backend and will take a specific configuration value.
 
-ActorGroup
-----------
+WorkerGroup
+-----------
 
-The ActorGroup is a generic utility class for managing a group of Ray Actors.
+The WorkerGroup is a generic utility class for managing a group of Ray Actors.
 
-* This will not be specific to SGD and should eventually live in ray.util.
 * This is similar in concept to Fiber's `Ring <https://uber.github.io/fiber/experimental/ring/>`_.

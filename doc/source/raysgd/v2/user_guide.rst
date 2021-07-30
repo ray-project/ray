@@ -5,9 +5,7 @@
 RaySGD User Guide
 =================
 
-
-Outline of use cases
---------------------
+In this guide, we cover examples for the following use cases:
 
 * How do I port my code to using RaySGD?
 * How do I use RaySGD to train with a large dataset?
@@ -109,8 +107,8 @@ Running this with RaySGD is as simple as the following:
 
 
 
-Porting code over to using RaySGD
----------------------------------
+Porting code to RaySGD
+----------------------
 
 .. tabs::
 
@@ -128,8 +126,8 @@ Porting code over to using RaySGD
 
 
 
-RaySGD Training on a large dataset
-----------------------------------
+Training on a large dataset
+---------------------------
 
 SGD provides native support for :ref:`Ray Datasets <datasets>`. You can pass in a Dataset to RaySGD via ``Trainer.run``.
 Underneath the hood, RaySGD will automatically shard the given dataset.
@@ -160,8 +158,8 @@ Underneath the hood, RaySGD will automatically shard the given dataset.
 .. note:: This feature currently does not work with elastic training.
 
 
-Monitoring training with intermediate results
----------------------------------------------
+Monitoring training
+-------------------
 
 You may want to plug in your training code with your favorite experiment management framework.
 RaySGD provides an interface to fetch intermediate results and callbacks to process/log your intermediate results.
@@ -244,8 +242,8 @@ RaySGD provides a way to save state during the training process. This will be us
 
 .. _tune-sgd:
 
-Hyperparameter tuning with RaySGD
----------------------------------
+Hyperparameter tuning
+---------------------
 
 Hyperparameter tuning with Ray Tune is natively supported with RaySGD. Specifically, you can take an existing training function and follow these steps:
 

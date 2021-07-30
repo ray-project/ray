@@ -11,9 +11,9 @@ RaySGD is a lightweight library for distributed deep learning, allowing you to s
 
 The main features are:
 
-  - **Ease of use**: Scale your single process training code to a cluster in just a couple lines of code.
-  - **Composability**: RaySGD interoperates with Ray Tune to allow you to easily do hyperparameter tuning at scale, and Ray Datasets to allow you to train over large amounts of data.
-  - **Interactivity**: RaySGD fits in your workflow with support to run from any environment, including seamless Jupyter notebook support.
+- **Ease of use**: Scale your single process training code to a cluster in just a couple lines of code.
+- **Composability**: RaySGD interoperates with Ray Tune to allow you to easily do hyperparameter tuning at scale, and Ray Datasets to allow you to train over large amounts of data.
+- **Interactivity**: RaySGD fits in your workflow with support to run from any environment, including seamless Jupyter notebook support.
 
 
 Quickstart
