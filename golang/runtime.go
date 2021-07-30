@@ -18,7 +18,7 @@ func main() {
 }
 
 
-//export SayHello1
+//export SayHello
 func SayHello(str *C.char) {
     fmt.Println(C.GoString(str) + " in go")
 }
