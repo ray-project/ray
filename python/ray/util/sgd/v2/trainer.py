@@ -70,7 +70,8 @@ class Trainer:
 
         Args:
             func (Callable): The function that should be executed.
-                ``self.train_cls`` should be the first argument.
+                The first argument should be an instance of
+                ``self.train_cls``.
             args, kwargs: The arguments to pass into `func`.
         """
         pass
@@ -80,7 +81,8 @@ class Trainer:
 
         Args:
             func (Callable): The function that should be executed.
-                ``self.train_cls`` should be the first argument.
+                The first argument should be an instance of
+                ``self.train_cls``.
             args, kwargs: The arguments to pass into `func`.
         """
         pass
