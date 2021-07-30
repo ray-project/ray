@@ -202,7 +202,7 @@ if __name__ == "__main__":
     if args.address:
         ray.init(args.address)
     elif args.server_address:
-        ray.util.connect(args.server_address)
+        ray.init(f"ray://{args.server_address}")
     else:
         ray.init()
 

@@ -124,6 +124,6 @@ if __name__ == "__main__":
     else:
         if args.server_address:
             import ray
-            ray.util.connect(args.server_address)
+            ray.init(f"ray://{args.server_address}")
 
         tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0)
