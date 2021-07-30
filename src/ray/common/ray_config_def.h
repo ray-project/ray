@@ -352,7 +352,7 @@ RAY_CONFIG(bool, enable_timeline, true)
 
 /// The maximum number of pending placement group entries that are reported to monitor to
 /// autoscale the cluster.
-RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
+RAY_CONFIG(int64_t, max_placement_group_load_report_size, 1000)
 
 /* Configuration parameters for object spilling. */
 /// JSON configuration that describes the external storage. This is passed to
@@ -454,8 +454,8 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// When set it to "FPGA", we will treat FPGA as unit_instance.
 RAY_CONFIG(std::string, custom_unit_instance_resources, "")
 
-// Maximum size of the batch size when broadcasting resources to raylet.
-RAY_CONFIG(uint64_t, resource_broadcast_batch_size_bytes, 1024 * 1024 * 5);
+// Maximum size of the batches when broadcasting resources to raylet.
+RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
 
 // If enabled and worker stated in container, the container will add
 // resource limit.

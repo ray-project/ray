@@ -6,7 +6,7 @@
 #
 # setup.py install_requires
 aiohttp==3.7
-aioredis
+aioredis < 2
 click >= 7.0
 cloudpickle
 filelock

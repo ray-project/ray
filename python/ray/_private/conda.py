@@ -4,6 +4,8 @@ import subprocess
 import hashlib
 import json
 from typing import Optional, List, Union, Tuple
+
+from ray.workers.pluggable_runtime_env import get_hook_logger
 """Utilities for conda.  Adapted from https://github.com/mlflow/mlflow."""
 
 logger = logging.getLogger(__name__)
@@ -81,6 +83,7 @@ def get_or_create_conda_env(conda_env_path: str,
             In either case, the return value should be valid to pass in to
             `conda activate`.
     """
+    logger = get_hook_logger()
     conda_path = get_conda_bin_executable("conda")
     try:
         exec_cmd([conda_path, "--help"], throw_on_error=False)
@@ -100,7 +103,7 @@ def get_or_create_conda_env(conda_env_path: str,
     if base_dir:
         env_name = f"{base_dir}/{env_name}"
         if env_name not in envs:
-            logger.info("=== Creating conda environment %s ===", env_name)
+            logger.info("Creating conda environment %s", env_name)
             exec_cmd(
                 [
                     conda_path, "env", "create", "--file", conda_env_path,
@@ -111,7 +114,7 @@ def get_or_create_conda_env(conda_env_path: str,
     else:
         env_names = [os.path.basename(env) for env in envs]
         if env_name not in env_names:
-            logger.info("=== Creating conda environment %s ===", env_name)
+            logger.info("Creating conda environment %s", env_name)
             exec_cmd(
                 [
                     conda_path, "env", "create", "-n", env_name, "--file",
