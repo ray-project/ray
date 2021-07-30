@@ -1,13 +1,10 @@
 from typing import Iterator, List, TypeVar, Dict, TYPE_CHECKING
 
 import numpy as np
-try:
-    import pyarrow
-except ImportError:
-    pyarrow = None
 
 if TYPE_CHECKING:
     import pandas
+    import pyarrow
 
 from ray.experimental.data.block import Block, BlockAccessor
 from ray.experimental.data.impl.block_builder import BlockBuilder
@@ -61,6 +58,7 @@ class TensorBlockAccessor(BlockAccessor):
         return pandas.DataFrame(self._tensor)
 
     def to_arrow(self) -> "pyarrow.Tensor":
+        import pyarrow
         return pyarrow.Tensor.from_numpy(self._tensor)
 
     def schema(self) -> Dict:
