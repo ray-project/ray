@@ -24,9 +24,10 @@
 #include <utility>
 #include <vector>
 
-#include "ray/object_manager/plasma/allocator.h"
 #include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
+#include "ray/object_manager/plasma/plasma_allocator.h"
 
 namespace plasma {
 
@@ -95,10 +96,9 @@ class EvictionPolicy {
  public:
   /// Construct an eviction policy.
   ///
-  /// \param store_info Information about the Plasma store that is exposed
-  ///        to the eviction policy.
-  /// \param allocator Memory allocator.
-  explicit EvictionPolicy(PlasmaStoreInfo *store_info, const IAllocator &allocator);
+  /// \param object_store Reference to the object_store
+  /// \param allocator Reference to the allocator
+  EvictionPolicy(const ObjectStore &object_store, const IAllocator &allocator);
 
   /// Destroy an eviction policy.
   virtual ~EvictionPolicy() {}
@@ -172,13 +172,12 @@ class EvictionPolicy {
   /// The number of bytes pinned by applications.
   int64_t pinned_memory_bytes_;
 
-  /// Pointer to the plasma store info.
-  PlasmaStoreInfo *store_info_;
-
-  const IAllocator &allocator_;
-
   /// Datastructure for the LRU cache.
   LRUCache cache_;
+
+  const ObjectStore &object_store_;
+
+  const IAllocator &allocator_;
 };
 
 }  // namespace plasma
