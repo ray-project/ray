@@ -317,8 +317,6 @@ def read_numpy(paths: Union[str, List[str]],
         **numpy_load_args)
 
 
-
-
 @PublicAPI(stability="beta")
 def read_binary_files(
         paths: Union[str, List[str]],
