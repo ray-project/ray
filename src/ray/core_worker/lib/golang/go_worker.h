@@ -11,6 +11,8 @@ void go_worker_Initialize(
 
 void* go_worker_CreateGlobalStateAccessor(char *redis_address, char *redis_password);
 
+bool go_worker_GlobalStateAccessorConnet(void *p);
+
 int go_worker_GetNextJobID(void *p);
 
 void SayHello(char* s);

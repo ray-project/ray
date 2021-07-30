@@ -1,7 +1,8 @@
 #include "go_worker.h"
 
-#include <iostream>
 #include <stdint.h>
+
+#include <iostream>
 
 #include "ray/core_worker/core_worker.h"
 #include "ray/gcs/gcs_client/global_state_accessor.h"
@@ -44,6 +45,11 @@ __attribute__((visibility("default"))) void *go_worker_CreateGlobalStateAccessor
   ray::gcs::GlobalStateAccessor *gcs_accessor =
       new ray::gcs::GlobalStateAccessor(redis_address, redis_password);
   return gcs_accessor;
+}
+
+__attribute__((visibility("default"))) bool go_worker_GlobalStateAccessorConnet(void *p) {
+  auto *gcs_accessor = static_cast<ray::gcs::GlobalStateAccessor *>(p);
+  return gcs_accessor->Connect();
 }
 
 __attribute__((visibility("default"))) int go_worker_GetNextJobID(void *p) {

@@ -6,7 +6,10 @@ package main
    #include "go_worker.h"
 */
 import "C"
-import "unsafe"
+import (
+    "fmt"
+    "unsafe"
+)
 
 type GlobalStateAccessor struct {
     redisAddress  string
@@ -14,13 +17,17 @@ type GlobalStateAccessor struct {
     p             unsafe.Pointer
 }
 
-func NewGlobalStateAccessor(redisAddress, redisPassword string) *GlobalStateAccessor {
+func NewGlobalStateAccessor(redisAddress, redisPassword string) (*GlobalStateAccessor, error) {
     gsa := &GlobalStateAccessor{
         redisAddress:  redisAddress,
         redisPassword: redisPassword,
     }
     gsa.p = C.go_worker_CreateGlobalStateAccessor(C.CString(redisAddress), C.CString(redisPassword))
-    return gsa
+    connected := bool(C.go_worker_GlobalStateAccessorConnet(gsa.p))
+    if !connected {
+        return nil, fmt.Errorf("failed to connect %s", redisAddress)
+    }
+    return gsa, nil
 }
 
 func (g *GlobalStateAccessor) GetNextJobID() int {
