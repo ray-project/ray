@@ -14,7 +14,7 @@ class TestGPUs(unittest.TestCase):
         # Non-local mode.
         ray.init()
 
-        actual_gpus_available = torch.cuda.device_count()
+        actual_gpus = torch.cuda.device_count()
 
         config = DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
@@ -22,47 +22,51 @@ class TestGPUs(unittest.TestCase):
 
         # Expect errors when we run a config w/ num_gpus>0 w/o a GPU
         # and _fake_gpus=False.
-        for num_gpus in [0.1, 0, 1, actual_gpus_available + 4]:
-            print(f"num_gpus={num_gpus}")
-            config["num_gpus"] = num_gpus
-            #for num_gpus_per_worker in [0, 0.5, 1]:
-            #    config["num_gpus_per_worker"] = num_gpus_per_worker
-            for fake_gpus in [False, True]:
-                print(f"_fake_gpus={fake_gpus}")
-                config["_fake_gpus"] = fake_gpus
-                frameworks = ("tf", "torch") if num_gpus > 1 else \
-                    ("tf2", "tf", "torch")
-                for _ in framework_iterator(config, frameworks=frameworks):
-                    # Expect that trainer creation causes a num_gpu error.
-                    #if actual_gpus_available < num_gpus + 2 * num_gpus_per_worker and not fake_gpus:
-                    if actual_gpus_available < num_gpus and not fake_gpus:
-                        # "Direct" RLlib (create Trainer on the driver).
-                        # Cannot run through ray.tune.run() as it would simply
-                        # wait infinitely for the resources to become
-                        # available.
-                        print("direct RLlib")
-                        self.assertRaisesRegex(
-                            RuntimeError,
-                            "Not enough GPUs found.+for "
-                            f"num_gpus={num_gpus}",
-                            lambda: PGTrainer(config, env="CartPole-v0"),
-                        )
-                    # If actual_gpus_available >= num_gpus or faked,
-                    # expect no error.
-                    else:
-                        print("direct RLlib")
-                        trainer = PGTrainer(config, env="CartPole-v0")
-                        trainer.stop()
-                        # Cannot run through ray.tune.run() w/ fake GPUs
-                        # as it would simply wait infinitely for the
-                        # resources to become available (even though, we
-                        # wouldn't really need them).
-                        if num_gpus == 0:
-                            print("via ray.tune.run()")
-                            tune.run(
-                                "PG",
-                                config=config,
-                                stop={"training_iteration": -1})
+        for num_gpus in [0.1, 0, 1, actual_gpus + 4]:
+            per_worker = [0] if actual_gpus == 0 else [0, 0.5, 1]
+            for num_gpus_per_worker in per_worker:
+                for fake_gpus in [False, True]:
+                    config["num_gpus"] = num_gpus
+                    config["num_gpus_per_worker"] = num_gpus_per_worker
+                    config["_fake_gpus"] = fake_gpus
+
+                    print(f"\n------------\nnum_gpus={num_gpus} "
+                          f"num_gpus_per_worker={num_gpus_per_worker} "
+                          f"_fake_gpus={fake_gpus}")
+
+                    frameworks = ("tf", "torch") if num_gpus > 1 else \
+                        ("tf2", "tf", "torch")
+                    for _ in framework_iterator(config, frameworks=frameworks):
+                        # Expect that trainer creation causes a num_gpu error.
+                        if actual_gpus < num_gpus + 2 * num_gpus_per_worker \
+                                and not fake_gpus:
+                            # "Direct" RLlib (create Trainer on the driver).
+                            # Cannot run through ray.tune.run() as it would
+                            # simply wait infinitely for the resources to
+                            # become available.
+                            print("direct RLlib")
+                            self.assertRaisesRegex(
+                                RuntimeError,
+                                "Not enough GPUs found.+for "
+                                f"num_gpus={num_gpus}",
+                                lambda: PGTrainer(config, env="CartPole-v0"),
+                            )
+                        # If actual_gpus >= num_gpus or faked,
+                        # expect no error.
+                        else:
+                            print("direct RLlib")
+                            trainer = PGTrainer(config, env="CartPole-v0")
+                            trainer.stop()
+                            # Cannot run through ray.tune.run() w/ fake GPUs
+                            # as it would simply wait infinitely for the
+                            # resources to become available (even though, we
+                            # wouldn't really need them).
+                            if num_gpus == 0:
+                                print("via ray.tune.run()")
+                                tune.run(
+                                    "PG",
+                                    config=config,
+                                    stop={"training_iteration": -1})
         ray.shutdown()
 
     def test_gpus_in_local_mode(self):
