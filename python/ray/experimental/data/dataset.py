@@ -783,7 +783,11 @@ class Dataset(Generic[T]):
         # Block until writing is done.
         ray.get(refs)
 
-    def write_json(self, path: str) -> None:
+    def write_json(
+            self,
+            path: str,
+            *,
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
@@ -800,7 +804,11 @@ class Dataset(Generic[T]):
         Args:
             path: The path to the destination root directory, where json
                 files will be written to.
+            filesystem: The filesystem implementation to write to.
         """
+
+        if filesystem:
+            raise NotImplementedError
 
         @ray.remote
         def json_write(write_path: str, block: Block):
@@ -818,7 +826,11 @@ class Dataset(Generic[T]):
         # Block until writing is done.
         ray.get(refs)
 
-    def write_csv(self, path: str) -> None:
+    def write_csv(
+            self,
+            path: str,
+            *,
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
@@ -835,7 +847,11 @@ class Dataset(Generic[T]):
         Args:
             path: The path to the destination root directory, where csv
                 files will be written to.
+            filesystem: The filesystem implementation to write to.
         """
+
+        if filesystem:
+            raise NotImplementedError
 
         @ray.remote
         def csv_write(write_path: str, block: Block):
@@ -854,7 +870,11 @@ class Dataset(Generic[T]):
         # Block until writing is done.
         ray.get(refs)
 
-    def write_numpy(self, path: str) -> None:
+    def write_numpy(
+            self,
+            path: str,
+            *,
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
         """Write the dataset to npy files.
 
         This is only supported for datasets of Tensor records.
@@ -871,7 +891,11 @@ class Dataset(Generic[T]):
         Args:
             path: The path to the destination root directory, where npy
                 files will be written to.
+            filesystem: The filesystem implementation to write to.
         """
+
+        if filesystem:
+            raise NotImplementedError
 
         @ray.remote
         def numpy_write(write_path: str, block: Block):
