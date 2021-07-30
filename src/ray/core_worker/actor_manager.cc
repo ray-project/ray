@@ -84,14 +84,23 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     absl::MutexLock lock(&mutex_);
     inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
   }
-  if (inserted && !is_self) {
+
+  if (is_self) {
+    // Current actor doesn't need to subscribe its state from GCS.
+    // num_restarts is used for dropping out-of-order pub messages. Since we won't
+    // subscribe any messages, we can set any value bigger than -1(we use 0 here).
+    direct_actor_submitter_->ConnectActor(actor_id, caller_address, /*num_restarts=*/0);
+    return inserted;
+  }
+  
+  if (inserted) {
     // Register a callback to handle actor notifications.
     auto actor_notification_callback =
         std::bind(&ActorManager::HandleActorStateNotification, this,
                   std::placeholders::_1, std::placeholders::_2);
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
         actor_id, actor_notification_callback, nullptr));
-  } else if (!inserted) {
+  } else {
     RAY_LOG(ERROR) << "Actor handle already exists " << actor_id.Hex();
   }
 
