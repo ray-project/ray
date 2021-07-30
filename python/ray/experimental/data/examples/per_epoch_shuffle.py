@@ -1,8 +1,6 @@
 import ray
 
-ray.init(num_cpus=2)
-
-# ray.data.set_progress_bars(False)
+ray.init()
 
 
 @ray.remote
@@ -12,7 +10,7 @@ def consume(name, split):
         i += 1
 
 
-pipeline = ray.data.range(100000).repeat(100).map(lambda x: x + 2)
+pipeline = ray.data.range(100000).repeat(100).random_shuffle()
 a, b = pipeline.split(2)
 x1 = consume.remote("consumer A", a)
 x2 = consume.remote("consumer B", b)
