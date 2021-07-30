@@ -104,8 +104,6 @@ Here is a simplified example (which requires ``sklearn``\ ):
 
    print(pred_ray)
 
-<<<<<<< HEAD
-=======
 scikit-learn API
 ^^^^^^^^^^^^^^^^
 
@@ -185,7 +183,6 @@ Things to keep in mind:
 
 For more information on the scikit-learn API, refer to the `XGBoost documentation <https://xgboost.readthedocs.io/en/latest/python/python_api.html#module-xgboost.sklearn>`_.
 
->>>>>>> 2ce73ce84 ([docs] Revert #16919 and fix documentation build (#17270))
 Data loading
 ------------
 
@@ -610,8 +607,6 @@ API reference
 .. autofunction:: xgboost_ray.train
 
 .. autofunction:: xgboost_ray.predict
-<<<<<<< HEAD
-=======
 
 scikit-learn API
 ^^^^^^^^^^^^^^^^
@@ -627,4 +622,3 @@ scikit-learn API
 
 .. .. autoclass:: xgboost_ray.RayXGBRFRegressor
 ..     :members:
->>>>>>> 2ce73ce84 ([docs] Revert #16919 and fix documentation build (#17270))
