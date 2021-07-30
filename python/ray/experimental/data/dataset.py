@@ -938,7 +938,7 @@ class Dataset(Generic[T]):
             batch_format: The format in which to return each batch.
                 Specify "native" to use the current block format, "pandas" to
                 select ``pandas.DataFrame`` or "pyarrow" to select
-                ``pyarrow.Table``. Default is "native".
+                ``pyarrow.Table/Tensor``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
