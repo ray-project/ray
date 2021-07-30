@@ -64,21 +64,22 @@ class Trainer:
         """
         pass
 
-    def execute(self, func: Callable[[S, ...], T], *args, **kwargs) -> List[T]:
-        """Executes a function for all instances of self.train_cls.
+    def execute(self, func: Callable[..., T], *args, **kwargs) -> List[T]:
+        """Executes a function for all instances of ``self.train_cls``.
 
         Args:
             func (Callable): The function that should be executed.
+                ``self.train_cls`` should be the first argument.
             args, kwargs: The arguments to pass into `func`.
         """
         pass
 
-    def execute_single(self, func: Callable[[S, ...], T], *args,
-                       **kwargs) -> T:
-        """Executes a function on a single instance of self.train_cls.
+    def execute_single(self, func: Callable[..., T], *args, **kwargs) -> T:
+        """Executes a function on a single instance of ``self.train_cls``.
 
         Args:
             func (Callable): The function that should be executed.
+                ``self.train_cls`` should be the first argument.
             args, kwargs: The arguments to pass into `func`.
         """
         pass
