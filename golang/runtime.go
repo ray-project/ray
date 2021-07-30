@@ -16,7 +16,7 @@ func main() {
     gsa := NewGlobalStateAccessor("127.0.0.1:6379","5241590000000000")
     jobId := gsa.GetNextJobID()
     C.go_worker_Initialize(C.int(1), C.CString("/tmp/ray/session_latest/sockets/plasma_store"), C.CString("/tmp/ray/session_latest/sockets/raylet"),
-        C.CString("/tmp/ray/session_latest/logs"), C.CString("192.168.121.61"), C.int(40531), C.CString("192.168.121.61"), C.CString("GOLANG"))
+        C.CString("/tmp/ray/session_latest/logs"), C.CString("192.168.121.61"), C.int(9999), C.CString("192.168.121.61"), C.CString("GOLANG"))
 
 }
 
