@@ -324,7 +324,7 @@ Datasets support tensor-typed values, which are represented in-memory as Arrow t
 
     # Create a Dataset of tensor-typed values.
     ds = ray.data.range_tensor(10000, shape=(3, 5))
-    # -> Dataset(num_rows=10000, num_blocks=200, schema=<Tensor: shape=(None, 5, 3), dtype=int64>)
+    # -> Dataset(num_rows=10000, num_blocks=200, schema=<Tensor: shape=(None, 5, 3), dtype=float64>)
 
     ds.map_batches(lambda t: t + 2).show(2)
     # -> [[2. 2. 2. 2. 2.]
