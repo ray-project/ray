@@ -1,4 +1,4 @@
-from ray.util.sgd.v2.backends import TorchConfig
-from ray.util.sgd.v2.trainer import Trainer, WorkerConfig
+from ray.util.sgd.v2.backends.torch import TorchConfig
+from ray.util.sgd.v2.trainer import Trainer
 
-__all__ = ["TorchConfig", "Trainer", "WorkerConfig"]
+__all__ = ["TorchConfig", "Trainer"]

@@ -1,6 +1,5 @@
 from collections import defaultdict, namedtuple, Counter
 from typing import Any, Optional, Dict, List, Tuple
-from urllib3.exceptions import MaxRetryError
 import copy
 import logging
 import math
@@ -11,6 +10,11 @@ import threading
 import time
 import yaml
 import collections
+
+try:
+    from urllib3.exceptions import MaxRetryError
+except ImportError:
+    MaxRetryError = None
 
 from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
@@ -681,6 +685,12 @@ class StandardAutoscaler:
             # nodes with pending or failed status:
             if not node_status == STATUS_UP_TO_DATE:
                 continue
+            # This node is up-to-date. If it hasn't had the chance to produce
+            # a heartbeat, fake the heartbeat now (see logic for completed node
+            # updaters).
+            ip = self.provider.internal_ip(node_id)
+            if ip not in self.load_metrics.last_heartbeat_time_by_ip:
+                self.load_metrics.mark_active(ip)
             # Heartbeat indicates node is healthy:
             if self.heartbeat_on_time(node_id, now):
                 continue

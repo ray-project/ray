@@ -20,11 +20,45 @@ from ray.experimental.data.block import BlockAccessor
 import ray.experimental.data.tests.util as util
 
 
-def test_basic_actors(shutdown_only):
+def maybe_pipeline(ds, enabled):
+    if enabled:
+        return ds.pipeline(parallelism=1)
+    else:
+        return ds
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_basic_actors(shutdown_only, pipelined):
     ray.init(num_cpus=2)
     ds = ray.experimental.data.range(5)
+    ds = maybe_pipeline(ds, pipelined)
     assert sorted(ds.map(lambda x: x + 1,
                          compute="actors").take()) == [1, 2, 3, 4, 5]
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_equal_split(shutdown_only, pipelined):
+    ray.init(num_cpus=2)
+
+    def range2x(n):
+        if pipelined:
+            return ray.data.range(n).repeat(2)
+        else:
+            return ray.data.range(2 * n)
+
+    def counts(shards):
+        @ray.remote(num_cpus=0)
+        def count(s):
+            return s.count()
+
+        return ray.get([count.remote(s) for s in shards])
+
+    r1 = counts(range2x(10).split(3, equal=True))
+    assert all(c == 6 for c in r1), r1
+
+    r2 = counts(range2x(10).split(3, equal=False))
+    assert all(c >= 6 for c in r2), r2
+    assert not all(c == 6 for c in r2), r2
 
 
 def test_callable_classes(shutdown_only):
@@ -44,7 +78,7 @@ def test_callable_classes(shutdown_only):
     task_reuse = ds.map(StatefulFn, compute="tasks").take()
     assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.map(StatefulFn, compute="actors").take()
-    assert sorted(actor_reuse) == list(range(10)), actor_reuse
+    assert sorted(actor_reuse) == list(range(10, 20)), actor_reuse
 
     class StatefulFn:
         def __init__(self):
@@ -59,13 +93,13 @@ def test_callable_classes(shutdown_only):
     task_reuse = ds.flat_map(StatefulFn, compute="tasks").take()
     assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.flat_map(StatefulFn, compute="actors").take()
-    assert sorted(actor_reuse) == list(range(10)), actor_reuse
+    assert sorted(actor_reuse) == list(range(10, 20)), actor_reuse
 
     # map batches
     task_reuse = ds.map_batches(StatefulFn, compute="tasks").take()
     assert sorted(task_reuse) == list(range(10)), task_reuse
     actor_reuse = ds.map_batches(StatefulFn, compute="actors").take()
-    assert sorted(actor_reuse) == list(range(10)), actor_reuse
+    assert sorted(actor_reuse) == list(range(10, 20)), actor_reuse
 
     class StatefulFn:
         def __init__(self):
@@ -80,11 +114,13 @@ def test_callable_classes(shutdown_only):
     task_reuse = ds.filter(StatefulFn, compute="tasks").take()
     assert len(task_reuse) == 9, task_reuse
     actor_reuse = ds.filter(StatefulFn, compute="actors").take()
-    assert len(actor_reuse) == 9, actor_reuse
+    assert len(actor_reuse) == 10, actor_reuse
 
 
-def test_basic(ray_start_regular_shared):
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_basic(ray_start_regular_shared, pipelined):
     ds = ray.experimental.data.range(5)
+    ds = maybe_pipeline(ds, pipelined)
     assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
     assert ds.count() == 5
     assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
@@ -102,18 +138,26 @@ def test_batch_tensors(ray_start_regular_shared):
     assert df.to_dict().keys() == {0, 1}
 
 
-def test_write_datasource(ray_start_regular_shared):
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_write_datasource(ray_start_regular_shared, pipelined):
     output = DummyOutputDatasource()
     ds = ray.experimental.data.range(10, parallelism=2)
+    ds = maybe_pipeline(ds, pipelined)
     ds.write_datasource(output)
-    assert output.num_ok == 1
+    if pipelined:
+        assert output.num_ok == 2
+    else:
+        assert output.num_ok == 1
     assert output.num_failed == 0
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
     ray.get(output.data_sink.set_enabled.remote(False))
     with pytest.raises(ValueError):
         ds.write_datasource(output)
-    assert output.num_ok == 1
+    if pipelined:
+        assert output.num_ok == 2
+    else:
+        assert output.num_ok == 1
     assert output.num_failed == 1
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
@@ -338,9 +382,10 @@ def test_parquet_write(ray_start_regular_shared, tmp_path):
     ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
     path = os.path.join(tmp_path, "test_parquet_dir")
     os.mkdir(path)
+    ds._set_uuid("data")
     ds.write_parquet(path)
-    path1 = os.path.join(path, "data0.parquet")
-    path2 = os.path.join(path, "data1.parquet")
+    path1 = os.path.join(path, "data_000000.parquet")
+    path2 = os.path.join(path, "data_000001.parquet")
     dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])
     assert df.equals(dfds)
 
@@ -692,7 +737,7 @@ def test_split_hints(ray_start_regular_shared):
 
                 state_mock.return_value = actor_state
 
-                datasets = ds.split(len(actors), actors)
+                datasets = ds.split(len(actors), locality_hints=actors)
                 assert len(datasets) == len(actors)
                 for i in range(len(actors)):
                     assert {blocks[j]
@@ -770,7 +815,8 @@ def test_to_dask(ray_start_regular_shared):
     assert df.equals(ddf.compute())
 
 
-def test_to_tf(ray_start_regular_shared):
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_to_tf(ray_start_regular_shared, pipelined):
     import tensorflow as tf
     df1 = pd.DataFrame({
         "one": [1, 2, 3],
@@ -786,8 +832,9 @@ def test_to_tf(ray_start_regular_shared):
     df = pd.concat([df1, df2, df3])
     ds = ray.experimental.data.from_pandas(
         [ray.put(df1), ray.put(df2), ray.put(df3)])
+    ds = maybe_pipeline(ds, pipelined)
     tfd = ds.to_tf(
-        "label",
+        label_column="label",
         output_signature=(tf.TensorSpec(shape=(None, 2), dtype=tf.float32),
                           tf.TensorSpec(shape=(None), dtype=tf.float32)))
     iterations = []
@@ -815,7 +862,7 @@ def test_to_tf_feature_columns(ray_start_regular_shared):
     ds = ray.experimental.data.from_pandas(
         [ray.put(df1), ray.put(df2), ray.put(df3)])
     tfd = ds.to_tf(
-        "label",
+        label_column="label",
         feature_columns=["one"],
         output_signature=(tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
                           tf.TensorSpec(shape=(None), dtype=tf.float32)))
@@ -827,7 +874,8 @@ def test_to_tf_feature_columns(ray_start_regular_shared):
     assert np.array_equal(df.values, combined_iterations)
 
 
-def test_to_torch(ray_start_regular_shared):
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_to_torch(ray_start_regular_shared, pipelined):
     import torch
     df1 = pd.DataFrame({
         "one": [1, 2, 3],
@@ -843,6 +891,7 @@ def test_to_torch(ray_start_regular_shared):
     df = pd.concat([df1, df2, df3])
     ds = ray.experimental.data.from_pandas(
         [ray.put(df1), ray.put(df2), ray.put(df3)])
+    ds = maybe_pipeline(ds, pipelined)
     torchd = ds.to_torch(label_column="label", batch_size=3)
 
     num_epochs = 2
@@ -870,7 +919,8 @@ def test_to_torch_feature_columns(ray_start_regular_shared):
     df = pd.concat([df1, df2, df3]).drop("two", axis=1)
     ds = ray.experimental.data.from_pandas(
         [ray.put(df1), ray.put(df2), ray.put(df3)])
-    torchd = ds.to_torch("label", feature_columns=["one"], batch_size=3)
+    torchd = ds.to_torch(
+        label_column="label", feature_columns=["one"], batch_size=3)
     iterations = []
 
     for batch in iter(torchd):
@@ -889,7 +939,7 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
-    assert ds.schema() is None
+    assert "{one: int64, two: string}" in str(ds), ds
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -963,6 +1013,44 @@ def test_json_read(ray_start_regular_shared, tmp_path):
     shutil.rmtree(dir_path)
 
 
+def test_zipped_json_read(ray_start_regular_shared, tmp_path):
+    # Single file.
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(tmp_path, "test1.json.gz")
+    df1.to_json(path1, compression="gzip", orient="records", lines=True)
+    ds = ray.experimental.data.read_json(path1)
+    assert df1.equals(ray.get(ds.to_pandas())[0])
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert ds.input_files() == [path1]
+
+    # Two files, parallelism=2.
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(tmp_path, "test2.json.gz")
+    df2.to_json(path2, compression="gzip", orient="records", lines=True)
+    ds = ray.experimental.data.read_json([path1, path2], parallelism=2)
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert pd.concat([df1, df2]).equals(dsdf)
+    # Test metadata ops.
+    for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
+        BlockAccessor.for_block(ray.get(block)).size_bytes()
+
+    # Directory and file, two files.
+    dir_path = os.path.join(tmp_path, "test_json_dir")
+    os.mkdir(dir_path)
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(dir_path, "data0.json.gz")
+    df1.to_json(path1, compression="gzip", orient="records", lines=True)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    path2 = os.path.join(tmp_path, "data1.json.gz")
+    df2.to_json(path2, compression="gzip", orient="records", lines=True)
+    ds = ray.experimental.data.read_json([dir_path, path2])
+    df = pd.concat([df1, df2])
+    dsdf = pd.concat(ray.get(ds.to_pandas()))
+    assert df.equals(dsdf)
+    shutil.rmtree(dir_path)
+
+
 def test_json_write(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_json_dir")
 
@@ -970,8 +1058,9 @@ def test_json_write(ray_start_regular_shared, tmp_path):
     os.mkdir(path)
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     ds = ray.experimental.data.from_pandas([ray.put(df)])
+    ds._set_uuid("data")
     ds.write_json(path)
-    file_path = os.path.join(path, "data0.json")
+    file_path = os.path.join(path, "data_000000.json")
     assert df.equals(pd.read_json(file_path))
     shutil.rmtree(path)
 
@@ -979,8 +1068,9 @@ def test_json_write(ray_start_regular_shared, tmp_path):
     os.mkdir(path)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     ds = ray.experimental.data.from_pandas([ray.put(df), ray.put(df2)])
+    ds._set_uuid("data")
     ds.write_json(path)
-    file_path2 = os.path.join(path, "data1.json")
+    file_path2 = os.path.join(path, "data_000001.json")
     assert pd.concat([df, df2]).equals(
         pd.concat([pd.read_json(file_path),
                    pd.read_json(file_path2)]))
@@ -998,7 +1088,7 @@ def test_csv_read(ray_start_regular_shared, tmp_path):
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
-    assert ds.schema() is None
+    assert "{one: int64, two: string}" in str(ds), ds
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -1080,8 +1170,9 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
     os.mkdir(path)
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     ds = ray.experimental.data.from_pandas([ray.put(df)])
+    ds._set_uuid("data")
     ds.write_csv(path)
-    file_path = os.path.join(path, "data0.csv")
+    file_path = os.path.join(path, "data_000000.csv")
     assert df.equals(pd.read_csv(file_path))
     shutil.rmtree(path)
 
@@ -1089,12 +1180,93 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
     os.mkdir(path)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     ds = ray.experimental.data.from_pandas([ray.put(df), ray.put(df2)])
+    ds._set_uuid("data")
     ds.write_csv(path)
-    file_path2 = os.path.join(path, "data1.csv")
+    file_path2 = os.path.join(path, "data_000001.csv")
     assert pd.concat([df, df2]).equals(
         pd.concat([pd.read_csv(file_path),
                    pd.read_csv(file_path2)]))
     shutil.rmtree(path)
+
+
+def test_sort_simple(ray_start_regular_shared):
+    num_items = 100
+    parallelism = 4
+    xs = list(range(num_items))
+    random.shuffle(xs)
+    ds = ray.experimental.data.from_items(xs, parallelism=parallelism)
+    assert ds.sort().take(num_items) == list(range(num_items))
+    assert ds.sort(descending=True).take(num_items) == list(
+        reversed(range(num_items)))
+    assert ds.sort(key=lambda x: -x).take(num_items) == list(
+        reversed(range(num_items)))
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_random_shuffle(ray_start_regular_shared, pipelined):
+    def range(n, parallelism=200):
+        ds = ray.data.range(n, parallelism=parallelism)
+        if pipelined:
+            return ds.repeat(2)
+        else:
+            return ds
+
+    r1 = range(100).random_shuffle().take(999)
+    r2 = range(100).random_shuffle().take(999)
+    assert r1 != r2, (r1, r2)
+
+    r1 = range(100, parallelism=1).random_shuffle().take(999)
+    r2 = range(100, parallelism=1).random_shuffle().take(999)
+    assert r1 != r2, (r1, r2)
+
+    r1 = range(100).random_shuffle(num_blocks=1).take(999)
+    r2 = range(100).random_shuffle(num_blocks=1).take(999)
+    assert r1 != r2, (r1, r2)
+
+    r0 = range(100, parallelism=5).take(999)
+    r1 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
+    r2 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
+    r3 = range(100, parallelism=5).random_shuffle(seed=12345).take(999)
+    assert r1 == r2, (r1, r2)
+    assert r1 != r0, (r1, r0)
+    assert r1 != r3, (r1, r3)
+
+    r0 = ray.data.range_arrow(100, parallelism=5).take(999)
+    r1 = ray.data.range_arrow(
+        100, parallelism=5).random_shuffle(seed=0).take(999)
+    r2 = ray.data.range_arrow(
+        100, parallelism=5).random_shuffle(seed=0).take(999)
+    assert r1 == r2, (r1, r2)
+    assert r1 != r0, (r1, r0)
+
+
+@pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
+def test_sort_arrow(ray_start_regular_shared, num_items, parallelism):
+    a = list(reversed(range(num_items)))
+    b = [f"{x:03}" for x in range(num_items)]
+    shard = int(np.ceil(num_items / parallelism))
+    offset = 0
+    dfs = []
+    while offset < num_items:
+        dfs.append(
+            pd.DataFrame({
+                "a": a[offset:offset + shard],
+                "b": b[offset:offset + shard]
+            }))
+        offset += shard
+    if offset < num_items:
+        dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
+    ds = ray.experimental.data.from_pandas([ray.put(df) for df in dfs])
+
+    def assert_sorted(sorted_ds, expected_rows):
+        assert [tuple(row.values())
+                for row in sorted_ds.iter_rows()] == list(expected_rows)
+
+    assert_sorted(ds.sort(key="a"), zip(reversed(a), reversed(b)))
+    assert_sorted(ds.sort(key="b"), zip(a, b))
+    assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
+    assert_sorted(
+        ds.sort(key=[("b", "descending")]), zip(reversed(a), reversed(b)))
 
 
 if __name__ == "__main__":
