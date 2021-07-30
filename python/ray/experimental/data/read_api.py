@@ -170,7 +170,8 @@ def read_parquet(paths: Union[str, List[str]],
         paths=paths,
         filesystem=filesystem,
         columns=columns,
-        remote_args=remote_args**arrow_parquet_args)
+        remote_args=remote_args,
+        **arrow_parquet_args)
 
 
 @PublicAPI(stability="beta")
@@ -207,7 +208,8 @@ def read_json(paths: Union[str, List[str]],
         parallelism=parallelism,
         paths=paths,
         filesystem=filesystem,
-        remote_args=remote_args**arrow_json_args)
+        remote_args=remote_args,
+        **arrow_json_args)
 
 
 @PublicAPI(stability="beta")

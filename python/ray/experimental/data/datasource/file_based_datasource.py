@@ -69,10 +69,10 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             if len(read_paths) <= 0:
                 continue
 
-            if self._rows_per_file is None:
+            if self._rows_per_file() is None:
                 num_rows = None
             else:
-                num_rows = len(read_paths) * self._rows_per_file
+                num_rows = len(read_paths) * self._rows_per_file()
             read_task = ReadTask(
                 lambda read_paths=read_paths: read_files(
                     read_paths, filesystem),
