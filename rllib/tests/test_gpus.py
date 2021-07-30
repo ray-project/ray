@@ -38,7 +38,7 @@ class TestGPUs(unittest.TestCase):
                         # wait infinitely for the resources to become
                         # available.
                         print("direct RLlib")
-                        self.assertRaisesRegexp(
+                        self.assertRaisesRegex(
                             RuntimeError,
                             f"Not enough GPUs found.+for num_gpus={num_gpus}",
                             lambda: PGTrainer(config, env="CartPole-v0"),
