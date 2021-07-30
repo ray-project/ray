@@ -86,7 +86,8 @@ async def test_raw_storage(workflow_start_regular):
         raw_storage.save_step_output(workflow_id, step_id, output),
         raw_storage.save_workflow_progress(workflow_id, progress_metadata))
     (load_input_metadata, load_step_func_body, load_step_args, load_object_ref,
-     load_step_output_meta, load_step_output) = await asyncio.gather(
+     load_step_output_meta, load_step_output,
+     load_workflow_progress) = await asyncio.gather(
          raw_storage.load_step_input_metadata(workflow_id, step_id),
          raw_storage.load_step_func_body(workflow_id, step_id),
          raw_storage.load_step_args(workflow_id, step_id),
