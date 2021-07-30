@@ -67,7 +67,7 @@ task_to_keys = {
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Finetune a transformers model on a text classification "
-                    "task")
+        "task")
     parser.add_argument(
         "--task_name",
         type=str,
@@ -98,20 +98,20 @@ def parse_args():
         "--pad_to_max_length",
         action="store_true",
         help="If passed, pad all samples to `max_length`. Otherwise, dynamic "
-             "padding is used.",
+        "padding is used.",
     )
     parser.add_argument(
         "--model_name_or_path",
         type=str,
         help="Path to pretrained model or model identifier from "
-             "huggingface.co/models.",
+        "huggingface.co/models.",
         required=True,
     )
     parser.add_argument(
         "--use_slow_tokenizer",
         action="store_true",
         help="If passed, will use a slow tokenizer (not backed by the 🤗 "
-             "Tokenizers library).",
+        "Tokenizers library).",
     )
     parser.add_argument(
         "--per_device_train_batch_size",
@@ -130,7 +130,7 @@ def parse_args():
         type=float,
         default=5e-5,
         help="Initial learning rate (after the potential warmup period) to "
-             "use.",
+        "use.",
     )
     parser.add_argument(
         "--weight_decay", type=float, default=0.0, help="Weight decay to use.")
@@ -144,14 +144,14 @@ def parse_args():
         type=int,
         default=None,
         help="Total number of training steps to perform. If provided, "
-             "overrides num_train_epochs.",
+        "overrides num_train_epochs.",
     )
     parser.add_argument(
         "--gradient_accumulation_steps",
         type=int,
         default=1,
         help="Number of updates steps to accumulate before performing a "
-             "backward/update pass.",
+        "backward/update pass.",
     )
     parser.add_argument(
         "--lr_scheduler_type",
@@ -186,10 +186,7 @@ def parse_args():
         default="auto",
         help="Ray address to connect to.")
     parser.add_argument(
-        "--num_workers",
-        type=int,
-        default=1,
-        help="Number of workers to use.")
+        "--num_workers", type=int, default=1, help="Number of workers to use.")
     parser.add_argument(
         "--use_gpu",
         action="store_true",
@@ -342,15 +339,15 @@ def train_func(config: Dict[str, Any]):
     # so let's make sure we do use it.
     label_to_id = None
     if (model.config.label2id !=
-        PretrainedConfig(num_labels=num_labels).label2id
-        and args.task_name is not None and not is_regression):
+            PretrainedConfig(num_labels=num_labels).label2id
+            and args.task_name is not None and not is_regression):
         # Some have all caps in their config, some don't.
         label_name_to_id = {
             k.lower(): v
             for k, v in model.config.label2id.items()
         }
         if list(sorted(label_name_to_id.keys())) == list(  # noqa:C413
-            sorted(label_list)):  # noqa:C413
+                sorted(label_list)):  # noqa:C413
             logger.info(
                 f"The configuration of the model provided the following label "
                 f"correspondence: {label_name_to_id}. Using it!")
@@ -380,7 +377,7 @@ def train_func(config: Dict[str, Any]):
 
     def preprocess_function(examples):
         # Tokenize the texts
-        texts = ((examples[sentence1_key],) if sentence2_key is None else
+        texts = ((examples[sentence1_key], ) if sentence2_key is None else
                  (examples[sentence1_key], examples[sentence2_key]))
         result = tokenizer(
             *texts,
@@ -408,7 +405,7 @@ def train_func(config: Dict[str, Any]):
 
     train_dataset = processed_datasets["train"]
     eval_dataset = processed_datasets["validation_matched" if args.task_name ==
-                                                              "mnli" else "validation"]
+                                      "mnli" else "validation"]
 
     # Log a few random samples from the training set:
     for index in random.sample(range(len(train_dataset)), 3):
@@ -522,7 +519,7 @@ def train_func(config: Dict[str, Any]):
             loss = loss / args.gradient_accumulation_steps
             accelerator.backward(loss)
             if step % args.gradient_accumulation_steps == 0 or step == len(
-                train_dataloader) - 1:
+                    train_dataloader) - 1:
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -576,12 +573,11 @@ def train_func(config: Dict[str, Any]):
 def main():
     args = parse_args()
     ray.init(address=args.address)
-    trainer = Trainer("torch", num_workers=args.num_workers,
-                      use_gpu=args.use_gpu)
+    trainer = Trainer(
+        "torch", num_workers=args.num_workers, use_gpu=args.use_gpu)
     trainer.start()
     trainer.run(train_func, config={"args": args})
 
 
 if __name__ == "__main__":
     main()
-
