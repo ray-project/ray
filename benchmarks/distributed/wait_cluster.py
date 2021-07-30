@@ -12,8 +12,8 @@ def num_alive_nodes():
 
 
 @click.command()
-@click.option('--num-nodes', required=True, type=int,
-              help='The target number of nodes')
+@click.option(
+    "--num-nodes", required=True, type=int, help="The target number of nodes")
 def wait_cluster(num_nodes: int):
     ray.init(address="auto")
     while num_alive_nodes() != num_nodes:
@@ -21,5 +21,5 @@ def wait_cluster(num_nodes: int):
         time.sleep(5)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     wait_cluster()

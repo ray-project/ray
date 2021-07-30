@@ -10,6 +10,7 @@ if "SMOKE_TEST" in os.environ:
 else:
     MAX_ACTORS_IN_CLUSTER = 10000
 
+
 def test_max_actors():
     # TODO (Alex): Dynamically set this based on number of cores
     cpus_per_actor = 0.25
@@ -37,7 +38,6 @@ def no_resource_leaks():
 
 ray.init(address="auto")
 
-
 test_utils.wait_for_condition(no_resource_leaks)
 start_time = time.time()
 test_max_actors()
@@ -46,7 +46,9 @@ test_utils.wait_for_condition(no_resource_leaks)
 
 rate = MAX_ACTORS_IN_CLUSTER / (end_time - start_time)
 
-print(f"Sucess! Started {MAX_ACTORS_IN_CLUSTER} actors in {end_time - start_time}s. ({rate} actors/s)")
+print(
+    f"Sucess! Started {MAX_ACTORS_IN_CLUSTER} actors in {end_time - start_time}s. ({rate} actors/s)"
+)
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")

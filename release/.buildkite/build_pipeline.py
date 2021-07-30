@@ -135,11 +135,20 @@ NIGHTLY_TESTS = {
         "single_deployment_1k_noop_replica",
         "multi_deployment_1k_noop_replica",
     ],
+    "~/ray/benchmarks/benchmark_tests.yaml": [
+        "many_actors_smoke_test",
+        "many_tasks_smoke_test",
+        "many_pgs_smoke_test",
+        "many_nodes_smoke_test",
+    ],
 }
 
 WEEKLY_TESTS = {
     "~/ray/benchmarks/benchmark_tests.yaml": [
-        "distributed",
+        "many_actors",
+        "many_tasks",
+        "many_pgs",
+        "many_nodes",
     ],
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
         "stress_test_many_tasks",
