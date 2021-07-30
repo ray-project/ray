@@ -559,8 +559,10 @@ class RolloutWorker(ParallelIteratorWorker):
 
             if policy_config.get("framework") in ["tf2", "tf", "tfe"]:
                 if len(get_tf_gpu_devices()) < num_gpus:
+                    #TODO:
                     raise RuntimeError(
                         f"Not enough GPUs found for num_gpus={num_gpus}! "
+                        f"worker_idx={self.worker_index} num_workers={self.num_workers} "
                         f"Found only these IDs: {get_tf_gpu_devices()}.")
             elif policy_config["framework"] == "torch":
                 if torch.cuda.device_count() < num_gpus:

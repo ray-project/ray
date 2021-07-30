@@ -24,14 +24,17 @@ class TestGPUs(unittest.TestCase):
         # and _fake_gpus=False.
         for num_gpus in [0, 0.1, 1, actual_gpus_available + 4]:
             print(f"num_gpus={num_gpus}")
+            #config["num_gpus"] = num_gpus
+            #for num_gpus_per_worker in [0, 0.5, 1]:
+            #    config["num_gpus_per_worker"] = num_gpus_per_worker
             for fake_gpus in [False, True]:
                 print(f"_fake_gpus={fake_gpus}")
-                config["num_gpus"] = num_gpus
                 config["_fake_gpus"] = fake_gpus
                 frameworks = ("tf", "torch") if num_gpus > 1 else \
                     ("tf2", "tf", "torch")
                 for _ in framework_iterator(config, frameworks=frameworks):
                     # Expect that trainer creation causes a num_gpu error.
+                    #if actual_gpus_available < num_gpus + 2 * num_gpus_per_worker and not fake_gpus:
                     if actual_gpus_available < num_gpus and not fake_gpus:
                         # "Direct" RLlib (create Trainer on the driver).
                         # Cannot run through ray.tune.run() as it would simply
@@ -40,7 +43,8 @@ class TestGPUs(unittest.TestCase):
                         print("direct RLlib")
                         self.assertRaisesRegex(
                             RuntimeError,
-                            f"Not enough GPUs found.+for num_gpus={num_gpus}",
+                            "Not enough GPUs found.+for "
+                            f"num_gpus={num_gpus}",
                             lambda: PGTrainer(config, env="CartPole-v0"),
                         )
                     # If actual_gpus_available >= num_gpus or faked,
