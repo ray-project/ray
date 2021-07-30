@@ -236,7 +236,7 @@ class OptunaSearch(Searcher):
                 self._space,
                 self._points_to_evaluate,
                 self._evaluated_rewards,
-                check_point_name_lengths=not callable(self._space))
+                validate_point_name_lengths=not callable(self._space))
             if self._evaluated_rewards:
                 for point, reward in zip(self._points_to_evaluate,
                                          self._evaluated_rewards):

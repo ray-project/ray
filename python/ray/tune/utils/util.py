@@ -766,14 +766,14 @@ def create_logdir(dirname: str, local_dir: str):
 def validate_warmstart(parameter_names: List[str],
                        points_to_evaluate: List[Union[List, Dict]],
                        evaluated_rewards: List,
-                       check_point_name_lengths: bool = True):
+                       validate_point_name_lengths: bool = True):
     """Generic validation of a Searcher's warm start functionality.
     Raises exceptions in case of type and length mismatches between
     parameters.
 
-    If ``check_point_name_lengths`` is False, the equality of lengths
+    If ``validate_point_name_lengths`` is False, the equality of lengths
     between ``points_to_evaluate`` and ``parameter_names`` will not be
-    checked.
+    validated.
     """
     if points_to_evaluate:
         if not isinstance(points_to_evaluate, list):
@@ -786,7 +786,7 @@ def validate_warmstart(parameter_names: List[str],
                     f"points_to_evaluate expected to include list or dict, "
                     f"got {point}.")
 
-            if check_point_name_lengths and (
+            if validate_point_name_lengths and (
                     not len(point) == len(parameter_names)):
                 raise ValueError("Dim of point {}".format(point) +
                                  " and parameter_names {}".format(
