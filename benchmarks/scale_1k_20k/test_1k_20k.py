@@ -65,14 +65,14 @@ assert available_resources == cluster_resources, (
     str(available_resources) + " != " + str(cluster_resources))
 
 actor_launch_start = perf_counter()
-test_max_actors_launch()
+actors = test_max_actors_launch()
 actor_launch_end = perf_counter()
-actor_launch_time = actor_end - actor_start
+actor_launch_time = actor_launch_end - actor_launch_start
 
 actor_ready_start = perf_counter()
-test_actor_ready()
+test_actor_ready(actors)
 actor_ready_end = perf_counter()
-actor_ready_time = actor_end - actor_start
+actor_ready_time = actor_ready_end - actor_ready_start
 
 print(f"Actor launch time: {actor_launch_time} ({MAX_ACTORS_IN_CLUSTER} actors)")
 print(f"Actor ready time: {actor_ready_time} ({MAX_ACTORS_IN_CLUSTER} actors)")
