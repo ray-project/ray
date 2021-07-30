@@ -398,6 +398,7 @@ class Dataset(Generic[T]):
             if not equal:
                 return splits
             lower_bound = min([s.count() for s in splits])
+            assert lower_bound > 0, splits
             return [s.limit(lower_bound) for s in splits]
 
         block_refs = list(self._blocks)
