@@ -159,6 +159,9 @@ def test_tensors(ray_start_regular_shared):
     ds = ray.data.range(10).map_batches(lambda x: np.array(x))
     assert str(ds) == ("Dataset(num_rows=10, num_blocks=10, "
                        "schema=<Tensor: shape=(None,), dtype=int64>)")
+    ds = ray.data.range(10).map(lambda x: np.array(x))
+    assert str(ds) == ("Dataset(num_rows=10, num_blocks=10, "
+                       "schema=<Tensor: shape=(None,), dtype=int64>)")
 
 
 def test_npio(ray_start_regular_shared, tmp_path):
@@ -174,6 +177,18 @@ def test_npio(ray_start_regular_shared, tmp_path):
         ds.take()) == ("[array([0.]), array([1.]), array([2.]), "
                        "array([3.]), array([4.]), array([5.]), array([6.]), "
                        "array([7.]), array([8.]), array([9.])]"), ds.take()
+
+
+def test_read_text(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_text")
+    os.mkdir(path)
+    with open(os.path.join(path, "file1.txt"), "w") as f:
+        f.write("hello\n")
+        f.write("world")
+    with open(os.path.join(path, "file2.txt"), "w") as f:
+        f.write("goodbye")
+    ds = ray.data.read_text(path)
+    assert sorted(ds.take()) == ["goodbye", "hello", "world"]
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
