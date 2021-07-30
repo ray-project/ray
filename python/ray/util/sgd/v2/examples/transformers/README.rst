@@ -19,7 +19,6 @@ To run an example tuning MRPC locally using CPU:
 
     export TASK_NAME=mrpc
 
-    ray.init()
     python transformers_example.py \
       --model_name_or_path bert-base-cased \
       --task_name $TASK_NAME \
@@ -49,5 +48,6 @@ To run an example tuning MRPC on AWS with 8 GPUs across multiple nodes:
       --learning_rate 2e-5 \
       --num_train_epochs 3 \
       --output_dir /tmp/$TASK_NAME/ \
-      --num_workers 8
+      --address auto \
+      --num_workers 8 \
       --use_gpu

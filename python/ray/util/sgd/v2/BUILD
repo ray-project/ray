@@ -17,6 +17,7 @@ py_test(
     srcs = ["tests/test_trainer.py"],
     tags = ["exclusive"],
     deps = [":sgd_v2_lib"]
+)
 
 py_test(
     name = "test_worker_group",

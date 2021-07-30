@@ -181,10 +181,7 @@ def parse_args():
 
     # Ray arguments.
     parser.add_argument(
-        "--address",
-        type=str,
-        default="auto",
-        help="Ray address to connect to.")
+        "--address", type=str, default=None, help="Ray address to connect to.")
     parser.add_argument(
         "--num_workers", type=int, default=1, help="Number of workers to use.")
     parser.add_argument(
@@ -572,11 +569,18 @@ def train_func(config: Dict[str, Any]):
 
 def main():
     args = parse_args()
-    ray.init(address=args.address)
-    trainer = Trainer(
-        "torch", num_workers=args.num_workers, use_gpu=args.use_gpu)
-    trainer.start()
-    trainer.run(train_func, config={"args": args})
+    config = {"args": args}
+
+    if args.address or args.num_workers > 1 or args.use_gpu:
+        # Use Ray for distributed training.
+        ray.init(address=args.address)
+        trainer = Trainer(
+            "torch", num_workers=args.num_workers, use_gpu=args.use_gpu)
+        trainer.start()
+        trainer.run(train_func, config)
+    else:
+        # Run training locally.
+        train_func(config)
 
 
 if __name__ == "__main__":
