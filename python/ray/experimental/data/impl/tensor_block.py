@@ -1,6 +1,10 @@
 from typing import Iterator, List, TypeVar, Dict, TYPE_CHECKING
 
 import numpy as np
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
 
 if TYPE_CHECKING:
     import pandas
@@ -53,6 +57,9 @@ class TensorBlockAccessor(BlockAccessor):
     def to_pandas(self) -> "pandas.DataFrame":
         import pandas
         return pandas.DataFrame(self._tensor)
+
+    def to_arrow(self) -> "pyarrow.Tensor":
+        return pyarrow.Tensor.from_numpy(self._tensor)
 
     def schema(self) -> Dict:
         return {"shape": self._tensor.shape, "dtype": self._tensor.dtype.name}

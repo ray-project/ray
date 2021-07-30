@@ -196,7 +196,7 @@ class Dataset(Generic[T]):
                 elif batch_format == "pandas":
                     view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pyarrow":
-                    view = BlockAccessor.for_block(view).to_arrow_table()
+                    view = BlockAccessor.for_block(view).to_arrow()
                 else:
                     raise ValueError(
                         f"The given batch format: {batch_format} "
@@ -743,7 +743,7 @@ class Dataset(Generic[T]):
             block = BlockAccessor.for_block(block)
             logger.debug(
                 f"Writing {block.num_rows()} records to {write_path}.")
-            table = block.to_arrow_table()
+            table = block.to_arrow()
             with pq.ParquetWriter(write_path, table.schema) as writer:
                 writer.write_table(table)
 
@@ -971,7 +971,7 @@ class Dataset(Generic[T]):
                 return batch.to_pandas()
             elif batch_format == "pyarrow":
                 batch = BlockAccessor.for_block(batch)
-                return batch.to_arrow_table()
+                return batch.to_arrow()
             else:
                 raise ValueError(
                     f"The given batch format: {batch_format} "
@@ -1055,6 +1055,7 @@ class Dataset(Generic[T]):
         def make_generator():
             for batch in self.iter_batches(
                     batch_size=batch_size,
+                    batch_format="pandas",
                     prefetch_blocks=prefetch_blocks,
                     drop_last=drop_last):
                 label_vals = batch.pop(label_column).values
@@ -1254,7 +1255,7 @@ class Dataset(Generic[T]):
         @ray.remote
         def block_to_df(block: Block):
             block = BlockAccessor.for_block(block)
-            return block.to_arrow_table()
+            return block.to_arrow()
 
         return [block_to_df.remote(block) for block in self._blocks]
 

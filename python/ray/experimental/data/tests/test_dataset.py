@@ -443,7 +443,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
          ray.put(df3), ray.put(df4)])
 
     # Default.
-    for batch, df in zip(ds.iter_batches(), dfs):
+    for batch, df in zip(ds.iter_batches(batch_format="pandas"), dfs):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
 
@@ -453,12 +453,13 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert batch.equals(pa.Table.from_pandas(df))
 
     # blocks format.
-    for batch, df in zip(ds.iter_batches(batch_format="_blocks"), dfs):
+    for batch, df in zip(ds.iter_batches(batch_format="native"), dfs):
         assert batch.to_pandas().equals(df)
 
     # Batch size.
     batch_size = 2
-    batches = list(ds.iter_batches(batch_size=batch_size))
+    batches = list(
+        ds.iter_batches(batch_size=batch_size, batch_format="pandas"))
     assert all(len(batch) == batch_size for batch in batches)
     assert (len(batches) == math.ceil(
         (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
@@ -467,7 +468,8 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Batch size larger than block.
     batch_size = 4
-    batches = list(ds.iter_batches(batch_size=batch_size))
+    batches = list(
+        ds.iter_batches(batch_size=batch_size, batch_format="pandas"))
     assert all(len(batch) == batch_size for batch in batches)
     assert (len(batches) == math.ceil(
         (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
@@ -476,7 +478,9 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Batch size drop partial.
     batch_size = 5
-    batches = list(ds.iter_batches(batch_size=batch_size, drop_last=True))
+    batches = list(
+        ds.iter_batches(
+            batch_size=batch_size, drop_last=True, batch_format="pandas"))
     assert all(len(batch) == batch_size for batch in batches)
     assert (len(batches) == (len(df1) + len(df2) + len(df3) + len(df4)) //
             batch_size)
@@ -486,7 +490,9 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Batch size don't drop partial.
     batch_size = 5
-    batches = list(ds.iter_batches(batch_size=batch_size, drop_last=False))
+    batches = list(
+        ds.iter_batches(
+            batch_size=batch_size, drop_last=False, batch_format="pandas"))
     assert all(len(batch) == batch_size for batch in batches[:-1])
     assert (len(batches[-1]) == (len(df1) + len(df2) + len(df3) + len(df4)) %
             batch_size)
@@ -496,7 +502,8 @@ def test_iter_batches_basic(ray_start_regular_shared):
         batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
 
     # Prefetch.
-    for batch, df in zip(ds.iter_batches(prefetch_blocks=1), dfs):
+    for batch, df in zip(
+            ds.iter_batches(prefetch_blocks=1, batch_format="pandas"), dfs):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
 
@@ -539,7 +546,9 @@ def test_iter_batches_grid(ray_start_regular_shared):
                 for drop_last in (False, True):
                     batches = list(
                         ds.iter_batches(
-                            batch_size=batch_size, drop_last=drop_last))
+                            batch_size=batch_size,
+                            drop_last=drop_last,
+                            batch_format="pandas"))
                     if num_rows % batch_size == 0 or not drop_last:
                         # Number of batches should be equal to
                         # num_rows / batch_size,  rounded up.

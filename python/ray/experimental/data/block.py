@@ -80,8 +80,8 @@ class BlockAccessor(Generic[T]):
         """Convert this block into a Pandas dataframe."""
         raise NotImplementedError
 
-    def to_arrow_table(self) -> "pyarrow.Table":
-        """Convert this block into an Arrow table."""
+    def to_arrow(self) -> Union["pyarrow.Table", "pyarrow.Tensor"]:
+        """Convert this block into an Arrow table or tensor."""
         raise NotImplementedError
 
     def size_bytes(self) -> int:

@@ -169,7 +169,7 @@ class ArrowBlockAccessor(BlockAccessor):
     def to_pandas(self) -> "pandas.DataFrame":
         return self._table.to_pandas()
 
-    def to_arrow_table(self) -> "pyarrow.Table":
+    def to_arrow(self) -> "pyarrow.Table":
         return self._table
 
     def num_rows(self) -> int:
