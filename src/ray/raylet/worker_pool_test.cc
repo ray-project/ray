@@ -100,8 +100,7 @@ class WorkerPoolMock : public WorkerPool {
                               &mock_worker_rpc_clients)
       : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
                    MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
-                   []() {}, 0, [this]() { return current_time_ms_; },
-                   [](const WorkerID &, const NodeID &) -> bool { return true; }),
+                   []() {}, 0, [this]() { return current_time_ms_; }),
         last_worker_process_(),
         instrumented_io_service_(io_service),
         error_message_type_(1),
@@ -272,7 +271,7 @@ class WorkerPoolMock : public WorkerPool {
     this->PopWorker(
         task_spec,
         [&popped_worker, &promise](const std::shared_ptr<WorkerInterface> worker,
-                                   Status status) -> bool {
+                                   PopWorkerStatus status) -> bool {
           popped_worker = worker;
           promise.set_value(true);
           return true;
@@ -361,7 +360,7 @@ class WorkerPoolTest : public ::testing::Test {
                 static_cast<int>(desired_initial_worker_process_count));
     Process last_started_worker_process;
     for (int i = 0; i < desired_initial_worker_process_count; i++) {
-      Status status;
+      PopWorkerStatus status;
       worker_pool_->StartWorkerProcess(language, rpc::WorkerType::WORKER, JOB_ID,
                                        &status);
       ASSERT_TRUE(worker_pool_->NumWorkerProcessesStarting() <=
@@ -463,7 +462,7 @@ TEST_F(WorkerPoolTest, CompareWorkerProcessObjects) {
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
-  Status status;
+  PopWorkerStatus status;
   Process proc = worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER,
                                                   JOB_ID, &status);
   std::vector<std::shared_ptr<WorkerInterface>> workers;
@@ -685,7 +684,7 @@ TEST_F(WorkerPoolTest, MaximumStartupConcurrency) {
   for (int i = 0; i < MAXIMUM_STARTUP_CONCURRENCY; i++) {
     worker_pool_->PopWorker(task_spec,
                             [](const std::shared_ptr<WorkerInterface> worker,
-                               Status status) -> bool { return true; });
+                               PopWorkerStatus status) -> bool { return true; });
     auto last_process = worker_pool_->LastStartedWorkerProcess();
     RAY_CHECK(last_process.IsValid());
     started_processes.push_back(last_process);
@@ -695,7 +694,7 @@ TEST_F(WorkerPoolTest, MaximumStartupConcurrency) {
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
   worker_pool_->PopWorker(task_spec,
                           [](const std::shared_ptr<WorkerInterface> worker,
-                             Status status) -> bool { return true; });
+                             PopWorkerStatus status) -> bool { return true; });
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
@@ -713,7 +712,7 @@ TEST_F(WorkerPoolTest, MaximumStartupConcurrency) {
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
   worker_pool_->PopWorker(task_spec,
                           [](const std::shared_ptr<WorkerInterface> worker,
-                             Status status) -> bool { return true; });
+                             PopWorkerStatus status) -> bool { return true; });
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
 
   // Call `OnWorkerStarted` to emulate worker port announcement.
@@ -950,7 +949,7 @@ TEST_F(WorkerPoolTest, DeleteWorkerPushPop) {
 
 TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
   // Start a Java worker process.
-  Status status;
+  PopWorkerStatus status;
   Process proc = worker_pool_->StartWorkerProcess(Language::JAVA, rpc::WorkerType::WORKER,
                                                   JOB_ID, &status);
   auto worker1 = worker_pool_->CreateWorker(Process(), Language::JAVA);
@@ -1000,7 +999,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   int num_workers = POOL_SIZE_SOFT_LIMIT + 2;
   for (int i = 0; i < num_workers; i++) {
-    Status status;
+    PopWorkerStatus status;
     Process proc = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
@@ -1092,7 +1091,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
 
   // Start two IO workers. These don't count towards the limit.
   {
-    Status status;
+    PopWorkerStatus status;
     Process proc = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::SPILL_WORKER, job_id, &status);
     auto worker = CreateSpillWorker(Process());
@@ -1103,7 +1102,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
     worker_pool_->PushSpillWorker(worker);
   }
   {
-    Status status;
+    PopWorkerStatus status;
     Process proc = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, job_id, &status);
     auto worker = CreateRestoreWorker(Process());
@@ -1145,7 +1144,7 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   int num_workers = POOL_SIZE_SOFT_LIMIT * 2;
   for (int i = 0; i < num_workers; i++) {
-    Status status;
+    PopWorkerStatus status;
     Process proc = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);

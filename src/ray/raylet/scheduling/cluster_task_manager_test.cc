@@ -64,23 +64,23 @@ class MockWorkerPool : public WorkerPoolInterface {
     for (auto it = workers.begin(); it != workers.end();) {
       std::shared_ptr<WorkerInterface> worker = *it;
       auto runtime_env_hash = worker->GetRuntimeEnvHash();
-      bool used = false;
+      bool dispatched = false;
       auto cb_it = callbacks.find(runtime_env_hash);
       if (cb_it != callbacks.end()) {
         auto &list = cb_it->second;
         RAY_CHECK(!list.empty());
         for (auto list_it = list.begin(); list_it != list.end();) {
           auto &callback = *list_it;
-          used = callback(worker, Status::OK());
+          dispatched = callback(worker, PopWorkerStatus::OK);
           list_it = list.erase(list_it);
-          if (used) {
+          if (dispatched) {
             break;
           }
         }
         if (list.empty()) {
           callbacks.erase(cb_it);
         }
-        if (used) {
+        if (dispatched) {
           it = workers.erase(it);
           continue;
         }

@@ -30,10 +30,15 @@ struct Work {
   Task task;
   rpc::RequestWorkerLeaseReply *reply;
   std::function<void(void)> callback;
+  std::shared_ptr<TaskResourceInstances> allocated_instances;
   WorkStatus status = WorkStatus::WAITING;
   Work(Task task, rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> callback,
        WorkStatus status = WorkStatus::WAITING)
-      : task(task), reply(reply), callback(callback), status(status){};
+      : task(task),
+        reply(reply),
+        callback(callback),
+        allocated_instances(nullptr),
+        status(status){};
   Work(const Work &Work) = delete;
   Work &operator=(const Work &work) = delete;
 };

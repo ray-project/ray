@@ -41,8 +41,28 @@ namespace raylet {
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
-using PopWorkerCallback =
-    std::function<bool(const std::shared_ptr<WorkerInterface> worker, Status status)>;
+enum PopWorkerStatus {
+  // OK.
+  // A registered worker will be returned with callback.
+  OK = 0,
+  // Job config is not found.
+  // A nullptr worker will be returned with callback.
+  JobConfigMissing = 1,
+  // Worker process startup rate is limited.
+  // A nullptr worker will be returned with callback.
+  TooManyStartingWorkerProcesses = 2,
+  // Worker process has been started, but the worker registers back to raylet timeout.
+  // A nullptr worker will be returned with callback.
+  WorkerPendingRegistration = 3,
+  // Any fails of runtime env creation.
+  // A nullptr worker will be returned with callback.
+  RuntimeEnvCreationFailed = 4,
+};
+
+/// \Return True if any task dispatched successfully to the worker. Otherwise, return
+/// false.
+using PopWorkerCallback = std::function<bool(
+    const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status)>;
 
 /// \class WorkerPoolInterface
 ///
@@ -55,8 +75,18 @@ class WorkerPoolInterface {
   /// \param task_spec The returned worker must be able to execute this task.
   /// \param callback The callback function that executed when gets the result of
   /// worker popping.
-  /// \param allocated_instances_serialized_json The allocated resouce
-  /// instances json string, it contains resource ID which assigned to this worker.
+  /// The callback will be executed with an empty worker in following cases:
+  /// Case 1: Job config not found.
+  /// Case 2: Worker process startup rate limited.
+  /// Case 3: Worker process has been started, but the worker registered back to raylet
+  /// timeout.
+  //  Case 4: Any fails of runtime env creation.
+  /// Of course, the callback will also be executed when a valid worker found in following
+  /// cases:
+  /// Case 1: An suitable worker was found in idle worker pool.
+  /// Case 2: An suitable worker registered to raylet.
+  /// \param allocated_instances_serialized_json The allocated resouce instances
+  /// json string, it contains resource ID which assigned to this worker.
   /// Instance resource value will be like {"GPU":[10000,0,10000]}, non-instance
   /// resource value will be {"CPU":20000}.
   /// \return An idle worker with tit he requested task spec. Returns nullptr if no
@@ -135,8 +165,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time.
-  /// \param is_owner_alive: A callback which returns if the owner process is alive
-  /// (according to our ownership model).
   WorkerPool(instrumented_io_context &io_service, const NodeID node_id,
              const std::string node_address, int num_workers_soft_limit,
              int num_initial_python_workers_for_first_job,
@@ -145,8 +173,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              std::function<void()> starting_worker_timeout_callback,
-             int ray_debugger_external, const std::function<double()> get_time,
-             std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive);
+             int ray_debugger_external, const std::function<double()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -381,7 +408,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// it means we didn't start a process.
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
-      Status *status /*output*/, const std::vector<std::string> &dynamic_options = {},
+      PopWorkerStatus *status /*output*/,
+      const std::vector<std::string> &dynamic_options = {},
       const int runtime_env_hash = 0, const std::string &serialized_runtime_env = "{}",
       std::unordered_map<std::string, std::string> override_environment_variables = {},
       const std::string &serialized_runtime_env_context = "{}",
@@ -428,10 +456,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     TaskID task_id;
     /// The callback function which should be called when worker registered.
     PopWorkerCallback callback;
-    /// The address who leased worker for this task.
-    rpc::Address owner_address;
-    /// The flag of detached actor.
-    bool is_detached_actor;
   };
 
   /// An internal data structure that maintains the pool state per language.
@@ -550,14 +574,25 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// worker types (SPILL_WORKER and RESTORE_WORKER and UTIL_WORKER).
   bool IsIOWorkerType(const rpc::WorkerType &worker_type);
 
+  /// Call the `PopWorkerCallback` function asynchronously to make sure executed in
+  /// different stack.
   inline void PopWorkerCallbackAsync(const PopWorkerCallback &callback,
                                      std::shared_ptr<WorkerInterface> worker,
-                                     Status status = Status::OK());
+                                     PopWorkerStatus status = PopWorkerStatus::OK);
 
-  void TryToCallbackTask(
+  /// Try to assign task which waiting for workers.
+  /// \param workers_to_tasks The queue of tasks which waiting for workers.
+  /// \param proc The process which the worker belongs to.
+  /// \param worker A new idle worker. If the worker is empty, we could also callback to
+  /// the task. \param status The pop worker status which will be forwarded to
+  /// `PopWorkerCallback`. \param found  Whether the related task found or not. \param
+  /// dispatched Whether the related task dispatched or not. \param task_id  The related
+  /// task id.
+  void TryToAssignTaskToDedicatedWorker(
       std::unordered_map<Process, TaskWaitingForWorkerInfo> &workers_to_tasks,
       const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
-      const Status &status, bool *found, bool *used, TaskID *task_id);
+      const PopWorkerStatus &status, bool *found /* output */,
+      bool *dispatched /* output */, TaskID *task_id /* output */);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
@@ -622,8 +657,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::function<double()> get_time_;
   /// Agent manager.
   std::shared_ptr<AgentManager> agent_manager_;
-  /// Function to check if the owner is alive on a given node.
-  std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
 };
 
 }  // namespace raylet
