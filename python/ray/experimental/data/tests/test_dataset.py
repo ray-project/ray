@@ -162,6 +162,10 @@ def test_tensors(ray_start_regular_shared):
     ds = ray.data.range(10).map(lambda x: np.array(x))
     assert str(ds) == ("Dataset(num_rows=10, num_blocks=10, "
                        "schema=<Tensor: shape=(None,), dtype=int64>)")
+    ds = ray.data.from_items([np.zeros(shape=(2, 2, 2)) for _ in range(4)])
+    assert str(ds) == (
+        "Dataset(num_rows=4, num_blocks=4, "
+        "schema=<Tensor: shape=(None, 2, 2, 2), dtype=float64>)"), ds
 
 
 def test_npio(ray_start_regular_shared, tmp_path):
