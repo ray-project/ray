@@ -3,7 +3,7 @@ from typing import Callable
 
 from ray._private import signature
 from ray.experimental.workflow import serialization_context
-from ray.experimental.workflow.common import Workflow, WorkflowData
+from ray.experimental.workflow.common import Workflow, WorkflowData, StepType
 
 
 class WorkflowStepFunction:
@@ -34,6 +34,7 @@ class WorkflowStepFunction:
                 flattened_args)
             workflow_data = WorkflowData(
                 func_body=self._func,
+                step_type=StepType.FUNCTION,
                 inputs=workflow_inputs,
                 max_retries=self._max_retries,
                 catch_exceptions=self._catch_exceptions,
