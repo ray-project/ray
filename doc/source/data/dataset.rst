@@ -48,6 +48,9 @@ Datasource Compatibility Matrices
    * - Parquet File Format
      - ``ray.data.read_parquet()``
      - ✅
+   * - Numpy File Format
+     - ``ray.data.read_numpy()``
+     - ✅
    * - Binary Files
      - ``ray.data.read_binary_files()``
      - ✅
@@ -88,6 +91,9 @@ Datasource Compatibility Matrices
      - ✅
    * - Parquet File Format
      - ``ds.write_parquet()``
+     - ✅
+   * - Numpy File Format
+     - ``ds.write_numpy()``
      - ✅
    * - Spark Dataframe
      - ``ds.to_spark()``
