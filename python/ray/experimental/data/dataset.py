@@ -1451,7 +1451,7 @@ class Dataset(Generic[T]):
         if schema is None:
             schema_str = "Unknown schema"
         elif isinstance(schema, dict):
-            schema_str = "<np.ndarray: shape={}, dtype={}>".format(
+            schema_str = "<Tensor: shape={}, dtype={}>".format(
                 schema["shape"], schema["dtype"])
         elif isinstance(schema, type):
             schema_str = str(schema)

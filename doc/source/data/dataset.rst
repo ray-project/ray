@@ -315,6 +315,34 @@ Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is
     ray.get([w.train.remote(s) for s in shards])
     # -> [650, 650, ...]
 
+Tensor-typed values
+-------------------
+
+Datasets support tensor-typed values, which are represented in-memory as Arrow tensors (i.e., np.ndarray format). Tensor datasets can be read from and written to ``.npy`` files. Here are some examples:
+
+.. code-block:: python
+
+    # Create a Dataset of tensor-typed values.
+    ds = ray.data.range_tensor(10000, shape=(3, 5))
+    # -> Dataset(num_rows=10000, num_blocks=200, schema=<Tensor: shape=(None, 5, 3), dtype=int64>)
+
+    ds.map_batches(lambda t: t + 2).show(2)
+    # -> [[2. 2. 2. 2. 2.]
+    #     [2. 2. 2. 2. 2.]
+    #     [2. 2. 2. 2. 2.]]
+    #    [[3. 3. 3. 3. 3.]
+    #     [3. 3. 3. 3. 3.]
+    #     [3. 3. 3. 3. 3.]]
+
+    # Save to storage.
+    ds.write_numpy("/tmp/tensor_out")
+
+    # Read from storage.
+    ray.data.read_numpy("/tmp/tensor_out")
+    # -> Dataset(num_rows=?, num_blocks=200, schema=<Tensor: shape=(None, 3, 5), dtype=float64>)
+
+Limitations: currently tensor-typed values cannot be nested in tabular records (e.g., as in TFRecord / Petastorm format). This is planned for development.
+
 Custom datasources
 ------------------
 
@@ -327,11 +355,6 @@ Datasets can read and write in parallel to `custom datasources <package-ref.html
 
     # Write to a custom datasource.
     ds.write_datasource(YourCustomDatasource(), **write_args)
-
-Tensor-typed values
--------------------
-
-Currently Datasets does not have native support for tensor-typed values in records (e.g., TFRecord / Petastorm format / multi-dimensional arrays). This is planned for development.
 
 Contributing
 ------------
