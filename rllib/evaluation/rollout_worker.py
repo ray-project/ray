@@ -498,6 +498,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.env,
             spaces=self.spaces,
             policy_config=policy_config)
+
         # List of IDs of those policies, which should be trained.
         # By default, these are all policies found in the policy_dict.
         self.policies_to_train: List[PolicyID] = policies_to_train or list(
@@ -1437,7 +1438,7 @@ def _determine_spaces_for_multi_agent_dict(
                 obs_space = spaces[pid][0]
             elif env_obs_space is not None:
                 obs_space = env_obs_space
-            elif policy_config and "observation_space" in policy_config:
+            elif policy_config and policy_config.get("observation_space"):
                 obs_space = policy_config["observation_space"]
             else:
                 raise ValueError(
@@ -1453,7 +1454,7 @@ def _determine_spaces_for_multi_agent_dict(
                 act_space = spaces[pid][1]
             elif env_act_space is not None:
                 act_space = env_act_space
-            elif policy_config and "action_space" in policy_config:
+            elif policy_config and policy_config.get("action_space"):
                 act_space = policy_config["action_space"]
             else:
                 raise ValueError(
