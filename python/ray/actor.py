@@ -950,9 +950,8 @@ class ActorHandle:
 
     def __repr__(self):
         return ("Actor("
-                "class_name="
                 f"{self._ray_actor_creation_function_descriptor.class_name}, "
-                f"actor_id={self._actor_id.hex()}")
+                f"{self._actor_id.hex()}")
 
     @property
     def _actor_id(self):

@@ -73,7 +73,7 @@ class RayTaskError(RayError):
                  proctitle=None,
                  pid=None,
                  ip=None,
-                 label=None):
+                 actor_repr=None):
         """Initialize a RayTaskError."""
         import ray
 
@@ -89,7 +89,7 @@ class RayTaskError(RayError):
         self.ip = ip or ray.util.get_node_ip_address()
         self.function_name = function_name
         self.traceback_str = traceback_str
-        self.label = label
+        self.actor_repr = actor_repr
         # TODO(edoakes): should we handle non-serializable exception objects?
         self.cause = cause
         assert traceback_str is not None
@@ -145,8 +145,8 @@ class RayTaskError(RayError):
                                    f"{self.proctitle}"
                                    f"{colorama.Fore.RESET} "
                                    f"(pid={self.pid}, ip={self.ip}")
-                if self.label:
-                    error_traceback += f", repr={self.label})"
+                if self.actor_repr:
+                    error_traceback += f", repr={self.actor_repr})"
                 else:
                     error_traceback += ")"
                 out.append(error_traceback)
@@ -165,12 +165,11 @@ class RayTaskError(RayError):
                     # due to the dependency failure.
                     # Print out an user-friendly
                     # message to explain that..
-                    out.append(f"  The task, "
-                               f"{self.proctitle}, failed because the "
-                               f"below input task has failed.")
+                    out.append("  Some of the input arguments for "
+                               "this task could not be computed:")
             else:
                 out.append(line)
-        return "\n".join(out)
+        return "\n".join(lines)
 
 
 class WorkerCrashedError(RayError):

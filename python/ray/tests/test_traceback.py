@@ -50,7 +50,7 @@ def test_actor_creation_stacktrace(ray_start_regular):
         print(ex)
         error_msg = str(ex)
         error_lines = error_msg.split("\n")
-        len(error_lines) == 6
+        assert len(error_lines) == 6
 
 
 def test_task_stacktrace(ray_start_regular):
@@ -82,7 +82,7 @@ def test_task_stacktrace(ray_start_regular):
         print(ex)
         error_msg = str(ex)
         error_lines = error_msg.split("\n")
-        len(error_lines) == 6
+        assert len(error_lines) == 6
 
 
 def test_actor_task_stacktrace(ray_start_regular):
@@ -115,7 +115,7 @@ def test_actor_task_stacktrace(ray_start_regular):
         print(ex)
         error_msg = str(ex)
         error_lines = error_msg.split("\n")
-        len(error_lines) == 6
+        assert len(error_lines) == 6
 
 
 def test_exception_chain(ray_start_regular):
@@ -147,7 +147,7 @@ def test_exception_chain(ray_start_regular):
         print(ex)
         error_msg = str(ex)
         error_lines = error_msg.split("\n")
-        len(error_lines) == 7
+        assert len(error_lines) == 7
 
 
 def test_dep_failure(ray_start_regular):

@@ -579,17 +579,17 @@ cdef execute_task(
                 traceback.format_exc(), task_exception=task_exception)
 
             # Generate the actor repr from the actor class.
-            error_label = repr(actor) if actor else None
+            actor_repr = repr(actor) if actor else None
 
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.
                 failure_object = RayTaskError(function_name, backtrace,
                                               error.cause, proctitle=title,
-                                              label=error_label)
+                                              actor_repr=actor_repr)
             else:
                 failure_object = RayTaskError(function_name, backtrace,
                                               error, proctitle=title,
-                                              label=error_label)
+                                              actor_repr=actor_repr)
             errors = []
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)
