@@ -103,41 +103,16 @@ ray_files += [
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements/requirements.txt
 # in this directory
-if setup_spec.type == SetupType.RAY:
-    setup_spec.extras = {
-        "default": [
-            "aiohttp",  # noqa
-            "aiohttp_cors",  # noqa
-            "aioredis < 2",  # noqa
-            "colorful",  # noqa
-            "py-spy >= 0.2.0",  # noqa
-            "jsonschema",  # noqa
-            "requests",  # noqa
-            "gpustat",  # noqa
-            "opencensus",  # noqa
-            "prometheus_client >= 0.7.1",  # noqa
-        ],
-        "serve": ["uvicorn", "requests", "starlette", "fastapi"],
-        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
-        "k8s": ["kubernetes", "urllib3"],
-        "observability": [
-            "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
-            "opentelemetry-exporter-otlp==1.1.0"
-        ],
-        "cpp": ["ray-cpp==" + setup_spec.version]
-    }
-    if sys.version_info >= (3, 7, 0):
-        setup_spec.extras["k8s"].append("kopf")
-
-    setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
-        "dm_tree",
-        "gym",
-        "lz4",
-        "scikit-image",
-        "pyyaml",
-        "scipy",
+extras = {
+    "default": ["colorful"],
+    "serve": ["uvicorn", "requests", "starlette", "fastapi"],
+    "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
+    "k8s": ["kubernetes"],
+    "observability": [
+        "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
+        "opentelemetry-exporter-otlp==1.1.0"
     ]
-
+}
 if sys.version_info >= (3, 7, 0):
     extras["k8s"].append("kopf")
 
@@ -161,7 +136,7 @@ install_requires = [
     # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
     "aiohttp",
     "aiohttp_cors",
-    "aioredis",
+    "aioredis < 2",
     "click >= 7.0",
     "colorama",
     "dataclasses; python_version < '3.7'",
