@@ -6,6 +6,7 @@ package main
    #include "go_worker.h"
 */
 import "C"
+import "fmt"
 
 func main() {
     //     void goInitialize(
@@ -14,4 +15,10 @@ func main() {
 
     C.goInitialize(C.int(1), C.CString("/tmp/ray/session_latest/sockets/plasma_store"), C.CString("/tmp/ray/session_latest/sockets/raylet"),
         C.CString("/tmp/ray/session_latest/logs"), C.CString("192.168.121.61"), C.int(40531), C.CString("192.168.121.61"), C.CString("GOLANG"))
+}
+
+
+//export SayHello1
+func SayHello(str *C.char) {
+    fmt.Println(C.GoString(str) + " in go")
 }

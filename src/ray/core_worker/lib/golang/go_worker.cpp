@@ -9,6 +9,7 @@ using namespace std;
 __attribute__((visibility("default"))) void goInitialize(
     int workerMode, char *store_socket, char *raylet_socket, char *log_dir,
     char *node_ip_address, int node_manager_port, char *raylet_ip_address, char* driver_name) {
+  SayHello("have_fun friends!");
   std::string serialized_job_config = "";
   ray::CoreWorkerOptions options;
   options.worker_type = static_cast<ray::WorkerType>(workerMode);
@@ -33,5 +34,4 @@ __attribute__((visibility("default"))) void goInitialize(
   options.serialized_job_config = serialized_job_config;
   options.metrics_agent_port = -1;
   ray::CoreWorkerProcess::Initialize(options);
-  cout << "have_fun friends!" << endl;
 }
