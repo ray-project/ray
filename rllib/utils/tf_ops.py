@@ -50,6 +50,8 @@ def get_gpu_devices():
             devices = tf.config.list_physical_devices()
         except Exception:
             devices = tf.config.experimental.list_physical_devices()
+
+    # Expect "GPU", but also stuff like: "XLA_GPU".
     return [d.name for d in devices if "GPU" in d.device_type]
 
 

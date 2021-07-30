@@ -564,8 +564,9 @@ class RolloutWorker(ParallelIteratorWorker):
         if (ray.is_initialized()
                 and ray.worker._mode() != ray.worker.LOCAL_MODE):
 
-            num_gpus = policy_config["num_gpus"] if self.worker_index == 0 \
-                else policy_config["num_gpus_per_worker"]
+            num_gpus = policy_config.get("num_gpus", 0) if \
+                self.worker_index == 0 else \
+                policy_config.get("num_gpus_per_worker", 0)
 
             # Check available number of GPUs and error if we don't find enough.
             if policy_config["framework"] in ["tf2", "tf", "tfe"]:
