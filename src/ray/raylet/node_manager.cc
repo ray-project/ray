@@ -183,6 +183,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                    config.worker_commands,
                    /*starting_worker_timeout_callback=*/
                    [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+                   /*runtime_env_setup_failed_callback=*/
+                   [this](const TaskID &task_id) {
+                     RAY_CHECK(cluster_task_manager_->CancelTask(
+                         task_id, /*runtime_env_setup_failed=*/true));
+                   },
                    config.ray_debugger_external,
                    /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       client_call_manager_(io_service),
