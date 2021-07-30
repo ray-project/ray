@@ -1,15 +1,14 @@
 #include "go_worker.h"
-
 #include <iostream>
 
 #include "ray/core_worker/core_worker.h"
 
 using namespace std;
 
-void Initialize() {
+__attribute__((visibility("default"))) void goInitialize() {
   std::string serialized_job_config = "";
   ray::CoreWorkerOptions options;
-  options.worker_type = static_cast<ray::WorkerType>(workerMode);
+  options.worker_type = ray::WorkerType::WORKER;
   options.language = ray::Language::JAVA;
   options.store_socket = "";
   options.raylet_socket = "";
@@ -33,5 +32,4 @@ void Initialize() {
 
   ray::CoreWorkerProcess::Initialize(options);
   cout << "have_fun friends!" << endl;
-  return 0;
 }

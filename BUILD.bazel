@@ -1922,7 +1922,7 @@ cc_binary(
     name = "libcore_worker_library_go.so",
     srcs = glob([
         "src/ray/core_worker/lib/golang/*.h",
-        "src/ray/core_worker/lib/golang/*.cc",
+        "src/ray/core_worker/lib/golang/*.cpp",
     ]),
     copts = COPTS,
     # Export ray ABI symbols, which can then be used by libstreaming_java.so. see `//:_raylet`

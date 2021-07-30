@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 
-void Initialize();
+void goInitialize();
 #ifdef __cplusplus
 }
 #endif
