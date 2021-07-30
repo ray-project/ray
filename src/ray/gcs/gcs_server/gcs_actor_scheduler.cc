@@ -477,6 +477,18 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
     } else {
       RetryLeasingWorkerFromNode(actor, node);
     }
+  } else if(actor->GetState() == rpc::ActorTableData::DEAD) {
+    // The actor is dead, kill the worker
+    auto &worker_address = reply.worker_address();
+    if(!worker_address.raylet_id().empty()) {
+      auto cli = core_worker_clients_.GetOrConnect(worker_address);
+      rpc::KillActorRequest request;
+      // Set it to be Nil() since it hasn't been setup yet
+      request.set_intended_actor_id(ActorID::Nil().Binary());
+      request.set_force_kill(true);
+      request.set_no_restart(true);
+      RAY_UNUSED(cli->KillActor(request, nullptr));
+    }
   }
 }
 

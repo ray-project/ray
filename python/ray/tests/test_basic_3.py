@@ -184,5 +184,22 @@ def test_fair_queueing(shutdown_only):
     assert len(ready) == 1000, len(ready)
 
 
+def test_actor_killing(shutdown_only):
+    # This is to test create and kill an actor immediately
+    import ray
+    ray.init(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def foo(self):
+            return None
+
+    worker_1 = Actor.remote()
+    ray.kill(worker_1)
+
+    worker_2 = Actor.remote()
+    assert ray.get(worker_2.foo.remote()) is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
