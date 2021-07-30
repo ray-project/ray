@@ -1,5 +1,5 @@
 from collections import defaultdict, namedtuple, Counter
-from typing import Any, Optional, Dict, List, Set, FrozenSet
+from typing import Any, Optional, Dict, List, Set, FrozenSet, Tuple
 import copy
 import logging
 import math
@@ -257,15 +257,15 @@ class StandardAutoscaler:
             # Make sure to not kill idle node types if the number of workers
             # of that type is lower/equal to the min_workers of that type
             # or it is needed for request_resources().
-            should_keep_or_terminate = self._keep_worker_of_node_type(
+            should_keep_or_terminate, reason = self._keep_worker_of_node_type(
                 node_id, node_type_counts)
+            if should_keep_or_terminate == KeepOrTerminate.terminate:
+                schedule_node_termination(node_id, reason)
+                continue
             if ((should_keep_or_terminate == KeepOrTerminate.keep
                  or node_id in nodes_not_allowed_to_terminate)
                     and self.launch_config_ok(node_id)):
                 keep_node(node_id)
-                continue
-            if should_keep_or_terminate == KeepOrTerminate.terminate:
-                schedule_node_termination(node_id, "max_workers_per_type")
                 continue
 
             node_ip = self.provider.internal_ip(node_id)
@@ -510,9 +510,9 @@ class StandardAutoscaler:
                 nodes_not_allowed_to_terminate.add(node_id)
         return frozenset(nodes_not_allowed_to_terminate)
 
-    def _keep_worker_of_node_type(
-            self, node_id: NodeID,
-            node_type_counts: Dict[NodeType, int]) -> KeepOrTerminate:
+    def _keep_worker_of_node_type(self, node_id: NodeID,
+                                  node_type_counts: Dict[NodeType, int]
+                                  ) -> Tuple[KeepOrTerminate, Optional[str]]:
         """Determines if a worker should be kept based on the min_workers
         and max_workers constraint of the worker's node_type.
 
@@ -522,7 +522,8 @@ class StandardAutoscaler:
         (b) Deleting the node would violate the min_workers constraint for that
             worker's node_type.
 
-        Returns KeepOrTerminate.terminate when both the following hold:
+        Returns KeepOrTerminate.terminate when either the node type is not
+        among available node type, or both the following hold:
         (a) The worker's node_type is present among the keys of the current
             config's available_node_types dict.
         (b) Keeping the node would violate the max_workers constraint for that
@@ -536,8 +537,9 @@ class StandardAutoscaler:
                 types counted so far.
         Returns:
             KeepOrTerminate: keep if the node should be kept, terminate if the
-            node should be terminated, decide_later if we could possibly
-            terminate it.
+            node should be terminated, decide_later if we are allowed
+            to terminate it, but do not have to.
+            Optional[str]: reason for termination.
         """
         tags = self.provider.node_tags(node_id)
         if TAG_RAY_USER_NODE_TYPE in tags:
@@ -550,14 +552,16 @@ class StandardAutoscaler:
             if node_type not in self.available_node_types:
                 # The node type has been deleted from the cluster config.
                 # Allow terminating it if needed.
-                return KeepOrTerminate.decide_later
+                available_node_types = list(self.available_node_types.keys())
+                return (KeepOrTerminate.terminate,
+                        f"not in available_node_types: {available_node_types}")
             new_count = node_type_counts[node_type] + 1
             if new_count <= min(min_workers, max_workers):
-                return KeepOrTerminate.keep
+                return KeepOrTerminate.keep, None
             if new_count > max_workers:
-                return KeepOrTerminate.terminate
+                return KeepOrTerminate.terminate, "max_workers_per_type"
 
-        return KeepOrTerminate.decide_later
+        return KeepOrTerminate.decide_later, None
 
     def _node_resources(self, node_id):
         node_type = self.provider.node_tags(node_id).get(
