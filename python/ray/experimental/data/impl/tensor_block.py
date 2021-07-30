@@ -15,6 +15,8 @@ from ray.experimental.data.impl.block_builder import BlockBuilder
 T = TypeVar("T")
 
 
+# TODO(ekl) switch to pyarrow.Tensor as the block type; currently there is a
+# serialization issue with pyarrow tensors.
 class TensorBlockBuilder(BlockBuilder[T]):
     def __init__(self):
         self._rows = []
