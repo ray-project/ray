@@ -5,6 +5,7 @@ Creating a Dataset
 ------------------
 .. autofunction:: ray.data.range
 .. autofunction:: ray.data.range_arrow
+.. autofunction:: ray.data.range_tensor
 .. autofunction:: ray.data.read_csv
 .. autofunction:: ray.data.read_json
 .. autofunction:: ray.data.read_parquet
