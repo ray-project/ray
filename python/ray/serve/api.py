@@ -599,9 +599,7 @@ def start(
     Args:
         detached (bool): Whether not the instance should be detached from this
           script. If set, the instance will live on the Ray cluster until it is
-          explicitly stopped with serve.shutdown(). This should *not* be set in
-          an anonymous Ray namespace because you will not be able to reconnect
-          to the instance after the script exits.
+          explicitly stopped with serve.shutdown().
         http_host (Optional[str]): Deprecated, use http_options instead.
         http_port (int): Deprecated, use http_options instead.
         http_middlewares (list): Deprecated, use http_options instead.
@@ -649,16 +647,6 @@ def start(
         ray.init(namespace="serve")
 
     current_namespace = ray.get_runtime_context().namespace
-    if detached:
-        if _UUID_RE.fullmatch(current_namespace) is not None:
-            raise RuntimeError(
-                "serve.start(detached=True) should not be called in anonymous "
-                "Ray namespaces because you won't be able to reconnect to the "
-                "Serve instance after the script exits. If you want to start "
-                "a long-lived Serve instance, provide a namespace when "
-                "connecting to Ray. See the documentation for more details: "
-                "https://docs.ray.io/en/master/namespaces.html?highlight=namespace#using-namespaces."  # noqa: E501
-            )
 
     try:
         _get_global_client()
@@ -669,8 +657,12 @@ def start(
         pass
 
     # Try to get serve controller if it exists
+    serve_controller_namespace = current_namespace
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
+        if _UUID_RE.fullmatch(current_namespace) is not None:
+            controller_name = f"serve/{controller_name}"
+            serve_controller_namespace = "serve"
     else:
         controller_name = format_actor_name(SERVE_CONTROLLER_NAME,
                                             get_random_letters())
@@ -711,7 +703,7 @@ def start(
     client = Client(controller, controller_name, detached=detached)
     _set_global_client(client)
     logger.info(f"Started{' detached ' if detached else ' '}Serve instance in "
-                f"namespace '{current_namespace}'.")
+                f"namespace '{serve_controller_namespace}'.")
     return client
 
 
