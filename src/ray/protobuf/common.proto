@@ -23,6 +23,7 @@ enum Language {
   PYTHON = 0;
   JAVA = 1;
   CPP = 2;
+  GOLANG = 3;
 }
 
 // Type of a worker.
