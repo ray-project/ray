@@ -33,11 +33,6 @@ function Disable-UserAccessControl {
 # Enable $ErrorActionPreference='Stop' for AllUsersAllHosts
 Add-Content -Path $profile.AllUsersAllHosts -Value '$ErrorActionPreference="Stop"'
 
-# Set static env vars
-#setx ImageVersion $env:IMAGE_VERSION /m
-#setx ImageOS $env:IMAGE_OS /m
-#setx AGENT_TOOLSDIRECTORY $env:AGENT_TOOLSDIRECTORY /m
-
 # Set TLS1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor "Tls12"
 
@@ -57,23 +52,14 @@ Write-Host "Disable Antivirus nok"
 # Install .NET Framework 3.5 (required by Chocolatey)
 # Explicitly install all 4.7 sub features to include ASP.Net.
 # As of  1/16/2019, WinServer 19 lists .Net 4.7 as NET-Framework-45-Features
-DISM /Online /Enable-Feature /FeatureName:NetFx3ServerFeatures 
-Install-WindowsFeature -Name NET-Framework-Features -Source C:\install\sxs\
-Install-WindowsFeature -Name NET-Framework-Features -IncludeAllSubFeature
+#DISM /Online /Enable-Feature /FeatureName:NetFx3ServerFeatures 
+#Install-WindowsFeature -Name NET-Framework-Features -Source C:\install\sxs\
+#Install-WindowsFeature -Name NET-Framework-Features -IncludeAllSubFeature
 Install-WindowsFeature -Name NET-Framework-45-Features -IncludeAllSubFeature
 if (Test-IsWin16) {
     Install-WindowsFeature -Name BITS -IncludeAllSubFeature
     Install-WindowsFeature -Name DSC-Service
 }
-
-# Install FS-iSCSITarget-Server
-#$fsResult = Install-WindowsFeature -Name FS-iSCSITarget-Server -IncludeAllSubFeature -IncludeManagementTools
-#if ( $fsResult.Success ) {
-#    Write-Host "FS-iSCSITarget-Server has been successfully installed"
-#} else {
-#    Write-Host "Failed to install FS-iSCSITarget-Server"
-#    exit 1
-#}
 
 Write-Host "Disable UAC"
 Disable-UserAccessControl
@@ -143,9 +129,3 @@ if (Test-IsWin19) {
 # Initialize environmental variable ChocolateyToolsLocation by invoking choco Get-ToolsLocation function
 Import-Module "$env:ChocolateyInstall\helpers\chocolateyInstaller.psm1" -Force
 Get-ToolsLocation
-
-# Expand disk size of OS drive
-#$driveLetter = "C"
-#$size = Get-PartitionSupportedSize -DriveLetter $driveLetter
-#Resize-Partition -DriveLetter $driveLetter -Size $size.SizeMax
-#Get-Volume | Select-Object DriveLetter, SizeRemaining, Size | Sort-Object DriveLetter

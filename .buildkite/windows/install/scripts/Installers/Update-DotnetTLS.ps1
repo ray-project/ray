@@ -15,5 +15,4 @@ if(Test-Path $registryPath){
     Set-ItemProperty -Path $registryPath -Name $name -Value $value -Type DWORD
 }
 
-#Invoke-PesterTests -TestFile "Tools" -TestName "DotnetTLS"
 

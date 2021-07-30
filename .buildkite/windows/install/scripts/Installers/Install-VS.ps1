@@ -47,5 +47,3 @@ if (Test-IsWin19) {
 	$argumentList = ("/q", "/norestart", "/ceip off", "/features OptionId.WindowsSoftwareDevelopmentKit")
 	Install-Binary -Url $sdkUrl -Name $sdkFileName -ArgumentList $argumentList
 }
-
-Invoke-PesterTests -TestFile "VisualStudio"

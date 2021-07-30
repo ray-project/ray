@@ -11,4 +11,3 @@ Invoke-Expression "& { $(Invoke-RestMethod https://aka.ms/install-powershell.ps1
 # Also for performance reasons, the check will not start until at least 3 seconds after the session begins.
 [System.Environment]::SetEnvironmentVariable("POWERSHELL_UPDATECHECK", "Off", [System.EnvironmentVariableTarget]::Machine)
 
-#Invoke-PesterTests -TestFile "Tools" -TestName "PowerShell Core"
