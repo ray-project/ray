@@ -341,7 +341,7 @@ Datasets support tensor-typed values, which are represented in-memory as Arrow t
     ray.data.read_numpy("/tmp/tensor_out")
     # -> Dataset(num_rows=?, num_blocks=200, schema=<Tensor: shape=(None, 3, 5), dtype=float64>)
 
-Tensor datasets are also created whenever an array-type is returned from a UDF:
+Tensor datasets are also created whenever an array-type is returned from a map function:
 
 .. code-block:: python
 
