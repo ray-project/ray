@@ -1203,6 +1203,9 @@ def run_test_config(
             ))
 
     def _run(logger):
+        # These values will be set as the test runs.
+        session_url = None
+        runtime = None
         anyscale.conf.CLI_TOKEN = GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"]
 
         session_id = None
