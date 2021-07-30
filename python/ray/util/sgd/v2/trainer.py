@@ -18,6 +18,7 @@ class Trainer:
                  use_gpu: bool = False,
                  resources_per_worker: Optional[Dict[str, float]] = None):
         """A class for distributed training.
+
         Args:
             backend (Union[str, BackendConfig]): The backend used for
                 distributed communication. If configurations are needed,
@@ -74,6 +75,7 @@ class Trainer:
               *args,
               **kwargs):
         """Starts the training execution service.
+
         Args:
             initialization_hook (Optional[Callable]): The function to call on
                 each worker when it is instantiated.
@@ -88,6 +90,7 @@ class Trainer:
             config: Optional[Dict[str, Any]] = None,
             callbacks: Optional[List[Callback]] = None) -> List[T]:
         """Runs a training function in a distributed manner.
+
         Args:
             train_func (Callable): The training function to execute.
             config (Optional[Dict]): Configurations to pass into
@@ -95,6 +98,7 @@ class Trainer:
             callbacks (Optional[List[Callback]]): A list of Callbacks which
                 will be executed during training. If this is not set,
                 currently there are NO default Callbacks.
+
         Returns:
             A list of results from the training function. Each value in the
             list corresponds to the output of the training function from
@@ -107,11 +111,13 @@ class Trainer:
 
     def execute(self, func: Callable[..., T], *args, **kwargs) -> List[T]:
         """Executes a function for all instances of ``self.train_cls``.
+
         Args:
             func (Callable): The function that should be executed.
                 The first argument should be an instance of
                 ``self.train_cls``.
             args, kwargs: The arguments to pass into `func`.
+
         Returns:
             A list of results from ``func``. Each value in the
             list corresponds to the output of ``func`` from
@@ -121,11 +127,13 @@ class Trainer:
 
     def execute_single(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes a function on a single instance of ``self.train_cls``.
+
         Args:
             func (Callable): The function that should be executed.
                 The first argument should be an instance of
                 ``self.train_cls``.
             args, kwargs: The arguments to pass into `func`.
+
         Returns:
             The output of ``func`` from a single worker.
         """

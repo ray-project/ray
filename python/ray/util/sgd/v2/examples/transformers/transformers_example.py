@@ -196,7 +196,7 @@ def parse_args():
 
     # Sanity checks
     if args.task_name is None and args.train_file is None and \
-        args.validation_file is None:
+            args.validation_file is None:
         raise ValueError(
             "Need either a task name or a training/validation file.")
     else:
@@ -327,7 +327,7 @@ def train_func(config: Dict[str, Any]):
             if name != "label"
         ]
         if "sentence1" in non_label_column_names and \
-            "sentence2" in non_label_column_names:
+                "sentence2" in non_label_column_names:
             sentence1_key, sentence2_key = "sentence1", "sentence2"
         else:
             if len(non_label_column_names) >= 2:
