@@ -18,7 +18,7 @@ try:
     import optuna as ot
     from optuna.trial import TrialState as OptunaTrialState
     from optuna.samplers import BaseSampler
-    from Optuna import Trial as OptunaTrial
+    from optuna.trial import Trial as OptunaTrial
 except ImportError:
     ot = None
     OptunaTrialState = None
