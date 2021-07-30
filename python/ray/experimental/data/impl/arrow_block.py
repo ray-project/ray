@@ -1,6 +1,7 @@
 import collections
 import random
-from typing import Iterator, List, Union, Tuple, Any, TypeVar, TYPE_CHECKING
+from typing import Iterator, List, Union, Tuple, Any, TypeVar, Optional, \
+    TYPE_CHECKING
 
 import numpy as np
 
@@ -153,8 +154,7 @@ class ArrowBlockAccessor(BlockAccessor):
 
         return Iter()
 
-    def slice(self, start: int, end: int,
-              copy: bool) -> "ArrowBlockAccessor[T]":
+    def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
         if copy:
             # TODO(ekl) there must be a cleaner way to force a copy of a table.
@@ -162,6 +162,10 @@ class ArrowBlockAccessor(BlockAccessor):
             return pyarrow.Table.from_arrays(copy, schema=self._table.schema)
         else:
             return view
+
+    def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
+        random = np.random.RandomState(random_seed)
+        return self._table.take(random.permutation(self.num_rows()))
 
     def schema(self) -> "pyarrow.lib.Schema":
         return self._table.schema

@@ -45,6 +45,12 @@ class SimpleBlockAccessor(BlockAccessor):
             view = view.copy()
         return view
 
+    def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
+        random = np.random.RandomState(random_seed)
+        items = self._items.copy()
+        random.shuffle(items)
+        return items
+
     def to_pandas(self) -> "pandas.DataFrame":
         import pandas
         return pandas.DataFrame(self._items)
