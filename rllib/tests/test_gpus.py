@@ -2,14 +2,20 @@ import unittest
 
 import ray
 from ray.rllib.agents.pg import PGTrainer, DEFAULT_CONFIG
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune
 
+torch, _ = try_import_torch()
+
 
 class TestGPUs(unittest.TestCase):
-    def test_non_existing_gpus_in_non_local_mode(self):
+    def test_gpus_in_non_local_mode(self):
         # Non-local mode.
         ray.init()
+
+        actual_gpus_available = torch.cuda.device_count()
+
         config = DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
         config["env"] = "CartPole-v0"
@@ -26,7 +32,7 @@ class TestGPUs(unittest.TestCase):
                     ("tf2", "tf", "torch")
                 for _ in framework_iterator(config, frameworks=frameworks):
                     # Expect that trainer creation causes a num_gpu error.
-                    if num_gpus > 0 and not fake_gpus:
+                    if actual_gpus_available < num_gpus and not fake_gpus:
                         # "Direct" RLlib (create Trainer on the driver).
                         # Cannot run through ray.tune.run() as it would simply
                         # wait infinitely for the resources to become
@@ -37,7 +43,8 @@ class TestGPUs(unittest.TestCase):
                             f"Not enough GPUs found.+for num_gpus={num_gpus}",
                             lambda: PGTrainer(config, env="CartPole-v0"),
                         )
-                    # If num_gpus=0 or faked, expect no error.
+                    # If actual_gpus_available >= num_gpus or faked,
+                    # expect no error.
                     else:
                         print("direct RLlib")
                         trainer = PGTrainer(config, env="CartPole-v0")
@@ -54,9 +61,10 @@ class TestGPUs(unittest.TestCase):
                                 stop={"training_iteration": -1})
         ray.shutdown()
 
-    def test_non_existing_gpus_in_local_mode(self):
+    def test_gpus_in_local_mode(self):
         # Local mode.
         ray.init(local_mode=True)
+
         config = DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
         config["env"] = "CartPole-v0"
