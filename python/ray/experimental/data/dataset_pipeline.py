@@ -15,8 +15,9 @@ if TYPE_CHECKING:
 
 # Operations that can be naively applied per dataset in the pipeline.
 PER_DATASET_OPS = [
-    "map", "map_batches", "flat_map", "filter", "repartition", "sort",
-    "write_json", "write_csv", "write_parquet", "write_datasource"
+    "map", "map_batches", "flat_map", "filter", "repartition",
+    "random_shuffle", "sort", "write_json", "write_csv", "write_parquet",
+    "write_datasource"
 ]
 
 # Similar to above but we should force evaluation immediately.
@@ -102,7 +103,10 @@ class DatasetPipeline(Generic[T]):
 
         return gen_batches()
 
-    def split(self, n: int, *,
+    def split(self,
+              n: int,
+              *,
+              equal: bool = False,
               locality_hints: List[Any] = None) -> List["DatasetPipeline[T]"]:
         """Split the pipeline into ``n`` disjoint pipeline shards.
 
@@ -125,6 +129,9 @@ class DatasetPipeline(Generic[T]):
 
         Args:
             n: Number of child pipelines to return.
+            equal: Whether to guarantee each split has an equal
+                number of records. This may drop records if they cannot be
+                divided equally among the splits.
             locality_hints: A list of Ray actor handles of size ``n``. The
                 system will try to co-locate the blocks of the ith pipeline
                 shard with the ith actor to maximize data locality.
@@ -133,7 +140,7 @@ class DatasetPipeline(Generic[T]):
             A list of ``n`` disjoint pipeline splits.
         """
         coordinator = PipelineSplitExecutorCoordinator.remote(
-            self, n, locality_hints)
+            self, n, equal, locality_hints)
 
         class SplitIterator:
             def __init__(self, split_index):
