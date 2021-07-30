@@ -5,18 +5,17 @@ from botocore.exceptions import ClientError
 import aioboto3
 import itertools
 import ray
-from typing import Any, Dict, Optional, List
+from typing import Any, Optional, List
 from ray.experimental.workflow.common import StepID
-from ray.experimental.workflow.storage.base import (StepStatus,
-                                                    data_load_error)
-from ray.experimental.workflow.storage.path_based import (
-    PathBasedStorage, STEPS_DIR, STEP_OUTPUT, STEP_OUTPUTS_METADATA,
-    STEP_INPUTS_METADATA, STEP_ARGS, STEP_FUNC_BODY, WORKFLOW_META)
+from ray.experimental.workflow.storage.base import (
+    StepStatus, data_load_error, Storage, STEPS_DIR, STEP_OUTPUT,
+    STEP_OUTPUTS_METADATA, STEP_INPUTS_METADATA, STEP_ARGS, STEP_FUNC_BODY,
+    KeyNotFoundError)
 
 MAX_RECEIVED_DATA_MEMORY_SIZE = 25 * 1024 * 1024  # 25MB
 
 
-class S3StorageImpl(PathBasedStorage):
+class S3StorageImpl(Storage):
     def __init__(self,
                  bucket: str,
                  s3_path: str,
@@ -61,18 +60,24 @@ class S3StorageImpl(PathBasedStorage):
                 await s3.upload_fileobj(tmp_file, self._bucket, path)
 
     async def _get_object(self, path: str, is_json: bool = False) -> Any:
-        with tempfile.SpooledTemporaryFile(
-                mode="w+b",
-                max_size=MAX_RECEIVED_DATA_MEMORY_SIZE) as tmp_file:
-            async with self._client() as s3:
-                obj = await s3.get_object(Bucket=self._bucket, Key=path)
-                async for chunk in obj["Body"]:
-                    tmp_file.write(chunk)
-            tmp_file.seek(0)
-            if is_json:
-                return json.loads(tmp_file.read().decode())
+        try:
+            with tempfile.SpooledTemporaryFile(
+                    mode="w+b",
+                    max_size=MAX_RECEIVED_DATA_MEMORY_SIZE) as tmp_file:
+                async with self._client() as s3:
+                    obj = await s3.get_object(Bucket=self._bucket, Key=path)
+                    async for chunk in obj["Body"]:
+                        tmp_file.write(chunk)
+                tmp_file.seek(0)
+                if is_json:
+                    return json.loads(tmp_file.read().decode())
+                else:
+                    return ray.cloudpickle.load(tmp_file)
+        except ClientError as ex:
+            if ex.response["Error"]["Code"] == "NoSuchKey":
+                raise KeyNotFoundError from ex
             else:
-                return ray.cloudpickle.load(tmp_file)
+                raise
 
     async def _list_objects(self, path: Optional[str] = None) -> List[str]:
         workflow_ids = []
@@ -140,19 +145,6 @@ class S3StorageImpl(PathBasedStorage):
             query=params,
             fragment="")
         return parse.urlunparse(parsed_url)
-
-    @data_load_error
-    async def load_workflow_meta(self, workflow_id: str) -> Dict[str, Any]:
-        try:
-            path = self._get_path(workflow_id, WORKFLOW_META)
-            data = await self._get_object(path, True)
-        except ClientError as ex:
-            if ex.response["Error"]["Code"] == "NoSuchKey":
-                return None
-            else:
-                raise
-
-        return data
 
     def __reduce__(self):
         return S3StorageImpl, (self._bucket, self._s3_path, self._region_name,

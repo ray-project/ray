@@ -2,15 +2,14 @@ import contextlib
 import itertools
 import json
 import pathlib
-from typing import Any, Dict, List
+from typing import Any, List
 import uuid
 
 from ray.experimental.workflow.common import StepID
-from ray.experimental.workflow.storage.base import (StepStatus,
-                                                    data_load_error)
-from ray.experimental.workflow.storage.path_based import (
-    PathBasedStorage, STEPS_DIR, STEP_OUTPUT, STEP_OUTPUTS_METADATA,
-    STEP_INPUTS_METADATA, STEP_ARGS, STEP_FUNC_BODY, WORKFLOW_META)
+from ray.experimental.workflow.storage.base import (
+    StepStatus, data_load_error, Storage, STEPS_DIR, STEP_OUTPUT,
+    STEP_OUTPUTS_METADATA, STEP_INPUTS_METADATA, STEP_ARGS, STEP_FUNC_BODY,
+    KeyNotFoundError)
 
 import ray.cloudpickle
 
@@ -41,7 +40,7 @@ def _open_atomic(path: pathlib.Path, mode="r"):
         if _file_exists(path):
             f = open(path, mode)
         else:
-            raise FileNotFoundError(path)
+            raise KeyNotFoundError(path)
         try:
             yield f
         finally:
@@ -119,7 +118,7 @@ def _file_exists(path: pathlib.Path) -> bool:
     return False
 
 
-class FilesystemStorageImpl(PathBasedStorage):
+class FilesystemStorageImpl(Storage):
     """Filesystem implementation for accessing workflow storage.
 
     We do not repeat the same comments for abstract methods in the base class.
@@ -165,22 +164,13 @@ class FilesystemStorageImpl(PathBasedStorage):
             func_body_exists=(step_dir / STEP_FUNC_BODY).exists(),
         )
 
-    @property
-    def storage_url(self) -> str:
-        return str(self._workflow_root_dir)
-
-    @data_load_error
-    async def load_workflow_meta(self, workflow_id: str) -> Dict[str, Any]:
-        file_path = self._workflow_root_dir / workflow_id / WORKFLOW_META
-        try:
-            with _open_atomic(file_path) as f:
-                return json.load(f)
-        except FileNotFoundError:
-            return None
-
     @data_load_error
     async def list_workflow(self) -> List[str]:
         return [path.name for path in self._workflow_root_dir.iterdir()]
+
+    @property
+    def storage_url(self) -> str:
+        return str(self._workflow_root_dir)
 
     def __reduce__(self):
         return FilesystemStorageImpl, (self._workflow_root_dir, )
