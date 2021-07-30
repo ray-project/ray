@@ -25,5 +25,6 @@ WORKDIR /ray/
 RUN bazel build //:ray_pkg || bazel build --jobs 1 //:ray_pkg
 WORKDIR /ray/python/
 RUN python3 setup.py bdist_wheel
+RUN RAY_INSTALL_CPP=1 python3 setup.py bdist_wheel
 #RUN pip install -e .
 WORKDIR /ray

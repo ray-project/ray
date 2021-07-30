@@ -12,13 +12,12 @@ ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 # Specify bazel (see https://github.com/bazelbuild/bazel/issues/12887)
 ENV USE_BAZEL_VERSION=3.7.2
-# py-spy on arm is happier with rust install as per https://gist.github.com/heavyinfo/aa0bf2feb02aedb3b38eef203b4b8cc4
 RUN sudo apt-get update && sudo apt-get install -y curl bash
 RUN echo "export PATH=~/anaconda3/bin/:~/.cargo/bin:\$PATH" >> ~/.bashrc
 SHELL ["/bin/bash", "-c"]
-# Install py-spy, it runs out of process but has difficulty installing in ARM. To allow it to be installed from source on ARM we need to install cargo.
 RUN export PATH=$HOME/.cargo/bin:$HOME/anaconda3/bin/:$PATH
+# Install py-spy no arm on conda yet so fall through to pypi wheel
 RUN (mamba install --yes py-spy) || (pip install --upgrade pip && pip install py-spy)
 RUN mkdir -p /tmp/ray-wheels
 COPY --from=raywheel /ray/python/dist/*.whl /tmp/ray-wheels
-RUN pip --no-cache-dir install --no-index --find-links="/tmp/ray-wheels/" ray
+RUN pip --no-cache-dir install --no-index --find-links="/tmp/ray-wheels/" ray[all]

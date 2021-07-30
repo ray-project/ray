@@ -8,7 +8,7 @@ set -ex
 GPU=""
 BASE_IMAGE=${BASE_IMAGE:-"ubuntu:focal"}
 DOCKER_PREFIX=${DOCKER_PREFIX:-"rayproject/"}
-PYTHON_VERSION=3.8.6
+PYTHON_VERSION=3.9.6
 
 while [[ $# -gt 0 ]]
 do
