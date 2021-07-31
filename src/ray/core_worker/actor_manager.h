@@ -127,14 +127,14 @@ class ActorManager {
   /// actor handle.
   ///
   /// \param actor_handle The handle to the actor.
-  /// \param actor_name Actor name used to cache named actor.
+  /// \param cached_actor_name Actor name used to cache named actor.
   /// \param[in] caller_id The caller's task ID
   /// \param[in] call_site The caller's site.
   /// \param[in] is_detached Whether or not the actor of a handle is detached (named)
   /// actor. \return True if the handle was added and False if we already had a handle to
   /// the same actor.
   bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                         const std::string &actor_name, const TaskID &caller_id,
+                         const std::string &cached_actor_name, const TaskID &caller_id,
                          const std::string &call_site, const rpc::Address &caller_address,
                          bool is_detached);
 
@@ -164,7 +164,7 @@ class ActorManager {
   /// they are submitted.
   ///
   /// \param actor_handle The handle to the actor.
-  /// \param actor_name Actor name used to cache named actor.
+  /// \param cached_actor_name Actor name used to cache named actor.
   /// \param is_owner_handle Whether this is the owner's handle to the actor.
   /// The owner is the creator of the actor and is responsible for telling the
   /// actor to disconnect once all handles are out of scope.
@@ -175,7 +175,7 @@ class ActorManager {
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                      const std::string &actor_name, bool is_owner_handle,
+                      const std::string &cached_actor_name, bool is_owner_handle,
                       const TaskID &caller_id, const std::string &call_site,
                       const rpc::Address &caller_address, const ActorID &actor_id,
                       const ObjectID &actor_creation_return_id);
@@ -204,8 +204,12 @@ class ActorManager {
   absl::flat_hash_map<ActorID, std::shared_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(mutex_);
 
-  /// The map to cache the named actor in this worker locally..
-  absl::flat_hash_map<std::string, ActorID> actor_name_to_ids_cache_;
+  /// Protects access `cached_actor_name_to_ids_`.
+  absl::Mutex cache_mutex_;
+
+  /// The map to cache name and id of the named actors in this worker locally, to avoid
+  /// getting them from GCS frequently.
+  absl::flat_hash_map<std::string, ActorID> cached_actor_name_to_ids_;
 };
 
 }  // namespace ray

@@ -32,6 +32,9 @@ std::string WorkerTypeString(WorkerType type);
 // Return a string representation of the language.
 std::string LanguageString(Language language);
 
+// Return a string representation of the named actor to cache.
+std::string ToCachedActorName(const std::string &ns, const std::string &actor_name);
+
 /// Information about a remote function.
 class RayFunction {
  public:

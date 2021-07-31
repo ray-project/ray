@@ -1769,9 +1769,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
-  // Note we need set `actor_name` to empty string as we don't need to cache this one.
+  // Note we need set `cached_actor_name` to empty string as we only cache named actors
+  // when getting them from GCS.
   RAY_CHECK(actor_manager_->AddNewActorHandle(
-      std::move(actor_handle), /*actor_name=*/"", GetCallerId(), CurrentCallSite(),
+      std::move(actor_handle), /*cached_actor_name=*/"", GetCallerId(), CurrentCallSite(),
       rpc_address_, actor_creation_options.is_detached))
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
@@ -2041,7 +2042,8 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
 
   std::string namespace_to_use =
       ray_namespace.empty() ? job_config_->ray_namespace() : ray_namespace;
-  ActorID actor_id = actor_manager_->GetCachedNamedActorID(namespace_to_use + "-" + name);
+  ActorID actor_id =
+      actor_manager_->GetCachedNamedActorID(ToCachedActorName(namespace_to_use, name));
   if (actor_id.IsNil()) {
     // This call needs to be blocking because we can't return until the actor
     // handle is created, which requires the response from the RPC. This is
@@ -2059,8 +2061,8 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
             actor_id = actor_handle->GetActorID();
             actor_manager_->AddNewActorHandle(
                 std::move(actor_handle),
-                result.get().ray_namespace() + "-" + result.get().name(), GetCallerId(),
-                CurrentCallSite(), rpc_address_,
+                ToCachedActorName(result.get().ray_namespace(), result.get().name()),
+                GetCallerId(), CurrentCallSite(), rpc_address_,
                 /*is_detached*/ true);
           } else {
             // Use a NIL actor ID to signal that the actor wasn't found.
@@ -3080,15 +3082,16 @@ void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *rep
   // any object pinning RPCs in flight.
   bool is_idle = !own_objects && pins_in_flight == 0;
   reply->set_success(is_idle);
-  send_reply_callback(Status::OK(),
-                      [this, is_idle]() {
-                        // If the worker is idle, we exit.
-                        if (is_idle) {
-                          Exit(rpc::WorkerExitType::IDLE_EXIT);
-                        }
-                      },
-                      // We need to kill it regardless if the RPC failed.
-                      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
+  send_reply_callback(
+      Status::OK(),
+      [this, is_idle]() {
+        // If the worker is idle, we exit.
+        if (is_idle) {
+          Exit(rpc::WorkerExitType::IDLE_EXIT);
+        }
+      },
+      // We need to kill it regardless if the RPC failed.
+      [this]() { Exit(rpc::WorkerExitType::INTENDED_EXIT); });
 }
 
 void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,

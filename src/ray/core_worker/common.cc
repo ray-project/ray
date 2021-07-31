@@ -45,4 +45,8 @@ std::string LanguageString(Language language) {
   return "";
 }
 
+std::string ToCachedActorName(const std::string &ns, const std::string &actor_name) {
+  return ns + "-" + actor_name;
+}
+
 }  // namespace ray

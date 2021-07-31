@@ -27,7 +27,9 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
   const rpc::Address owner_address = actor_handle->GetOwnerAddress();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
 
-  RAY_UNUSED(AddActorHandle(std::move(actor_handle), /*actor_name=*/"",
+  // Note we need set `cached_actor_name` to empty string as we only cache named actors
+  // when getting them from GCS.
+  RAY_UNUSED(AddActorHandle(std::move(actor_handle), /*cached_actor_name=*/"",
                             /*is_owner_handle=*/false, caller_id, call_site,
                             caller_address, actor_id, actor_creation_return_id));
   ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
@@ -50,7 +52,7 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
 }
 
 bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                     const std::string &actor_name,
+                                     const std::string &cached_actor_name,
                                      const TaskID &caller_id,
                                      const std::string &call_site,
                                      const rpc::Address &caller_address,
@@ -65,14 +67,15 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                        /*is_reconstructable=*/true);
   }
 
-  return AddActorHandle(std::move(actor_handle), actor_name,
+  return AddActorHandle(std::move(actor_handle), cached_actor_name,
                         /*is_owner_handle=*/!is_detached, caller_id, call_site,
                         caller_address, actor_id, actor_creation_return_id);
 }
 
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                                  const std::string &actor_name, bool is_owner_handle,
-                                  const TaskID &caller_id, const std::string &call_site,
+                                  const std::string &cached_actor_name,
+                                  bool is_owner_handle, const TaskID &caller_id,
+                                  const std::string &call_site,
                                   const rpc::Address &caller_address,
                                   const ActorID &actor_id,
                                   const ObjectID &actor_creation_return_id) {
@@ -90,9 +93,12 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                   std::placeholders::_1, std::placeholders::_2);
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
         actor_id, actor_notification_callback,
-        [this, &actor_id, actor_name](Status status) {
-          if (status.ok() && !actor_name.empty()) {
-            actor_name_to_ids_cache_.emplace(actor_name, actor_id);
+        [this, actor_id, cached_actor_name](Status status) {
+          if (status.ok() && !cached_actor_name.empty()) {
+            {
+              absl::MutexLock lock(&cache_mutex_);
+              cached_actor_name_to_ids_.emplace(cached_actor_name, actor_id);
+            }
           }
         }));
   }
@@ -141,8 +147,11 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false);
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
     if (!actor_data.name().empty()) {
-      actor_name_to_ids_cache_.erase(actor_data.ray_namespace() + "-" +
-                                     actor_data.name());
+      {
+        absl::MutexLock lock(&cache_mutex_);
+        cached_actor_name_to_ids_.erase(
+            ToCachedActorName(actor_data.ray_namespace(), actor_data.name()));
+      }
     }
     std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
     if (actor_data.has_creation_task_exception()) {
@@ -177,9 +186,18 @@ std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {
 }
 
 ActorID ActorManager::GetCachedNamedActorID(const std::string &actor_name) {
-  auto it = actor_name_to_ids_cache_.find(actor_name);
-  if (it != actor_name_to_ids_cache_.end()) {
-    return it->second;
+  {
+    absl::MutexLock lock(&cache_mutex_);
+    auto it = cached_actor_name_to_ids_.find(actor_name);
+    if (it != cached_actor_name_to_ids_.end()) {
+      absl::MutexLock lock(&mutex_);
+      auto handle_it = actor_handles_.find(it->second);
+      if (handle_it == actor_handles_.end()) {
+        cached_actor_name_to_ids_.erase(actor_name);
+        return ActorID::Nil();
+      }
+      return it->second;
+    }
   }
   return ActorID::Nil();
 }
