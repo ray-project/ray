@@ -617,28 +617,30 @@ def init(
     just attach this driver to it or we start all of the processes associated
     with a Ray cluster and attach to the newly started cluster.
 
-    To start Ray and all of the relevant processes, use this as follows:
+    To start Ray locally and all of the relevant processes, use this as
+    follows:
 
     .. code-block:: python
 
         ray.init()
 
-    To connect a driver to an existing Ray cluster, use this as follows
-    (substituting in the appropriate address):
+    To connect to an existing local cluster, use this as follows (substituting
+    in the appropriate port if needed).
 
     .. code-block:: python
 
-        ray.init(address="123.45.67.89:6379")
+        ray.init(address="localhost:6379")
 
-    To connect to an existing Ray cluster using Ray client, specify a protocol
-    in the address:
+    To connect to an existing remote cluster, use this as follows (substituting
+    in the appropriate address). Note the addition of "ray://" at the beginning
+    of the address.
 
     .. code-block:: python
 
         ray.init(address="ray://123.45.67.89:10001")
 
-    More details on Ray client usage can be found at
-    https://docs.ray.io/en/master/cluster/ray-client.html
+    More details for starting and connecting to a local cluster can be found
+    here: https://docs.ray.io/en/master/cluster/ray-client.html
 
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
@@ -654,10 +656,10 @@ def init(
             specify a specific node address. If the environment variable
             `RAY_ADDRESS` is defined and the address is None or "auto", Ray
             will set `address` to `RAY_ADDRESS`.
-            Addresses can be prefixed with a protocol to connect using Ray
-            Client. For example, passing in the address
+            Addresses can be prefixed with a "ray://" to connect to a remote
+            cluster. For example, passing in the address
             "ray://123.45.67.89:50005" will connect to the cluster at the
-            given address using the Ray client.
+            given address.
         num_cpus (int): Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
         num_gpus (int): Number of GPUs the user wishes to assign to each
