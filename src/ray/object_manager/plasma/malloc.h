@@ -31,14 +31,6 @@ namespace plasma {
 /// (in the client we cannot guarantee that these mmaps are contiguous).
 constexpr int64_t kMmapRegionsGap = sizeof(size_t);
 
-void GetMallocMapinfo(void *addr, MEMFD_TYPE *fd, int64_t *map_length, ptrdiff_t *offset);
-
-/// Get the mmap size corresponding to a specific file descriptor.
-///
-/// \param fd The file descriptor to look up.
-/// \return The size of the corresponding memory-mapped file.
-int64_t GetMmapSize(MEMFD_TYPE fd);
-
 struct MmapRecord {
   MEMFD_TYPE fd;
   int64_t size;
@@ -49,4 +41,11 @@ struct MmapRecord {
 /// and size.
 extern std::unordered_map<void *, MmapRecord> mmap_records;
 
+/// private function, only used by PlasmaAllocator to look up Mmap information
+/// given an address allocated by dlmalloc.
+///
+/// \return true if look up succeed. false means the address is not allocated
+/// by dlmalloc.
+bool GetMallocMapinfo(const void *const addr, MEMFD_TYPE *fd, int64_t *map_length,
+                      ptrdiff_t *offset);
 }  // namespace plasma
