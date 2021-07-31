@@ -138,6 +138,7 @@ class TorchPolicy(Policy):
                 worker_idx if worker_idx > 0 else "local",
                 "{} fake-GPUs".format(config["num_gpus"])
                 if config["_fake_gpus"] else "CPU"))
+            self.device = torch.device("cpu")
             self.devices = [
                 self.device for _ in range(config["num_gpus"] or 1)
             ]
@@ -147,10 +148,10 @@ class TorchPolicy(Policy):
             ]
             if hasattr(self, "target_model"):
                 self.target_models = {
-                    m: self.target_model for m in self.model_gpu_towers
+                    m: self.target_model
+                    for m in self.model_gpu_towers
                 }
             self.model = model
-            self.device = torch.device("cpu")
         else:
             logger.info("TorchPolicy (worker={}) running on {} GPU(s).".format(
                 worker_idx if worker_idx > 0 else "local", config["num_gpus"]))
@@ -168,7 +169,8 @@ class TorchPolicy(Policy):
                 self.model_gpu_towers.append(model_copy.to(self.devices[i]))
             if hasattr(self, "target_model"):
                 self.target_models = {
-                    m: copy.deepcopy(self.target_model).to(self.devices[i]) for i, m in enumerate(self.model_gpu_towers)
+                    m: copy.deepcopy(self.target_model).to(self.devices[i])
+                    for i, m in enumerate(self.model_gpu_towers)
                 }
             self.model = self.model_gpu_towers[0]
             self.device = self.devices[0]

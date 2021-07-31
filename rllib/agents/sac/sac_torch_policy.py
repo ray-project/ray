@@ -203,8 +203,7 @@ def actor_critic_loss(
         q_tp1 = target_model.get_q_values(target_model_out_tp1)
         if policy.config["twin_q"]:
             twin_q_t = model.get_twin_q_values(model_out_t)
-            twin_q_tp1 = target_model.get_twin_q_values(
-                target_model_out_tp1)
+            twin_q_tp1 = target_model.get_twin_q_values(target_model_out_tp1)
             q_tp1 = torch.min(q_tp1, twin_q_tp1)
         q_tp1 -= alpha * log_pis_tp1
 
@@ -250,8 +249,7 @@ def actor_critic_loss(
             q_t_det_policy = torch.min(q_t_det_policy, twin_q_t_det_policy)
 
         # Target q network evaluation.
-        q_tp1 = target_model.get_q_values(target_model_out_tp1,
-                                                 policy_tp1)
+        q_tp1 = target_model.get_q_values(target_model_out_tp1, policy_tp1)
         if policy.config["twin_q"]:
             twin_q_tp1 = target_model.get_twin_q_values(
                 target_model_out_tp1, policy_tp1)
@@ -458,13 +456,14 @@ class TargetNetworkMixin:
         model_state_dict = self.model.state_dict()
         # Support partial (soft) synching.
         # If tau == 1.0: Full sync from Q-model to target Q-model.
-        target_state_dict = self.target_models[0].state_dict()
+        target_state_dict = next(iter(
+            self.target_models.values())).state_dict()
         model_state_dict = {
             k: tau * model_state_dict[k] + (1 - tau) * v
             for k, v in target_state_dict.items()
         }
 
-        for t in self.target_models:
+        for t in self.target_models.values():
             t.load_state_dict(model_state_dict)
 
 
@@ -489,9 +488,6 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
         action_space (gym.spaces.Space): The Policy's action space.
         config (TrainerConfigDict): The Policy's config.
     """
-    #policy.target_model = policy.target_model.to(policy.device)
-    #policy.model.log_alpha = policy.model.log_alpha.to(policy.device)
-    #policy.model.target_entropy = policy.model.target_entropy.to(policy.device)
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy)
 
