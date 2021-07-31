@@ -138,7 +138,6 @@ class TorchPolicy(Policy):
                 worker_idx if worker_idx > 0 else "local",
                 "{} fake-GPUs".format(config["num_gpus"])
                 if config["_fake_gpus"] else "CPU"))
-            self.device = torch.device("cpu")
             self.devices = [
                 self.device for _ in range(config["num_gpus"] or 1)
             ]
@@ -146,7 +145,12 @@ class TorchPolicy(Policy):
                 model if i == 0 else copy.deepcopy(model)
                 for i in range(config["num_gpus"] or 1)
             ]
+            if hasattr(self, "target_model"):
+                self.target_models = {
+                    m: self.target_model for m in self.model_gpu_towers
+                }
             self.model = model
+            self.device = torch.device("cpu")
         else:
             logger.info("TorchPolicy (worker={}) running on {} GPU(s).".format(
                 worker_idx if worker_idx > 0 else "local", config["num_gpus"]))
@@ -155,7 +159,6 @@ class TorchPolicy(Policy):
                 torch.device("cuda:{}".format(i))
                 for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]
             ]
-            self.device = self.devices[0]
             ids = [
                 id_ for i, id_ in enumerate(gpu_ids) if i < config["num_gpus"]
             ]
@@ -163,7 +166,12 @@ class TorchPolicy(Policy):
             for i, _ in enumerate(ids):
                 model_copy = copy.deepcopy(model)
                 self.model_gpu_towers.append(model_copy.to(self.devices[i]))
+            if hasattr(self, "target_model"):
+                self.target_models = {
+                    m: copy.deepcopy(self.target_model).to(self.devices[i]) for i, m in enumerate(self.model_gpu_towers)
+                }
             self.model = self.model_gpu_towers[0]
+            self.device = self.devices[0]
 
         # Lock used for locking some methods on the object-level.
         # This prevents possible race conditions when calling the model
@@ -569,9 +577,11 @@ class TorchPolicy(Policy):
             return self.learn_on_batch(batch)
 
         if len(self.devices) > 1:
-            # Copy weights of main model to all towers.
+            # Copy weights of main model (tower-0) to all other towers.
             state_dict = self.model.state_dict()
-            for tower in self.model_gpu_towers:
+            # Just making sure tower-0 is really the same as self.model.
+            assert self.model_gpu_towers[0] is self.model
+            for tower in self.model_gpu_towers[1:]:
                 tower.load_state_dict(state_dict)
 
         if device_batch_size >= sum(
@@ -586,7 +596,7 @@ class TorchPolicy(Policy):
         # Do the (maybe parallelized) gradient calculation step.
         tower_outputs = self._multi_gpu_parallel_grad_calc(device_batches)
 
-        # Mean-reduce gradients over GPU-towers.
+        # Mean-reduce gradients over GPU-towers (do this on CPU: self.device).
         all_grads = []
         for i in range(len(tower_outputs[0][0])):
             if tower_outputs[0][0][i] is not None:
