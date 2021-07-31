@@ -112,7 +112,7 @@ def read_datasource(datasource: Datasource[T],
         datasource: The datasource to read data from.
         parallelism: The requested parallelism of the read.
         read_args: Additional kwargs to pass to the datasource impl.
-        ray_remote_args: kwargs passed to @ray.remote in the read tasks.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
 
     Returns:
         Dataset holding the data read from the datasource.
@@ -179,7 +179,7 @@ def read_parquet(paths: Union[str, List[str]],
         filesystem: The filesystem implementation to read from.
         columns: A list of column names to read.
         parallelism: The amount of parallelism to use for the dataset.
-        ray_remote_args: kwargs passed to @ray.remote in the read tasks.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_parquet_args: Other parquet read options to pass to pyarrow.
 
     Returns:
@@ -219,7 +219,7 @@ def read_json(paths: Union[str, List[str]],
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The amount of parallelism to use for the dataset.
-        ray_remote_args: kwargs passed to @ray.remote in the read tasks.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_json_args: Other json read options to pass to pyarrow.
 
     Returns:
@@ -258,7 +258,7 @@ def read_csv(paths: Union[str, List[str]],
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
         parallelism: The amount of parallelism to use for the dataset.
-        ray_remote_args: kwargs passed to @ray.remote in the read tasks.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_csv_args: Other csv read options to pass to pyarrow.
 
     Returns:
@@ -297,7 +297,7 @@ def read_binary_files(
             dataset records. When specified, the dataset records will be a
             tuple of the file path and the file contents.
         filesystem: The filesystem implementation to read from.
-        ray_remote_args: kwargs passed to @ray.remote in the read tasks.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
         parallelism: The amount of parallelism to use for the dataset.
 
     Returns:
