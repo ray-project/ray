@@ -1,7 +1,8 @@
 import random
+import numpy as np
 import sys
-from typing import Callable, Iterator, List, Tuple, Generic, Union, Any,\
-    TYPE_CHECKING
+from typing import Callable, Iterator, List, Tuple, Generic, Union, Any, \
+    Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas
@@ -54,12 +55,17 @@ class SimpleBlockAccessor(BlockAccessor):
     def iter_rows(self) -> Iterator[T]:
         return iter(self._items)
 
-    def slice(self, start: int, end: int,
-              copy: bool) -> "SimpleBlockAccessor[T]":
+    def slice(self, start: int, end: int, copy: bool) -> List[T]:
         view = self._items[start:end]
         if copy:
             view = view.copy()
         return view
+
+    def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
+        random = np.random.RandomState(random_seed)
+        items = self._items.copy()
+        random.shuffle(items)
+        return items
 
     def to_pandas(self) -> "pandas.DataFrame":
         import pandas

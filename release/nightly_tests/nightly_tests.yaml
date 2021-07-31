@@ -136,7 +136,7 @@
     compute_template: shuffle/shuffle_compute_large_scale.yaml
 
   run:
-    timeout: 3000
+    timeout: 7200
     prepare: python wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6
 
@@ -147,7 +147,7 @@
     compute_template: shuffle/shuffle_compute_large_scale.yaml
 
   run:
-    timeout: 3000
+    timeout: 7200
     prepare: python wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6 --no-streaming
 
