@@ -100,9 +100,8 @@ class TestSAC(unittest.TestCase):
                 print("Env={}".format(env))
                 if env == RandomEnv:
                     config["env_config"] = {
-                        "observation_space": Tuple(
-                            [simple_space,
-                             Discrete(2), image_space]),
+                        "observation_space": Tuple((simple_space, Discrete(2),
+                                                    image_space)),
                         "action_space": Box(-1.0, 1.0, shape=(1, )),
                     }
                 else:
