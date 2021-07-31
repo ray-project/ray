@@ -30,9 +30,9 @@ RaySGD is a library that aims to simplify distributed deep learning.
 **Built for data scientists/ML practitioners**: RaySGD has support for standard ML tools and features that practitioners love:
 
 * Callbacks for early stopping
-* Support for checkpointing
-* Support for Tensorboard, Weights/Biases, and MLflow
-* Jupyter notebooks support.
+* Checkpointing
+* Integration with Tensorboard, Weights/Biases, and MLflow
+* Jupyter notebooks
 
 **Integration with Ray Ecosystem**: Distributed deep learning often comes with a lot of complexity.
 
@@ -70,7 +70,7 @@ You can run the following on your local machine:
     trainer = Trainer(
         num_workers=8,
         use_gpu=True,
-        backend_args=TorchConfig())
+        backend=TorchConfig())
 
     print(trainer)
     # prints a table of resource usage

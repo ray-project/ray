@@ -208,7 +208,7 @@ RaySGD provides a way to save state during the training process. This will be us
 
     import ray
 
-    def train_func(*args):
+    def train_func(config):
 
         state = ray.sgd.load_checkpoint()
         # eventually, optional:
@@ -217,7 +217,7 @@ RaySGD provides a way to save state during the training process. This will be us
             ray.sgd.save_checkpoint((model, optimizer, etc))
         return model
 
-    trainer = Trainer(gpus_per_worker, cpus_per_worker, num_workers=(4, inf))
+    trainer = Trainer(backend="torch", num_workers=4)
     trainer.run(train_func)
     state = trainer.get_last_checkpoint()
 
@@ -271,7 +271,7 @@ A couple caveats:
             ray.sgd.report(...)  # use same intermediate reporting API
 
     # Declare the specification for training.
-    trainer = Trainer(gpus_per_worker=2, workers=12)
+    trainer = Trainer(backend="torch", num_workers=12, use_gpu=True)
     dataset = ray.dataset.pipeline()
 
     # Convert this to a trainable.
@@ -305,4 +305,3 @@ Here is an example:
 
     trainer = Trainer(num_workers=2)
     trainer.run(train_func, config=None)
-
