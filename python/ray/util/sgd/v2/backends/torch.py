@@ -85,7 +85,7 @@ def setup_torch_process_group(backend: str,
         init_method=init_method,
         rank=world_rank,
         world_size=world_size,
-        timeout=timedelta(0, timeout_s))
+        timeout=timedelta(seconds=timeout_s))
 
 
 def shutdown_torch():
