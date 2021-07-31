@@ -90,8 +90,11 @@ int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
   return bytes_evicted;
 }
 
-EvictionPolicy::EvictionPolicy(PlasmaStoreInfo *store_info, int64_t max_size)
-    : pinned_memory_bytes_(0), store_info_(store_info), cache_("global lru", max_size) {}
+EvictionPolicy::EvictionPolicy(PlasmaStoreInfo *store_info, const IAllocator &allocator)
+    : pinned_memory_bytes_(0),
+      store_info_(store_info),
+      allocator_(allocator),
+      cache_("global lru", allocator_.GetFootprintLimit()) {}
 
 int64_t EvictionPolicy::ChooseObjectsToEvict(int64_t num_bytes_required,
                                              std::vector<ObjectID> *objects_to_evict) {
@@ -111,18 +114,16 @@ void EvictionPolicy::ObjectCreated(const ObjectID &object_id, bool is_create) {
 int64_t EvictionPolicy::RequireSpace(int64_t size,
                                      std::vector<ObjectID> *objects_to_evict) {
   // Check if there is enough space to create the object.
-  int64_t required_space =
-      PlasmaAllocator::Allocated() + size - PlasmaAllocator::GetFootprintLimit();
+  int64_t required_space = allocator_.Allocated() + size - allocator_.GetFootprintLimit();
   // Try to free up at least as much space as we need right now but ideally
   // up to 20% of the total capacity.
-  int64_t space_to_free =
-      std::max(required_space, PlasmaAllocator::GetFootprintLimit() / 5);
+  int64_t space_to_free = std::max(required_space, allocator_.GetFootprintLimit() / 5);
   // Choose some objects to evict, and update the return pointers.
   int64_t num_bytes_evicted = ChooseObjectsToEvict(space_to_free, objects_to_evict);
   RAY_LOG(DEBUG) << "There is not enough space to create this object, so evicting "
                  << objects_to_evict->size() << " objects to free up "
                  << num_bytes_evicted << " bytes. The number of bytes in use (before "
-                 << "this eviction) is " << PlasmaAllocator::Allocated() << ".";
+                 << "this eviction) is " << allocator_.Allocated() << ".";
   return required_space - num_bytes_evicted;
 }
 
