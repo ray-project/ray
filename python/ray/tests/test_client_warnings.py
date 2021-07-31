@@ -64,7 +64,7 @@ class LoggerSuite(unittest.TestCase):
                 "schedule tasks on the server." in cm.warning.args[0]
 
 
-@pytest.skipif(
+@pytest.mark.skipif(
     sys.platform == "win32",
     reason="ConnectionRefusedError is "
     "thrown on windows instead of redis.InvalidResponse.")
