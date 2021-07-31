@@ -205,6 +205,8 @@ void RayEvent::SendMessage(const std::string &message) {
   auto mp = RayEventContext::Instance().GetCustomFields();
   event.mutable_custom_fields()->insert(mp.begin(), mp.end());
 
+  event.mutable_custom_fields()->insert(custom_fields_.begin(), custom_fields_.end());
+
   EventManager::Instance().Publish(event);
 }
 
