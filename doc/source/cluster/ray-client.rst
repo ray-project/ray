@@ -48,7 +48,7 @@ When to use Ray client
 
 Ray client should be used when you want to connect a script or an interactive shell session to a **remote** cluster.
 
-* Use ``ray.init("ray://<head_node_host>:10001")`` (Ray client) if you've set up a remote cluster at ``<head_node_host>``. This will connect your local script or shell to the cluster. See the section on :ref:`this section<how-do-you-use-the-ray-client>` for more details on setting up your cluster.
+* Use ``ray.init("ray://<head_node_host>:10001")`` (Ray client) if you've set up a remote cluster at ``<head_node_host>``. This will connect your local script or shell to the cluster. See the section on :ref:`using ray client<how-do-you-use-the-ray-client>` for more details on setting up your cluster.
 * Use ``ray.init("localhost:<port>")`` (non-client connection, local address) if you're developing locally or on the head node of your cluster and you have already started the cluster (i.e. ``ray start --head`` has already been run)
 * Use ``ray.init()`` (non-client connection, no address specified) if you're developing locally and want to automatically create a local cluster and attach directly to it.
 
