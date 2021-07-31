@@ -130,8 +130,6 @@ class TorchPolicy(Policy):
         #   updating all towers' weights from the main model.
         # - In case of just one device (1 (fake) GPU or 1 CPU), no
         #   parallelization will be done.
-        # TODO: (sven) implement data pre-loading and n loader buffers for
-        #  torch.
         if config["_fake_gpus"] or config["num_gpus"] == 0 or \
                 not torch.cuda.is_available():
             logger.info("TorchPolicy (worker={}) running on {}.".format(
