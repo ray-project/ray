@@ -1,7 +1,7 @@
 import random
 import copy
 import threading
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import logging
 import time
 from typing import Any, Dict, List
@@ -241,7 +241,8 @@ class AWSNodeProvider(NodeProvider):
         Returns dict mapping instance id to ec2.Instance object for the created
         instances.
         """
-        tags = copy.deepcopy(tags)
+        # sort tags by key to support deterministic unit test stubbing
+        tags = OrderedDict(sorted(copy.deepcopy(tags).items()))
 
         reused_nodes_dict = {}
         # Try to reuse previously stopped nodes with compatible configs
@@ -310,6 +311,38 @@ class AWSNodeProvider(NodeProvider):
         all_created_nodes.update(created_nodes_dict)
         return all_created_nodes
 
+    @staticmethod
+    def _merge_tag_specs(tag_specs: List[Dict[str, Any]],
+                         user_tag_specs: List[Dict[str, Any]]) -> None:
+        """
+        Merges user-provided node config tag specifications into a base
+        list of node provider tag specifications. The base list of
+        node provider tag specs is modified in-place.
+
+        This allows users to add tags and override values of existing
+        tags with their own, and only applies to the resource type
+        "instance". All other resource types are appended to the list of
+        tag specs.
+
+        Args:
+            tag_specs (List[Dict[str, Any]]): base node provider tag specs
+            user_tag_specs (List[Dict[str, Any]]): user's node config tag specs
+        """
+
+        for user_tag_spec in user_tag_specs:
+            if user_tag_spec["ResourceType"] == "instance":
+                for user_tag in user_tag_spec["Tags"]:
+                    exists = False
+                    for tag in tag_specs[0]["Tags"]:
+                        if user_tag["Key"] == tag["Key"]:
+                            exists = True
+                            tag["Value"] = user_tag["Value"]
+                            break
+                    if not exists:
+                        tag_specs[0]["Tags"] += [user_tag]
+            else:
+                tag_specs += [user_tag_spec]
+
     def _create_node(self, node_config, tags, count):
         created_nodes_dict = {}
 
@@ -330,23 +363,7 @@ class AWSNodeProvider(NodeProvider):
             "Tags": tag_pairs,
         }]
         user_tag_specs = conf.get("TagSpecifications", [])
-        # Allow users to add tags and override values of existing
-        # tags with their own. This only applies to the resource type
-        # "instance". All other resource types are appended to the list of
-        # tag specs.
-        for user_tag_spec in user_tag_specs:
-            if user_tag_spec["ResourceType"] == "instance":
-                for user_tag in user_tag_spec["Tags"]:
-                    exists = False
-                    for tag in tag_specs[0]["Tags"]:
-                        if user_tag["Key"] == tag["Key"]:
-                            exists = True
-                            tag["Value"] = user_tag["Value"]
-                            break
-                    if not exists:
-                        tag_specs[0]["Tags"] += [user_tag]
-            else:
-                tag_specs += [user_tag_spec]
+        AWSNodeProvider._merge_tag_specs(tag_specs, user_tag_specs)
 
         # SubnetIds is not a real config key: we must resolve to a
         # single SubnetId before invoking the AWS API.

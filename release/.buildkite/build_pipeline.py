@@ -72,10 +72,14 @@ CORE_NIGHTLY_TESTS = {
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
         "object_store",
+        "many_actors_smoke_test",
+        "many_tasks_smoke_test",
+        "many_pgs_smoke_test",
+        "many_nodes_smoke_test",
     ],
     "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
         "inference",
-    ]
+    ],
 }
 
 NIGHTLY_TESTS = {
@@ -139,7 +143,10 @@ NIGHTLY_TESTS = {
 
 WEEKLY_TESTS = {
     "~/ray/benchmarks/benchmark_tests.yaml": [
-        "distributed",
+        "many_actors",
+        "many_tasks",
+        "many_pgs",
+        "many_nodes",
     ],
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
         "stress_test_many_tasks",
