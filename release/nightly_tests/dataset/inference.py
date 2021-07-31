@@ -79,7 +79,7 @@ start_time = time.time()
 
 print("Downloading...")
 ds = ray.experimental.data.read_binary_files(
-    "s3://anyscale-data/small-images/", parallelism=1000, num_cpus=0.5)
+    "s3://anyscale-data/small-images/", parallelism=1000, ray_remote_args={"num_cpus": 0.5})
 # Do a blocking map so that we can measure the download time.
 ds = ds.map(lambda x: x)
 
