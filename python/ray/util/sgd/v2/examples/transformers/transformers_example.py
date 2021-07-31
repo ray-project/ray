@@ -578,10 +578,10 @@ def main():
     if args.start_local or args.address or \
             args.num_workers > 1 or args.use_gpu:
         if args.start_local:
-            # Use Ray with 2 CPUs.
+            # Start a local Ray runtime.
             ray.init(num_cpus=args.num_workers)
         else:
-            # Use Ray for distributed training.
+            # Connect to a Ray cluster for distributed training.
             ray.init(address=args.address)
         trainer = Trainer(
             "torch", num_workers=args.num_workers, use_gpu=args.use_gpu)
