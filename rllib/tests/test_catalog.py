@@ -6,7 +6,7 @@ import unittest
 
 import ray
 from ray.rllib.models import ActionDistribution, ModelCatalog, MODEL_DEFAULTS
-from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
+from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.models.tf.tf_action_dist import MultiActionDistribution, \
     TFActionDistribution
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -71,18 +71,6 @@ class CustomMultiActionDistribution(MultiActionDistribution):
 class TestModelCatalog(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
-
-    def test_custom_preprocessor(self):
-        ray.init(object_store_memory=1000 * 1024 * 1024)
-        ModelCatalog.register_custom_preprocessor("foo", CustomPreprocessor)
-        ModelCatalog.register_custom_preprocessor("bar", CustomPreprocessor2)
-        env = gym.make("CartPole-v0")
-        p1 = ModelCatalog.get_preprocessor(env, {"custom_preprocessor": "foo"})
-        self.assertEqual(str(type(p1)), str(CustomPreprocessor))
-        p2 = ModelCatalog.get_preprocessor(env, {"custom_preprocessor": "bar"})
-        self.assertEqual(str(type(p2)), str(CustomPreprocessor2))
-        p3 = ModelCatalog.get_preprocessor(env)
-        self.assertEqual(type(p3), NoPreprocessor)
 
     def test_default_models(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)

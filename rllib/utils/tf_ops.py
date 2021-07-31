@@ -4,6 +4,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 
 tf1, tf, tfv = try_import_tf()
 
@@ -54,12 +55,18 @@ def get_gpu_devices():
         return gpus
 
 
-def get_placeholder(*, space=None, value=None, name=None, time_axis=False):
+def get_placeholder(*, space=None, value=None, name=None, time_axis=False, flatten=True):
     from ray.rllib.models.catalog import ModelCatalog
 
     if space is not None:
         if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
-            return ModelCatalog.get_action_placeholder(space, None)
+            if flatten:
+                return ModelCatalog.get_action_placeholder(space, None)
+            else:
+                return tree.map_structure_with_path(
+                    lambda path, component: get_placeholder(space=component, name=name + "." + ".".join([str(p) for p in path])),
+                    get_base_struct_from_space(space),
+                )
         return tf1.placeholder(
             shape=(None, ) + ((None, ) if time_axis else ()) + space.shape,
             dtype=tf.float32 if space.dtype == np.float64 else space.dtype,
@@ -111,10 +118,10 @@ def huber_loss(x, delta=1.0):
 
 def one_hot(x, space):
     if isinstance(space, Discrete):
-        return tf.one_hot(x, space.n)
+        return tf.one_hot(x, space.n, dtype=tf.float32)
     elif isinstance(space, MultiDiscrete):
         return tf.concat(
-            [tf.one_hot(x[:, i], n) for i, n in enumerate(space.nvec)],
+            [tf.one_hot(x[:, i], n, dtype=tf.float32) for i, n in enumerate(space.nvec)],
             axis=-1)
     else:
         raise ValueError("Unsupported space for `one_hot`: {}".format(space))

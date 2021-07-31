@@ -137,7 +137,6 @@ if __name__ == "__main__":
     }
 
     results = tune.run(
-        "PG",
         args.run,
         config=config,
         stop={"training_iteration": args.stop_iters})

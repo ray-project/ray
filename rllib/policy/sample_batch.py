@@ -97,12 +97,20 @@ class SampleBatch(dict):
         copy_ = {k: v for k, v in self.items() if k != "seq_lens"}
         for k, v in copy_.items():
             assert isinstance(k, str), self
+
+            # Convert lists of int|float into numpy arrays.
+            if isinstance(v, list) and isinstance(v[0], (int, float)):
+                self[k] = np.array(v)
+
+            # Try to infer the "length" of the SampleBatch by finding the first
+            # value that is actually a ndarray/tensor. This would fail if
+            # all values are nested dicts/tuples of more complex underlying
+            # structures.
             len_ = len(v) if isinstance(
                 v,
                 (list, np.ndarray)) or (torch and torch.is_tensor(v)) else None
-            lengths.append(len_)
-            if isinstance(v, list):
-                self[k] = np.array(v)
+            if len_:
+                lengths.append(len_)
 
         if self.get("seq_lens") is not None and \
                 not (tf and tf.is_tensor(self["seq_lens"])) and \
@@ -145,7 +153,7 @@ class SampleBatch(dict):
                 if s.get("seq_lens") is not None:
                     seq_lens.extend(s["seq_lens"])
 
-        # If we don't have any samples (no or only empty SampleBatches),
+        # If we don't have any samples (0 or only empty SampleBatches),
         # return an empty SampleBatch here.
         if len(concat_samples) == 0:
             return SampleBatch()

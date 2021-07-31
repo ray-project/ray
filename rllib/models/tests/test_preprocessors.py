@@ -5,16 +5,13 @@ import unittest
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.preprocessors import DictFlatteningPreprocessor, \
-    get_preprocessor, NoPreprocessor, TupleFlatteningPreprocessor, \
+    get_preprocessor, TupleFlatteningPreprocessor, \
     OneHotPreprocessor, AtariRamPreprocessor, GenericPixelPreprocessor
 from ray.rllib.utils.test_utils import check
 
 
 class TestPreprocessors(unittest.TestCase):
     def test_gym_preprocessors(self):
-        p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v0"))
-        self.assertEqual(type(p1), NoPreprocessor)
-
         p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v0"))
         self.assertEqual(type(p2), OneHotPreprocessor)
 

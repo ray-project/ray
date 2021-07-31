@@ -45,3 +45,19 @@ def DeveloperAPI(obj):
     """
 
     return obj
+
+
+def Deprecated(obj):
+    """Annotation for documenting a (soon-to-be) deprecated method.
+
+    Methods tagged with this decorator should produce a
+    `ray.rllib.utils.deprecation.deprecation_warning(old=..., error=False)`
+    to not break existing code at this point.
+    In a next major release, this warning can then be made an error
+    (error=True), which means at this point that the method is already
+    no longer supported but will still inform the user about the
+    deprecation event.
+    In a further major release, the method should be erased.
+    """
+
+    return obj

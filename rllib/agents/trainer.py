@@ -175,15 +175,17 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Tuple[value1, value2]: Clip at value1 and value2.
     "clip_rewards": None,
     # If True, RLlib will learn entirely inside a normalized action space
-    # (0.0 centered with small stddev; only affecting Box components) and
-    # only unsquash actions (and clip just in case) to the bounds of
-    # env's action space before sending actions back to the env.
+    # (0.0 centered with small stddev; only affecting Box components).
+    # We will unsquash actions (and clip, just in case) to the bounds of
+    # the env's action space before sending actions back to the env.
     "normalize_actions": True,
     # If True, RLlib will clip actions according to the env's bounds
     # before sending them back to the env.
     # TODO: (sven) This option should be obsoleted and always be False.
     "clip_actions": False,
     # Whether to use "rllib" or "deepmind" preprocessors by default
+    # Set to None for using no preprocessor. In this case, the model will have
+    # to handle possibly complex observations from the environment.
     "preprocessor_pref": "deepmind",
 
     # === Debug Settings ===
@@ -990,7 +992,7 @@ class Trainer(Trainable):
             state = []
         # Check the preprocessor and preprocess, if necessary.
         pp = self.workers.local_worker().preprocessors[policy_id]
-        if type(pp).__name__ != "NoPreprocessor":
+        if pp and type(pp).__name__ != "NoPreprocessor":
             observation = pp.transform(observation)
         filtered_observation = self.workers.local_worker().filters[policy_id](
             observation, update=False)

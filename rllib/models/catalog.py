@@ -18,7 +18,7 @@ from ray.rllib.models.tf.tf_action_dist import Categorical, \
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
-from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, \
     deprecation_warning
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -670,7 +670,7 @@ class ModelCatalog:
                                                        options)
 
     @staticmethod
-    @DeveloperAPI
+    @Deprecated
     def get_preprocessor_for_space(observation_space: gym.Space,
                                    options: dict = None) -> Preprocessor:
         """Returns a suitable preprocessor for the given observation space.
@@ -709,7 +709,7 @@ class ModelCatalog:
         return prep
 
     @staticmethod
-    @PublicAPI
+    @Deprecated
     def register_custom_preprocessor(preprocessor_name: str,
                                      preprocessor_class: type) -> None:
         """Register a custom preprocessor class by name.
@@ -811,14 +811,15 @@ class ModelCatalog:
         # disabled.
         num_framestacks = model_config.get("num_framestacks", "auto")
 
-        # Tuple space, where at least one sub-space is image.
-        # -> Complex input model.
+        # Complex space, where at least one sub-space is image.
+        # -> Complex input model (which auto-flattens everything, but correctly
+        # processes image components with default CNN stacks).
         space_to_check = input_space if not hasattr(
             input_space, "original_space") else input_space.original_space
         if isinstance(input_space,
-                      Tuple) or (isinstance(space_to_check, Tuple) and any(
+                      (Dict, Tuple)) or (isinstance(space_to_check, (Dict, Tuple)) and any(
                           isinstance(s, Box) and len(s.shape) >= 2
-                          for s in space_to_check.spaces)):
+                          for s in tree.flatten(space_to_check.spaces))):
             return ComplexNet
 
         # Single, flattenable/one-hot-able space -> Simple FCNet.
@@ -876,6 +877,14 @@ class ModelCatalog:
         Raises:
             ValueError: If something is wrong with the given config.
         """
+        # Soft-deprecate custom preprocessors.
+        if config.get("custom_preprocessor") is not None:
+            deprecation_warning(
+                old="model.custom_preprocessor",
+                new="gym.ObservationWrapper around your env",
+                error=False,
+            )
+
         if config.get("use_attention") and config.get("use_lstm"):
             raise ValueError("Only one of `use_lstm` or `use_attention` may "
                              "be set to True!")

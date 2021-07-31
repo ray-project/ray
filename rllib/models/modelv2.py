@@ -216,18 +216,24 @@ class ModelV2:
             input_dict["is_training"] = input_dict.is_training
         else:
             restored = input_dict.copy()
-        restored["obs"] = restore_original_dimensions(
-            input_dict["obs"], self.obs_space, self.framework)
-        try:
-            if len(input_dict["obs"].shape) > 2:
-                restored["obs_flat"] = flatten(input_dict["obs"],
-                                               self.framework)
-            else:
+
+        if hasattr(self.obs_space, "original_space"):
+            restored["obs"] = restore_original_dimensions(
+                input_dict["obs"], self.obs_space, self.framework)
+            try:
+                if len(input_dict["obs"].shape) > 2:
+                    restored["obs_flat"] = flatten(input_dict["obs"],
+                                                   self.framework)
+                else:
+                    restored["obs_flat"] = input_dict["obs"]
+            except AttributeError:
                 restored["obs_flat"] = input_dict["obs"]
-        except AttributeError:
+        else:
             restored["obs_flat"] = input_dict["obs"]
+
         with self.context():
             res = self.forward(restored, state or [], seq_lens)
+
         if ((not isinstance(res, list) and not isinstance(res, tuple))
                 or len(res) != 2):
             raise ValueError(
