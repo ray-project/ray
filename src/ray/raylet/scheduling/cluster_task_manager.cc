@@ -317,6 +317,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                     // In other cases, set the work status `WAITING` to make this task
                     // could be re-dispatched.
                     work->status = WorkStatus::WAITING;
+                    // Return here because we shouldn't remove task dependencies.
+                    return false;
                   }
                 } else if (not_detached_with_owner_failed) {
                   // The task owner failed.
