@@ -6,6 +6,7 @@ from ray.tests.conftest import *  # noqa
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow import storage
 from ray.experimental.workflow.workflow_storage import asyncio_run
+from ray.experimental.workflow.common import StepType
 
 
 def some_func(x):
@@ -99,8 +100,10 @@ def test_workflow_storage(workflow_start_regular):
     step_id = "some_step"
     input_metadata = {
         "name": "test_basic_workflows.append1",
+        "step_type": StepType.FUNCTION,
         "object_refs": ["abc"],
         "workflows": ["def"],
+        "workflow_refs": ["some_ref"],
         "max_retries": 1,
         "catch_exceptions": False,
         "ray_options": {},
@@ -133,7 +136,7 @@ def test_workflow_storage(workflow_start_regular):
 
     wf_storage = workflow_storage.WorkflowStorage(workflow_id, raw_storage)
     assert wf_storage.load_step_output(step_id) == output
-    assert wf_storage.load_step_args(step_id, [], []) == args
+    assert wf_storage.load_step_args(step_id, [], [], []) == args
     assert wf_storage.load_step_func_body(step_id)(33) == 34
     assert ray.get(wf_storage.load_object_ref(
         obj_ref.hex())) == object_resolved
@@ -168,10 +171,12 @@ def test_workflow_storage(workflow_start_regular):
     asyncio_run(raw_storage.save_step_args(workflow_id, step_id, args))
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
+        step_type=StepType.FUNCTION,
         args_valid=True,
         func_body_valid=True,
         object_refs=input_metadata["object_refs"],
         workflows=input_metadata["workflows"],
+        workflow_refs=input_metadata["workflow_refs"],
         ray_options={})
     assert inspect_result.is_recoverable()
 
@@ -183,9 +188,11 @@ def test_workflow_storage(workflow_start_regular):
         raw_storage.save_step_func_body(workflow_id, step_id, some_func))
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
+        step_type=StepType.FUNCTION,
         func_body_valid=True,
         object_refs=input_metadata["object_refs"],
         workflows=input_metadata["workflows"],
+        workflow_refs=input_metadata["workflow_refs"],
         ray_options={})
     assert not inspect_result.is_recoverable()
 
@@ -195,8 +202,10 @@ def test_workflow_storage(workflow_start_regular):
                                              input_metadata))
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
+        step_type=StepType.FUNCTION,
         object_refs=input_metadata["object_refs"],
         workflows=input_metadata["workflows"],
+        workflow_refs=input_metadata["workflow_refs"],
         ray_options={})
     assert not inspect_result.is_recoverable()
 

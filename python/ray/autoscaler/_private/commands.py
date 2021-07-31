@@ -326,7 +326,8 @@ def _bootstrap_config(config: Dict[str, Any],
         with open(cache_key, "w") as f:
             config_cache = {
                 "_version": CONFIG_CACHE_VERSION,
-                "provider_log_info": try_get_log_state(config["provider"]),
+                "provider_log_info": try_get_log_state(
+                    resolved_config["provider"]),
                 "config": resolved_config
             }
             f.write(json.dumps(config_cache))
@@ -973,8 +974,8 @@ def exec_cluster(config_file: str,
         docker_config=config.get("docker"))
     shutdown_after_run = False
     if cmd and stop:
-        cmd += "; ".join([
-            "ray stop",
+        cmd = "; ".join([
+            cmd, "ray stop",
             "ray teardown ~/ray_bootstrap_config.yaml --yes --workers-only"
         ])
         shutdown_after_run = True
