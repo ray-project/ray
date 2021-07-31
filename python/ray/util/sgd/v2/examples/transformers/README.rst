@@ -11,7 +11,7 @@ Additional information can be found at the `HuggingFace Repository
 <https://github.com/huggingface/transformers/tree/master/examples/pytorch/text-classification>`_.
 
 Single-node CPU training
-----------------------------
+------------------------
 
 To run an example tuning MRPC locally using CPU:
 
@@ -30,7 +30,7 @@ To run an example tuning MRPC locally using CPU:
 
 
 Multi-node GPU training
--------------------
+-----------------------
 
 To run an example tuning MRPC on AWS with 8 GPUs across multiple nodes:
 

@@ -19,11 +19,11 @@ def ray_start_2_cpus():
 
 
 def gen_execute_special(special_f):
-    def execute_async_special(self, f, *args, **kwargs):
+    def execute_async_special(self, f):
         """Runs f on worker 0, special_f on worker 1."""
         assert len(self.workers) == 2
         return [
-            self.workers[0].execute.remote(f, *args, **kwargs),
+            self.workers[0].execute.remote(f),
             self.workers[0].execute.remote(special_f)
         ]
 
@@ -31,10 +31,6 @@ def gen_execute_special(special_f):
 
 
 class TestConfig(BackendConfig):
-    @property
-    def backend_name(self):
-        return "test"
-
     @property
     def backend_cls(self):
         return TestBackend
@@ -53,7 +49,7 @@ def test_start(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     with pytest.raises(InactiveWorkerGroupError):
-        e.run(lambda: 1, {})
+        e.run(lambda: 1)
     e.start()
     assert len(e.worker_group) == 2
 
@@ -68,11 +64,11 @@ def test_initialization_hook(ray_start_2_cpus):
 
     e.start(initialization_hook=init_hook)
 
-    def check(config):
+    def check():
         import os
         return os.getenv("TEST", "0")
 
-    assert e.run(check, {}) == ["1", "1"]
+    assert e.run(check) == ["1", "1"]
 
 
 def test_shutdown(ray_start_2_cpus):
@@ -82,7 +78,7 @@ def test_shutdown(ray_start_2_cpus):
     assert len(e.worker_group) == 2
     e.shutdown()
     with pytest.raises(InactiveWorkerGroupError):
-        e.run(lambda c: 1, {})
+        e.run(lambda: 1)
 
 
 def test_execute(ray_start_2_cpus):
@@ -90,7 +86,7 @@ def test_execute(ray_start_2_cpus):
     e = BackendExecutor(config, num_workers=2)
     e.start()
 
-    assert e.run(lambda c: 1, {}) == [1, 1]
+    assert e.run(lambda: 1) == [1, 1]
 
 
 def test_execute_worker_failure(ray_start_2_cpus):
@@ -104,7 +100,7 @@ def test_execute_worker_failure(ray_start_2_cpus):
     new_execute_func = gen_execute_special(train_fail)
     with patch.object(WorkerGroup, "execute_async", new_execute_func):
         with pytest.raises(RuntimeError):
-            e.run(lambda c: 1, {})
+            e.run(lambda: 1)
 
 
 @pytest.mark.parametrize("init_method", ["env", "tcp"])
@@ -113,16 +109,16 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method):
     e = BackendExecutor(torch_config, num_workers=2)
     e.start()
 
-    def check_process_group(config):
+    def check_process_group():
         import torch
         return torch.distributed.is_initialized(
         ) and torch.distributed.get_world_size() == 2
 
-    assert all(e.run(check_process_group, {}))
+    assert all(e.run(check_process_group))
 
     e._backend.on_shutdown(e.worker_group, e._backend_config)
 
-    assert not any(e.run(check_process_group, {}))
+    assert not any(e.run(check_process_group))
 
 
 if __name__ == "__main__":

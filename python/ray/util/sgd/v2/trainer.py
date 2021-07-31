@@ -1,6 +1,8 @@
+import inspect
 import logging
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict
 
+from ray.tune import Trainable
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
 from ray.util.sgd.v2.callbacks.callback import Callback
 from ray.util.sgd.v2.constants import BACKEND_NAME_TO_CONFIG_CLS
@@ -43,8 +45,7 @@ class Trainer:
 
     def _get_backend_config(
             self, backend: Union[str, BackendConfig]) -> BackendConfig:
-        """
-        Gets the ``BackendConfig`` to use for training.
+        """Gets the ``BackendConfig`` to use for training.
 
         Args:
             backend (Union[str, BackendConfig]): If a ``BackendConfig`` is
@@ -86,13 +87,14 @@ class Trainer:
         self._executor.start(initialization_hook)
 
     def run(self,
-            train_func: Callable[[Dict[str, Any]], T],
+            train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
             callbacks: Optional[List[Callback]] = None) -> List[T]:
         """Runs a training function in a distributed manner.
 
         Args:
             train_func (Callable): The training function to execute.
+                This can either take in no arguments or a ``config`` dict.
             config (Optional[Dict]): Configurations to pass into
                 ``train_func``. If None then an empty Dict will be created.
             callbacks (Optional[List[Callback]]): A list of Callbacks which
@@ -104,10 +106,38 @@ class Trainer:
             list corresponds to the output of the training function from
             each worker.
         """
-        config = {} if config is None else config
+        train_func = self._get_train_func(train_func, config)
         # TODO(matt): Set default callbacks.
         callbacks = [] if callbacks is None else callbacks
-        return self._executor.run(train_func, config)
+        return self._executor.run(train_func)
+
+    def _get_train_func(
+            self,
+            train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
+            config: Optional[Dict[str, Any]]) -> Callable[[], T]:
+        """Validates and constructs the training function to execute.
+
+        Args:
+            train_func (Callable): The training function to execute.
+                This can either take in no arguments or a ``config`` dict.
+            config (Optional[Dict]): Configurations to pass into
+                ``train_func``. If None then an empty Dict will be created.
+
+        Returns:
+            A valid training function.
+
+        Raises:
+            ValueError: if the input ``train_func`` is invalid.
+        """
+        signature = inspect.signature(train_func)
+        num_params = len(signature.parameters)
+        if num_params > 1:
+            raise ValueError("train_func should take in a 0 or 1 arguments.")
+        elif num_params == 1:
+            config = {} if config is None else config
+            return lambda: train_func(config)
+        else:  # num_params == 0
+            return train_func
 
     def execute(self, func: Callable[..., T], *args, **kwargs) -> List[T]:
         """Executes a function for all instances of ``self.train_cls``.
@@ -116,14 +146,14 @@ class Trainer:
             func (Callable): The function that should be executed.
                 The first argument should be an instance of
                 ``self.train_cls``.
-            args, kwargs: The arguments to pass into `func`.
+            args, kwargs: The arguments to pass into ``func``.
 
         Returns:
             A list of results from ``func``. Each value in the
             list corresponds to the output of ``func`` from
             each worker.
         """
-        pass
+        raise NotImplementedError
 
     def execute_single(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes a function on a single instance of ``self.train_cls``.
@@ -132,22 +162,30 @@ class Trainer:
             func (Callable): The function that should be executed.
                 The first argument should be an instance of
                 ``self.train_cls``.
-            args, kwargs: The arguments to pass into `func`.
+            args, kwargs: The arguments to pass into ``func``.
 
         Returns:
             The output of ``func`` from a single worker.
         """
-        pass
+        raise NotImplementedError
 
     def shutdown(self):
         """Shuts down the training execution service."""
         self._executor.shutdown()
 
-    def to_tune_trainable(self, train_func: Callable[[Dict[str, Any]], T]
-                          ) -> Callable[[Dict[str, Any]], List[T]]:
-        """Creates a Tune trainable function."""
+    def to_tune_trainable(
+            self, train_func: Callable[[Dict[str, Any]], T]) -> Trainable:
+        """Creates a Tune ``Trainable`` from the input training function.
 
-        def trainable(config: Dict[str, Any]) -> List[T]:
+        Args:
+            func (Callable): The function that should be executed on each
+                training worker.
+
+        Returns:
+            A Trainable that can directly be passed into ``tune.run()``.
+        """
+
+        def trainable_func(config: Dict[str, Any]) -> T:
             pass
 
-        return trainable
+        raise NotImplementedError

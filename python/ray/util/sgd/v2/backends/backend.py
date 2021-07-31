@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, TypeVar, List, Dict, Any, Optional
+from typing import Callable, TypeVar, List, Optional
 
 import ray
 from ray.exceptions import RayActorError
@@ -12,10 +12,6 @@ logger = logging.getLogger(__name__)
 
 class BackendConfig:
     """Parent class for configurations of training backend."""
-
-    @property
-    def backend_name(self):
-        raise NotImplementedError
 
     @property
     def backend_cls(self):
@@ -59,20 +55,18 @@ class BackendExecutor:
             self.worker_group.execute(initialization_hook)
         self._backend.on_start(self.worker_group, self._backend_config)
 
-    def run(self, train_func: Callable[[Dict[str, Any]], T],
-            config: Dict[str, Any]) -> List[T]:
+    def run(self, train_func: Callable[[], T]) -> List[T]:
         """Executes a training function on all workers.
 
         Args:
             train_func (Callable): The training function to run on each worker.
-            config (Dict): Configurations to pass into ``train_func``.
 
         Returns:
             A list of return values from calling ``train_func`` on each worker.
                 Each item corresponds to the return value from a single worker.
         """
         # Run the training function asynchronously.
-        training_futures = self.worker_group.execute_async(train_func, config)
+        training_futures = self.worker_group.execute_async(train_func)
 
         return self.get_with_failure_handling(training_futures)
 

@@ -47,10 +47,6 @@ class TorchConfig(BackendConfig):
                              "Please install torch to use this backend.")
 
     @property
-    def backend_name(self):
-        return "torch"
-
-    @property
     def backend_cls(self):
         return TorchBackend
 

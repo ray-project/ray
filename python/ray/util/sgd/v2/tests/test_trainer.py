@@ -2,6 +2,7 @@ import time
 
 import pytest
 import ray
+from ray.exceptions import RayActorError
 from ray.util.sgd.v2 import Trainer, TorchConfig
 from ray.util.sgd.v2.examples.train_linear import train_func as \
     linear_train_func
@@ -37,7 +38,7 @@ def test_start_shutdown(ray_start_2_cpus):
 
 
 def test_run(ray_start_2_cpus):
-    def train_func(config):
+    def train_func():
         return 1
 
     trainer = Trainer("torch", num_workers=2)
@@ -113,14 +114,33 @@ def test_start_failure(ray_start_2_cpus):
 
 
 def test_run_failure(ray_start_2_cpus):
-    def train_func(config):
+    def train_invalid_signature(a, b):
+        pass
+
+    def train_error(config):
         raise NotImplementedError
 
     trainer = Trainer("torch")
     trainer.start()
+
+    with pytest.raises(ValueError):
+        trainer.run(train_invalid_signature)
+
     with pytest.raises(NotImplementedError):
-        trainer.run(train_func)
+        trainer.run(train_error)
     trainer.shutdown()
+
+
+def test_execute_worker_failure(ray_start_2_cpus):
+    def train_actor_failure(config):
+        ray.actor.exit_actor()
+
+    trainer = Trainer("torch")
+    trainer.start()
+    # TODO(matt): This should raise a RuntimeError instead.
+    # Need to fix shutdown logic after a RayActorError occurs.
+    with pytest.raises(RayActorError):
+        trainer.run(train_actor_failure)
 
 
 if __name__ == "__main__":

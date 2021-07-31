@@ -181,6 +181,10 @@ def parse_args():
 
     # Ray arguments.
     parser.add_argument(
+        "--start_local",
+        action="store_true",
+        help="Starts Ray on local machine.")
+    parser.add_argument(
         "--address", type=str, default=None, help="Ray address to connect to.")
     parser.add_argument(
         "--num_workers", type=int, default=1, help="Number of workers to use.")
@@ -571,9 +575,14 @@ def main():
     args = parse_args()
     config = {"args": args}
 
-    if args.address or args.num_workers > 1 or args.use_gpu:
-        # Use Ray for distributed training.
-        ray.init(address=args.address)
+    if args.start_local or args.address or \
+            args.num_workers > 1 or args.use_gpu:
+        if args.start_local:
+            # Use Ray with 2 CPUs.
+            ray.init(num_cpus=args.num_workers)
+        else:
+            # Use Ray for distributed training.
+            ray.init(address=args.address)
         trainer = Trainer(
             "torch", num_workers=args.num_workers, use_gpu=args.use_gpu)
         trainer.start()
