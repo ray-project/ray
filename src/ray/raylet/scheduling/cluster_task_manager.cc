@@ -299,8 +299,18 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                 // There are two cases that will not dispatch the task at this time:
                 // Case 1: Empty worker popped.
                 // Case 2: The task owner failed (not alive), except the creation task of
-                // detached actor. In that two case, we should also release worker
-                // resources, release task args, and remove task dependencies.
+                // detached actor.
+                // In that two case, we should also release worker resources, release task
+                // args.
+
+                dispatched = false;
+                // We've already acquired resources so we need to release them.
+                cluster_resource_scheduler_->ReleaseWorkerResources(
+                    work->allocated_instances);
+                work->allocated_instances = nullptr;
+                // Release pinned task args.
+                ReleaseTaskArgs(task_id);
+
                 if (!worker) {
                   // Empty worker popped.
                   RAY_LOG(DEBUG)
@@ -318,7 +328,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                     // could be re-dispatched.
                     work->status = WorkStatus::WAITING;
                     // Return here because we shouldn't remove task dependencies.
-                    return false;
+                    return dispatched;
                   }
                 } else if (not_detached_with_owner_failed) {
                   // The task owner failed.
@@ -327,13 +337,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                       << "Call back to an owner failed task, task id = " << task_id;
                   erase_from_dispatch_queue_fn(work, scheduling_class);
                 }
-                // We've already acquired resources so we need to release them.
-                cluster_resource_scheduler_->ReleaseWorkerResources(
-                    work->allocated_instances);
-                work->allocated_instances = nullptr;
-                // Release pinned task args.
-                ReleaseTaskArgs(task_id);
-                dispatched = false;
 
               } else {
                 // A worker has successfully popped for a valid task. Dispatch the task to
