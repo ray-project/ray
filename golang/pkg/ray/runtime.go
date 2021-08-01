@@ -51,7 +51,7 @@ func Init(address, _redis_password string) {
     if err != nil {
         panic(err)
     }
-    C.go_worker_Initialize(ray_rpc.Language_GOLANG, C.CString(gcsNodeInfo.GetObjectStoreSocketName()),
+    C.go_worker_Initialize(C.int(ray_rpc.Language_GOLANG), C.CString(gcsNodeInfo.GetObjectStoreSocketName()),
         C.CString(gcsNodeInfo.GetRayletSocketName()), C.CString(logDir),
         C.CString(gcsNodeInfo.GetNodeManagerAddress()), C.int(gcsNodeInfo.GetNodeManagerPort()),
         C.CString(gcsNodeInfo.GetNodeManagerAddress()),
