@@ -1,4 +1,5 @@
 import asyncio
+import json
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -34,6 +35,8 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 0.1
+
+SNAPSHOT_KEY = "serve-deployments-snapshot"
 
 
 @ray.remote(num_cpus=0)
@@ -84,7 +87,10 @@ class ServeController:
         self.backend_state = BackendState(controller_name, detached,
                                           self.kv_store, self.long_poll_host,
                                           self.goal_manager)
-
+        self.kv_store.put(SNAPSHOT_KEY,
+                          json.dumps({
+                              "UHH TESTING AT INIT": ["SERVE"]
+                          }))
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
     async def wait_for_goal(self, goal_id: GoalId) -> None:
@@ -119,8 +125,29 @@ class ServeController:
                     self.backend_state.update()
                 except Exception as e:
                     logger.error(f"Exception updating backend state: {e}")
-
+            self._put_serve_snapshot()
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
+
+    def _put_serve_snapshot(self) -> None:
+        val = []
+        for name, (backend_info,
+                   route_prefix) in self.list_deployments().items():
+            deployment_info = {}
+            deployment_info["name"] = name
+            deployment_info["namespace"] = "TODO"
+            deployment_info["ray_job_id"] = "TODO"
+            deployment_info[
+                "class_name"] = backend_info.replica_config.func_or_class_name
+            deployment_info["version"] = backend_info.version or "Unversioned"
+            # TODO(architkulkarni): When we add the feature to allow
+            # deployments with no HTTP route, update the below line.
+            # Or refactor the route_prefix logic in the Deployment class now.
+            deployment_info["http_route"] = route_prefix or f"/{name}"
+            deployment_info["status"] = "TODO"
+            deployment_info["start_time"] = "TODO"
+            deployment_info["end_time"] = "TODO"
+            val.append(deployment_info)
+        self.kv_store.put(SNAPSHOT_KEY, json.dumps(val))
 
     def _all_replica_handles(
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:

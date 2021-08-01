@@ -668,7 +668,7 @@ def start(
     except RayServeException:
         pass
 
-    # Try to get serve controller if it exists
+    controller_name = SERVE_CONTROLLER_NAME
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
     else:
@@ -1190,7 +1190,7 @@ class Deployment:
 
     @property
     def route_prefix(self) -> Optional[str]:
-        """HTTP route prefix that this deploymet is exposed under."""
+        """HTTP route prefix that this deployment is exposed under."""
         return self._route_prefix
 
     @property
@@ -1200,7 +1200,7 @@ class Deployment:
 
     @property
     def init_args(self) -> Tuple[Any]:
-        """Arguments passed to the underlying class' constructor."""
+        """Arguments passed to the underlying class's constructor."""
         return self._init_args
 
     def __call__(self):

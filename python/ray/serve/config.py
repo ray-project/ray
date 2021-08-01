@@ -58,15 +58,19 @@ class ReplicaConfig:
     def __init__(self, backend_def, *init_args, ray_actor_options=None):
         # Validate that backend_def is an import path, function, or class.
         if isinstance(backend_def, str):
+            self.func_or_class_name = backend_def
             pass
         elif inspect.isfunction(backend_def):
+            self.func_or_class_name = backend_def.__name__
             if len(init_args) != 0:
                 raise ValueError(
                     "init_args not supported for function backend.")
-        elif not inspect.isclass(backend_def):
+        elif inspect.isclass(backend_def):
+            self.func_or_class_name = backend_def.__name__
+        else:
             raise TypeError(
-                "Backend must be a function or class, it is {}.".format(
-                    type(backend_def)))
+                "Backend must be an import path, function or class, it is {}.".
+                format(type(backend_def)))
 
         self.serialized_backend_def = cloudpickle.dumps(backend_def)
         self.init_args = init_args
