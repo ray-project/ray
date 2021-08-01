@@ -6,3 +6,11 @@ go_proto_library(
     proto = "@//src/ray/protobuf:common_proto",
     visibility = ["//golang:__subpackages__"],
 )
+
+go_proto_library(
+    name = "gcs_go_proto",
+    importpath = "github.com/ray-project/ray-go-worker/pkg/generated",
+    proto = "@//src/ray/protobuf:gcs_proto",
+    visibility = ["//golang:__subpackages__"],
+    deps = ["//golang:common_go_proto"],
+)

@@ -37,6 +37,16 @@ func (g *globalStateAccessor) GetNextJobID() int {
 func (g *globalStateAccessor) GetInternalKV(key string) string {
     v := C.go_worker_GlobalStateAccessorGetInternalKV(g.p, C.CString(key))
     if v != nil {
+        result := C.GoString(v)
+        C.free(unsafe.Pointer(v))
+        return result
+    }
+    return ""
+}
+
+func (g *globalStateAccessor) GetNodeToConnectForDriver(nodeIpAddress string) string {
+    v := C.go_worker_GetNodeToConnectForDriver(g.p, C.CString(nodeIpAddress))
+    if v != nil {
         return C.GoString(v)
     }
     return ""

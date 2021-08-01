@@ -8,7 +8,11 @@ package ray
 import "C"
 import (
     "fmt"
+    "strconv"
+    "strings"
 
+    "github.com/golang/protobuf/proto"
+    ray_rpc "github.com/ray-project/ray-go-worker/pkg/generated"
     "github.com/ray-project/ray-go-worker/pkg/globalstateaccessor"
     "github.com/ray-project/ray-go-worker/pkg/util"
 )
@@ -17,18 +21,42 @@ const sessionDir = "session_dir"
 
 func Init(address, _redis_password string) {
     util.Logger.Debug("Initializing runtime with config")
+    rayConfig := NewRayConfig()
     gsa, err := globalstateaccessor.NewGlobalStateAccessor(address, _redis_password)
     if err != nil {
         panic(err)
     }
-    jobId := gsa.GetNextJobID()
+    // for driver
+    rayConfig.SetJobId(gsa.GetNextJobID())
     raySessionDir := gsa.GetInternalKV(sessionDir)
     if raySessionDir == "" {
         panic(fmt.Errorf("Failed to get session dir"))
     }
-    C.go_worker_Initialize(C.int(1), C.CString("/tmp/ray/session_latest/sockets/plasma_store"), C.CString("/tmp/ray/session_latest/sockets/raylet"),
-        C.CString("/tmp/ray/session_latest/logs"), C.CString("192.168.121.61"), C.int(9999), C.CString("192.168.121.61"),
-        C.CString("GOLANG"), C.int(jobId), C.CString("127.0.0.1"), C.int(6379), C.CString("5241590000000000"))
+    rayConfig.SetSessionDir(raySessionDir)
+    logDir := fmt.Sprintf("%s/logs", raySessionDir)
+
+    localIp, err := util.GetLocalIp()
+    if err != nil {
+        panic(err)
+    }
+
+    gcsNodeInfo := &ray_rpc.GcsNodeInfo{}
+    nodeInfoString := gsa.GetNodeToConnectForDriver(localIp)
+    err = proto.Unmarshal([]byte(nodeInfoString), gcsNodeInfo)
+    if err != nil {
+        panic(err)
+    }
+    addressInfo := strings.Split(address, ":")
+    addressPort, err := strconv.Atoi(addressInfo[1])
+    if err != nil {
+        panic(err)
+    }
+    C.go_worker_Initialize(ray_rpc.Language_GOLANG, C.CString(gcsNodeInfo.GetObjectStoreSocketName()),
+        C.CString(gcsNodeInfo.GetRayletSocketName()), C.CString(logDir),
+        C.CString(gcsNodeInfo.GetNodeManagerAddress()), C.int(gcsNodeInfo.GetNodeManagerPort()),
+        C.CString(gcsNodeInfo.GetNodeManagerAddress()),
+        C.CString("GOLANG"), C.int(rayConfig.jobId), C.CString(addressInfo[0]), C.int(addressPort),
+        C.CString(_redis_password))
 }
 
 //export SayHello

@@ -1,15 +1,24 @@
 package ray
 
-import "os"
-
-type RayConfig struct {
+type rayConfig struct {
+    sessionDir string
+    jobId      int
 }
 
-func NewRayConfig() {
-    configPath := os.Getenv("ray.config-file")
-    if configPath == "" {
+func (c *rayConfig) SetSessionDir(sessionDir string) {
+    c.sessionDir = sessionDir
+}
 
-    } else {
+func (c *rayConfig) SetJobId(jobId int) {
+    c.jobId = jobId
+}
 
-    }
+func NewRayConfig() *rayConfig {
+    //configPath := os.Getenv("ray.config-file")
+    //if configPath == "" {
+    //
+    //} else {
+    //
+    //}
+    return &rayConfig{}
 }
