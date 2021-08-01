@@ -130,6 +130,15 @@
       --test_tag_filters=-flaky
       -- //:all -//:core_worker_test
 
+- label: ":cpp: Tests (UBSAN)"
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bazel test --config=ci --config=ubsan $(./scripts/bazel_export_options)
+      --build_tests_only
+      --jobs=2
+      --test_tag_filters=-flaky
+      -- //:all -//:core_worker_test -//:logging_test
+
 - label: ":serverless: Dashboard + Serve Tests"
   conditions:
     [
