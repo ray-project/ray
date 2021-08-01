@@ -45,10 +45,11 @@ func (g *globalStateAccessor) GetInternalKV(key string) string {
     return ""
 }
 
-func (g *globalStateAccessor) GetNodeToConnectForDriver(nodeIpAddress string) string {
-    v := C.go_worker_GetNodeToConnectForDriver(g.p, C.CString(nodeIpAddress))
-    if v != nil {
-        return C.GoString(v)
+func (g *globalStateAccessor) GetNodeToConnectForDriver(nodeIpAddress string) []byte {
+    var cs **C.char
+    dateLength := C.go_worker_GetNodeToConnectForDriver(g.p, C.CString(nodeIpAddress), cs)
+    if dateLength > 0 {
+        return C.GoBytes(*cs, dateLength)
     }
-    return ""
+    return nil
 }

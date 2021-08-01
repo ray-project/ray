@@ -42,8 +42,8 @@ func Init(address, _redis_password string) {
     util.Logger.Debugf("Using local ip: %s", localIp)
 
     gcsNodeInfo := &ray_rpc.GcsNodeInfo{}
-    nodeInfoString := gsa.GetNodeToConnectForDriver(localIp)
-    err = proto.Unmarshal([]byte(nodeInfoString), gcsNodeInfo)
+    nodeInfoData := gsa.GetNodeToConnectForDriver(localIp)
+    err = proto.Unmarshal(nodeInfoData, gcsNodeInfo)
     if err != nil {
         panic(err)
     }

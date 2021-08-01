@@ -17,7 +17,7 @@ bool go_worker_GlobalStateAccessorConnet(void *p);
 
 char *go_worker_GlobalStateAccessorGetInternalKV(void *p, char *key);
 
-char *go_worker_GetNodeToConnectForDriver(void *p, char *node_ip_address);
+int go_worker_GetNodeToConnectForDriver(void *p, char *node_ip_address, void **result);
 
 int go_worker_GetNextJobID(void *p);
 
