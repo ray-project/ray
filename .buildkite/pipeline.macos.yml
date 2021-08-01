@@ -38,6 +38,7 @@ steps:
 - label: ":mac: :apple: Ray C++ and Libraries (DEBUG)"
   <<: *common
   commands:
+    - RAY_DEBUG_BUILD=1
     - *prelude_commands
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci --test_env=CI $(./scripts/bazel_export_options) --compilation_mode=dbg --build_tests_only --test_tag_filters=-flaky,-flaky-mac --
