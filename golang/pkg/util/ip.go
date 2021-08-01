@@ -13,17 +13,15 @@ func GetLocalIp() (string, error) {
     for _, i := range ifaces {
         addrs, _ := i.Addrs()
         for _, addr := range addrs {
-            var ip net.IP
-            switch v := addr.(type) {
-            case *net.IPNet:
-                ip = v.IP
-            case *net.IPAddr:
-                ip = v.IP
-            }
-            if ip.String() == "127.0.0.1" {
+            ipnet, ok := addr.(*net.IPNet)
+            if !ok {
                 continue
             }
-            return ip.String(), nil
+            v4 := ipnet.IP.To4()
+            if v4 == nil || v4[0] == 127 { // loopback address
+                continue
+            }
+            return v4.String(), nil
         }
     }
     return "", fmt.Errorf("Failed to get ip")
