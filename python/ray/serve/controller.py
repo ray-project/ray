@@ -87,10 +87,6 @@ class ServeController:
         self.backend_state = BackendState(controller_name, detached,
                                           self.kv_store, self.long_poll_host,
                                           self.goal_manager)
-        self.kv_store.put(SNAPSHOT_KEY,
-                          json.dumps({
-                              "UHH TESTING AT INIT": ["SERVE"]
-                          }))
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
     async def wait_for_goal(self, goal_id: GoalId) -> None:
