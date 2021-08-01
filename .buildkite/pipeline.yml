@@ -55,22 +55,6 @@
     # Upload to latest directory.
     - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
 
-- label: ":ferris_wheel: Post-debug-wheel tests"
-  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
-  commands:
-    - RAY_DEBUG_BUILD=1 LINUX_WHEELS=1 ./ci/travis/ci.sh build
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci-debug $(./scripts/bazel_export_options)
-      --test_tag_filters=post_wheel_build
-      --test_env=CONDA_EXE
-      --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL
-      --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV
-      --test_env=CI
-      --test_env=RAY_CI_POST_WHEEL_TESTS=True
-      python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/...
-
 - label: ":docker: Build Images: py36"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
@@ -206,6 +190,13 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky
+      python/ray/tests/...
+- label: ":python: (Debug Tests)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bazel test --config=ci-debug $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,debug_tests,-flaky
       python/ray/tests/...
 - label: ":python: (Worker In Container)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
