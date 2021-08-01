@@ -16,16 +16,16 @@ from ray.tune.utils.util import flatten_dict, unflatten_dict, \
 
 try:
     import optuna as ot
-    from optuna.trial import TrialState as OptunaTrialState
-    from optuna.samplers import BaseSampler
-    from optuna.trial import Trial as OptunaTrial
     from optuna.distributions import BaseDistribution as OptunaDistribution
+    from optuna.samplers import BaseSampler
+    from optuna.trial import TrialState as OptunaTrialState
+    from optuna.trial import Trial as OptunaTrial
 except ImportError:
     ot = None
-    OptunaTrialState = None
-    BaseSampler = None
-    OptunaTrial = None
     OptunaDistribution = None
+    BaseSampler = None
+    OptunaTrialState = None
+    OptunaTrial = None
 
 from ray.tune.suggest import Searcher
 

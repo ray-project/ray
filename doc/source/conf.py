@@ -49,7 +49,7 @@ MOCK_MODULES = [
     "mxnet.model",
     "optuna",
     "optuna.distributions",
-    "optuna.sampler",
+    "optuna.samplers",
     "optuna.trial",
     "psutil",
     "pytorch_lightning.core.step_result",
