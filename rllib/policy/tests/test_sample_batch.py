@@ -135,6 +135,93 @@ class TestSampleBatch(unittest.TestCase):
         next(it)
         check(next(it), {"a": 2, "b": {"c": 5}})
 
+    def test_slicing(self):
+        """Tests, whether slicing can be done on SampleBatches."""
+        s1 = SampleBatch({
+            "a": np.array([1, 2, 3, 2, 3, 4]),
+            "b": {
+                "c": np.array([4, 5, 6, 5, 6, 7])
+            },
+        })
+        check(s1[:3], {
+            "a": [1, 2, 3],
+            "b": {
+                "c": [4, 5, 6]
+            },
+        })
+        check(s1[0:3], {
+            "a": [1, 2, 3],
+            "b": {
+                "c": [4, 5, 6]
+            },
+        })
+        check(s1[1:4], {
+            "a": [2, 3, 2],
+            "b": {
+                "c": [5, 6, 5]
+            },
+        })
+        check(s1[1:], {
+            "a": [2, 3, 2, 3, 4],
+            "b": {
+                "c": [5, 6, 5, 6, 7]
+            },
+        })
+        check(s1[3:4], {
+            "a": [2],
+            "b": {
+                "c": [5]
+            },
+        })
+
+        # When we change the slice, the original SampleBatch should also
+        # change (shared underlying data).
+        s1[:3]["a"][0] = 100
+        s1[1:2]["a"][0] = 200
+        check(s1["a"][0], 100)
+        check(s1["a"][1], 200)
+
+        # Seq-len batches should be auto-sliced along sequences,
+        # no matter what.
+        s2 = SampleBatch({
+            "a": np.array([1, 2, 3, 2, 3, 4]),
+            "b": {
+                "c": np.array([4, 5, 6, 5, 6, 7])
+            },
+            "seq_lens": [2, 3, 1],
+            "state_in_0": [1.0, 3.0, 4.0],
+        })
+        # We would expect a=[1, 2, 3] now, but due to the sequence
+        # boundary, we stop earlier.
+        check(
+            s2[:3], {
+                "a": [1, 2],
+                "b": {
+                    "c": [4, 5]
+                },
+                "seq_lens": [2],
+                "state_in_0": [1.0],
+            })
+        # Split exactly at a seq-len boundary.
+        check(
+            s2[:5], {
+                "a": [1, 2, 3, 2, 3],
+                "b": {
+                    "c": [4, 5, 6, 5, 6]
+                },
+                "seq_lens": [2, 3],
+                "state_in_0": [1.0, 3.0],
+            })
+        check(
+            s2[:], {
+                "a": [1, 2, 3, 2, 3, 4],
+                "b": {
+                    "c": [4, 5, 6, 5, 6, 7]
+                },
+                "seq_lens": [2, 3, 1],
+                "state_in_0": [1.0, 3.0, 4.0],
+            })
+
 
 if __name__ == "__main__":
     import pytest

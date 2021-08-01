@@ -124,6 +124,12 @@ class SampleBatch(dict):
         else:
             self.count = lengths[0] if lengths else 0
 
+        # A convenience map for slicing this batch into sub-batches along
+        # the time axis. This helps reduce repeated iterations through the
+        # batch's seq_lens array to find good slicing points. Built lazily
+        # when needed.
+        self._slice_map = []
+
     @PublicAPI
     def __len__(self):
         """Returns the amount of samples in the sample batch."""
@@ -783,10 +789,12 @@ class SampleBatch(dict):
             SampleBatch: A new SampleBatch, however "linking" into the same
                 data (sliced) as self.
         """
-        assert slice_.start >= 0 and slice_.stop >= 0 and \
-               slice_.step in [1, None]
+        start = slice_.start or 0
+        stop = slice_.stop or len(self)
+        assert start >= 0 and stop >= 0 and slice_.step in [1, None]
+
         if self.get("seq_lens") is not None and len(self["seq_lens"]) > 0:
-            # Build our slice-map if not done already.
+            # Build our slice-map, if not done already.
             if not self._slice_map:
                 sum_ = 0
                 for i, l in enumerate(self["seq_lens"]):
@@ -795,8 +803,8 @@ class SampleBatch(dict):
                     sum_ += l
                 self._slice_map.append((len(self["seq_lens"]), sum_))
 
-            start_seq_len, start = self._slice_map[slice_.start]
-            stop_seq_len, stop = self._slice_map[slice_.stop]
+            start_seq_len, start = self._slice_map[start]
+            stop_seq_len, stop = self._slice_map[stop]
             if self.zero_padded:
                 start = start_seq_len * self.max_seq_len
                 stop = stop_seq_len * self.max_seq_len
@@ -815,7 +823,6 @@ class SampleBatch(dict):
                 _time_major=self.time_major,
             )
         else:
-            start, stop = slice_.start, slice_.stop
             data = tree.map_structure(lambda value: value[start:stop], self)
             return SampleBatch(
                 data,
