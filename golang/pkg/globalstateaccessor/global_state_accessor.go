@@ -35,7 +35,7 @@ func (g *globalStateAccessor) GetNextJobID() int {
 }
 
 func (g *globalStateAccessor) GetInternalKV(key string) string {
-    v := C.go_worker_GlobalStateAccessorGetInternalKV(g.p, key)
+    v := C.go_worker_GlobalStateAccessorGetInternalKV(g.p, C.CString(key))
     if v != nil {
         return C.GoString(v)
     }

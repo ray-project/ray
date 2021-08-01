@@ -28,7 +28,7 @@ func Init(address, _redis_password string) {
     }
     C.go_worker_Initialize(C.int(1), C.CString("/tmp/ray/session_latest/sockets/plasma_store"), C.CString("/tmp/ray/session_latest/sockets/raylet"),
         C.CString("/tmp/ray/session_latest/logs"), C.CString("192.168.121.61"), C.int(9999), C.CString("192.168.121.61"),
-        C.CString("GOLANG"), C.int(jobId), C.CString("127.0.0.1"), C.int(6379), C.CStrint("5241590000000000"))
+        C.CString("GOLANG"), C.int(jobId), C.CString("127.0.0.1"), C.int(6379), C.CString("5241590000000000"))
 }
 
 //export SayHello
