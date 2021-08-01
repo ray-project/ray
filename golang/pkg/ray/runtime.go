@@ -39,6 +39,7 @@ func Init(address, _redis_password string) {
     if err != nil {
         panic(err)
     }
+    util.Logger.Debugf("Using local ip: %s", localIp)
 
     gcsNodeInfo := &ray_rpc.GcsNodeInfo{}
     nodeInfoString := gsa.GetNodeToConnectForDriver(localIp)
@@ -46,6 +47,7 @@ func Init(address, _redis_password string) {
     if err != nil {
         panic(err)
     }
+    util.Logger.Debug("GcsNodeInfo:%v", *gcsNodeInfo)
     addressInfo := strings.Split(address, ":")
     addressPort, err := strconv.Atoi(addressInfo[1])
     if err != nil {

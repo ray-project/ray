@@ -20,7 +20,10 @@ func GetLocalIp() (string, error) {
             case *net.IPAddr:
                 ip = v.IP
             }
-            return string(ip), nil
+            if ip.String() == "127.0.0.1" {
+                continue
+            }
+            return ip.String(), nil
         }
     }
     return "", fmt.Errorf("Failed to get ip")
