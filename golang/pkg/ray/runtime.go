@@ -34,6 +34,7 @@ func Init(address, _redis_password string) {
     }
     rayConfig.SetSessionDir(raySessionDir)
     logDir := fmt.Sprintf("%s/logs", raySessionDir)
+    util.Logger.Debugf("Session dir: %s", raySessionDir)
 
     localIp, err := util.GetLocalIp()
     if err != nil {
@@ -47,7 +48,6 @@ func Init(address, _redis_password string) {
     if err != nil {
         panic(err)
     }
-    util.Logger.Debug("GcsNodeInfo:%v", *gcsNodeInfo)
     addressInfo := strings.Split(address, ":")
     addressPort, err := strconv.Atoi(addressInfo[1])
     if err != nil {
