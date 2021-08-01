@@ -295,7 +295,11 @@ _bazel_build_before_install() {
     target="//:ray_pkg"
   fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-  bazel build "${target}"
+  if [ -z "${RAY_UBSAN_BUILD-}" ] || [ "${RAY_UBSAN_BUILD}" -ne "1" ]; then
+    bazel build "${target}"
+  else
+    CC=clang bazel build --config ubsan "${target}"
+  fi
 }
 
 

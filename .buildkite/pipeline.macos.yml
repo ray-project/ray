@@ -80,6 +80,13 @@ steps:
       python/ray/tests/... python/ray/serve/...
     - *epilogue_commands
 
+- label: ":mac: :apple: UBSAN"
+  <<: *common
+  commands:
+    - export RAY_UBSAN_BUILD=1
+    - *prelude_commands
+    - *epilogue_commands
+
     # The follow is running in Travis for now.
     # - bazel test --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky python/ray/tests/...
     # - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky python/ray/tests/...
