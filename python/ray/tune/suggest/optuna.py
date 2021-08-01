@@ -19,11 +19,13 @@ try:
     from optuna.trial import TrialState as OptunaTrialState
     from optuna.samplers import BaseSampler
     from optuna.trial import Trial as OptunaTrial
+    from optuna.distributions import BaseDistribution as OptunaDistribution
 except ImportError:
     ot = None
     OptunaTrialState = None
     BaseSampler = None
     OptunaTrial = None
+    OptunaDistribution = None
 
 from ray.tune.suggest import Searcher
 
@@ -178,8 +180,9 @@ class OptunaSearch(Searcher):
     """
 
     def __init__(self,
-                 space: Optional[Union[Dict, List[Tuple], Callable[
-                     [OptunaTrial], Optional[Dict[str, Any]]]]] = None,
+                 space: Optional[Union[Dict[str, OptunaDistribution], List[
+                     Tuple], Callable[[OptunaTrial], Optional[Dict[
+                         str, Any]]]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
