@@ -120,6 +120,14 @@ test:ci --nocache_test_results
 test:ci --spawn_strategy=local
 test:ci --test_output=errors
 test:ci --test_verbose_timeout_warnings
+test:ci-debug -c dbg
+test:ci-debug --javacopt="-g"
+test:ci-debug --copt="-g"
+test:ci-debug --flaky_test_attempts=3
+test:ci-debug --nocache_test_results
+test:ci-debug --spawn_strategy=local
+test:ci-debug --test_output=errors
+test:ci-debug --test_verbose_timeout_warnings
 
 aquery:get-toolchain --include_commandline=false
 aquery:get-toolchain --noimplicit_deps
@@ -130,3 +138,9 @@ test:strace --run_under="bash -c 'if command -v strace >/dev/null && strace -qq 
 # [Linux] Uncomment this line (or use --config) to preload libSegFault.so if available, to print a stack trace on aborts and segfault. (Note: This doesn't always work.)
 #test:linux --config=segfault
 test:segfault --run_under="bash -c 'unset GREP_OPTIONS && if ! grep -q -o Microsoft /proc/version 2>/dev/null; then libs=\"$(command -v ldconfig >/dev/null && ldconfig -p | grep -F -o -e \"libSegFault.so\" | uniq | tr \"\\\\n\" :)\" && if [ -n \"${libs%:}\" ]; then export SEGFAULT_SIGNALS=\"abrt segv\" LD_PRELOAD=\"${libs}${LD_PRELOAD-}\"; fi; fi && \"$@\"' -"
+
+# Debug build:
+build:debug -c dbg
+build:debug --javacopt="-g"
+build:debug --copt="-g"
+build:debug --strip="never"

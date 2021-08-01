@@ -59,11 +59,14 @@ class SetupType(Enum):
 
 
 class SetupSpec:
-    def __init__(self, type: SetupType, name: str, description: str):
+    def __init__(self, type: SetupType, name: str, description: str,
+                 debug_mode: bool):
         self.type: SetupType = type
-        self.name: str = name
+        # add -debug suffix if debug mode is on.
+        self.name: str = "%s-debug" % name if debug_mode else name
         self.version: str = find_version("ray", "__init__.py")
         self.description: str = description
+        self.debug_mode: bool = debug_mode
         self.files_to_include: list = []
         self.install_requires: list = []
         self.extras: dict = {}
@@ -75,15 +78,18 @@ class SetupSpec:
             return []
 
 
+DEBUG_MODE = os.getenv("RAY_DEBUG_BUILD") == "1"
+
 if os.getenv("RAY_INSTALL_CPP") == "1":
     # "ray-cpp" wheel package.
     setup_spec = SetupSpec(SetupType.RAY_CPP, "ray-cpp",
-                           "A subpackage of Ray which provide Ray C++ API.")
+                           "A subpackage of Ray which provide Ray C++ API.",
+                           DEBUG_MODE)
 else:
     # "ray" primary wheel package.
     setup_spec = SetupSpec(
         SetupType.RAY, "ray", "Ray provides a simple, "
-        "universal API for building distributed applications.")
+        "universal API for building distributed applications.", DEBUG_MODE)
 
 # Ideally, we could include these files by putting them in a
 # MANIFEST.in or using the package_data argument to setup, but the
@@ -347,9 +353,9 @@ def build(build_python, build_java, build_cpp):
     bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
 
-    bazel_flags = [ "--verbose_failures"]
-    if os.getenv("RAY_DEBUG_BUILD") == "1":
-        bazel_flags.append("--compilation_mode=dbg")
+    bazel_flags = ["--verbose_failures"]
+    if setup_spec.debug_mode:
+        bazel_flags.extend(["--config", "debug"])
 
     return bazel_invoke(
         subprocess.check_call,
