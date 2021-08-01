@@ -142,3 +142,24 @@ test:segfault --run_under="bash -c 'unset GREP_OPTIONS && if ! grep -q -o Micros
 build:debug -c dbg
 build:debug --copt="-g"
 build:debug --strip="never"
+
+# Memory sanitizer
+# CC=clang bazel build --config msan
+build:msan --strip=never
+build:msan --copt -fsanitize=memory
+build:msan --copt -DMEMORY_SANITIZER
+build:msan --copt -g
+build:msan --copt -O3
+build:msan --copt -fno-omit-frame-pointer
+build:msan --linkopt -fsanitize=memory
+
+# Undefined Behavior Sanitizer
+# CC=clang bazel build --config ubsan
+build:ubsan --strip=never
+build:ubsan --copt -fsanitize=undefined
+build:ubsan --copt -DUNDEFINED_BEHAVIOR_SANITIZER
+build:ubsan --copt -g
+build:ubsan --copt -O3
+build:ubsan --copt -fno-omit-frame-pointer
+build:ubsan --linkopt -fsanitize=undefined
+build:ubsan --linkopt -lubsan
