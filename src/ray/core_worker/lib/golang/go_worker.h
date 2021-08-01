@@ -15,6 +15,10 @@ void *go_worker_CreateGlobalStateAccessor(char *redis_address, char *redis_passw
 
 bool go_worker_GlobalStateAccessorConnet(void *p);
 
+char *go_worker_GlobalStateAccessorGetInternalKV(void *p, char *key);
+
+void *go_worker_GetNodeToConnectForDriver(void *p, char *key);
+
 int go_worker_GetNextJobID(void *p);
 
 void SayHello(char *s);

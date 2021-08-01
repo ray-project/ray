@@ -1925,7 +1925,6 @@ cc_binary(
         "src/ray/core_worker/lib/golang/*.cpp",
     ]),
     copts = COPTS,
-    # Export ray ABI symbols, which can then be used by libstreaming_java.so. see `//:_raylet`
     linkopts = select({
         "@bazel_tools//src/conditions:darwin": [
             "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
@@ -1938,7 +1937,6 @@ cc_binary(
     }),
     linkshared = 1,
     linkstatic = 1,
-    visibility = ["//java:__subpackages__"],
     deps = [
         "//:core_worker_lib",
         "//:exported_streaming_internal",

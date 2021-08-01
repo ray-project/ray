@@ -59,3 +59,27 @@ __attribute__((visibility("default"))) int go_worker_GetNextJobID(void *p) {
   auto job_id = gcs_accessor->GetNextJobID();
   return job_id.ToInt();
 }
+
+__attribute__((visibility("default"))) char *go_worker_GlobalStateAccessorGetInternalKV(
+    void *p, char *key) {
+  auto *gcs_accessor = static_cast<ray::gcs::GlobalStateAccessor *>(p);
+  auto value = gcs_accessor->GetInternalKV(key);
+  if (value != nullptr) {
+    return value.release();
+  }
+  return nullptr;
+}
+
+__attribute__((visibility("default"))) void *go_worker_GetNodeToConnectForDriver(
+    void *p, char *key) {
+  auto *gcs_accessor = static_cast<ray::gcs::GlobalStateAccessor *>(p);
+  std::string node_to_connect;
+  auto status =
+      gcs_accessor->GetNodeToConnectForDriver(node_ip_address, &node_to_connect);
+  if (!status.ok()) {
+    RAY_LOG(FATAL) << "Failed to get node to connect for driver:" << status.message()
+                   << endl;
+    return nullptr
+  }
+  return &node_to_connect
+}

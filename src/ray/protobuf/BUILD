@@ -7,7 +7,7 @@ load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 proto_library(
     name = "common_proto",
     srcs = ["common.proto"],
-    visibility = ["//java:__subpackages__"],
+    visibility = ["//java:__subpackages__","//golang:__subpackages__"],
 )
 
 cc_proto_library(

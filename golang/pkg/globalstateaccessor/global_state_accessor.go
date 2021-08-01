@@ -1,4 +1,4 @@
-package main
+package globalstateaccessor
 
 /*
    #cgo CFLAGS: -I../src/ray/core_worker/lib/golang
@@ -11,14 +11,14 @@ import (
     "unsafe"
 )
 
-type GlobalStateAccessor struct {
+type globalStateAccessor struct {
     redisAddress  string
     redisPassword string
     p             unsafe.Pointer
 }
 
-func NewGlobalStateAccessor(redisAddress, redisPassword string) (*GlobalStateAccessor, error) {
-    gsa := &GlobalStateAccessor{
+func NewGlobalStateAccessor(redisAddress, redisPassword string) (*globalStateAccessor, error) {
+    gsa := &globalStateAccessor{
         redisAddress:  redisAddress,
         redisPassword: redisPassword,
     }
@@ -30,6 +30,14 @@ func NewGlobalStateAccessor(redisAddress, redisPassword string) (*GlobalStateAcc
     return gsa, nil
 }
 
-func (g *GlobalStateAccessor) GetNextJobID() int {
+func (g *globalStateAccessor) GetNextJobID() int {
     return int(C.go_worker_GetNextJobID(g.p))
+}
+
+func (g *globalStateAccessor) GetInternalKV(key string) string {
+    v := C.go_worker_GlobalStateAccessorGetInternalKV(g.p, key)
+    if v != nil {
+        return C.GoString(v)
+    }
+    return ""
 }
