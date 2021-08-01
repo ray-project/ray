@@ -180,13 +180,13 @@ class OptunaSearch(Searcher):
     """
 
     def __init__(self,
-                 space: Optional[Union[Dict[str, OptunaDistribution], List[
-                     Tuple], Callable[[OptunaTrial], Optional[Dict[
+                 space: Optional[Union[Dict[str, "OptunaDistribution"], List[
+                     Tuple], Callable[["OptunaTrial"], Optional[Dict[
                          str, Any]]]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
-                 sampler: Optional[BaseSampler] = None,
+                 sampler: Optional["BaseSampler"] = None,
                  seed: Optional[int] = None,
                  evaluated_rewards: Optional[List] = None):
         assert ot is not None, (
@@ -285,8 +285,8 @@ class OptunaSearch(Searcher):
         return True
 
     def _suggest_from_define_by_run_func(
-            self, func: Callable[[OptunaTrial], Optional[Dict[str, Any]]],
-            ot_trial: OptunaTrial) -> Dict:
+            self, func: Callable[["OptunaTrial"], Optional[Dict[str, Any]]],
+            ot_trial: "OptunaTrial") -> Dict:
         captor = _OptunaTrialSuggestCaptor(ot_trial)
         time_start = time.time()
         ret = func(captor)
