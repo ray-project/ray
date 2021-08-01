@@ -68,3 +68,41 @@ ray.get(a.ping.remote())
         else:
             assert entry["endTime"] > 0, entry
         assert "runtimeEnv" in entry
+
+
+def test_serve_snapshot(ray_start_with_dashboard):
+    driver_script = f"""
+import ray
+from ray import serve
+
+ray.init(
+    address="{ray_start_with_dashboard['redis_address']}",
+    namespace="serve")
+
+serve.start(detached=True)
+
+@serve.deployment(version="v1")
+def my_func(request):
+  return "hello"
+
+my_func.deploy()
+    """
+    run_string_as_driver(driver_script)
+
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+    response = requests.get(f"{webui_url}/api/snapshot")
+    response.raise_for_status()
+    data = response.json()
+    schema_path = os.path.join(
+        os.path.dirname(dashboard.__file__),
+        "modules/snapshot/snapshot_schema.json")
+    pprint.pprint(data)
+    jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
+
+    assert len(data["data"]["snapshot"]["deployments"]) == 1
+    for deployment in data["data"]["snapshot"]["deployments"]:
+        assert deployment["name"] == "my_func"
+        assert deployment["version"] == "v1"
+        assert deployment["httpRoute"] == "/my_func"
+        assert deployment["className"] == "my_func"
