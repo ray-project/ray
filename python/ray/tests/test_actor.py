@@ -22,7 +22,8 @@ import ray
 import setproctitle  # noqa
 
 
-def test_caching_actors(shutdown_only):
+@pytest.mark.parametrize("set_enable_auto_connect", ["1", "0"], indirect=True)
+def test_caching_actors(shutdown_only, set_enable_auto_connect):
     # Test defining actors before ray.init() has been called.
 
     @ray.remote
@@ -33,12 +34,17 @@ def test_caching_actors(shutdown_only):
         def get_val(self):
             return 3
 
-    # Check that we can't actually create actors before ray.init() has been
-    # called.
-    with pytest.raises(Exception):
-        f = Foo.remote()
+    if set_enable_auto_connect == "0":
+        # Check that we can't actually create actors before ray.init() has
+        # been called.
+        with pytest.raises(Exception):
+            f = Foo.remote()
 
-    ray.init(num_cpus=1)
+        ray.init(num_cpus=1)
+    else:
+        # Actor creation should succeed here because ray.init() auto connection
+        # is (by default) enabled.
+        f = Foo.remote()
 
     f = Foo.remote()
 

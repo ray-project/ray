@@ -93,8 +93,6 @@ class CoreWorkerPlasmaStoreProvider {
 
   ~CoreWorkerPlasmaStoreProvider();
 
-  Status SetClientOptions(std::string name, int64_t limit_bytes);
-
   /// Create and seal an object.
   ///
   /// NOTE: The caller must subsequently call Release() to release the first reference to
@@ -195,13 +193,10 @@ class CoreWorkerPlasmaStoreProvider {
       absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
       bool *got_exception);
 
-  /// Print a warning if we've attempted too many times, but some objects are still
-  /// unavailable. Only the keys in the 'remaining' map are used.
-  ///
-  /// \param[in] num_attemps The number of attempted times.
-  /// \param[in] remaining The remaining objects.
-  static void WarnIfAttemptedTooManyTimes(int num_attempts,
-                                          const absl::flat_hash_set<ObjectID> &remaining);
+  /// Print a warning if we've attempted the fetch for too long and some
+  /// objects are still unavailable.
+  static void WarnIfFetchHanging(int64_t fetch_start_time_ms,
+                                 const absl::flat_hash_set<ObjectID> &remaining);
 
   /// Put something in the plasma store so that subsequent plasma store accesses
   /// will be faster. Currently the first access is always slow, and we don't

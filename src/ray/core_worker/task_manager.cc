@@ -63,8 +63,8 @@ void TaskManager::AddPendingTask(const rpc::Address &caller_address,
     for (size_t i = 0; i < num_returns; i++) {
       // We pass an empty vector for inner IDs because we do not know the return
       // value of the task yet. If the task returns an ID(s), the worker will
-      // notify us via the WaitForRefRemoved RPC that we are now a borrower for
-      // the inner IDs. Note that this RPC can be received *before* the
+      // publish the WaitForRefRemoved message that we are now a borrower for
+      // the inner IDs. Note that this message can be received *before* the
       // PushTaskReply.
       reference_counter_->AddOwnedObject(spec.ReturnId(i),
                                          /*inner_ids=*/{}, caller_address, call_site, -1,
@@ -196,8 +196,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         RAY_CHECK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                         object_id));
       } else {
-        RAY_LOG(INFO) << "Task " << task_id << " returned object " << object_id
-                      << " in plasma on a dead node, attempting to recover";
+        RAY_LOG(DEBUG) << "Task " << task_id << " returned object " << object_id
+                       << " in plasma on a dead node, attempting to recover.";
         reconstruct_object_callback_(object_id);
       }
     } else {

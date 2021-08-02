@@ -101,6 +101,7 @@ py_test(
     deps = [":dask_lib"],
 )
 
+
 py_test(
     name = "dask_ray_shuffle_optimization_client_mode",
     size = "medium",

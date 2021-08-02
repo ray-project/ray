@@ -1,9 +1,9 @@
 - label: ":ferris_wheel: Wheels and Jars"
   conditions:
     [
-      "RAY_CI_LINUX_WHEELS_AFFECTED",
-      "RAY_CI_JAVA_AFFECTED",
-      "RAY_CI_STREAMING_JAVA_AFFECTED",
+        "RAY_CI_LINUX_WHEELS_AFFECTED",
+        "RAY_CI_JAVA_AFFECTED",
+        "RAY_CI_STREAMING_JAVA_AFFECTED",
     ]
   commands:
     # Build the wheels and jars
@@ -60,6 +60,14 @@
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/travis/build-docker-images.py --py-versions PY38 --build-type BUILDKITE --build-base
 
+- label: ":docker: Build Images: py39"
+  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  commands:
+    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - pip install -q docker aws_requests_auth boto3
+    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+    - python ./ci/travis/build-docker-images.py --py-versions PY39 --build-type BUILDKITE --build-base
+
 - label: ":book: Lint"
   commands:
     - export LINT=1
@@ -106,9 +114,9 @@
 - label: ":serverless: Dashboard + Serve Tests"
   conditions:
     [
-      "RAY_CI_SERVE_AFFECTED",
-      "RAY_CI_DASHBOARD_AFFECTED",
-      "RAY_CI_PYTHON_AFFECTED",
+        "RAY_CI_SERVE_AFFECTED",
+        "RAY_CI_DASHBOARD_AFFECTED",
+        "RAY_CI_PYTHON_AFFECTED",
     ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -139,7 +147,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky,-post_wheel_build
+      --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky,-post_wheel_build,-worker-container
       --test_env=CONDA_EXE
       --test_env=CONDA_PYTHON_EXE
       --test_env=CONDA_SHLVL
@@ -150,8 +158,6 @@
       --test_tag_filters=-kubernetes,-jenkins_only,client_tests,-flaky
       --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
       python/ray/tests/...
-    # Dask tests and examples.
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/dask/...
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -166,6 +172,20 @@
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky
       python/ray/tests/...
+- label: ":python: (Worker In Container)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - pip install docker
+    # We build image ray-worker-container:nightly-py36-cpu which have installed podman,but not push it.
+    # And we save this image to a tarball, so that we can load it to podman image storage in the
+    # nested-container which run tests. And in this nested-container, Raylet will start ray worker
+    # process in double-nested-container.
+    - python ./ci/travis/build-docker-images.py --py-versions PY36 --build-type BUILDKITE --only-build-worker-container
+    - mkdir /ray-mount/containers
+    - docker save -o /ray-mount/containers/images.tar rayproject/ray-worker-container:nightly-py36-cpu
+    - docker run --rm --privileged -v /ray/containers:/var/lib/containers -v /ray:/ray --entrypoint /bin/bash
+      rayproject/ray-worker-container:nightly-py36-cpu /ray/ci/travis/test-worker-in-container.sh
 
 - label: ":brain: RLlib: Learning tests (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
@@ -218,17 +238,23 @@
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
-- label: ":brain: RLlib: rllib/examples/ {1/2}"
+- label: ":brain: RLlib: Examples {A/B}"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_A,examples_B,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+
+- label: ":brain: RLlib: Examples {C/D}"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_C,examples_D,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
-- label: ":brain: RLlib: rllib/examples/ {2/2}"
+- label: ":brain: RLlib: Examples {E/P}"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -236,10 +262,17 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_E,examples_F,examples_G,examples_H,examples_I,examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
+
+- label: ":brain: RLlib: Examples {Q/Z}"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_Q,examples_R,examples_S,examples_T,examples_U,examples_V,examples_W,examples_X,examples_Y,examples_Z,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
-- label: ":brain: RLlib: rllib/tests/ (A-L)"
+
+- label: ":brain: RLlib: tests/ dir (A-L)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -247,7 +280,7 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I,tests_dir_J,tests_dir_K,tests_dir_L,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
-- label: ":brain: RLlib: rllib/tests/ (M-Z)"
+- label: ":brain: RLlib: tests/ dir (M-Z)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -261,16 +294,24 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,-example,-flaky,-py37 python/ray/tune/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=example,-tf,-pytorch,-py37,-flaky python/ray/tune/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,-example,-flaky,-py37,-soft_imports python/ray/tune/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=example,-tf,-pytorch,-py37,-flaky,-soft_imports python/ray/tune/...
 
 - label: ":octopus: Tune tests and examples {2/2}"
   conditions: ["RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-flaky python/ray/tune/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-flaky python/ray/tune/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-flaky,-soft_imports python/ray/tune/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-flaky,-soft_imports python/ray/tune/...
+
+- label: ":octopus: Tune soft imports test"
+  conditions: ["RAY_CI_TUNE_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    # no TUNE_TESTING=1 on purpose
+    - ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=soft_imports python/ray/tune/...
 
 - label: ":octopus: SGD tests and examples"
   conditions: ["RAY_CI_SGD_AFFECTED"]
@@ -280,8 +321,9 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-flaky,-client python/ray/util/sgd/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-flaky,-client python/ray/util/sgd/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client_unit_tests --test_env=RAY_CLIENT_MODE=1 python/ray/util/sgd/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/sgd/v2/...
 
-- label: ":octopus: Tune/SGD/Modin tests and examples. Python 3.7"
+- label: ":octopus: Tune/SGD/Modin/Dask tests and examples. Python 3.7"
   conditions: ["RAY_CI_TUNE_AFFECTED", "RAY_CI_SGD_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -290,7 +332,10 @@
     - rm -rf ./python/ray/thirdparty_files; ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=py37,-flaky,-client python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/xgboost/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/horovod/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/tests/modin/...
+    # Dask tests and examples.
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/dask/...
 
 - label: ":tropical_fish: ML Libraries w/ Ray Client Examples (Python 3.7)."
   conditions: ["RAY_CI_TUNE_AFFECTED", "RAY_CI_SGD_AFFECTED"]
@@ -303,11 +348,12 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-client_unit_tests python/ray/util/sgd/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client,-flaky python/ray/util/xgboost/...
 
-- label: ":potable_water: Workflow tests and examples"
+- label: ":potable_water: Workflow & Dataset tests"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/experimental/workflow/...
+    - DATA_PROCESSING_TESTING=1 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/experimental/workflow/... python/ray/experimental/data/...
 
 - label: ":book: Doc tests and examples"
   conditions:
@@ -315,6 +361,6 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,-pytorch,-py37 doc/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37 doc/...
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37 doc/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,-pytorch,-py37,-post_wheel_build doc/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-post_wheel_build doc/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-post_wheel_build doc/...

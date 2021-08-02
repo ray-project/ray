@@ -77,12 +77,27 @@ def test_xgboost_example(start_client_server):
     tune_xgboost()
 
 
+def test_xgboost_dynamic_resources_example(start_client_server):
+    assert ray.util.client.ray.is_connected()
+    from ray.tune.examples.xgboost_dynamic_resources_example import \
+        tune_xgboost
+    tune_xgboost(use_class_trainable=True)
+    tune_xgboost(use_class_trainable=False)
+
+
 def test_mlflow_example(start_client_server):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.mlflow_example import tune_function, tune_decorated
     mlflow_tracking_uri = os.path.join(tempfile.gettempdir(), "mlruns")
     tune_function(mlflow_tracking_uri, finish_fast=True)
     tune_decorated(mlflow_tracking_uri, finish_fast=True)
+
+
+def test_pbt_transformers(start_client_server):
+    assert ray.util.client.ray.is_connected()
+    from ray.tune.examples.pbt_transformers.pbt_transformers import \
+        tune_transformer
+    tune_transformer(num_samples=1, gpus_per_trial=0, smoke_test=True)
 
 
 if __name__ == "__main__":

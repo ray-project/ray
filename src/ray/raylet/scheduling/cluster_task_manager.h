@@ -76,9 +76,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void QueueAndScheduleTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Schedule infeasible tasks.
-  void ScheduleInfeasibleTasks() override;
-
   /// Move tasks from waiting to ready for dispatch. Called when a task's
   /// dependencies are resolved.
   ///
@@ -103,10 +100,12 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Attempt to cancel an already queued task.
   ///
   /// \param task_id: The id of the task to remove.
+  /// \param runtime_env_setup_failed: If this is being cancelled because the env setup
+  /// failed.
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  bool CancelTask(const TaskID &task_id) override;
+  bool CancelTask(const TaskID &task_id, bool runtime_env_setup_failed = false) override;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///
@@ -119,7 +118,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  void FillResourceUsage(rpc::ResourcesData &data) override;
+  void FillResourceUsage(rpc::ResourcesData &data,
+                         const std::shared_ptr<SchedulingResources>
+                             &last_reported_resources = nullptr) override;
 
   /// Return if any tasks are pending resource acquisition.
   ///
@@ -162,6 +163,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
+
+  /// Calculate normal task resources.
+  ResourceSet CalcNormalTaskResources() const override;
 
  private:
   /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system

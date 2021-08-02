@@ -1,13 +1,14 @@
 from typing import List, Dict
 
+from ray.tests.conftest import *  # noqa
+
 import pytest
 
 import numpy as np
-import ray
-from ray.experimental import workflow
 
-# alias because the original type is too long
-RRef = ray.ObjectRef
+import ray
+from ray import ObjectRef
+from ray.experimental import workflow
 
 
 @ray.remote
@@ -24,8 +25,9 @@ def nested_workflow(n: int):
 
 
 @workflow.step
-def deref_check(u: int, v: "RRef[int]", w: "List[RRef[RRef[int]]]", x: str,
-                y: List[str], z: List[Dict[str, str]]):
+def deref_check(u: int, v: "ObjectRef[int]",
+                w: "List[ObjectRef[ObjectRef[int]]]", x: str, y: List[str],
+                z: List[Dict[str, str]]):
     try:
         return (u == 42 and ray.get(v) == 42 and ray.get(ray.get(w[0])) == 42
                 and x == "nested" and y[0] == "nested"
@@ -67,20 +69,24 @@ def receive_data(data: np.ndarray):
     return data
 
 
-def test_object_deref():
-    ray.init()
+# TODO(suquark): Support ObjectRef checkpointing.
+def test_objectref_inputs_exception(workflow_start_regular_shared):
+    with pytest.raises(ValueError):
+        assert receive_data.step(ray.put([42])).run()
 
-    output = workflow.run(
-        deref_check.step(
-            ray.put(42), nested_ref.remote(), [nested_ref.remote()],
-            nested_workflow.step(10), [nested_workflow.step(9)], [{
-                "output": nested_workflow.step(7)
-            }]), )
-    assert ray.get(output)
 
+@pytest.mark.skip(reason="no support for ObjectRef checkpointing yet")
+def test_objectref_inputs(workflow_start_regular_shared):
+    assert deref_check.step(
+        ray.put(42), nested_ref.remote(), [nested_ref.remote()],
+        nested_workflow.step(10), [nested_workflow.step(9)], [{
+            "output": nested_workflow.step(7)
+        }]).run()
+
+
+def test_object_deref(workflow_start_regular_shared):
     x = empty_list.step()
-    output = workflow.run(deref_shared.step(x, x))
-    assert ray.get(output)
+    assert deref_shared.step(x, x).run()
 
     # test we are forbidden from directly passing workflow to Ray.
     x = empty_list.step()
@@ -93,7 +99,10 @@ def test_object_deref():
 
     # test return object ref
     obj = return_data.step()
-    arr: np.ndarray = ray.get(workflow.run(receive_data.step(obj)))
+    arr: np.ndarray = receive_data.step(obj).run()
     assert np.array_equal(arr, np.ones(4096))
 
-    ray.shutdown()
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

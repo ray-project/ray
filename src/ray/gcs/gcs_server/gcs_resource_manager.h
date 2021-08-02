@@ -123,6 +123,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param gcs_init_data.
   void Initialize(const GcsInitData &gcs_init_data);
 
+  std::string ToString() const;
+
   std::string DebugString() const;
 
   /// Update the total resources and available resources of the specified node.
@@ -132,6 +134,10 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   void UpdateResourceCapacity(
       const NodeID &node_id,
       const std::unordered_map<std::string, double> &changed_resources);
+
+  // Update node normal task resources.
+  void UpdateNodeNormalTaskResources(const NodeID &node_id,
+                                     const rpc::ResourcesData &heartbeat);
 
   /// Update resource usage of given node.
   ///
@@ -199,6 +205,9 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   absl::flat_hash_map<NodeID, SchedulingResources> cluster_scheduling_resources_;
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
+
+  /// Max batch size for broadcasting
+  size_t max_broadcasting_batch_size_;
 
   /// Debug info.
   enum CountType {

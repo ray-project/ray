@@ -104,6 +104,85 @@ Here is a simplified example (which requires ``sklearn``\ ):
 
    print(pred_ray)
 
+scikit-learn API
+^^^^^^^^^^^^^^^^
+
+XGBoost-Ray also features a scikit-learn API fully mirroring pure
+XGBoost scikit-learn API, providing a completely drop-in
+replacement. The following estimators are available:
+
+
+* ``RayXGBClassifier``
+* ``RayXGRegressor``
+* ``RayXGBRFClassifier``
+* ``RayXGBRFRegressor``
+* ``RayXGBRanker``
+
+Example usage of ``RayXGBClassifier``\ :
+
+.. code-block:: python
+
+   from xgboost_ray import RayXGBClassifier, RayParams
+   from sklearn.datasets import load_breast_cancer
+   from sklearn.model_selection import train_test_split
+
+   seed = 42
+
+   X, y = load_breast_cancer(return_X_y=True)
+   X_train, X_test, y_train, y_test = train_test_split(
+       X, y, train_size=0.25, random_state=42
+   )
+
+   clf = RayXGBClassifier(
+       n_jobs=4,  # In XGBoost-Ray, n_jobs sets the number of actors
+       random_state=seed
+   )
+
+   # scikit-learn API will automatically conver the data
+   # to RayDMatrix format as needed.
+   # You can also pass X as a RayDMatrix, in which case
+   # y will be ignored.
+
+   clf.fit(X_train, y_train)
+
+   pred_ray = clf.predict(X_test)
+   print(pred_ray)
+
+   pred_proba_ray = clf.predict_proba(X_test)
+   print(pred_proba_ray)
+
+   # It is also possible to pass a RayParams object
+   # to fit/predict/predict_proba methods - will override
+   # n_jobs set during initialization
+
+   clf.fit(X_train, y_train, ray_params=RayParams(num_actors=2))
+
+   pred_ray = clf.predict(X_test, ray_params=RayParams(num_actors=2))
+   print(pred_ray)
+
+Things to keep in mind:
+
+
+* ``n_jobs`` parameter controls the number of actors spawned.
+  You can pass a ``RayParams`` object to the
+  ``fit``\ /\ ``predict``\ /\ ``predict_proba`` methods as the ``ray_params`` argument
+  for greater control over resource allocation. Doing
+  so will override the value of ``n_jobs`` with the value of
+  ``ray_params.num_actors`` attribute. For more information, refer
+  to the `Resources <#resources>`_ section below.
+* By default ``n_jobs`` is set to ``1``\ , which means the training
+  will **not** be distributed. Make sure to either set ``n_jobs``
+  to a higher value or pass a ``RayParams`` object as outlined above
+  in order to take advantage of XGBoost-Ray's functionality.
+* After calling ``fit``\ , additional evaluation results (e.g. training time,
+  number of rows, callback results) will be available under
+  ``additional_results_`` attribute.
+* XGBoost-Ray's scikit-learn API is based on XGBoost 1.4.
+  While we try to support older XGBoost versions, please note that
+  this library is only fully tested and supported for XGBoost >= 1.4.
+
+For more information on the scikit-learn API, refer to the `XGBoost documentation <https://xgboost.readthedocs.io/en/latest/python/python_api.html#module-xgboost.sklearn>`_.
+
 Data loading
 ------------
 
@@ -506,7 +585,7 @@ how long this timeout should be.
 More examples
 -------------
 
-Fore complete end to end examples, please have a look at
+For complete end to end examples, please have a look at
 the `examples folder <https://github.com/ray-project/xgboost_ray/tree/master/examples/>`_\ :
 
 
@@ -528,3 +607,18 @@ API reference
 .. autofunction:: xgboost_ray.train
 
 .. autofunction:: xgboost_ray.predict
+
+scikit-learn API
+^^^^^^^^^^^^^^^^
+
+.. autoclass:: xgboost_ray.RayXGBClassifier
+    :members:
+
+.. autoclass:: xgboost_ray.RayXGBRegressor
+    :members:
+
+.. autoclass:: xgboost_ray.RayXGBRFClassifier
+    :members:
+
+.. autoclass:: xgboost_ray.RayXGBRFRegressor
+    :members:

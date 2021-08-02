@@ -47,5 +47,5 @@ def main():
 
 
 if __name__ == "__main__":
-    ray.util.connect("example-cluster-ray-head:10001")
+    ray.client("example-cluster-ray-head:10001").connect()
     main()

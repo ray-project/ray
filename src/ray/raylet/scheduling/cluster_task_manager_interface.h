@@ -61,7 +61,9 @@ class ClusterTaskManagerInterface {
   ///
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  virtual void FillResourceUsage(rpc::ResourcesData &data) = 0;
+  virtual void FillResourceUsage(
+      rpc::ResourcesData &data,
+      const std::shared_ptr<SchedulingResources> &last_reported_resources = nullptr) = 0;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///
@@ -86,10 +88,13 @@ class ClusterTaskManagerInterface {
   /// Attempt to cancel an already queued task.
   ///
   /// \param task_id: The id of the task to remove.
+  /// \param runtime_env_setup_failed: If this is being cancelled because the env setup
+  /// failed.
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  virtual bool CancelTask(const TaskID &task_id) = 0;
+  virtual bool CancelTask(const TaskID &task_id,
+                          bool runtime_env_setup_failed = false) = 0;
 
   /// Queue task and schedule. This hanppens when processing the worker lease request.
   ///
@@ -98,9 +103,6 @@ class ClusterTaskManagerInterface {
   /// \param send_reply_callback: The function used during dispatching.
   virtual void QueueAndScheduleTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) = 0;
-
-  /// Schedule infeasible tasks.
-  virtual void ScheduleInfeasibleTasks() = 0;
 
   /// Return if any tasks are pending resource acquisition.
   ///
@@ -118,6 +120,9 @@ class ClusterTaskManagerInterface {
 
   /// Report high frequency scheduling metrics.
   virtual void RecordMetrics() = 0;
+
+  /// Calculate normal task resources.
+  virtual ResourceSet CalcNormalTaskResources() const = 0;
 };
 }  // namespace raylet
 }  // namespace ray

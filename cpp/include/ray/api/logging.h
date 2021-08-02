@@ -17,6 +17,14 @@
 #include <iostream>
 #include <memory>
 
+#if defined(_WIN32)
+#ifdef ERROR  // Should be true unless someone else undef'd it already
+#undef ERROR  // Windows GDI defines this macro; make it a global enum so it doesn't
+              // conflict with our code
+enum { ERROR = 0 };
+#endif
+#endif
+
 namespace ray {
 namespace api {
 

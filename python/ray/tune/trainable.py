@@ -22,6 +22,7 @@ from ray.tune.result import (
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.util import Tee
 from ray.util.debug import log_once
 
@@ -72,6 +73,8 @@ class Trainable:
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
         trial_info = self.config.pop(TRIAL_INFO, None)
+
+        disable_ipython()
 
         self._result_logger = self._logdir = None
         self._create_logger(self.config, logger_creator)
@@ -315,7 +318,7 @@ class Trainable:
     def save(self, checkpoint_dir=None):
         """Saves the current model state to a checkpoint.
 
-        Subclasses should override ``_save()`` instead to save state.
+        Subclasses should override ``save_checkpoint()`` instead to save state.
         This method dumps additional metadata alongside the saved path.
 
         Args:
@@ -492,6 +495,28 @@ class Trainable:
         """
         return False
 
+    def _update_resources(
+            self, new_resources: Union[PlacementGroupFactory, Resources]):
+        """Internal version of ``update_resources``."""
+        self._trial_info.trial_resources = new_resources
+        return self.update_resources(new_resources)
+
+    def update_resources(
+            self, new_resources: Union[PlacementGroupFactory, Resources]):
+        """Fires whenever Trainable resources are changed.
+
+        This method will be called before the checkpoint is loaded.
+
+        The current trial resources can also be obtained through
+        ``self.trial_resources``.
+
+        Args:
+            new_resources (PlacementGroupFactory|Resources):
+                Updated resources. Will be a PlacementGroupFactory if
+                trial uses placement groups and Resources otherwise.
+        """
+        return
+
     def _create_logger(self, config, logger_creator=None):
         """Create logger from logger creator.
 
@@ -607,6 +632,21 @@ class Trainable:
         """
         if self._trial_info:
             return self._trial_info.trial_id
+        else:
+            return "default"
+
+    @property
+    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+        """Resources currently assigned to the trial of this Trainable.
+
+        This is not set if not using Tune.
+
+        .. code-block:: python
+
+            trial_resources = self.trial_resources
+        """
+        if self._trial_info:
+            return self._trial_info.trial_resources
         else:
             return "default"
 

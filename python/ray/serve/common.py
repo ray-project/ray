@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from pydantic import BaseModel
 from typing import Dict, List, Optional
 from uuid import UUID
 
@@ -24,16 +23,16 @@ class EndpointInfo:
     legacy: Optional[bool] = True
 
 
-class BackendInfo(BaseModel):
-    actor_def: Optional[ActorClass]
-    version: Optional[str]
-    backend_config: BackendConfig
-    replica_config: ReplicaConfig
-
-    class Config:
-        # TODO(architkulkarni): Remove once ReplicaConfig is a pydantic
-        # model
-        arbitrary_types_allowed = True
+class BackendInfo:
+    def __init__(self,
+                 backend_config: BackendConfig,
+                 replica_config: ReplicaConfig,
+                 actor_def: Optional[ActorClass] = None,
+                 version: Optional[str] = None):
+        self.backend_config = backend_config
+        self.replica_config = replica_config
+        self.actor_def = actor_def
+        self.version = version
 
 
 class TrafficPolicy:

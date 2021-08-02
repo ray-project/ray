@@ -1,14 +1,12 @@
 import random
 import copy
 import threading
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import logging
 import time
 from typing import Any, Dict, List
 
-import boto3
 import botocore
-from botocore.config import Config
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, \
@@ -18,7 +16,8 @@ from ray.autoscaler._private.constants import BOTO_MAX_RETRIES, \
 from ray.autoscaler._private.aws.config import bootstrap_aws
 from ray.autoscaler._private.log_timer import LogTimer
 
-from ray.autoscaler._private.aws.utils import boto_exception_handler
+from ray.autoscaler._private.aws.utils import boto_exception_handler, \
+    resource_cache, client_cache
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 import ray.ray_constants as ray_constants
 
@@ -47,10 +46,8 @@ def from_aws_format(tags):
 
 def make_ec2_client(region, max_retries, aws_credentials=None):
     """Make client, retrying requests up to `max_retries`."""
-    config = Config(retries={"max_attempts": max_retries})
     aws_credentials = aws_credentials or {}
-    return boto3.resource(
-        "ec2", region_name=region, config=config, **aws_credentials)
+    return resource_cache("ec2", region, max_retries, **aws_credentials)
 
 
 def list_ec2_instances(region: str, aws_credentials: Dict[str, Any] = None
@@ -70,10 +67,8 @@ def list_ec2_instances(region: str, aws_credentials: Dict[str, Any] = None
 
     """
     final_instance_types = []
-    config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
     aws_credentials = aws_credentials or {}
-    ec2 = boto3.client(
-        "ec2", region_name=region, config=config, **aws_credentials)
+    ec2 = client_cache("ec2", region, BOTO_MAX_RETRIES, **aws_credentials)
     instance_types = ec2.describe_instance_types()
     final_instance_types.extend(copy.deepcopy(instance_types["InstanceTypes"]))
     while "NextToken" in instance_types:
@@ -246,7 +241,8 @@ class AWSNodeProvider(NodeProvider):
         Returns dict mapping instance id to ec2.Instance object for the created
         instances.
         """
-        tags = copy.deepcopy(tags)
+        # sort tags by key to support deterministic unit test stubbing
+        tags = OrderedDict(sorted(copy.deepcopy(tags).items()))
 
         reused_nodes_dict = {}
         # Try to reuse previously stopped nodes with compatible configs
@@ -315,6 +311,38 @@ class AWSNodeProvider(NodeProvider):
         all_created_nodes.update(created_nodes_dict)
         return all_created_nodes
 
+    @staticmethod
+    def _merge_tag_specs(tag_specs: List[Dict[str, Any]],
+                         user_tag_specs: List[Dict[str, Any]]) -> None:
+        """
+        Merges user-provided node config tag specifications into a base
+        list of node provider tag specifications. The base list of
+        node provider tag specs is modified in-place.
+
+        This allows users to add tags and override values of existing
+        tags with their own, and only applies to the resource type
+        "instance". All other resource types are appended to the list of
+        tag specs.
+
+        Args:
+            tag_specs (List[Dict[str, Any]]): base node provider tag specs
+            user_tag_specs (List[Dict[str, Any]]): user's node config tag specs
+        """
+
+        for user_tag_spec in user_tag_specs:
+            if user_tag_spec["ResourceType"] == "instance":
+                for user_tag in user_tag_spec["Tags"]:
+                    exists = False
+                    for tag in tag_specs[0]["Tags"]:
+                        if user_tag["Key"] == tag["Key"]:
+                            exists = True
+                            tag["Value"] = user_tag["Value"]
+                            break
+                    if not exists:
+                        tag_specs[0]["Tags"] += [user_tag]
+            else:
+                tag_specs += [user_tag_spec]
+
     def _create_node(self, node_config, tags, count):
         created_nodes_dict = {}
 
@@ -335,48 +363,41 @@ class AWSNodeProvider(NodeProvider):
             "Tags": tag_pairs,
         }]
         user_tag_specs = conf.get("TagSpecifications", [])
-        # Allow users to add tags and override values of existing
-        # tags with their own. This only applies to the resource type
-        # "instance". All other resource types are appended to the list of
-        # tag specs.
-        for user_tag_spec in user_tag_specs:
-            if user_tag_spec["ResourceType"] == "instance":
-                for user_tag in user_tag_spec["Tags"]:
-                    exists = False
-                    for tag in tag_specs[0]["Tags"]:
-                        if user_tag["Key"] == tag["Key"]:
-                            exists = True
-                            tag["Value"] = user_tag["Value"]
-                            break
-                    if not exists:
-                        tag_specs[0]["Tags"] += [user_tag]
-            else:
-                tag_specs += [user_tag_spec]
+        AWSNodeProvider._merge_tag_specs(tag_specs, user_tag_specs)
 
         # SubnetIds is not a real config key: we must resolve to a
         # single SubnetId before invoking the AWS API.
         subnet_ids = conf.pop("SubnetIds")
 
+        # update config with min/max node counts and tag specs
+        conf.update({
+            "MinCount": 1,
+            "MaxCount": count,
+            "TagSpecifications": tag_specs
+        })
+
+        cli_logger_tags = {}
         for attempt in range(1, BOTO_CREATE_MAX_RETRIES + 1):
             try:
-                subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
+                if "NetworkInterfaces" in conf:
+                    net_ifs = conf["NetworkInterfaces"]
+                    # remove security group IDs previously copied from network
+                    # interfaces (create_instances call fails otherwise)
+                    conf.pop("SecurityGroupIds", None)
+                    cli_logger_tags["network_interfaces"] = str(net_ifs)
+                else:
+                    subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
+                    self.subnet_idx += 1
+                    conf["SubnetId"] = subnet_id
+                    cli_logger_tags["subnet_id"] = subnet_id
 
-                self.subnet_idx += 1
-                conf.update({
-                    "MinCount": 1,
-                    "MaxCount": count,
-                    "SubnetId": subnet_id,
-                    "TagSpecifications": tag_specs
-                })
                 created = self.ec2_fail_fast.create_instances(**conf)
                 created_nodes_dict = {n.id: n for n in created}
 
                 # todo: timed?
                 # todo: handle plurality?
                 with cli_logger.group(
-                        "Launched {} nodes",
-                        count,
-                        _tags=dict(subnet_id=subnet_id)):
+                        "Launched {} nodes", count, _tags=cli_logger_tags):
                     for instance in created:
                         # NOTE(maximsmol): This is needed for mocking
                         # boto3 for tests. This is likely a bug in moto
