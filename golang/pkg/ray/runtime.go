@@ -8,6 +8,7 @@ package ray
 import "C"
 import (
     "fmt"
+    "reflect"
     "strconv"
     "strings"
 
@@ -59,6 +60,58 @@ func Init(address, _redis_password string) {
         C.CString(gcsNodeInfo.GetNodeManagerAddress()),
         C.CString("GOLANG"), C.int(rayConfig.jobId), C.CString(addressInfo[0]), C.int(addressPort),
         C.CString(_redis_password))
+}
+
+func Actor(t reflect.Type) *ActorCreator {
+    return &ActorCreator{
+        targetType: t,
+    }
+}
+
+type ActorCreator struct {
+    targetType reflect.Type
+}
+
+func (ac *ActorCreator) Remote() *ActorHandle {
+    ac.targetType.MethodByName()
+    value := reflect.New(ac.targetType)
+    return &ActorHandle{
+        v: value,
+    }
+}
+
+type ActorHandle struct {
+    v reflect.Value
+}
+
+// 参数填这里
+func (ah *ActorHandle) Task(invokeMethod reflect.Method) *ActorTaskCaller {
+    return &ActorTaskCaller{
+        invokeMethod: invokeMethod,
+        params:       []reflect.Value{},
+    }
+}
+
+type ActorTaskCaller struct {
+    invokeMethod reflect.Method
+    params       []reflect.Value
+}
+
+// 发出调用
+func (or *ActorTaskCaller) Remote() *ObjectRef {
+}
+
+type ObjectRef struct {
+    ids   []ObjectId
+    types []reflect.Type
+}
+
+type ObjectId struct {
+    id []byte
+}
+
+func (or *ObjectRef) Get() {
+
 }
 
 //export SayHello

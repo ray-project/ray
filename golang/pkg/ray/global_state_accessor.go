@@ -1,4 +1,4 @@
-package globalstateaccessor
+package ray
 
 /*
    #cgo CFLAGS: -I/root/ray/src/ray/core_worker/lib/golang
