@@ -73,6 +73,29 @@ def test_execute(ray_start_2_cpus):
     assert all(o == 1 for o in outputs)
 
 
+def test_execute_args(ray_start_2_cpus):
+    wg = WorkerGroup(num_workers=2)
+    outputs = wg.execute(lambda x: x, 1)
+    assert len(outputs) == 2
+    assert all(o == 1 for o in outputs)
+
+
+def test_execute_single(ray_start_2_cpus):
+    wg = WorkerGroup(num_workers=2)
+
+    def f():
+        import os
+        os.environ["TEST"] = "1"
+
+    wg.execute_single(1, f)
+
+    def check():
+        import os
+        return os.environ.get("TEST", "0")
+
+    assert wg.execute(check) == ["0", "1"]
+
+
 def test_bad_resources(ray_start_2_cpus):
     with pytest.raises(ValueError):
         WorkerGroup(num_workers=-1)
@@ -82,12 +105,6 @@ def test_bad_resources(ray_start_2_cpus):
 
     with pytest.raises(ValueError):
         WorkerGroup(num_gpus_per_worker=-1)
-
-
-def test_bad_func(ray_start_2_cpus):
-    wg = WorkerGroup(num_workers=2)
-    with pytest.raises(ValueError):
-        wg.execute(lambda x: x)
 
 
 if __name__ == "__main__":

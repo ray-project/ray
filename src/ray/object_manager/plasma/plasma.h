@@ -69,16 +69,6 @@ enum class ObjectStatus : int {
 struct PlasmaStoreInfo {
   /// Objects that are in the Plasma store.
   ObjectTable objects;
-  /// Boolean flag indicating whether to start the object store with hugepages
-  /// support enabled. Huge pages are substantially larger than normal memory
-  /// pages (e.g. 2MB or 1GB instead of 4KB) and using them can reduce
-  /// bookkeeping overhead from the OS.
-  bool hugepages_enabled;
-  /// A (platform-dependent) directory where to create the memory-backed file.
-  std::string directory;
-  /// A (platform-dependent) directory where to create fallback files. This
-  /// should NOT be in /dev/shm.
-  std::string fallback_directory;
 };
 
 /// Get an entry from the object table and return NULL if the object_id
@@ -90,8 +80,4 @@ struct PlasmaStoreInfo {
 ///         is not present.
 ObjectTableEntry *GetObjectTableEntry(PlasmaStoreInfo *store_info,
                                       const ObjectID &object_id);
-
-/// Globally accessible reference to plasma store configuration.
-extern const PlasmaStoreInfo *plasma_config;
-
 }  // namespace plasma
