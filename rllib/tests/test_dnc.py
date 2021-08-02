@@ -1,12 +1,14 @@
+import gym
 import unittest
-import torch
 
 import ray
-import gym
 from ray import tune
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.examples.models.neural_computer import DNCMemory
+from ray.rllib.utils.framework import try_import_torch
+
+torch, _ = try_import_torch()
 
 
 class TestDNC(unittest.TestCase):

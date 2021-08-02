@@ -1,19 +1,28 @@
 import collections
-from typing import Iterator, List, Union, Tuple, Any, TypeVar, TYPE_CHECKING
+import random
+from typing import Iterator, List, Union, Tuple, Any, TypeVar, Optional, \
+    TYPE_CHECKING
+
+import numpy as np
 
 try:
     import pyarrow
 except ImportError:
     pyarrow = None
 
-from ray.experimental.data.block import Block, BlockAccessor
-from ray.experimental.data.impl.block_builder import BlockBuilder, \
-    SimpleBlockBuilder
+from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
+from ray.experimental.data.impl.block_builder import BlockBuilder
+from ray.experimental.data.impl.simple_block import SimpleBlockBuilder
+from ray.experimental.data.impl.tensor_block import TensorBlockBuilder
 
 if TYPE_CHECKING:
     import pandas
 
 T = TypeVar("T")
+
+# An Arrow block can be sorted by a list of (column, asc/desc) pairs,
+# e.g. [("column1", "ascending"), ("column2", "descending")]
+SortKeyT = List[Tuple[str, str]]
 
 
 class ArrowRow:
@@ -59,6 +68,8 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
                     self._builder = ArrowBlockBuilder()
                 except (TypeError, pyarrow.lib.ArrowInvalid):
                     self._builder = SimpleBlockBuilder()
+            elif isinstance(item, np.ndarray):
+                self._builder = TensorBlockBuilder()
             else:
                 self._builder = SimpleBlockBuilder()
         self._builder.add(item)
@@ -143,8 +154,7 @@ class ArrowBlockAccessor(BlockAccessor):
 
         return Iter()
 
-    def slice(self, start: int, end: int,
-              copy: bool) -> "ArrowBlockAccessor[T]":
+    def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
         if copy:
             # TODO(ekl) there must be a cleaner way to force a copy of a table.
@@ -153,13 +163,17 @@ class ArrowBlockAccessor(BlockAccessor):
         else:
             return view
 
+    def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
+        random = np.random.RandomState(random_seed)
+        return self._table.take(random.permutation(self.num_rows()))
+
     def schema(self) -> "pyarrow.lib.Schema":
         return self._table.schema
 
     def to_pandas(self) -> "pandas.DataFrame":
         return self._table.to_pandas()
 
-    def to_arrow_table(self) -> "pyarrow.Table":
+    def to_arrow(self) -> "pyarrow.Table":
         return self._table
 
     def num_rows(self) -> int:
@@ -171,3 +185,52 @@ class ArrowBlockAccessor(BlockAccessor):
     @staticmethod
     def builder() -> ArrowBlockBuilder[T]:
         return ArrowBlockBuilder()
+
+    def sample(self, n_samples: int, key: SortKeyT) -> List[T]:
+        if key is None or callable(key):
+            raise NotImplementedError(
+                "Arrow sort key must be a column name, was: {}".format(key))
+        k = min(n_samples, self._table.num_rows)
+        indices = random.sample(range(self._table.num_rows), k)
+        return self._table.select([k[0] for k in key]).take(indices)
+
+    def sort_and_partition(self, boundaries: List[T], key: SortKeyT,
+                           descending: bool) -> List["Block[T]"]:
+        if len(key) > 1:
+            raise NotImplementedError(
+                "sorting by multiple columns is not supported yet")
+
+        import pyarrow.compute as pac
+
+        indices = pac.sort_indices(self._table, sort_keys=key)
+        table = self._table.take(indices)
+        if len(boundaries) == 0:
+            return [table]
+
+        # For each boundary value, count the number of items that are less
+        # than it. Since the block is sorted, these counts partition the items
+        # such that boundaries[i] <= x < boundaries[i + 1] for each x in
+        # partition[i]. If `descending` is true, `boundaries` would also be
+        # in descending order and we only need to count the number of items
+        # *greater than* the boundary value instead.
+        col, _ = key[0]
+        comp_fn = pac.greater if descending else pac.less
+        boundary_indices = [
+            pac.sum(comp_fn(table[col], b)).as_py() for b in boundaries
+        ]
+        ret = []
+        prev_i = 0
+        for i in boundary_indices:
+            ret.append(table.slice(prev_i, i - prev_i))
+            prev_i = i
+        ret.append(table.slice(prev_i))
+        return ret
+
+    @staticmethod
+    def merge_sorted_blocks(
+            blocks: List[Block[T]], key: SortKeyT,
+            _descending: bool) -> Tuple[Block[T], BlockMetadata]:
+        ret = pyarrow.concat_tables(blocks)
+        indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
+        ret = ret.take(indices)
+        return ret, ArrowBlockAccessor(ret).get_metadata(None)

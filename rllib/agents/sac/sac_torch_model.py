@@ -176,7 +176,7 @@ class SACTorchModel(TorchModelV2, nn.Module):
                 self.concat_obs_and_actions = True
             else:
                 if isinstance(orig_space, gym.spaces.Tuple):
-                    spaces = orig_space.spaces
+                    spaces = list(orig_space.spaces)
                 elif isinstance(orig_space, gym.spaces.Dict):
                     spaces = list(orig_space.spaces.values())
                 else:
