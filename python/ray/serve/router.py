@@ -86,7 +86,7 @@ class ReplicaSet:
             description=(
                 "The current number of queries to this deployment waiting"
                 " to be assigned to a replica."),
-            tag_keys=("backend", "endpoint"))
+            tag_keys=("deployment", "endpoint"))
         self.num_queued_queries_gauge.set_default_tags({
             "deployment": self.backend_tag
         })
