@@ -285,8 +285,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      instrumented_io_context &io_service, std::string call_name,
-      int64_t max_active_rpcs = -1)
+      instrumented_io_context &io_service, std::string call_name, int64_t max_active_rpcs)
       : service_(service),
         request_call_function_(request_call_function),
         service_handler_(service_handler),
