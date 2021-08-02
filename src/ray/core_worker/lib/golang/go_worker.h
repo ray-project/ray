@@ -21,6 +21,10 @@ int go_worker_GetNodeToConnectForDriver(void *p, char *node_ip_address, char **r
 
 int go_worker_GetNextJobID(void *p);
 
+int go_worker_CreateActor(char *type_name, char **result);
+
+int go_worker_SubmitActorTask(char *actor_id, char *method_name);
+
 void SayHello(char *s);
 
 #ifdef __cplusplus

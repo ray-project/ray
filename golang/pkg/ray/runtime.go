@@ -11,10 +11,10 @@ import (
     "reflect"
     "strconv"
     "strings"
+    "unsafe"
 
     "github.com/golang/protobuf/proto"
     ray_rpc "github.com/ray-project/ray-go-worker/pkg/generated"
-    "github.com/ray-project/ray-go-worker/pkg/globalstateaccessor"
     "github.com/ray-project/ray-go-worker/pkg/util"
 )
 
@@ -23,7 +23,7 @@ const sessionDir = "session_dir"
 func Init(address, _redis_password string) {
     util.Logger.Debug("Initializing runtime with config")
     rayConfig := NewRayConfig()
-    gsa, err := globalstateaccessor.NewGlobalStateAccessor(address, _redis_password)
+    gsa, err := NewGlobalStateAccessor(address, _redis_password)
     if err != nil {
         panic(err)
     }
@@ -64,41 +64,61 @@ func Init(address, _redis_password string) {
 
 func Actor(t reflect.Type) *ActorCreator {
     return &ActorCreator{
-        targetType: t,
+        actorType: t,
     }
 }
 
 type ActorCreator struct {
-    targetType reflect.Type
+    actorType reflect.Type
 }
 
+// 创建actor
 func (ac *ActorCreator) Remote() *ActorHandle {
-    ac.targetType.MethodByName()
-    value := reflect.New(ac.targetType)
-    return &ActorHandle{
-        v: value,
+    typeName := ac.actorType.Name()
+    var res *C.char
+    dataLen := C.go_worker_CreateActor(C.CString(typeName), &res)
+    if dataLen > 0 {
+        defer C.free(unsafe.Pointer(res))
+        return &ActorHandle{
+            actorId:   C.GoBytes(unsafe.Pointer(res), dataLen),
+            language:  ray_rpc.Language_GOLANG,
+            actorType: ac.actorType,
+        }
     }
+    return nil
 }
 
 type ActorHandle struct {
-    v reflect.Value
+    actorId   []byte
+    language  ray_rpc.Language
+    actorType reflect.Type
 }
 
 // 参数填这里
 func (ah *ActorHandle) Task(invokeMethod reflect.Method) *ActorTaskCaller {
     return &ActorTaskCaller{
+        actorHandle:  ah,
         invokeMethod: invokeMethod,
         params:       []reflect.Value{},
     }
 }
 
 type ActorTaskCaller struct {
+    actorHandle  *ActorHandle
     invokeMethod reflect.Method
     params       []reflect.Value
 }
 
 // 发出调用
 func (or *ActorTaskCaller) Remote() *ObjectRef {
+    var res **C.char
+    dataLen := C.go_worker_SubmitActorTask(C.CString(or.invokeMethod.Name), &res)
+    if dataLen > 0 {
+        defer C.free(unsafe.Pointer(res))
+        return &ObjectRef{
+        }
+    }
+    return nil
 }
 
 type ObjectRef struct {

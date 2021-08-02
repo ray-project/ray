@@ -1,0 +1,5 @@
+package ray
+
+func CreateActor() {
+
+}
