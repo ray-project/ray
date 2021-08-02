@@ -104,7 +104,7 @@ class SampleBatch(dict):
             # TODO: Drop support for lists as values.
             # Convert lists of int|float into numpy arrays make sure all data
             # has same length.
-            if isinstance(v, list) and isinstance(v[0], (int, float)):
+            if isinstance(v, list):
                 self[k] = np.array(v)
 
             # Try to infer the "length" of the SampleBatch by finding the first
