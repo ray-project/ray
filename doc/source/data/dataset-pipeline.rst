@@ -29,7 +29,7 @@ A DatasetPipeline can be constructed in two ways: either by pipelining the execu
     # Create a dataset and then create a pipeline from it.
     base = ray.data.range(1000000)
     print(base)
-    # -> Dataset(num_rows=1000000, num_blocks=200, schema=<class 'int'>)
+    # -> Dataset(num_blocks=200, num_rows=1000000, schema=<class 'int'>)
     pipe = base.pipeline(parallelism=10)
     print(pipe)
     # -> DatasetPipeline(length=20, num_stages=1)

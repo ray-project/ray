@@ -7,11 +7,13 @@
 #include <unistd.h>
 #endif
 
+#include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 
 namespace plasma {
-
+namespace internal {
 void SetMallocGranularity(int value);
+}
 
 PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_memory,
                                      bool hugepages_enabled, std::string plasma_directory,
@@ -25,8 +27,6 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
   if (system_memory == -1) {
     RAY_LOG(FATAL) << "please specify the amount of system memory with -m switch";
   }
-  // Set system memory capacity
-  PlasmaAllocator::GetInstance().SetFootprintLimit(static_cast<size_t>(system_memory));
   RAY_LOG(INFO) << "Allowing the Plasma store to use up to "
                 << static_cast<double>(system_memory) / 1000000000 << "GB of memory.";
   if (hugepages_enabled && plasma_directory.empty()) {
@@ -70,7 +70,7 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
       system_memory = shm_mem_avail;
     }
   } else {
-    SetMallocGranularity(1024 * 1024 * 1024);  // 1 GB
+    internal::SetMallocGranularity(1024 * 1024 * 1024);  // 1 GB
   }
 #endif
   system_memory_ = system_memory;
@@ -86,28 +86,14 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
   RAY_LOG(DEBUG) << "starting server listening on " << socket_name_;
   {
     absl::MutexLock lock(&store_runner_mutex_);
-    store_.reset(new PlasmaStore(
-        main_service_, plasma_directory_, fallback_directory_, hugepages_enabled_,
-        socket_name_, RayConfig::instance().object_store_full_delay_ms(),
-        RayConfig::instance().object_spilling_threshold(), spill_objects_callback,
-        object_store_full_callback, add_object_callback, delete_object_callback));
-    plasma_config = store_->GetPlasmaStoreInfo();
-
-    // We are using a single memory-mapped file by mallocing and freeing a single
-    // large amount of space up front. According to the documentation,
-    // dlmalloc might need up to 128*sizeof(size_t) bytes for internal
-    // bookkeeping.
-    // TODO(scv119): this leaks details of PlasmaAlloctor,
-    // should be part of PlasmaAllocator contruction.
-    auto allocation = PlasmaAllocator::GetInstance().Allocate(
-        PlasmaAllocator::GetInstance().GetFootprintLimit() - 256 * sizeof(size_t));
-    RAY_CHECK(allocation.has_value())
-        << "Plasma store initial allocation failed. Probably not enough space in "
-        << plasma_directory_;
-    // This will unmap the file, but the next one created will be as large
-    // as this one (this is an implementation detail of dlmalloc).
-    PlasmaAllocator::GetInstance().Free(allocation.value());
-
+    allocator_ = std::make_unique<PlasmaAllocator>(
+        plasma_directory_, fallback_directory_, hugepages_enabled_, system_memory_,
+        RayConfig::instance().plasma_unlimited());
+    store_.reset(new PlasmaStore(main_service_, *allocator_, socket_name_,
+                                 RayConfig::instance().object_store_full_delay_ms(),
+                                 RayConfig::instance().object_spilling_threshold(),
+                                 spill_objects_callback, object_store_full_callback,
+                                 add_object_callback, delete_object_callback));
     store_->Start();
   }
   main_service_.run();
@@ -135,6 +121,11 @@ bool PlasmaStoreRunner::IsPlasmaObjectSpillable(const ObjectID &object_id) {
 }
 
 int64_t PlasmaStoreRunner::GetConsumedBytes() { return store_->GetConsumedBytes(); }
+
+int64_t PlasmaStoreRunner::GetFallbackAllocated() const {
+  absl::MutexLock lock(&store_runner_mutex_);
+  return allocator_ ? allocator_->FallbackAllocated() : 0;
+}
 
 std::unique_ptr<PlasmaStoreRunner> plasma_store_runner;
 
