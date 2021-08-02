@@ -698,11 +698,6 @@ def init(
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
         runtime_env (dict): The runtime environment to use for this job.
-        internal_config (dict): Dictionary mapping names of a unstable
-            parameters to values, e.g. {"redis_password": "1234"}. This is
-            only used for initializing a local client (ray.init(local://...)).
-            Values in this dictionary will be used to configure the local
-            cluster. Parameter names should exclude the underscore prefix.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -781,11 +776,6 @@ def init(
         # ray client. Raise an error, since most likely a typo in keyword
         unknown = ", ".join(kwargs)
         raise RuntimeError(f"Unknown keyword argument(s): {unknown}")
-
-    if internal_config is not None:
-        # Should only be used with local client
-        raise RuntimeError("`internal_config` should only be used with "
-                           "ray.init(local://...)")
 
     # Try to increase the file descriptor limit, which is too low by
     # default for Ray: https://github.com/ray-project/ray/issues/11239
