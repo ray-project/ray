@@ -89,7 +89,7 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   return scheduler;
 }
 
-ray::core::ray::core::Task CreateTask(
+ray::core::Task CreateTask(
     const std::unordered_map<std::string, double> &required_resources, int num_args = 0,
     std::vector<ObjectID> args = {}, std::string serialized_runtime_env = "{}") {
   TaskSpecBuilder spec_builder;
@@ -115,7 +115,7 @@ ray::core::ray::core::Task CreateTask(
 
   rpc::TaskExecutionSpec execution_spec_message;
   execution_spec_message.set_num_forwards(1);
-  return ray::core::ray::core::Task(spec_builder.Build(),
+  return ray::core::Task(spec_builder.Build(),
                                     TaskExecutionSpecification(execution_spec_message));
 }
 
@@ -1008,7 +1008,7 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
   ASSERT_EQ(pool_.workers.size(), 0);
 
   // task1: running. Progress is made, and there's no deadlock.
-  ray::ray::core::Task exemplar;
+  ray::core::Task exemplar;
   bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
