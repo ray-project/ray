@@ -1,5 +1,10 @@
 # Default values for Ray.
 
+## Reference to one or more secrets to be used when pulling images
+## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+imagePullSecrets: []
+# - name: "image-pull-secret"
+
 # RayCluster settings:
 
 # image is Ray image to use for the head and workers of this Ray cluster.
