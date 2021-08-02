@@ -73,7 +73,7 @@ class ParquetDatasource(Datasource[ArrowRow]):
         for pieces, file_sizes in zip(
                 np.array_split(pieces, parallelism),
                 np.array_split(file_sizes, parallelism)):
-            if not pieces:
+            if len(pieces) == 0:
                 continue
             metadata = _get_metadata(pieces, file_sizes, schema)
             pieces = [cloudpickle.dumps(p) for p in pieces]
