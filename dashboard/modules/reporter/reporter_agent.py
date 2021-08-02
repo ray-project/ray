@@ -7,6 +7,7 @@ import socket
 import subprocess
 import sys
 import traceback
+import warnings
 
 import aioredis
 
@@ -34,10 +35,10 @@ try:
 except (ModuleNotFoundError, ImportError):
     gpustat = None
     if log_once("gpustat_import_warning"):
-        logger.warning("`gpustat` package is not installed. GPU monitoring is "
-                       "not available. To have full functionality of the "
-                       "dashboard please install `pip install ray["
-                       "default]`.)")
+        warnings.warn("`gpustat` package is not installed. GPU monitoring is "
+                      "not available. To have full functionality of the "
+                      "dashboard please install `pip install ray["
+                      "default]`.)")
 
 
 def recursive_asdict(o):
