@@ -52,5 +52,5 @@ setup_commands:
     # Install HuggingFace
     - git clone https://github.com/huggingface/transformers || true
     - cd transformers &&
-      pip install . &&
+      pip install -U . &&
       pip install -r ./examples/pytorch/text-classification/requirements.txt
