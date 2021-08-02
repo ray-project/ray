@@ -38,7 +38,7 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 # An output type of iter_batches() determined by the batch_format parameter.
-BatchType = Union["pandas.DataFrame", "pyarrow.Table", list]
+BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,8 @@ class Dataset(Generic[T]):
 
     Datasets are implemented as a list of ``ObjectRef[Block]``. The block
     also determines the unit of parallelism. The default block type is the
-    ``pyarrow.Table``. Arrow-incompatible objects are held in ``list`` blocks.
+    ``pyarrow.Table``. Tensor objects are held in ``np.ndarray`` blocks,
+    and other Arrow-incompatible objects are held in ``list`` blocks.
 
     Since Datasets are just lists of Ray object refs, they can be passed
     between Ray tasks and actors just like any other object. Datasets support
@@ -130,7 +131,7 @@ class Dataset(Generic[T]):
                     *,
                     batch_size: int = None,
                     compute: Optional[str] = None,
-                    batch_format: str = "pandas",
+                    batch_format: str = "native",
                     **ray_remote_args) -> "Dataset[Any]":
         """Apply the given function to batches of records of this dataset.
 
@@ -164,8 +165,9 @@ class Dataset(Generic[T]):
                 to use entire blocks as batches.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling Ray actor pool.
-            batch_format: Specify "pandas" to select ``pandas.DataFrame`` as
-                the batch format, or "pyarrow" to select ``pyarrow.Table``.
+            batch_format: Specify "native" to use the native block format,
+                "pandas" to select ``pandas.DataFrame`` as the batch format,
+                or "pyarrow" to select ``pyarrow.Table/Tensor``.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -189,27 +191,31 @@ class Dataset(Generic[T]):
                 # Build a block for each batch.
                 end = min(total_rows, start + max_batch_size)
                 view = block.slice(start, end, copy=False)
-                if batch_format == "pandas":
+                if batch_format == "native":
+                    pass
+                elif batch_format == "pandas":
                     view = BlockAccessor.for_block(view).to_pandas()
                 elif batch_format == "pyarrow":
-                    view = BlockAccessor.for_block(view).to_arrow_table()
+                    view = BlockAccessor.for_block(view).to_arrow()
                 else:
                     raise ValueError(
-                        f"The given batch format: {batch_format} "
-                        f"is invalid. Supported batch type: {BatchType}")
+                        "The batch format must be one of 'native', 'pandas', "
+                        "or 'pyarrow', got: {}".format(batch_format))
 
                 applied = fn(view)
-                if isinstance(applied, list):
-                    applied = applied
-                elif isinstance(applied, pa.Table):
+                if (isinstance(applied, list) or isinstance(applied, pa.Table)
+                        or isinstance(applied, np.ndarray)):
                     applied = applied
                 elif isinstance(applied, pd.core.frame.DataFrame):
                     applied = pa.Table.from_pandas(applied)
+                elif isinstance(applied, pa.Tensor):
+                    applied = applied.to_numpy()
                 else:
-                    raise ValueError("The map batch UDF returns a type "
+                    raise ValueError("The map batches UDF returned a type "
                                      f"{type(applied)}, which is not allowed. "
                                      "The return type must be either list, "
-                                     "pandas.DataFrame, or pyarrow.Table")
+                                     "pandas.DataFrame, np.ndarray, "
+                                     "pyarrow.Tensor, or pyarrow.Table")
                 builder.add_block(applied)
 
             return builder.build()
@@ -764,7 +770,7 @@ class Dataset(Generic[T]):
             block = BlockAccessor.for_block(block)
             logger.debug(
                 f"Writing {block.num_rows()} records to {write_path}.")
-            table = block.to_arrow_table()
+            table = block.to_arrow()
             with pq.ParquetWriter(write_path, table.schema) as writer:
                 writer.write_table(table)
 
@@ -777,7 +783,11 @@ class Dataset(Generic[T]):
         # Block until writing is done.
         ray.get(refs)
 
-    def write_json(self, path: str) -> None:
+    def write_json(
+            self,
+            path: str,
+            *,
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
@@ -794,7 +804,11 @@ class Dataset(Generic[T]):
         Args:
             path: The path to the destination root directory, where json
                 files will be written to.
+            filesystem: The filesystem implementation to write to.
         """
+
+        if filesystem:
+            raise NotImplementedError
 
         @ray.remote
         def json_write(write_path: str, block: Block):
@@ -812,7 +826,11 @@ class Dataset(Generic[T]):
         # Block until writing is done.
         ray.get(refs)
 
-    def write_csv(self, path: str) -> None:
+    def write_csv(
+            self,
+            path: str,
+            *,
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
@@ -829,7 +847,11 @@ class Dataset(Generic[T]):
         Args:
             path: The path to the destination root directory, where csv
                 files will be written to.
+            filesystem: The filesystem implementation to write to.
         """
+
+        if filesystem:
+            raise NotImplementedError
 
         @ray.remote
         def csv_write(write_path: str, block: Block):
@@ -842,6 +864,46 @@ class Dataset(Generic[T]):
         refs = [
             csv_write.remote(
                 os.path.join(path, f"{self._uuid}_{block_idx:06}.csv"), block)
+            for block_idx, block in enumerate(self._blocks)
+        ]
+
+        # Block until writing is done.
+        ray.get(refs)
+
+    def write_numpy(
+            self,
+            path: str,
+            *,
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
+        """Write the dataset to npy files.
+
+        This is only supported for datasets of Tensor records.
+        To control the number of files, use ``.repartition()``.
+
+        The format of the output files will be {self._uuid}_{block_idx}.npy,
+        where ``uuid`` is an unique id for the dataset.
+
+        Examples:
+            >>> ds.write_numpy("s3://bucket/path")
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            path: The path to the destination root directory, where npy
+                files will be written to.
+            filesystem: The filesystem implementation to write to.
+        """
+
+        if filesystem:
+            raise NotImplementedError
+
+        @ray.remote
+        def numpy_write(write_path: str, block: Block):
+            np.save(open(write_path, "wb"), block)
+
+        refs = [
+            numpy_write.remote(
+                os.path.join(path, f"{self._uuid}_{block_idx:06}.npy"), block)
             for block_idx, block in enumerate(self._blocks)
         ]
 
@@ -899,7 +961,7 @@ class Dataset(Generic[T]):
             A local iterator over the entire dataset.
         """
         for batch in self.iter_batches(
-                prefetch_blocks=prefetch_blocks, batch_format="_blocks"):
+                prefetch_blocks=prefetch_blocks, batch_format="native"):
             batch = BlockAccessor.for_block(batch)
             for row in batch.iter_rows():
                 yield row
@@ -908,13 +970,13 @@ class Dataset(Generic[T]):
                      *,
                      prefetch_blocks: int = 0,
                      batch_size: int = None,
-                     batch_format: str = "pandas",
+                     batch_format: str = "native",
                      drop_last: bool = False) -> Iterator[BatchType]:
         """Return a local batched iterator over the dataset.
 
         Examples:
-            >>> for pandas_df in ray.data.range(1000000).iter_batches():
-            ...     print(pandas_df)
+            >>> for batch in ray.data.range(1000000).iter_batches():
+            ...     print(batch)
 
         Time complexity: O(1)
 
@@ -923,8 +985,9 @@ class Dataset(Generic[T]):
                 current block during the scan.
             batch_size: Record batch size, or None to let the system pick.
             batch_format: The format in which to return each batch.
-                Specify "pandas" to select ``pandas.DataFrame`` or "pyarrow" to
-                select ``pyarrow.Table``. Default is "pandas".
+                Specify "native" to use the current block format, "pandas" to
+                select ``pandas.DataFrame`` or "pyarrow" to select
+                ``pyarrow.Table/Tensor``. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
 
         Returns:
@@ -952,14 +1015,14 @@ class Dataset(Generic[T]):
             return zip(*iters)
 
         def format_batch(batch: Block, format: str) -> BatchType:
-            if batch_format == "pandas":
+            if batch_format == "native":
+                return batch
+            elif batch_format == "pandas":
                 batch = BlockAccessor.for_block(batch)
                 return batch.to_pandas()
             elif batch_format == "pyarrow":
                 batch = BlockAccessor.for_block(batch)
-                return batch.to_arrow_table()
-            elif batch_format == "_blocks":
-                return batch
+                return batch.to_arrow()
             else:
                 raise ValueError(
                     f"The given batch format: {batch_format} "
@@ -1043,6 +1106,7 @@ class Dataset(Generic[T]):
         def make_generator():
             for batch in self.iter_batches(
                     batch_size=batch_size,
+                    batch_format="pandas",
                     prefetch_blocks=prefetch_blocks,
                     drop_last=drop_last):
                 label_vals = batch.pop(label_column).values
@@ -1242,7 +1306,7 @@ class Dataset(Generic[T]):
         @ray.remote
         def block_to_df(block: Block):
             block = BlockAccessor.for_block(block)
-            return block.to_arrow_table()
+            return block.to_arrow()
 
         return [block_to_df.remote(block) for block in self._blocks]
 
@@ -1386,7 +1450,12 @@ class Dataset(Generic[T]):
         schema = self.schema()
         if schema is None:
             schema_str = "Unknown schema"
-        elif schema and not isinstance(schema, type):
+        elif isinstance(schema, dict):
+            schema_str = "<Tensor: shape={}, dtype={}>".format(
+                schema["shape"], schema["dtype"])
+        elif isinstance(schema, type):
+            schema_str = str(schema)
+        else:
             schema_str = []
             for n, t in zip(schema.names, schema.types):
                 if hasattr(t, "__name__"):
@@ -1394,13 +1463,11 @@ class Dataset(Generic[T]):
                 schema_str.append("{}: {}".format(n, t))
             schema_str = ", ".join(schema_str)
             schema_str = "{" + schema_str + "}"
-        else:
-            schema_str = str(schema)
         count = self._meta_count()
         if count is None:
             count = "?"
-        return "Dataset(num_rows={}, num_blocks={}, schema={})".format(
-            count, len(self._blocks), schema_str)
+        return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
+            len(self._blocks), count, schema_str)
 
     def __str__(self) -> str:
         return repr(self)

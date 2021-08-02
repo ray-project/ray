@@ -56,27 +56,41 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             for read_path in read_paths:
                 with fs.open_input_stream(read_path) as f:
                     data = read_file(f, read_path, **reader_args)
-                    if isinstance(data, pa.Table):
+                    if isinstance(data, pa.Table) or isinstance(
+                            data, np.ndarray):
                         builder.add_block(data)
                     else:
                         builder.add(data)
             return builder.build()
 
-        read_tasks = [
-            ReadTask(
+        read_tasks = []
+        for read_paths, file_sizes in zip(
+                np.array_split(paths, parallelism),
+                np.array_split(file_sizes, parallelism)):
+            if len(read_paths) <= 0:
+                continue
+
+            if self._rows_per_file() is None:
+                num_rows = None
+            else:
+                num_rows = len(read_paths) * self._rows_per_file()
+            read_task = ReadTask(
                 lambda read_paths=read_paths: read_files(
                     read_paths, filesystem),
                 BlockMetadata(
-                    num_rows=None,
+                    num_rows=num_rows,
                     size_bytes=sum(file_sizes),
                     schema=schema,
-                    input_files=read_paths)) for read_paths, file_sizes in zip(
-                        np.array_split(paths, parallelism),
-                        np.array_split(file_sizes, parallelism))
-            if len(read_paths) > 0
-        ]
+                    input_files=read_paths)
+            )
+            read_tasks.append(read_task)
 
         return read_tasks
+
+    def _rows_per_file(self):
+        """Returns the number of rows per file, or None if unknown.
+        """
+        return None
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         """Reads a single file, passing all kwargs to the reader.
