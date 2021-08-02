@@ -1773,6 +1773,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitFor(lambda: len(runner.calls) > 0)
 
     def testScaleDownMaxWorkers(self):
+        """Tests terminating nodes due to max_nodes per type."""
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["available_node_types"]["m4.large"]["min_workers"] = 3
         config["available_node_types"]["m4.large"]["max_workers"] = 3
@@ -1807,10 +1808,12 @@ class AutoscalingTest(unittest.TestCase):
                 TAG_RAY_NODE_KIND: NODE_KIND_WORKER
             })) == 11
 
+        # Terminate some nodes
         config["available_node_types"]["m4.large"]["min_workers"] = 2  # 3
         config["available_node_types"]["m4.large"]["max_workers"] = 2
         config["available_node_types"]["p2.8xlarge"]["min_workers"] = 0  # 2
         config["available_node_types"]["p2.8xlarge"]["max_workers"] = 0
+        # And spawn one.
         config["available_node_types"]["p2.xlarge"]["min_workers"] = 6  # 5
         config["available_node_types"]["p2.xlarge"]["max_workers"] = 6
         self.write_config(config)
