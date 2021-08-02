@@ -55,4 +55,4 @@ zoopt==0.4.1
 # `python/ray/util/sgd/v2/examples/transformers/transformers_example.py`
 accelerate==0.3.0
 datasets==1.11.0
-sentencepiece != 0.1.92
+sentencepiece==0.1.96
