@@ -185,6 +185,10 @@ def setup_worker(input_args):
     # update env vars
     if runtime_env.get("env_vars"):
         env_vars = runtime_env["env_vars"]
+        # Java worker don't parse the command parameters, it reads option
+        # from env.
+        if worker_executable == "java":
+            env_vars["serialized-runtime-env"] = f"'{args.serialized_runtime_env}'"
         os.environ.update(env_vars)
     os.execvp("bash", ["bash", "-c", command_str])
 
