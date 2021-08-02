@@ -183,6 +183,21 @@ def test_npio(ray_start_regular_shared, tmp_path):
                        "array([7.]), array([8.]), array([9.])]"), ds.take()
 
 
+def test_read_np_savefile(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_np_dir")
+    os.mkdir(path)
+    np.save(
+        os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
+    ds = ray.data.read_numpy(path)
+    assert str(ds) == ("Dataset(num_blocks=1, num_rows=?, "
+                       "schema=<Tensor: shape=(None, 1), dtype=int64>)")
+
+    assert str(
+        ds.take()) == ("[array([0]), array([1]), array([2]), "
+                       "array([3]), array([4]), array([5]), array([6]), "
+                       "array([7]), array([8]), array([9])]"), ds.take()
+
+
 def test_read_text(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_text")
     os.mkdir(path)
