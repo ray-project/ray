@@ -51,8 +51,7 @@ struct GetRequest;
 class PlasmaStore {
  public:
   // TODO: PascalCase PlasmaStore methods.
-  PlasmaStore(instrumented_io_context &main_service, std::string directory,
-              std::string fallback_directory, bool hugepages_enabled,
+  PlasmaStore(instrumented_io_context &main_service, IAllocator &allocator,
               const std::string &socket_name, uint32_t delay_on_oom_ms,
               float object_spilling_threshold,
               ray::SpillObjectsCallback spill_objects_callback,
@@ -67,9 +66,6 @@ class PlasmaStore {
 
   /// Stop this store.
   void Stop();
-
-  /// Get a const pointer to the internal PlasmaStoreInfo object.
-  const PlasmaStoreInfo *GetPlasmaStoreInfo();
 
   /// Create a new object. The client must do a call to release_object to tell
   /// the store when it is done with the object.

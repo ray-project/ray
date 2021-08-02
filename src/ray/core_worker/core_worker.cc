@@ -2260,7 +2260,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
           new core::ActorHandle(task_spec.GetSerializedActorHandle()));
       // Register the handle to the current actor itself.
       actor_manager_->RegisterActorHandle(std::move(self_actor_handle), ObjectID::Nil(),
-                                          GetCallerId(), CurrentCallSite(), rpc_address_);
+                                          GetCallerId(), CurrentCallSite(), rpc_address_,
+                                          /*is_self=*/true);
     }
     RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
