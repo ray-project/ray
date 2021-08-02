@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 from typing import Optional
+import warnings
 
 # Ray modules
 import ray
@@ -1195,7 +1196,7 @@ def start_dashboard(require_dashboard,
                     warning_message += " To disable this message, set " \
                                        "RAY_DISABLE_IMPORT_WARNING " \
                                        "env var to '1'."
-                    logger.info(warning_message)
+                    warnings.warn(warning_message)
                 return None, None
 
         # Start the dashboard process.
