@@ -180,8 +180,8 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
 
     def make_wrapper(fn):
         # Static-graph mode: Create placeholders and make a session call each
-        # time the wrapped function is called. Return this session call's
-        # outputs.
+        # time the wrapped function is called. Returns the output of this
+        # session call.
         if session_or_none is not None:
             args_placeholders = []
             kwargs_placeholders = {}
@@ -195,40 +195,65 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                     else:
                         args_flat.append(a)
                 args = args_flat
+
+                # We have not built any placeholders yet: Do this once here, then
+                # reuse the same placeholders each time we call this function
+                # again.
                 if symbolic_out[0] is None:
                     with session_or_none.graph.as_default():
-                        for i, v in enumerate(args):
+
+                        def _create_placeholders(path, value):
                             if dynamic_shape:
-                                if len(v.shape) > 0:
-                                    shape = (None, ) + v.shape[1:]
+                                if len(value.shape) > 0:
+                                    shape = (None, ) + value.shape[1:]
                                 else:
                                     shape = ()
                             else:
-                                shape = v.shape
-                            args_placeholders.append(
-                                tf1.placeholder(
-                                    dtype=v.dtype,
-                                    shape=shape,
-                                    name="arg_{}".format(i)))
-                        for k, v in kwargs.items():
-                            if dynamic_shape:
-                                if len(v.shape) > 0:
-                                    shape = (None, ) + v.shape[1:]
-                                else:
-                                    shape = ()
-                            else:
-                                shape = v.shape
-                            kwargs_placeholders[k] = \
-                                tf1.placeholder(
-                                    dtype=v.dtype,
-                                    shape=shape,
-                                    name="kwarg_{}".format(k))
-                        symbolic_out[0] = fn(*args_placeholders,
-                                             **kwargs_placeholders)
+                                shape = value.shape
+                            return tf1.placeholder(
+                                dtype=value.dtype,
+                                shape=shape,
+                                name=".".join([str(p) for p in path]),
+                            )
+
+                        args_placeholders = tree.map_structure_with_path(
+                            _create_placeholders, args)
+                        #for i, v in enumerate(args):
+                        #    if dynamic_shape:
+                        #        if len(v.shape) > 0:
+                        #            shape = (None, ) + v.shape[1:]
+                        #        else:
+                        #            shape = ()
+                        #    else:
+                        #        shape = v.shape
+                        #    args_placeholders.append(
+                        #        tf1.placeholder(
+                        #            dtype=v.dtype,
+                        #            shape=shape,
+                        #            name="arg_{}".format(i)))
+
+                        kwargs_placeholders = tree.map_structure_with_path(
+                            _create_placeholders, kwargs)
+
+                        #for k, v in kwargs.items():
+                        #    if dynamic_shape:
+                        #        if len(v.shape) > 0:
+                        #            shape = (None, ) + v.shape[1:]
+                        #        else:
+                        #            shape = ()
+                        #    else:
+                        #        shape = v.shape
+                        #    kwargs_placeholders[k] = \
+                        #        tf1.placeholder(
+                        #            dtype=v.dtype,
+                        #            shape=shape,
+                        #            name="kwarg_{}".format(k))
+                        symbolic_out[0] = fn(
+                            *args_placeholders, **kwargs_placeholders)
                 feed_dict = dict(zip(args_placeholders, args))
-                feed_dict.update(
-                    {kwargs_placeholders[k]: kwargs[k]
-                     for k in kwargs.keys()})
+                tree.map_structure(lambda ph, v: feed_dict.__setitem__(ph, v), kwargs_placeholders, kwargs)
+                    #{kwargs_placeholders[k]: kwargs[k]
+                    # for k in kwargs.keys()})
                 ret = session_or_none.run(symbolic_out[0], feed_dict)
                 return ret
 

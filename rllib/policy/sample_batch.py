@@ -937,8 +937,10 @@ class SampleBatch(dict):
                     ])
                 # Single index.
                 else:
-                    data = self[data_col][-1]
-                    input_dict[view_col] = np.array([data])
+                    input_dict[view_col] = tree.map_structure(
+                        lambda v: v[-1:],  # keep as array (w/ 1 element)
+                        self[data_col],
+                    )
             else:
                 # Index range.
                 if isinstance(index, tuple):

@@ -1,6 +1,6 @@
 from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
-import tree
+import tree  # pip install dm_tree
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2, restore_original_dimensions
@@ -133,11 +133,11 @@ class ComplexInputNetwork(TFModelV2):
                 cnn_out, _ = self.cnns[i]({SampleBatch.OBS: component})
                 outs.append(cnn_out)
             elif i in self.one_hot:
-                if component.dtype in [tf.int32, tf.int64, tf.uint8]:
-                    outs.append(
-                        one_hot(component, self.flattened_input_space[i]))
-                else:
-                    outs.append(component)
+                #if component.dtype in [tf.int32, tf.int64, tf.uint8]:
+                outs.append(
+                    one_hot(component, self.flattened_input_space[i]))
+                #else:
+                #    outs.append(tf.cast(component, tf.float32))
             else:
                 outs.append(tf.cast(
                     tf.reshape(component, [-1, self.flatten[i]]),

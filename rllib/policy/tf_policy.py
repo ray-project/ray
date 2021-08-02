@@ -3,6 +3,7 @@ import gym
 import logging
 import numpy as np
 import os
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 import ray
@@ -382,7 +383,7 @@ class TFPolicy(Policy):
     @override(Policy)
     def compute_actions_from_input_dict(
             self,
-            input_dict: Dict[str, TensorType],
+            input_dict: SampleBatch,
             explore: bool = None,
             timestep: Optional[int] = None,
             episodes: Optional[List["MultiAgentEpisode"]] = None,
@@ -403,6 +404,7 @@ class TFPolicy(Policy):
 
         # Update our global timestep by the batch size.
         self.global_timestep += len(obs_batch) if isinstance(obs_batch, list) \
+            else len(input_dict) if isinstance(input_dict, SampleBatch) \
             else obs_batch.shape[0]
 
         return fetched
@@ -860,7 +862,10 @@ class TFPolicy(Policy):
             if hasattr(self, "_input_dict"):
                 for key, value in input_dict.items():
                     if key in self._input_dict:
-                        builder.add_feed_dict({self._input_dict[key]: value})
+                        # Handle complex/nested spaces as well.
+                        tree.map_structure(
+                            lambda k, v: builder.add_feed_dict({k: v}), self._input_dict[key], value
+                        )
             # For policies that inherit directly from TFPolicy.
             else:
                 builder.add_feed_dict({

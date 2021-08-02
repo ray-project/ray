@@ -3,6 +3,7 @@ from gym.spaces import Space
 import logging
 import math
 import numpy as np
+import tree  # pip install dm_tree
 from typing import Any, Dict, List, Tuple, TYPE_CHECKING, Union
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
@@ -14,6 +15,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.typing import AgentID, EpisodeID, EnvID, PolicyID, \
     TensorType, ViewRequirementsDict
 from ray.util.debug import log_once
@@ -58,7 +60,7 @@ class _AgentCollector:
              if vr.data_col == SampleBatch.OBS or k == SampleBatch.OBS else 0)
             for k, vr in view_reqs.items())
         # The actual data buffers (lists holding each timestep's data).
-        self.buffers: Dict[str, List] = {}
+        self.buffers = {}
         # The episode ID for the agent for which we collect data.
         self.episode_id = None
         # The simple timestep count for this agent. Gets increased by one
@@ -80,6 +82,8 @@ class _AgentCollector:
             init_obs (TensorType): The initial observation tensor (after
             `env.reset()`).
         """
+        # Seems to be the first time, we call this method. Build our
+        # (list-based) buffers first.
         if SampleBatch.OBS not in self.buffers:
             self._build_buffers(
                 single_row={
@@ -88,11 +92,19 @@ class _AgentCollector:
                     "env_id": env_id,
                     "t": t,
                 })
-        self.buffers[SampleBatch.OBS].append(init_obs)
+
+        # Append data to existing buffers.
+        tree.map_structure_with_path(self._add_obs_helper, init_obs)
         self.episode_id = episode_id
         self.buffers[SampleBatch.AGENT_INDEX].append(agent_index)
         self.buffers["env_id"].append(env_id)
         self.buffers["t"].append(t)
+
+    def _add_obs_helper(self, path, value):
+        curr = self.buffers[SampleBatch.OBS]
+        for p in path[:-1]:
+            curr = curr[p]
+        curr[path[-1]].append(value)
 
     def add_action_reward_next_obs(self, values: Dict[str, TensorType]) -> \
             None:
@@ -116,7 +128,10 @@ class _AgentCollector:
         for k, v in values.items():
             if k not in self.buffers:
                 self._build_buffers(single_row=values)
-            self.buffers[k].append(v)
+            if k == SampleBatch.OBS:
+                tree.map_structure_with_path(self._add_obs_helper, v)
+            else:
+                self.buffers[k].append(v)
         self.agent_steps += 1
 
     def build(self, view_requirements: ViewRequirementsDict) -> SampleBatch:
@@ -282,7 +297,8 @@ class _AgentCollector:
                 "env_id", "t"
             ] else 0)
             # Python primitive, tensor, or dict (e.g. INFOs).
-            self.buffers[col] = [data for _ in range(shift)]
+            self.buffers[col] = tree.map_structure(
+                lambda v: [v for _ in range(shift)], data)
 
 
 class _PolicyCollector:
@@ -556,29 +572,43 @@ class SimpleListCollector(SampleCollector):
             # Single shift (e.g. -1) or list of shifts, e.g. [-4, -1, 0].
             else:
                 time_indices = view_req.shift + delta
-            data_list = []
-            # Loop through agents and add-up their data (batch).
+
+            # Loop through agents and add up their data (batch).
+            data = [[] for _ in range(len(buffers[keys[0]][data_col]))]
             for k in keys:
                 if data_col == SampleBatch.EPS_ID:
-                    data_list.append(self.agent_collectors[k].episode_id)
+                    data[0].append(self.agent_collectors[k].episode_id)
                 else:
+                    # Buffer for the data does not exist yet: Create dummy
+                    # (zero) data.
                     if data_col not in buffers[k]:
-                        fill_value = np.zeros_like(view_req.space.sample()) \
+                        fill_value = get_dummy_batch_for_space(view_req.space, batch_size=0) \
                             if isinstance(view_req.space, Space) else \
                             view_req.space
                         self.agent_collectors[k]._build_buffers({
                             data_col: fill_value
                         })
+
+                    # `shift_from` and `shift_to` are defined: User wants a
+                    # view with some time-range.
                     if isinstance(time_indices, tuple):
+                        # `shift_to` == -1: Until the end (including(!) the last
+                        # item).
                         if time_indices[1] == -1:
-                            data_list.append(
-                                buffers[k][data_col][time_indices[0]:])
+                            for d, b in zip(data, buffers[k][data_col]):
+                                d.append(b[time_indices[0]:])
+                        # `shift_to` != -1: "Normal" range.
                         else:
-                            data_list.append(buffers[k][data_col][time_indices[
-                                0]:time_indices[1] + 1])
+                            for d, b in zip(data, buffers[k][data_col]):
+                                d.append(b[time_indices[
+                                    0]:time_indices[1] + 1])
+                    # Single index.
                     else:
-                        data_list.append(buffers[k][data_col][time_indices])
-            input_dict[view_col] = np.array(data_list)
+                        for d, b in zip(data, buffers[k][data_col]):
+                            d.append(b[time_indices])
+
+            data = [np.array(d) for d in data]
+            input_dict[view_col] = tree.unflatten_as(, data)
 
         self._reset_inference_calls(policy_id)
 
