@@ -1112,11 +1112,11 @@ class SearchSpaceTest(unittest.TestCase):
         def optuna_define_by_run_branching(ot_trial):
             a = ot_trial.suggest_categorical("a", ["1", "2"])
             if a == "1":
-                ot_trial.suggest_int("a:1/b", 0, 3)
-                ot_trial.suggest_int("a:1/first", 2, 8)
+                ot_trial.suggest_int("nest/b", 0, 3)
+                ot_trial.suggest_int("nest/first", 2, 8)
             else:
-                ot_trial.suggest_int("a:2/b", 4, 10)
-                ot_trial.suggest_uniform("a:2/second", -0.4, 0.4)
+                ot_trial.suggest_int("nest/b", 4, 10)
+                ot_trial.suggest_uniform("nest/second", -0.4, 0.4)
 
         sampler_branching = RandomSampler(seed=1234)
         searcher_branching = OptunaSearch(
@@ -1138,20 +1138,20 @@ class SearchSpaceTest(unittest.TestCase):
         config_branching_1 = searcher_branching.suggest("0")
         self.assertIn("a", config_branching_1)
         self.assertEqual(config_branching_1["a"], "1")
-        self.assertIn("a:1", config_branching_1)
-        self.assertIn("b", config_branching_1["a:1"])
-        self.assertIn("first", config_branching_1["a:1"])
-        self.assertGreater(4, config_branching_1["a:1"]["b"])
-        self.assertLess(0.5, config_branching_1["a:1"]["first"])
+        self.assertIn("nest", config_branching_1)
+        self.assertIn("b", config_branching_1["nest"])
+        self.assertIn("first", config_branching_1["nest"])
+        self.assertGreater(4, config_branching_1["nest"]["b"])
+        self.assertLess(0.5, config_branching_1["nest"]["first"])
 
         config_branching_2 = searcher_branching.suggest("1")
         self.assertIn("a", config_branching_2)
         self.assertEqual(config_branching_2["a"], "2")
-        self.assertIn("a:2", config_branching_2)
-        self.assertIn("b", config_branching_2["a:2"])
-        self.assertIn("second", config_branching_2["a:2"])
-        self.assertLess(3, config_branching_2["a:2"]["b"])
-        self.assertGreater(0.5, config_branching_2["a:2"]["second"])
+        self.assertIn("nest", config_branching_2)
+        self.assertIn("b", config_branching_2["nest"])
+        self.assertIn("second", config_branching_2["nest"])
+        self.assertLess(3, config_branching_2["nest"]["b"])
+        self.assertGreater(0.5, config_branching_2["nest"]["second"])
 
         searcher = OptunaSearch(metric="a", mode="max")
         analysis = tune.run(
