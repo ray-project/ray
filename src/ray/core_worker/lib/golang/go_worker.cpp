@@ -97,8 +97,10 @@ __attribute__((visibility("default"))) int go_worker_CreateActor(char *type_name
       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::GOLANG,
                                                  function_descriptor_list);
   ActorID actor_id;
-  ray::RayFunction rayFunction = ray::RayFunction(ray::rpc::GOLANG, function_descriptor);
+  ray::RayFunction ray_function = ray::RayFunction(ray::rpc::GOLANG, function_descriptor);
   // TODO
+  std::string full_name = "";
+  std::string ray_namespace = "";
   ray::ActorCreationOptions actor_creation_options{
       0,
       0,  // TODO: Allow setting max_task_retries from Java.
@@ -108,7 +110,7 @@ __attribute__((visibility("default"))) int go_worker_CreateActor(char *type_name
       {},
       /*is_detached=*/false,
       full_name,
-      "",
+      ray_namespace,
       /*is_asyncio=*/false};
   auto status = ray::CoreWorkerProcess::GetCoreWorker().CreateActor(
       ray_function, {}, actor_creation_options,
@@ -126,15 +128,15 @@ __attribute__((visibility("default"))) int go_worker_CreateActor(char *type_name
 
 __attribute__((visibility("default"))) int go_worker_SubmitActorTask(char *actor_id,
                                                                      char *method_name) {
-  auto actor_id = ActorID::FromBinary(std::string(actor_id));
+  auto actor_id_obj = ActorID::FromBinary(std::string(actor_id));
   std::vector<std::string> function_descriptor_list = {method_name};
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::GOLANG,
                                                  function_descriptor_list);
 
-  ray::RayFunction rayFunction = ray::RayFunction(ray::rpc::GOLANG, function_descriptor);
+  ray::RayFunction ray_function = ray::RayFunction(ray::rpc::GOLANG, function_descriptor);
   std::vector<ObjectID> return_ids;
-  ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, ray_function, {}, {},
+  ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id_obj, ray_function, {}, {},
                                                           &return_ids);
   return 0;
 }
