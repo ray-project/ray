@@ -590,7 +590,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   if (actor->GetState() == rpc::ActorTableData::DEAD) {
     return;
   }
-
   if (actor->GetState() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
     // The actor creation task still has unresolved dependencies. Remove from the
     // unresolved actors map.

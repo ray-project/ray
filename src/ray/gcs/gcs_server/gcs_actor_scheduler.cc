@@ -440,8 +440,7 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
   // gcs_actor_manager will reconstruct it again.
   auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = node_to_actors_when_leasing_.find(node_id);
-  if (actor->GetState() == rpc::ActorTableData::DEAD) {
-    // The actor is dead, kill the worker
+  auto kill_worker = [&reply, this]() {
     auto &worker_address = reply.worker_address();
     if (!worker_address.raylet_id().empty()) {
       auto cli = core_worker_clients_.GetOrConnect(worker_address);
@@ -452,7 +451,8 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
       request.set_no_restart(true);
       RAY_UNUSED(cli->KillActor(request, nullptr));
     }
-  } else if (iter != node_to_actors_when_leasing_.end()) {
+  };
+  if (iter != node_to_actors_when_leasing_.end()) {
     auto actor_iter = iter->second.find(actor->GetActorID());
     if (actor_iter == iter->second.end()) {
       // if actor is not in leasing state, it means it is cancelled.
@@ -462,6 +462,9 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
           << actor->GetActorID()
           << " has been already cancelled. The response will be ignored. Job id = "
           << actor->GetActorID().JobId();
+      if (actor->GetState() == rpc::ActorTableData::DEAD) {
+        kill_worker();
+      }
       return;
     }
 
@@ -489,6 +492,8 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
     } else {
       RetryLeasingWorkerFromNode(actor, node);
     }
+  } else if (actor->GetState() == rpc::ActorTableData::DEAD) {
+    kill_worker();
   }
 }
 
