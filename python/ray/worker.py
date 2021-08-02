@@ -595,7 +595,6 @@ def init(
         log_to_driver=True,
         namespace=None,
         runtime_env=None,
-        internal_config=None,
         # The following are unstable parameters and their use is discouraged.
         _enable_object_reconstruction=False,
         _redis_max_memory=None,
