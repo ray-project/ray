@@ -1,0 +1,56 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: transformer-cluster
+
+# The maximum number of workers nodes to launch in addition to the head
+# node. This takes precedence over min_workers. min_workers default to 0.
+min_workers: 3
+max_workers: 3
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+
+available_node_types:
+    ray.head.default:
+        min_workers: 0
+        max_workers: 0
+        node_config:
+            InstanceType: g3.8xlarge
+            ImageId: latest_dlami
+            InstanceMarketOptions:
+                MarketType: spot
+            BlockDeviceMappings:
+                - DeviceName: /dev/sda1
+                  Ebs:
+                      VolumeSize: 300
+
+
+    ray.worker.default:
+        min_workers: 3
+        max_workers: 3
+        node_config:
+            InstanceType: g3.8xlarge
+            ImageId: latest_dlami
+            InstanceMarketOptions:
+                MarketType: spot
+            BlockDeviceMappings:
+                - DeviceName: /dev/sda1
+                  Ebs:
+                      VolumeSize: 300
+
+
+setup_commands:
+    # This replaces the standard anaconda Ray installation
+    - pip install ray[tune]
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+
+    # Install HuggingFace
+    - git clone https://github.com/huggingface/transformers || true
+    - cd transformers &&
+      pip install -U . &&
+      pip install -r ./examples/pytorch/text-classification/requirements.txt
