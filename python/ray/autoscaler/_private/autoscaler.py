@@ -521,9 +521,8 @@ class StandardAutoscaler:
         (b) Deleting the node would violate the min_workers constraint for that
             worker's node_type.
 
-        Returns KeepOrTerminate.terminate when either the node type is not
-        among available node type, or both the following hold:
-        (a) The worker's node_type is present among the keys of the current
+        Returns KeepOrTerminate.terminate when both the following hold:
+        (a) The worker's node_type is not present among the keys of the current
             config's available_node_types dict.
         (b) Keeping the node would violate the max_workers constraint for that
             worker's node_type.

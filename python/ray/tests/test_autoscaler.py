@@ -1800,16 +1800,6 @@ class AutoscalingTest(unittest.TestCase):
             process_runner=runner,
             update_interval_s=0)
         autoscaler.update()
-        autoscaler.update()
-        autoscaler.update()
-        events = autoscaler.event_summarizer.summary()
-        print(NODE_KIND_WORKER, events)
-        print(
-            self.provider.non_terminated_nodes({
-                TAG_RAY_NODE_KIND: NODE_KIND_WORKER
-            }))
-        print(events)
-        print(autoscaler.info_string())
         self.waitForNodes(11)
         assert autoscaler.pending_launches.value == 0
         assert len(
@@ -1826,15 +1816,10 @@ class AutoscalingTest(unittest.TestCase):
         self.write_config(config)
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
-        print(events)
-        print(autoscaler.info_string())
-        print(autoscaler.pending_launches)
         assert autoscaler.pending_launches.value == 0
         self.waitForNodes(9, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert autoscaler.pending_launches.value == 0
         events = autoscaler.event_summarizer.summary()
-        print(events)
-        print(autoscaler.info_string())
         assert ("Removing 1 nodes of type m4.large (max_workers_per_type)." in
                 events)
         assert ("Removing 2 nodes of type p2.8xlarge (max_workers_per_type)."
