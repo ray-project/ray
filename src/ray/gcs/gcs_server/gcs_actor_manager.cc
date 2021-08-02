@@ -586,7 +586,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       }
     }
   }
-
   // The actor is already dead, most likely due to process or node failure.
   if (actor->GetState() == rpc::ActorTableData::DEAD) {
     return;

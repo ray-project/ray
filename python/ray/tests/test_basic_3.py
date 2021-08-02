@@ -196,12 +196,15 @@ def test_actor_killing(shutdown_only):
 
     worker_1 = Actor.remote()
     ray.kill(worker_1)
-
     worker_2 = Actor.remote()
     assert ray.get(worker_2.foo.remote()) is None
+    ray.kill(worker_2)
 
-    worker_1 = Actor.options(max_restarts=-1).remote()
-    ray.kill(worker_1)
+    worker_1 = Actor.options(max_restarts=1).remote()
+    ray.kill(worker_1, no_restart=False)
+    assert ray.get(worker_1.foo.remote()) is None
+
+    ray.kill(worker_1, no_restart=False)
     worker_2 = Actor.remote()
     assert ray.get(worker_2.foo.remote()) is None
 
