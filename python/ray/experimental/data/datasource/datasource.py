@@ -150,9 +150,10 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 return pyarrow.Table.from_arrays(
                     [np.arange(start, start + count)], names=["value"])
             elif block_format == "tensor":
-                return np.ones(tensor_shape) * np.expand_dims(
-                    np.arange(start, start + count),
-                    tuple(range(1, 1 + len(tensor_shape))))
+                return np.ones(
+                    tensor_shape, dtype=np.int64) * np.expand_dims(
+                        np.arange(start, start + count),
+                        tuple(range(1, 1 + len(tensor_shape))))
             else:
                 return list(builtins.range(start, start + count))
 
@@ -163,7 +164,7 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 import pyarrow
                 schema = pyarrow.Table.from_pydict({"value": [0]}).schema
             elif block_format == "tensor":
-                schema = {"dtype": "float64", "shape": (None, ) + tensor_shape}
+                schema = {"dtype": "int64", "shape": (None, ) + tensor_shape}
             elif block_format == "list":
                 schema = int
             else:

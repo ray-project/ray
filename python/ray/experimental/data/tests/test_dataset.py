@@ -142,18 +142,17 @@ def test_tensors(ray_start_regular_shared):
     # Create directly.
     ds = ray.experimental.data.range_tensor(5, shape=(3, 5))
     assert str(ds) == ("Dataset(num_blocks=5, num_rows=5, "
-                       "schema=<Tensor: shape=(None, 3, 5), dtype=float64>)")
+                       "schema=<Tensor: shape=(None, 3, 5), dtype=int64>)")
 
     # Transform.
     ds = ds.map_batches(lambda t: np.expand_dims(t, 3))
-    assert str(ds) == (
-        "Dataset(num_blocks=5, num_rows=5, "
-        "schema=<Tensor: shape=(None, 3, 5, 1), dtype=float64>)")
+    assert str(ds) == ("Dataset(num_blocks=5, num_rows=5, "
+                       "schema=<Tensor: shape=(None, 3, 5, 1), dtype=int64>)")
 
     # Pandas conversion.
     res = ray.data.range_tensor(10).map_batches(
         lambda t: t + 2, batch_format="pandas").take(2)
-    assert str(res) == "[ArrowRow({'0': 2.0}), ArrowRow({'0': 3.0})]", res
+    assert str(res) == "[ArrowRow({'0': 2}), ArrowRow({'0': 3})]", res
 
     # From other formats.
     ds = ray.data.range(10).map_batches(lambda x: np.array(x))
@@ -175,12 +174,12 @@ def test_npio(ray_start_regular_shared, tmp_path):
     ds.write_numpy(path)
     ds = ray.data.read_numpy(path)
     assert str(ds) == ("Dataset(num_blocks=2, num_rows=?, "
-                       "schema=<Tensor: shape=(None, 1), dtype=float64>)")
+                       "schema=<Tensor: shape=(None, 1), dtype=int64>)")
 
     assert str(
-        ds.take()) == ("[array([0.]), array([1.]), array([2.]), "
-                       "array([3.]), array([4.]), array([5.]), array([6.]), "
-                       "array([7.]), array([8.]), array([9.])]"), ds.take()
+        ds.take()) == ("[array([0]), array([1]), array([2]), "
+                       "array([3]), array([4]), array([5]), array([6]), "
+                       "array([7]), array([8]), array([9])]"), ds.take()
 
 
 def test_read_np_savefile(ray_start_regular_shared, tmp_path):
