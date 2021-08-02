@@ -18,6 +18,7 @@ first connect to the cluster.
 Named actors are only accessible within their namespaces.
 
 .. code-block:: python
+
     # `ray start --head` has been run to launch a local cluster
     import ray
 
@@ -56,6 +57,7 @@ namespace. In an anonymous namespace, your job will have its own namespace and
 will not have access to actors in other namespaces.
 
 .. code-block:: python
+
     # `ray start --head` has been run to launch a local cluster
 
     import ray
