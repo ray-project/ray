@@ -195,11 +195,12 @@ def run(
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
         search_alg (Searcher|SearchAlgorithm|str): Search algorithm for
-            optimization.
+            optimization. You can also use the name of the algorithm.
         scheduler (TrialScheduler|str): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
-            ray.tune.schedulers for more options.
+            ray.tune.schedulers for more options. You can also use the
+            name of the scheduler.
         keep_checkpoints_num (int): Number of checkpoints to keep. A value of
             `None` keeps all checkpoints. Defaults to `None`. If set, need
             to provide `checkpoint_score_attr`.
