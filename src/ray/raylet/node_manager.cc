@@ -1698,6 +1698,8 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   Status status;
   leased_workers_.erase(worker_id);
 
+  S don't build
+
   if (worker) {
     if (request.disconnect_worker()) {
       DisconnectClient(worker->Connection());
