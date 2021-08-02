@@ -23,6 +23,7 @@ class TestIMPALA(unittest.TestCase):
     def test_impala_compilation(self):
         """Test whether an ImpalaTrainer can be built with both frameworks."""
         config = impala.DEFAULT_CONFIG.copy()
+        config["num_gpus"] = 0
         config["model"]["lstm_use_prev_action"] = True
         config["model"]["lstm_use_prev_reward"] = True
         num_iterations = 1
@@ -49,6 +50,7 @@ class TestIMPALA(unittest.TestCase):
 
     def test_impala_lr_schedule(self):
         config = impala.DEFAULT_CONFIG.copy()
+        config["num_gpus"] = 0
         # Test whether we correctly ignore the "lr" setting.
         # The first lr should be 0.0005.
         config["lr"] = 0.1
