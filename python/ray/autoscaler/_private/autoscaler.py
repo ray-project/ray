@@ -9,7 +9,6 @@ import subprocess
 import threading
 import time
 import yaml
-import collections
 from enum import Enum
 
 try:
@@ -220,7 +219,7 @@ class StandardAutoscaler:
         horizon = now - (60 * self.config["idle_timeout_minutes"])
 
         nodes_to_terminate: List[NodeID] = []
-        node_type_counts = collections.defaultdict(int)
+        node_type_counts = defaultdict(int)
         # Sort based on last used to make sure to keep min_workers that
         # were most recently used. Otherwise, _keep_min_workers_of_node_type
         # might keep a node that should be terminated.
@@ -544,6 +543,7 @@ class StandardAutoscaler:
         tags = self.provider.node_tags(node_id)
         if TAG_RAY_USER_NODE_TYPE in tags:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
+            head_node_type = self.config["head_node_type"]
 
             min_workers = self.available_node_types.get(node_type, {}).get(
                 "min_workers", 0)
@@ -556,7 +556,8 @@ class StandardAutoscaler:
                 return (KeepOrTerminate.terminate,
                         f"not in available_node_types: {available_node_types}")
             new_count = node_type_counts[node_type] + 1
-            if new_count <= min(min_workers, max_workers):
+            if (new_count <= min(min_workers, max_workers)
+                    or node_type == head_node_type):
                 return KeepOrTerminate.keep, None
             if new_count > max_workers:
                 return KeepOrTerminate.terminate, "max_workers_per_type"

@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import Mock
 import yaml
 import copy
+from collections import defaultdict
 from jsonschema.exceptions import ValidationError
 from typing import Dict, Callable
 
@@ -340,42 +341,58 @@ MOCK_DEFAULT_CONFIG = {
     "worker_start_ray_commands": [],
 }
 
-TINY_CLUSTER = {
-    "cluster_name": "default",
-    "max_workers": 10,
-    "provider": {
-        "type": "mock",
-        "region": "us-east-1",
-        "availability_zone": "us-east-1a",
+TYPES_A = {
+    "empty_node": {
+        "node_config": {
+            "FooProperty": 42,
+        },
+        "resources": {},
+        "max_workers": 0,
     },
-    "docker": {
-        "image": "example",
-        "container_name": "mock",
+    "m4.large": {
+        "node_config": {},
+        "resources": {
+            "CPU": 2
+        },
+        "max_workers": 10,
     },
-    "auth": {
-        "ssh_user": "ubuntu",
-        "ssh_private_key": os.devnull,
+    "m4.4xlarge": {
+        "node_config": {},
+        "resources": {
+            "CPU": 16
+        },
+        "max_workers": 8,
     },
-    "available_node_types": {
-        "ray.worker.default": {
-            "min_workers": 10,
-            "max_workers": 10,
-            "resources": {},
-            "node_config": {
-                "worker_default_prop": 7
-            }
-        }
+    "m4.16xlarge": {
+        "node_config": {},
+        "resources": {
+            "CPU": 64
+        },
+        "max_workers": 4,
     },
-    "worker_nodes": {},
-    "file_mounts": {},
-    "cluster_synced_files": [],
-    "initialization_commands": [],
-    "setup_commands": [],
-    "head_setup_commands": [],
-    "worker_setup_commands": [],
-    "head_start_ray_commands": [],
-    "worker_start_ray_commands": [],
+    "p2.xlarge": {
+        "node_config": {},
+        "resources": {
+            "CPU": 16,
+            "GPU": 1
+        },
+        "max_workers": 10,
+    },
+    "p2.8xlarge": {
+        "node_config": {},
+        "resources": {
+            "CPU": 32,
+            "GPU": 8
+        },
+        "max_workers": 4,
+    },
 }
+
+MULTI_WORKER_CLUSTER = dict(
+    SMALL_CLUSTER, **{
+        "available_node_types": TYPES_A,
+        "head_node_type": "empty_node"
+    })
 
 
 class LoadMetricsTest(unittest.TestCase):
@@ -1756,47 +1773,83 @@ class AutoscalingTest(unittest.TestCase):
         self.waitFor(lambda: len(runner.calls) > 0)
 
     def testScaleDownMaxWorkers(self):
-        config = copy.deepcopy(TINY_CLUSTER)
-        self.provider = MockProvider()
-        lm = LoadMetrics()
-        runner = MockProcessRunner()
-        runner.respond_to_call("json .Config.Env", ["[]" for i in range(10)])
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["available_node_types"]["m4.large"]["min_workers"] = 3
+        config["available_node_types"]["m4.large"]["max_workers"] = 3
+        config["available_node_types"]["m4.large"]["resources"] = {}
+        config["available_node_types"]["m4.16xlarge"]["resources"] = {}
+        config["available_node_types"]["p2.xlarge"]["min_workers"] = 5
+        config["available_node_types"]["p2.xlarge"]["max_workers"] = 8
+        config["available_node_types"]["p2.xlarge"]["resources"] = {}
+        config["available_node_types"]["p2.8xlarge"]["min_workers"] = 2
+        config["available_node_types"]["p2.8xlarge"]["max_workers"] = 4
+        config["available_node_types"]["p2.8xlarge"]["resources"] = {}
+        config["max_workers"] = 13
+
         config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(15)])
+        lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
             max_failures=0,
+            max_concurrent_launches=13,
+            max_launch_batch=13,
             process_runner=runner,
             update_interval_s=0)
-        assert len(
+        autoscaler.update()
+        autoscaler.update()
+        autoscaler.update()
+        events = autoscaler.event_summarizer.summary()
+        print(NODE_KIND_WORKER, events)
+        print(
             self.provider.non_terminated_nodes({
                 TAG_RAY_NODE_KIND: NODE_KIND_WORKER
-            })) == 0
-        autoscaler.update()
-        autoscaler.update()
-        self.waitForNodes(
-            10, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
-
-        config["available_node_types"]["ray.worker.default"]["min_workers"] = 1
-        config["available_node_types"]["ray.worker.default"]["max_workers"] = 9
-        self.write_config(config)
-        autoscaler.update()
-        self.waitForNodes(9, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+            }))
+        print(events)
+        print(autoscaler.info_string())
+        self.waitForNodes(11)
         assert autoscaler.pending_launches.value == 0
         assert len(
             self.provider.non_terminated_nodes({
                 TAG_RAY_NODE_KIND: NODE_KIND_WORKER
-            })) == 9
-        config["min_workers"] = 2
-        config["max_workers"] = 2
+            })) == 11
+
+        config["available_node_types"]["m4.large"]["min_workers"] = 2  # 3
+        config["available_node_types"]["m4.large"]["max_workers"] = 2
+        config["available_node_types"]["p2.8xlarge"]["min_workers"] = 0  # 2
+        config["available_node_types"]["p2.8xlarge"]["max_workers"] = 0
+        config["available_node_types"]["p2.xlarge"]["min_workers"] = 6  # 5
+        config["available_node_types"]["p2.xlarge"]["max_workers"] = 6
         self.write_config(config)
         autoscaler.update()
-        self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         events = autoscaler.event_summarizer.summary()
-        assert ("Removing 1 nodes of type "
-                "ray.worker.default (max_workers_per_type)." in events)
-        assert ("Removing 7 nodes of type ray.worker.default (max workers)." in
+        print(events)
+        print(autoscaler.info_string())
+        print(autoscaler.pending_launches)
+        assert autoscaler.pending_launches.value == 0
+        self.waitForNodes(9, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        assert autoscaler.pending_launches.value == 0
+        events = autoscaler.event_summarizer.summary()
+        print(events)
+        print(autoscaler.info_string())
+        assert ("Removing 1 nodes of type m4.large (max_workers_per_type)." in
                 events)
+        assert ("Removing 2 nodes of type p2.8xlarge (max_workers_per_type)."
+                in events)
+        node_type_counts = defaultdict(int)
+        for node_id in autoscaler.workers():
+            tags = self.provider.node_tags(node_id)
+            if TAG_RAY_USER_NODE_TYPE in tags:
+                node_type = tags[TAG_RAY_USER_NODE_TYPE]
+                node_type_counts[node_type] += 1
+        assert node_type_counts == {
+            "empty_node": 1,
+            "m4.large": 2,
+            "p2.xlarge": 6
+        }
 
     def testScaleUpBasedOnLoad(self):
         config = SMALL_CLUSTER.copy()
