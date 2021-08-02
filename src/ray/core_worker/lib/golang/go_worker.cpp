@@ -126,18 +126,19 @@ __attribute__((visibility("default"))) int go_worker_CreateActor(char *type_name
   return result_length;
 }
 
-__attribute__((visibility("default"))) int go_worker_SubmitActorTask(char *actor_id,
+__attribute__((visibility("default"))) int go_worker_SubmitActorTask(void *actor_id,
                                                                      char *method_name,
                                                                      char ***return_ids) {
-  auto actor_id_obj = ActorID::FromBinary(std::string(actor_id));
+  std::string *sp = static_cast<std::string*>(actor_id);
+  auto actor_id_obj = ActorID::FromBinary(*sp);
   std::vector<std::string> function_descriptor_list = {method_name};
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::GOLANG,
                                                  function_descriptor_list);
 
   ray::RayFunction ray_function = ray::RayFunction(ray::rpc::GOLANG, function_descriptor);
-  std::vector<ObjectID> return_ids;
+  std::vector<ObjectID> return_obj_ids;
   ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id_obj, ray_function, {},
-                                                          {}, &return_ids);
+                                                          {}, &return_obj_ids);
   return 0;
 }
