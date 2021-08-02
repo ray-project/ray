@@ -10,10 +10,10 @@ This script can fine-tune the following models:
 Additional information can be found at the `HuggingFace Repository
 <https://github.com/huggingface/transformers/tree/master/examples/pytorch/text-classification>`_.
 
-Single-node CPU training
-------------------------
+Local process training
+----------------------
 
-To run an example tuning MRPC locally using CPU:
+To run an example tuning MRPC locally, without Ray:
 
 .. code-block:: bash
 
@@ -28,9 +28,11 @@ To run an example tuning MRPC locally using CPU:
       --num_train_epochs 3 \
       --output_dir /tmp/$TASK_NAME/
 
+This is the same as running `run_glue_no_trainer.py <https://github
+.com/huggingface/transformers/blob/master/examples/pytorch/text-classification/run_glue_no_trainer.py>`_.
 
-Multi-node GPU training
------------------------
+Distributed multi-node GPU training
+-----------------------------------
 
 To run an example tuning MRPC on AWS with 8 GPUs across multiple nodes:
 
