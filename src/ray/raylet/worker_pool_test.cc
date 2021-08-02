@@ -1294,6 +1294,9 @@ TEST_F(WorkerPoolTest, NoSpuriousWorkerStartupDuringEnvInstall) {
     worker_pool_->PopWorker(normal_task_spec);
   }
 
+  // Still, no workers should have started.
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
+
   // AgentManager::CreateRuntimeEnv() should have only been called once.
   ASSERT_EQ(agent_manager->queued_callbacks.size(), 1);
 
@@ -1302,6 +1305,17 @@ TEST_F(WorkerPoolTest, NoSpuriousWorkerStartupDuringEnvInstall) {
 
   // Only one worker process is started.
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+
+  // Now that the env has been created, we should be able to start workers for this env
+  // in parallel.  The soft limit of the number of workers is 5, so just add 4 more.
+  for (int i = 0; i < 4; i++) {
+    worker_pool_->PopWorker(normal_task_spec);
+  }
+  ASSERT_EQ(agent_manager->queued_callbacks.size(), 4);
+  for (int i = 0; i < 4; i++) {
+    agent_manager->PopAndInvokeCallback();
+  }
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 5);
 }
 
 }  // namespace raylet

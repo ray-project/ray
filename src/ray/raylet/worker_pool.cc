@@ -992,15 +992,19 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       // Start a new worker process.
 
       if (task_spec.HasRuntimeEnv()) {
-        // create runtime env unless this env is already pending creation.
-        auto it = pending_runtime_envs_.find(runtime_env_hash);
-        if (it == pending_runtime_envs_.end()) {
-          pending_runtime_envs_.insert(runtime_env_hash);
+        // Create runtime env.  If the env creation is already in progress on this
+        // node, skip this to prevent unnecessary CreateRuntimeEnv calls, which would
+        // unnecessarily start new worker processes.
+        auto it = runtime_env_statuses_.find(runtime_env_hash);
+        if (it == runtime_env_statuses_.end() || it->second == RuntimeEnvStatus::DONE) {
+          if (it == runtime_env_statuses_.end()) {
+            runtime_env_statuses_[runtime_env_hash] = RuntimeEnvStatus::PENDING;
+          }
           agent_manager_->CreateRuntimeEnv(
               task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
               [this, start_worker_process_fn, &state, task_spec, runtime_env_hash](
                   bool successful, const std::string &serialized_runtime_env_context) {
-                pending_runtime_envs_.erase(runtime_env_hash);
+                runtime_env_statuses_[runtime_env_hash] = RuntimeEnvStatus::DONE;
                 if (successful) {
                   start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash,
                                           task_spec.SerializedRuntimeEnv(),

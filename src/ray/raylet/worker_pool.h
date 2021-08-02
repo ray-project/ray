@@ -40,6 +40,13 @@ namespace raylet {
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
+enum class RuntimeEnvStatus {
+  /// This runtime env is currently being installed.
+  PENDING,
+  /// This runtime env has completed installation (either successfully or not)
+  DONE
+};
+
 /// \class WorkerPoolInterface
 ///
 /// Used for new scheduler unit tests.
@@ -575,8 +582,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Set of jobs whose drivers have exited.
   absl::flat_hash_set<JobID> finished_jobs_;
 
-  /// Tracks which runtime envs are being installed.
-  std::set<int> pending_runtime_envs_;
+  /// Maps runtime env hash to its status.
+  std::unordered_map<int, RuntimeEnvStatus> runtime_env_statuses_;
 
   /// This map stores the same data as `idle_of_all_languages_`, but in a map structure
   /// for lookup performance.
