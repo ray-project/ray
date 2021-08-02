@@ -13,7 +13,7 @@ class CSVDatasource(FileBasedDatasource):
     Examples:
         >>> source = CSVDatasource()
         >>> ray.data.read_datasource(source, paths="/path/to/dir").take()
-        ... {"a": 1, "b": "foo"}
+        ... [ArrowRow({"a": 1, "b": "foo"}), ...]
     """
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
