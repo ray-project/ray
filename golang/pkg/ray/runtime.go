@@ -66,7 +66,7 @@ func Init(address, _redis_password string) {
 }
 
 func RegisterType(t reflect.Type) error {
-    typesMap[getRegisterTypeKey(t)] = t.Elem()
+    typesMap[getRegisterTypeKey(t.Elem())] = t.Elem()
     // todo check conflict
     return nil
 }
