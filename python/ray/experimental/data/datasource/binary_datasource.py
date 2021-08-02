@@ -23,3 +23,6 @@ class BinaryDatasource(FileBasedDatasource):
             return path, data
         else:
             return data
+
+    def _rows_per_file(self):
+        return 1
