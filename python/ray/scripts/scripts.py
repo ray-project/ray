@@ -384,6 +384,12 @@ def debug(address):
     help="the port to bind the dashboard server to--defaults to {}".format(
         ray_constants.DEFAULT_DASHBOARD_PORT))
 @click.option(
+    "--dashboard-agent-listen-port",
+    type=int,
+    hidden=True,
+    default=0,
+    help="the port for dashboard agents to listen for http on.")
+@click.option(
     "--block",
     is_flag=True,
     default=False,
@@ -488,10 +494,11 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           min_worker_port, max_worker_port, worker_port_list,
           ray_client_server_port, memory, object_store_memory,
           redis_max_memory, num_cpus, num_gpus, resources, head,
-          include_dashboard, dashboard_host, dashboard_port, block,
-          plasma_directory, autoscaling_config, no_redirect_worker_output,
-          no_redirect_output, plasma_store_socket_name, raylet_socket_name,
-          temp_dir, system_config, lru_evict, enable_object_reconstruction,
+          include_dashboard, dashboard_host, dashboard_port,
+          dashboard_agent_listen_port, block, plasma_directory,
+          autoscaling_config, no_redirect_worker_output, no_redirect_output,
+          plasma_store_socket_name, raylet_socket_name, temp_dir,
+          system_config, lru_evict, enable_object_reconstruction,
           metrics_export_port, no_monitor, tracing_startup_hook,
           worker_setup_hook, runtime_env_setup_hook, ray_debugger_external,
           log_style, log_color, verbose):
@@ -547,6 +554,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
+        dashboard_agent_listen_port=dashboard_agent_listen_port,
         _system_config=system_config,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
