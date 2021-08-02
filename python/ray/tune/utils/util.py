@@ -324,6 +324,12 @@ def unflatten_dict(dt, delimiter="/"):
         item = out
         for k in path[:-1]:
             item = item.setdefault(k, dict_type())
+            if not isinstance(item, dict_type):
+                raise TypeError(
+                    f"Cannot unflatten dict due the key '{key}' "
+                    f"having a parent key '{k}', which value is not "
+                    f"of type {dict_type} (got {type(item)}). "
+                    "Change the key names to resolve the conflict.")
         item[path[-1]] = val
     return out
 
