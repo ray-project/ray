@@ -98,7 +98,7 @@ class ServerCallFactory {
   virtual void CreateCall() const = 0;
 
   /// Get the maximum request number to handle at the same time. -1 means no limit.
-  virtual int64_t GetBackPressureLimit() const = 0;
+  virtual int64_t GetMaxActiveRPCs() const = 0;
 
   virtual ~ServerCallFactory() = default;
 };
@@ -160,7 +160,7 @@ class ServerCallImpl : public ServerCall {
     // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
     // a different thread, and will cause `this` to be deleted.
     const auto &factory = factory_;
-    if (factory.GetBackPressureLimit() == -1) {
+    if (factory.GetMaxActiveRPCs() == -1) {
       // Create a new `ServerCall` to accept the next incoming request.
       // We create this before handling the request only when no back pressure limit is
       // set. So that the it can be populated by the completion queue in the background if
@@ -277,7 +277,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   /// \param[in] handle_request_function Pointer to the service handler function.
   /// \param[in] cq The `CompletionQueue`.
   /// \param[in] io_service The event loop.
-  /// \param[in] back_pressure_limit Maximum request number to handle at the same time. -1
+  /// \param[in] max_active_rpcs Maximum request number to handle at the same time. -1
   /// means no limit.
   ServerCallFactoryImpl(
       AsyncService &service,
@@ -286,7 +286,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       instrumented_io_context &io_service, std::string call_name,
-      int64_t back_pressure_limit = -1)
+      int64_t max_active_rpcs = -1)
       : service_(service),
         request_call_function_(request_call_function),
         service_handler_(service_handler),
@@ -294,7 +294,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         cq_(cq),
         io_service_(io_service),
         call_name_(std::move(call_name)),
-        back_pressure_limit_(back_pressure_limit) {}
+        max_active_rpcs_(max_active_rpcs) {}
 
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
@@ -308,7 +308,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
                                        call);
   }
 
-  int64_t GetBackPressureLimit() const override { return back_pressure_limit_; }
+  int64_t GetMaxActiveRPCs() const override { return max_active_rpcs_; }
 
  private:
   /// The gRPC-generated `AsyncService`.
@@ -334,7 +334,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 
   /// Maximum request number to handle at the same time.
   /// -1 means no limit.
-  uint64_t back_pressure_limit_;
+  uint64_t max_active_rpcs_;
 };
 
 }  // namespace rpc

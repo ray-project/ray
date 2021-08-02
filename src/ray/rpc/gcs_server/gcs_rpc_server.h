@@ -26,57 +26,56 @@ namespace rpc {
 #define JOB_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER_WITH_BACK_PRESSURE(     \
       JobInfoGcsService, HANDLER,             \
-      RayConfig::instance().gcs_default_back_pressure_limit_per_service())
+      RayConfig::instance().gcs_max_active_rpcs_per_service())
 
 #define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER_WITH_BACK_PRESSURE(       \
       ActorInfoGcsService, HANDLER,             \
-      RayConfig::instance().gcs_default_back_pressure_limit_per_service())
+      RayConfig::instance().gcs_max_active_rpcs_per_service())
 
 #define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER_WITH_BACK_PRESSURE(      \
       NodeInfoGcsService, HANDLER,             \
-      RayConfig::instance().gcs_default_back_pressure_limit_per_service())
+      RayConfig::instance().gcs_max_active_rpcs_per_service())
 
 #define HEARTBEAT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER_WITH_BACK_PRESSURE(           \
       HeartbeatInfoGcsService, HANDLER,             \
-      RayConfig::instance().gcs_default_back_pressure_limit_per_service())
+      RayConfig::instance().gcs_max_active_rpcs_per_service())
 
 #define NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER_WITH_BACK_PRESSURE(               \
       NodeResourceInfoGcsService, HANDLER,              \
-      RayConfig::instance().gcs_default_back_pressure_limit_per_service())
+      RayConfig::instance().gcs_max_active_rpcs_per_service())
 
 #define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER_WITH_BACK_PRESSURE(        \
       ObjectInfoGcsService, HANDLER,             \
-      RayConfig::instance().gcs_default_back_pressure_limit_per_service())
+      RayConfig::instance().gcs_max_active_rpcs_per_service())
 
 #define TASK_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER_WITH_BACK_PRESSURE(      \
       TaskInfoGcsService, HANDLER,             \
-      RayConfig::instance().gcs_default_back_pressure_limit_per_service())
+      RayConfig::instance().gcs_max_active_rpcs_per_service())
 
 #define STATS_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER_WITH_BACK_PRESSURE(  \
-      StatsGcsService, HANDLER,            \
-      RayConfig::instance().gcs_default_back_pressure_limit_per_service())
+      StatsGcsService, HANDLER, RayConfig::instance().gcs_max_active_rpcs_per_service())
 
 #define WORKER_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER_WITH_BACK_PRESSURE(        \
       WorkerInfoGcsService, HANDLER,             \
-      RayConfig::instance().gcs_default_back_pressure_limit_per_service())
+      RayConfig::instance().gcs_max_active_rpcs_per_service())
 
 #define PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER_WITH_BACK_PRESSURE(                 \
       PlacementGroupInfoGcsService, HANDLER,              \
-      RayConfig::instance().gcs_default_back_pressure_limit_per_service())
+      RayConfig::instance().gcs_max_active_rpcs_per_service())
 
 #define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER_WITH_BACK_PRESSURE(        \
       InternalKVGcsService, HANDLER,             \
-      RayConfig::instance().gcs_default_back_pressure_limit_per_service())
+      RayConfig::instance().gcs_max_active_rpcs_per_service())
 
 #define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status) \
   reply->mutable_status()->set_code((int)status.code());       \
