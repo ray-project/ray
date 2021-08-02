@@ -241,7 +241,7 @@ class DynamicTFPolicy(TFPolicy):
                 True, (), name="is_exploring")
 
         # Placeholder for `is_training` flag.
-        self._input_dict["is_training"] = self._get_is_training_placeholder()
+        self._input_dict.is_training = self._get_is_training_placeholder()
 
         # Multi-GPU towers do not need any action computing/exploration
         # graphs.
@@ -266,7 +266,7 @@ class DynamicTFPolicy(TFPolicy):
                     prev_reward_batch=self._input_dict.get(
                         SampleBatch.PREV_REWARDS),
                     explore=explore,
-                    is_training=self._input_dict["is_training"])
+                    is_training=self._input_dict.is_training)
             # Distribution generation is customized, e.g., DQN, DDPG.
             else:
                 if action_distribution_fn:
@@ -284,7 +284,7 @@ class DynamicTFPolicy(TFPolicy):
                                 seq_lens=self._seq_lens,
                                 explore=explore,
                                 timestep=timestep,
-                                is_training=in_dict["is_training"])
+                                is_training=in_dict.is_training)
                     # Trying the old way (to stay backward compatible).
                     # TODO: Remove in future.
                     except TypeError as e:
@@ -301,7 +301,7 @@ class DynamicTFPolicy(TFPolicy):
                                     prev_reward_batch=in_dict.get(
                                         SampleBatch.PREV_REWARDS),
                                     explore=explore,
-                                    is_training=in_dict["is_training"])
+                                    is_training=in_dict.is_training)
                         else:
                             raise e
 
@@ -378,6 +378,9 @@ class DynamicTFPolicy(TFPolicy):
                         TFMultiGPUTowerStack(policy=self) for i in range(
                             self.config.get("num_multi_gpu_tower_stacks", 1))
                     ]
+
+            # Initialize again after loss and tower init.
+            self.get_session().run(tf1.global_variables_initializer())
 
     @override(TFPolicy)
     @DeveloperAPI
@@ -692,9 +695,6 @@ class DynamicTFPolicy(TFPolicy):
             for k, v in self._loss_input_dict.items()
             if (v not in self._state_inputs and v != self._seq_lens)
         }
-
-        # Initialize again after loss init.
-        self.get_session().run(tf1.global_variables_initializer())
 
     def _do_loss_init(self, train_batch: SampleBatch):
         loss = self._loss_fn(self, self.model, self.dist_class, train_batch)

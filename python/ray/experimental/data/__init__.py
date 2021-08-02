@@ -3,6 +3,12 @@ from ray.experimental.data.read_api import from_items, range, range_arrow, \
     from_modin, from_mars, from_pandas, from_arrow, from_spark, read_datasource
 from ray.experimental.data.datasource import Datasource, ReadTask, WriteTask
 from ray.experimental.data.dataset import Dataset
+from ray.experimental.data.impl.progress_bar import set_progress_bars
+
+# Module-level cached global functions (for impl/compute). It cannot be defined
+# in impl/compute since it has to be process-global across cloudpickled funcs.
+_cached_fn = None
+_cached_cls = None
 
 __all__ = [
     "Dataset",
@@ -23,4 +29,5 @@ __all__ = [
     "read_datasource",
     "read_json",
     "read_parquet",
+    "set_progress_bars",
 ]
