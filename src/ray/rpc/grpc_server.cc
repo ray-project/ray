@@ -139,7 +139,7 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       delete_call = true;
     }
     if (delete_call) {
-      if (server_call->GetServerCallFactory().GetMaxActiveRPCs() != -1) {
+      if (ok && server_call->GetServerCallFactory().GetMaxActiveRPCs() != -1) {
         // Create a new `ServerCall` to accept the next incoming request.
         server_call->GetServerCallFactory().CreateCall();
       }
