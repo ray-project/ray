@@ -67,15 +67,15 @@ __attribute__((visibility("default"))) char *go_worker_GlobalStateAccessorGetInt
   if (value != nullptr) {
     std::string *v = value.release();
     int len = strlen(v->c_str());
-    char* result = (char*)malloc(len + 1);
+    char *result = (char *)malloc(len + 1);
     std::memcpy(result, v->c_str(), len);
     return result;
   }
   return nullptr;
 }
 
-__attribute__((visibility("default"))) char* go_worker_GetNodeToConnectForDriver(
-    void *p, char *node_ip_address, int* result_length) {
+__attribute__((visibility("default"))) int go_worker_GetNodeToConnectForDriver(
+    void *p, char *node_ip_address, char **result) {
   auto *gcs_accessor = static_cast<ray::gcs::GlobalStateAccessor *>(p);
   std::string node_to_connect;
   auto status =
@@ -84,8 +84,8 @@ __attribute__((visibility("default"))) char* go_worker_GetNodeToConnectForDriver
     RAY_LOG(FATAL) << "Failed to get node to connect for driver:" << status.message();
     return nullptr;
   }
-  *result_length = strlen(node_to_connect.c_str());
-  char *result = (char*)malloc(*result_length + 1);
-  memcpy(result, node_to_connect.c_str(), *result_length);
-  return result;
+  int result_length = strlen(node_to_connect.c_str());
+  *result = (char *)malloc(result_length + 1);
+  memcpy(*result, node_to_connect.c_str(), result_length);
+  return result_length;
 }

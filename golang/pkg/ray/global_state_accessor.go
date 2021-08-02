@@ -46,11 +46,11 @@ func (g *globalStateAccessor) GetInternalKV(key string) string {
 }
 
 func (g *globalStateAccessor) GetNodeToConnectForDriver(nodeIpAddress string) []byte {
-    dataLen := C.int(0)
-    result := C.go_worker_GetNodeToConnectForDriver(g.p, C.CString(nodeIpAddress), &dataLen)
+    var res *C.char
+    dataLen := C.go_worker_GetNodeToConnectForDriver(g.p, C.CString(nodeIpAddress), &res)
     if dataLen > 0 {
-        defer C.free(unsafe.Pointer(result))
-        return C.GoBytes(unsafe.Pointer(result), dataLen)
+        defer C.free(unsafe.Pointer(res))
+        return C.GoBytes(unsafe.Pointer(res), dataLen)
     }
     return nil
 }
