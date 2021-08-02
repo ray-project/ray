@@ -1,5 +1,15 @@
 package actor
 
+import (
+    "reflect"
+
+    "github.com/ray-project/ray-go-worker/pkg/ray"
+)
+
+func init() {
+    ray.RegisterType(reflect.TypeOf((*Count)(nil)))
+}
+
 type Count struct {
     value int
 }

@@ -21,6 +21,8 @@ import (
 
 const sessionDir = "session_dir"
 
+var typesMap = make(map[string]reflect.Type)
+
 func Init(address, _redis_password string) {
     util.Logger.Debug("Initializing runtime with config")
     rayConfig := NewRayConfig()
@@ -63,27 +65,37 @@ func Init(address, _redis_password string) {
         C.CString(_redis_password))
 }
 
-func Actor(t reflect.Type) *ActorCreator {
+func RegisterType(t reflect.Type) error {
+    typesMap[getRegisterTypeKey(t)] = t.Elem()
+    // todo check conflict
+    return nil
+}
+
+func getRegisterTypeKey(t reflect.Type) string {
+    return t.PkgPath() + "." + t.Name()
+}
+
+func Actor(p interface{}) *ActorCreator {
+    //todo check contains
     return &ActorCreator{
-        actorType: t,
+        registerTypeName: getRegisterTypeKey(reflect.TypeOf(p).Elem()),
     }
 }
 
 type ActorCreator struct {
-    actorType reflect.Type
+    registerTypeName string
 }
 
 // 创建actor
 func (ac *ActorCreator) Remote() *ActorHandle {
-    typeName := ac.actorType.Name()
     var res *C.char
-    dataLen := C.go_worker_CreateActor(C.CString(typeName), &res)
+    dataLen := C.go_worker_CreateActor(C.CString(ac.registerTypeName), &res)
     if dataLen > 0 {
         defer C.free(unsafe.Pointer(res))
         return &ActorHandle{
             actorId:   C.GoBytes(unsafe.Pointer(res), dataLen),
             language:  ray_rpc.Language_GOLANG,
-            actorType: ac.actorType,
+            actorType: typesMap[ac.registerTypeName],
         }
     }
     return nil
@@ -95,11 +107,18 @@ type ActorHandle struct {
     actorType reflect.Type
 }
 
+type Convert func(i interface{})
+
+// 缺少泛型的支持，所以只能传入参数名
 // 参数填这里
-func (ah *ActorHandle) Task(invokeMethod reflect.Method) *ActorTaskCaller {
+func (ah *ActorHandle) Task(methodName string) *ActorTaskCaller {
+    method, ok := ah.actorType.MethodByName(methodName)
+    if !ok {
+        // failed
+    }
     return &ActorTaskCaller{
         actorHandle:  ah,
-        invokeMethod: invokeMethod,
+        invokeMethod: method,
         params:       []reflect.Value{},
     }
 }
