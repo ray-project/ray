@@ -191,13 +191,6 @@
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky
       python/ray/tests/...
-- label: ":python: (Debug Tests)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci-debug $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-jenkins_only,debug_tests,-flaky
-      python/ray/tests/...
 - label: ":python: (Worker In Container)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
