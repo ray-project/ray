@@ -215,7 +215,7 @@ class MultiGPUTrainOneStep:
                 # Reduce mean across all minibatch SGD steps (axis=0 to keep
                 # all shapes as-is).
                 fetches[policy_id] = tree.map_structure(
-                    lambda *s: np.nanmean(s, axis=0),
+                    lambda *s: None if s[0] is None else np.nanmean(s, axis=0),
                     *batch_fetches_all_towers)
 
         load_timer.push_units_processed(samples.count)
