@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include "ray/object_manager/plasma/allocator.h"
@@ -33,16 +34,15 @@ namespace plasma {
 // a pre-mmap file on disk.
 //
 // The FallbackAllocate always allocates memory from a disk
-// based mmap file.
+// based mmapped file.
 class PlasmaAllocator : public IAllocator {
  public:
-  /// PlasmaAllocator can only be created once per process.
-  /// This is because it uses dlmalloc to allocate memory under the hood,
-  /// whose metadata is a global state(singleton).
-  static PlasmaAllocator &GetInstance();
+  PlasmaAllocator(const std::string &plasma_directory,
+                  const std::string &fallback_directory, bool hugepage_enabled,
+                  int64_t footprint_limit, bool fallback_enabled);
 
-  /// On linux, it allocates memory from a pre-mmaped file from /dev/shm.
-  /// On other system, it allocates memory from a pre-mmaped file on disk.
+  /// On linux, it allocates memory from a pre-mmapped file from /dev/shm.
+  /// On other system, it allocates memory from a pre-mmapped file on disk.
   /// NOTE: due to fragmentation, there is a possibility that the
   /// allocator has the capacity but fails to fulfill the allocation
   /// request.
@@ -57,7 +57,8 @@ class PlasmaAllocator : public IAllocator {
   ///
   /// On linux with fallocate support, it returns null if running out of
   /// space; On linux without fallocate it raises SIGBUS interrupt.
-  /// TODO(scv119): On other system the behavior is undefined.
+  /// TODO(scv119): On other system the behavior of running out of space is
+  /// undefined.
   ///
   /// \param bytes Number of bytes.
   /// \return allocated memory. returns empty if not enough space.
@@ -67,10 +68,7 @@ class PlasmaAllocator : public IAllocator {
   /// a previous call to Allocate/FallbackAllocate or it yields undefined behavior.
   ///
   /// \param allocation allocation to free.
-  void Free(const Allocation &allocation) override;
-
-  /// Sets the memory footprint limit for this allocator.
-  void SetFootprintLimit(size_t bytes) override;
+  void Free(Allocation allocation) override;
 
   /// Get the memory footprint limit for this allocator.
   int64_t GetFootprintLimit() const override;
@@ -82,13 +80,13 @@ class PlasmaAllocator : public IAllocator {
   int64_t FallbackAllocated() const override;
 
  private:
-  explicit PlasmaAllocator(size_t alignment);
-
- private:
+  const int64_t kFootprintLimit;
   const size_t kAlignment;
+  const bool kFallbackEnabled;
   int64_t allocated_;
-  int64_t fallback_allocated_;
-  int64_t footprint_limit_;
+  // TODO(scv119): once we refactor object_manager this no longer
+  // need to be atomic.
+  std::atomic<int64_t> fallback_allocated_;
 };
 
 }  // namespace plasma
