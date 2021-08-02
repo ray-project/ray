@@ -62,9 +62,10 @@ class SetupSpec:
     def __init__(self, type: SetupType, name: str, description: str,
                  debug_mode: bool):
         self.type: SetupType = type
-        # add -debug suffix if debug mode is on.
-        self.name: str = "%s-debug" % name if debug_mode else name
-        self.version: str = find_version("ray", "__init__.py")
+        self.name: str = name
+        version = find_version("ray", "__init__.py")
+        # add .dbg suffix if debug mode is on.
+        self.version: str = "%s.dbg" % version if debug_mode else version
         self.description: str = description
         self.debug_mode: bool = debug_mode
         self.files_to_include: list = []
