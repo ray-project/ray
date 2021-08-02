@@ -4,14 +4,16 @@ from typing import Iterator, List, Union, Tuple, Any, TypeVar, Optional, \
     TYPE_CHECKING
 
 import numpy as np
+
 try:
     import pyarrow
 except ImportError:
     pyarrow = None
 
 from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
-from ray.experimental.data.impl.block_builder import BlockBuilder, \
-    SimpleBlockBuilder
+from ray.experimental.data.impl.block_builder import BlockBuilder
+from ray.experimental.data.impl.simple_block import SimpleBlockBuilder
+from ray.experimental.data.impl.tensor_block import TensorBlockBuilder
 
 if TYPE_CHECKING:
     import pandas
@@ -66,6 +68,8 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
                     self._builder = ArrowBlockBuilder()
                 except (TypeError, pyarrow.lib.ArrowInvalid):
                     self._builder = SimpleBlockBuilder()
+            elif isinstance(item, np.ndarray):
+                self._builder = TensorBlockBuilder()
             else:
                 self._builder = SimpleBlockBuilder()
         self._builder.add(item)
@@ -169,7 +173,7 @@ class ArrowBlockAccessor(BlockAccessor):
     def to_pandas(self) -> "pandas.DataFrame":
         return self._table.to_pandas()
 
-    def to_arrow_table(self) -> "pyarrow.Table":
+    def to_arrow(self) -> "pyarrow.Table":
         return self._table
 
     def num_rows(self) -> int:
