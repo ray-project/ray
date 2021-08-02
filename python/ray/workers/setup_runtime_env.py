@@ -171,13 +171,20 @@ def setup_worker(input_args):
             "the context %s.", args.serialized_runtime_env,
             args.serialized_runtime_env_context)
 
+    worker_command = [f"exec {worker_executable}"]
+    if worker_executable == "java":
+        # Java worker don't parse the command parameters, add option.
+        remaining_args.insert(len(remaining_args)-1, "-D{}={}".format("serialized-runtime-env", f"'{args.serialized_runtime_env}'"))
+        worker_command += remaining_args
+    else:
+        worker_command += remaining_args
+        # Pass the runtime for working_dir setup.
+        # We can't do it in shim process here because it requires
+        # connection to gcs.
+        worker_command += ["--serialized-runtime-env", f"'{args.serialized_runtime_env}'"]
+
     commands += [
-        " ".join(
-            [f"exec {worker_executable}"] + remaining_args +
-            # Pass the runtime for working_dir setup.
-            # We can't do it in shim process here because it requires
-            # connection to gcs.
-            ["--serialized-runtime-env", f"'{args.serialized_runtime_env}'"])
+        " ".join(worker_command)
     ]
     command_separator = " && "
     command_str = command_separator.join(commands)
@@ -186,11 +193,6 @@ def setup_worker(input_args):
     if runtime_env.get("env_vars"):
         env_vars = runtime_env["env_vars"]
         os.environ.update(env_vars)
-
-    # Java worker don't parse the command parameters, it reads option
-    # from env.
-    if worker_executable == "java":
-        os.environ["serialized-runtime-env"] = f"'{args.serialized_runtime_env}'"
 
     os.execvp("bash", ["bash", "-c", command_str])
 
