@@ -1,2 +1,2 @@
-class Callback:
+class SGDCallback:
     pass
