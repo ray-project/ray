@@ -116,7 +116,7 @@ ray::core::Task CreateTask(
   rpc::TaskExecutionSpec execution_spec_message;
   execution_spec_message.set_num_forwards(1);
   return ray::core::Task(spec_builder.Build(),
-                                    TaskExecutionSpecification(execution_spec_message));
+                         TaskExecutionSpecification(execution_spec_message));
 }
 
 class MockTaskDependencyManager : public TaskDependencyManagerInterface {
