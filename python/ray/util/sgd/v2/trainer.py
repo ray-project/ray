@@ -4,7 +4,7 @@ from typing import Union, Callable, List, TypeVar, Optional, Any, Dict
 
 from ray.tune import Trainable
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
-from ray.util.sgd.v2.callbacks.callback import Callback
+from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.constants import BACKEND_NAME_TO_CONFIG_CLS
 
 T = TypeVar("T")
@@ -14,6 +14,21 @@ logger = logging.getLogger(__name__)
 
 
 class Trainer:
+    """A class for enabling seamless distributed deep learning.
+
+    Args:
+        backend (Union[str, BackendConfig]): The backend used for
+            distributed communication. If configurations are needed,
+            a subclass of ``BackendConfig`` can be passed in.
+            Supported ``str`` values: {"torch"}.
+        num_workers (int): The number of workers (Ray actors) to launch.
+            Defaults to 1. Each worker will reserve 1 CPU by default.
+        use_gpu (bool): If True, training will be done on GPUs (1 per
+            worker). Defaults to False.
+        resources_per_worker (Optional[Dict]): If specified, the resources
+            defined in this Dict will be reserved for each worker.
+    """
+
     def __init__(self,
                  backend: Union[str, BackendConfig],
                  num_workers: int = 1,
@@ -89,7 +104,7 @@ class Trainer:
     def run(self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
-            callbacks: Optional[List[Callback]] = None) -> List[T]:
+            callbacks: Optional[List[SGDCallback]] = None) -> List[T]:
         """Runs a training function in a distributed manner.
 
         Args:
@@ -97,7 +112,7 @@ class Trainer:
                 This can either take in no arguments or a ``config`` dict.
             config (Optional[Dict]): Configurations to pass into
                 ``train_func``. If None then an empty Dict will be created.
-            callbacks (Optional[List[Callback]]): A list of Callbacks which
+            callbacks (Optional[List[SGDCallback]]): A list of Callbacks which
                 will be executed during training. If this is not set,
                 currently there are NO default Callbacks.
 
