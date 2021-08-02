@@ -685,9 +685,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                     cli_logger.print(
                         "ray{}init(address{}{})", c.magenta("."),
                         c.magenta("="),
-                        c.yellow(
-                            "'ray://<head_node_ip_address>:"
-                            f"{ray_client_server_port}'"))
+                        c.yellow("'ray://<head_node_ip_address>:"
+                                 f"{ray_client_server_port}'"))
             cli_logger.newline()
             cli_logger.print(
                 cf.underlined("If connection fails, check your "
