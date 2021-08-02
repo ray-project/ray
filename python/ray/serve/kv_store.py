@@ -29,7 +29,7 @@ class RayInternalKVStore:
 
         Args:
             key (str)
-            val Union[str, bytes]
+            val (Union[str, bytes])
         """
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))

@@ -14,8 +14,6 @@ def test_ray_internal_kv(serve_instance):
         kv.put(1, b"1")
     with pytest.raises(TypeError):
         kv.put("1", 1)
-    with pytest.raises(TypeError):
-        kv.put("1", "1")
 
     kv.put("1", b"2")
     assert kv.get("1") == b"2"
@@ -24,6 +22,10 @@ def test_ray_internal_kv(serve_instance):
     kv.put("1", b"3")
     assert kv.get("1") == b"3"
     assert kv.get("2") == b"4"
+
+    # Test that the value can be a string.
+    kv.put("10", "value")
+    assert kv.get("10") == b"value"
 
 
 def test_ray_internal_kv_collisions(serve_instance):
