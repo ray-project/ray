@@ -9,7 +9,7 @@ from ray.serve.config import DeploymentMode
 
 # Cluster setup configs
 NUM_CPU_PER_NODE = 10
-NUM_CONNECTIONS = 100
+NUM_CONNECTIONS = 10
 
 
 def setup_local_single_node_cluster(num_nodes):

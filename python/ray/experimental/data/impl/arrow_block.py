@@ -1,7 +1,9 @@
 import collections
 import random
-from typing import Iterator, List, Union, Tuple, Any, TypeVar, TYPE_CHECKING
+from typing import Iterator, List, Union, Tuple, Any, TypeVar, Optional, \
+    TYPE_CHECKING
 
+import numpy as np
 try:
     import pyarrow
 except ImportError:
@@ -148,8 +150,7 @@ class ArrowBlockAccessor(BlockAccessor):
 
         return Iter()
 
-    def slice(self, start: int, end: int,
-              copy: bool) -> "ArrowBlockAccessor[T]":
+    def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
         if copy:
             # TODO(ekl) there must be a cleaner way to force a copy of a table.
@@ -157,6 +158,10 @@ class ArrowBlockAccessor(BlockAccessor):
             return pyarrow.Table.from_arrays(copy, schema=self._table.schema)
         else:
             return view
+
+    def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
+        random = np.random.RandomState(random_seed)
+        return self._table.take(random.permutation(self.num_rows()))
 
     def schema(self) -> "pyarrow.lib.Schema":
         return self._table.schema
@@ -178,6 +183,9 @@ class ArrowBlockAccessor(BlockAccessor):
         return ArrowBlockBuilder()
 
     def sample(self, n_samples: int, key: SortKeyT) -> List[T]:
+        if key is None or callable(key):
+            raise NotImplementedError(
+                "Arrow sort key must be a column name, was: {}".format(key))
         k = min(n_samples, self._table.num_rows)
         indices = random.sample(range(self._table.num_rows), k)
         return self._table.select([k[0] for k in key]).take(indices)
