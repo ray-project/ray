@@ -142,20 +142,12 @@ class ClientBuilder:
 
 
 class _LocalClientBuilder(ClientBuilder):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._init_args_dict = {}
-        self._internal_config = {}
-
     def connect(self) -> ClientContext:
         """
         Begin a connection to the address passed in via ray.client(...)
         """
         connection_dict = ray.init(
-            address=self.address,
-            job_config=self._job_config,
-            **self._init_args_dict,
-            **self._internal_config)
+            address=self.address, job_config=self._job_config)
         return ClientContext(
             dashboard_url=connection_dict["webui_url"],
             python_version="{}.{}.{}".format(
@@ -180,6 +172,8 @@ def _split_address(address: str) -> Tuple[str, str]:
 
 
 def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
+    if address == "local":
+        return _LocalClientBuilder(None)
     if address is None:
         try:
             # NOTE: This is not placed in `Node::get_temp_dir_path`, because
