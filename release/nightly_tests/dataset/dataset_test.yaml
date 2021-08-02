@@ -9,6 +9,6 @@
 
   run:
     timeout: 600
-    prepare: sleep 0
+    prepare: python wait_cluster.py
     script: python inference.py
   
