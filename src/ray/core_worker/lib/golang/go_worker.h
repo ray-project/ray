@@ -23,7 +23,7 @@ int go_worker_GetNextJobID(void *p);
 
 int go_worker_CreateActor(char *type_name, char **result);
 
-int go_worker_SubmitActorTask(char *actor_id, char *method_name);
+int go_worker_SubmitActorTask(char *actor_id, char *method_name, char ***return_ids);
 
 void SayHello(char *s);
 

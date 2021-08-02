@@ -113,7 +113,8 @@ type ActorTaskCaller struct {
 // 发出调用
 func (or *ActorTaskCaller) Remote() *ObjectRef {
     var res **C.char
-    dataLen := C.go_worker_SubmitActorTask(C.CString(or.invokeMethod.Name), &res)
+
+    dataLen := C.go_worker_SubmitActorTask(C.CBytes(or.actorHandle.actorId), C.CString(or.invokeMethod.Name), &res)
     if dataLen > 0 {
         defer C.free(unsafe.Pointer(res))
         return &ObjectRef{
