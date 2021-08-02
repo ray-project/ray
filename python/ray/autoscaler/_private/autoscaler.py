@@ -238,7 +238,8 @@ class StandardAutoscaler:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
                 node_type_counts[node_type] += 1
 
-        def schedule_node_termination(node_id: NodeID, reason: str) -> None:
+        def schedule_node_termination(node_id: NodeID,
+                                      reason: Optional[str]) -> None:
             # Log, record an event, and add node_id to nodes_to_terminate.
             logger.info("StandardAutoscaler: "
                         "{}: Terminating {} node.".format(node_id, reason))
@@ -537,12 +538,12 @@ class StandardAutoscaler:
             KeepOrTerminate: keep if the node should be kept, terminate if the
             node should be terminated, decide_later if we are allowed
             to terminate it, but do not have to.
-            Optional[str]: reason for termination.
+            Optional[str]: reason for termination. Not None on
+            KeepOrTerminate.terminate, None otherwise.
         """
         tags = self.provider.node_tags(node_id)
         if TAG_RAY_USER_NODE_TYPE in tags:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
-            head_node_type = self.config["head_node_type"]
 
             min_workers = self.available_node_types.get(node_type, {}).get(
                 "min_workers", 0)
@@ -555,8 +556,7 @@ class StandardAutoscaler:
                 return (KeepOrTerminate.terminate,
                         f"not in available_node_types: {available_node_types}")
             new_count = node_type_counts[node_type] + 1
-            if (new_count <= min(min_workers, max_workers)
-                    or node_type == head_node_type):
+            if new_count <= min(min_workers, max_workers):
                 return KeepOrTerminate.keep, None
             if new_count > max_workers:
                 return KeepOrTerminate.terminate, "max_workers_per_type"

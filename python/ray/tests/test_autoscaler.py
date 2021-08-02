@@ -11,6 +11,7 @@ from unittest.mock import Mock
 import yaml
 import copy
 from collections import defaultdict
+from ray.autoscaler._private.commands import get_or_create_head_node
 from jsonschema.exceptions import ValidationError
 from typing import Dict, Callable
 
@@ -1792,6 +1793,18 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(15)])
         lm = LoadMetrics()
+
+        get_or_create_head_node(
+            config,
+            printable_config_file=config_path,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+        self.waitForNodes(1)
+
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
@@ -1806,7 +1819,7 @@ class AutoscalingTest(unittest.TestCase):
         assert len(
             self.provider.non_terminated_nodes({
                 TAG_RAY_NODE_KIND: NODE_KIND_WORKER
-            })) == 11
+            })) == 10
 
         # Terminate some nodes
         config["available_node_types"]["m4.large"]["min_workers"] = 2  # 3
@@ -1820,24 +1833,25 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
         assert autoscaler.pending_launches.value == 0
-        self.waitForNodes(9, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        self.waitForNodes(8, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert autoscaler.pending_launches.value == 0
         events = autoscaler.event_summarizer.summary()
         assert ("Removing 1 nodes of type m4.large (max_workers_per_type)." in
                 events)
         assert ("Removing 2 nodes of type p2.8xlarge (max_workers_per_type)."
                 in events)
+
+        # We should not be starting/stopping empty_node at all.
+        for event in events:
+            assert "empty_node" not in event
+
         node_type_counts = defaultdict(int)
         for node_id in autoscaler.workers():
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
                 node_type_counts[node_type] += 1
-        assert node_type_counts == {
-            "empty_node": 1,
-            "m4.large": 2,
-            "p2.xlarge": 6
-        }
+        assert node_type_counts == {"m4.large": 2, "p2.xlarge": 6}
 
     def testScaleUpBasedOnLoad(self):
         config = SMALL_CLUSTER.copy()
@@ -2789,7 +2803,6 @@ MemAvailable:   33000000 kB
 
         # Should get two new nodes after the next update.
         autoscaler.update()
-        events = autoscaler.event_summarizer.summary()
         self.waitForNodes(2)
         assert set(autoscaler.workers()) == {2, 3},\
             "Unexpected node_ids"
