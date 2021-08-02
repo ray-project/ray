@@ -485,10 +485,18 @@ def test_fastapi_nested_field_in_response_model(serve_instance):
     @serve.deployment(route_prefix="/")
     @serve.ingress(app)
     class TestDeployment:
-        pass
+        # https://github.com/ray-project/ray/issues/17363
+        @app.get("/inner", response_model=TestModel)
+        def test_endpoint_2(self):
+            test_model = TestModel(a="a", b=["b"])
+            return test_model
 
     TestDeployment.deploy()
+
     resp = requests.get("http://localhost:8000/")
+    assert resp.json() == {"a": "a", "b": ["b"]}
+
+    resp = requests.get("http://localhost:8000/inner")
     assert resp.json() == {"a": "a", "b": ["b"]}
 
 

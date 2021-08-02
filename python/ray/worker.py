@@ -122,6 +122,9 @@ class Worker:
         # by the worker should drop into the debugger at the specified
         # breakpoint ID.
         self.debugger_get_breakpoint = b""
+        # If True, make the debugger external to the node this worker is
+        # running on.
+        self.ray_debugger_external = False
         self._load_code_from_local = False
         # Used to toggle whether or not logs should be filtered to only those
         # produced in the same job.
@@ -491,12 +494,22 @@ def get_gpu_ids():
     worker = global_worker
     worker.check_connected()
 
+    if worker.mode != WORKER_MODE:
+        logger.warning(
+            "`ray.get_gpu_ids()` will always return the empty list when "
+            "called from the driver. This is because Ray does not manage "
+            "GPU allocations to the driver process.")
+
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
     assigned_ids = set()
     for resource, assignment in all_resource_ids.items():
         # Handle both normal and placement group GPU resources.
-        if resource == "GPU" or resource.startswith("GPU_group_"):
+        # Note: We should only get the GPU ids from the placement
+        # group resource that does not contain the bundle index!
+        import re
+        if resource == "GPU" or re.match(r"^GPU_group_[0-9A-Za-z]+$",
+                                         resource):
             for resource_id, _ in assignment:
                 assigned_ids.add(resource_id)
 
@@ -672,7 +685,7 @@ def init(
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
-        runtime_env (dict): The runtime environment to use
+        runtime_env (dict): The runtime environment to use for this job.
         internal_config (dict): Dictionary mapping names of a unstable
             parameters to values, e.g. {"redis_password": "1234"}. This is
             only used for initializing a local client (ray.init(local://...)).
@@ -1224,7 +1237,8 @@ def connect(node,
             job_config=None,
             runtime_env_hash=0,
             runtime_env_json="{}",
-            worker_shim_pid=0):
+            worker_shim_pid=0,
+            ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1240,6 +1254,8 @@ def connect(node,
         runtime_env_hash (int): The hash of the runtime env for this worker.
         worker_shim_pid (int): The PID of the process for setup worker
             runtime env.
+        ray_debugger_host (bool): The host to bind a Ray debugger to on
+            this worker.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1338,6 +1354,8 @@ def connect(node,
     # (but not on the driver).
     if mode == WORKER_MODE:
         os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
+
+    worker.ray_debugger_external = ray_debugger_external
 
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
@@ -1600,8 +1618,13 @@ def get(object_refs, *, timeout=None):
         if debugger_breakpoint != b"":
             frame = sys._getframe().f_back
             rdb = ray.util.pdb.connect_ray_pdb(
-                None, None, False, None,
-                debugger_breakpoint.decode() if debugger_breakpoint else None)
+                host=None,
+                port=None,
+                patch_stdstreams=False,
+                quiet=None,
+                breakpoint_uuid=debugger_breakpoint.decode()
+                if debugger_breakpoint else None,
+                debugger_external=worker.ray_debugger_external)
             rdb.set_trace(frame=frame)
 
         return values

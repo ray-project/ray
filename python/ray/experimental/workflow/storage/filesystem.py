@@ -20,6 +20,7 @@ STEP_OUTPUT = "output.pkl"
 STEP_FUNC_BODY = "func_body.pkl"
 CLASS_BODY = "class_body.pkl"
 WORKFLOW_META = "workflow_meta.json"
+WORKFLOW_PROGRESS = "progress.json"
 
 
 @contextlib.contextmanager
@@ -134,6 +135,12 @@ class FilesystemStorageImpl(Storage):
 
     def __init__(self, workflow_root_dir: str):
         self._workflow_root_dir = pathlib.Path(workflow_root_dir)
+        if self._workflow_root_dir.exists():
+            if not self._workflow_root_dir.is_dir():
+                raise ValueError(f"storage path {workflow_root_dir} must be"
+                                 " a directory.")
+        else:
+            self._workflow_root_dir.mkdir()
 
     async def load_step_input_metadata(self, workflow_id: str,
                                        step_id: StepID) -> Dict[str, Any]:
@@ -273,6 +280,25 @@ class FilesystemStorageImpl(Storage):
         try:
             with _open_atomic(file_path, "wb") as f:
                 ray.cloudpickle.dump(cls, f)
+        except Exception as e:
+            raise DataSaveError from e
+
+    async def load_workflow_progress(self, workflow_id: str) -> Dict[str, Any]:
+        path = (self._workflow_root_dir / workflow_id / STEPS_DIR /
+                WORKFLOW_PROGRESS)
+        try:
+            with _open_atomic(path) as f:
+                return json.load(f)
+        except Exception as e:
+            raise DataLoadError from e
+
+    async def save_workflow_progress(self, workflow_id: str,
+                                     metadata: Dict[str, Any]) -> None:
+        path = (self._workflow_root_dir / workflow_id / STEPS_DIR /
+                WORKFLOW_PROGRESS)
+        try:
+            with _open_atomic(path, "w") as f:
+                json.dump(metadata, f)
         except Exception as e:
             raise DataSaveError from e
 
