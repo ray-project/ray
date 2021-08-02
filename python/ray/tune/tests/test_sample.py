@@ -1118,6 +1118,21 @@ class SearchSpaceTest(unittest.TestCase):
                 ot_trial.suggest_int("nest/b", 4, 10)
                 ot_trial.suggest_uniform("nest/second", -0.4, 0.4)
 
+        class MockOptunaSampler(RandomSampler):
+            def __init__(self, seed) -> None:
+                super().__init__(seed=seed)
+                self.counter = 0
+
+            def sample_independent(self, study, trial, param_name,
+                                   param_distribution):
+                if param_name == "a":
+                    if self.counter == 0:
+                        self.counter += 1
+                        return param_distribution.choices[0]
+                    return param_distribution.choices[1]
+                return super().sample_independent(study, trial, param_name,
+                                                  param_distribution)
+
         sampler_branching = RandomSampler(seed=1234)
         searcher_branching = OptunaSearch(
             space=optuna_define_by_run_branching_invalid,
@@ -1128,7 +1143,7 @@ class SearchSpaceTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             searcher_branching.suggest("0")
 
-        sampler_branching = RandomSampler(seed=3)
+        sampler_branching = MockOptunaSampler(seed=1234)
         searcher_branching = OptunaSearch(
             space=optuna_define_by_run_branching,
             sampler=sampler_branching,
