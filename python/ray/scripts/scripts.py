@@ -676,8 +676,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.newline()
             cli_logger.print("To connect to this Ray runtime from outside of "
                              "the cluster, for example to")
-            cli_logger.print("connect a local script to a remote cluster, use "
-                             "the following Python code:")
+            cli_logger.print("connect to a remote cluster from your laptop "
+                             "directly, use the following")
+            cli_logger.print("Python code:")
             with cli_logger.indented():
                 with cf.with_style("monokai") as c:
                     cli_logger.print("{} ray", c.magenta("import"))
@@ -685,7 +686,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                         "ray{}init(address{}{})", c.magenta("."),
                         c.magenta("="),
                         c.yellow(
-                            f"'ray://<node_ip>:{ray_client_server_port}'"))
+                            "'ray://<head_node_ip_address>:"
+                            f"{ray_client_server_port}'"))
             cli_logger.newline()
             cli_logger.print(
                 cf.underlined("If connection fails, check your "
