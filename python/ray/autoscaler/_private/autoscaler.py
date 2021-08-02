@@ -239,7 +239,10 @@ class StandardAutoscaler:
                 node_type_counts[node_type] += 1
 
         def schedule_node_termination(node_id: NodeID,
-                                      reason: Optional[str]) -> None:
+                                      reason_opt: Optional[str]) -> None:
+            if reason_opt is None:
+                Exception("reason should be not None.")
+            reason: str = reason_opt
             # Log, record an event, and add node_id to nodes_to_terminate.
             logger.info("StandardAutoscaler: "
                         "{}: Terminating {} node.".format(node_id, reason))
