@@ -245,6 +245,13 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+py_test(
+    name = "test_gcp_node_provider",
+    size = "small",
+    srcs = SRCS + ["gcp/test_gcp_node_provider.py"],
+    deps = ["//:ray_lib"],
+)
+
 # Note(simon): typing tests are not included in module list
 #    because they requires globs and it might be refactored in the future.
 py_test(
