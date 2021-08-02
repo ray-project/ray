@@ -12,9 +12,10 @@ torch, _ = try_import_torch()
 class TestGPUs(unittest.TestCase):
     def test_gpus_in_non_local_mode(self):
         # Non-local mode.
-        ray.init()
+        ray.init(num_cpus=8)
 
         actual_gpus = torch.cuda.device_count()
+        print(f"Actual GPUs found (by torch): {actual_gpus}")
 
         config = DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
@@ -28,7 +29,7 @@ class TestGPUs(unittest.TestCase):
             per_worker = [0] if actual_gpus == 0 or actual_gpus < num_gpus \
                 else [0, 0.5, 1]
             for num_gpus_per_worker in per_worker:
-                for fake_gpus in [False, True]:
+                for fake_gpus in [False] + ([] if num_gpus == 0 else [True]):
                     config["num_gpus"] = num_gpus
                     config["num_gpus_per_worker"] = num_gpus_per_worker
                     config["_fake_gpus"] = fake_gpus
@@ -69,12 +70,12 @@ class TestGPUs(unittest.TestCase):
                                 tune.run(
                                     "PG",
                                     config=config,
-                                    stop={"training_iteration": -1})
+                                    stop={"training_iteration": 0})
         ray.shutdown()
 
     def test_gpus_in_local_mode(self):
         # Local mode.
-        ray.init(local_mode=True)
+        ray.init(num_gpus=8, local_mode=True)
 
         actual_gpus_available = torch.cuda.device_count()
 
@@ -97,7 +98,7 @@ class TestGPUs(unittest.TestCase):
                     trainer.stop()
                     print("via ray.tune.run()")
                     tune.run(
-                        "PG", config=config, stop={"training_iteration": -1})
+                        "PG", config=config, stop={"training_iteration": 0})
         ray.shutdown()
 
 
