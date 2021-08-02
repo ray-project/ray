@@ -82,7 +82,7 @@ __attribute__((visibility("default"))) int go_worker_GetNodeToConnectForDriver(
       gcs_accessor->GetNodeToConnectForDriver(node_ip_address, &node_to_connect);
   if (!status.ok()) {
     RAY_LOG(FATAL) << "Failed to get node to connect for driver:" << status.message();
-    return nullptr;
+    return 0;
   }
   int result_length = strlen(node_to_connect.c_str());
   *result = (char *)malloc(result_length + 1);
