@@ -89,6 +89,11 @@ FunctionDescriptor FunctionDescriptorBuilder::FromVector(
     return FunctionDescriptorBuilder::BuildCpp(
         function_descriptor_list[0]  // function name
     );
+  } else if (language == rpc::Language::GOLANG) {
+    RAY_CHECK(function_descriptor_list.size() == 1);
+    return FunctionDescriptorBuilder::BuildCpp(
+        function_descriptor_list[0]  // function name
+    );
   } else {
     RAY_LOG(FATAL) << "Unspported language " << language;
     return FunctionDescriptorBuilder::Empty();

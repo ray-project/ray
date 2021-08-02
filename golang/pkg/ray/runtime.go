@@ -107,7 +107,10 @@ type ActorHandle struct {
     actorType reflect.Type
 }
 
-type Convert func(i interface{})
+type Param interface {
+}
+
+type Convert func(a, i Param)
 
 // 缺少泛型的支持，所以只能传入参数名
 // 参数填这里

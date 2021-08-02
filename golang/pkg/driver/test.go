@@ -12,6 +12,7 @@ func main() {
     util.Logger.Infof("finish init")
     actor_ref := ray.Actor((*actor.Count)(nil)).Remote()
     util.Logger.Infof("created actor ref")
+    //var f ray.Convert = actor.Count.Increase
     actor_ref.Task("Get")
     fmt.Println("ok!")
 }
