@@ -87,10 +87,10 @@ Specifying Resources
 ~~~~~~~~~~~~~~~~~~~~
 
 You can control the degree of parallelism used by setting the ``num_workers``
-hyperparameter for most algorithms. The Trainer will construct that many "remote workers"
-(`RolloutWorker<https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`__ instances
-that are constructed as ray.remote actors) plus always one "local worker", a ``RolloutWorker`` object that's not a
-ray actor and that lives directly in the Trainer.
+hyperparameter for most algorithms. The Trainer will construct that many
+"remote worker" instances (`see RolloutWorker class <https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`__)
+that are constructed as ray.remote actors, plus exactly one "local worker", a ``RolloutWorker`` object that is not a
+ray actor, but lives directly inside the Trainer.
 For most algorithms, learning updates are performed on the local worker and sample collection from
 one or more environments is performed by the remote workers (in parallel).
 For example, setting ``num_workers=0`` will only create the local worker, in which case both
@@ -104,7 +104,7 @@ Similarly, the resource allocation to remote workers can be controlled via ``num
 
 The number of GPUs can be fractional quantities (e.g. 0.5) to allocate only a fraction
 of a GPU. For example, with DQN you can pack five trainers onto one GPU by setting
-``num_gpus: 0.2``. Check out `this fractional GPU example here<https://github.com/ray-project/ray/blob/master/rllib/examples/fractional_gpus.py>`__
+``num_gpus: 0.2``. Check out `this fractional GPU example here <https://github.com/ray-project/ray/blob/master/rllib/examples/fractional_gpus.py>`__
 as well that also demonstrates how environments (running on the remote workers) that
 require a GPU can benefit from the ``num_gpus_per_worker`` setting.
 
