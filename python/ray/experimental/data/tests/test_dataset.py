@@ -127,8 +127,8 @@ def test_basic(ray_start_regular_shared, pipelined):
 
 
 # TODO(ekl) enable this
-#@pytest.mark.parametrize("pipelined", [False, True])
-#def test_avoid_placement_group_capture(ray_start_regular_shared, pipelined):
+# @pytest.mark.parametrize("pipelined", [False, True])
+# def test_avoid_placement_group_capture(ray_start_regular_shared, pipelined):
 #    @ray.remote
 #    def run():
 #        ds = ray.experimental.data.range(5)
