@@ -31,6 +31,9 @@ from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
+# print a warning if define by run function takes longer than this to execute
+DEFINE_BY_RUN_WARN_THRESHOLD_S = 1  # 1 is arbitrary
+
 
 # Deprecate: 1.5
 class _Param:
@@ -291,7 +294,7 @@ class OptunaSearch(Searcher):
         time_start = time.time()
         ret = func(captor)
         time_taken = time.time() - time_start
-        if time_taken > 1:  # arbitrary
+        if time_taken > DEFINE_BY_RUN_WARN_THRESHOLD_S:
             warnings.warn(
                 "Define-by-run function passed in the `space` argument "
                 f"took {time_taken} seconds to "

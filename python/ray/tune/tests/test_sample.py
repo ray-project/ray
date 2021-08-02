@@ -1071,6 +1071,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         config_constant = searcher5.suggest("0")
         self.assertIn("constant", config_constant)
+        config_constant.pop("constant")
 
         sampler6 = RandomSampler(seed=1234)
         searcher6 = OptunaSearch(
@@ -1090,10 +1091,67 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertEqual(config1, config2)
         self.assertEqual(config1, config3)
         self.assertEqual(config1, config4)
+        self.assertEqual(config1, config_constant)
         self.assertIn(config1["a"], [2, 3, 4])
         self.assertIn(config1["b"]["x"], list(range(5)))
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
+
+        def optuna_define_by_run_branching_invalid(ot_trial):
+            # this is invalid because such a dict cannot be
+            # unflattened (will try to assign child dicts to value under "a",
+            # but that will be an int, instead of a dict)
+            a = ot_trial.suggest_categorical("a", [1, 2])
+            if a == 1:
+                ot_trial.suggest_int("a/b", 0, 3)
+                ot_trial.suggest_int("a/first", 2, 8)
+            else:
+                ot_trial.suggest_int("a/b", 4, 10)
+                ot_trial.suggest_uniform("a/second", -0.4, 0.4)
+
+        def optuna_define_by_run_branching(ot_trial):
+            a = ot_trial.suggest_categorical("a", ["1", "2"])
+            if a == "1":
+                ot_trial.suggest_int("a:1/b", 0, 3)
+                ot_trial.suggest_int("a:1/first", 2, 8)
+            else:
+                ot_trial.suggest_int("a:2/b", 4, 10)
+                ot_trial.suggest_uniform("a:2/second", -0.4, 0.4)
+
+        sampler_branching = RandomSampler(seed=1234)
+        searcher_branching = OptunaSearch(
+            space=optuna_define_by_run_branching_invalid,
+            sampler=sampler_branching,
+            metric="a",
+            mode="max")
+
+        with self.assertRaises(TypeError):
+            searcher_branching.suggest("0")
+
+        sampler_branching = RandomSampler(seed=3)
+        searcher_branching = OptunaSearch(
+            space=optuna_define_by_run_branching,
+            sampler=sampler_branching,
+            metric="a",
+            mode="max")
+
+        config_branching_1 = searcher_branching.suggest("0")
+        self.assertIn("a", config_branching_1)
+        self.assertEqual(config_branching_1["a"], "1")
+        self.assertIn("a:1", config_branching_1)
+        self.assertIn("b", config_branching_1["a:1"])
+        self.assertIn("first", config_branching_1["a:1"])
+        self.assertGreater(4, config_branching_1["a:1"]["b"])
+        self.assertLess(0.5, config_branching_1["a:1"]["first"])
+
+        config_branching_2 = searcher_branching.suggest("1")
+        self.assertIn("a", config_branching_2)
+        self.assertEqual(config_branching_2["a"], "2")
+        self.assertIn("a:2", config_branching_2)
+        self.assertIn("b", config_branching_2["a:2"])
+        self.assertIn("second", config_branching_2["a:2"])
+        self.assertLess(3, config_branching_2["a:2"]["b"])
+        self.assertGreater(0.5, config_branching_2["a:2"]["second"])
 
         searcher = OptunaSearch(metric="a", mode="max")
         analysis = tune.run(
