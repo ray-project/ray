@@ -174,18 +174,20 @@ def setup_worker(input_args):
     worker_command = [f"exec {worker_executable}"]
     if worker_executable == "java":
         # Java worker don't parse the command parameters, add option.
-        remaining_args.insert(len(remaining_args)-1, "-D{}={}".format("serialized-runtime-env", f"'{args.serialized_runtime_env}'"))
+        remaining_args.insert(
+            len(remaining_args) - 1, "-D{}={}".format(
+                "serialized-runtime-env", f"'{args.serialized_runtime_env}'"))
         worker_command += remaining_args
     else:
         worker_command += remaining_args
         # Pass the runtime for working_dir setup.
         # We can't do it in shim process here because it requires
         # connection to gcs.
-        worker_command += ["--serialized-runtime-env", f"'{args.serialized_runtime_env}'"]
+        worker_command += [
+            "--serialized-runtime-env", f"'{args.serialized_runtime_env}'"
+        ]
 
-    commands += [
-        " ".join(worker_command)
-    ]
+    commands += [" ".join(worker_command)]
     command_separator = " && "
     command_str = command_separator.join(commands)
 
