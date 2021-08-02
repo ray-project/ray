@@ -339,6 +339,7 @@ cc_library(
     ],
     hdrs = [
         "src/ray/object_manager/common.h",
+        "src/ray/object_manager/plasma/allocator.h",
         "src/ray/object_manager/plasma/create_request_queue.h",
         "src/ray/object_manager/plasma/eviction_policy.h",
         "src/ray/object_manager/plasma/plasma_allocator.h",
@@ -952,6 +953,34 @@ cc_test(
     deps = [
         ":raylet_lib",
         "@boost//:endian",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "allocator_test",
+    srcs = [
+        "src/ray/object_manager/plasma/test/allocator_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":plasma_store_server_lib",
+        "@boost//:filesystem",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "fallback_allocator_test",
+    srcs = [
+        "src/ray/object_manager/plasma/test/fallback_allocator_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":plasma_store_server_lib",
+        "@boost//:filesystem",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],

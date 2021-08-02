@@ -90,6 +90,8 @@ class RayParams:
             external machines.
         dashboard_port: The port to bind the dashboard server to.
             Defaults to 8265.
+        dashboard_agent_listen_port: The port for dashboard agents to listen on
+            for HTTP requests.
         logging_level: Logging level, default will be logging.INFO.
         logging_format: Logging format, default contains a timestamp,
             filename, line number, and message. See ray_constants.py.
@@ -157,6 +159,7 @@ class RayParams:
                  include_dashboard=None,
                  dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
                  dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
+                 dashboard_agent_listen_port=0,
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
                  plasma_store_socket_name=None,
@@ -208,6 +211,7 @@ class RayParams:
         self.include_dashboard = include_dashboard
         self.dashboard_host = dashboard_host
         self.dashboard_port = dashboard_port
+        self.dashboard_agent_listen_port = dashboard_agent_listen_port
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir

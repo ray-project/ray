@@ -19,7 +19,7 @@ class ParquetDatasource(Datasource[ArrowRow]):
     Examples:
         >>> source = ParquetDatasource()
         >>> ray.data.read_datasource(source, paths="/path/to/dir").take()
-        ... {"a": 1, "b": "foo"}
+        ... [ArrowRow({"a": 1, "b": "foo"}), ...]
     """
 
     def prepare_read(
@@ -32,6 +32,7 @@ class ParquetDatasource(Datasource[ArrowRow]):
             **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
         """
+        from ray import cloudpickle
         import pyarrow.parquet as pq
         import numpy as np
 
@@ -44,7 +45,16 @@ class ParquetDatasource(Datasource[ArrowRow]):
             paths, **dataset_kwargs, filesystem=filesystem)
         pieces = pq_ds.pieces
 
-        def read_pieces(pieces: List["pyarrow._dataset.ParquetFileFragment"]):
+        def read_pieces(serialized_pieces: List[str]):
+            # Implicitly trigger S3 subsystem initialization by importing
+            # pyarrow.fs.
+            import pyarrow.fs  # noqa: F401
+
+            # Deserialize after loading the filesystem class.
+            pieces: List["pyarrow._dataset.ParquetFileFragment"] = [
+                cloudpickle.loads(p) for p in serialized_pieces
+            ]
+
             import pyarrow as pa
             logger.debug(f"Reading {len(pieces)} parquet pieces")
             use_threads = reader_args.pop("use_threads", False)
@@ -59,14 +69,16 @@ class ParquetDatasource(Datasource[ArrowRow]):
                 table = tables[0]
             return table
 
-        read_tasks = [
-            ReadTask(
-                lambda pieces=pieces: read_pieces(pieces),
-                _get_metadata(pieces, file_sizes, schema))
-            for pieces, file_sizes in zip(
+        read_tasks = []
+        for pieces, file_sizes in zip(
                 np.array_split(pieces, parallelism),
-                np.array_split(file_sizes, parallelism)) if len(pieces) > 0
-        ]
+                np.array_split(file_sizes, parallelism)):
+            if len(pieces) == 0:
+                continue
+            metadata = _get_metadata(pieces, file_sizes, schema)
+            pieces = [cloudpickle.dumps(p) for p in pieces]
+            read_tasks.append(
+                ReadTask(lambda pieces=pieces: read_pieces(pieces), metadata))
 
         return read_tasks
 
