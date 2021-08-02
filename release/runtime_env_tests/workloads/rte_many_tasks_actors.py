@@ -18,7 +18,7 @@ if __name__ == "__main__":
     envs = [{
         "pip": [f"requests=={versions[i]}"]
     } for i in range(len(versions) - 1)]
-    # If a task's env is {}, we should have requests==2.18.0 from the job's env.
+    # If a task's env is {}, we should have requests==2.18.0 from the job's env
     envs.append({})
 
     NUM_TASK_ITERATIONS = 10
@@ -33,11 +33,12 @@ if __name__ == "__main__":
         NUM_ENVS_PER_ITERATION = 1
 
     print("Testing Tasks...")
+
     @ray.remote
     def check_version_task(expected_version: str):
         import requests
-        assert requests.__version__ == expected_version, (requests.__version__, expected_version)
-
+        assert requests.__version__ == expected_version, (requests.__version__,
+                                                          expected_version)
 
     for i in range(NUM_TASK_ITERATIONS):
         results = []
@@ -52,15 +53,16 @@ if __name__ == "__main__":
         print(f"Finished tasks iteration {i+1}/{NUM_TASK_ITERATIONS}")
 
     print("Testing Actors...")
+
     @ray.remote
     class TestActor:
         def check_version(self, expected_version: str):
             import requests
-            assert requests.__version__ == expected_version, (requests.__version__, expected_version)
+            assert requests.__version__ == expected_version, (
+                requests.__version__, expected_version)
 
         def nested_check_version(self, expected_version: str):
             ray.get(check_version_task.remote(expected_version))
-
 
     for i in range(NUM_ACTOR_ITERATIONS):
         results = []
