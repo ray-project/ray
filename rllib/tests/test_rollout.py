@@ -37,7 +37,7 @@ def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
                   ", \"timesteps_per_iteration\": 5,\"min_iter_time_s\": 0.1, "
                   "\"model\": {\"fcnet_hiddens\": [10]}"
                   "}' --stop='{\"training_iteration\": 1}'" +
-                  " --env={}".format(env))
+                  " --env={} --no-ray-ui".format(env))
 
         checkpoint_path = os.popen("ls {}/default/*/checkpoint_000001/"
                                    "checkpoint-1".format(tmp_dir)).read()[:-1]

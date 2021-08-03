@@ -104,7 +104,7 @@ class SampleBatch(dict):
             # TODO: Drop support for lists as values.
             # Convert lists of int|float into numpy arrays make sure all data
             # has same length.
-            if isinstance(v, list) and isinstance(v[0], (int, float)):
+            if isinstance(v, list):
                 self[k] = np.array(v)
 
             # Try to infer the "length" of the SampleBatch by finding the first
@@ -742,15 +742,14 @@ class SampleBatch(dict):
             if path[0] not in columns:
                 return
             curr = self
-            for i, p in enumerate(path):
-                if i == len(path) - 1:
-                    # Bulk compressed.
-                    if is_compressed(value):
-                        curr[p] = unpack(value)
-                    # Non bulk compressed.
-                    elif len(value) > 0 and is_compressed(value):
-                        curr[p] = np.array([unpack(o) for o in value])
+            for p in path[:-1]:
                 curr = curr[p]
+            # Bulk compressed.
+            if is_compressed(value):
+                curr[path[-1]] = unpack(value)
+            # Non bulk compressed.
+            elif len(value) > 0 and is_compressed(value[0]):
+                curr[path[-1]] = np.array([unpack(o) for o in value])
 
         tree.map_structure_with_path(_decompress_in_place, self)
 
