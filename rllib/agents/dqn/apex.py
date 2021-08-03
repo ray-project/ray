@@ -162,7 +162,8 @@ def apex_execution_plan(workers: WorkerSet,
     # Update experience priorities post learning.
     def update_prio_and_stats(item: Tuple[ActorHandle, dict, int]) -> None:
         actor, prio_dict, count = item
-        actor.update_priorities.remote(prio_dict)
+        if config.get("prioritized_replay"):
+            actor.update_priorities.remote(prio_dict)
         metrics = _get_shared_metrics()
         # Manually update the steps trained counter since the learner thread
         # is executing outside the pipeline.
