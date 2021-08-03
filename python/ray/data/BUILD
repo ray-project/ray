@@ -1,5 +1,5 @@
 # --------------------------------------------------------------------
-# Tests from the python/ray/experimental/data/tests directory.
+# Tests from the python/ray/data/tests directory.
 # Covers all tests starting with `test_`.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
