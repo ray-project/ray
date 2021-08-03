@@ -1,4 +1,3 @@
-import io
 import os
 import random
 import requests
@@ -13,7 +12,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from fsspec.implementations.local import LocalFileSystem
-
 
 import ray
 

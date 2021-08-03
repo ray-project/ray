@@ -8,7 +8,7 @@ from ray.experimental.data.impl.arrow_block import ArrowRow
 from ray.experimental.data.impl.block_list import BlockMetadata
 from ray.experimental.data.datasource.datasource import Datasource, ReadTask
 from ray.experimental.data.datasource.file_based_datasource import (
-    _resolve_paths_and_filesystem)
+    _resolve_paths_and_filesystem, _maybe_wrap_fs)
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,6 @@ class ParquetDatasource(Datasource[ArrowRow]):
         """Creates and returns read tasks for a file-based datasource.
         """
         from ray import cloudpickle
-        import pyarrow as pa
         import pyarrow.parquet as pq
         import numpy as np
 
@@ -41,8 +40,7 @@ class ParquetDatasource(Datasource[ArrowRow]):
             paths, filesystem)
         file_sizes = [file_info.size for file_info in file_infos]
 
-        if isinstance(filesystem, pa.fs.S3FileSystem):
-            filesystem = _S3FileSystemWrapper(filesystem)
+        filesystem = _maybe_wrap_fs(filesystem)
 
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         pq_ds = pq.ParquetDataset(

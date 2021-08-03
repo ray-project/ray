@@ -43,8 +43,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         read_file = self._read_file
 
-        if isinstance(filesystem, pa.fs.S3FileSystem):
-            filesystem = _S3FileSystemWrapper(filesystem)
+        filesystem = _maybe_wrap_fs(filesystem)
 
         def read_files(
                 read_paths: List[str],
@@ -209,6 +208,13 @@ def _unwrap_protocol(path):
     """
     parsed = urlparse(path)
     return parsed.netloc + parsed.path
+
+
+def _maybe_wrap_fs(filesystem: "pyarrow.fs.FileSystem"):
+    import pyarrow as pa
+    if isinstance(filesystem, pa.fs.S3FileSystem):
+        return _S3FileSystemWrapper(filesystem)
+    return filesystem
 
 
 class _S3FileSystemWrapper:
