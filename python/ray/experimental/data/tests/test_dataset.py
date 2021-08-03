@@ -11,6 +11,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from fsspec.implementations.local import LocalFileSystem
 
 import ray
 
@@ -124,6 +125,21 @@ def test_basic(ray_start_regular_shared, pipelined):
     assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
     assert ds.count() == 5
     assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
+
+
+# TODO(ekl) enable this
+# @pytest.mark.parametrize("pipelined", [False, True])
+# def test_avoid_placement_group_capture(ray_start_regular_shared, pipelined):
+#    @ray.remote
+#    def run():
+#        ds = ray.experimental.data.range(5)
+#        ds = maybe_pipeline(ds, pipelined)
+#        assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
+#        assert ds.count() == 5
+#        assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
+#
+#    pg = ray.util.placement_group([{"CPU": 1}])
+#    ray.get(run.options(placement_group=pg).remote())
 
 
 def test_batch_tensors(ray_start_regular_shared):
@@ -399,12 +415,37 @@ def test_get_blocks(ray_start_regular_shared):
     assert out == list(range(10)), out
 
 
-def test_pandas_roundtrip(ray_start_regular_shared):
+def test_pandas_roundtrip(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
     dfds = pd.concat(ray.get(ds.to_pandas()))
     assert pd.concat([df1, df2]).equals(dfds)
+
+
+def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
+    """Same as `test_parquet_read` but using a custom, fsspec filesystem.
+
+    TODO (Alex): We should write a similar test with a mock PyArrow fs, but
+    unfortunately pa.fs._MockFileSystem isn't serializable, so this may require
+    some effort.
+    """
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df1)
+    path1 = os.path.join(str(tmp_path), "test1.parquet")
+    path2 = os.path.join(str(tmp_path), "test2.parquet")
+    pq.write_table(table, path1)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    table = pa.Table.from_pandas(df2)
+    pq.write_table(table, path2)
+
+    fs = LocalFileSystem()
+
+    ds = ray.experimental.data.read_parquet([path1, path2], filesystem=fs)
+
+    # Test metadata-only parquet ops.
+    assert len(ds._blocks._blocks) == 1
+    assert ds.count() == 6
 
 
 def test_parquet_read(ray_start_regular_shared, tmp_path):
