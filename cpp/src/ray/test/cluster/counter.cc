@@ -60,6 +60,6 @@ uint64_t Counter::GetPid() {
 
 RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate), RAY_FUNC(Counter::FactoryCreate, int),
            RAY_FUNC(Counter::FactoryCreate, int, int), &Counter::Plus1, &Counter::Add,
-           &Counter::Exit, &Counter::GetPid);
+           &Counter::Exit, &Counter::GetPid, &Counter::ExceptionFunc);
 
 RAY_REMOTE(ActorConcurrentCall::FactoryCreate, &ActorConcurrentCall::CountDown);

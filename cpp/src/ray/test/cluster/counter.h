@@ -18,6 +18,7 @@ class Counter {
   int Add(int x);
   int Exit();
   uint64_t GetPid();
+  void ExceptionFunc() { throw std::invalid_argument("error"); }
   static bool IsProcessAlive(uint64_t pid);
 };
 
