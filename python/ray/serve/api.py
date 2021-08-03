@@ -664,7 +664,7 @@ def start(
         _get_global_client()
         logger.info("Connecting to existing Serve instance in namespace "
                     f"'{current_namespace}'.")
-        return
+        return _get_global_client()
     except RayServeException:
         pass
 
