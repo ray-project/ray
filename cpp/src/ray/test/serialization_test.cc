@@ -8,21 +8,21 @@ TEST(SerializationTest, TypeHybridTest) {
 
   // 1 arg
   // marshall
-  msgpack::sbuffer buffer1 = ray::serializer::Serializer::Serialize(in_arg1);
+  msgpack::sbuffer buffer1 = ray::internal::Serializer::Serialize(in_arg1);
   // unmarshall
   out_arg1 =
-      ray::serializer::Serializer::Deserialize<uint32_t>(buffer1.data(), buffer1.size());
+      ray::internal::Serializer::Deserialize<uint32_t>(buffer1.data(), buffer1.size());
 
   EXPECT_EQ(in_arg1, out_arg1);
 
   // 2 args
   // marshall
   msgpack::sbuffer buffer2 =
-      ray::serializer::Serializer::Serialize(std::make_tuple(in_arg1, in_arg2));
+      ray::internal::Serializer::Serialize(std::make_tuple(in_arg1, in_arg2));
 
   // unmarshall
   std::tie(out_arg1, out_arg2) =
-      ray::serializer::Serializer::Deserialize<std::tuple<uint32_t, std::string>>(
+      ray::internal::Serializer::Deserialize<std::tuple<uint32_t, std::string>>(
           buffer2.data(), buffer2.size());
 
   EXPECT_EQ(in_arg1, out_arg1);

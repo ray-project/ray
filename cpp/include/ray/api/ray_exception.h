@@ -4,7 +4,7 @@
 #include <string>
 
 namespace ray {
-namespace exception {
+namespace internal {
 
 class RayException : public std::exception {
  public:
@@ -19,5 +19,5 @@ class RayFunctionNotFound : public RayException {
  public:
   RayFunctionNotFound(const std::string &msg) : RayException(msg){};
 };
-}  // namespace exception
+}  // namespace internal
 }  // namespace ray

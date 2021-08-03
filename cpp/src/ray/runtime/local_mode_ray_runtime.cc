@@ -8,7 +8,7 @@
 #include "./task/local_mode_task_submitter.h"
 
 namespace ray {
-namespace runtime {
+namespace internal {
 
 LocalModeRayRuntime::LocalModeRayRuntime() {
   worker_ = std::make_unique<WorkerContext>(
@@ -24,5 +24,5 @@ ActorID LocalModeRayRuntime::GetNextActorID() {
   return actor_id;
 }
 
-}  // namespace runtime
+}  // namespace internal
 }  // namespace ray

@@ -7,7 +7,7 @@
 #include <msgpack.hpp>
 
 namespace ray {
-namespace serializer {
+namespace internal {
 
 /// Check T is ObjectRef or not.
 template <typename T>
@@ -46,5 +46,5 @@ class Arguments {
   }
 };
 
-}  // namespace serializer
+}  // namespace internal
 }  // namespace ray

@@ -5,7 +5,7 @@
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
-namespace runtime {
+namespace internal {
 
 RayFunction BuildRayFunction(InvocationSpec &invocation) {
   auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
@@ -51,7 +51,7 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
   auto status = core_worker.CreateActor(BuildRayFunction(invocation), invocation.args,
                                         actor_options, "", &actor_id);
   if (!status.ok()) {
-    throw ray::exception::RayException("Create actor error");
+    throw ray::internal::RayException("Create actor error");
   }
   return actor_id;
 }
@@ -60,5 +60,5 @@ ObjectID NativeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation) {
   return Submit(invocation);
 }
 
-}  // namespace runtime
+}  // namespace internal
 }  // namespace ray

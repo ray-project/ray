@@ -7,7 +7,7 @@
 #include "invocation_spec.h"
 
 namespace ray {
-namespace runtime {
+namespace internal {
 
 class TaskSubmitter {
  public:
@@ -21,5 +21,5 @@ class TaskSubmitter {
 
   virtual ObjectID SubmitActorTask(InvocationSpec &invocation) = 0;
 };
-}  // namespace runtime
+}  // namespace internal
 }  // namespace ray

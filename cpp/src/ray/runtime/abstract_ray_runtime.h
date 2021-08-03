@@ -15,7 +15,7 @@
 #include "ray/core_worker/core_worker.h"
 
 namespace ray {
-namespace runtime {
+namespace internal {
 
 class AbstractRayRuntime : public RayRuntime {
  public:
@@ -35,14 +35,14 @@ class AbstractRayRuntime : public RayRuntime {
                          int timeout_ms);
 
   std::string Call(const RemoteFunctionHolder &remote_function_holder,
-                   std::vector<ray::serializer::TaskArg> &args);
+                   std::vector<ray::internal::TaskArg> &args);
 
   std::string CreateActor(const RemoteFunctionHolder &remote_function_holder,
-                          std::vector<ray::serializer::TaskArg> &args);
+                          std::vector<ray::internal::TaskArg> &args);
 
   std::string CallActor(const RemoteFunctionHolder &remote_function_holder,
                         const std::string &actor,
-                        std::vector<ray::serializer::TaskArg> &args);
+                        std::vector<ray::internal::TaskArg> &args);
 
   void AddLocalReference(const std::string &id);
 
@@ -69,5 +69,5 @@ class AbstractRayRuntime : public RayRuntime {
   static std::shared_ptr<AbstractRayRuntime> abstract_ray_runtime_;
   void Execute(const TaskSpecification &task_spec);
 };
-}  // namespace runtime
+}  // namespace internal
 }  // namespace ray

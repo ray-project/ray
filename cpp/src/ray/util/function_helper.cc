@@ -6,7 +6,7 @@
 #include "ray/util/logging.h"
 
 namespace ray {
-namespace runtime {
+namespace internal {
 
 void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
   RAY_LOG(INFO) << "Start load library " << lib_path;
@@ -134,7 +134,7 @@ const EntryFuntion &FunctionHelper::GetExecutableFunctions(
     const std::string &function_name) {
   auto it = remote_funcs_.find(function_name);
   if (it == remote_funcs_.end()) {
-    throw ray::exception::RayFunctionNotFound(
+    throw ray::internal::RayFunctionNotFound(
         "Executable function not found, the function name " + function_name);
   } else {
     return it->second;
@@ -145,12 +145,12 @@ const EntryFuntion &FunctionHelper::GetExecutableMemberFunctions(
     const std::string &function_name) {
   auto it = remote_member_funcs_.find(function_name);
   if (it == remote_member_funcs_.end()) {
-    throw ray::exception::RayFunctionNotFound(
+    throw ray::internal::RayFunctionNotFound(
         "Executable member function not found, the function name " + function_name);
   } else {
     return it->second;
   }
 }
 
-}  // namespace runtime
+}  // namespace internal
 }  // namespace ray

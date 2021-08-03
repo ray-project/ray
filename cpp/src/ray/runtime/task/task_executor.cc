@@ -55,7 +55,7 @@ GetRemoteFunctions() {
 }
 }  // namespace internal
 
-namespace runtime {
+namespace internal {
 
 std::shared_ptr<msgpack::sbuffer> TaskExecutor::current_actor_ = nullptr;
 
@@ -85,7 +85,7 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
     RAY_LOG(DEBUG) << "Execute function " << func_name << " ok.";
     return std::make_pair(ray::Status::OK(),
                           std::make_shared<msgpack::sbuffer>(std::move(result)));
-  } catch (ray::exception::RayException &e) {
+  } catch (ray::internal::RayException &e) {
     return std::make_pair(ray::Status::NotFound(e.what()), nullptr);
   }
 }
@@ -191,5 +191,5 @@ void TaskExecutor::Invoke(
   }
 }
 
-}  // namespace runtime
+}  // namespace internal
 }  // namespace ray

@@ -75,13 +75,13 @@ WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_object
 /// \param[in] args The function arguments passed by a value or ObjectRef.
 /// \return TaskCaller.
 template <typename F>
-ray::call::TaskCaller<F> Task(F func);
+ray::internal::TaskCaller<F> Task(F func);
 
 /// Generic version of creating an actor
 /// It is used for creating an actor, such as: ActorCreator<Counter> creator =
 /// Ray::Actor(Counter::FactoryCreate<int>).Remote(1);
 template <typename F>
-ray::call::ActorCreator<F> Actor(F create_func);
+ray::internal::ActorCreator<F> Actor(F create_func);
 
 static std::once_flag is_inited_;
 
@@ -89,10 +89,10 @@ template <typename T>
 std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids);
 
 template <typename FuncType>
-ray::call::TaskCaller<FuncType> TaskInternal(FuncType &func);
+ray::internal::TaskCaller<FuncType> TaskInternal(FuncType &func);
 
 template <typename FuncType>
-ray::call::ActorCreator<FuncType> CreateActorInternal(FuncType &func);
+ray::internal::ActorCreator<FuncType> CreateActorInternal(FuncType &func);
 
 // --------- inline implementation ------------
 
@@ -109,7 +109,7 @@ inline std::vector<std::string> ObjectRefsToObjectIDs(
 template <typename T>
 inline ray::ObjectRef<T> Put(const T &obj) {
   auto buffer =
-      std::make_shared<msgpack::sbuffer>(ray::serializer::Serializer::Serialize(obj));
+      std::make_shared<msgpack::sbuffer>(ray::internal::Serializer::Serialize(obj));
   auto id = ray::internal::GetRayRuntime()->Put(buffer);
   return ray::ObjectRef<T>(id);
 }
@@ -125,8 +125,8 @@ inline std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids) 
   std::vector<std::shared_ptr<T>> return_objects;
   return_objects.reserve(result.size());
   for (auto it = result.begin(); it != result.end(); it++) {
-    auto obj = ray::serializer::Serializer::Deserialize<std::shared_ptr<T>>(
-        (*it)->data(), (*it)->size());
+    auto obj = ray::internal::Serializer::Deserialize<std::shared_ptr<T>>((*it)->data(),
+                                                                          (*it)->size());
     return_objects.push_back(std::move(obj));
   }
   return return_objects;
@@ -157,28 +157,28 @@ inline WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num
 }
 
 template <typename FuncType>
-inline ray::call::TaskCaller<FuncType> TaskInternal(FuncType &func) {
-  ray::runtime::RemoteFunctionHolder remote_func_holder(func);
-  return ray::call::TaskCaller<FuncType>(ray::internal::GetRayRuntime().get(),
-                                         std::move(remote_func_holder));
+inline ray::internal::TaskCaller<FuncType> TaskInternal(FuncType &func) {
+  ray::internal::RemoteFunctionHolder remote_func_holder(func);
+  return ray::internal::TaskCaller<FuncType>(ray::internal::GetRayRuntime().get(),
+                                             std::move(remote_func_holder));
 }
 
 template <typename FuncType>
-inline ray::call::ActorCreator<FuncType> CreateActorInternal(FuncType &create_func) {
-  ray::runtime::RemoteFunctionHolder remote_func_holder(create_func);
-  return ray::call::ActorCreator<FuncType>(ray::internal::GetRayRuntime().get(),
-                                           std::move(remote_func_holder));
+inline ray::internal::ActorCreator<FuncType> CreateActorInternal(FuncType &create_func) {
+  ray::internal::RemoteFunctionHolder remote_func_holder(create_func);
+  return ray::internal::ActorCreator<FuncType>(ray::internal::GetRayRuntime().get(),
+                                               std::move(remote_func_holder));
 }
 
 /// Normal task.
 template <typename F>
-ray::call::TaskCaller<F> Task(F func) {
+ray::internal::TaskCaller<F> Task(F func) {
   return TaskInternal<F>(func);
 }
 
 /// Creating an actor.
 template <typename F>
-ray::call::ActorCreator<F> Actor(F create_func) {
+ray::internal::ActorCreator<F> Actor(F create_func) {
   return CreateActorInternal<F>(create_func);
 }
 

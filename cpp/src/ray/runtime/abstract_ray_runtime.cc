@@ -26,7 +26,7 @@ msgpack::sbuffer PackError(std::string error_msg) {
   return sbuffer;
 }
 }  // namespace internal
-namespace runtime {
+namespace internal {
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::abstract_ray_runtime_ = nullptr;
 
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
@@ -99,7 +99,7 @@ std::vector<bool> AbstractRayRuntime::Wait(const std::vector<std::string> &ids,
 }
 
 std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
-    std::vector<ray::serializer::TaskArg> &args) {
+    std::vector<ray::internal::TaskArg> &args) {
   std::vector<std::unique_ptr<::ray::TaskArg>> ray_args;
   for (auto &arg : args) {
     std::unique_ptr<::ray::TaskArg> ray_arg = nullptr;
@@ -122,7 +122,7 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
 
 InvocationSpec BuildInvocationSpec1(TaskType task_type,
                                     const RemoteFunctionHolder &remote_function_holder,
-                                    std::vector<ray::serializer::TaskArg> &args,
+                                    std::vector<ray::internal::TaskArg> &args,
                                     const ActorID &actor) {
   InvocationSpec invocation_spec;
   invocation_spec.task_type = task_type;
@@ -135,7 +135,7 @@ InvocationSpec BuildInvocationSpec1(TaskType task_type,
 }
 
 std::string AbstractRayRuntime::Call(const RemoteFunctionHolder &remote_function_holder,
-                                     std::vector<ray::serializer::TaskArg> &args) {
+                                     std::vector<ray::internal::TaskArg> &args) {
   auto invocation_spec = BuildInvocationSpec1(
       TaskType::NORMAL_TASK, remote_function_holder, args, ActorID::Nil());
   return task_submitter_->SubmitTask(invocation_spec).Binary();
@@ -143,7 +143,7 @@ std::string AbstractRayRuntime::Call(const RemoteFunctionHolder &remote_function
 
 std::string AbstractRayRuntime::CreateActor(
     const RemoteFunctionHolder &remote_function_holder,
-    std::vector<ray::serializer::TaskArg> &args) {
+    std::vector<ray::internal::TaskArg> &args) {
   auto invocation_spec = BuildInvocationSpec1(
       TaskType::ACTOR_CREATION_TASK, remote_function_holder, args, ActorID::Nil());
   return task_submitter_->CreateActor(invocation_spec).Binary();
@@ -151,7 +151,7 @@ std::string AbstractRayRuntime::CreateActor(
 
 std::string AbstractRayRuntime::CallActor(
     const RemoteFunctionHolder &remote_function_holder, const std::string &actor,
-    std::vector<ray::serializer::TaskArg> &args) {
+    std::vector<ray::internal::TaskArg> &args) {
   auto invocation_spec = BuildInvocationSpec1(
       TaskType::ACTOR_TASK, remote_function_holder, args, ActorID::FromBinary(actor));
   return task_submitter_->SubmitActorTask(invocation_spec).Binary();
@@ -181,5 +181,5 @@ void AbstractRayRuntime::RemoveLocalReference(const std::string &id) {
   }
 }
 
-}  // namespace runtime
+}  // namespace internal
 }  // namespace ray

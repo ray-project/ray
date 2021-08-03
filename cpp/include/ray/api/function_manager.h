@@ -32,17 +32,17 @@ namespace internal {
 template <typename T>
 inline static std::enable_if_t<!std::is_pointer<T>::value, msgpack::sbuffer>
 PackReturnValue(T result) {
-  return ray::serializer::Serializer::Serialize(std::move(result));
+  return ray::internal::Serializer::Serialize(std::move(result));
 }
 
 template <typename T>
 inline static std::enable_if_t<std::is_pointer<T>::value, msgpack::sbuffer>
 PackReturnValue(T result) {
-  return ray::serializer::Serializer::Serialize((uint64_t)result);
+  return ray::internal::Serializer::Serialize((uint64_t)result);
 }
 
 inline static msgpack::sbuffer PackVoid() {
-  return ray::serializer::Serializer::Serialize(msgpack::type::nil_t());
+  return ray::internal::Serializer::Serialize(msgpack::type::nil_t());
 }
 
 msgpack::sbuffer PackError(std::string error_msg);
@@ -132,7 +132,7 @@ struct Invoker {
       }
 
       uint64_t actor_ptr =
-          ray::serializer::Serializer::Deserialize<uint64_t>(ptr->data(), ptr->size());
+          ray::internal::Serializer::Deserialize<uint64_t>(ptr->data(), ptr->size());
       using Self = boost::callable_traits::class_of_t<Function>;
       Self *self = (Self *)actor_ptr;
       result = Invoker<Function>::CallMember<RetrunType>(func, self, std::move(tp));
@@ -150,7 +150,7 @@ struct Invoker {
  private:
   template <typename T>
   static inline T ParseArg(char *data, size_t size, bool &is_ok) {
-    auto pair = ray::serializer::Serializer::DeserializeWhenNil<T>(data, size);
+    auto pair = ray::internal::Serializer::DeserializeWhenNil<T>(data, size);
     is_ok = pair.first;
     return pair.second;
   }
@@ -251,12 +251,12 @@ class FunctionManager {
   RegisterRemoteFunction(std::string const &name, const Function &f) {
     auto pair = func_ptr_to_key_map_.emplace(GetAddress(f), name);
     if (!pair.second) {
-      throw ray::exception::RayException("Duplicate RAY_REMOTE function: " + name);
+      throw ray::internal::RayException("Duplicate RAY_REMOTE function: " + name);
     }
 
     bool ok = RegisterNonMemberFunc(name, f);
     if (!ok) {
-      throw ray::exception::RayException("Duplicate RAY_REMOTE function: " + name);
+      throw ray::internal::RayException("Duplicate RAY_REMOTE function: " + name);
     }
 
     return true;
@@ -269,12 +269,12 @@ class FunctionManager {
     auto key = std::make_pair(typeid(Self).name(), GetAddress(f));
     auto pair = mem_func_to_key_map_.emplace(std::move(key), name);
     if (!pair.second) {
-      throw ray::exception::RayException("Duplicate RAY_REMOTE function: " + name);
+      throw ray::internal::RayException("Duplicate RAY_REMOTE function: " + name);
     }
 
     bool ok = RegisterMemberFunc(name, f);
     if (!ok) {
-      throw ray::exception::RayException("Duplicate RAY_REMOTE function: " + name);
+      throw ray::internal::RayException("Duplicate RAY_REMOTE function: " + name);
     }
 
     return true;

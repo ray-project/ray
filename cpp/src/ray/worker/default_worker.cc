@@ -8,7 +8,7 @@
 
 int main(int argc, char **argv) {
   RAY_LOG(INFO) << "CPP default worker started.";
-  ray::runtime::ConfigInternal::Instance().worker_type = ray::WorkerType::WORKER;
+  ray::internal::ConfigInternal::Instance().worker_type = ray::WorkerType::WORKER;
   ray::RayConfig config;
   ray::Init(config, &argc, &argv);
   ::ray::CoreWorkerProcess::RunTaskExecutionLoop();

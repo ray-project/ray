@@ -16,12 +16,12 @@ class ObjectRef;
 /// Common helper functions used by ObjectRef<T> and ObjectRef<void>;
 inline void CheckResult(const std::shared_ptr<msgpack::sbuffer> &packed_object) {
   bool has_error =
-      ray::serializer::Serializer::HasError(packed_object->data(), packed_object->size());
+      ray::internal::Serializer::HasError(packed_object->data(), packed_object->size());
   if (has_error) {
-    auto tp = ray::serializer::Serializer::Deserialize<std::tuple<int, std::string>>(
+    auto tp = ray::internal::Serializer::Deserialize<std::tuple<int, std::string>>(
         packed_object->data(), packed_object->size(), 1);
     std::string err_msg = std::get<1>(tp);
-    throw ray::exception::RayException(err_msg);
+    throw ray::internal::RayException(err_msg);
   }
 }
 
@@ -75,7 +75,7 @@ inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object) {
   auto packed_object = internal::GetRayRuntime()->Get(object.ID());
   CheckResult(packed_object);
 
-  return ray::serializer::Serializer::Deserialize<std::shared_ptr<T>>(
+  return ray::internal::Serializer::Deserialize<std::shared_ptr<T>>(
       packed_object->data(), packed_object->size());
 }
 

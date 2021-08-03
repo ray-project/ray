@@ -11,7 +11,7 @@
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
-namespace runtime {
+namespace internal {
 
 void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
                                ObjectID *object_id) {
@@ -21,7 +21,7 @@ void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
   auto status = core_worker.Put(
       ::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()), {}, object_id);
   if (!status.ok()) {
-    throw ray::exception::RayException("Put object error");
+    throw ray::internal::RayException("Put object error");
   }
   return;
 }
@@ -34,7 +34,7 @@ void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
   auto status = core_worker.Put(
       ::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()), {}, object_id);
   if (!status.ok()) {
-    throw ray::exception::RayException("Put object error");
+    throw ray::internal::RayException("Put object error");
   }
   return;
 }
@@ -54,7 +54,7 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> NativeObjectStore::GetRaw(
   std::vector<std::shared_ptr<::ray::RayObject>> results;
   ::ray::Status status = core_worker.Get(ids, timeout_ms, &results);
   if (!status.ok()) {
-    throw ray::exception::RayException("Get object error: " + status.ToString());
+    throw ray::internal::RayException("Get object error: " + status.ToString());
   }
   RAY_CHECK(results.size() == ids.size());
   std::vector<std::shared_ptr<msgpack::sbuffer>> result_sbuffers;
@@ -77,7 +77,7 @@ std::vector<bool> NativeObjectStore::Wait(const std::vector<ObjectID> &ids,
   // Simply set `fetch_local` to be true.
   ::ray::Status status = core_worker.Wait(ids, num_objects, timeout_ms, &results, true);
   if (!status.ok()) {
-    throw ray::exception::RayException("Wait object error: " + status.ToString());
+    throw ray::internal::RayException("Wait object error: " + status.ToString());
   }
   return results;
 }
@@ -95,5 +95,5 @@ void NativeObjectStore::RemoveLocalReference(const std::string &id) {
     core_worker.RemoveLocalReference(ObjectID::FromBinary(id));
   }
 }
-}  // namespace runtime
+}  // namespace internal
 }  // namespace ray

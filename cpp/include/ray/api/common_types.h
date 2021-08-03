@@ -19,7 +19,7 @@
 #include "boost/optional.hpp"
 
 namespace ray {
-namespace serializer {
+namespace internal {
 
 struct TaskArg {
   TaskArg() = default;
@@ -38,5 +38,5 @@ struct TaskArg {
   boost::optional<std::string> id;
 };
 
-}  // namespace serializer
+}  // namespace internal
 }  // namespace ray

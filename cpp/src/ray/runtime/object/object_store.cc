@@ -5,7 +5,7 @@
 #include <utility>
 
 namespace ray {
-namespace runtime {
+namespace internal {
 
 void ObjectStore::Put(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id) {
   PutRaw(data, object_id);
@@ -24,5 +24,5 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> ObjectStore::Get(
     const std::vector<ObjectID> &ids, int timeout_ms) {
   return GetRaw(ids, timeout_ms);
 }
-}  // namespace runtime
+}  // namespace internal
 }  // namespace ray

@@ -7,7 +7,7 @@
 #include "object_store.h"
 
 namespace ray {
-namespace runtime {
+namespace internal {
 
 class NativeObjectStore : public ObjectStore {
  public:
@@ -29,5 +29,5 @@ class NativeObjectStore : public ObjectStore {
                                                         int timeout_ms);
 };
 
-}  // namespace runtime
+}  // namespace internal
 }  // namespace ray

@@ -9,7 +9,7 @@
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
-namespace runtime {
+namespace internal {
 
 LocalModeTaskSubmitter::LocalModeTaskSubmitter(
     LocalModeRayRuntime &local_mode_ray_tuntime)
@@ -48,7 +48,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
     builder.SetActorTaskSpec(invocation.actor_id, actor_creation_dummy_object_id,
                              ObjectID(), invocation.actor_counter);
   } else {
-    throw ray::exception::RayException("unknown task type");
+    throw ray::internal::RayException("unknown task type");
   }
   for (size_t i = 0; i < invocation.args.size(); i++) {
     builder.AddArg(*invocation.args[i]);
@@ -100,5 +100,5 @@ ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation) {
   return Submit(invocation);
 }
 
-}  // namespace runtime
+}  // namespace internal
 }  // namespace ray

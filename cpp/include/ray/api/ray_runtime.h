@@ -10,7 +10,7 @@
 #include <vector>
 
 namespace ray {
-namespace runtime {
+namespace internal {
 
 struct RemoteFunctionHolder {
   RemoteFunctionHolder() = default;
@@ -18,7 +18,7 @@ struct RemoteFunctionHolder {
   RemoteFunctionHolder(F func) {
     auto func_name = ray::internal::FunctionManager::Instance().GetFunctionName(func);
     if (func_name.empty()) {
-      throw ray::exception::RayException(
+      throw ray::internal::RayException(
           "Function not found. Please use RAY_REMOTE to register this function.");
     }
     function_name = std::move(func_name);
@@ -40,14 +40,14 @@ class RayRuntime {
                                  int timeout_ms) = 0;
 
   virtual std::string Call(const RemoteFunctionHolder &remote_function_holder,
-                           std::vector<ray::serializer::TaskArg> &args) = 0;
+                           std::vector<ray::internal::TaskArg> &args) = 0;
   virtual std::string CreateActor(const RemoteFunctionHolder &remote_function_holder,
-                                  std::vector<ray::serializer::TaskArg> &args) = 0;
+                                  std::vector<ray::internal::TaskArg> &args) = 0;
   virtual std::string CallActor(const RemoteFunctionHolder &remote_function_holder,
                                 const std::string &actor,
-                                std::vector<ray::serializer::TaskArg> &args) = 0;
+                                std::vector<ray::internal::TaskArg> &args) = 0;
   virtual void AddLocalReference(const std::string &id) = 0;
   virtual void RemoveLocalReference(const std::string &id) = 0;
 };
-}  // namespace runtime
+}  // namespace internal
 }  // namespace ray

@@ -4,7 +4,7 @@
 #include <ray/api/actor_handle.h>
 
 namespace ray {
-namespace call {
+namespace internal {
 
 template <typename F>
 using GetActorType = std::remove_pointer_t<boost::callable_traits::return_type_t<F>>;
@@ -14,17 +14,17 @@ class ActorCreator {
  public:
   ActorCreator() {}
 
-  ActorCreator(ray::runtime::RayRuntime *runtime,
-               ray::runtime::RemoteFunctionHolder remote_function_holder)
+  ActorCreator(ray::internal::RayRuntime *runtime,
+               ray::internal::RemoteFunctionHolder remote_function_holder)
       : runtime_(runtime), remote_function_holder_(std::move(remote_function_holder)) {}
 
   template <typename... Args>
   ray::ActorHandle<GetActorType<F>> Remote(Args &&... args);
 
  private:
-  ray::runtime::RayRuntime *runtime_;
-  ray::runtime::RemoteFunctionHolder remote_function_holder_;
-  std::vector<ray::serializer::TaskArg> args_;
+  ray::internal::RayRuntime *runtime_;
+  ray::internal::RemoteFunctionHolder remote_function_holder_;
+  std::vector<ray::internal::TaskArg> args_;
 };
 
 // ---------- implementation ----------
@@ -32,9 +32,9 @@ template <typename F>
 template <typename... Args>
 ray::ActorHandle<GetActorType<F>> ActorCreator<F>::Remote(Args &&... args) {
   ray::internal::StaticCheck<F, Args...>();
-  ray::serializer::Arguments::WrapArgs(&args_, std::forward<Args>(args)...);
+  ray::internal::Arguments::WrapArgs(&args_, std::forward<Args>(args)...);
   auto returned_actor_id = runtime_->CreateActor(remote_function_holder_, args_);
   return ray::ActorHandle<GetActorType<F>>(returned_actor_id);
 }
-}  // namespace call
+}  // namespace internal
 }  // namespace ray

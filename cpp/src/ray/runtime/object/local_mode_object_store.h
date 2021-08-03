@@ -8,7 +8,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
 namespace ray {
-namespace runtime {
+namespace internal {
 
 class LocalModeObjectStore : public ObjectStore {
  public:
@@ -36,5 +36,5 @@ class LocalModeObjectStore : public ObjectStore {
   LocalModeRayRuntime &local_mode_ray_tuntime_;
 };
 
-}  // namespace runtime
+}  // namespace internal
 }  // namespace ray

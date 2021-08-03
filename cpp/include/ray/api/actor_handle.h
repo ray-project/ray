@@ -22,7 +22,7 @@ class ActorHandle {
 
   /// Include the `Call` methods for calling remote functions.
   template <typename F>
-  ray::call::ActorTaskCaller<F> Task(F actor_func);
+  ray::internal::ActorTaskCaller<F> Task(F actor_func);
 
   /// Make ActorHandle serializable
   MSGPACK_DEFINE(id_);
@@ -47,14 +47,14 @@ const std::string &ActorHandle<ActorType>::ID() const {
 
 template <typename ActorType>
 template <typename F>
-ray::call::ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
+ray::internal::ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
   using Self = boost::callable_traits::class_of_t<F>;
   static_assert(
       std::is_same<ActorType, Self>::value || std::is_base_of<Self, ActorType>::value,
       "class types must be same");
-  ray::runtime::RemoteFunctionHolder remote_func_holder(actor_func);
-  return ray::call::ActorTaskCaller<F>(internal::GetRayRuntime().get(), id_,
-                                       std::move(remote_func_holder));
+  ray::internal::RemoteFunctionHolder remote_func_holder(actor_func);
+  return ray::internal::ActorTaskCaller<F>(internal::GetRayRuntime().get(), id_,
+                                           std::move(remote_func_holder));
 }
 
 }  // namespace ray

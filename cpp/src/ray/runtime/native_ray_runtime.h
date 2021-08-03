@@ -6,12 +6,12 @@
 #include "abstract_ray_runtime.h"
 
 namespace ray {
-namespace runtime {
+namespace internal {
 
 class NativeRayRuntime : public AbstractRayRuntime {
  public:
   NativeRayRuntime();
 };
 
-}  // namespace runtime
+}  // namespace internal
 }  // namespace ray

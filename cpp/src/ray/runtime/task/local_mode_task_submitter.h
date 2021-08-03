@@ -11,7 +11,7 @@
 #include "task_submitter.h"
 
 namespace ray {
-namespace runtime {
+namespace internal {
 
 class LocalModeTaskSubmitter : public TaskSubmitter {
  public:
@@ -34,5 +34,5 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
 
   ObjectID Submit(InvocationSpec &invocation);
 };
-}  // namespace runtime
+}  // namespace internal
 }  // namespace ray

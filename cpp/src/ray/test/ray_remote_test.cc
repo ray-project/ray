@@ -114,9 +114,9 @@ TEST(RayApiTest, DuplicateRegister) {
 
   /// Duplicate register
   EXPECT_THROW(FunctionManager::Instance().RegisterRemoteFunction("Return", Return),
-               ray::exception::RayException);
+               ray::internal::RayException);
   EXPECT_THROW(FunctionManager::Instance().RegisterRemoteFunction("PlusOne", PlusOne),
-               ray::exception::RayException);
+               ray::internal::RayException);
 }
 
 TEST(RayApiTest, NormalTask) {
@@ -215,11 +215,11 @@ TEST(RayApiTest, OverloadTest) {
 /// We should consider the driver so is not same with the worker so, and find the error
 /// reason.
 TEST(RayApiTest, NotExistFunction) {
-  EXPECT_THROW(ray::Task(NotRegisteredFunc), ray::exception::RayException);
+  EXPECT_THROW(ray::Task(NotRegisteredFunc), ray::internal::RayException);
 }
 
 TEST(RayApiTest, ExceptionTask) {
   /// Normal task Exception.
   auto r4 = ray::Task(ExceptionFunc).Remote(2);
-  EXPECT_THROW(r4.Get(), ray::exception::RayException);
+  EXPECT_THROW(r4.Get(), ray::internal::RayException);
 }
