@@ -90,14 +90,11 @@ class S3StorageImpl(Storage):
                 "Prefix": key_prefix
             }
             page_iterator = paginator.paginate(**operation_parameters)
-            if key_prefix == self._s3_path + "/":
-                async for page in page_iterator:
-                    for o in page.get("CommonPrefixes", []):
-                        keys.append(o.get("Prefix", ""))
-            else:
-                async for page in page_iterator:
-                    for o in page.get("Contents", []):
-                        keys.append(o.get("Key", ""))
+            async for page in page_iterator:
+                for o in page.get("CommonPrefixes", []):  # "directories"
+                    keys.append(o.get("Prefix", ""))
+                for o in page.get("Contents", []):  # "files"
+                    keys.append(o.get("Key", ""))
         keys = [k.rstrip("/").split("/")[-1] for k in keys if k != ""]
         return keys
 
