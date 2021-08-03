@@ -90,7 +90,7 @@ print("Preprocessing...")
 ds = ds.map(preprocess)
 end_preprocess_time = time.time()
 print("Inferring...")
-ds = ds.map_batches(infer, num_gpus=0.25)
+ds = ds.map_batches(infer, num_gpus=0.25, batch_format="pandas")
 
 end_time = time.time()
 
