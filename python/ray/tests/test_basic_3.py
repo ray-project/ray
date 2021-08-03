@@ -211,15 +211,19 @@ def test_actor_killing(shutdown_only):
 
 def test_actor_scheduling(shutdown_only):
     ray.init()
+
     @ray.remote
     class A:
-            def run_fail(self):
-                    ray.actor.exit_actor()
-            def get(self):
-                    return 1
+        def run_fail(self):
+            ray.actor.exit_actor()
+
+        def get(self):
+            return 1
+
     a = A.remote()
     a.run_fail.remote()
-    ray.get([a.get.remote()])
+    with pytest.raises(Exception):
+        ray.get([a.get.remote()])
 
 
 if __name__ == "__main__":
