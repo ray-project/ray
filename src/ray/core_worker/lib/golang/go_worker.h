@@ -6,9 +6,10 @@
 extern "C" {
 #endif
 
-typedef long long GoInt64;
-typedef GoInt64 GoInt;
-typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
+struct DataBuffer {
+  int size;
+  uint8_t *p;
+};
 
 void go_worker_Initialize(int workerMode, char *store_socket, char *raylet_socket,
                           char *log_dir, char *node_ip_address, int node_manager_port,

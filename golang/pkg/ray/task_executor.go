@@ -4,7 +4,6 @@ import "C"
 import (
     "fmt"
     "reflect"
-    "unsafe"
 
     "github.com/ray-project/ray-go-worker/pkg/generated"
 )
@@ -12,7 +11,7 @@ import (
 var actor interface{}
 
 //export go_worker_execute
-func goExecute(taskType int, rayFunctionInfo []*C.char, args []unsafe.Pointer) {
+func goExecute(taskType int, rayFunctionInfo []string, args []C.struct_DataBuffer) {
     if taskType == int(generated.TaskType_ACTOR_CREATION_TASK) {
         go_type_name := C.GoString(rayFunctionInfo[0])
         go_type, ok := typesMap[go_type_name]
@@ -21,6 +20,6 @@ func goExecute(taskType int, rayFunctionInfo []*C.char, args []unsafe.Pointer) {
         }
         actor = reflect.New(go_type).Interface()
     } else if taskType == int(generated.TaskType_ACTOR_TASK) {
-        
+
     }
 }

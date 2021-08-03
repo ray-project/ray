@@ -25,89 +25,20 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
          std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb) {
         // convert RayFunction
         auto function_descriptor = ray_function.GetFunctionDescriptor();
-        size_t fd_hash = function_descriptor->Hash();
-        auto &fd_vector = executor_function_descriptor_cache[fd_hash];
-        jobject ray_function_array_list = nullptr;
-        for (auto &pair : fd_vector) {
-          if (pair.first == function_descriptor) {
-            ray_function_array_list = pair.second;
-            break;
-          }
-        }
-        if (!ray_function_array_list) {
-          ray_function_array_list =
-              NativeRayFunctionDescriptorToJavaStringList(env, function_descriptor);
-          fd_vector.emplace_back(function_descriptor, ray_function_array_list);
+        auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
+        std::vector<std::string> function_descriptor_list = {
+            typed_descriptor->FunctionName()};
+
+        std::vector<DataBuffer> args_array_list;
+        for (auto &it : args) {
+          DataBuffer db;
+          db.p = it->GetData();
+          db.size = it->GetSize();
+          args_array_list.insert(db);
         }
 
-        // convert args
-        // TODO (kfstorm): Avoid copying binary data from Java to C++
-        jbooleanArray java_check_results =
-            static_cast<jbooleanArray>(env->CallObjectMethod(
-                java_task_executor, java_task_executor_parse_function_arguments,
-                ray_function_array_list));
-        RAY_CHECK_JAVA_EXCEPTION(env);
-        jobject args_array_list = ToJavaArgs(env, java_check_results, args);
-
-        // invoke Java method
-        jobject java_return_objects =
-            env->CallObjectMethod(java_task_executor, java_task_executor_execute,
-                                  ray_function_array_list, args_array_list);
-        // Check whether the exception is `IntentionalSystemExit`.
-        jthrowable throwable = env->ExceptionOccurred();
-        if (throwable) {
-          ray::Status status_to_return = ray::Status::OK();
-          if (env->IsInstanceOf(throwable,
-                                java_ray_intentional_system_exit_exception_class)) {
-            status_to_return = ray::Status::IntentionalSystemExit();
-          } else if (env->IsInstanceOf(throwable, java_ray_actor_exception_class)) {
-            creation_task_exception_pb = SerializeActorCreationException(env, throwable);
-            status_to_return = ray::Status::CreationTaskError();
-          } else {
-            RAY_LOG(ERROR) << "Unkown java exception was thrown while executing tasks.";
-          }
-          env->ExceptionClear();
-          return status_to_return;
-        }
-        RAY_CHECK_JAVA_EXCEPTION(env);
-
-        // Process return objects.
-        if (!return_ids.empty()) {
-          std::vector<std::shared_ptr<ray::RayObject>> return_objects;
-          JavaListToNativeVector<std::shared_ptr<ray::RayObject>>(
-              env, java_return_objects, &return_objects,
-              [](JNIEnv *env, jobject java_native_ray_object) {
-                return JavaNativeRayObjectToNativeRayObject(env, java_native_ray_object);
-              });
-          results->resize(return_ids.size(), nullptr);
-          for (size_t i = 0; i < return_objects.size(); i++) {
-            auto &result_id = return_ids[i];
-            size_t data_size =
-                return_objects[i]->HasData() ? return_objects[i]->GetData()->Size() : 0;
-            auto &metadata = return_objects[i]->GetMetadata();
-            auto &contained_object_id = return_objects[i]->GetNestedIds();
-            auto result_ptr = &(*results)[0];
-
-            RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
-                result_id, data_size, metadata, contained_object_id, result_ptr));
-
-            // A nullptr is returned if the object already exists.
-            auto result = *result_ptr;
-            if (result != nullptr) {
-              if (result->HasData()) {
-                memcpy(result->GetData()->Data(), return_objects[i]->GetData()->Data(),
-                       data_size);
-              }
-            }
-
-            RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(
-                result_id, result));
-          }
-        }
-
-        env->DeleteLocalRef(java_check_results);
-        env->DeleteLocalRef(java_return_objects);
-        env->DeleteLocalRef(args_array_list);
+        // invoke golang method
+        go_worker_execute(task_type, function_descriptor_list, args_array_list);
         return ray::Status::OK();
       };
 
