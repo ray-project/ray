@@ -25,6 +25,7 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
 from ray.experimental.data.datasource import Datasource, WriteTask
+from ray.experimental.data.impl.remote_fn import cached_remote_fn
 from ray.experimental.data.impl.batcher import Batcher
 from ray.experimental.data.impl.compute import get_compute, cache_wrapper, \
     CallableClass
@@ -571,24 +572,8 @@ class Dataset(Generic[T]):
             The truncated dataset.
         """
 
-        @ray.remote
-        def get_num_rows(block: Block) -> int:
-            block = BlockAccessor.for_block(block)
-            return block.num_rows()
-
-        @ray.remote(num_returns=2)
-        def truncate(block: Block, meta: BlockMetadata,
-                     count: int) -> (Block, BlockMetadata):
-            block = BlockAccessor.for_block(block)
-            logger.debug("Truncating last block to size: {}".format(count))
-            new_block = block.slice(0, count, copy=True)
-            accessor = BlockAccessor.for_block(new_block)
-            new_meta = BlockMetadata(
-                num_rows=accessor.num_rows(),
-                size_bytes=accessor.size_bytes(),
-                schema=meta.schema,
-                input_files=meta.input_files)
-            return new_block, new_meta
+        get_num_rows = cached_remote_fn(_get_num_rows)
+        truncate = cached_remote_fn(_truncate, num_returns=2)
 
         count = 0
         out_blocks = []
@@ -657,12 +642,10 @@ class Dataset(Generic[T]):
         if meta_count is not None:
             return meta_count
 
-        @ray.remote
-        def count(block: Block) -> int:
-            block = BlockAccessor.for_block(block)
-            return block.num_rows()
+        get_num_rows = cached_remote_fn(_get_num_rows)
 
-        return sum(ray.get([count.remote(block) for block in self._blocks]))
+        return sum(
+            ray.get([get_num_rows.remote(block) for block in self._blocks]))
 
     def sum(self) -> int:
         """Sum up the elements of this dataset.
@@ -673,12 +656,9 @@ class Dataset(Generic[T]):
             The sum of the records in the dataset.
         """
 
-        @ray.remote
-        def agg(block: Block) -> int:
-            block = BlockAccessor.for_block(block)
-            return sum(block.iter_rows())
+        get_sum = cached_remote_fn(_get_sum)
 
-        return sum(ray.get([agg.remote(block) for block in self._blocks]))
+        return sum(ray.get([get_sum.remote(block) for block in self._blocks]))
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset.
@@ -765,6 +745,7 @@ class Dataset(Generic[T]):
         """
         import pyarrow.parquet as pq
 
+        # TODO(ekl) remove once ported to datasource
         @ray.remote
         def parquet_write(write_path, block):
             block = BlockAccessor.for_block(block)
@@ -810,6 +791,7 @@ class Dataset(Generic[T]):
         if filesystem:
             raise NotImplementedError
 
+        # TODO(ekl) remove once ported to datasource
         @ray.remote
         def json_write(write_path: str, block: Block):
             block = BlockAccessor.for_block(block)
@@ -853,6 +835,7 @@ class Dataset(Generic[T]):
         if filesystem:
             raise NotImplementedError
 
+        # TODO(ekl) remove once ported to datasource
         @ray.remote
         def csv_write(write_path: str, block: Block):
             block = BlockAccessor.for_block(block)
@@ -897,6 +880,7 @@ class Dataset(Generic[T]):
         if filesystem:
             raise NotImplementedError
 
+        # TODO(ekl) remove once ported to datasource
         @ray.remote
         def numpy_write(write_path: str, block: Block):
             np.save(open(write_path, "wb"), block)
@@ -928,10 +912,7 @@ class Dataset(Generic[T]):
                                                self._blocks.get_metadata(),
                                                **write_args)
         progress = ProgressBar("Write Progress", len(write_tasks))
-
-        @ray.remote
-        def remote_write(task: WriteTask) -> Any:
-            return task()
+        remote_write = cached_remote_fn(_remote_write)
 
         write_task_outputs = [remote_write.remote(w) for w in write_tasks]
         try:
@@ -1272,11 +1253,7 @@ class Dataset(Generic[T]):
             A list of remote Pandas dataframes created from this dataset.
         """
 
-        @ray.remote
-        def block_to_df(block: Block):
-            block = BlockAccessor.for_block(block)
-            return block.to_pandas()
-
+        block_to_df = cached_remote_fn(_block_to_df)
         return [block_to_df.remote(block) for block in self._blocks]
 
     def to_arrow(self) -> List[ObjectRef["pyarrow.Table"]]:
@@ -1292,23 +1269,15 @@ class Dataset(Generic[T]):
             A list of remote Arrow tables created from this dataset.
         """
 
-        @ray.remote
-        def check_is_arrow(block: Block) -> bool:
-            import pyarrow
-            return isinstance(block, pyarrow.Table)
-
+        check_is_arrow = cached_remote_fn(_check_is_arrow)
         blocks: List[ObjectRef[Block]] = list(self._blocks)
         is_arrow = ray.get(check_is_arrow.remote(blocks[0]))
 
         if is_arrow:
             return blocks  # Zero-copy path.
 
-        @ray.remote
-        def block_to_df(block: Block):
-            block = BlockAccessor.for_block(block)
-            return block.to_arrow()
-
-        return [block_to_df.remote(block) for block in self._blocks]
+        block_to_arrow = cached_remote_fn(_block_to_arrow)
+        return [block_to_arrow.remote(block) for block in self._blocks]
 
     def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         """Convert this into a DatasetPipeline by looping over this dataset.
@@ -1473,12 +1442,8 @@ class Dataset(Generic[T]):
         return repr(self)
 
     def _block_sizes(self) -> List[int]:
-        @ray.remote
-        def query(block: Block) -> int:
-            block = BlockAccessor.for_block(block)
-            return block.num_rows()
-
-        return ray.get([query.remote(b) for b in self._blocks])
+        get_num_rows = cached_remote_fn(_get_num_rows)
+        return ray.get([get_num_rows.remote(b) for b in self._blocks])
 
     def _meta_count(self) -> Optional[int]:
         metadata = self._blocks.get_metadata()
@@ -1492,3 +1457,46 @@ class Dataset(Generic[T]):
 
     def _set_uuid(self, uuid: str) -> None:
         self._uuid = uuid
+
+
+def _get_num_rows(block: Block) -> int:
+    block = BlockAccessor.for_block(block)
+    return block.num_rows()
+
+
+def _get_sum(block: Block) -> int:
+    block = BlockAccessor.for_block(block)
+    return sum(block.iter_rows())
+
+
+def _remote_write(task: WriteTask) -> Any:
+    return task()
+
+
+def _block_to_df(block: Block):
+    block = BlockAccessor.for_block(block)
+    return block.to_pandas()
+
+
+def _block_to_arrow(block: Block):
+    block = BlockAccessor.for_block(block)
+    return block.to_arrow()
+
+
+def _check_is_arrow(block: Block) -> bool:
+    import pyarrow
+    return isinstance(block, pyarrow.Table)
+
+
+def _truncate(block: Block, meta: BlockMetadata,
+              count: int) -> (Block, BlockMetadata):
+    block = BlockAccessor.for_block(block)
+    logger.debug("Truncating last block to size: {}".format(count))
+    new_block = block.slice(0, count, copy=True)
+    accessor = BlockAccessor.for_block(new_block)
+    new_meta = BlockMetadata(
+        num_rows=accessor.num_rows(),
+        size_bytes=accessor.size_bytes(),
+        schema=meta.schema,
+        input_files=meta.input_files)
+    return new_block, new_meta
