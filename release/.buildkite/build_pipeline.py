@@ -75,7 +75,6 @@ CORE_NIGHTLY_TESTS = {
         "many_actors_smoke_test",
         "many_tasks_smoke_test",
         "many_pgs_smoke_test",
-        "many_nodes_smoke_test",
     ],
     "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
         "inference",
