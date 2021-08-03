@@ -41,7 +41,7 @@ int go_worker_CreateActor(char *type_name, char **result);
 
 int go_worker_SubmitActorTask(void *actor_id, char *method_name, char ***return_ids);
 
-void go_worker_execute(int task_type, GoSlice ray_function_info, GoSlice args);
+extern void go_worker_execute(GoInt task_type, GoSlice ray_function_info, GoSlice args);
 
 void SayHello(char *);
 
