@@ -20,4 +20,4 @@ RUN export PATH=$HOME/.cargo/bin:$HOME/anaconda3/bin/:$PATH
 RUN (mamba install --yes py-spy) || (pip install --upgrade pip && pip install py-spy)
 RUN mkdir -p /tmp/ray-wheels
 COPY --from=raywheel /ray/python/dist/*.whl /tmp/ray-wheels
-RUN pip --no-cache-dir install --no-index --find-links="/tmp/ray-wheels/" ray[all]
+RUN pip --no-cache-dir install --no-index --find-links="/tmp/ray-wheels/" ray[default]

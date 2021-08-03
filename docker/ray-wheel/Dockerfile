@@ -26,6 +26,7 @@ ADD git-rev /ray/git-rev
 RUN bazel build //:ray_pkg || bazel build --jobs 1 //:ray_pkg
 WORKDIR /ray/python/
 RUN python3 setup.py bdist_wheel
-RUN RAY_INSTALL_CPP=1 python3 setup.py bdist_wheel
+#cpp version has some weird deps that aren't solveable so skip it
+#RUN RAY_INSTALL_CPP=1 python3 setup.py bdist_wheel
 #RUN pip install -e .
 WORKDIR /ray

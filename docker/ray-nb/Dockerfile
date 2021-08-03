@@ -23,6 +23,36 @@ RUN export PATH=$HOME/.cargo/bin:$HOME/anaconda3/bin/:$PATH
 # Install py-spy no arm on conda yet so fall through to pypi wheel
 RUN pip install --upgrade pip
 RUN (mamba install --yes py-spy) || (pip install py-spy)
+# Install deps
+# For Click
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+COPY requirements.txt .
+# Use multiple cores to compile the C code :)
+ENV MAKEFLAGS -j 4
+
+RUN mamba install --yes scipy pandas numba scikit-learn numpy
+# Install the generic requirements.
+RUN  mamba install --yes pyarrow
+# Install bazelisk, this is needed for dm_tree on ARM since there is no wheel.
+RUN arch=$(uname -m); \
+    echo "Arch is $arch"; \
+    if [ "$arch" == "aarch64" ]; then \
+	BAZEL=bazelisk-linux-arm64; \
+    elif [ "$arch" == "x86_64" ]; then \
+	BAZEL=bazelisk-linux-amd64; \
+    fi; \
+    wget -q https://github.com/bazelbuild/bazelisk/releases/download/v1.7.5/${BAZEL} -O /tmp/${BAZEL}; \
+    chmod a+x /tmp/${BAZEL};\
+    sudo mv /tmp/${BAZEL} /usr/bin/bazel; \
+    export PATH=$PATH:/usr/bin;
+# Install the opencv as a seperate step for caching happiness
+RUN pip install opencv-python-headless
+# We need some build tools since some of this is compiled from source.
+RUN apt-get update && apt-get install -y gcc g++ make cmake wget
+RUN pip install -r requirements.txt
+
+# Install ray
 RUN mkdir -p /tmp/ray-wheels
 COPY --from=raywheel /ray/python/dist/*.whl /tmp/ray-wheels
-RUN pip --no-cache-dir install --no-index --find-links="/tmp/ray-wheels/" ray[all]
+RUN pip --no-cache-dir install --no-index --find-links="/tmp/ray-wheels/" ray[default]
