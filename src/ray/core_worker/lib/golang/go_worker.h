@@ -1,6 +1,8 @@
 #ifndef _Included_golang_worker
 #define _Included_golang_worker
 #include <stdbool.h>
+#include <stdint.h>
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,6 +36,8 @@ int go_worker_CreateActor(char *type_name, char **result);
 int go_worker_SubmitActorTask(void *actor_id, char *method_name, char ***return_ids);
 
 extern void go_worker_execute(int task_type, GoSlice args, GoSlice args);
+
+extern SayHello((char *);
 
 #ifdef __cplusplus
 }
