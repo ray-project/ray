@@ -121,7 +121,6 @@ test:ci --spawn_strategy=local
 test:ci --test_output=errors
 test:ci --test_verbose_timeout_warnings
 test:ci-debug -c dbg
-test:ci-debug --javacopt="-g"
 test:ci-debug --copt="-g"
 test:ci-debug --flaky_test_attempts=3
 test:ci-debug --nocache_test_results
@@ -141,6 +140,5 @@ test:segfault --run_under="bash -c 'unset GREP_OPTIONS && if ! grep -q -o Micros
 
 # Debug build:
 build:debug -c dbg
-build:debug --javacopt="-g"
 build:debug --copt="-g"
 build:debug --strip="never"
