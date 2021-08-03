@@ -1,8 +1,10 @@
 import inspect
 import logging
-from typing import Union, Callable, List, TypeVar, Optional, Any, Dict
+from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, Type
 
 from ray.tune import Trainable
+from ray.tune.resources import Resources
+from ray.tune.trainable import DistributedTrainable
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.constants import BACKEND_NAME_TO_CONFIG_CLS
@@ -48,6 +50,11 @@ class Trainer:
             resources_per_worker (Optional[Dict]): If specified, the resources
                 defined in this Dict will be reserved for each worker.
         """
+        self._backend = backend
+        self._num_workers = num_workers
+        self._use_gpu = use_gpu
+        self._resources_per_worker = resources_per_worker
+
         # Setup executor.
         backend_config = self._get_backend_config(backend)
 
@@ -170,6 +177,15 @@ class Trainer:
         """
         raise NotImplementedError
 
+    def start_training(
+            self,
+            train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
+            config: Optional[Dict[str, Any]] = None) -> None:
+        pass
+
+    def fetch_next_report(self) -> Optional[List[Dict]]:
+        pass
+
     def execute_single(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes a function on a single instance of ``self.train_cls``.
 
@@ -188,8 +204,8 @@ class Trainer:
         """Shuts down the training execution service."""
         self._executor.shutdown()
 
-    def to_tune_trainable(
-            self, train_func: Callable[[Dict[str, Any]], T]) -> Trainable:
+    def to_tune_trainable(self, train_func: Callable[[Dict[str, Any]], T]
+                          ) -> Type[Trainable]:
         """Creates a Tune ``Trainable`` from the input training function.
 
         Args:
@@ -200,7 +216,37 @@ class Trainer:
             A Trainable that can directly be passed into ``tune.run()``.
         """
 
-        def trainable_func(config: Dict[str, Any]) -> T:
-            pass
+        class _SgdTrainable(DistributedTrainable):
+            _function = train_func
+            # Create a new Trainer with the same configuration.
+            _trainer = Trainer(self._backend, self._num_workers, self._use_gpu,
+                               self._resources_per_worker)
+            _finished = False
 
-        raise NotImplementedError
+            @classmethod
+            def default_resource_request(cls, config: Dict) -> Resources:
+                return Resources(
+                    cpu=0,
+                    gpu=0,
+                    extra_cpu=self._num_workers,
+                    extra_gpu=self._num_workers * int(self._use_gpu))
+
+            def setup(self, config: Dict):
+                self._trainer.start_training(self._function, config)
+
+            def step(self) -> Dict:
+                if self._finished:
+                    raise RuntimeError("Training has already finished.")
+                report = self._trainer.fetch_next_report()
+                # TODO(matt): find a way to set this on previous `step` call.
+                if report is None:
+                    self._finished = True
+                    return {}
+                # Currently return the value from first worker.
+                # TODO(matt): add support for aggregation function.
+                return report[0]
+
+            def stop(self):
+                self._trainer.shutdown()
+
+        return _SgdTrainable
