@@ -27,7 +27,7 @@ class NativeObjectStore : public ObjectStore {
 
   std::vector<std::shared_ptr<msgpack::sbuffer>> GetRaw(const std::vector<ObjectID> &ids,
                                                         int timeout_ms);
-  void CheckException(const std::string &meta_str);
+  void CheckException(const std::string &meta_str, const std::string &data_str);
 };
 
 }  // namespace api

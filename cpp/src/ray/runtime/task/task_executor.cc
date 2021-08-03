@@ -94,7 +94,7 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
         nullptr);
   } catch (const std::exception &e) {
     return std::make_pair(
-        ray::Status::Interrupted(std::string("function execute exception: ") + e.what()),
+        ray::Status::Invalid(std::string("function execute exception: ") + e.what()),
         nullptr);
   } catch (...) {
     return std::make_pair(ray::Status::UnknownError(std::string("unknown exception")),
@@ -137,8 +137,20 @@ Status TaskExecutor::ExecuteTask(
     std::tie(status, data) = GetExecuteResult(func_name, ray_args_buffer, nullptr);
   }
 
+  std::shared_ptr<ray::LocalMemoryBuffer> meta_buffer = nullptr;
   if (!status.ok()) {
-    return status;
+    if (status.IsIntentionalSystemExit()) {
+      return status;
+    }
+
+    std::string meta_str = std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
+    meta_buffer = std::make_shared<ray::LocalMemoryBuffer>(
+        reinterpret_cast<uint8_t *>(&meta_str[0]), meta_str.size(), true);
+
+    msgpack::sbuffer buf;
+    std::string msg = status.ToString();
+    buf.write(msg.data(), msg.size());
+    data = std::make_shared<msgpack::sbuffer>(std::move(buf));
   }
 
   results->resize(return_ids.size(), nullptr);
@@ -147,7 +159,7 @@ Status TaskExecutor::ExecuteTask(
     auto &result_id = return_ids[0];
     auto result_ptr = &(*results)[0];
     RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
-        result_id, data_size, nullptr, std::vector<ray::ObjectID>(), result_ptr));
+        result_id, data_size, meta_buffer, std::vector<ray::ObjectID>(), result_ptr));
 
     auto result = *result_ptr;
     if (result != nullptr) {

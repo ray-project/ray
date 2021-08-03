@@ -48,15 +48,16 @@ std::shared_ptr<msgpack::sbuffer> NativeObjectStore::GetRaw(const ObjectID &obje
   return buffers[0];
 }
 
-void NativeObjectStore::CheckException(const std::string &meta_str) {
+void NativeObjectStore::CheckException(const std::string &meta_str,
+                                       const std::string &data_str) {
   if (meta_str == std::to_string(ray::rpc::ErrorType::WORKER_DIED)) {
-    throw RayWorkerException("WORKER_DIED");
+    throw RayWorkerException(data_str);
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::ACTOR_DIED)) {
-    throw RayActorException("ACTOR_DIED");
+    throw RayActorException(data_str);
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE)) {
-    throw UnreconstructableException("OBJECT_UNRECONSTRUCTABLE");
+    throw UnreconstructableException(data_str);
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION)) {
-    throw RayTaskException("TASK_EXECUTION_EXCEPTION");
+    throw RayTaskException(data_str);
   }
 }
 
@@ -73,11 +74,15 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> NativeObjectStore::GetRaw(
   result_sbuffers.reserve(results.size());
   for (size_t i = 0; i < results.size(); i++) {
     auto meta = results[i]->GetMetadata();
-    if (meta != nullptr) {
-      std::string meta_str((char *)meta->Data(), meta->Size());
-      CheckException(meta_str);
-    }
     auto data_buffer = results[i]->GetData();
+    if (meta != nullptr) {
+      bool empty = data_buffer->Size() == 0;
+      std::string data_str =
+          empty ? "" : std::string((char *)data_buffer->Data(), data_buffer->Size());
+      std::string meta_str((char *)meta->Data(), meta->Size());
+      CheckException(meta_str, data_str);
+    }
+
     auto sbuffer = std::make_shared<msgpack::sbuffer>(data_buffer->Size());
     sbuffer->write(reinterpret_cast<const char *>(data_buffer->Data()),
                    data_buffer->Size());

@@ -212,16 +212,12 @@ TEST(RayClusterModeTest, ResourcesManagementTest) {
   EXPECT_EQ(result2.unready.size(), 1);
 }
 
-void ExceptionTask() { throw std::logic_error("error"); }
-
-RAY_REMOTE(ExceptionTask);
-
 TEST(RayClusterModeTest, ExceptionTest) {
-  EXPECT_THROW(Ray::Task(ExceptionTask).Remote().Get(), RayWorkerException);
+  EXPECT_THROW(Ray::Task(ThrowTask).Remote().Get(), RayTaskException);
 
   auto actor1 = Ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(1);
   auto object1 = actor1.Task(&Counter::ExceptionFunc).Remote();
-  EXPECT_THROW(object1.Get(), RayActorException);
+  EXPECT_THROW(object1.Get(), RayTaskException);
 }
 
 int main(int argc, char **argv) {
