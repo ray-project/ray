@@ -742,15 +742,14 @@ class SampleBatch(dict):
             if path[0] not in columns:
                 return
             curr = self
-            for i, p in enumerate(path):
-                if i == len(path) - 1:
-                    # Bulk compressed.
-                    if is_compressed(value):
-                        curr[p] = unpack(value)
-                    # Non bulk compressed.
-                    elif len(value) > 0 and is_compressed(value):
-                        curr[p] = np.array([unpack(o) for o in value])
+            for p in path[:-1]:
                 curr = curr[p]
+            # Bulk compressed.
+            if is_compressed(value):
+                curr[path[-1]] = unpack(value)
+            # Non bulk compressed.
+            elif len(value) > 0 and is_compressed(value[0]):
+                curr[path[-1]] = np.array([unpack(o) for o in value])
 
         tree.map_structure_with_path(_decompress_in_place, self)
 
