@@ -5,7 +5,8 @@ import itertools
 from typing import Dict, List, Optional, Set, Union
 
 from ray.util import log_once
-from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, \
+    PublicAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -308,6 +309,7 @@ class SampleBatch(dict):
         assert sum(s.count for s in slices) == self.count, (slices, self.count)
         return slices
 
+    @Deprecated(new="SampleBatch[start:stop]", error=False)
     def slice(self, start: int, end: int, state_start=None,
               state_end=None) -> "SampleBatch":
         """Returns a slice of the row data of this batch (w/o copying).
@@ -320,9 +322,6 @@ class SampleBatch(dict):
             SampleBatch: A new SampleBatch, which has a slice of this batch's
                 data.
         """
-        deprecation_warning(
-            "SampleBatch.slice()", "SampleBatch[start:stop]", error=False)
-
         if self.get("seq_lens") is not None and len(self["seq_lens"]) > 0:
             if start < 0:
                 data = {
@@ -722,9 +721,8 @@ class SampleBatch(dict):
     # TODO: deprecate
     @property
     def data(self):
-        if log_once("SampleBatch.data"):
-            deprecation_warning(
-                old="SampleBatch.data[..]", new="SampleBatch[..]", error=True)
+        deprecation_warning(
+            old="SampleBatch.data[..]", new="SampleBatch[..]", error=True)
         return self
 
     # TODO: (sven) Experimental method.

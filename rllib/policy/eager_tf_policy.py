@@ -712,10 +712,9 @@ def build_eager_tf_policy(
         def export_model(self, export_dir):
             pass
 
-        # TODO: (sven) Deprecate this in favor of `save()`.
         @override(Policy)
         def export_checkpoint(self, export_dir):
-            deprecation_warning("export_checkpoint", "save")
+            pass
 
         def _get_is_training_placeholder(self):
             return tf.convert_to_tensor(self._is_training)
