@@ -2,7 +2,7 @@ import inspect
 import logging
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, Type
 
-from ray.tune import Trainable
+from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.resources import Resources
 from ray.tune.trainable import DistributedTrainable
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
@@ -177,15 +177,6 @@ class Trainer:
         """
         raise NotImplementedError
 
-    def start_training(
-            self,
-            train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-            config: Optional[Dict[str, Any]] = None) -> None:
-        pass
-
-    def fetch_next_report(self) -> Optional[List[Dict]]:
-        pass
-
     def execute_single(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes a function on a single instance of ``self.train_cls``.
 
@@ -216,27 +207,49 @@ class Trainer:
             A Trainable that can directly be passed into ``tune.run()``.
         """
 
+        class _TuneTrainer(Trainer):
+            def start_training(
+                    self,
+                    train_func: Union[Callable[[], T], Callable[
+                        [Dict[str, Any]], T]],
+                    config: Optional[Dict[str, Any]] = None) -> None:
+                pass
+
+            def fetch_next_report(self) -> Optional[List[Dict]]:
+                pass
+
         class _SgdTrainable(DistributedTrainable):
             _function = train_func
-            # Create a new Trainer with the same configuration.
-            _trainer = Trainer(self._backend, self._num_workers, self._use_gpu,
-                               self._resources_per_worker)
+            _started = False
             _finished = False
 
+            _backend = self._backend
+            _num_workers = self._num_workers
+            _use_gpu = self._use_gpu
+            _resources_per_worker = self._resources_per_worker
+
             @classmethod
-            def default_resource_request(cls, config: Dict) -> Resources:
-                return Resources(
-                    cpu=0,
-                    gpu=0,
-                    extra_cpu=self._num_workers,
-                    extra_gpu=self._num_workers * int(self._use_gpu))
+            def default_resource_request(
+                    cls, config: Dict) -> PlacementGroupFactory:
+                bundles = []
+                worker_resources = {"CPU": 1, "GPU": int(self._use_gpu)}
+                bundles += self._num_workers * [worker_resources]
+                return PlacementGroupFactory(bundles, strategy="PACK")
 
             def setup(self, config: Dict):
-                self._trainer.start_training(self._function, config)
+                # Create a new Trainer with the same configuration.
+                self._trainer = _TuneTrainer(self._backend, self._num_workers,
+                                             self._use_gpu,
+                                             self._resources_per_worker)
+                self._config = config
 
             def step(self) -> Dict:
                 if self._finished:
                     raise RuntimeError("Training has already finished.")
+                if not self._started:
+                    self._trainer.start_training(self._function, self._config)
+                    self._started = True
+
                 report = self._trainer.fetch_next_report()
                 # TODO(matt): find a way to set this on previous `step` call.
                 if report is None:
@@ -246,7 +259,7 @@ class Trainer:
                 # TODO(matt): add support for aggregation function.
                 return report[0]
 
-            def stop(self):
+            def cleanup(self):
                 self._trainer.shutdown()
 
         return _SgdTrainable
