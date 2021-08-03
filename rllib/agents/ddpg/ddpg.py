@@ -193,8 +193,9 @@ def validate_config(config: TrainerConfigDict) -> None:
                              "replay_mode=lockstep.")
     else:
         if config.get("worker_side_prioritization"):
-            raise ValueError("Worker side prioritization is not supported when "
-                             "prioritized_replay=False.")
+            raise ValueError(
+                "Worker side prioritization is not supported when "
+                "prioritized_replay=False.")
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
