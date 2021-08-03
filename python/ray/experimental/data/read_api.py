@@ -23,6 +23,7 @@ from ray.experimental.data.impl.arrow_block import ArrowRow, \
     DelegatingArrowBlockBuilder
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.lazy_block_list import LazyBlockList
+from ray.experimental.data.impl.remote_fn import cached_remote_fn
 
 T = TypeVar("T")
 
@@ -168,11 +169,7 @@ def read_datasource(datasource: Datasource[T],
 
     # Get the schema from the first block synchronously.
     if metadata and metadata[0].schema is None:
-
-        @ray.remote
-        def get_schema(block: Block) -> Any:
-            return BlockAccessor.for_block(block).schema()
-
+        get_schema = cached_remote_fn(_get_schema)
         schema0 = ray.get(get_schema.remote(next(iter(block_list))))
         block_list.set_metadata(
             0,
@@ -472,13 +469,7 @@ def from_pandas(dfs: List[ObjectRef["pandas.DataFrame"]],
     Returns:
         Dataset holding Arrow records read from the dataframes.
     """
-    import pyarrow as pa
-
-    @ray.remote(num_returns=2)
-    def df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
-        block = pa.table(df)
-        return (block,
-                BlockAccessor.for_block(block).get_metadata(input_files=None))
+    df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = zip(*res)
@@ -499,10 +490,7 @@ def from_arrow(tables: List[ObjectRef["pyarrow.Table"]],
         Dataset holding Arrow records from the tables.
     """
 
-    @ray.remote
-    def get_metadata(table: "pyarrow.Table") -> BlockMetadata:
-        return BlockAccessor.for_block(table).get_metadata(input_files=None)
-
+    get_metadata = cached_remote_fn(_get_metadata)
     metadata = [get_metadata.remote(t) for t in tables]
     return Dataset(BlockList(tables, ray.get(metadata)))
 
@@ -520,3 +508,18 @@ def from_spark(df: "pyspark.sql.DataFrame", *,
         Dataset holding Arrow records read from the dataframe.
     """
     raise NotImplementedError  # P2
+
+
+def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
+    import pyarrow as pa
+    block = pa.table(df)
+    return (block,
+            BlockAccessor.for_block(block).get_metadata(input_files=None))
+
+
+def _get_schema(block: Block) -> Any:
+    return BlockAccessor.for_block(block).schema()
+
+
+def _get_metadata(table: "pyarrow.Table") -> BlockMetadata:
+    return BlockAccessor.for_block(table).get_metadata(input_files=None)
