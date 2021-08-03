@@ -1409,7 +1409,7 @@ class Trainer(Trainable):
                     f"but got {type(policies[pid].config)}!")
 
         framework = config.get("framework")
-        # Multi-GPU setting: Must use MultiGPUTrainOneStep if tf.
+        # Multi-GPU setting: Must use MultiGPUTrainOneStep.
         if config.get("num_gpus", 0) > 1:
             if framework in ["tfe", "tf2"]:
                 raise ValueError("`num_gpus` > 1 not supported yet for "
@@ -1417,23 +1417,25 @@ class Trainer(Trainable):
             elif simple_optim_setting is True:
                 raise ValueError(
                     "Cannot use `simple_optimizer` if `num_gpus` > 1! "
-                    "Consider `simple_optimizer=False`.")
-            config["simple_optimizer"] = framework == "torch"
-        # Auto-setting: Use simple-optimizer for torch/tfe or multiagent,
+                    "Consider not setting `simple_optimizer` in your config.")
+            config["simple_optimizer"] = False
+        # Auto-setting: Use simple-optimizer for tf-eager or multiagent,
         # otherwise: MultiGPUTrainOneStep (if supported by the algo's execution
         # plan).
         elif simple_optim_setting == DEPRECATED_VALUE:
-            # Non-TF: Must use simple optimizer.
-            if framework != "tf":
+            # tf-eager: Must use simple optimizer.
+            if framework not in ["tf", "torch"]:
                 config["simple_optimizer"] = True
-            # TF + Multi-agent case: Try using MultiGPU optimizer (only
-            # if all policies used are DynamicTFPolicies).
+            # Multi-agent case: Try using MultiGPU optimizer (only
+            # if all policies used are DynamicTFPolicies or TorchPolicies).
             elif is_multiagent:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
+                from ray.rllib.policy.torch_policy import TorchPolicy
                 default_policy_cls = None if trainer_obj_or_none is None else \
                     getattr(trainer_obj_or_none, "_policy_class", None)
-                if any((p[0] or default_policy_cls) is None or not issubclass(
-                        p[0] or default_policy_cls, DynamicTFPolicy)
+                if any((p[0] or default_policy_cls) is None
+                       or not issubclass(p[0] or default_policy_cls,
+                                         (DynamicTFPolicy, TorchPolicy))
                        for p in config["multiagent"]["policies"].values()):
                     config["simple_optimizer"] = True
                 else:
@@ -1441,9 +1443,9 @@ class Trainer(Trainable):
             else:
                 config["simple_optimizer"] = False
 
-        # User manually set simple-optimizer to False -> Error if not tf.
+        # User manually set simple-optimizer to False -> Error if tf-eager.
         elif simple_optim_setting is False:
-            if framework in ["tfe", "tf2", "torch"]:
+            if framework in ["tfe", "tf2"]:
                 raise ValueError("`simple_optimizer=False` not supported for "
                                  "framework={}!".format(framework))
 

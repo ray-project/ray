@@ -43,8 +43,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         read_file = self._read_file
 
-        if isinstance(filesystem, pa.fs.S3FileSystem):
-            filesystem = _S3FileSystemWrapper(filesystem)
+        filesystem = _wrap_s3_serialization_workaround(filesystem)
 
         def read_files(
                 read_paths: List[str],
@@ -158,7 +157,10 @@ def _resolve_paths_and_filesystem(
             filesystems inferred from the provided paths to ensure
             compatibility.
     """
-    from pyarrow.fs import FileType, _resolve_filesystem_and_path
+    from pyarrow.fs import FileSystem, FileType, \
+        PyFileSystem, FSSpecHandler, \
+        _resolve_filesystem_and_path
+    import fsspec
 
     if isinstance(paths, str):
         paths = [paths]
@@ -168,6 +170,14 @@ def _resolve_paths_and_filesystem(
             "paths must be a path string or a list of path strings.")
     elif len(paths) == 0:
         raise ValueError("Must provide at least one path.")
+
+    if filesystem and not isinstance(filesystem, FileSystem):
+        if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
+            raise TypeError(f"The filesystem passed must either conform to "
+                            f"pyarrow.fs.FileSystem, or "
+                            f"fsspec.spec.AbstractFileSystem. The provided "
+                            f"filesystem was: {filesystem}")
+        filesystem = PyFileSystem(FSSpecHandler(filesystem))
 
     resolved_paths = []
     for path in paths:
@@ -179,8 +189,6 @@ def _resolve_paths_and_filesystem(
             path, filesystem)
         if filesystem is None:
             filesystem = resolved_filesystem
-        elif type(resolved_filesystem) != type(filesystem):
-            raise ValueError("All paths must use same filesystem.")
         resolved_path = filesystem.normalize_path(resolved_path)
         resolved_paths.append(resolved_path)
 
@@ -206,6 +214,15 @@ def _unwrap_protocol(path):
     """
     parsed = urlparse(path)
     return parsed.netloc + parsed.path
+
+
+def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
+    # This is needed because pa.fs.S3FileSystem assumes pa.fs is already
+    # imported before deserialization. See #17085.
+    import pyarrow as pa
+    if isinstance(filesystem, pa.fs.S3FileSystem):
+        return _S3FileSystemWrapper(filesystem)
+    return filesystem
 
 
 class _S3FileSystemWrapper:
