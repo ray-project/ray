@@ -28,9 +28,9 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
         auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
 
         GoSlice fd_list;
-        fd_list.data = typed_descriptor->FunctionName().c_str();
-        args_go.len = 1;
-        args_go.cap = 1;
+        fd_list.data = const_cast<char*>(typed_descriptor->FunctionName().c_str());
+        fd_list.len = 1;
+        fd_list.cap = 1;
 
         std::vector<DataBuffer> args_array_list;
         for (auto &it : args) {
@@ -41,7 +41,7 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
         }
 
         GoSlice args_go;
-        args_go.data = args_array_list;
+        args_go.data = &args_array_list[0];
         args_go.len = args_array_list.size();
         args_go.cap = args_array_list.size();
 

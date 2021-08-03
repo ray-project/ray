@@ -7,6 +7,12 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#ifndef GO_CGO_PROLOGUE_H
+#define GO_CGO_PROLOGUE_H
+ typedef long long GoInt64;
+ typedef GoInt64 GoInt;
+ typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
+#endif
 
 struct DataBuffer {
   int size;
@@ -35,9 +41,9 @@ int go_worker_CreateActor(char *type_name, char **result);
 
 int go_worker_SubmitActorTask(void *actor_id, char *method_name, char ***return_ids);
 
-extern void go_worker_execute(int task_type, GoSlice args, GoSlice args);
+void go_worker_execute(int task_type, GoSlice ray_function_info, GoSlice args);
 
-extern SayHello((char *);
+void SayHello(char *);
 
 #ifdef __cplusplus
 }

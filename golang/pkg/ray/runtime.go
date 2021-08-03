@@ -89,7 +89,7 @@ func InnerInit(address, _redis_password string, workerType ray_rpc.WorkerType) {
         C.CString(GetNodeManagerAddress()), C.int(GetNodeManagerPort()),
         C.CString(GetNodeManagerAddress()),
         C.CString("GOLANG"), C.int(GetJobId()), C.CString(addressInfo[0]), C.int(addressPort),
-        C.CString(_redis_password), serialized_job_config)
+        C.CString(_redis_password), C.CString(serialized_job_config))
 }
 
 func Run() {
