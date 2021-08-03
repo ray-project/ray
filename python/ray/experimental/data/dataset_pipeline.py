@@ -220,7 +220,8 @@ class DatasetPipeline(Generic[T]):
         Returns:
             The sum of the records in the dataset pipeline.
         """
-        pipe = self.map_batches(lambda batch: [batch.sum()[0]])
+        pipe = self.map_batches(
+            lambda batch: [batch.sum()[0]], batch_format="pandas")
         total = 0
         for elem in pipe.iter_rows():
             total += elem
