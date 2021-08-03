@@ -627,12 +627,10 @@ class SampleBatch(dict):
                 i += slice_size
         return data_slices, data_slices_states
 
-    # TODO: deprecate
     @property
     def data(self):
-        if log_once("SampleBatch.data"):
-            deprecation_warning(
-                old="SampleBatch.data[..]", new="SampleBatch[..]", error=False)
+        deprecation_warning(
+            old="SampleBatch.data[..]", new="SampleBatch[..]", error=True)
         return self
 
     # TODO: (sven) Experimental method.

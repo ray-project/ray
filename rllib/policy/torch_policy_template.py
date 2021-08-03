@@ -1,15 +1,13 @@
 import gym
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
-from ray.util import log_once
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
@@ -17,7 +15,7 @@ from ray.rllib.utils.typing import ModelGradients, TensorType, \
 torch, _ = try_import_torch()
 
 
-@DeveloperAPI
+@Deprecated(new="build_policy_class(framework='torch')", error=False)
 def build_torch_policy(
         name: str,
         *,
@@ -70,11 +68,6 @@ def build_torch_policy(
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None
 ) -> Type[TorchPolicy]:
 
-    if log_once("deprecation_warning_build_torch_policy"):
-        deprecation_warning(
-            old="build_torch_policy",
-            new="build_policy_class(framework='torch')",
-            error=False)
     kwargs = locals().copy()
     # Set to torch and call new function.
     kwargs["framework"] = "torch"

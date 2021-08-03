@@ -4,7 +4,7 @@ import os
 import sys
 from typing import Any, Optional
 
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.typing import TensorStructType, TensorShape, TensorType
 
 logger = logging.getLogger(__name__)
@@ -263,7 +263,10 @@ def get_variable(value,
     return value
 
 
-# Deprecated: Use rllib.models.utils::get_activation_fn instead.
+@Deprecated(
+    old="rllib/models/utils.py::get_activation_fn",
+    new="rllib/utils/framework.py::get_activation_fn",
+    error=False)
 def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     """Returns a framework specific activation function, given a name string.
 
@@ -279,10 +282,6 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     Raises:
         ValueError: If name is an unknown activation function.
     """
-    deprecation_warning(
-        "rllib/utils/framework.py::get_activation_fn",
-        "rllib/models/utils.py::get_activation_fn",
-        error=False)
     if framework == "torch":
         if name in ["linear", None]:
             return None

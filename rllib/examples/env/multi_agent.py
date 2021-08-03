@@ -4,15 +4,14 @@ import random
 from ray.rllib.env.multi_agent_env import MultiAgentEnv, make_multi_agent
 from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.annotations import Deprecated
 
 
+@Deprecated(
+    old="ray.rllib.examples.env.multi_agent.make_multiagent",
+    new="ray.rllib.env.multi_agent_env.make_multi_agent",
+    error=False)
 def make_multiagent(env_name_or_creator):
-    deprecation_warning(
-        old="ray.rllib.examples.env.multi_agent.make_multiagent",
-        new="ray.rllib.env.multi_agent_env.make_multi_agent",
-        error=False,
-    )
     return make_multi_agent(env_name_or_creator)
 
 
