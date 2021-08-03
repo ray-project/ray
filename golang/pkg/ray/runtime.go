@@ -10,7 +10,6 @@ import "C"
 import (
     "errors"
     "fmt"
-    "os"
     "reflect"
     "strconv"
     "strings"
@@ -60,15 +59,6 @@ func InnerInit(address, _redis_password string, workerType ray_rpc.WorkerType) {
         SetRayletSocket(gcsNodeInfo.GetRayletSocketName())
         //todo add job config
     } else {
-        jobIdStr := os.Getenv("RAY_JOB_ID")
-        if jobIdStr == "" {
-            panic(fmt.Errorf("job id is empty"))
-        }
-        jobId, err := strconv.Atoi(jobIdStr)
-        if err != nil {
-            panic(fmt.Errorf("failed to parse jobId:%s", jobIdStr))
-        }
-        SetJobId(jobId)
         // check session dir is not empty
         if GetSessionDir() == "" {
             panic(errors.New("session dir is empty"))
