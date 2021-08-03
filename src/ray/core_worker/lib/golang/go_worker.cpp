@@ -32,9 +32,9 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
         std::vector<DataBuffer> args_array_list;
         for (auto &it : args) {
           DataBuffer db;
-          db.p = it->GetData();
+          db.p = it->GetData()->Data();
           db.size = it->GetSize();
-          args_array_list.insert(db);
+          args_array_list.push_back(db);
         }
 
         // invoke golang method
