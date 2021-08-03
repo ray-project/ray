@@ -1542,7 +1542,7 @@ def start_raylet(redis_address,
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
         f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
         # TODO
-        f"--golang_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
+        f"--golang_worker_command={subprocess.list2cmdline(golang_worker_command)}",  # noqa
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
