@@ -32,10 +32,6 @@ def gen_execute_special(special_f):
 
 class TestConfig(BackendConfig):
     @property
-    def backend_name(self):
-        return "test"
-
-    @property
     def backend_cls(self):
         return TestBackend
 
