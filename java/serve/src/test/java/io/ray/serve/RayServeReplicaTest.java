@@ -3,8 +3,8 @@ package io.ray.serve;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
+import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.generated.BackendConfig;
-import io.ray.serve.serializer.Hessian2Seserializer;
 import java.io.IOException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -33,7 +33,7 @@ public class RayServeReplicaTest {
 
       Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
 
-      byte[] initArgsBytes = Hessian2Seserializer.encode(initArgs);
+      byte[] initArgsBytes = MessagePackSerializer.encode(initArgs).getLeft();
 
       ActorHandle<RayServeWrappedReplica> backendHandle =
           Ray.actor(

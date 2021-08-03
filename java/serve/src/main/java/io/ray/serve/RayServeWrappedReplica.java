@@ -3,9 +3,9 @@ package io.ray.serve;
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
+import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.BackendConfig;
-import io.ray.serve.serializer.Hessian2Seserializer;
 import io.ray.serve.util.BackendConfigUtil;
 import io.ray.serve.util.ReflectUtil;
 import java.io.IOException;
@@ -63,11 +63,10 @@ public class RayServeWrappedReplica {
     if (!backendConfig.getIsCrossLanguage()) {
       // If the construction request is from Java API, deserialize initArgsbytes to Object[]
       // directly.
-      Object result = Hessian2Seserializer.decode(initArgsbytes);
-      return (Object[]) result;
+      return MessagePackSerializer.decode(initArgsbytes, Object[].class);
     } else {
-      // TODO
-      return new Object[0];
+      // For other language like Python API, not support Array type.
+      return new Object[] {MessagePackSerializer.decode(initArgsbytes, Object.class)};
     }
   }
 
