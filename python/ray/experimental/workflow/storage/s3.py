@@ -81,6 +81,8 @@ class S3StorageImpl(Storage):
     async def scan_prefix(self, key_prefix: str) -> List[str]:
         keys = []
         async with self._client() as s3:
+            if not key_prefix.endswith("/"):
+                key_prefix += "/"
             paginator = s3.get_paginator("list_objects")
             operation_parameters = {
                 "Bucket": self._bucket,
@@ -88,10 +90,15 @@ class S3StorageImpl(Storage):
                 "Prefix": key_prefix
             }
             page_iterator = paginator.paginate(**operation_parameters)
-            async for page in page_iterator:
-                for o in page.get("CommonPrefixes", []):
-                    prefix = o.get("Prefix", "").rstrip("/").split("/")[-1]
-                    keys.append(prefix)
+            if key_prefix == self._s3_path + "/":
+                async for page in page_iterator:
+                    for o in page.get("CommonPrefixes", []):
+                        keys.append(o.get("Prefix", ""))
+            else:
+                async for page in page_iterator:
+                    for o in page.get("Contents", []):
+                        keys.append(o.get("Key", ""))
+        keys = [k.rstrip("/").split("/")[-1] for k in keys if k != ""]
         return keys
 
     def _client(self):
