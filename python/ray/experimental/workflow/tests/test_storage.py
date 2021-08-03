@@ -18,6 +18,23 @@ def some_func2(x):
 
 
 @pytest.mark.asyncio
+async def test_kv_storage(workflow_start_regular):
+    kv_store = storage.get_global_storage()
+    json_data = {"hello": "world"}
+    bin_data = (31416).to_bytes(8, "big")
+    key_1 = kv_store.make_key("aaa", "bbb", "ccc")
+    key_2 = kv_store.make_key("aaa", "ddd")
+    await kv_store.put(key_1, json_data, is_json=True)
+    await kv_store.put(key_2, bin_data, is_json=False)
+    assert json_data == await kv_store.get(key_1, is_json=True)
+    assert bin_data == await kv_store.get(key_2, is_json=False)
+    prefix = kv_store.make_key("aaa")
+    assert set(await kv_store.scan_prefix(prefix)) == {"bbb", "ddd"}
+    assert set(await kv_store.scan_prefix(kv_store.make_key(""))) == {"aaa"}
+    # TODO(suquark): Test "delete" once fully implemented.
+
+
+@pytest.mark.asyncio
 async def test_raw_storage(workflow_start_regular):
     raw_storage = workflow_storage._StorageImpl(storage.get_global_storage())
     workflow_id = test_workflow_storage.__name__
