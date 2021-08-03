@@ -5,11 +5,7 @@ import pathlib
 from typing import Any, List
 import uuid
 
-from ray.experimental.workflow.common import StepID
-from ray.experimental.workflow.storage.base import (
-    StepStatus, data_load_error, Storage, STEPS_DIR, STEP_OUTPUT,
-    STEP_OUTPUTS_METADATA, STEP_INPUTS_METADATA, STEP_ARGS, STEP_FUNC_BODY,
-    KeyNotFoundError)
+from ray.experimental.workflow.storage.base import Storage, KeyNotFoundError
 
 import ray.cloudpickle
 
@@ -133,11 +129,10 @@ class FilesystemStorageImpl(Storage):
         else:
             self._workflow_root_dir.mkdir()
 
-    def _make_key(self, *names: str) -> str:
+    def make_key(self, *names: str) -> str:
         return "/".join(itertools.chain([str(self._workflow_root_dir)], names))
 
-    async def _put_object(self, key: str, data: Any,
-                          is_json: bool = False) -> None:
+    async def put(self, key: str, data: Any, is_json: bool = False) -> None:
         if is_json:
             with _open_atomic(pathlib.Path(key), "w") as f:
                 return json.dump(data, f)
@@ -145,7 +140,7 @@ class FilesystemStorageImpl(Storage):
             with _open_atomic(pathlib.Path(key), "wb") as f:
                 return ray.cloudpickle.dump(data, f)
 
-    async def _get_object(self, key: str, is_json: bool = False) -> Any:
+    async def get(self, key: str, is_json: bool = False) -> Any:
         if is_json:
             with _open_atomic(pathlib.Path(key)) as f:
                 return json.load(f)
@@ -153,20 +148,15 @@ class FilesystemStorageImpl(Storage):
             with _open_atomic(pathlib.Path(key), "rb") as f:
                 return ray.cloudpickle.load(f)
 
-    async def get_step_status(self, workflow_id: str,
-                              step_id: StepID) -> StepStatus:
-        step_dir = self._workflow_root_dir / workflow_id / STEPS_DIR / step_id
-        return StepStatus(
-            output_object_exists=(step_dir / STEP_OUTPUT).exists(),
-            output_metadata_exists=(step_dir / STEP_OUTPUTS_METADATA).exists(),
-            input_metadata_exists=(step_dir / STEP_INPUTS_METADATA).exists(),
-            args_exists=(step_dir / STEP_ARGS).exists(),
-            func_body_exists=(step_dir / STEP_FUNC_BODY).exists(),
-        )
+    async def delete(self, key: str) -> None:
+        pathlib.Path(key).unlink()
 
-    @data_load_error
-    async def list_workflow(self) -> List[str]:
-        return [path.name for path in self._workflow_root_dir.iterdir()]
+    async def scan_prefix(self, key_prefix: str) -> List[str]:
+        try:
+            path = pathlib.Path(key_prefix)
+            return [p.name for p in path.iterdir()]
+        except FileNotFoundError:
+            return []
 
     @property
     def storage_url(self) -> str:

@@ -5,12 +5,9 @@ from botocore.exceptions import ClientError
 import aioboto3
 import itertools
 import ray
-from typing import Any, Optional, List
-from ray.experimental.workflow.common import StepID
-from ray.experimental.workflow.storage.base import (
-    StepStatus, data_load_error, Storage, STEPS_DIR, STEP_OUTPUT,
-    STEP_OUTPUTS_METADATA, STEP_INPUTS_METADATA, STEP_ARGS, STEP_FUNC_BODY,
-    KeyNotFoundError)
+from typing import Any, List
+from ray.experimental.workflow.storage.base import Storage, KeyNotFoundError
+import ray.cloudpickle
 
 MAX_RECEIVED_DATA_MEMORY_SIZE = 25 * 1024 * 1024  # 25MB
 
@@ -43,11 +40,10 @@ class S3StorageImpl(Storage):
         self._aws_session_token = aws_session_token
         self._config = config
 
-    def _make_key(self, *names: str) -> str:
+    def make_key(self, *names: str) -> str:
         return "/".join(itertools.chain([self._s3_path], names))
 
-    async def _put_object(self, key: str, data: Any,
-                          is_json: bool = False) -> None:
+    async def put(self, key: str, data: Any, is_json: bool = False) -> None:
         with tempfile.SpooledTemporaryFile(
                 mode="w+b",
                 max_size=MAX_RECEIVED_DATA_MEMORY_SIZE) as tmp_file:
@@ -59,7 +55,7 @@ class S3StorageImpl(Storage):
             async with self._client() as s3:
                 await s3.upload_fileobj(tmp_file, self._bucket, key)
 
-    async def _get_object(self, key: str, is_json: bool = False) -> Any:
+    async def get(self, key: str, is_json: bool = False) -> Any:
         try:
             with tempfile.SpooledTemporaryFile(
                     mode="w+b",
@@ -79,43 +75,24 @@ class S3StorageImpl(Storage):
             else:
                 raise
 
-    async def _list_objects(self, path: Optional[str] = None) -> List[str]:
-        workflow_ids = []
+    async def delete(self, key: str) -> None:
+        raise NotImplementedError
+
+    async def scan_prefix(self, key_prefix: str) -> List[str]:
+        keys = []
         async with self._client() as s3:
             paginator = s3.get_paginator("list_objects")
-            operation_parameters = {"Bucket": self._bucket, "Delimiter": "/"}
-            if path is not None:
-                operation_parameters["Prefix"] = path
-            else:
-                operation_parameters["Prefix"] = self._s3_path + "/"
+            operation_parameters = {
+                "Bucket": self._bucket,
+                "Delimiter": "/",
+                "Prefix": key_prefix
+            }
             page_iterator = paginator.paginate(**operation_parameters)
             async for page in page_iterator:
                 for o in page.get("CommonPrefixes", []):
                     prefix = o.get("Prefix", "").rstrip("/").split("/")[-1]
-                    workflow_ids.append(prefix)
-        return workflow_ids
-
-    @data_load_error
-    async def list_workflow(self) -> List[str]:
-        return await self._list_objects()
-
-    @data_load_error
-    async def get_step_status(self, workflow_id: str,
-                              step_id: StepID) -> StepStatus:
-        path = self._make_key(workflow_id, STEPS_DIR, step_id) + "/"
-        async with self._client() as s3:
-            response = await s3.list_objects_v2(
-                Bucket=self._bucket, Prefix=path)
-            keys = set({
-                item["Key"].split("/")[-1]
-                for item in response.get("Contents", [])
-            })
-            return StepStatus(
-                output_object_exists=(STEP_OUTPUT in keys),
-                output_metadata_exists=(STEP_OUTPUTS_METADATA in keys),
-                input_metadata_exists=(STEP_INPUTS_METADATA in keys),
-                args_exists=(STEP_ARGS in keys),
-                func_body_exists=(STEP_FUNC_BODY in keys))
+                    keys.append(prefix)
+        return keys
 
     def _client(self):
         return self._session.client(
