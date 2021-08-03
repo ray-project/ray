@@ -972,7 +972,9 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
                 ray.get(actor.ready.remote())
                 self.actors.append(actor)
 
-        a = Actor.options(placement_group=pg).remote()
+        a = Actor.options(
+            placement_group=pg,
+            placement_group_capture_child_tasks=True).remote()
         ray.get(a.ready.remote())
         # 1 top level actor + 3 children.
         for _ in range(total_num_actors - 1):
@@ -994,9 +996,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
             ray.get(a.ready.remote())
 
         # Now create an actor, but do not capture the current tasks
-        a = Actor.options(
-            placement_group=pg,
-            placement_group_capture_child_tasks=False).remote()
+        a = Actor.options(placement_group=pg).remote()
         ray.get(a.ready.remote())
         # 1 top level actor + 3 children.
         for _ in range(total_num_actors - 1):
@@ -1077,14 +1077,20 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
             return ray.get([task.options(**kwargs).remote() for _ in range(3)])
 
         t = create_nested_task.options(
-            num_cpus=1, num_gpus=0, placement_group=pg).remote(1, 0)
+            num_cpus=1,
+            num_gpus=0,
+            placement_group=pg,
+            placement_group_capture_child_tasks=True).remote(1, 0)
         pgs = ray.get(t)
         # Every task should have current placement group because they
         # should be implicitly captured by default.
         assert None not in pgs
 
         t1 = create_nested_task.options(
-            num_cpus=1, num_gpus=0, placement_group=pg).remote(1, 0, True)
+            num_cpus=1,
+            num_gpus=0,
+            placement_group=pg,
+            placement_group_capture_child_tasks=True).remote(1, 0, True)
         pgs = ray.get(t1)
         # Every task should have no placement group since it's set to None.
         # should be implicitly captured by default.
@@ -1092,10 +1098,7 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
 
         # Test if tasks don't capture child tasks when the option is off.
         t2 = create_nested_task.options(
-            num_cpus=0,
-            num_gpus=1,
-            placement_group=pg,
-            placement_group_capture_child_tasks=False).remote(0, 1)
+            num_cpus=0, num_gpus=1, placement_group=pg).remote(0, 1)
         pgs = ray.get(t2)
         # All placement groups should be None since we don't capture child
         # tasks.
