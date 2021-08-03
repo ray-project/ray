@@ -14,7 +14,7 @@ class Session:
         self.world_rank = world_rank
 
         # This lock is used to control the execution of the training thread.
-        self.continue_lock = threading.Lock()
+        self.continue_lock = threading.Semaphore(0)
 
         # Queue for sending results across threads.
         self.result_queue = queue.Queue(1)
@@ -24,7 +24,7 @@ class Session:
     def report(self, **kwargs):
         """Adds kwargs to the queue to be consumed by main thread."""
         current_time = time.time()
-        time_this_iter = current_time - self._last_report_time
+        time_this_iter = current_time - self.last_report_time
         if TIME_THIS_ITER_S not in kwargs:
             kwargs[TIME_THIS_ITER_S] = time_this_iter
 

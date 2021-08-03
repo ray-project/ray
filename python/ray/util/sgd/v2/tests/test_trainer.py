@@ -2,11 +2,15 @@ import time
 
 import pytest
 import ray
+import ray.util.sgd.v2 as sgd
 from ray.util.sgd.v2 import Trainer, TorchConfig
+from ray.util.sgd.v2.callbacks.callback import SGDCallback
+from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
 from ray.util.sgd.v2.examples.train_linear import train_func as \
     linear_train_func
 from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
     fashion_mnist_train_func
+from ray.util.sgd.v2.worker_group import WorkerGroup
 
 
 @pytest.fixture
@@ -17,9 +21,33 @@ def ray_start_2_cpus():
     ray.shutdown()
 
 
+class TestConfig(BackendConfig):
+    @property
+    def backend_cls(self):
+        return TestBackend
+
+
+class TestBackend(BackendInterface):
+    def on_start(self, worker_group: WorkerGroup, backend_config: TestConfig):
+        pass
+
+    def on_shutdown(self, worker_group: WorkerGroup,
+                    backend_config: TestConfig):
+        pass
+
+
+class TestCallback(SGDCallback):
+    def __init__(self):
+        self.result_list = []
+
+    def handle_result(self, results):
+        self.result_list.append(results)
+
+
 def test_start_shutdown(ray_start_2_cpus):
+    config = TestConfig()
     assert ray.available_resources()["CPU"] == 2
-    trainer = Trainer("torch")
+    trainer = Trainer(config)
     trainer.start()
     time.sleep(1)
     assert ray.available_resources()["CPU"] == 1
@@ -27,7 +55,7 @@ def test_start_shutdown(ray_start_2_cpus):
     time.sleep(1)
     assert ray.available_resources()["CPU"] == 2
 
-    trainer = Trainer("torch", num_workers=2)
+    trainer = Trainer(config, num_workers=2)
     trainer.start()
     time.sleep(1)
     assert "CPU" not in ray.available_resources()
@@ -37,10 +65,12 @@ def test_start_shutdown(ray_start_2_cpus):
 
 
 def test_run(ray_start_2_cpus):
+    config = TestConfig()
+
     def train_func():
         return 1
 
-    trainer = Trainer("torch", num_workers=2)
+    trainer = Trainer(config, num_workers=2)
     trainer.start()
     results = trainer.run(train_func)
     trainer.shutdown()
@@ -50,18 +80,43 @@ def test_run(ray_start_2_cpus):
 
 
 def test_run_config(ray_start_2_cpus):
+    config = TestConfig()
+
     def train_func(config):
         return config["fruit"]
 
     config = {"fruit": "banana"}
 
-    trainer = Trainer("torch", num_workers=2)
+    trainer = Trainer(config, num_workers=2)
     trainer.start()
     results = trainer.run(train_func, config)
     trainer.shutdown()
 
     assert len(results) == 2
     assert all(result == "banana" for result in results)
+
+
+def test_report(ray_start_2_cpus):
+    config = TestConfig()
+
+    def train_func():
+        for i in range(3):
+            sgd.report(index=i)
+        return 1
+
+    callback = TestCallback()
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+    results = trainer.run(train_func, callbacks=[callback])
+    assert results == [1, 1]
+
+    result_list = callback.result_list
+    assert len(result_list) == 3
+    for index in range(len(result_list)):
+        intermediate_results = result_list[index]
+        assert len(intermediate_results) == 2
+        for worker_result in intermediate_results:
+            assert worker_result["index"] == index
 
 
 def test_torch_linear(ray_start_2_cpus):
@@ -123,7 +178,7 @@ def test_run_failure(ray_start_2_cpus):
 
     # Raise RuntimeError when trainer has not been started yet.
     with pytest.raises(RuntimeError):
-        trainer.run(train_invalid_signature)
+        trainer.run(lambda: 1)
 
     trainer.start()
 

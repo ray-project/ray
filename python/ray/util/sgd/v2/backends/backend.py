@@ -1,6 +1,5 @@
 import logging
 import queue
-import threading
 from typing import Callable, TypeVar, List, Optional, Dict
 
 import ray
@@ -8,6 +7,7 @@ from ray.exceptions import RayActorError
 from ray.util.sgd.v2.constants import RESULT_FETCH_TIMEOUT
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
+from ray.util.sgd.v2.utils import PropagatingThread
 
 T = TypeVar("T")
 
@@ -66,21 +66,31 @@ class BackendExecutor:
             train_func (Callable): The training function to run on each worker.
         """
 
-        # Run the training function asynchronously in its own thread.
-        def train_async(world_rank):
-            thread = threading.Thread(target=train_func)
+        # First initialize the session.
+        def initialize_session(world_rank):
+            thread = PropagatingThread(target=train_func, daemon=True)
             try:
                 init_session(training_thread=thread, world_rank=world_rank)
             except ValueError:
                 raise RuntimeError("Attempting to start training but a "
                                    "previous training run is still ongoing. "
                                    "You must call `finish_training` before "
-                                   "calling `start_training` again.")
-            thread.start()
+                                   "calling `start_training` again.") from None
 
-        for world_rank in len(self.worker_group):
-            self.worker_group.execute_single_async(
-                worker_index=world_rank, func=lambda: train_async(world_rank))
+        futures = []
+        for world_rank in range(len(self.worker_group)):
+            futures.append(
+                self.worker_group.execute_single_async(
+                    world_rank, initialize_session, world_rank=world_rank))
+
+        ray.get(futures)
+
+        # Run the training function asynchronously in its own thread.
+        def train_async():
+            session = get_session()
+            session.training_thread.start()
+
+        self.worker_group.execute_async(train_async)
 
     def fetch_next_result(self) -> Optional[List[Dict]]:
         """Fetch next results produced by ``sgd.report()`` from each worker.
@@ -105,19 +115,19 @@ class BackendExecutor:
                                    "`start_training` before "
                                    "`fetch_next_result`.")
 
-            # Release the lock to cause training to continue.
+            # Release the lock to trigger training to continue.
             session.continue_lock.release()
 
             result = None
             # While training is still ongoing, attempt to get the result.
-            while session.training_thread.is_alive():
+            while result is None and session.training_thread.is_alive():
                 try:
                     result = session.result_queue.get(
                         block=True, timeout=RESULT_FETCH_TIMEOUT)
                 except queue.Empty:
                     pass
 
-            # If no result were found, then the runner must no longer be alive.
+            # If no result was found, then the runner must no longer be alive.
             if result is None:
                 # Try one last time to fetch results in case results were
                 # reported in between the time of the last check and the
@@ -168,7 +178,7 @@ class BackendExecutor:
                 raise RuntimeError("`finish_training` has been called "
                                    "before `start_training`. Please call "
                                    "`start_training` before "
-                                   "`finish_training`.")
+                                   "`finish_training`.") from None
 
             training_thread = session.training_thread
 
@@ -242,4 +252,7 @@ class InactiveWorkerGroupError(Exception):
 class InactiveWorkerGroup():
     # TODO: fix inheritence. perhaps create WorkerGroupInterface.
     def __getattribute__(self, *args, **kwargs):
+        raise InactiveWorkerGroupError()
+
+    def __len__(self):
         raise InactiveWorkerGroupError()
