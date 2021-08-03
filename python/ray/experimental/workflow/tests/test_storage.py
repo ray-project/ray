@@ -24,10 +24,13 @@ async def test_kv_storage(workflow_start_regular):
     bin_data = (31416).to_bytes(8, "big")
     key_1 = kv_store.make_key("aaa", "bbb", "ccc")
     key_2 = kv_store.make_key("aaa", "ddd")
+    key_3 = kv_store.make_key("aaa", "eee")
     await kv_store.put(key_1, json_data, is_json=True)
     await kv_store.put(key_2, bin_data, is_json=False)
     assert json_data == await kv_store.get(key_1, is_json=True)
     assert bin_data == await kv_store.get(key_2, is_json=False)
+    with pytest.raises(storage.KeyNotFoundError):
+        await kv_store.get(key_3)
     prefix = kv_store.make_key("aaa")
     assert set(await kv_store.scan_prefix(prefix)) == {"bbb", "ddd"}
     assert set(await kv_store.scan_prefix(kv_store.make_key(""))) == {"aaa"}
