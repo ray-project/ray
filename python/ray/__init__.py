@@ -98,6 +98,7 @@ import ray.actor  # noqa: E402,F401
 from ray.actor import method  # noqa: E402
 from ray.cross_language import java_function, java_actor_class  # noqa: E402
 from ray.runtime_context import get_runtime_context  # noqa: E402
+from ray import data  # noqa: E402
 from ray import util  # noqa: E402
 # We import ClientBuilder so that modules can inherit from `ray.ClientBuilder`.
 from ray.client_builder import client, ClientBuilder  # noqa: E402
@@ -112,6 +113,7 @@ __all__ = [
     "client",
     "ClientBuilder",
     "cluster_resources",
+    "data"
     "get",
     "get_actor",
     "get_gpu_ids",
@@ -150,11 +152,6 @@ __all__ += [
     "UniqueID",
     "PlacementGroupID",
 ]
-
-# Add an alias so we can point to the final location in docs.
-# TODO(ekl) remove this once datasets is out of alpha.
-from ray.experimental import data  # noqa
-__all__.append(data)
 
 # Add an alias so we can point to the final location in docs.
 # TODO(yic) remove this once workflow is out of alpha.
