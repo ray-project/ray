@@ -1,10 +1,11 @@
 from contextlib import closing
 import socket
+from typing import Tuple
 
 import ray
 
 
-def get_address_and_port():
+def get_address_and_port() -> Tuple[str, int]:
     """Returns the IP address and a free port on this node."""
     addr = ray.util.get_node_ip_address()
 

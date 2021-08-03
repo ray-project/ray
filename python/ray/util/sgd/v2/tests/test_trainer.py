@@ -3,10 +3,12 @@ import time
 import pytest
 import ray
 from ray.util.sgd.v2 import Trainer, TorchConfig
-from ray.util.sgd.v2.examples.train_linear import train_func as \
-    linear_train_func
+from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
+    tensorflow_mnist_train_func
 from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
     fashion_mnist_train_func
+from ray.util.sgd.v2.examples.train_linear import train_func as \
+    linear_train_func
 
 
 @pytest.fixture
@@ -62,6 +64,28 @@ def test_run_config(ray_start_2_cpus):
 
     assert len(results) == 2
     assert all(result == "banana" for result in results)
+
+
+def test_tensorflow_mnist(ray_start_2_cpus):
+    num_workers = 2
+    epochs = 3
+
+    trainer = Trainer("tensorflow", num_workers=num_workers)
+    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
+    trainer.start()
+    results = trainer.run(tensorflow_mnist_train_func, config)
+    trainer.shutdown()
+
+    assert len(results) == num_workers
+    result = results[0]
+
+    loss = result["loss"]
+    assert len(loss) == epochs
+    assert loss[-1] < loss[0]
+
+    accuracy = result["accuracy"]
+    assert len(accuracy) == epochs
+    assert accuracy[-1] > accuracy[0]
 
 
 def test_torch_linear(ray_start_2_cpus):
