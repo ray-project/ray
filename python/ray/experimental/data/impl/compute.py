@@ -5,6 +5,7 @@ from ray.types import ObjectRef
 from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
 from ray.experimental.data.impl.block_list import BlockList
 from ray.experimental.data.impl.progress_bar import ProgressBar
+from ray.experimental.data.impl.remote_fn import cached_remote_fn
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -19,12 +20,8 @@ class ComputeStrategy:
         raise NotImplementedError
 
 
-# Remote version of map_block, lazily initialized to avoid circular import.
-_remote_fn = None
-
-
-def map_block(block: Block, meta: BlockMetadata,
-              fn: Any) -> (Block, BlockMetadata):
+def _map_block(block: Block, meta: BlockMetadata,
+               fn: Any) -> (Block, BlockMetadata):
     new_block = fn(block)
     accessor = BlockAccessor.for_block(new_block)
     new_meta = BlockMetadata(
@@ -43,14 +40,9 @@ class TaskPool(ComputeStrategy):
         kwargs = remote_args.copy()
         kwargs["num_returns"] = 2
 
-        # Lazy init to avoid circular import. TODO(ekl) move these into a
-        # separate remote functions file.
-        global _remote_fn
-        if _remote_fn is None:
-            _remote_fn = ray.remote(map_block)
-
+        map_block = cached_remote_fn(_map_block)
         refs = [
-            _remote_fn.options(**kwargs).remote(b, m, fn)
+            map_block.options(**kwargs).remote(b, m, fn)
             for b, m in zip(blocks, blocks.get_metadata())
         ]
         new_blocks, new_metadata = zip(*refs)

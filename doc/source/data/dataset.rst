@@ -16,7 +16,7 @@ Ray Datasets are the standard way to load and exchange data in Ray libraries and
 
 Concepts
 --------
-Ray Datasets implement `"Distributed Arrow" <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__ format, `Arrow tensor <https://arrow.apache.org/docs/python/generated/pyarrow.Tensor.html>`__ (np.ndarray) format, or in a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data.
+Ray Datasets implement `"Distributed Arrow" <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__, `Arrow tensor <https://arrow.apache.org/docs/python/generated/pyarrow.Tensor.html>`__, or a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data.
 
 The following figure visualizes a Dataset that has three Arrow table blocks, each block holding 1000 rows each:
 
@@ -324,22 +324,22 @@ Datasets support tensor-typed values, which are represented in-memory as Arrow t
 
     # Create a Dataset of tensor-typed values.
     ds = ray.data.range_tensor(10000, shape=(3, 5))
-    # -> Dataset(num_blocks=200, num_rows=10000, schema=<Tensor: shape=(None, 3, 5), dtype=float64>)
+    # -> Dataset(num_blocks=200, num_rows=10000, schema=<Tensor: shape=(None, 3, 5), dtype=int64>)
 
     ds.map_batches(lambda t: t + 2).show(2)
-    # -> [[2. 2. 2. 2. 2.]
-    #     [2. 2. 2. 2. 2.]
-    #     [2. 2. 2. 2. 2.]]
-    #    [[3. 3. 3. 3. 3.]
-    #     [3. 3. 3. 3. 3.]
-    #     [3. 3. 3. 3. 3.]]
+    # -> [[2 2 2 2 2]
+    #     [2 2 2 2 2]
+    #     [2 2 2 2 2]]
+    #    [[3 3 3 3 3]
+    #     [3 3 3 3 3]
+    #     [3 3 3 3 3]]
 
     # Save to storage.
     ds.write_numpy("/tmp/tensor_out")
 
     # Read from storage.
     ray.data.read_numpy("/tmp/tensor_out")
-    # -> Dataset(num_blocks=200, num_rows=?, schema=<Tensor: shape=(None, 3, 5), dtype=float64>)
+    # -> Dataset(num_blocks=200, num_rows=?, schema=<Tensor: shape=(None, 3, 5), dtype=int64>)
 
 Tensor datasets are also created whenever an array type is returned from a map function:
 
