@@ -7,6 +7,16 @@ from ray.tune.cluster_info import is_ray_cluster
 
 logger = logging.getLogger(__name__)
 
+# We may prompt user to check if resource is insufficent to start even one
+# single trial run if we observe the following:
+# 1. all trials are in pending state
+# 2. autoscaler is disabled
+# 3. No progress is made after this number of iterations (executor.step()
+# is looped this number of times).
+# Shown every this number of times as a warning msg so as not to pollute
+# logging.
+SHOW_MAYBE_INSUFFICIENT_RESOURCE_WARNING_ITER_DELAY = 100
+
 
 class TrialExecutor:
     """Module for interacting with remote trainables.
@@ -177,7 +187,19 @@ class TrialExecutor:
     def on_no_available_trials(self, trial_runner):
         if self._queue_trials:
             return
-        for trial in trial_runner.get_trials():
+
+        all_trials = trial_runner.get_trials()
+        all_trials_are_pending = all(
+            trial.status == Trial.PENDING for trial in all_trials)
+        if all_trials_are_pending and not is_ray_cluster() and (
+                trial_runner.iteration +
+                1) % SHOW_MAYBE_INSUFFICIENT_RESOURCE_WARNING_ITER_DELAY == 0:
+            logger.warning(
+                "Autoscaler is not enabled and resource is not ready after "
+                "extended amoung of time - please consider if the allocated "
+                "resource is not enough for starting even a single trial."
+            )
+        for trial in all_trials:
             if trial.uses_placement_groups:
                 return
             if trial.status == Trial.PENDING:
