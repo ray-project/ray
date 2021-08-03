@@ -119,7 +119,12 @@ def test_run_failure(ray_start_2_cpus):
     def train_error(config):
         raise NotImplementedError
 
-    trainer = Trainer("torch")
+    trainer = Trainer("torch", num_workers=2)
+
+    # Raise RuntimeError when trainer has not been started yet.
+    with pytest.raises(RuntimeError):
+        trainer.run(train_invalid_signature)
+
     trainer.start()
 
     with pytest.raises(ValueError):

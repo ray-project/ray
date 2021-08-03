@@ -21,7 +21,6 @@ class Session:
 
         self.last_report_time = time.time()
 
-
     def report(self, **kwargs):
         """Adds kwargs to the queue to be consumed by main thread."""
         current_time = time.time()
@@ -41,12 +40,14 @@ class Session:
 
 _session = None
 
+
 def init_session(*args, **kwargs) -> None:
     global _session
     if _session:
         raise ValueError("An SGD session is already in use. Do not call "
                          "`init_session()` manually.")
     _session = Session(*args, **kwargs)
+
 
 def get_session() -> Session:
     global _session
@@ -57,10 +58,12 @@ def get_session() -> Session:
                          "function.")
     return _session
 
-def shutdown():
+
+def shutdown_session():
     """Shuts down the initialized session."""
     global _session
     _session = None
+
 
 def report(**kwargs) -> None:
     """Reports all keyword arguments to SGD as intermediate results.
@@ -68,7 +71,7 @@ def report(**kwargs) -> None:
     .. code-block:: python
 
         import time
-        from ray import sgd
+        from ray.util import sgd
 
         def train_func():
             for iter in range(100):
@@ -88,7 +91,26 @@ def report(**kwargs) -> None:
     session = get_session()
     session.report(**kwargs)
 
+
 def world_rank() -> int:
-    """Get the world rank of this worker."""
+    """Get the world rank of this worker.
+
+    .. code-block:: python
+
+        import time
+        from ray.util import sgd
+
+        def train_func():
+            for iter in range(100):
+                time.sleep(1)
+                if sgd.world_rank() == 0:
+                    print("Worker 0")
+
+        trainer = Trainer(backend="torch")
+        trainer.start()
+        trainer.run(train_func)
+        trainer.shutdown()
+
+    """
     session = get_session()
     return session.world_rank

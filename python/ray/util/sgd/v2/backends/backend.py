@@ -65,6 +65,7 @@ class BackendExecutor:
         Args:
             train_func (Callable): The training function to run on each worker.
         """
+
         # Run the training function asynchronously in its own thread.
         def train_async(world_rank):
             thread = threading.Thread(target=train_func)
@@ -77,10 +78,9 @@ class BackendExecutor:
                                    "calling `start_training` again.")
             thread.start()
 
-
         for world_rank in len(self.worker_group):
-            self.worker_group.execute_single_async(worker_index=world_rank,
-                                                   func=lambda: train_async(world_rank))
+            self.worker_group.execute_single_async(
+                worker_index=world_rank, func=lambda: train_async(world_rank))
 
     def fetch_next_result(self) -> Optional[List[Dict]]:
         """Fetch next results produced by ``sgd.report()`` from each worker.
@@ -93,6 +93,7 @@ class BackendExecutor:
                 a single worker. If there are no more items to fetch,
                 returns None.
         """
+
         def get_next():
             # Get the session for this worker.
             try:
@@ -111,18 +112,19 @@ class BackendExecutor:
             # While training is still ongoing, attempt to get the result.
             while session.training_thread.is_alive():
                 try:
-                    result = session.result_queue.get(block=True,
-                                                      timeout=RESULT_FETCH_TIMEOUT)
+                    result = session.result_queue.get(
+                        block=True, timeout=RESULT_FETCH_TIMEOUT)
                 except queue.Empty:
                     pass
 
             # If no result were found, then the runner must no longer be alive.
             if result is None:
-                # Try one last time to fetch results in case results were reported
-                # in between the time of the last check and the termination of the
-                # thread runner.
+                # Try one last time to fetch results in case results were
+                # reported in between the time of the last check and the
+                # termination of the thread runner.
                 try:
-                    result = session.result_queue.get(block=True, timeout=RESULT_FETCH_TIMEOUT)
+                    result = session.result_queue.get(
+                        block=True, timeout=RESULT_FETCH_TIMEOUT)
                 except queue.Empty:
                     pass
 
@@ -156,6 +158,7 @@ class BackendExecutor:
             A list of return values from calling ``train_func`` on each worker.
                 Each item corresponds to the return value from a single worker.
         """
+
         def end_training():
             # Get the session for this worker.
             try:
