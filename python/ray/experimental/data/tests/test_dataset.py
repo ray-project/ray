@@ -126,16 +126,102 @@ def test_basic(ray_start_regular_shared, pipelined):
     assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
 
 
+# TODO(ekl) enable this
+# @pytest.mark.parametrize("pipelined", [False, True])
+# def test_avoid_placement_group_capture(ray_start_regular_shared, pipelined):
+#    @ray.remote
+#    def run():
+#        ds = ray.experimental.data.range(5)
+#        ds = maybe_pipeline(ds, pipelined)
+#        assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
+#        assert ds.count() == 5
+#        assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
+#
+#    pg = ray.util.placement_group([{"CPU": 1}])
+#    ray.get(run.options(placement_group=pg).remote())
+
+
 def test_batch_tensors(ray_start_regular_shared):
     import torch
     ds = ray.experimental.data.from_items(
         [torch.tensor([0, 0]) for _ in range(40)])
-    res = "Dataset(num_rows=40, num_blocks=40, schema=<class 'torch.Tensor'>)"
+    res = "Dataset(num_blocks=40, num_rows=40, schema=<class 'torch.Tensor'>)"
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
         next(ds.iter_batches(batch_format="pyarrow"))
     df = next(ds.iter_batches(batch_format="pandas"))
     assert df.to_dict().keys() == {0, 1}
+
+
+def test_tensors(ray_start_regular_shared):
+    # Create directly.
+    ds = ray.experimental.data.range_tensor(5, shape=(3, 5))
+    assert str(ds) == ("Dataset(num_blocks=5, num_rows=5, "
+                       "schema=<Tensor: shape=(None, 3, 5), dtype=int64>)")
+
+    # Transform.
+    ds = ds.map_batches(lambda t: np.expand_dims(t, 3))
+    assert str(ds) == ("Dataset(num_blocks=5, num_rows=5, "
+                       "schema=<Tensor: shape=(None, 3, 5, 1), dtype=int64>)")
+
+    # Pandas conversion.
+    res = ray.data.range_tensor(10).map_batches(
+        lambda t: t + 2, batch_format="pandas").take(2)
+    assert str(res) == "[ArrowRow({'0': 2}), ArrowRow({'0': 3})]", res
+
+    # From other formats.
+    ds = ray.data.range(10).map_batches(lambda x: np.array(x))
+    assert str(ds) == ("Dataset(num_blocks=10, num_rows=10, "
+                       "schema=<Tensor: shape=(None,), dtype=int64>)")
+    ds = ray.data.range(10).map(lambda x: np.array(x))
+    assert str(ds) == ("Dataset(num_blocks=10, num_rows=10, "
+                       "schema=<Tensor: shape=(None,), dtype=int64>)")
+    ds = ray.data.from_items([np.zeros(shape=(2, 2, 2)) for _ in range(4)])
+    assert str(ds) == (
+        "Dataset(num_blocks=4, num_rows=4, "
+        "schema=<Tensor: shape=(None, 2, 2, 2), dtype=float64>)"), ds
+
+
+def test_npio(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_np_dir")
+    os.mkdir(path)
+    ds = ray.data.range_tensor(10, parallelism=2)
+    ds.write_numpy(path)
+    ds = ray.data.read_numpy(path)
+    assert str(ds) == ("Dataset(num_blocks=2, num_rows=?, "
+                       "schema=<Tensor: shape=(None, 1), dtype=int64>)")
+
+    assert str(
+        ds.take()) == ("[array([0]), array([1]), array([2]), "
+                       "array([3]), array([4]), array([5]), array([6]), "
+                       "array([7]), array([8]), array([9])]"), ds.take()
+
+
+def test_read_np_savefile(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_np_dir")
+    os.mkdir(path)
+    np.save(
+        os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
+    ds = ray.data.read_numpy(path)
+    assert str(ds) == ("Dataset(num_blocks=1, num_rows=?, "
+                       "schema=<Tensor: shape=(None, 1), dtype=int64>)")
+
+    assert str(
+        ds.take()) == ("[array([0]), array([1]), array([2]), "
+                       "array([3]), array([4]), array([5]), array([6]), "
+                       "array([7]), array([8]), array([9])]"), ds.take()
+
+
+def test_read_text(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_text")
+    os.mkdir(path)
+    with open(os.path.join(path, "file1.txt"), "w") as f:
+        f.write("hello\n")
+        f.write("world")
+    with open(os.path.join(path, "file2.txt"), "w") as f:
+        f.write("goodbye")
+    ds = ray.data.read_text(path)
+    assert sorted(ds.take()) == ["goodbye", "hello", "world"]
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -171,7 +257,7 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ray.experimental.data.range(1)
     ds = ds.filter(lambda x: x > 1)
     assert str(ds) == \
-        "Dataset(num_rows=0, num_blocks=1, schema=Unknown schema)"
+        "Dataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
 
 
 def test_schema(ray_start_regular_shared):
@@ -180,13 +266,13 @@ def test_schema(ray_start_regular_shared):
     ds3 = ds2.repartition(5)
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
     assert str(ds) == \
-        "Dataset(num_rows=10, num_blocks=10, schema=<class 'int'>)"
+        "Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)"
     assert str(ds2) == \
-        "Dataset(num_rows=10, num_blocks=10, schema={value: int64})"
+        "Dataset(num_blocks=10, num_rows=10, schema={value: int64})"
     assert str(ds3) == \
-        "Dataset(num_rows=10, num_blocks=5, schema={value: int64})"
+        "Dataset(num_blocks=5, num_rows=10, schema={value: int64})"
     assert str(ds4) == \
-        "Dataset(num_rows=5, num_blocks=1, schema={a: string, b: double})"
+        "Dataset(num_blocks=1, num_rows=5, schema={a: string, b: double})"
 
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
@@ -356,10 +442,10 @@ def test_parquet_read(ray_start_regular_shared, tmp_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert str(ds) == \
-        "Dataset(num_rows=6, num_blocks=2, " \
+        "Dataset(num_blocks=2, num_rows=6, " \
         "schema={one: int64, two: string})", ds
     assert repr(ds) == \
-        "Dataset(num_rows=6, num_blocks=2, " \
+        "Dataset(num_blocks=2, num_rows=6, " \
         "schema={one: int64, two: string})", ds
     assert len(ds._blocks._blocks) == 1
 
@@ -468,7 +554,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
          ray.put(df3), ray.put(df4)])
 
     # Default.
-    for batch, df in zip(ds.iter_batches(), dfs):
+    for batch, df in zip(ds.iter_batches(batch_format="pandas"), dfs):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
 
@@ -478,12 +564,13 @@ def test_iter_batches_basic(ray_start_regular_shared):
         assert batch.equals(pa.Table.from_pandas(df))
 
     # blocks format.
-    for batch, df in zip(ds.iter_batches(batch_format="_blocks"), dfs):
+    for batch, df in zip(ds.iter_batches(batch_format="native"), dfs):
         assert batch.to_pandas().equals(df)
 
     # Batch size.
     batch_size = 2
-    batches = list(ds.iter_batches(batch_size=batch_size))
+    batches = list(
+        ds.iter_batches(batch_size=batch_size, batch_format="pandas"))
     assert all(len(batch) == batch_size for batch in batches)
     assert (len(batches) == math.ceil(
         (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
@@ -492,7 +579,8 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Batch size larger than block.
     batch_size = 4
-    batches = list(ds.iter_batches(batch_size=batch_size))
+    batches = list(
+        ds.iter_batches(batch_size=batch_size, batch_format="pandas"))
     assert all(len(batch) == batch_size for batch in batches)
     assert (len(batches) == math.ceil(
         (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
@@ -501,7 +589,9 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Batch size drop partial.
     batch_size = 5
-    batches = list(ds.iter_batches(batch_size=batch_size, drop_last=True))
+    batches = list(
+        ds.iter_batches(
+            batch_size=batch_size, drop_last=True, batch_format="pandas"))
     assert all(len(batch) == batch_size for batch in batches)
     assert (len(batches) == (len(df1) + len(df2) + len(df3) + len(df4)) //
             batch_size)
@@ -511,7 +601,9 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Batch size don't drop partial.
     batch_size = 5
-    batches = list(ds.iter_batches(batch_size=batch_size, drop_last=False))
+    batches = list(
+        ds.iter_batches(
+            batch_size=batch_size, drop_last=False, batch_format="pandas"))
     assert all(len(batch) == batch_size for batch in batches[:-1])
     assert (len(batches[-1]) == (len(df1) + len(df2) + len(df3) + len(df4)) %
             batch_size)
@@ -521,7 +613,8 @@ def test_iter_batches_basic(ray_start_regular_shared):
         batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
 
     # Prefetch.
-    for batch, df in zip(ds.iter_batches(prefetch_blocks=1), dfs):
+    for batch, df in zip(
+            ds.iter_batches(prefetch_blocks=1, batch_format="pandas"), dfs):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
 
@@ -564,7 +657,9 @@ def test_iter_batches_grid(ray_start_regular_shared):
                 for drop_last in (False, True):
                     batches = list(
                         ds.iter_batches(
-                            batch_size=batch_size, drop_last=drop_last))
+                            batch_size=batch_size,
+                            drop_last=drop_last,
+                            batch_format="pandas"))
                     if num_rows % batch_size == 0 or not drop_last:
                         # Number of batches should be equal to
                         # num_rows / batch_size,  rounded up.
@@ -617,7 +712,8 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     table = pa.Table.from_pandas(df)
     pq.write_table(table, os.path.join(tmp_path, "test1.parquet"))
     ds = ray.experimental.data.read_parquet(str(tmp_path))
-    ds_list = ds.map_batches(lambda df: df + 1, batch_size=1).take()
+    ds_list = ds.map_batches(
+        lambda df: df + 1, batch_size=1, batch_format="pandas").take()
     values = [s["one"] for s in ds_list]
     assert values == [2, 3, 4]
     values = [s["two"] for s in ds_list]
@@ -635,7 +731,9 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
     # Test batch
     size = 300
     ds = ray.experimental.data.range(size)
-    ds_list = ds.map_batches(lambda df: df + 1, batch_size=17).take(limit=size)
+    ds_list = ds.map_batches(
+        lambda df: df + 1, batch_size=17,
+        batch_format="pandas").take(limit=size)
     for i in range(size):
         # The pandas column is "0", and it originally has rows from 0~299.
         # After the map batch, it should have 1~300.
