@@ -181,6 +181,10 @@ def validate_config(config: TrainerConfigDict) -> None:
         elif config["replay_sequence_length"] > 1:
             raise ValueError("Prioritized replay is not supported when "
                              "replay_sequence_length > 1.")
+    else:
+        if config.get("worker_side_prioritization"):
+            raise ValueError("Worker side prioritization is not supported when "
+                             "prioritized_replay=False.")
 
     # Multi-agent mode and multi-GPU optimizer.
     if config["multiagent"]["policies"] and not config["simple_optimizer"]:
