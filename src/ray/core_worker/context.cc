@@ -107,7 +107,7 @@ struct WorkerThreadContext {
   PlacementGroupID current_placement_group_id_;
 
   /// Whether or not child tasks are captured in the parent's placement group implicitly.
-  bool placement_group_capture_child_tasks_ = true;
+  bool placement_group_capture_child_tasks_ = false;
 };
 
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
