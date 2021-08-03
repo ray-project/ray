@@ -25,7 +25,9 @@ GcsResourceManager::GcsResourceManager(
     : periodical_runner_(main_io_service),
       gcs_pub_sub_(gcs_pub_sub),
       gcs_table_storage_(gcs_table_storage),
-      redis_broadcast_enabled_(redis_broadcast_enabled) {
+      redis_broadcast_enabled_(redis_broadcast_enabled),
+      max_broadcasting_batch_size_(
+          RayConfig::instance().resource_broadcast_batch_size()) {
   if (redis_broadcast_enabled_) {
     periodical_runner_.RunFnPeriodically(
         [this] { SendBatchedResourceUsage(); },
@@ -386,24 +388,26 @@ void GcsResourceManager::GetResourceUsageBatchForBroadcast(
     rpc::ResourceUsageBroadcastData &buffer) {
   absl::MutexLock guard(&resource_buffer_mutex_);
   resources_buffer_proto_.Swap(&buffer);
-  while (!resources_buffer_.empty() &&
-         buffer.ByteSizeLong() <
-             RayConfig::instance().resource_broadcast_batch_size_bytes()) {
-    auto element = std::begin(resources_buffer_);
-    buffer.add_batch()->mutable_data()->Swap(&element->second);
-    resources_buffer_.erase(element);
+  auto beg = resources_buffer_.begin();
+  auto ptr = beg;
+  for (size_t cnt = buffer.batch().size();
+       cnt < max_broadcasting_batch_size_ && cnt < resources_buffer_.size();
+       ++ptr, ++cnt) {
+    buffer.add_batch()->mutable_data()->Swap(&ptr->second);
   }
+  resources_buffer_.erase(beg, ptr);
 }
 
 void GcsResourceManager::GetResourceUsageBatchForBroadcast_Locked(
     rpc::ResourceUsageBatchData &buffer) {
-  while (!resources_buffer_.empty() &&
-         buffer.ByteSizeLong() <
-             RayConfig::instance().resource_broadcast_batch_size_bytes()) {
-    auto element = std::begin(resources_buffer_);
-    buffer.add_batch()->Swap(&element->second);
-    resources_buffer_.erase(element);
+  auto beg = resources_buffer_.begin();
+  auto ptr = beg;
+  for (size_t cnt = 0;
+       cnt < max_broadcasting_batch_size_ && cnt < resources_buffer_.size();
+       ++ptr, ++cnt) {
+    buffer.add_batch()->Swap(&ptr->second);
   }
+  resources_buffer_.erase(beg, ptr);
 }
 
 void GcsResourceManager::SendBatchedResourceUsage() {

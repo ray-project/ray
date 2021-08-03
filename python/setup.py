@@ -150,16 +150,18 @@ if setup_spec.type == SetupType.RAY:
         "default": [
             "aiohttp",  # noqa
             "aiohttp_cors",  # noqa
-            "aioredis",  # noqa
+            "aioredis < 2",  # noqa
             "colorful",  # noqa
             "py-spy >= 0.2.0",  # noqa
             "jsonschema",  # noqa
             "requests",  # noqa
             "gpustat",  # noqa
+            "opencensus",  # noqa
+            "prometheus_client >= 0.7.1",  # noqa
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
-        "k8s": ["kubernetes"],
+        "k8s": ["kubernetes", "urllib3"],
         "observability": [
             "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
             "opentelemetry-exporter-otlp==1.1.0"
@@ -197,8 +199,6 @@ if setup_spec.type == SetupType.RAY:
         "protobuf >= 3.15.3",
         "pyyaml",
         "redis >= 3.5.0",
-        "opencensus",
-        "prometheus_client >= 0.7.1",
     ]
 
 

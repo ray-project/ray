@@ -38,8 +38,11 @@ message RequestWorkerLeaseReply {
   // Whether this lease request was canceled. In this case, the
   // client should try again if the resources are still required.
   bool canceled = 4;
+  // Whether creating the runtime environment for this lease request failed.
+  // If this is true, the corresponding task should be failed by the client.
+  bool runtime_env_setup_failed = 5;
   // PID of the worker process.
-  uint32 worker_pid = 5;
+  uint32 worker_pid = 6;
 }
 
 message PrepareBundleResourcesRequest {

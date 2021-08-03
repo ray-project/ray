@@ -92,7 +92,7 @@ class VectorEnv:
         Returns:
             List[Env]: List of all underlying sub environments.
         """
-        raise NotImplementedError
+        return []
 
     # TODO: (sven) Experimental method. Make @PublicAPI at some point.
     def try_render_at(self, index: Optional[int] = None) -> \

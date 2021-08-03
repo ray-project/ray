@@ -26,6 +26,7 @@
 #include "ray/common/id.h"
 #include "ray/object_manager/plasma/compat.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
+#include "ray/util/macros.h"
 
 namespace plasma {
 
@@ -45,23 +46,43 @@ enum class ObjectState : int {
   PLASMA_SEALED = 2,
 };
 
+// Represents a chunk of allocated memory.
+struct Allocation {
+  /// Pointer to the allocated memory.
+  void *address;
+  /// Num bytes of the allocated memory.
+  int64_t size;
+  /// The file descriptor of the memory mapped file where the memory allocated.
+  MEMFD_TYPE fd;
+  /// The offset in bytes in the memory mapped file of the allocated memory.
+  ptrdiff_t offset;
+  /// Device number of the allocated memory.
+  int device_num;
+  /// the total size of this mapped memory.
+  int64_t mmap_size;
+
+  Allocation(void *address, int64_t size, MEMFD_TYPE fd, ptrdiff_t offset, int device_num,
+             int64_t mmap_size)
+      : address(address),
+        size(size),
+        fd(std::move(fd)),
+        offset(offset),
+        device_num(device_num),
+        mmap_size(mmap_size) {}
+
+  // only allow moves.
+  RAY_DISALLOW_COPY_AND_ASSIGN(Allocation);
+  Allocation(Allocation &&) noexcept = default;
+  Allocation &operator=(Allocation &&) noexcept = default;
+};
+
 /// This type is used by the Plasma store. It is here because it is exposed to
 /// the eviction policy.
 struct ObjectTableEntry {
-  ObjectTableEntry();
+  ObjectTableEntry(Allocation allocation);
 
-  ~ObjectTableEntry();
-
-  /// Memory mapped file containing the object.
-  MEMFD_TYPE fd;
-  /// Device number.
-  int device_num;
-  /// Size of the underlying map.
-  int64_t map_size;
-  /// Offset from the base of the mmap.
-  ptrdiff_t offset;
-  /// Pointer to the object data. Needed to free the object.
-  uint8_t *pointer;
+  /// Allocation Info;
+  Allocation allocation;
   /// Size of the object in bytes.
   int64_t data_size;
   /// Size of the object metadata in bytes.
