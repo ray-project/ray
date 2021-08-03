@@ -28,7 +28,7 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
         auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
 
         GoSlice fd_list;
-        fd_list.data = const_cast<char*>(typed_descriptor->FunctionName().c_str());
+        fd_list.data = const_cast<char *>(typed_descriptor->FunctionName().c_str());
         fd_list.len = 1;
         fd_list.cap = 1;
 
@@ -55,7 +55,11 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
   options.language = ray::Language::GOLANG;
   options.store_socket = store_socket;
   options.raylet_socket = raylet_socket;
-  options.job_id = ray::JobID::FromInt(jobId);
+  if (jobId == 0) {
+    options.job_id = ray::JobID::Nil();
+  } else {
+    options.job_id = ray::JobID::FromInt(jobId);
+  }
   options.gcs_options =
       ray::gcs::GcsClientOptions(redis_address, redis_port, redis_password);
   options.enable_logging = true;

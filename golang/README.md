@@ -1,0 +1,1 @@
+go build -o worker pkg/ray/worker/default_worker.go
