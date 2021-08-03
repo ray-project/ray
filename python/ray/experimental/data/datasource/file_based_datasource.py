@@ -158,7 +158,9 @@ def _resolve_paths_and_filesystem(
             filesystems inferred from the provided paths to ensure
             compatibility.
     """
-    from pyarrow.fs import FileType, _resolve_filesystem_and_path
+    from pyarrow.fs import FileSystem, FileType, \
+        PyFileSystem, FSSpecHandler, \
+        _resolve_filesystem_and_path
 
     if isinstance(paths, str):
         paths = [paths]
@@ -168,6 +170,9 @@ def _resolve_paths_and_filesystem(
             "paths must be a path string or a list of path strings.")
     elif len(paths) == 0:
         raise ValueError("Must provide at least one path.")
+
+    if filesystem and not isinstance(filesystem, FileSystem):
+        filesystem = PyFileSystem(FSSpecHandler(filesystem))
 
     resolved_paths = []
     for path in paths:
@@ -179,8 +184,6 @@ def _resolve_paths_and_filesystem(
             path, filesystem)
         if filesystem is None:
             filesystem = resolved_filesystem
-        elif type(resolved_filesystem) != type(filesystem):
-            raise ValueError("All paths must use same filesystem.")
         resolved_path = filesystem.normalize_path(resolved_path)
         resolved_paths.append(resolved_path)
 

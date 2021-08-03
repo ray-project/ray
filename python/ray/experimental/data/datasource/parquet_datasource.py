@@ -33,12 +33,16 @@ class ParquetDatasource(Datasource[ArrowRow]):
         """Creates and returns read tasks for a file-based datasource.
         """
         from ray import cloudpickle
+        import pyarrow as pa
         import pyarrow.parquet as pq
         import numpy as np
 
         paths, file_infos, filesystem = _resolve_paths_and_filesystem(
             paths, filesystem)
         file_sizes = [file_info.size for file_info in file_infos]
+
+        if isinstance(filesystem, pa.fs.S3FileSystem):
+            filesystem = _S3FileSystemWrapper(filesystem)
 
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         pq_ds = pq.ParquetDataset(

@@ -1,3 +1,4 @@
+import io
 import os
 import random
 import requests
@@ -11,6 +12,8 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from fsspec.implementations.local import LocalFileSystem
+
 
 import ray
 
@@ -399,12 +402,61 @@ def test_get_blocks(ray_start_regular_shared):
     assert out == list(range(10)), out
 
 
-def test_pandas_roundtrip(ray_start_regular_shared):
+def test_pandas_roundtrip(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     ds = ray.experimental.data.from_pandas([ray.put(df1), ray.put(df2)])
     dfds = pd.concat(ray.get(ds.to_pandas()))
     assert pd.concat([df1, df2]).equals(dfds)
+
+
+def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
+    """Same as `test_parquet_read` but using a custom, fsspec filesystem.
+
+    TODO (Alex): We should write a similar test with a mock PyArrow fs, but
+    unfortunately pa.fs._MockFileSystem isn't serializable, so this may require
+    some effort.
+    """
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df1)
+    path1 = os.path.join(str(tmp_path), "test1.parquet")
+    path2 = os.path.join(str(tmp_path), "test2.parquet")
+    pq.write_table(table, path1)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    table = pa.Table.from_pandas(df2)
+    pq.write_table(table, path2)
+
+    fs = LocalFileSystem()
+
+    ds = ray.experimental.data.read_parquet([path1, path2], filesystem=fs)
+
+    # Test metadata-only parquet ops.
+    assert len(ds._blocks._blocks) == 1
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == 2, input_files
+    assert "test1.parquet" in str(input_files)
+    assert "test2.parquet" in str(input_files)
+    assert str(ds) == \
+        "Dataset(num_blocks=2, num_rows=6, " \
+        "schema={one: int64, two: string})", ds
+    assert repr(ds) == \
+        "Dataset(num_blocks=2, num_rows=6, " \
+        "schema={one: int64, two: string})", ds
+    assert len(ds._blocks._blocks) == 1
+
+    # Forces a data read.
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert len(ds._blocks._blocks) == 2
+    assert sorted(values) == [[1, "a"], [2, "b"], [3, "c"], [4, "e"], [5, "f"],
+                              [6, "g"]]
+
+    # Test column selection.
+    ds = ray.experimental.data.read_parquet(str(tmp_path), columns=["one"])
+    values = [s["one"] for s in ds.take()]
+    assert sorted(values) == [1, 2, 3, 4, 5, 6]
 
 
 def test_parquet_read(ray_start_regular_shared, tmp_path):
