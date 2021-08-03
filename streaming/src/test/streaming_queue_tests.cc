@@ -31,12 +31,12 @@ class StreamingExactlySameTest : public StreamingQueueTestBase {
   StreamingExactlySameTest() : StreamingQueueTestBase(1, node_manager_port) {}
 };
 
-TEST_P(StreamingQueueTest, PullPeerAsyncTest) {
-  STREAMING_LOG(INFO) << "StreamingQueueTest.pull_peer_async_test";
+// TEST_P(StreamingQueueTest, PullPeerAsyncTest) {
+//   STREAMING_LOG(INFO) << "StreamingQueueTest.pull_peer_async_test";
 
-  uint32_t queue_num = 1;
-  SubmitTest(queue_num, "StreamingQueueTest", "pull_peer_async_test", 60 * 1000);
-}
+//   uint32_t queue_num = 1;
+//   SubmitTest(queue_num, "StreamingQueueTest", "pull_peer_async_test", 60 * 1000);
+// }
 
 TEST_P(StreamingQueueTest, GetQueueTest) {
   STREAMING_LOG(INFO) << "StreamingQueueTest.get_queue_test";
