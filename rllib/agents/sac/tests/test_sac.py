@@ -126,6 +126,7 @@ class TestSAC(unittest.TestCase):
         config["_fake_gpus"] = True
         config["clip_actions"] = False
         config["initial_alpha"] = 0.001
+        config["prioritized_replay"] = True
         env = "ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv"
         config["env_config"] = {"config": {"repeat_delay": 0}}
 
@@ -253,6 +254,9 @@ class TestSAC(unittest.TestCase):
                 assert fw == "torch"  # Then transfer that to torch Model.
                 model_dict = self._translate_weights_to_torch(
                     weights_dict, map_)
+                # Have to add this here (not a parameter in tf, but must be
+                # one in torch, so it gets properly copied to the GPU(s)).
+                model_dict["target_entropy"] = policy.model.target_entropy
                 policy.model.load_state_dict(model_dict)
                 policy.target_model.load_state_dict(model_dict)
 
