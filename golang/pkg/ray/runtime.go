@@ -31,11 +31,6 @@ func Init(address, _redis_password string) {
 
 func InnerInit(address, _redis_password string, workerType ray_rpc.WorkerType) {
     util.Logger.Debug("Initializing runtime with config")
-    localIp, err := util.GetLocalIp()
-    if err != nil {
-        panic(err)
-    }
-    util.Logger.Debugf("Using local ip: %s", localIp)
     gsa, err := NewGlobalStateAccessor(address, _redis_password)
     if err != nil {
         panic(err)
@@ -49,6 +44,11 @@ func InnerInit(address, _redis_password string, workerType ray_rpc.WorkerType) {
         }
         SetSessionDir(raySessionDir)
         gcsNodeInfo := &ray_rpc.GcsNodeInfo{}
+        localIp, err := util.GetLocalIp()
+        if err != nil {
+            panic(err)
+        }
+        util.Logger.Debugf("Using local ip: %s", localIp)
         nodeInfoData := gsa.GetNodeToConnectForDriver(localIp)
         err = proto.Unmarshal(nodeInfoData, gcsNodeInfo)
         if err != nil {
@@ -93,7 +93,9 @@ func InnerInit(address, _redis_password string, workerType ray_rpc.WorkerType) {
 }
 
 func Run() {
+    util.Logger.Infof("ray worker running...")
     C.go_worker_Run()
+    util.Logger.Infof("ray worker exiting...")
 }
 
 func RegisterType(t reflect.Type) error {
