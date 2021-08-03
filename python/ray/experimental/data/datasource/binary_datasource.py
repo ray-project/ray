@@ -13,7 +13,7 @@ class BinaryDatasource(FileBasedDatasource):
     Examples:
         >>> source = BinaryDatasource()
         >>> ray.data.read_datasource(source, paths="/path/to/dir").take()
-        ... {"a": 1, "b": "foo"}
+        ... [b"file_data", ...]
     """
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
@@ -23,3 +23,6 @@ class BinaryDatasource(FileBasedDatasource):
             return path, data
         else:
             return data
+
+    def _rows_per_file(self):
+        return 1

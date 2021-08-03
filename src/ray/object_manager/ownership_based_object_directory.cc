@@ -377,7 +377,7 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
 
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Worker " << worker_id << " failed to get the location for "
-                           << object_id;
+                           << object_id << status.ToString();
             mark_as_failed_(object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE);
           } else {
             UpdateObjectLocations(reply.object_location_info(), object_id, gcs_client_,

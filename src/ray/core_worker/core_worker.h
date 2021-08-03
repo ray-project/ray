@@ -590,11 +590,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results Result list of objects data.
-  /// \param[in] plasma_objects_only Only get objects from Plasma Store.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results,
-             bool plasma_objects_only = false);
+             std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Get objects directly from the local plasma store, without waiting for the
   /// objects to be fetched from another node. This should only be used

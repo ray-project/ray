@@ -1,8 +1,9 @@
-from typing import List, Any, Union, Dict, Callable
+from typing import List, Any, Union, Dict, Callable, Tuple
 
 import ray
 from ray.experimental.workflow import workflow_context
-from ray.experimental.workflow.common import Workflow, StepID
+from ray.experimental.workflow.common import (Workflow, StepID, WorkflowRef,
+                                              WorkflowExecutionResult)
 from ray.experimental.workflow import storage
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.step_function import WorkflowStepFunction
@@ -28,6 +29,7 @@ class WorkflowNotResumableError(Exception):
 @WorkflowStepFunction
 def _recover_workflow_step(input_object_refs: List[str],
                            input_workflows: List[Any],
+                           input_workflow_refs: List[WorkflowRef],
                            instant_workflow_inputs: Dict[int, StepID]):
     """A workflow step that recovers the output of an unfinished step.
 
@@ -52,8 +54,8 @@ def _recover_workflow_step(input_object_refs: List[str],
     input_object_refs = [reader.load_object_ref(r) for r in input_object_refs]
     step_id = workflow_context.get_current_step_id()
     func: Callable = reader.load_step_func_body(step_id)
-    args, kwargs = reader.load_step_args(step_id, input_workflows,
-                                         input_object_refs)
+    args, kwargs = reader.load_step_args(
+        step_id, input_workflows, input_object_refs, input_workflow_refs)
     return func(*args, **kwargs)
 
 
@@ -91,35 +93,25 @@ def _construct_resume_workflow_from_step(
         else:
             input_workflows.append(None)
             instant_workflow_outputs[i] = r
+    workflow_refs = list(map(WorkflowRef, result.workflow_refs))
     recovery_workflow: Workflow = _recover_workflow_step.options(
         max_retries=result.max_retries,
         catch_exceptions=result.catch_exceptions,
         **result.ray_options).step(result.object_refs, input_workflows,
-                                   instant_workflow_outputs)
+                                   workflow_refs, instant_workflow_outputs)
     recovery_workflow._step_id = step_id
+    recovery_workflow.data.step_type = result.step_type
     return recovery_workflow
 
 
-@ray.remote
-def resume_workflow_job(workflow_id: str, store_url: str) -> ray.ObjectRef:
-    """Resume a workflow job.
-
-    Args:
-        workflow_id: The ID of the workflow job. The ID is used to identify
-            the workflow.
-        store_url: The url of the storage to access the workflow.
-
-    Raises:
-        WorkflowNotResumableException: fail to resume the workflow.
-
-    Returns:
-        The execution result of the workflow, represented by Ray ObjectRef.
-    """
+@ray.remote(num_returns=2)
+def _resume_workflow_step_executor(
+        workflow_id: str, step_id: "StepID",
+        store_url: str) -> Tuple[ray.ObjectRef, ray.ObjectRef]:
     try:
         store = storage.create_storage(store_url)
         wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
-        entrypoint_step_id: StepID = wf_store.get_entrypoint_step_id()
-        r = _construct_resume_workflow_from_step(wf_store, entrypoint_step_id)
+        r = _construct_resume_workflow_from_step(wf_store, step_id)
     except Exception as e:
         raise WorkflowNotResumableError(workflow_id) from e
 
@@ -128,8 +120,30 @@ def resume_workflow_job(workflow_id: str, store_url: str) -> ray.ObjectRef:
                                                     store.storage_url):
             from ray.experimental.workflow.step_executor import (
                 execute_workflow)
-            return execute_workflow(r, last_step_of_workflow=True)
-    return wf_store.load_step_output(r)
+            result = execute_workflow(r, last_step_of_workflow=True)
+            return result.persisted_output, result.volatile_output
+    return wf_store.load_step_output(r), None
+
+
+def resume_workflow_step(workflow_id: str, step_id: "StepID",
+                         store_url: str) -> WorkflowExecutionResult:
+    """Resume a step of a workflow.
+
+    Args:
+        workflow_id: The ID of the workflow job. The ID is used to identify
+            the workflow.
+        step_id: The step to resume in the workflow.
+        store_url: The url of the storage to access the workflow.
+
+    Raises:
+        WorkflowNotResumableException: fail to resume the workflow.
+
+    Returns:
+        The execution result of the workflow, represented by Ray ObjectRef.
+    """
+    persisted_output, volatile_output = _resume_workflow_step_executor.remote(
+        workflow_id, step_id, store_url)
+    return WorkflowExecutionResult(persisted_output, volatile_output)
 
 
 def get_latest_output(workflow_id: str, store: storage.Storage) -> Any:

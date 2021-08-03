@@ -60,7 +60,6 @@ class TestDQN(unittest.TestCase):
         config["num_gpus"] = 2
         config["_fake_gpus"] = True
 
-        config["framework"] = "tf"
         # Double batch size (2 GPUs).
         config["train_batch_size"] = 64
         # Mimic tuned_example for DQN CartPole.
@@ -68,17 +67,19 @@ class TestDQN(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [64]
         config["model"]["fcnet_activation"] = "linear"
 
-        trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
-        num_iterations = 200
-        learnt = False
-        for i in range(num_iterations):
-            results = trainer.train()
-            print("reward={}".format(results["episode_reward_mean"]))
-            if results["episode_reward_mean"] > 100.0:
-                learnt = True
-                break
-        assert learnt, "DQN multi-GPU (with fake-GPUs) did not learn CartPole!"
-        trainer.stop()
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+            trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
+            num_iterations = 200
+            learnt = False
+            for i in range(num_iterations):
+                results = trainer.train()
+                print("reward={}".format(results["episode_reward_mean"]))
+                if results["episode_reward_mean"] > 65.0:
+                    learnt = True
+                    break
+            assert learnt, \
+                "DQN multi-GPU (with fake-GPUs) did not learn CartPole!"
+            trainer.stop()
 
     def test_dqn_n_step(self):
         obs = [1, 2, 3, 4, 5, 6, 7]

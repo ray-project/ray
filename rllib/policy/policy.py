@@ -171,7 +171,7 @@ class Policy(metaclass=ABCMeta):
                 actions (TensorType): Batch of output actions, with shape like
                     [BATCH_SIZE, ACTION_SHAPE].
                 state_outs (List[TensorType]): List of RNN state output
-                    batches, if any, with shape like [STATE_SIZE, BATCH_SIZE].
+                    batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
                 info (List[dict]): Dictionary of extra feature batches, if any,
                     with shape like
                     {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
@@ -318,7 +318,7 @@ class Policy(metaclass=ABCMeta):
                 actions (TensorType): Batch of output actions, with shape
                     like [BATCH_SIZE, ACTION_SHAPE].
                 state_outs (List[TensorType]): List of RNN state output
-                    batches, if any, with shape like [STATE_SIZE, BATCH_SIZE].
+                    batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
                 info (dict): Dictionary of extra feature batches, if any, with
                     shape like
                     {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.

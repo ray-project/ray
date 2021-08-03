@@ -471,14 +471,16 @@ void ClusterTaskManager::ReturnWorkerResources(std::shared_ptr<WorkerInterface> 
   ReleaseWorkerResources(worker);
 }
 
-void ReplyCancelled(Work &work) {
+void ReplyCancelled(Work &work, bool runtime_env_setup_failed) {
   auto reply = std::get<1>(work);
   auto callback = std::get<2>(work);
   reply->set_canceled(true);
+  reply->set_runtime_env_setup_failed(runtime_env_setup_failed);
   callback();
 }
 
-bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
+bool ClusterTaskManager::CancelTask(const TaskID &task_id,
+                                    bool runtime_env_setup_failed) {
   // TODO(sang): There are lots of repetitive code around task backlogs. We should
   // refactor them.
   for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
@@ -489,7 +491,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RemoveFromBacklogTracker(task);
         RAY_LOG(DEBUG) << "Canceling task " << task_id;
-        ReplyCancelled(*work_it);
+        ReplyCancelled(*work_it, runtime_env_setup_failed);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_schedule_.erase(shapes_it);
@@ -505,7 +507,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       const auto &task = std::get<0>(*work_it);
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RemoveFromBacklogTracker(task);
-        ReplyCancelled(*work_it);
+        ReplyCancelled(*work_it, runtime_env_setup_failed);
         if (!task.GetTaskSpecification().GetDependencies().empty()) {
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
@@ -526,7 +528,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       const auto &task = std::get<0>(*work_it);
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RemoveFromBacklogTracker(task);
-        ReplyCancelled(*work_it);
+        ReplyCancelled(*work_it, runtime_env_setup_failed);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           infeasible_tasks_.erase(shapes_it);
@@ -540,7 +542,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
   if (iter != waiting_tasks_index_.end()) {
     const auto &task = std::get<0>(*iter->second);
     RemoveFromBacklogTracker(task);
-    ReplyCancelled(*iter->second);
+    ReplyCancelled(*iter->second, runtime_env_setup_failed);
     if (!task.GetTaskSpecification().GetDependencies().empty()) {
       task_dependency_manager_.RemoveTaskDependencies(
           task.GetTaskSpecification().TaskId());
