@@ -431,30 +431,6 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     # Test metadata-only parquet ops.
     assert len(ds._blocks._blocks) == 1
     assert ds.count() == 6
-    assert ds.size_bytes() > 0
-    assert ds.schema() is not None
-    input_files = ds.input_files()
-    assert len(input_files) == 2, input_files
-    assert "test1.parquet" in str(input_files)
-    assert "test2.parquet" in str(input_files)
-    assert str(ds) == \
-        "Dataset(num_blocks=2, num_rows=6, " \
-        "schema={one: int64, two: string})", ds
-    assert repr(ds) == \
-        "Dataset(num_blocks=2, num_rows=6, " \
-        "schema={one: int64, two: string})", ds
-    assert len(ds._blocks._blocks) == 1
-
-    # Forces a data read.
-    values = [[s["one"], s["two"]] for s in ds.take()]
-    assert len(ds._blocks._blocks) == 2
-    assert sorted(values) == [[1, "a"], [2, "b"], [3, "c"], [4, "e"], [5, "f"],
-                              [6, "g"]]
-
-    # Test column selection.
-    ds = ray.experimental.data.read_parquet(str(tmp_path), columns=["one"])
-    values = [s["one"] for s in ds.take()]
-    assert sorted(values) == [1, 2, 3, 4, 5, 6]
 
 
 def test_parquet_read(ray_start_regular_shared, tmp_path):

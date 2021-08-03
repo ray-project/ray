@@ -8,7 +8,7 @@ from ray.experimental.data.impl.arrow_block import ArrowRow
 from ray.experimental.data.impl.block_list import BlockMetadata
 from ray.experimental.data.datasource.datasource import Datasource, ReadTask
 from ray.experimental.data.datasource.file_based_datasource import (
-    _resolve_paths_and_filesystem, _maybe_wrap_fs)
+    _resolve_paths_and_filesystem)
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +39,6 @@ class ParquetDatasource(Datasource[ArrowRow]):
         paths, file_infos, filesystem = _resolve_paths_and_filesystem(
             paths, filesystem)
         file_sizes = [file_info.size for file_info in file_infos]
-
-        filesystem = _maybe_wrap_fs(filesystem)
 
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         pq_ds = pq.ParquetDataset(

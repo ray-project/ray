@@ -43,7 +43,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         read_file = self._read_file
 
-        filesystem = _maybe_wrap_fs(filesystem)
+        filesystem = _wrap_s3_serialization_workaround(filesystem)
 
         def read_files(
                 read_paths: List[str],
@@ -160,6 +160,7 @@ def _resolve_paths_and_filesystem(
     from pyarrow.fs import FileSystem, FileType, \
         PyFileSystem, FSSpecHandler, \
         _resolve_filesystem_and_path
+    import fsspec
 
     if isinstance(paths, str):
         paths = [paths]
@@ -171,6 +172,11 @@ def _resolve_paths_and_filesystem(
         raise ValueError("Must provide at least one path.")
 
     if filesystem and not isinstance(filesystem, FileSystem):
+        if not isinstance(filesystem, fsspec.spec.AbstractFileSystem):
+            raise TypeError(f"The filesystem passed must either conform to "
+                            f"pyarrow.fs.FileSystem, or "
+                            f"fsspec.spec.AbstractFileSystem. The provided "
+                            f"filesystem was: {filesystem}")
         filesystem = PyFileSystem(FSSpecHandler(filesystem))
 
     resolved_paths = []
@@ -210,7 +216,9 @@ def _unwrap_protocol(path):
     return parsed.netloc + parsed.path
 
 
-def _maybe_wrap_fs(filesystem: "pyarrow.fs.FileSystem"):
+def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
+    # This is needed because pa.fs.S3FileSystem assumes pa.fs is already
+    # imported before deserialization. See #17085.
     import pyarrow as pa
     if isinstance(filesystem, pa.fs.S3FileSystem):
         return _S3FileSystemWrapper(filesystem)
