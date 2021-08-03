@@ -28,8 +28,7 @@ def test_actor_creation_stacktrace(ray_start_regular):
         "The actor died because of an error raised in its creation task, "
         "\\x1b\[36mray::A\.__init__\(\)\\x1b\[39m \(pid=.*, ip=.*\)",
         '  File ".*",'
-        " line .*, in __init__", "    g\(3\)",
-        '  File ".*",'
+        " line .*, in __init__", "    g\(3\)", '  File ".*",'
         " line .*, in g", "    raise ValueError\(a\)", "ValueError: 3"
     ]
 
