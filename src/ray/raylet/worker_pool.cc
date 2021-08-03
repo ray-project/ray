@@ -1195,8 +1195,8 @@ void WorkerPool::WarnAboutSize() {
           << " with address: " << node_address_ << ". "
           << "This could be a result of using "
           << "a large number of actors, or due to tasks blocked in ray.get() calls "
-          << "(see https://github.com/ray-project/ray/issues/3644) for "
-          << "some discussion of workarounds.";
+          << "(see https://github.com/ray-project/ray/issues/3644 for "
+          << "some discussion of workarounds).";
       std::string warning_message_str = warning_message.str();
       RAY_LOG(WARNING) << warning_message_str;
       auto error_data_ptr = gcs::CreateErrorTableData("worker_pool_large",
