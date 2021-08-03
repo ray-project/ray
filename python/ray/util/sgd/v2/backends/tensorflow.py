@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
+from typing import List
 
 import ray
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
@@ -18,12 +19,14 @@ class TensorflowConfig(BackendConfig):
         return TensorflowBackend
 
 
-def setup_tensorflow_process_group(worker_addresses, index):
-    """Set up distributed training info for training task.
+def setup_tensorflow_environment(worker_addresses: List[str], index: int):
+    """Set up distributed Tensorflow training information.
+
+    This function should be called on each worker.
 
     Args:
-        worker_addresses (list): addresses of the workers.
-        index (int): index of current worker.
+        worker_addresses (list): Addresses of all the workers.
+        index (int): Index (i.e. world rank) of the current worker.
     """
     tf_config = {
         "cluster": {
@@ -41,20 +44,20 @@ class TensorflowBackend(BackendInterface):
     def on_start(self, worker_group: WorkerGroup,
                  backend_config: TensorflowConfig):
         if len(worker_group) > 1:
-            # Compute URL for initializing distributed setup
+            # Compute URL for initializing distributed setup.
             def get_url():
                 address, port = get_address_and_port()
                 return f"{address}:{port}"
 
             urls = worker_group.execute(get_url)
 
-            # Get setup tasks in order to throw errors on failure
+            # Get setup tasks in order to throw errors on failure.
             setup_futures = []
             for i in range(len(worker_group)):
                 setup_futures.append(
                     worker_group.execute_single_async(
                         i,
-                        setup_tensorflow_process_group,
+                        setup_tensorflow_environment,
                         worker_addresses=urls,
                         index=i))
             ray.get(setup_futures)
@@ -64,4 +67,5 @@ class TensorflowBackend(BackendInterface):
 
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: BackendConfig):
+        # Currently no additional steps are needed to shut down Tensorflow.
         pass
