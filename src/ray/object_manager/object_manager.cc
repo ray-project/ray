@@ -300,7 +300,7 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id, const NodeID &
                  << ", status: " << status.ToString();
   if (!status.ok()) {
     // TODO(rkn): What do we want to do if the send failed?
-    RAY_LOG(ERROR) << "Failed to send a push request for an object " << object_id
+    RAY_LOG(DEBUG) << "Failed to send a push request for an object " << object_id
                    << " to " << node_id << ". Chunk index: " << chunk_index;
   }
 }
