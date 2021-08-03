@@ -33,7 +33,7 @@ int go_worker_CreateActor(char *type_name, char **result);
 
 int go_worker_SubmitActorTask(void *actor_id, char *method_name, char ***return_ids);
 
-extern void go_worker_execute(GoSlice args, GoSlice args);
+extern void go_worker_execute(int task_type, GoSlice args, GoSlice args);
 
 #ifdef __cplusplus
 }

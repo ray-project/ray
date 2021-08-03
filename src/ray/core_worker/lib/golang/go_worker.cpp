@@ -26,19 +26,27 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
         // convert RayFunction
         auto function_descriptor = ray_function.GetFunctionDescriptor();
         auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
-        std::vector<std::string> function_descriptor_list = {
-            typed_descriptor->FunctionName()};
+
+        GoSlice fd_list;
+        fd_list.data = typed_descriptor->FunctionName().c_str();
+        args_go.len = 1;
+        args_go.cap = 1;
 
         std::vector<DataBuffer> args_array_list;
         for (auto &it : args) {
           DataBuffer db;
-          db.p = it->GetData();
+          db.p = it->GetData()->Data();
           db.size = it->GetSize();
           args_array_list.insert(db);
         }
 
+        GoSlice args_go;
+        args_go.data = args_array_list;
+        args_go.len = args_array_list.size();
+        args_go.cap = args_array_list.size();
+
         // invoke golang method
-        go_worker_execute(task_type, function_descriptor_list, args_array_list);
+        go_worker_execute(task_type, fd_list, args_go);
         return ray::Status::OK();
       };
 
