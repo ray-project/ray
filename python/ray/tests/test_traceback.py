@@ -1,3 +1,5 @@
+import re
+
 import ray
 
 from ray.exceptions import RayTaskError, RayActorError
@@ -22,15 +24,14 @@ these tests will fail.
 
 def test_actor_creation_stacktrace(ray_start_regular):
     """Test the actor creation task stacktrace."""
-    expected_output = ("""
-The actor died because of an error raised in its creation task, ray::A.__init__() (pid=XXX, ip=ZZZ) # noqa
-  File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 41, in __init__
-    g(3)
-  File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 36, in g
-    raise ValueError(a)
-ValueError: 3
-""")
-    print(expected_output)
+    expected_lines = [
+        "The actor died because of an error raised in its creation task, "
+        "\\x1b\[36mray::A\.__init__\(\)\\x1b\[39m \(pid=.*, ip=.*\)",
+        '  File ".*",'
+        " line .*, in __init__", "    g\(3\)",
+        '  File ".*",'
+        " line .*, in g", "    raise ValueError\(a\)", "ValueError: 3"
+    ]
 
     def g(a):
         raise ValueError(a)
@@ -48,6 +49,11 @@ ValueError: 3
         ray.get(a.ping.remote())
     except RayActorError as ex:
         print(ex)
+        tracebacks = str(ex).split("\n")
+
+        for real, expected in zip(tracebacks, expected_lines):
+            p = re.compile(expected)
+            assert p.match(real) is not None
         error_msg = str(ex)
         error_lines = error_msg.split("\n")
         assert len(error_lines) == 6
