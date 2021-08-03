@@ -6,7 +6,8 @@ import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Set, Union
 
 from ray.util import log_once
-from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, \
+    PublicAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -382,7 +383,7 @@ class SampleBatch(dict):
 
         return slices
 
-    # TODO: (sven) Deprecated method.
+    @Deprecated(new="SampleBatch[start:stop]", error=False)
     def slice(self, start: int, end: int, state_start=None,
               state_end=None) -> "SampleBatch":
         """Returns a slice of the row data of this batch (w/o copying).
@@ -526,14 +527,8 @@ class SampleBatch(dict):
 
             return slices
 
-    # TODO: (sven) Deprecate in favor of right_zero_pad.
+    @Deprecated(new="SampleBatch.right_zero_pad", error=False)
     def zero_pad(self, max_seq_len, exclude_states=True):
-        if log_once("SampleBatch.zero_pad"):
-            deprecation_warning(
-                old="SampleBatch.zero_pad",
-                new="SampleBatch.right_zero_pad",
-                error=False,
-            )
         return self.right_zero_pad(max_seq_len, exclude_states)
 
     def right_zero_pad(self, max_seq_len: int, exclude_states: bool = True):
@@ -609,6 +604,18 @@ class SampleBatch(dict):
         self.zero_padded = True
         self.max_seq_len = max_seq_len
 
+        return self
+
+    # Experimental method.
+    def to_device(self, device, framework="torch"):
+        """TODO: transfer batch to given device as framework tensor."""
+        if framework == "torch":
+            assert torch is not None
+            for k, v in self.items():
+                if isinstance(v, np.ndarray) and v.dtype != np.object:
+                    self[k] = torch.from_numpy(v).to(device)
+        else:
+            raise NotImplementedError
         return self
 
     @PublicAPI
@@ -829,12 +836,8 @@ class SampleBatch(dict):
                 _time_major=self.time_major,
             )
 
-    # TODO: (sven) Deprecated method.
+    @Deprecated(error=False)
     def _get_slice_indices(self, slice_size):
-
-        if log_once("SampleBatch._get_slice_indices"):
-            deprecation_warning("SampleBatch._get_slice_indices", error=False)
-
         data_slices = []
         data_slices_states = []
         if self.get("seq_lens") is not None and len(self["seq_lens"]) > 0:
