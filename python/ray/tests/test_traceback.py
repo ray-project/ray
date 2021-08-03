@@ -21,16 +21,16 @@ these tests will fail.
 
 
 def test_actor_creation_stacktrace(ray_start_regular):
-    """Test the actor creation task stacktrace.
-
-    Expected output:
-        The actor died because of an error raised in its creation task, ray::A.__init__() (pid=23585, ip=192.168.1.5) # noqa
-        File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 27, in __init__
-            g(3)
-        File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 22, in g
-            raise ValueError(a)
-        ValueError: 3
-    """
+    """Test the actor creation task stacktrace."""
+    expected_output = ("""
+The actor died because of an error raised in its creation task, ray::A.__init__() (pid=XXX, ip=ZZZ) # noqa
+  File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 41, in __init__
+    g(3)
+  File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 36, in g
+    raise ValueError(a)
+ValueError: 3
+""")
+    print(expected_output)
 
     def g(a):
         raise ValueError(a)
