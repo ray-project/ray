@@ -6,10 +6,17 @@
 extern "C" {
 #endif
 
+typedef long long GoInt64;
+typedef GoInt64 GoInt;
+typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
+
 void go_worker_Initialize(int workerMode, char *store_socket, char *raylet_socket,
                           char *log_dir, char *node_ip_address, int node_manager_port,
                           char *raylet_ip_address, char *driver_name, int jobId,
-                          char *redis_address, int redis_port, char *redis_password);
+                          char *redis_address, int redis_port, char *redis_password,
+                          char *serialized_job_config);
+
+void go_worker_Run();
 
 void *go_worker_CreateGlobalStateAccessor(char *redis_address, char *redis_password);
 
@@ -25,7 +32,7 @@ int go_worker_CreateActor(char *type_name, char **result);
 
 int go_worker_SubmitActorTask(void *actor_id, char *method_name, char ***return_ids);
 
-void SayHello(char *s);
+extern void go_worker_execute(GoSlice args, GoSlice args);
 
 #ifdef __cplusplus
 }

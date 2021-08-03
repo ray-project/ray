@@ -8,7 +8,9 @@ package ray
 */
 import "C"
 import (
+    "errors"
     "fmt"
+    "os"
     "reflect"
     "strconv"
     "strings"
@@ -24,45 +26,74 @@ const sessionDir = "session_dir"
 var typesMap = make(map[string]reflect.Type)
 
 func Init(address, _redis_password string) {
-    util.Logger.Debug("Initializing runtime with config")
-    rayConfig := NewRayConfig()
-    gsa, err := NewGlobalStateAccessor(address, _redis_password)
-    if err != nil {
-        panic(err)
-    }
-    // for driver
-    rayConfig.SetJobId(gsa.GetNextJobID())
-    raySessionDir := gsa.GetInternalKV(sessionDir)
-    if raySessionDir == "" {
-        panic(fmt.Errorf("Failed to get session dir"))
-    }
-    rayConfig.SetSessionDir(raySessionDir)
-    logDir := fmt.Sprintf("%s/logs", raySessionDir)
-    util.Logger.Debugf("Session dir: %s", raySessionDir)
+    InnerInit(address, _redis_password, ray_rpc.WorkerType_DRIVER)
+}
 
+func InnerInit(address, _redis_password string, workerType ray_rpc.WorkerType) {
+    util.Logger.Debug("Initializing runtime with config")
     localIp, err := util.GetLocalIp()
     if err != nil {
         panic(err)
     }
     util.Logger.Debugf("Using local ip: %s", localIp)
-
-    gcsNodeInfo := &ray_rpc.GcsNodeInfo{}
-    nodeInfoData := gsa.GetNodeToConnectForDriver(localIp)
-    err = proto.Unmarshal(nodeInfoData, gcsNodeInfo)
+    gsa, err := NewGlobalStateAccessor(address, _redis_password)
     if err != nil {
         panic(err)
     }
+    // for driver
+    if workerType == ray_rpc.WorkerType_DRIVER {
+        SetJobId(gsa.GetNextJobID())
+        raySessionDir := gsa.GetInternalKV(sessionDir)
+        if raySessionDir == "" {
+            panic(fmt.Errorf("Failed to get session dir"))
+        }
+        SetSessionDir(raySessionDir)
+        gcsNodeInfo := &ray_rpc.GcsNodeInfo{}
+        nodeInfoData := gsa.GetNodeToConnectForDriver(localIp)
+        err = proto.Unmarshal(nodeInfoData, gcsNodeInfo)
+        if err != nil {
+            panic(err)
+        }
+        SetNodeManagerPort(gcsNodeInfo.GetNodeManagerPort())
+        SetNodeManagerAddress(gcsNodeInfo.GetNodeManagerAddress())
+        SetObjectStoreSocket(gcsNodeInfo.GetObjectStoreSocketName())
+        SetRayletSocket(gcsNodeInfo.GetRayletSocketName())
+        //todo add job config
+    } else {
+        jobIdStr := os.Getenv("RAY_JOB_ID")
+        if jobIdStr == "" {
+            panic(fmt.Errorf("job id is empty"))
+        }
+        jobId, err := strconv.Atoi(jobIdStr)
+        if err != nil {
+            panic(fmt.Errorf("failed to parse jobId:%s", jobIdStr))
+        }
+        SetJobId(jobId)
+        // check session dir is not empty
+        if GetSessionDir() == "" {
+            panic(errors.New("session dir is empty"))
+        }
+    }
+
+    util.Logger.Debugf("Session dir: %s", GetSessionDir())
+    logDir := fmt.Sprintf("%s/logs", GetSessionDir())
+
     addressInfo := strings.Split(address, ":")
     addressPort, err := strconv.Atoi(addressInfo[1])
     if err != nil {
         panic(err)
     }
-    C.go_worker_Initialize(C.int(ray_rpc.WorkerType_DRIVER), C.CString(gcsNodeInfo.GetObjectStoreSocketName()),
-        C.CString(gcsNodeInfo.GetRayletSocketName()), C.CString(logDir),
-        C.CString(gcsNodeInfo.GetNodeManagerAddress()), C.int(gcsNodeInfo.GetNodeManagerPort()),
-        C.CString(gcsNodeInfo.GetNodeManagerAddress()),
-        C.CString("GOLANG"), C.int(rayConfig.jobId), C.CString(addressInfo[0]), C.int(addressPort),
-        C.CString(_redis_password))
+    serialized_job_config := "{}"
+    C.go_worker_Initialize(C.int(workerType), C.CString(GetObjectStoreSocket()),
+        C.CString(GetRayletSocket()), C.CString(logDir),
+        C.CString(GetNodeManagerAddress()), C.int(GetNodeManagerPort()),
+        C.CString(GetNodeManagerAddress()),
+        C.CString("GOLANG"), C.int(GetJobId()), C.CString(addressInfo[0]), C.int(addressPort),
+        C.CString(_redis_password), serialized_job_config)
+}
+
+func Run() {
+    C.go_worker_Run()
 }
 
 func RegisterType(t reflect.Type) error {
