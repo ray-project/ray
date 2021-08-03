@@ -16,9 +16,11 @@
 
 #include "ray/gcs/pb_util.h"
 
+using namespace ray::core;
+
 namespace ray {
 
-ActorID ActorManager::RegisterActorHandle(std::unique_ptr<core::ActorHandle> actor_handle,
+ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                           const ObjectID &outer_object_id,
                                           const TaskID &caller_id,
                                           const std::string &call_site,
@@ -36,7 +38,7 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<core::ActorHandle> act
   return actor_id;
 }
 
-std::shared_ptr<core::ActorHandle> ActorManager::GetActorHandle(const ActorID &actor_id) {
+std::shared_ptr<ActorHandle> ActorManager::GetActorHandle(const ActorID &actor_id) {
   absl::MutexLock lock(&mutex_);
   auto it = actor_handles_.find(actor_id);
   RAY_CHECK(it != actor_handles_.end())
@@ -50,7 +52,7 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
   return actor_handles_.find(actor_id) != actor_handles_.end();
 }
 
-bool ActorManager::AddNewActorHandle(std::unique_ptr<core::ActorHandle> actor_handle,
+bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                      const TaskID &caller_id,
                                      const std::string &call_site,
                                      const rpc::Address &caller_address,
@@ -70,7 +72,7 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<core::ActorHandle> actor_ha
                         caller_address, actor_id, actor_creation_return_id);
 }
 
-bool ActorManager::AddActorHandle(std::unique_ptr<core::ActorHandle> actor_handle,
+bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                   bool is_owner_handle, const TaskID &caller_id,
                                   const std::string &call_site,
                                   const rpc::Address &caller_address,
