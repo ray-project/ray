@@ -138,7 +138,7 @@ NIGHTLY_TESTS = {
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
         SmokeTest("learning_tests"),
         "example_scripts_on_gpu_tests",
-        "stress_tests",
+        SmokeTest("stress_tests"),
     ],
     "~/ray/release/serve_tests/serve_tests.yaml": [
         "single_deployment_1k_noop_replica",
@@ -185,6 +185,7 @@ WEEKLY_TESTS = {
     ],
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
         "learning_tests",
+        "stress_tests",
     ],
 }
 
