@@ -135,38 +135,52 @@ class RayTaskError(RayError):
         """Format a RayTaskError as a string."""
         lines = self.traceback_str.strip().split("\n")
         out = []
-        # We try not to print the error line if it is in worker
-        # because that contains the internal implemenation of Ray
-        # which is unnecessary for users.
-        in_worker = False
+        from_internal_file = False
+
+        # Format tracebacks.
+        # Python stacktrace consists of
+        # Traceback...: Indicate the next line will be a traceback.
+        #   File [file_name + line number]
+        #     code
+        # But note that, for _raylet.pyx, the code is not always included.
+        # We don't print code & File line if it is from the internal code.
         for line in lines:
+            # Convert traceback to the readable information.
             if line.startswith("Traceback "):
-                error_traceback = (f"{colorama.Fore.CYAN}"
-                                   f"{self.proctitle}"
-                                   f"{colorama.Fore.RESET} "
-                                   f"(pid={self.pid}, ip={self.ip}")
+                traceback_line = (f"{colorama.Fore.CYAN}"
+                                  f"{self.proctitle}"
+                                  f"{colorama.Fore.RESET} "
+                                  f"(pid={self.pid}, ip={self.ip}")
                 if self.actor_repr:
-                    error_traceback += f", repr={self.actor_repr})"
+                    traceback_line += f", repr={self.actor_repr})"
                 else:
-                    error_traceback += ")"
-                out.append(error_traceback)
-            elif in_worker:
-                in_worker = False
-            elif ("ray/worker.py" in line or "ray/_private/" in line
-                  or "ray/util/tracing/tracing_helper.py" in line):
-                # Skip internal files that could be printed.
-                # Otherwise, users will see unnecessary stacktrace from
-                # Ray internal code.
-                in_worker = True
-            elif "ray/_raylet.pyx" in line:
-                in_worker = True
-                if "ray._raylet.raise_if_dependency_failed" in line:
-                    # It means the current task is failed
-                    # due to the dependency failure.
-                    # Print out an user-friendly
-                    # message to explain that..
-                    out.append("  Some of the input arguments for "
-                               "this task could not be computed:")
+                    traceback_line += ")"
+                from_internal_file = False
+                out.append(traceback_line)
+            # Process the file line.
+            # The file line always starts with 2 space and File.
+            # https://github.com/python/cpython/blob/0a0a135bae2692d069b18d2d590397fbe0a0d39a/Lib/traceback.py#L421 # noqa
+            elif line.startswith("  File "):
+                if ("ray/worker.py" in line or "ray/_private/" in line
+                        or "ray/util/tracing/" in line
+                        or "ray/_raylet.pyx" in line):
+                    from_internal_file = True
+                    if "ray._raylet.raise_if_dependency_failed" in line:
+                        # It means the current task is failed
+                        # due to the dependency failure.
+                        # Print out an user-friendly
+                        # message to explain that..
+                        out.append("  Some of the input arguments for "
+                                   "this task could not be computed:")
+                else:
+                    from_internal_file = False
+                    out.append(line)
+            elif from_internal_file:
+                # E.g.,
+                # File [internal file]
+                #   code # here
+                # In this case, it should be skipped.
+                from_internal_file = False
             else:
                 out.append(line)
         return "\n".join(out)
