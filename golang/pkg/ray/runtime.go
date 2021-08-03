@@ -97,7 +97,7 @@ func Run() {
 }
 
 func RegisterType(t reflect.Type) error {
-    typesMap[getRegisterTypeKey(t)] = t.Elem()
+    typesMap[getRegisterTypeKey(t.Elem())] = t.Elem()
     // todo check conflict
     return nil
 }
