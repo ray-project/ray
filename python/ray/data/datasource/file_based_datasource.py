@@ -5,8 +5,7 @@ from urllib.parse import urlparse
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.data.impl.arrow_block import (
-    ArrowRow, DelegatingArrowBlockBuilder)
+from ray.data.impl.arrow_block import (ArrowRow, DelegatingArrowBlockBuilder)
 from ray.data.impl.block_list import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI

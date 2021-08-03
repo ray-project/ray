@@ -144,8 +144,7 @@ def test_basic(ray_start_regular_shared, pipelined):
 
 def test_batch_tensors(ray_start_regular_shared):
     import torch
-    ds = ray.data.from_items(
-        [torch.tensor([0, 0]) for _ in range(40)])
+    ds = ray.data.from_items([torch.tensor([0, 0]) for _ in range(40)])
     res = "Dataset(num_blocks=40, num_rows=40, schema=<class 'torch.Tensor'>)"
     assert str(ds) == res, str(ds)
     with pytest.raises(pa.lib.ArrowInvalid):
@@ -539,8 +538,7 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
     with util.gen_bin_files(10) as (tempdir, paths):
         # All the paths are absolute, so we want the root file system.
         fs, _ = pa.fs.FileSystem.from_uri("/")
-        ds = ray.data.read_binary_files(
-            paths, filesystem=fs, parallelism=10)
+        ds = ray.data.read_binary_files(paths, filesystem=fs, parallelism=10)
         for i, item in enumerate(ds.iter_rows()):
             expected = open(paths[i], "rb").read()
             assert expected == item
@@ -560,8 +558,7 @@ def test_read_binary_files_with_paths(ray_start_regular_shared):
 # credentials issue, unskip this test once that's fixed or once ported to moto.
 @pytest.mark.skip(reason="Shouldn't hit S3 in CI")
 def test_read_binary_files_s3(ray_start_regular_shared):
-    ds = ray.data.read_binary_files(
-        ["s3://anyscale-data/small-files/0.dat"])
+    ds = ray.data.read_binary_files(["s3://anyscale-data/small-files/0.dat"])
     item = ds.take(1).pop()
     expected = requests.get(
         "https://anyscale-data.s3.us-west-2.amazonaws.com/small-files/0.dat"
@@ -954,8 +951,7 @@ def test_to_tf(ray_start_regular_shared, pipelined):
     })
     df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
     df = pd.concat([df1, df2, df3])
-    ds = ray.data.from_pandas(
-        [ray.put(df1), ray.put(df2), ray.put(df3)])
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2), ray.put(df3)])
     ds = maybe_pipeline(ds, pipelined)
     tfd = ds.to_tf(
         label_column="label",
@@ -983,8 +979,7 @@ def test_to_tf_feature_columns(ray_start_regular_shared):
     })
     df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
     df = pd.concat([df1, df2, df3]).drop("two", axis=1)
-    ds = ray.data.from_pandas(
-        [ray.put(df1), ray.put(df2), ray.put(df3)])
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2), ray.put(df3)])
     tfd = ds.to_tf(
         label_column="label",
         feature_columns=["one"],
@@ -1013,8 +1008,7 @@ def test_to_torch(ray_start_regular_shared, pipelined):
     })
     df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
     df = pd.concat([df1, df2, df3])
-    ds = ray.data.from_pandas(
-        [ray.put(df1), ray.put(df2), ray.put(df3)])
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2), ray.put(df3)])
     ds = maybe_pipeline(ds, pipelined)
     torchd = ds.to_torch(label_column="label", batch_size=3)
 
@@ -1041,8 +1035,7 @@ def test_to_torch_feature_columns(ray_start_regular_shared):
     })
     df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
     df = pd.concat([df1, df2, df3]).drop("two", axis=1)
-    ds = ray.data.from_pandas(
-        [ray.put(df1), ray.put(df2), ray.put(df3)])
+    ds = ray.data.from_pandas([ray.put(df1), ray.put(df2), ray.put(df3)])
     torchd = ds.to_torch(
         label_column="label", feature_columns=["one"], batch_size=3)
     iterations = []

@@ -6,8 +6,7 @@ import numpy as np
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.data.datasource.file_based_datasource import (
-    FileBasedDatasource)
+from ray.data.datasource.file_based_datasource import (FileBasedDatasource)
 
 
 class NumpyDatasource(FileBasedDatasource):
