@@ -3,6 +3,7 @@ package io.ray.serve.util;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.protobuf.InvalidProtocolBufferException;
+import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.RayServeException;
 import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.generated.BackendLanguage;
@@ -66,4 +67,10 @@ public class BackendConfigUtil {
     return builder.build();
   }
 
+  public static Object getUserConfig(BackendConfig backendConfig) {
+    if (backendConfig.getUserConfig() == null || backendConfig.getUserConfig().size() == 0) {
+      return null;
+    }
+    return MessagePackSerializer.decode(backendConfig.getUserConfig().toByteArray(), Object.class);
+  }
 }

@@ -8,13 +8,13 @@ import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Histogram;
 import io.ray.runtime.metric.MetricConfig;
 import io.ray.runtime.metric.Metrics;
-import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.poll.KeyListener;
 import io.ray.serve.poll.KeyType;
 import io.ray.serve.poll.LongPollClient;
 import io.ray.serve.poll.LongPollNamespace;
+import io.ray.serve.util.BackendConfigUtil;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ReflectUtil;
 import java.lang.reflect.Method;
@@ -59,7 +59,7 @@ public class RayServeReplica {
     this.replicaTag = Serve.getReplicaContext().getReplicaTag();
     this.callable = callable;
     this.config = backendConfig;
-    this.reconfigure(getUserConfig(backendConfig));
+    this.reconfigure(BackendConfigUtil.getUserConfig(backendConfig));
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(
@@ -236,13 +236,6 @@ public class RayServeReplica {
           LogUtil.format("Backend {} failed to reconfigure user_config {}", backendTag, userConfig),
           e);
     }
-  }
-
-  private Object getUserConfig(BackendConfig backendConfig) {
-    if (backendConfig.getUserConfig() == null || backendConfig.getUserConfig().size() == 0) {
-      return null;
-    }
-    return MessagePackSerializer.decode(backendConfig.getUserConfig().toByteArray(), Object.class);
   }
 
   /**
