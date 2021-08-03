@@ -462,4 +462,4 @@ RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
 RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 
 /// ServerCall instance number of each RPC service handler
-RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 5000)
+RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
