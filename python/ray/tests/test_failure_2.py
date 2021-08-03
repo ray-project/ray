@@ -89,13 +89,13 @@ def test_warning_for_too_many_actors(shutdown_only):
 
     # NOTE: We should save actor, otherwise it will be out of scope.
     actor_group1 = [Foo.remote() for _ in range(num_cpus * 10)]
-    assert len(actor_group1) == num_cpus * 3
+    assert len(actor_group1) == num_cpus * 10
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
 
     actor_group2 = [Foo.remote() for _ in range(num_cpus * 3)]
-    assert len(actor_group2) == num_cpus
+    assert len(actor_group2) == num_cpus * 3
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
