@@ -20,6 +20,9 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/util/util.h"
+#include "ray/rpc/grpc_server.h"
+
+DEFINE_stats(grpc_server_processing_request_num, "Number of in requrest under processing", "method", ray::stats::COUNT, ray::stats::SUM, ray::stats::GAUGE);
 
 namespace ray {
 namespace rpc {
