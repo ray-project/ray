@@ -26,7 +26,6 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/util/resource_util.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
