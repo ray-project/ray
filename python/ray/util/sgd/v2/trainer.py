@@ -1,6 +1,5 @@
 import inspect
 import logging
-import time
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict
 
 from ray.tune import Trainable
