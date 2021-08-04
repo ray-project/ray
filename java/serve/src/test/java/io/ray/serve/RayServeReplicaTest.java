@@ -5,6 +5,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.BackendLanguage;
 import java.io.IOException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -29,7 +30,10 @@ public class RayServeReplicaTest {
               .setName(controllerName)
               .remote();
 
-      BackendConfig.Builder backendConfig = BackendConfig.newBuilder();
+      BackendConfig.Builder backendConfigBuilder = BackendConfig.newBuilder();
+      backendConfigBuilder.setBackendLanguage(BackendLanguage.JAVA);
+
+      byte[] backendConfigBytes = backendConfigBuilder.build().toByteArray();
 
       Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
 
@@ -42,7 +46,7 @@ public class RayServeReplicaTest {
                   replicaTag,
                   "io.ray.serve.ReplicaContext",
                   initArgsBytes,
-                  backendConfig.build().toByteArray(),
+                  backendConfigBytes,
                   controllerName)
               .remote();
 
