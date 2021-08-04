@@ -277,7 +277,7 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Data Processing
+   :caption: Ray Data
 
    data/dataset.rst
    data/dataset-pipeline.rst
