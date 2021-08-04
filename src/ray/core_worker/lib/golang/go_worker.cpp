@@ -49,29 +49,34 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
 
         std::vector<std::shared_ptr<ReturnValue>> return_value_list;
         for (size_t i = 0; i < results->size(); i++) {
-          ReturnValue rv;
-          return_value_list.push_back(&rv);
+          return_value_list.push_back(make_shared<ReturnValue>());
         }
+        GoSlice return_value_list_go;
+        return_value_list_go.data = &return_value_list[0];
+        return_value_list_go.cap = results->size();
+        return_value_list_go.len = results->size();
 
         // invoke golang method
-        go_worker_execute(task_type, fd_list, args_go, return_value_list);
+        go_worker_execute(task_type, fd_list, args_go, return_value_list_go);
         results->clear();
         for (size_t i = 0; i < return_value_list.size(); i++) {
           auto &result_id = return_ids[i];
           auto &return_value = return_value_list[i];
           std::shared_ptr<ray::Buffer> data_buffer =
-              std::make_shared<JavaByteArrayBuffer>(env, javaByteArray);
+              std::make_shared<ray::LocalMemoryBuffer>(return_value->data->p,
+                                                       return_value->data->size, false);
           std::shared_ptr<ray::Buffer> meta_buffer =
-              std::make_shared<JavaByteArrayBuffer>(env, javaByteArray);
+              std::make_shared<ray::LocalMemoryBuffer>(return_value->meta->p,
+                                                       return_value->meta->size, false);
           std::vector<ray::ObjectID> contained_object_ids;
-          auto value = std::make_shared<ray::RayObject>(data_buffer, metadata_buffer,
+          auto value = std::make_shared<ray::RayObject>(data_buffer, meta_buffer,
                                                         contained_object_ids);
-          native_vector->emplace_back(value);
+          results->emplace_back(value);
           RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
               result_id, value->GetData()->Size(), value->GetMetadata(),
-              contained_object_id, value));
+              contained_object_ids, &value));
           RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id,
-                                                                                result));
+                                                                                value));
         }
         return ray::Status::OK();
       };
