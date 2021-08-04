@@ -1,7 +1,6 @@
 package main
 
 import (
-    "reflect"
     "time"
 
     "github.com/ray-project/ray-go-worker/pkg/actor"
@@ -20,7 +19,7 @@ func main() {
     util.Logger.Infof("created actor ref")
     //var f ray.Convert = actor.Count.Increase
     //reflect.ValueOf(actor.Count)
-    reflect.ValueOf(actor.Count.Get)
+    // reflect.ValueOf(actor.Count.Get)
     actor_ref.Task("Get").Remote().Get()
     fmt.Println("ok!")
     time.Sleep(time.Minute * 5)

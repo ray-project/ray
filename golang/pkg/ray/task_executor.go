@@ -1,7 +1,10 @@
 package ray
 
 /*
-  #include <string.h>
+   #cgo CFLAGS: -I/root/ray/src/ray/core_worker/lib/golang
+   #cgo LDFLAGS: -shared  -L/root/ray/bazel-bin/ -lcore_worker_library_go -lstdc++
+   #include <string.h>
+   #include "go_worker.h"
 */
 import "C"
 import (
@@ -49,6 +52,6 @@ func create_data_buffer() *C.struct_DataBuffer {
     C.memset(p, 1, 1)
     return &C.struct_DataBuffer{
         size: 1,
-        p:    p,
+        p:    (*C.uchar)(p),
     }
 }

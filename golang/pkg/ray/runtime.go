@@ -161,7 +161,7 @@ type ActorTaskCaller struct {
 func (or *ActorTaskCaller) Remote() *ObjectRef {
     var res **C.char
     returnNum := or.invokeMethod.Func.Type().NumOut()
-    dataLen := C.go_worker_SubmitActorTask(C.CBytes(or.actorHandle.actorId), C.CString(or.invokeMethod.Name), &res, returnNum)
+    dataLen := C.go_worker_SubmitActorTask(C.CBytes(or.actorHandle.actorId), C.CString(or.invokeMethod.Name), &res, C.int(returnNum))
     if dataLen > 0 {
         defer C.free(unsafe.Pointer(res))
         return &ObjectRef{
