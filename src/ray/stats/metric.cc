@@ -100,8 +100,8 @@ void Metric::Record(double value, const TagsType &tags) {
       if (registered_measure.IsValid()) {
         measure_.reset(new MeasureDouble(registered_measure));
       } else {
-        measure_.reset(
-            new MeasureDouble(MeasureDouble::Register(measure_name_, description_, unit_)));
+        measure_.reset(new MeasureDouble(
+            MeasureDouble::Register(measure_name_, description_, unit_)));
       }
       RegisterView();
     }

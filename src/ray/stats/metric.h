@@ -14,10 +14,10 @@
 
 #pragma once
 
+#include <ctype.h>
 #include <memory>
 #include <tuple>
 #include <unordered_map>
-#include <ctype.h>
 
 #include "opencensus/stats/stats.h"
 #include "opencensus/stats/stats_exporter.h"
@@ -99,7 +99,7 @@ class Metric {
         unit_(unit),
         tag_keys_(tag_keys),
         measure_(nullptr) {
-    if(measure_name_.empty()) {
+    if (measure_name_.empty()) {
       measure_name_ = name;
     }
   }
@@ -157,7 +157,8 @@ class Metric {
 class Gauge : public Metric {
  public:
   Gauge(const std::string &name, const std::string &description, const std::string &unit,
-        const std::vector<opencensus::tags::TagKey> &tag_keys = {}, const std::string& measure_name = "")
+        const std::vector<opencensus::tags::TagKey> &tag_keys = {},
+        const std::string &measure_name = "")
       : Metric(name, description, unit, tag_keys, measure_name) {}
 
  private:
@@ -170,8 +171,9 @@ class Histogram : public Metric {
   Histogram(const std::string &name, const std::string &description,
             const std::string &unit, const std::vector<double> boundaries,
             const std::vector<opencensus::tags::TagKey> &tag_keys = {},
-            const std::string& measure_name = "")
-      : Metric(name, description, unit, tag_keys, measure_name), boundaries_(boundaries) {}
+            const std::string &measure_name = "")
+      : Metric(name, description, unit, tag_keys, measure_name),
+        boundaries_(boundaries) {}
 
  private:
   void RegisterView() override;
@@ -185,7 +187,7 @@ class Count : public Metric {
  public:
   Count(const std::string &name, const std::string &description, const std::string &unit,
         const std::vector<opencensus::tags::TagKey> &tag_keys = {},
-        const std::string& measure_name = "")
+        const std::string &measure_name = "")
       : Metric(name, description, unit, tag_keys, measure_name) {}
 
  private:
@@ -197,7 +199,7 @@ class Sum : public Metric {
  public:
   Sum(const std::string &name, const std::string &description, const std::string &unit,
       const std::vector<opencensus::tags::TagKey> &tag_keys = {},
-      const std::string& measure_name = "")
+      const std::string &measure_name = "")
       : Metric(name, description, unit, tag_keys, measure_name) {}
 
  private:
@@ -279,9 +281,9 @@ class StatsInternal : public IStatsRecord {
  public:
   StatsInternal(const std::string &name, const std::string &description,
                 const std::string &unit, const std::vector<std::string> &tag_keys)
-      : stats_(std::make_tuple(std::move(
-            typename StatsTypeMap<Ts>::type(name, description,
-                                            unit, convertTags(tag_keys), name + StatsTypeMap<Ts>::val))...)) {}
+      : stats_(std::make_tuple(std::move(typename StatsTypeMap<Ts>::type(
+            name, description, unit, convertTags(tag_keys),
+            name + StatsTypeMap<Ts>::val))...)) {}
 
   StatsInternal(const std::string &name, const std::string &description,
                 const std::string &unit)
@@ -308,7 +310,7 @@ class Stats {
   void Record(double val) { Record(val, std::unordered_map<std::string, std::string>()); }
 
   void Record(double val, std::string tag_val) {
-    for(char& c : tag_val) {
+    for (char &c : tag_val) {
       if (!isprint(c)) {
         c = '?';
       }
