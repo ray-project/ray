@@ -160,7 +160,7 @@ class SelfPlayCallback(DefaultCallbacks):
 
 
 if __name__ == "__main__":
-    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False, local_mode=True)#TODO
+    ray.init(num_cpus=args.num_cpus or None, include_dashboard=False)
 
     register_env("open_spiel_env",
                  lambda _: OpenSpielEnv(pyspiel.load_game(args.env)))
