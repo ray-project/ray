@@ -1,7 +1,7 @@
 # coding: utf-8
 from abc import ABC, abstractmethod
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from ray.tune.resources import Resources
 from ray.tune.trial import Trial, Checkpoint
@@ -18,7 +18,7 @@ class TrialExecutor(ABC):
     and starting/stopping trials.
     """
 
-    def __init__(self, queue_trials: bool = False):
+    def __init__(self, queue_trials: Optional[bool] = False):
         """Initializes a new TrialExecutor.
 
         Args:
@@ -31,7 +31,7 @@ class TrialExecutor(ABC):
         self._cached_trial_state = {}
         self._trials_to_cache = set()
 
-    def set_status(self, trial: Trial, status: str):
+    def set_status(self, trial: Trial, status: str) -> None:
         """Sets status and checkpoints metadata if needed.
 
         Only checkpoints metadata if trial status is a terminal condition.
@@ -51,7 +51,7 @@ class TrialExecutor(ABC):
         if status in [Trial.TERMINATED, Trial.ERROR]:
             self.try_checkpoint_metadata(trial)
 
-    def try_checkpoint_metadata(self, trial: Trial):
+    def try_checkpoint_metadata(self, trial: Trial) -> None:
         """Checkpoints trial metadata.
 
         Args:
@@ -77,7 +77,7 @@ class TrialExecutor(ABC):
         return self._cached_trial_state
 
     @abstractmethod
-    def has_resources(self, resources: Resources):
+    def has_resources(self, resources: Resources) -> bool:
         """Returns whether this runner has at least the specified resources."""
         pass
 
@@ -100,11 +100,12 @@ class TrialExecutor(ABC):
         pass
 
     @abstractmethod
-    def stop_trial(self,
-                   trial: Trial,
-                   error: Optional[bool] = False,
-                   error_msg: Optional[str] = None,
-                   destroy_pg_if_cannot_replace: Optional[bool] = True):
+    def stop_trial(
+            self,
+            trial: Trial,
+            error: Optional[bool] = False,
+            error_msg: Optional[str] = None,
+            destroy_pg_if_cannot_replace: Optional[bool] = True) -> None:
         """Stops the trial.
 
         Stops this trial, releasing all allocating resources.
@@ -120,11 +121,11 @@ class TrialExecutor(ABC):
         """
         pass
 
-    def continue_training(self, trial: Trial):
+    def continue_training(self, trial: Trial) -> None:
         """Continues the training of this trial."""
         pass
 
-    def pause_trial(self, trial: Trial):
+    def pause_trial(self, trial: Trial) -> None:
         """Pauses the trial.
 
         We want to release resources (specifically GPUs) when pausing an
@@ -139,19 +140,19 @@ class TrialExecutor(ABC):
             logger.exception("Error pausing runner.")
             self.set_status(trial, Trial.ERROR)
 
-    def unpause_trial(self, trial: Trial):
+    def unpause_trial(self, trial: Trial) -> None:
         """Sets PAUSED trial to pending to allow scheduler to start."""
         assert trial.status == Trial.PAUSED, trial.status
         self.set_status(trial, Trial.PENDING)
 
-    def resume_trial(self, trial: Trial):
+    def resume_trial(self, trial: Trial) -> None:
         """Resumes PAUSED trials. This is a blocking call."""
         assert trial.status == Trial.PAUSED, trial.status
         self.start_trial(trial)
 
     @abstractmethod
     def reset_trial(self, trial: Trial, new_config: Dict,
-                    new_experiment_tag: str):
+                    new_experiment_tag: str) -> bool:
         """Tries to invoke `Trainable.reset()` to reset trial.
 
         Args:
@@ -167,22 +168,35 @@ class TrialExecutor(ABC):
         pass
 
     @abstractmethod
-    def get_running_trials(self):
+    def get_running_trials(self) -> List[Trial]:
         """Returns all running trials."""
         pass
 
-    def on_step_begin(self, trials: List[Trial]):
+    def on_step_begin(
+            self,
+            trials: Union[List[Trial], 'ray.tune.trial_runner.TrialRunner']
+    ) -> None:
         """A hook called before running one step of the trial event loop."""
         pass
 
-    def on_step_end(self, trials: List[Trial]):
+    def on_step_end(
+            self,
+            trials: Union[List[Trial], 'ray.tune.trial_runner.TrialRunner']
+    ) -> None:
         """A hook called after running one step of the trial event loop."""
         pass
 
-    def force_reconcilation_on_next_step_end(self):
+    def force_reconcilation_on_next_step_end(self) -> None:
         pass
 
-    def on_no_available_trials(self, trials: List[Trial]):
+    def on_no_available_trials(
+            self,
+            trials: Union[List[Trial], 'ray.tune.trial_runner.TrialRunner']
+    ) -> None:
+        # avoid circular dependency
+        from ray.tune.trial_runner import TrialRunner
+        if isinstance(trials, TrialRunner):
+            trials = trials.get_running_trials()
         if self._queue_trials:
             return
         for trial in trials:
@@ -211,7 +225,7 @@ class TrialExecutor(ABC):
                                 "trials with sufficient resources.")
 
     @abstractmethod
-    def get_next_available_trial(self):
+    def get_next_available_trial(self) -> Optional[Trial]:
         """Blocking call that waits until one result is ready.
 
         Returns:
@@ -220,7 +234,7 @@ class TrialExecutor(ABC):
         pass
 
     @abstractmethod
-    def get_next_failed_trial(self):
+    def get_next_failed_trial(self) -> Optional[Trial]:
         """Non-blocking call that detects and returns one failed trial.
 
         Returns:
@@ -230,7 +244,7 @@ class TrialExecutor(ABC):
         pass
 
     @abstractmethod
-    def fetch_result(self, trial: Trial):
+    def fetch_result(self, trial: Trial) -> List[Trial]:
         """Fetches one result for the trial.
 
         Assumes the trial is running.
@@ -241,12 +255,12 @@ class TrialExecutor(ABC):
         pass
 
     @abstractmethod
-    def debug_string(self):
+    def debug_string(self) -> str:
         """Returns a human readable message for printing to the console."""
         pass
 
     @abstractmethod
-    def resource_string(self):
+    def resource_string(self) -> str:
         """Returns a string describing the total resources available."""
         pass
 
@@ -254,7 +268,7 @@ class TrialExecutor(ABC):
     def restore(self,
                 trial,
                 checkpoint: Optional[Checkpoint] = None,
-                block: Optional[bool] = False):
+                block: Optional[bool] = False) -> None:
         """Restores training state from a checkpoint.
 
         If checkpoint is None, try to restore from trial.checkpoint.
@@ -274,7 +288,7 @@ class TrialExecutor(ABC):
     def save(self,
              trial,
              storage: Optional[str] = Checkpoint.PERSISTENT,
-             result: Optional[bool] = None):
+             result: Optional[bool] = None) -> Checkpoint:
         """Saves training state of this trial to a checkpoint.
 
         If result is None, this trial's last result will be used.
@@ -291,7 +305,7 @@ class TrialExecutor(ABC):
         pass
 
     @abstractmethod
-    def export_trial_if_needed(self, trial: Trial):
+    def export_trial_if_needed(self, trial: Trial) -> Dict:
         """Exports model of this trial based on trial.export_formats.
 
         Args:
@@ -302,11 +316,13 @@ class TrialExecutor(ABC):
         """
         pass
 
-    def has_gpus(self):
+    def has_gpus(self) -> bool:
         """Returns True if GPUs are detected on the cluster."""
         return None
 
-    def cleanup(self, trials: List[Trial]):
+    def cleanup(self,
+                trials: Union[List[Trial], 'ray.tune.trial_runner.TrialRunner']
+                ) -> None:
         """Ensures that trials are cleaned up after stopping."""
         pass
 
@@ -314,6 +330,6 @@ class TrialExecutor(ABC):
         """Returns True if trials have recently been staged."""
         return False
 
-    def set_max_pending_trials(self, max_pending: int):
+    def set_max_pending_trials(self, max_pending: int) -> None:
         """Set the maximum number of allowed pending trials."""
         pass
