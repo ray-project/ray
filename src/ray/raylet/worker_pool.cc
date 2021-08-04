@@ -991,19 +991,14 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     if (worker == nullptr) {
       // There are no more non-actor workers available to execute this task.
       // Start a new worker process.
-      RAY_LOG(ERROR) << "No more workers, start new worker process";
       if (task_spec.HasRuntimeEnv()) {
         // Create runtime env.  If the env creation is already in progress on this
         // node, skip this to prevent unnecessary CreateRuntimeEnv calls, which would
         // unnecessarily start new worker processes.
-        RAY_LOG(ERROR) << "Got runtime env " << task_spec.SerializedRuntimeEnv();
         auto it = runtime_env_statuses_.find(runtime_env_hash);
         if (it == runtime_env_statuses_.end() || it->second == RuntimeEnvStatus::DONE) {
           if (it == runtime_env_statuses_.end()) {
-            RAY_LOG(ERROR) << "Status not found, setting to PENDING";
             runtime_env_statuses_[runtime_env_hash] = RuntimeEnvStatus::PENDING;
-          } else {
-            RAY_LOG(ERROR) << "Status DONE";
           }
           agent_manager_->CreateRuntimeEnv(
               task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
@@ -1011,8 +1006,6 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
                   bool successful, const std::string &serialized_runtime_env_context) {
                 runtime_env_statuses_[runtime_env_hash] = RuntimeEnvStatus::DONE;
                 if (successful) {
-                  RAY_LOG(ERROR)
-                      << "Successfully created env, set to DONE, starting proc";
                   start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash,
                                           task_spec.SerializedRuntimeEnv(),
                                           serialized_runtime_env_context);

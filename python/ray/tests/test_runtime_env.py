@@ -892,7 +892,7 @@ def test_no_spurious_worker_startup(ray_start_cluster):
     # installation, they will bypass the runtime env setup hook because the
     # created env will have been cached and should be added to num_workers
     # within a few seconds.  Adjusting the default update period for
-    # debut_state.txt via this cluster_utils pytext fixture seems to be broken,
+    # debut_state.txt via this cluster_utils pytest fixture seems to be broken,
     # so just check it for the next 10 seconds (the default period).
     for i in range(100):
         # Check that no more workers were started.
