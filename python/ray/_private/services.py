@@ -404,11 +404,24 @@ def create_redis_client(redis_address, password=None):
     Returns:
         A Redis client.
     """
-    redis_ip_address, redis_port = redis_address.split(":")
+    if not hasattr(create_redis_client, "instances"):
+        create_redis_client.instances = {}
+    else:
+        cli = create_redis_client.instances.get(redis_address)
+        if cli is not None:
+            try:
+                cli.ping()
+                return cli
+            except Exception:
+                create_redis_client.instances.pop(redis_address)
+
+    _, redis_ip_address, redis_port = validate_redis_address(redis_address)
     # For this command to work, some other client (on the same machine
     # as Redis) must have run "CONFIG SET protected-mode no".
-    return redis.StrictRedis(
+    create_redis_client.instances[redis_address] = redis.StrictRedis(
         host=redis_ip_address, port=int(redis_port), password=password)
+
+    return create_redis_client.instances[redis_address]
 
 
 def start_ray_process(command,
@@ -1325,6 +1338,7 @@ def start_raylet(redis_address,
                  redis_password=None,
                  metrics_agent_port=None,
                  metrics_export_port=None,
+                 dashboard_agent_listen_port=None,
                  use_valgrind=False,
                  use_profiler=False,
                  stdout_file=None,
@@ -1485,6 +1499,7 @@ def start_raylet(redis_address,
         f"--redis-address={redis_address}",
         f"--metrics-export-port={metrics_export_port}",
         f"--dashboard-agent-port={metrics_agent_port}",
+        f"--listen-port={dashboard_agent_listen_port}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",

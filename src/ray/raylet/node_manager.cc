@@ -183,6 +183,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                    config.worker_commands,
                    /*starting_worker_timeout_callback=*/
                    [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+                   /*runtime_env_setup_failed_callback=*/
+                   [this](const TaskID &task_id) {
+                     RAY_CHECK(cluster_task_manager_->CancelTask(
+                         task_id, /*runtime_env_setup_failed=*/true));
+                   },
                    config.ray_debugger_external,
                    /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       client_call_manager_(io_service),
@@ -752,16 +757,18 @@ void NodeManager::WarnResourceDeadlock() {
     std::ostringstream error_message;
     error_message
         << "The actor or task with ID " << exemplar.GetTaskSpecification().TaskId()
-        << " cannot be scheduled right now. It requires "
+        << " cannot be scheduled right now. You can ignore this message if this "
+        << "Ray cluster is expected to auto-scale or if you specified a "
+        << "runtime_env for this actor or task, which may take time to install.  "
+        << "Otherwise, this is likely due to all cluster resources being claimed "
+        << "by actors. To resolve the issue, consider creating fewer actors or "
+        << "increasing the resources available to this Ray cluster.\n"
+        << "Required resources for this actor or task: "
         << exemplar.GetTaskSpecification().GetRequiredPlacementResources().ToString()
-        << " for placement, but this node only has remaining " << available_resources
-        << ". In total there are " << pending_tasks << " pending tasks and "
-        << pending_actor_creations << " pending actors on this node. "
-        << "This is likely due to all cluster resources being claimed by actors. "
-        << "To resolve the issue, consider creating fewer actors or increase the "
-        << "resources available to this Ray cluster. You can ignore this message "
-        << "if this Ray cluster is expected to auto-scale or if you specified a "
-        << "runtime_env for this task or actor because it takes time to install.";
+        << "\n"
+        << "Available resources on this node: " << available_resources
+        << "In total there are " << pending_tasks << " pending tasks and "
+        << pending_actor_creations << " pending actors on this node.";
 
     std::string error_message_str = error_message.str();
     RAY_LOG(WARNING) << error_message_str;

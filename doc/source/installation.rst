@@ -193,12 +193,12 @@ on the AUR page of ``python-ray`` `here`_.
 .. _`yay`: https://aur.archlinux.org/packages/yay
 .. _`here`: https://aur.archlinux.org/packages/python-ray
 
-
+.. _ray_anaconda:
 
 Installing Ray with Anaconda
 ----------------------------
 
-If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
+If you use `Anaconda`_ (`installation instructions`_) and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
 
 .. code-block:: bash
 
@@ -210,6 +210,7 @@ If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray`
 Use ``pip list`` to confirm that ``ray`` is installed.
 
 .. _`Anaconda`: https://www.anaconda.com/
+.. _`installation instructions`: https://docs.anaconda.com/anaconda/install/index.html
 
 
 

@@ -3,9 +3,12 @@ import pytest
 import sys
 import random
 import tempfile
+import time
 import requests
 from pathlib import Path
+
 import ray
+from ray.exceptions import RuntimeEnvSetupError
 from ray.test_utils import (run_string_as_driver,
                             run_string_as_driver_nonblocking)
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
@@ -801,6 +804,32 @@ def test_working_dir_override_failure(shutdown_only):
 
     with pytest.raises(NotImplementedError):
         B.options(runtime_env={"working_dir": "."}).remote()
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
+def test_invalid_conda_env(shutdown_only):
+    ray.init()
+
+    @ray.remote
+    def f():
+        pass
+
+    start = time.time()
+    bad_env = {"conda": {"dependencies": ["this_doesnt_exist"]}}
+    with pytest.raises(RuntimeEnvSetupError):
+        ray.get(f.options(runtime_env=bad_env).remote())
+    first_time = time.time() - start
+
+    # Check that another valid task can run.
+    ray.get(f.remote())
+
+    # The second time this runs it should be faster as the error is cached.
+    start = time.time()
+    with pytest.raises(RuntimeEnvSetupError):
+        ray.get(f.options(runtime_env=bad_env).remote())
+
+    assert (time.time() - start) < (first_time / 2.0)
 
 
 if __name__ == "__main__":

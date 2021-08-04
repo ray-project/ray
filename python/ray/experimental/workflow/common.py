@@ -15,6 +15,22 @@ StepID = str
 WorkflowOutputType = ObjectRef
 
 
+@dataclass
+class WorkflowRef:
+    """This class represents a dynamic reference of a workflow output.
+
+    See 'step_executor._resolve_dynamic_workflow_refs' for how we handle
+    workflow refs."""
+    # The ID of the step that produces the output of the workflow.
+    step_id: StepID
+
+    def __reduce__(self):
+        return WorkflowRef, (self.step_id, )
+
+    def __hash__(self):
+        return hash(self.step_id)
+
+
 @unique
 class WorkflowStatus(str, Enum):
     # There is at least a remote task running in ray cluster
@@ -31,6 +47,14 @@ class WorkflowStatus(str, Enum):
     RESUMABLE = "RESUMABLE"
 
 
+@unique
+class StepType(str, Enum):
+    """All step types."""
+    FUNCTION = "FUNCTION"
+    ACTOR_METHOD = "ACTOR_METHOD"
+    READONLY_ACTOR_METHOD = "READONLY_ACTOR_METHOD"
+
+
 @dataclass
 class WorkflowInputs:
     # The object ref of the input arguments.
@@ -40,12 +64,16 @@ class WorkflowInputs:
     # TODO(suquark): maybe later we can replace it with WorkflowData.
     # The workflows in the arguments.
     workflows: "List[Workflow]"
+    # The dynamic refs of workflows in the arguments.
+    workflow_refs: List[WorkflowRef]
 
 
 @dataclass
 class WorkflowData:
     # The workflow step function body.
     func_body: Callable
+    # The type of the step
+    step_type: StepType
     # The arguments of a workflow.
     inputs: WorkflowInputs
     # The num of retry for application exception
@@ -59,12 +87,27 @@ class WorkflowData:
         f = self.func_body
         return {
             "name": f.__module__ + "." + f.__qualname__,
+            "step_type": self.step_type,
             "object_refs": [r.hex() for r in self.inputs.object_refs],
             "workflows": [w.id for w in self.inputs.workflows],
             "max_retries": self.max_retries,
+            "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
             "catch_exceptions": self.catch_exceptions,
             "ray_options": self.ray_options,
         }
+
+
+@dataclass
+class WorkflowExecutionResult:
+    """Dataclass for holding workflow execution result."""
+    # Part of result to persist in a storage and pass to the next step.
+    persisted_output: "ObjectRef"
+    # Part of result to return to the user but does not require persistence.
+    volatile_output: "ObjectRef"
+
+    def __reduce__(self):
+        return WorkflowExecutionResult, (self.persisted_output,
+                                         self.volatile_output)
 
 
 @dataclass
@@ -96,7 +139,7 @@ class Workflow:
             raise ValueError("Workflow should have one return value.")
         self._data = workflow_data
         self._executed: bool = False
-        self._output: Optional[WorkflowOutputType] = None
+        self._result: Optional[WorkflowExecutionResult] = None
         self._step_id: StepID = slugify(
             self._data.func_body.__qualname__) + "." + uuid.uuid4().hex
 
@@ -105,38 +148,14 @@ class Workflow:
         return self._executed
 
     @property
-    def output(self) -> WorkflowOutputType:
+    def result(self) -> WorkflowExecutionResult:
         if not self._executed:
             raise Exception("The workflow has not been executed.")
-        return self._output
+        return self._result
 
     @property
     def id(self) -> StepID:
         return self._step_id
-
-    def execute(self,
-                outer_most_step_id: Optional[StepID] = None,
-                last_step_of_workflow: bool = False) -> ObjectRef:
-        """Trigger workflow execution recursively.
-
-        Args:
-            outer_most_step_id: See
-                "step_executor.execute_workflow" for explanation.
-            last_step_of_workflow: The step that generates the output of the
-                workflow (including nested steps).
-        """
-        if self.executed:
-            return self._output
-
-        from ray.experimental.workflow import step_executor
-        output = step_executor.execute_workflow_step(self._step_id, self._data,
-                                                     outer_most_step_id,
-                                                     last_step_of_workflow)
-        if not isinstance(output, WorkflowOutputType):
-            raise TypeError("Unexpected return type of the workflow.")
-        self._output = output
-        self._executed = True
-        return output
 
     def iter_workflows_in_dag(self) -> Iterator["Workflow"]:
         """Collect all workflows in the DAG linked to the workflow

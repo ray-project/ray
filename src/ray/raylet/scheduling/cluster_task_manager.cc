@@ -1,3 +1,17 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 
 #include <google/protobuf/map.h>
@@ -468,14 +482,16 @@ void ClusterTaskManager::ReturnWorkerResources(std::shared_ptr<WorkerInterface> 
   ReleaseWorkerResources(worker);
 }
 
-void ReplyCancelled(Work &work) {
+void ReplyCancelled(Work &work, bool runtime_env_setup_failed) {
   auto reply = std::get<1>(work);
   auto callback = std::get<2>(work);
   reply->set_canceled(true);
+  reply->set_runtime_env_setup_failed(runtime_env_setup_failed);
   callback();
 }
 
-bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
+bool ClusterTaskManager::CancelTask(const TaskID &task_id,
+                                    bool runtime_env_setup_failed) {
   // TODO(sang): There are lots of repetitive code around task backlogs. We should
   // refactor them.
   for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
@@ -486,7 +502,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RemoveFromBacklogTracker(task);
         RAY_LOG(DEBUG) << "Canceling task " << task_id;
-        ReplyCancelled(*work_it);
+        ReplyCancelled(*work_it, runtime_env_setup_failed);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_schedule_.erase(shapes_it);
@@ -502,7 +518,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       const auto &task = std::get<0>(*work_it);
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RemoveFromBacklogTracker(task);
-        ReplyCancelled(*work_it);
+        ReplyCancelled(*work_it, runtime_env_setup_failed);
         if (!task.GetTaskSpecification().GetDependencies().empty()) {
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
@@ -523,7 +539,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       const auto &task = std::get<0>(*work_it);
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RemoveFromBacklogTracker(task);
-        ReplyCancelled(*work_it);
+        ReplyCancelled(*work_it, runtime_env_setup_failed);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           infeasible_tasks_.erase(shapes_it);
@@ -537,7 +553,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
   if (iter != waiting_tasks_index_.end()) {
     const auto &task = std::get<0>(*iter->second);
     RemoveFromBacklogTracker(task);
-    ReplyCancelled(*iter->second);
+    ReplyCancelled(*iter->second, runtime_env_setup_failed);
     if (!task.GetTaskSpecification().GetDependencies().empty()) {
       task_dependency_manager_.RemoveTaskDependencies(
           task.GetTaskSpecification().TaskId());

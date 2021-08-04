@@ -397,7 +397,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # Create an env for this worker.
         if not (worker_index == 0 and num_workers > 0
-                and policy_config["create_env_on_driver"] is False):
+                and not policy_config.get("create_env_on_driver")):
             # Run the `env_creator` function passing the EnvContext.
             self.env = env_creator(env_context)
         if self.env is not None:
@@ -498,6 +498,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.env,
             spaces=self.spaces,
             policy_config=policy_config)
+
         # List of IDs of those policies, which should be trained.
         # By default, these are all policies found in the policy_dict.
         self.policies_to_train: List[PolicyID] = policies_to_train or list(
@@ -547,6 +548,36 @@ class RolloutWorker(ParallelIteratorWorker):
             elif tf1 and policy_config.get("framework") == "tfe":
                 tf1.set_random_seed(seed)
 
+        # Check available number of GPUs.
+        num_gpus = policy_config.get("num_gpus", 0) if \
+            self.worker_index == 0 else \
+            policy_config.get("num_gpus_per_worker", 0)
+        # Error if we don't find enough GPUs.
+        if ray.is_initialized() and \
+                ray.worker._mode() != ray.worker.LOCAL_MODE and \
+                not policy_config.get("_fake_gpus"):
+
+            if policy_config.get("framework") in ["tf2", "tf", "tfe"]:
+                if len(get_tf_gpu_devices()) < num_gpus:
+                    raise RuntimeError(
+                        f"Not enough GPUs found for num_gpus={num_gpus}! "
+                        f"Found only these IDs: {get_tf_gpu_devices()}.")
+            elif policy_config.get("framework") == "torch":
+                if torch.cuda.device_count() < num_gpus:
+                    raise RuntimeError(
+                        f"Not enough GPUs found ({torch.cuda.device_count()}) "
+                        f"for num_gpus={num_gpus}!")
+        # Warn, if running in local-mode and actual GPUs (not faked) are
+        # requested.
+        elif ray.is_initialized() and \
+                ray.worker._mode() == ray.worker.LOCAL_MODE and \
+                num_gpus > 0 and not policy_config.get("_fake_gpus"):
+            logger.warning(
+                "You are running ray with `local_mode=True`, but have "
+                f"configured {num_gpus} GPUs to be used! In local mode, "
+                f"Policies are placed on the CPU and the `num_gpus` setting "
+                f"is ignored.")
+
         self._build_policy_map(
             policy_dict,
             policy_config,
@@ -560,24 +591,6 @@ class RolloutWorker(ParallelIteratorWorker):
         for pol in self.policy_map.values():
             if not pol._model_init_state_automatically_added:
                 pol._update_model_view_requirements_from_init_state()
-
-        if (ray.is_initialized()
-                and ray.worker._mode() != ray.worker.LOCAL_MODE):
-            # Check available number of GPUs
-            if not ray.get_gpu_ids():
-                logger.debug("Creating policy evaluation worker {}".format(
-                    worker_index) +
-                             " on CPU (please ignore any CUDA init errors)")
-            elif (policy_config["framework"] in ["tf2", "tf", "tfe"] and
-                  not get_tf_gpu_devices()) or \
-                    (policy_config["framework"] == "torch" and
-                     not torch.cuda.is_available()):
-                raise RuntimeError(
-                    "GPUs were assigned to this worker by Ray, but "
-                    "your DL framework ({}) reports GPU acceleration is "
-                    "disabled. This could be due to a bad CUDA- or {} "
-                    "installation.".format(policy_config["framework"],
-                                           policy_config["framework"]))
 
         self.multiagent: bool = set(
             self.policy_map.keys()) != {DEFAULT_POLICY_ID}
@@ -674,8 +687,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                sample_collector_class=policy_config.get(
-                    "sample_collector_class"),
+                sample_collector_class=policy_config.get("sample_collector"),
                 render=render,
             )
             # Start the Sampler thread.
@@ -695,8 +707,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                sample_collector_class=policy_config.get(
-                    "sample_collector_class"),
+                sample_collector_class=policy_config.get("sample_collector"),
                 render=render,
             )
 
@@ -994,11 +1005,11 @@ class RolloutWorker(ParallelIteratorWorker):
             return []
 
         envs = self.async_env.get_unwrapped()
-        # `get_unwrapped` not implemented (returned empty list). Call func
-        # directly on `self.async_env`.
+        # Empty list (not implemented): Call function directly on the
+        # BaseEnv.
         if not envs:
             return [func(self.async_env)]
-        # Vectorized env. Call func on all sub-envs.
+        # Call function on all underlying (vectorized) envs.
         else:
             return [func(e) for e in envs]
 
@@ -1011,8 +1022,11 @@ class RolloutWorker(ParallelIteratorWorker):
             return []
 
         envs = self.async_env.get_unwrapped()
+        # Empty list (not implemented): Call function directly on the
+        # BaseEnv.
         if not envs:
             return [func(self.async_env, self.env_context)]
+        # Call function on all underlying (vectorized) envs.
         else:
             ret = []
             for i, e in enumerate(envs):
@@ -1422,7 +1436,7 @@ def _determine_spaces_for_multi_agent_dict(
                 obs_space = spaces[pid][0]
             elif env_obs_space is not None:
                 obs_space = env_obs_space
-            elif policy_config and "observation_space" in policy_config:
+            elif policy_config and policy_config.get("observation_space"):
                 obs_space = policy_config["observation_space"]
             else:
                 raise ValueError(
@@ -1438,7 +1452,7 @@ def _determine_spaces_for_multi_agent_dict(
                 act_space = spaces[pid][1]
             elif env_act_space is not None:
                 act_space = env_act_space
-            elif policy_config and "action_space" in policy_config:
+            elif policy_config and policy_config.get("action_space"):
                 act_space = policy_config["action_space"]
             else:
                 raise ValueError(

@@ -57,15 +57,15 @@ namespace ray {
 
 namespace raylet {
 
-WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id,
-                       const std::string node_address, int num_workers_soft_limit,
-                       int num_initial_python_workers_for_first_job,
-                       int maximum_startup_concurrency, int min_worker_port,
-                       int max_worker_port, const std::vector<int> &worker_ports,
-                       std::shared_ptr<gcs::GcsClient> gcs_client,
-                       const WorkerCommandMap &worker_commands,
-                       std::function<void()> starting_worker_timeout_callback,
-                       int ray_debugger_external, const std::function<double()> get_time)
+WorkerPool::WorkerPool(
+    instrumented_io_context &io_service, const NodeID node_id,
+    const std::string node_address, int num_workers_soft_limit,
+    int num_initial_python_workers_for_first_job, int maximum_startup_concurrency,
+    int min_worker_port, int max_worker_port, const std::vector<int> &worker_ports,
+    std::shared_ptr<gcs::GcsClient> gcs_client, const WorkerCommandMap &worker_commands,
+    std::function<void()> starting_worker_timeout_callback,
+    std::function<void(const TaskID &)> runtime_env_setup_failed_callback,
+    int ray_debugger_external, const std::function<double()> get_time)
     : io_service_(&io_service),
       node_id_(node_id),
       node_address_(node_address),
@@ -73,6 +73,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
       starting_worker_timeout_callback_(starting_worker_timeout_callback),
+      runtime_env_setup_failed_callback_(runtime_env_setup_failed_callback),
       ray_debugger_external(ray_debugger_external),
       first_job_registered_python_worker_count_(0),
       first_job_driver_wait_num_python_workers_(std::min(
@@ -934,21 +935,20 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.HasRuntimeEnv()) {
         state.tasks_with_pending_runtime_envs.emplace(task_spec.TaskId());
         agent_manager_->CreateRuntimeEnv(
-            task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, &state, task_spec, dynamic_options,
+            task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
+            [this, start_worker_process_fn, &state, task_spec, dynamic_options,
              allocated_instances_serialized_json](
-                bool done, const std::string &serialized_runtime_env_context) {
+                bool success, const std::string &serialized_runtime_env_context) {
               state.tasks_with_pending_runtime_envs.erase(task_spec.TaskId());
-              if (!done) {
-                // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
-                // failed.
-                RAY_LOG(ERROR) << "Create runtime env(for dedicated actor) rpc failed. "
-                                  "Wait for next time to retry or reschedule.";
-                return;
+              if (success) {
+                start_worker_process_fn(
+                    task_spec, state, dynamic_options, true, GetRuntimeEnvHash(task_spec),
+                    task_spec.SerializedRuntimeEnv(), serialized_runtime_env_context);
+              } else {
+                RAY_LOG(ERROR) << "Creating runtime environment failed. The "
+                                  "corresponding task will be failed.";
+                runtime_env_setup_failed_callback_(task_spec.TaskId());
               }
-              start_worker_process_fn(
-                  task_spec, state, dynamic_options, true, GetRuntimeEnvHash(task_spec),
-                  task_spec.SerializedRuntimeEnv(), serialized_runtime_env_context);
             });
       } else {
         proc =
@@ -994,17 +994,18 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.HasRuntimeEnv()) {
         // create runtime env.
         agent_manager_->CreateRuntimeEnv(
-            task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, &state, task_spec, runtime_env_hash](
+            task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
+            [this, start_worker_process_fn, &state, task_spec, runtime_env_hash](
                 bool successful, const std::string &serialized_runtime_env_context) {
-              if (!successful) {
-                // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
-                // failed.
-                return;
+              if (successful) {
+                start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash,
+                                        task_spec.SerializedRuntimeEnv(),
+                                        serialized_runtime_env_context);
+              } else {
+                RAY_LOG(ERROR) << "Creating runtime environment failed. The "
+                                  "corresponding task will be failed.";
+                runtime_env_setup_failed_callback_(task_spec.TaskId());
               }
-              start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash,
-                                      task_spec.SerializedRuntimeEnv(),
-                                      serialized_runtime_env_context);
             });
       } else {
         proc = start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash, "",
@@ -1179,22 +1180,23 @@ void WorkerPool::WarnAboutSize() {
     for (const auto &starting_process : state.starting_worker_processes) {
       num_workers_started_or_registered += starting_process.second.num_starting_workers;
     }
+    // Don't count IO workers towards the warning message threshold.
+    num_workers_started_or_registered -= RayConfig::instance().max_io_workers() * 2;
     int64_t multiple = num_workers_started_or_registered / state.multiple_for_warning;
     std::stringstream warning_message;
-    if (multiple >= 3 && multiple > state.last_warning_multiple) {
+    if (multiple >= 4 && multiple > state.last_warning_multiple) {
       // Push an error message to the user if the worker pool tells us that it is
       // getting too big.
       state.last_warning_multiple = multiple;
-      warning_message << "WARNING: " << num_workers_started_or_registered << " "
-                      << Language_Name(entry.first)
-                      << " workers have been started on a node of the id: " << node_id_
-                      << " "
-                      << "and address: " << node_address_ << ". "
-                      << "This could be a result of using "
-                      << "a large number of actors, or it could be a consequence of "
-                      << "using nested tasks "
-                      << "(see https://github.com/ray-project/ray/issues/3644) for "
-                      << "some a discussion of workarounds.";
+      warning_message
+          << "WARNING: " << num_workers_started_or_registered << " "
+          << Language_Name(entry.first)
+          << " worker processes have been started on node: " << node_id_
+          << " with address: " << node_address_ << ". "
+          << "This could be a result of using "
+          << "a large number of actors, or due to tasks blocked in ray.get() calls "
+          << "(see https://github.com/ray-project/ray/issues/3644 for "
+          << "some discussion of workarounds).";
       std::string warning_message_str = warning_message.str();
       RAY_LOG(WARNING) << warning_message_str;
       auto error_data_ptr = gcs::CreateErrorTableData("worker_pool_large",

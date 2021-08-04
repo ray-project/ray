@@ -1554,6 +1554,13 @@ py_test(
     srcs = ["tests/test_filters.py"]
 )
 
+py_test(
+    name = "tests/test_gpus",
+    tags = ["tests_dir", "tests_dir_G"],
+    size = "large",
+    srcs = ["tests/test_gpus.py"]
+)
+
 #py_test(
 #    name = "tests/test_ignore_worker_failure",
 #    tags = ["tests_dir", "tests_dir_I"],
@@ -2216,6 +2223,24 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_vector_env_tf",
+    main = "examples/custom_vector_env.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_vector_env.py"],
+    args = ["--as-test", "--stop-reward=40.0"]
+)
+
+py_test(
+    name = "examples/custom_vector_env_torch",
+    main = "examples/custom_vector_env.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_vector_env.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=40.0"]
+)
+
+py_test(
     name = "examples/deterministic_training_tf",
     main = "examples/deterministic_training.py",
     tags = ["examples", "examples_D"],
@@ -2421,6 +2446,15 @@ py_test(
     size = "medium",
     srcs = ["examples/parametric_actions_cartpole.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=60.0", "--run=DQN"]
+)
+
+py_test(
+    name = "examples/parametric_actions_cartpole_embeddings_learnt_by_model",
+    main = "examples/parametric_actions_cartpole_embeddings_learnt_by_model.py",
+    tags = ["examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/parametric_actions_cartpole_embeddings_learnt_by_model.py"],
+    args = ["--as-test", "--stop-reward=80.0"]
 )
 
 py_test(

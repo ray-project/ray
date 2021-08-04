@@ -166,13 +166,23 @@ def _debug_check_line_by_line(result, expected_lines):
 
 
 @contextmanager
-def _setup_popen_mock(commands_mock):
+def _setup_popen_mock(commands_mock, commands_verifier=None):
+    """
+    Mock subprocess.Popen's behavior and if applicable, intercept the commands
+    received by Popen and check if they are as expected using
+    commands_verifier provided by caller.
+    TODO(xwjiang): Ideally we should write a lexical analyzer that can parse
+    in a more intelligent way.
+    """
     Popen = MockPopen()
     Popen.set_default(behaviour=commands_mock)
 
     with Replacer() as replacer:
         replacer.replace("subprocess.Popen", Popen)
         yield
+
+    if commands_verifier:
+        assert commands_verifier(Popen.all_calls)
 
 
 def _load_output_pattern(name):
@@ -420,7 +430,14 @@ def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
         print("This is a test!")
         return PopenBehaviour(stdout=b"This is a test!")
 
-    with _setup_popen_mock(commands_mock):
+    def commands_verifier(calls):
+        for call in calls:
+            if len(call[1]) > 0:
+                if any(" ray stop; " in token for token in call[1][0]):
+                    return True
+        return False
+
+    with _setup_popen_mock(commands_mock, commands_verifier):
         runner = CliRunner()
         result = runner.invoke(scripts.up, [
             DEFAULT_TEST_CONFIG_PATH, "--no-config-cache", "-y",
@@ -430,7 +447,7 @@ def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
 
         result = runner.invoke(scripts.exec, [
             DEFAULT_TEST_CONFIG_PATH, "--no-config-cache",
-            "--log-style=pretty", "\"echo This is a test!\""
+            "--log-style=pretty", "\"echo This is a test!\"", "--stop"
         ])
 
         _check_output_via_pattern("test_ray_exec.txt", result)
