@@ -3,7 +3,6 @@ package worker
 import (
     "flag"
 
-    _ "github.com/ray-project/ray-go-worker/pkg/actor"
     "github.com/ray-project/ray-go-worker/pkg/ray"
     "github.com/ray-project/ray-go-worker/pkg/ray/generated"
 )
