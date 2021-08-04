@@ -208,7 +208,7 @@ class TrialExecutor:
                     f"Resource is not ready after extended amount of time "
                     f"without any trials running - please consider if the "
                     f"allocated resource is not enough.")
-                self._no_running_trials_since = time.time()
+                self._no_running_trials_since = time.monotonic()
         else:
             self._no_running_trials_since = -1
 
