@@ -452,6 +452,7 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
       RAY_UNUSED(cli->KillActor(request, nullptr));
     }
   };
+
   if (iter != node_to_actors_when_leasing_.end()) {
     auto actor_iter = iter->second.find(actor->GetActorID());
     if (actor_iter == iter->second.end()) {
