@@ -11,6 +11,17 @@ Acceptance criteria: Should run through and print "PASSED"
 import ray
 import random
 import os
+import json
+import time
+
+
+def update_progress(result):
+    result["last_update"] = time.time()
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/release_test_output.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
+
 
 if __name__ == "__main__":
     ray.init(address="auto", runtime_env={"pip": ["requests==2.18.0"]})
@@ -34,6 +45,9 @@ if __name__ == "__main__":
 
     print("Testing Tasks...")
 
+    start_time = time.time()
+    previous_time = start_time
+
     @ray.remote
     def check_version_task(expected_version: str):
         import requests
@@ -51,7 +65,15 @@ if __name__ == "__main__":
             ])
         ray.get(results)
         print(f"Finished tasks iteration {i+1}/{NUM_TASK_ITERATIONS}")
-
+        new_time = time.time()
+        update_progress({
+            "phase": "Tasks",
+            "iteration": i + 1,
+            "iteration_time": new_time - previous_time,
+            "absolute_time": new_time,
+            "elapsed_time": new_time - start_time,
+        })
+        previous_time = new_time
     print("Testing Actors...")
 
     @ray.remote
@@ -79,5 +101,13 @@ if __name__ == "__main__":
             ])
         ray.get(results)
         print(f"Finished actors iteration {i+1}/{NUM_ACTOR_ITERATIONS}")
-
+        new_time = time.time()
+        update_progress({
+            "phase": "Actors",
+            "iteration": i + 1,
+            "iteration_time": new_time - previous_time,
+            "absolute_time": new_time,
+            "elapsed_time": new_time - start_time,
+        })
+        previous_time = new_time
     print("PASSED")
