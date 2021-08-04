@@ -15,6 +15,7 @@ import (
     "strings"
     "unsafe"
 
+    _ "github.com/ray-project/ray-go-worker/pkg/actor"
     "github.com/golang/protobuf/proto"
     ray_rpc "github.com/ray-project/ray-go-worker/pkg/generated"
     "github.com/ray-project/ray-go-worker/pkg/util"
