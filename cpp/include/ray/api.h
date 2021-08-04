@@ -96,16 +96,6 @@ class Ray {
   inline static boost::optional<ActorHandle<T>> GetGlobalActor(
       const std::string &actor_name);
 
-  /// Get a handle to a named actor of current job.
-  /// Gets a handle to a named actor with the given name. The actor must have been
-  /// created with name specified.
-  ///
-  /// \param[in] name The name of the named actor.
-  /// \return An ActorHandle to the actor if the actor of specified name exists or an
-  /// empty optional object.
-  template <typename T>
-  inline static boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name);
-
   /// Intentionally exit the current actor.
   /// It is used to disconnect an actor and exit the worker.
   /// \Throws RayException if the current process is a driver or the current worker is not
@@ -233,11 +223,6 @@ boost::optional<ActorHandle<T>> Ray::GetActorInternal(bool global,
   }
 
   return ActorHandle<T>(actor_id);
-}
-
-template <typename T>
-boost::optional<ActorHandle<T>> Ray::GetActor(const std::string &actor_name) {
-  return GetActorInternal<T>(false, actor_name);
 }
 
 template <typename T>
