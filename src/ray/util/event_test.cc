@@ -214,7 +214,7 @@ TEST(EVENT_TEST, LOG_ONE_THREAD) {
   ray::EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
       rpc::Event_SourceType::Event_SourceType_RAYLET, log_dir));
 
-  int print_times = 1;
+  int print_times = 1000;
   for (int i = 1; i <= print_times; ++i) {
     RAY_EVENT(INFO, "label " + std::to_string(i)) << "send message " + std::to_string(i);
   }
@@ -222,7 +222,7 @@ TEST(EVENT_TEST, LOG_ONE_THREAD) {
   std::vector<std::string> vc;
   ReadEventFromFile(vc, log_dir + "/event_RAYLET.log");
 
-  EXPECT_EQ((int)vc.size(), 1);
+  EXPECT_EQ((int)vc.size(), 1000);
 
   for (int i = 0, len = vc.size(); i < print_times; ++i) {
     json custom_fields;
