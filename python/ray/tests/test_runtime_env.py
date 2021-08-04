@@ -9,8 +9,8 @@ from pathlib import Path
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
-from ray.test_utils import (run_string_as_driver,
-                            run_string_as_driver_nonblocking)
+from ray.test_utils import (
+    run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 import ray.experimental.internal_kv as kv
@@ -830,6 +830,74 @@ def test_invalid_conda_env(shutdown_only):
         ray.get(f.options(runtime_env=bad_env).remote())
 
     assert (time.time() - start) < (first_time / 2.0)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "_system_config": {
+            "event_stats_print_interval_ms": 100,
+            "debug_dump_period_milliseconds": 100,
+            "event_stats": True
+        }
+    }],
+    indirect=True)
+def test_no_spurious_worker_startup(ray_start_cluster):
+    """Test that no extra workers start up during a long env installation."""
+
+    cluster = ray_start_cluster
+
+    # This hook sleeps for 15 seconds to simulate creating a runtime env.
+    cluster.add_node(
+        num_cpus=1,
+        runtime_env_setup_hook="ray.test_utils.sleep_setup_runtime_env")
+
+    # Set a nonempty runtime env so that the runtime env setup hook is called.
+    runtime_env = {"env_vars": {"a": "b"}}
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    class Counter(object):
+        def __init__(self):
+            self.value = 0
+
+        def get(self):
+            return self.value
+
+    # Instantiate an actor that requires the long runtime env installation.
+    a = Counter.options(runtime_env=runtime_env).remote()
+    assert ray.get(a.get.remote()) == 0
+
+    # Check "debug_state.txt" to ensure no extra workers were started.
+    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    debug_state_path = session_path / "debug_state.txt"
+
+    def get_num_workers():
+        with open(debug_state_path) as f:
+            for line in f.readlines():
+                num_workers_prefix = "- num PYTHON workers: "
+                if num_workers_prefix in line:
+                    return int(line[len(num_workers_prefix):])
+        return None
+
+    # Wait for "debug_state.txt" to be updated to reflect the started worker.
+    start = time.time()
+    wait_for_condition(lambda: get_num_workers() > 0)
+    time_waited = time.time() - start
+    print(f"Waited {time_waited} for debug_state.txt to be updated")
+
+    # If any workers were unnecessarily started during the initial env
+    # installation, they will bypass the runtime env setup hook because the
+    # created env will have been cached and should be added to num_workers
+    # within a few seconds.  Adjusting the default update period for
+    # debut_state.txt via this cluster_utils pytext fixture seems to be broken,
+    # so just check it for the next 10 seconds (the default period).
+    for i in range(100):
+        # Check that no more workers were started.
+        assert get_num_workers() <= 1
+        time.sleep(0.1)
 
 
 if __name__ == "__main__":
