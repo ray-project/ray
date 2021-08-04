@@ -187,7 +187,7 @@ class RayServeReplica:
         self.num_processing_items = metrics.Gauge(
             "serve_replica_processing_queries",
             description="The current number of queries being processed.",
-            tag_keys=("backend", "replica"))
+            tag_keys=("deployment", "replica"))
         self.num_processing_items.set_default_tags({
             "deployment": self.backend_tag,
             "replica": self.replica_tag
