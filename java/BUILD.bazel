@@ -136,14 +136,20 @@ define_java_module(
 
 define_java_module(
     name = "serve",
+    additional_srcs = [
+        ":serve_java_proto",
+    ],
     define_test_lib = True,
+    exclude_srcs = [
+        "serve/src/main/java/io/ray/serve/generated/*.java",
+    ],
     test_deps = [
         ":io_ray_ray_api",
         ":io_ray_ray_runtime",
         ":io_ray_ray_serve",
-        "@maven//:org_apache_commons_commons_lang3",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
+        "@maven//:org_apache_commons_commons_lang3",
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_testng_testng",
     ],
@@ -151,16 +157,10 @@ define_java_module(
     deps = [
         ":io_ray_ray_api",
         ":io_ray_ray_runtime",
-        "@maven//:org_apache_commons_commons_lang3",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
+        "@maven//:org_apache_commons_commons_lang3",
         "@maven//:org_slf4j_slf4j_api",
-    ],
-    exclude_srcs = [
-        "serve/src/main/java/io/ray/serve/generated/*.java",
-    ],
-    additional_srcs = [
-        ":serve_java_proto",
     ],
 )
 
