@@ -75,8 +75,8 @@ def run(
             float, int, Mapping]], PlacementGroupFactory] = None,
         num_samples: int = 1,
         local_dir: Optional[str] = None,
-        search_alg: Optional[Union[Searcher, SearchAlgorithm, str]] = None,
-        scheduler: Optional[Union[TrialScheduler, str]] = None,
+        search_alg: Optional[Union[Searcher, SearchAlgorithm]] = None,
+        scheduler: Optional[TrialScheduler] = None,
         keep_checkpoints_num: Optional[int] = None,
         checkpoint_score_attr: Optional[str] = None,
         checkpoint_freq: int = 0,
@@ -194,13 +194,12 @@ def run(
             samples are generated until a stopping condition is met.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
-        search_alg (Searcher|SearchAlgorithm|str): Search algorithm for
-            optimization. You can also use the name of the algorithm.
-        scheduler (TrialScheduler|str): Scheduler for executing
+        search_alg (Searcher|SearchAlgorithm): Search algorithm for
+            optimization.
+        scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
-            ray.tune.schedulers for more options. You can also use the
-            name of the scheduler.
+            ray.tune.schedulers for more options.
         keep_checkpoints_num (int): Number of checkpoints to keep. A value of
             `None` keeps all checkpoints. Defaults to `None`. If set, need
             to provide `checkpoint_score_attr`.
@@ -425,16 +424,6 @@ def run(
 
     if fail_fast and max_failures != 0:
         raise ValueError("max_failures must be 0 if fail_fast=True.")
-
-    if isinstance(search_alg, str):
-        # importing at top level causes a recursive dependency
-        from ray.tune.suggest import create_searcher
-        search_alg = create_searcher(search_alg)
-
-    if isinstance(scheduler, str):
-        # importing at top level causes a recursive dependency
-        from ray.tune.schedulers import create_scheduler
-        scheduler = create_scheduler(scheduler)
 
     if issubclass(type(search_alg), Searcher):
         search_alg = SearchGenerator(search_alg)
