@@ -17,15 +17,15 @@ typedef struct {
 } GoSlice;
 #endif
 
-struct DataBuffer {
+typedef struct DataBuffer {
   int size;
   uint8_t *p;
-};
+}DataBuffer;
 
-struct ReturnValue {
+typedef struct ReturnValue {
   struct DataBuffer *data;
   struct DataBuffer *meta;
-};
+}ReturnValue;
 
 void go_worker_Initialize(int workerMode, char *store_socket, char *raylet_socket,
                           char *log_dir, char *node_ip_address, int node_manager_port,
