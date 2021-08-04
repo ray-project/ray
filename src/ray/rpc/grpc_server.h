@@ -23,7 +23,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/rpc/server_call.h"
-#include "ray/stats/metric.h"
 
 namespace ray {
 namespace rpc {

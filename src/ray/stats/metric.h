@@ -232,7 +232,8 @@ struct StatsTypeMap<GAUGE> {
   using type = Gauge;
 };
 
-inline std::vector<opencensus::tags::TagKey> convertTags(const std::vector<std::string> &names) {
+inline std::vector<opencensus::tags::TagKey> convertTags(
+    const std::vector<std::string> &names) {
   std::vector<opencensus::tags::TagKey> ret;
   for (auto &n : names) {
     ret.push_back(TagKeyType::Register(n));
@@ -253,47 +254,71 @@ template <std::size_t I = 0, typename... Tp>
   TupleRecord<I + 1, Tp...>(t, val, tags);
 }
 
+struct IStatsRecord {
+  virtual void Record(double val, const std::unordered_map<std::string, std::string> &tags) = 0;
+};
+
 template <StatsType... Ts>
-struct Stats {
-  Stats(const std::string &name, const std::string &description, const std::string &unit,
-        const std::vector<std::string> &tag_keys)
+class StatsInternal : public IStatsRecord {
+ public:
+  StatsInternal(const std::string &name,
+                const std::string &description,
+                const std::string &unit,
+                const std::vector<std::string> &tag_keys)
       : stats_(std::make_tuple(std::move(typename StatsTypeMap<Ts>::type(
-            name, description, unit, convertTags(tag_keys)))...)),
+            name, description, unit, convertTags(tag_keys)))...)) {}
+
+  StatsInternal(const std::string &name, const std::string &description, const std::string &unit)
+      : StatsInternal(name, description, unit, std::vector<std::string>()) {}
+
+  StatsInternal(const std::string &name, const std::string &description, const std::string &unit,
+        const std::string &tag_key)
+      : StatsInternal(name, description, unit, std::vector<std::string>({tag_key})) {}
+
+  void Record(double val, const std::unordered_map<std::string, std::string> &tags) override {
+    TupleRecord(stats_, val, tags);
+  }
+ private:
+  std::tuple<typename StatsTypeMap<Ts>::type...> stats_;
+};
+
+
+class Stats {
+ public:
+  Stats(std::unique_ptr<IStatsRecord> recorder, const std::vector<std::string> tag_keys)
+      : recorder_(std::move(recorder)),
         tag_keys_(tag_keys) {}
 
-  Stats(const std::string &name, const std::string &description, const std::string &unit)
-      : Stats(name, description, unit, std::vector<std::string>()) {}
-
-  Stats(const std::string &name, const std::string &description, const std::string &unit,
-        const std::string &tag_key)
-      : Stats(name, description, unit, std::vector<std::string>({tag_key})) {}
-
-  std::tuple<typename StatsTypeMap<Ts>::type...> stats_;
-  std::vector<std::string> tag_keys_;
-
-  template <typename T>
-  void Record(T val) {
-    Record<T>(val, std::unordered_map<std::string, std::string>());
+  void Record(double val) {
+    Record(val, std::unordered_map<std::string, std::string>());
   }
 
-  template <typename T>
-  void Record(T val, const std::string &tag_val) {
+  void Record(double val, const std::string &tag_val) {
     RAY_CHECK(tag_keys_.size() == 1);
-    Record(val, {tag_keys_[0], tag_val});
+    std::unordered_map<std::string, std::string> tags{{tag_keys_[0], tag_val}};
+    Record(val, tags);
   }
 
-  template <typename T>
-  void Record(T val, const std::unordered_map<std::string, std::string> &tags) {
-    TupleRecord(stats_, static_cast<double>(val), tags);
+  void Record(double val, const std::unordered_map<std::string, std::string> &tags) {
+    recorder_->Record(val, tags);
   }
+
+ private:
+  std::unique_ptr<IStatsRecord> recorder_;
+  std::vector<std::string> tag_keys_;
 };
+
 }  // namespace details
 
 }  // namespace stats
 
 }  // namespace ray
 
-#define DEFINE_stats(name, description, tags, types...) \
-  static ray::stats::details::Stats<types> STATS_##name(#name, "", tags, description)
+#define DEFINE_stats(name, description, tag, types...)                  \
+  ray::stats::details::Stats STATS_##name(                              \
+      std::make_unique<ray::stats::details::StatsInternal<types>>(      \
+          #name, description, "",                                       \
+          std::vector<std::string>()),                                  \
+      std::vector<std::string>())
 
-#define DECLARE_stats(name) extern ray::stats::details::Stats<types> STATS_ name
+#define DECLARE_stats(name) extern ray::stats::details::Stats STATS_##name

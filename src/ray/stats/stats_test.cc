@@ -204,7 +204,9 @@ TEST_F(StatsTest, TestShutdownTakesLongTime) {
   ray::stats::Shutdown();
 }
 
-DEFINE_stats(test, "TestStats", {"method"}, ray::stats::COUNT, ray::stats::SUM);
+DEFINE_stats(test, "TestStats", "method", ray::stats::COUNT, ray::stats::SUM);
+DEFINE_stats(test_declare, "TestStats2", "tag1", ray::stats::COUNT, ray::stats::SUM);
+DECLARE_stats(test_declare);
 
 TEST_F(StatsTest, STAT_DEF) {
   ray::stats::Shutdown();
@@ -212,6 +214,7 @@ TEST_F(StatsTest, STAT_DEF) {
       new stats::StdoutExporterClient());
   ray::stats::Init({}, MetricsAgentPort, exporter);
   STATS_test.Record(1.0);
+  STATS_test_declare.Record(1.0, "Test");
 }
 
 }  // namespace ray

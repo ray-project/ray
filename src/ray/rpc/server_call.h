@@ -21,7 +21,9 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
-
+#include "ray/stats/metric.h"
+DECLARE_stats(grpc_server_cq_pending);
+DECLARE_stats(grpc_server_processing_request_num);
 namespace ray {
 namespace rpc {
 
@@ -133,15 +135,26 @@ class ServerCallImpl : public ServerCall {
         handle_request_function_(handle_request_function),
         response_writer_(&context_),
         io_service_(io_service),
-        call_name_(std::move(call_name)) {}
+        call_name_(std::move(call_name)) {
+    if (call_name_.empty()) {
+      call_name_ = "unknown";
+    }
+    STATS_grpc_server_cq_pending.Record(1);
+  }
 
   ServerCallState GetState() const override { return state_; }
 
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
+    STATS_grpc_server_cq_pending.Record(-1);
     if (!io_service_.stopped()) {
-      io_service_.post([this] { HandleRequestImpl(); }, call_name_);
+      STATS_grpc_server_processing_request_num.Record(1);
+
+      io_service_.post([this] {
+        HandleRequestImpl();
+        STATS_grpc_server_processing_request_num.Record(-1);
+      }, call_name_);
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
