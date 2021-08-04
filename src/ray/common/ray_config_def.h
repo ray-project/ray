@@ -135,6 +135,10 @@ RAY_CONFIG(int64_t, grpc_server_retry_timeout_milliseconds, 1000)
 // of creation retries will be MAX(actor_creation_min_retries, max_restarts).
 RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 
+/// Warn if more than this many tasks are queued for submission to an actor.
+/// It likely indicates a bug in the user code.
+RAY_CONFIG(int64_t, actor_excess_queueing_warn_threshold, 5000)
+
 /// When trying to resolve an object, the initial period that the raylet will
 /// wait before contacting the object's owner to check if the object is still
 /// available. This is a lower bound on the time to report the loss of an

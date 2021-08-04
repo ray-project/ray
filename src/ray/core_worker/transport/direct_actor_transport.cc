@@ -331,9 +331,17 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
   const auto actor_id = task_spec.ActorId();
   const auto actor_counter = task_spec.ActorCounter();
   const auto task_skipped = task_spec.GetMessage().skip_execution();
-  RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id
+  const auto num_queued =
+      request->sequence_number() - queue.rpc_client->ClientProcessedUpToSeqno();
+  RAY_LOG(ERROR) << "Pushing task " << task_id << " to actor " << actor_id
                  << " actor counter " << actor_counter << " seq no "
-                 << request->sequence_number();
+                 << request->sequence_number() << " num queued " << num_queued;
+  if (num_queued >= next_queueing_warn_threshold_) {
+    // TODO(ekl) add more debug info about the actor name, etc.
+    warn_excess_queueing_(actor_id, num_queued);
+    next_queueing_warn_threshold_ *= 2;
+  }
+
   rpc::Address addr(queue.rpc_client->Addr());
   queue.rpc_client->PushActorTask(
       std::move(request), skip_queue,
