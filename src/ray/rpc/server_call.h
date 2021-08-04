@@ -139,7 +139,7 @@ class ServerCallImpl : public ServerCall {
     if (call_name_.empty()) {
       call_name_ = "unknown";
     }
-    STATS_grpc_server_cq_pending.Record(1);
+    STATS_grpc_server_cq_pending.Record(1, call_name_);
   }
 
   ServerCallState GetState() const override { return state_; }
@@ -147,14 +147,14 @@ class ServerCallImpl : public ServerCall {
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
-    STATS_grpc_server_cq_pending.Record(-1);
+    STATS_grpc_server_cq_pending.Record(-1, call_name_);
     if (!io_service_.stopped()) {
-      STATS_grpc_server_processing_request_num.Record(1);
+      STATS_grpc_server_processing_request_num.Record(1, call_name_);
 
       io_service_.post(
           [this] {
             HandleRequestImpl();
-            STATS_grpc_server_processing_request_num.Record(-1);
+            STATS_grpc_server_processing_request_num.Record(-1, call_name_);
           },
           call_name_);
     } else {
