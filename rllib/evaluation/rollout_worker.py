@@ -29,7 +29,6 @@ from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
-from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -1483,10 +1482,3 @@ def _validate_env(env: Any) -> EnvType:
             "ExternalEnv, VectorEnv, or BaseEnv. The provided env creator "
             "function returned {} ({}).".format(env, type(env)))
     return env
-
-
-def _has_tensorflow_graph(policy_dict: MultiAgentPolicyConfigDict) -> bool:
-    for policy, _, _, _ in policy_dict.values():
-        if issubclass(policy, TFPolicy):
-            return True
-    return False
