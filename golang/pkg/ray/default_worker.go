@@ -1,9 +1,8 @@
-package worker
+package ray
 
 import (
     "flag"
 
-    "github.com/ray-project/ray-go-worker/pkg/ray"
     "github.com/ray-project/ray-go-worker/pkg/ray/generated"
 )
 
@@ -17,14 +16,14 @@ func Run() {
     redisPassword := flag.String("redis-password", "", "")
 
     flag.Parse()
-    ray.SetAddress(*redisAddress)
-    ray.SetPassword(*redisPassword)
-    ray.SetNodeManagerAddress(*nodeManagerAddress)
-    ray.SetNodeManagerPort(int32(*nodeManagerPort))
-    ray.SetObjectStoreSocket(*objectStoreSocket)
-    ray.SetRayletSocket(*rayletSocket)
-    ray.SetSessionDir(*sessionDir)
+    SetAddress(*redisAddress)
+    SetPassword(*redisPassword)
+    SetNodeManagerAddress(*nodeManagerAddress)
+    SetNodeManagerPort(int32(*nodeManagerPort))
+    SetObjectStoreSocket(*objectStoreSocket)
+    SetRayletSocket(*rayletSocket)
+    SetSessionDir(*sessionDir)
 
-    ray.InnerInit(ray.GetAddress(), ray.GetPassword(), generated.WorkerType_WORKER)
-    ray.Run()
+    innerInit(GetAddress(), GetPassword(), generated.WorkerType_WORKER)
+    innerRun()
 }

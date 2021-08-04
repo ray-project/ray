@@ -25,10 +25,10 @@ const sessionDir = "session_dir"
 var typesMap = make(map[string]reflect.Type)
 
 func Init(address, _redis_password string) {
-    InnerInit(address, _redis_password, ray_rpc.WorkerType_DRIVER)
+    innerInit(address, _redis_password, ray_rpc.WorkerType_DRIVER)
 }
 
-func InnerInit(address, _redis_password string, workerType ray_rpc.WorkerType) {
+func innerInit(address, _redis_password string, workerType ray_rpc.WorkerType) {
     util.Logger.Debug("Initializing runtime with config")
     gsa, err := NewGlobalStateAccessor(address, _redis_password)
     if err != nil {
@@ -82,7 +82,7 @@ func InnerInit(address, _redis_password string, workerType ray_rpc.WorkerType) {
         C.CString(_redis_password), C.CString(serialized_job_config))
 }
 
-func Run() {
+func innerRun() {
     util.Logger.Infof("ray worker running...")
     C.go_worker_Run()
     util.Logger.Infof("ray worker exiting...")
@@ -160,8 +160,8 @@ type ActorTaskCaller struct {
 // 发出调用
 func (or *ActorTaskCaller) Remote() *ObjectRef {
     var res **C.char
-
-    dataLen := C.go_worker_SubmitActorTask(C.CBytes(or.actorHandle.actorId), C.CString(or.invokeMethod.Name), &res)
+    returnNum := or.invokeMethod.Func.Type().NumOut()
+    dataLen := C.go_worker_SubmitActorTask(C.CBytes(or.actorHandle.actorId), C.CString(or.invokeMethod.Name), &res, returnNum)
     if dataLen > 0 {
         defer C.free(unsafe.Pointer(res))
         return &ObjectRef{
