@@ -275,41 +275,43 @@ def download_pickle5(pickle5_dir):
 
 
 def patch_isdir():
-    '''
+    """
     Python on Windows is having hard times at telling if a symlink is
     a directory - it can "guess" wrong at times, which bites when
     finding packages. Replace with a fixed version which unwraps links first.
-    '''
+    """
     orig_isdir = os.path.isdir
+
     def fixed_isdir(path, debug=False):
-        orig_path = path
         while os.path.islink(path):
             try:
                 link = os.readlink(path)
-            except OSError as err:
+            except OSError:
                 break
             path = os.path.abspath(os.path.join(os.path.dirname(path), link))
         return orig_isdir(path)
+
     os.path.isdir = fixed_isdir
 
 
 def replace_symlinks_with_junctions():
     _LINKS = {
-        r'ray\new_dashboard': '../../dashboard',
-        r'ray\rllib': '../../rllib',
-        r'ray\streaming': '../../streaming/python/',
+        r"ray\new_dashboard": "../../dashboard",
+        r"ray\rllib": "../../rllib",
+        r"ray\streaming": "../../streaming/python/",
     }
     root_dir = os.path.dirname(__file__)
     for link, default in _LINKS.items():
         path = os.path.join(root_dir, link)
         try:
-            out = subprocess.check_output('DIR /A:LD /B', shell=True, cwd=os.path.dirname(path))
+            out = subprocess.check_output(
+                "DIR /A:LD /B", shell=True, cwd=os.path.dirname(path))
         except subprocess.CalledProcessError:
-            out = b''
-        if os.path.basename(path) in out.decode('utf8').splitlines():
-            print('"{}" is already converted to junction point'.format(link))
+            out = b""
+        if os.path.basename(path) in out.decode("utf8").splitlines():
+            print(f"'{link}' is already converted to junction point")
         else:
-            print('Converting "{}" to junction point...'.format(link))
+            print(f"Converting '{link}' to junction point...")
             if os.path.isfile(path):
                 with open(path) as inp:
                     target = inp.read()
@@ -328,10 +330,14 @@ def replace_symlinks_with_junctions():
                     # For regular directories deletion is done with rmdir call.
                     os.rmdir(path)
             else:
-                raise ValueError('Unexpected type of entry: "{}"'.format(path))
-            target = os.path.abspath(os.path.join(os.path.dirname(path), target))
-            print('Setting {} -> {}'.format(link, target))
-            subprocess.check_call('MKLINK /J "{}" "{}"'.format(os.path.basename(link), target), shell=True, cwd=os.path.dirname(path))
+                raise ValueError(f"Unexpected type of entry: '{path}'")
+            target = os.path.abspath(
+                os.path.join(os.path.dirname(path), target))
+            print("Setting {} -> {}".format(link, target))
+            subprocess.check_call(
+                f"MKLINK /J '{os.path.basename(link)}' '{target}'",
+                shell=True,
+                cwd=os.path.dirname(path))
 
 
 if is_native_windows_or_msys():
@@ -416,9 +422,10 @@ def build(build_python, build_java, build_cpp):
         if not os.path.exists(d):
             os.makedirs(d)
 
-    bazel_options = ["--output_user_root=" + root_dir,
-                     "--output_base=" + out_dir, "build",
-                     "--verbose_failures"]
+    bazel_options = [
+        "--output_user_root=" + root_dir, "--output_base=" + out_dir, "build",
+        "--verbose_failures"
+    ]
 
     if is_native_windows_or_msys():
         bazel_options.append("--enable_runfiles=false")
@@ -428,8 +435,7 @@ def build(build_python, build_java, build_cpp):
     bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
     return bazel_invoke(
-        subprocess.check_call, bazel_options + bazel_targets,
-        env=bazel_env)
+        subprocess.check_call, bazel_options + bazel_targets, env=bazel_env)
 
 
 def walk_directory(directory):
