@@ -130,7 +130,6 @@ class Trainer:
         callbacks = [] if callbacks is None else callbacks
 
         try:
-            import pdb; pdb.set_trace()
             self._executor.start_training(train_func)
             while True:
                 intermediate_results = self._executor.fetch_next_result()
