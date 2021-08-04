@@ -56,7 +56,7 @@ PolicySpec = namedtuple(
     ])  # defaults=(None, None, None, None)
 # TODO: From 3.7 on, we could pass `defaults` into the above constructor.
 #  We still support py3.6.
-PolicySpec.__new__.__defaults__ = (None, None, None, None)
+PolicySpec.__new__.__defaults__ = (None, None, None, {})
 
 
 @DeveloperAPI

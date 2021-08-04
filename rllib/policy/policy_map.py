@@ -149,7 +149,7 @@ class PolicyMap(dict):
     def __getitem__(self, item):
         # Never seen this key -> Error.
         if item not in self.valid_keys:
-            raise KeyError(f"'{item}' not a valid key!")
+            raise KeyError(f"PolicyID '{item}' not found in this PolicyMap!")
 
         # Item already in cache -> Rearrange deque (least recently used) and
         # return.
