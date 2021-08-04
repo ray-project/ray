@@ -274,6 +274,51 @@ def download_pickle5(pickle5_dir):
                 wzf.close()
 
 
+def replace_symlinks_with_junctions():
+    _LINKS = {
+        r'ray\new_dashboard': '../../dashboard',
+        r'ray\rllib': '../../rllib',
+        r'ray\streaming': '../../streaming/python/',
+    }
+    root_dir = os.path.dirname(__file__)
+    for link, default in _LINKS.items():
+        path = os.path.join(root_dir, link)
+        try:
+            out = subprocess.check_output('DIR /A:LD /B', shell=True, cwd=os.path.dirname(path))
+        except subprocess.CalledProcessError:
+            out = b''
+        if os.path.basename(path) in out.decode('utf8').splitlines():
+            print('"{}" is already converted to junction point'.format(link))
+        else:
+            print('Converting "{}" to junction point...'.format(link))
+            if os.path.isfile(path):
+                with open(path) as inp:
+                    target = inp.read()
+                os.unlink(path)
+            elif os.path.isdir(path):
+                target = default
+                try:
+                    # unlink() works on links as well as on regular files,
+                    # and links to directories are considered directories now
+                    os.unlink(path)
+                except OSError as err:
+                    # On Windows attempt to unlink a regular directory results
+                    # in a PermissionError with errno set to errno.EACCES.
+                    if err.errno != errno.EACCES:
+                        raise
+                    # For regular directories deletion is done with rmdir call.
+                    os.rmdir(path)
+            else:
+                raise ValueError('Unexpected type of entry: "{}"'.format(path))
+            target = os.path.abspath(os.path.join(os.path.dirname(path), target))
+            print('Setting {} -> {}'.format(link, target))
+            subprocess.check_call('MKLINK /J "{}" "{}"'.format(os.path.basename(link), target), shell=True, cwd=os.path.dirname(path))
+
+
+if is_native_windows_or_msys():
+    replace_symlinks_with_junctions()
+
+
 def build(build_python, build_java, build_cpp):
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
         msg = ("Detected Python version {}, which is not supported. "
@@ -291,6 +336,7 @@ def build(build_python, build_java, build_cpp):
     bazel_env = dict(os.environ, PYTHON3_BIN_PATH=sys.executable)
 
     if is_native_windows_or_msys():
+        replace_symlinks_with_junctions()
         SHELL = bazel_env.get("SHELL")
         if SHELL:
             bazel_env.setdefault("BAZEL_SH", os.path.normpath(SHELL))
