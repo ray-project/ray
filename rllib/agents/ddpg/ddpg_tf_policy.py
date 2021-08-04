@@ -7,18 +7,20 @@ from typing import Dict, Tuple, List
 
 import ray
 import ray.experimental.tf_utils
-from ray.util.debug import log_once
 from ray.rllib.agents.ddpg.ddpg_tf_model import DDPGTFModel
 from ray.rllib.agents.ddpg.ddpg_torch_model import DDPGTorchModel
 from ray.rllib.agents.ddpg.noop_model import NoopModel, TorchNoopModel
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models import ModelCatalog
+from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Deterministic, Dirichlet
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic, \
     TorchDirichlet
 from ray.rllib.utils.annotations import override
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -26,10 +28,8 @@ from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.tf_ops import huber_loss, make_tf_callable
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
-    LocalOptimizer, ModelGradients
-from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy.policy import Policy
+    LocalOptimizer, ModelGradients, PolicyID
+from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -416,7 +416,7 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     TargetNetworkMixin.__init__(policy, config)
 
 
-def validate_spaces(pid: int, observation_space: gym.spaces.Space,
+def validate_spaces(pid: PolicyID, observation_space: gym.spaces.Space,
                     action_space: gym.spaces.Space,
                     config: TrainerConfigDict) -> None:
     if not isinstance(action_space, Box):

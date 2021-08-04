@@ -76,7 +76,11 @@ void GrpcServer::Run() {
       // Create a buffer of 100 calls for each RPC handler.
       // TODO(edoakes): a small buffer should be fine and seems to have better
       // performance, but we don't currently handle backpressure on the client.
-      for (int j = 0; j < 100; j++) {
+      int buffer_size = 100;
+      if (entry->GetMaxActiveRPCs() != -1) {
+        buffer_size = entry->GetMaxActiveRPCs();
+      }
+      for (int j = 0; j < buffer_size; j++) {
         entry->CreateCall();
       }
     }
@@ -135,6 +139,10 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       delete_call = true;
     }
     if (delete_call) {
+      if (ok && server_call->GetServerCallFactory().GetMaxActiveRPCs() != -1) {
+        // Create a new `ServerCall` to accept the next incoming request.
+        server_call->GetServerCallFactory().CreateCall();
+      }
       delete server_call;
     }
   }

@@ -1,3 +1,16 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "task_executor.h"
 
@@ -134,8 +147,10 @@ Status TaskExecutor::ExecuteTask(
     size_t data_size = data->size();
     auto &result_id = return_ids[0];
     auto result_ptr = &(*results)[0];
+    int64_t task_output_inlined_bytes = 0;
     RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
-        result_id, data_size, nullptr, std::vector<ray::ObjectID>(), result_ptr));
+        result_id, data_size, nullptr, std::vector<ray::ObjectID>(),
+        task_output_inlined_bytes, result_ptr));
 
     auto result = *result_ptr;
     if (result != nullptr) {

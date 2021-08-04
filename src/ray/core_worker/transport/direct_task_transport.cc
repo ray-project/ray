@@ -619,6 +619,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
             // need to do anything here.
             return;
           } else if (!status.ok() || !is_actor_creation) {
+            RAY_LOG(DEBUG) << "Task failed with error: " << status;
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr, scheduling_key,
                          /*error=*/!status.ok(), assigned_resources);
