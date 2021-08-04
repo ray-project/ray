@@ -29,7 +29,7 @@ Dataset API
 DatasetPipeline API
 -------------------
 
-.. autoclass:: ray.experimental.data.dataset_pipeline.DatasetPipeline
+.. autoclass:: ray.data.dataset_pipeline.DatasetPipeline
     :members:
 
 Custom Datasource API
