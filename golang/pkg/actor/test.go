@@ -1,10 +1,9 @@
-package main
+package actor
 
 import (
     "reflect"
 
     "github.com/ray-project/ray-go-worker/pkg/ray"
-    "github.com/ray-project/ray-go-worker/pkg/ray/worker"
 )
 
 func init() {
@@ -27,6 +26,4 @@ func (c *Count) Get() int {
     return c.value
 }
 
-func main() {
-    worker.Run()
-}
+
