@@ -231,9 +231,8 @@ def current_ray_pip_specifier() -> Optional[str]:
         built from source locally (likely if you are developing Ray).
 
     Examples:
-        Returns "ray[all]==1.4.0" if running the stable release
-        Returns "https://s3-us-west-2.amazonaws.com/ray-wheels/master/[..].whl"
-            if running the nightly or a specific commit
+        Returns "https://s3-us-west-2.amazonaws.com/ray-wheels/[..].whl"
+            if running a stable release, a nightly or a specific commit
     """
     logger = get_hook_logger()
     if os.environ.get("RAY_CI_POST_WHEEL_TESTS"):
@@ -245,12 +244,12 @@ def current_ray_pip_specifier() -> Optional[str]:
             Path(__file__).resolve().parents[3], ".whl", get_wheel_filename())
     elif ray.__commit__ == "{{RAY_COMMIT_SHA}}":
         # Running on a version built from source locally.
-        logger.warning(
-            "Current Ray version could not be detected, most likely "
-            "because you are using a version of Ray "
-            "built from source.  If you wish to use runtime_env, "
-            "you can try building a wheel and including the wheel "
-            "explicitly as a pip dependency.")
+        if os.environ.get("RAY_RUNTIME_ENV_LOCAL_DEV_MODE") != "1":
+            logger.warning(
+                "Current Ray version could not be detected, most likely "
+                "because you have manually built Ray from source.  To use "
+                "runtime_env in this case, set the environment variable "
+                "RAY_RUNTIME_ENV_LOCAL_DEV_MODE=1.")
         return None
     elif "dev" in ray.__version__:
         # Running on a nightly wheel.

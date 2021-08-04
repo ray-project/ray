@@ -78,7 +78,7 @@ ray.init()
 start_time = time.time()
 
 print("Downloading...")
-ds = ray.experimental.data.read_binary_files(
+ds = ray.data.read_binary_files(
     "s3://anyscale-data/small-images/",
     parallelism=1000,
     ray_remote_args={"num_cpus": 0.5})
