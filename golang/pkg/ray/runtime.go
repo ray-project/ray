@@ -139,28 +139,25 @@ type Convert func(a, i Param)
 
 // 缺少泛型的支持，所以只能传入参数名
 // 参数填这里
-func (ah *ActorHandle) Task(methodName string) *ActorTaskCaller {
-    method, ok := ah.actorType.MethodByName(methodName)
-    if !ok {
-        // failed
-    }
+func (ah *ActorHandle) Task(f interface{}) *ActorTaskCaller {
+    methodType := reflect.TypeOf(f)
     return &ActorTaskCaller{
         actorHandle:  ah,
-        invokeMethod: method,
+        invokeMethod: methodType,
         params:       []reflect.Value{},
     }
 }
 
 type ActorTaskCaller struct {
     actorHandle  *ActorHandle
-    invokeMethod reflect.Method
+    invokeMethod reflect.Type
     params       []reflect.Value
 }
 
 // 发出调用
 func (or *ActorTaskCaller) Remote() *ObjectRef {
     var res **C.char
-    returnNum := or.invokeMethod.Func.Type().NumOut()
+    returnNum := or.invokeMethod.NumOut()
     dataLen := C.go_worker_SubmitActorTask(C.CBytes(or.actorHandle.actorId), C.CString(or.invokeMethod.Name), &res, C.int(returnNum))
     if dataLen > 0 {
         defer C.free(unsafe.Pointer(res))
