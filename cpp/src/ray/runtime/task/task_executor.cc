@@ -65,6 +65,8 @@ std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
   return std::make_unique<ObjectID>();
 };
 
+/// TODO(qicosmos): Need to add more details of the error messages, such as object id,
+/// task id etc.
 std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
     const std::string &func_name, const std::vector<msgpack::sbuffer> &args_buffer,
     msgpack::sbuffer *actor_ptr) {
