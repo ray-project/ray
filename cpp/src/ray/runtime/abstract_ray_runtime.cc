@@ -191,6 +191,7 @@ std::string GetFullName(bool global, const std::string &name) {
                       "-" + name;
 }
 
+/// TODO(qicosmos): Now only support global name, will support the name of a current job.
 std::string AbstractRayRuntime::GetActorId(bool global, const std::string &actor_name) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   auto full_actor_name = GetFullName(global, actor_name);
@@ -202,11 +203,8 @@ std::string AbstractRayRuntime::GetActorId(bool global, const std::string &actor
 
   std::string actor_id;
   auto actor_handle = pair.first;
-  if (actor_handle) {
-    actor_id = actor_handle->GetActorID().Binary();
-  }
-
-  return actor_id;
+  RAY_CHECK(actor_handle);
+  return actor_handle->GetActorID().Binary();
 }
 
 void AbstractRayRuntime::KillActor(const std::string &str_actor_id, bool no_restart) {

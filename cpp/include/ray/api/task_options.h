@@ -43,7 +43,6 @@ struct CallOptions {
   std::unordered_map<std::string, double> resources;
 };
 
-/// TODO(qicosmos): Now only support global name, will support the name of a current job.
 struct ActorCreationOptions {
   std::string name;
   std::unordered_map<std::string, double> resources;
