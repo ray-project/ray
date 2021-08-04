@@ -106,7 +106,12 @@ class ActorMethod(ActorMethodBase):
              **options) -> "ObjectRef":
         actor = self._actor_ref()
         if actor is None:
-            raise RuntimeError("Lost reference to actor")
+            raise RuntimeError("Lost reference to actor. One common cause is "
+                               "doing 'workflow.get_actor(id).method.run()', "
+                               "in this case the actor instance is released "
+                               "by Python before calling the method. Try "
+                               "'actor = workflow.get_actor(id); "
+                               "actor.method.run()' instead.")
         try:
             return actor._actor_method_call(
                 self._method_name, args=args, kwargs=kwargs)
