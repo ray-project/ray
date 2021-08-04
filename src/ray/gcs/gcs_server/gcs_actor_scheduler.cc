@@ -449,7 +449,11 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
       request.set_intended_actor_id(ActorID::Nil().Binary());
       request.set_force_kill(true);
       request.set_no_restart(true);
-      RAY_UNUSED(cli->KillActor(request, nullptr));
+      cli->KillActor(request, [](auto &status, auto&) {
+        RAY_LOG(DEBUG) << "Killing an actor because the lease request is "
+                       << "returned after the actor is killed. Killing"
+                       << "status: " << status.ToString();
+      });
     }
   };
   if (iter != node_to_actors_when_leasing_.end()) {
@@ -460,9 +464,13 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
           << "Raylet granted a lease request, but the outstanding lease "
              "request for "
           << actor->GetActorID()
-          << " has been already cancelled. The response will be ignored. Job id = "
+          << " has been already cancelled. Job id = "
           << actor->GetActorID().JobId();
       if (actor->GetState() == rpc::ActorTableData::DEAD) {
+        // If the actor has been killed, we need to kill the worker too
+        // otherwise, the worker will be leaked
+        RAY_LOG(DEBUG) <<
+            "Actor " << actor->GetActorID() << " is dead, kill the worker";
         kill_worker();
       }
       return;
@@ -474,8 +482,7 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
         // Actor creation task has been cancelled. It is triggered by `ray.kill`. If
         // the number of remaining restarts of the actor is not equal to 0, GCS will
         // reschedule the actor, so it return directly here.
-        RAY_LOG(DEBUG) << "Actor " << actor->GetActorID()
-                       << " creation task has been cancelled.";
+        RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " creation task has been cancelled.";
         return;
       }
 
@@ -493,6 +500,9 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
       RetryLeasingWorkerFromNode(actor, node);
     }
   } else if (actor->GetState() == rpc::ActorTableData::DEAD) {
+    // If the actor has been killed, we need to kill the worker too
+    // otherwise, the worker will be leaked
+    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker";
     kill_worker();
   }
 }
