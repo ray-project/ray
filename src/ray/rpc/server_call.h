@@ -151,10 +151,12 @@ class ServerCallImpl : public ServerCall {
     if (!io_service_.stopped()) {
       STATS_grpc_server_processing_request_num.Record(1);
 
-      io_service_.post([this] {
-        HandleRequestImpl();
-        STATS_grpc_server_processing_request_num.Record(-1);
-      }, call_name_);
+      io_service_.post(
+          [this] {
+            HandleRequestImpl();
+            STATS_grpc_server_processing_request_num.Record(-1);
+          },
+          call_name_);
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq

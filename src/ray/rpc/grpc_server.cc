@@ -19,11 +19,13 @@
 #include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"
-#include "ray/util/util.h"
 #include "ray/rpc/grpc_server.h"
+#include "ray/util/util.h"
 
-DEFINE_stats(grpc_server_processing_request_num, "Number of in requrest under processing", "method", ray::stats::COUNT, ray::stats::SUM, ray::stats::GAUGE);
-DEFINE_stats(grpc_server_cq_pending, "Number of pending requests in completion queue", "method", ray::stats::COUNT, ray::stats::SUM, ray::stats::GAUGE);
+DEFINE_stats(grpc_server_processing_request_num, "Number of in requrest under processing",
+             "method", ray::stats::COUNT, ray::stats::SUM, ray::stats::GAUGE);
+DEFINE_stats(grpc_server_cq_pending, "Number of pending requests in completion queue",
+             "method", ray::stats::COUNT, ray::stats::SUM, ray::stats::GAUGE);
 
 namespace ray {
 namespace rpc {

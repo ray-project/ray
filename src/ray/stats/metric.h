@@ -202,7 +202,6 @@ struct MetricPoint {
   const opencensus::stats::MeasureDescriptor &measure_descriptor;
 };
 
-
 enum StatsType : int {
   COUNT,
   SUM,
@@ -255,43 +254,41 @@ template <std::size_t I = 0, typename... Tp>
 }
 
 struct IStatsRecord {
-  virtual void Record(double val, const std::unordered_map<std::string, std::string> &tags) = 0;
+  virtual void Record(double val,
+                      const std::unordered_map<std::string, std::string> &tags) = 0;
 };
 
 template <StatsType... Ts>
 class StatsInternal : public IStatsRecord {
  public:
-  StatsInternal(const std::string &name,
-                const std::string &description,
-                const std::string &unit,
-                const std::vector<std::string> &tag_keys)
+  StatsInternal(const std::string &name, const std::string &description,
+                const std::string &unit, const std::vector<std::string> &tag_keys)
       : stats_(std::make_tuple(std::move(typename StatsTypeMap<Ts>::type(
             name, description, unit, convertTags(tag_keys)))...)) {}
 
-  StatsInternal(const std::string &name, const std::string &description, const std::string &unit)
+  StatsInternal(const std::string &name, const std::string &description,
+                const std::string &unit)
       : StatsInternal(name, description, unit, std::vector<std::string>()) {}
 
-  StatsInternal(const std::string &name, const std::string &description, const std::string &unit,
-        const std::string &tag_key)
+  StatsInternal(const std::string &name, const std::string &description,
+                const std::string &unit, const std::string &tag_key)
       : StatsInternal(name, description, unit, std::vector<std::string>({tag_key})) {}
 
-  void Record(double val, const std::unordered_map<std::string, std::string> &tags) override {
+  void Record(double val,
+              const std::unordered_map<std::string, std::string> &tags) override {
     TupleRecord(stats_, val, tags);
   }
+
  private:
   std::tuple<typename StatsTypeMap<Ts>::type...> stats_;
 };
 
-
 class Stats {
  public:
   Stats(std::unique_ptr<IStatsRecord> recorder, const std::vector<std::string> tag_keys)
-      : recorder_(std::move(recorder)),
-        tag_keys_(tag_keys) {}
+      : recorder_(std::move(recorder)), tag_keys_(tag_keys) {}
 
-  void Record(double val) {
-    Record(val, std::unordered_map<std::string, std::string>());
-  }
+  void Record(double val) { Record(val, std::unordered_map<std::string, std::string>()); }
 
   void Record(double val, const std::string &tag_val) {
     RAY_CHECK(tag_keys_.size() == 1);
@@ -314,11 +311,10 @@ class Stats {
 
 }  // namespace ray
 
-#define DEFINE_stats(name, description, tag, types...)                  \
-  ray::stats::details::Stats STATS_##name(                              \
-      std::make_unique<ray::stats::details::StatsInternal<types>>(      \
-          #name, description, "",                                       \
-          std::vector<std::string>()),                                  \
+#define DEFINE_stats(name, description, tag, types...)             \
+  ray::stats::details::Stats STATS_##name(                         \
+      std::make_unique<ray::stats::details::StatsInternal<types>>( \
+          #name, description, "", std::vector<std::string>()),     \
       std::vector<std::string>())
 
 #define DECLARE_stats(name) extern ray::stats::details::Stats STATS_##name
