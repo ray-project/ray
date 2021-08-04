@@ -14,6 +14,7 @@
 
 #include "ray/util/event.h"
 #include <boost/filesystem.hpp>
+#include <boost/range.hpp>
 #include <fstream>
 #include <set>
 #include <thread>
@@ -24,7 +25,9 @@ namespace ray {
 class TestEventReporter : public BaseEventReporter {
  public:
   virtual void Init() override {}
-  virtual void Report(const rpc::Event &event) override { event_list.push_back(event); }
+  virtual void Report(const rpc::Event &event, const json &custom_fields) override {
+    event_list.push_back(event);
+  }
   virtual void Close() override {}
   virtual ~TestEventReporter() {}
   virtual std::string GetReporterKey() override { return "test.event.reporter"; }
@@ -68,51 +71,45 @@ void CheckEventDetail(rpc::Event &event, std::string job_id, std::string node_id
   EXPECT_EQ(event.source_pid(), getpid());
 }
 
-rpc::Event GetEventFromString(std::string seq) {
-  std::stringstream ss;
-  ss << seq << '\n';
+rpc::Event GetEventFromString(std::string seq, json *custom_fields) {
   rpc::Event event;
-  boost::property_tree::ptree pt;
-  boost::property_tree::read_json(ss, pt);
+  json j = json::parse(seq);
 
-  std::vector<std::string> splitArray;
-  for (auto it = pt.begin(); it != pt.end(); ++it) {
-    splitArray.push_back(it->first);
-    splitArray.push_back(it->second.get_value<std::string>());
+  for (auto const &pair : j.items()) {
+    if (pair.key() == "severity") {
+      rpc::Event_Severity severity_ele =
+          rpc::Event_Severity::Event_Severity_Event_Severity_INT_MIN_SENTINEL_DO_NOT_USE_;
+      RAY_CHECK(
+          rpc::Event_Severity_Parse(pair.value().get<std::string>(), &severity_ele));
+      event.set_severity(severity_ele);
+    } else if (pair.key() == "label") {
+      event.set_label(pair.value().get<std::string>());
+    } else if (pair.key() == "event_id") {
+      event.set_event_id(pair.value().get<std::string>());
+    } else if (pair.key() == "source_type") {
+      rpc::Event_SourceType source_type_ele = rpc::Event_SourceType::
+          Event_SourceType_Event_SourceType_INT_MIN_SENTINEL_DO_NOT_USE_;
+      RAY_CHECK(
+          rpc::Event_SourceType_Parse(pair.value().get<std::string>(), &source_type_ele));
+      event.set_source_type(source_type_ele);
+    } else if (pair.key() == "host_name") {
+      event.set_source_hostname(pair.value().get<std::string>());
+    } else if (pair.key() == "pid") {
+      event.set_source_pid(std::stoi(pair.value().get<std::string>().c_str()));
+    } else if (pair.key() == "message") {
+      event.set_message(pair.value().get<std::string>());
+    }
   }
 
-  auto pt_custom_fields = pt.get_child_optional("custom_fields");
-  for (auto it = pt_custom_fields->begin(); it != pt_custom_fields->end(); ++it) {
-    splitArray.push_back(it->first);
-    splitArray.push_back(it->second.get_value<std::string>());
+  std::unordered_map<std::string, std::string> mutable_custom_fields;
+  *custom_fields = j["custom_fields"];
+  for (auto const &pair : (*custom_fields).items()) {
+    if (pair.key() == "job_id" or pair.key() == "node_id" or pair.key() == "task_id") {
+      mutable_custom_fields[pair.key()] = pair.value().get<std::string>();
+    }
   }
-
-  EXPECT_EQ(splitArray[2], "severity");
-  rpc::Event_Severity severity_ele =
-      rpc::Event_Severity::Event_Severity_Event_Severity_INT_MIN_SENTINEL_DO_NOT_USE_;
-  RAY_CHECK(rpc::Event_Severity_Parse(splitArray[3], &severity_ele));
-  event.set_severity(severity_ele);
-  EXPECT_EQ(splitArray[4], "label");
-  event.set_label(splitArray[5]);
-  EXPECT_EQ(splitArray[6], "event_id");
-  event.set_event_id(splitArray[7]);
-  EXPECT_EQ(splitArray[8], "source_type");
-  rpc::Event_SourceType source_type_ele = rpc::Event_SourceType::
-      Event_SourceType_Event_SourceType_INT_MIN_SENTINEL_DO_NOT_USE_;
-  RAY_CHECK(rpc::Event_SourceType_Parse(splitArray[9], &source_type_ele));
-  event.set_source_type(source_type_ele);
-  EXPECT_EQ(splitArray[10], "host_name");
-  event.set_source_hostname(splitArray[11]);
-  EXPECT_EQ(splitArray[12], "pid");
-  event.set_source_pid(std::stoi(splitArray[13].c_str()));
-  EXPECT_EQ(splitArray[14], "message");
-  event.set_message(splitArray[15]);
-  EXPECT_EQ(splitArray[16], "custom_fields");
-  std::unordered_map<std::string, std::string> custom_fields;
-  for (int i = 18, len = splitArray.size(); i < len; i += 2) {
-    custom_fields[splitArray[i]] = splitArray[i + 1];
-  }
-  event.mutable_custom_fields()->insert(custom_fields.begin(), custom_fields.end());
+  event.mutable_custom_fields()->insert(mutable_custom_fields.begin(),
+                                        mutable_custom_fields.end());
   return event;
 }
 
@@ -217,7 +214,7 @@ TEST(EVENT_TEST, LOG_ONE_THREAD) {
   ray::EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
       rpc::Event_SourceType::Event_SourceType_RAYLET, log_dir));
 
-  int print_times = 1000;
+  int print_times = 1;
   for (int i = 1; i <= print_times; ++i) {
     RAY_EVENT(INFO, "label " + std::to_string(i)) << "send message " + std::to_string(i);
   }
@@ -225,10 +222,11 @@ TEST(EVENT_TEST, LOG_ONE_THREAD) {
   std::vector<std::string> vc;
   ReadEventFromFile(vc, log_dir + "/event_RAYLET.log");
 
-  EXPECT_EQ((int)vc.size(), 1000);
+  EXPECT_EQ((int)vc.size(), 1);
 
   for (int i = 0, len = vc.size(); i < print_times; ++i) {
-    rpc::Event ele = GetEventFromString(vc[len - print_times + i]);
+    json custom_fields;
+    rpc::Event ele = GetEventFromString(vc[len - print_times + i], &custom_fields);
     CheckEventDetail(ele, "job 1", "node 1", "task 1", "RAYLET", "INFO",
                      "label " + std::to_string(i + 1),
                      "send message " + std::to_string(i + 1));
@@ -267,7 +265,8 @@ TEST(EVENT_TEST, LOG_MULTI_THREAD) {
   std::set<std::string> message_set;
 
   for (int i = 0, len = vc.size(); i < print_times; ++i) {
-    rpc::Event ele = GetEventFromString(vc[len - print_times + i]);
+    json custom_fields;
+    rpc::Event ele = GetEventFromString(vc[len - print_times + i], &custom_fields);
     CheckEventDetail(ele, "job 2", "node 2", "task 2", "GCS", "WARNING", "NULL", "NULL");
     message_set.insert(ele.message());
     label_set.insert(ele.label());
@@ -309,6 +308,45 @@ TEST(EVENT_TEST, LOG_ROTATE) {
   }
 
   EXPECT_EQ(cnt, 21);
+}
+
+TEST(EVENT_TEST, WITH_FIELD) {
+  std::string log_dir = GenerateLogDir();
+
+  ray::EventManager::Instance().ClearReporters();
+  ray::RayEventContext::Instance().SetEventContext(
+      rpc::Event_SourceType::Event_SourceType_RAYLET,
+      std::unordered_map<std::string, std::string>(
+          {{"node_id", "node 1"}, {"job_id", "job 1"}, {"task_id", "task 1"}}));
+
+  ray::EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
+      rpc::Event_SourceType::Event_SourceType_RAYLET, log_dir));
+
+  RAY_EVENT(INFO, "label 1")
+          .WithField("string", "test string")
+          .WithField("int", 123)
+          .WithField("double", 0.123)
+          .WithField("bool", true)
+      << "send message 1";
+
+  std::vector<std::string> vc;
+  ReadEventFromFile(vc, log_dir + "/event_RAYLET.log");
+
+  EXPECT_EQ((int)vc.size(), 1);
+
+  json custom_fields;
+  rpc::Event ele = GetEventFromString(vc[0], &custom_fields);
+  CheckEventDetail(ele, "job 1", "node 1", "task 1", "RAYLET", "INFO", "label 1",
+                   "send message 1");
+  auto string_value = custom_fields["string"].get<std::string>();
+  EXPECT_EQ(string_value, "test string");
+  auto int_value = custom_fields["int"].get<int>();
+  EXPECT_EQ(int_value, 123);
+  auto double_value = custom_fields["double"].get<double>();
+  EXPECT_EQ(double_value, 0.123);
+  auto bool_value = custom_fields["bool"].get<bool>();
+  EXPECT_EQ(bool_value, true);
+  boost::filesystem::remove_all(log_dir.c_str());
 }
 
 }  // namespace ray
