@@ -595,7 +595,6 @@ def init(
         log_to_driver=True,
         namespace=None,
         runtime_env=None,
-        internal_config=None,
         # The following are unstable parameters and their use is discouraged.
         _enable_object_reconstruction=False,
         _redis_max_memory=None,
@@ -617,18 +616,30 @@ def init(
     just attach this driver to it or we start all of the processes associated
     with a Ray cluster and attach to the newly started cluster.
 
-    To start Ray and all of the relevant processes, use this as follows:
+    To start Ray locally and all of the relevant processes, use this as
+    follows:
 
     .. code-block:: python
 
         ray.init()
 
-    To connect to an existing Ray cluster, use this as follows (substituting
-    in the appropriate address):
+    To connect to an existing local cluster, use this as follows (substituting
+    in the appropriate port if needed).
 
     .. code-block:: python
 
-        ray.init(address="123.45.67.89:6379")
+        ray.init(address="localhost:6379")
+
+    To connect to an existing remote cluster, use this as follows (substituting
+    in the appropriate address). Note the addition of "ray://" at the beginning
+    of the address.
+
+    .. code-block:: python
+
+        ray.init(address="ray://123.45.67.89:10001")
+
+    More details for starting and connecting to a remote cluster can be found
+    here: https://docs.ray.io/en/master/cluster/ray-client.html
 
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
@@ -644,10 +655,10 @@ def init(
             specify a specific node address. If the environment variable
             `RAY_ADDRESS` is defined and the address is None or "auto", Ray
             will set `address` to `RAY_ADDRESS`.
-            Addresses can be prefixed with a protocol to connect using Ray
-            Client. For example, passing in the address
+            Addresses can be prefixed with a "ray://" to connect to a remote
+            cluster. For example, passing in the address
             "ray://123.45.67.89:50005" will connect to the cluster at the
-            given address using the Ray client.
+            given address.
         num_cpus (int): Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
         num_gpus (int): Number of GPUs the user wishes to assign to each
@@ -686,11 +697,6 @@ def init(
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
         runtime_env (dict): The runtime environment to use for this job.
-        internal_config (dict): Dictionary mapping names of a unstable
-            parameters to values, e.g. {"redis_password": "1234"}. This is
-            only used for initializing a local client (ray.init(local://...)).
-            Values in this dictionary will be used to configure the local
-            cluster. Parameter names should exclude the underscore prefix.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -720,10 +726,11 @@ def init(
             and the API is subject to change.
 
     Returns:
-        If the provided address included a protocol (e.g. "ray://1.2.3.4")
-        then a ClientContext is returned with information such as settings,
-        server versions for ray and python, and the dashboard_url.
-        Otherwise, returns address information about the started processes.
+        If the provided address includes a protocol, for example by prepending
+        "ray://" to the address to get "ray://1.2.3.4:10001", then a
+        ClientContext is returned with information such as settings, server
+        versions for ray and python, and the dashboard_url. Otherwise,
+        returns address information about the started processes.
 
     Raises:
         Exception: An exception is raised if an inappropriate combination of
@@ -768,11 +775,6 @@ def init(
         # ray client. Raise an error, since most likely a typo in keyword
         unknown = ", ".join(kwargs)
         raise RuntimeError(f"Unknown keyword argument(s): {unknown}")
-
-    if internal_config is not None:
-        # Should only be used with local client
-        raise RuntimeError("`internal_config` should only be used with "
-                           "ray.init(local://...)")
 
     # Try to increase the file descriptor limit, which is too low by
     # default for Ray: https://github.com/ray-project/ray/issues/11239
