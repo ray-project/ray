@@ -461,5 +461,6 @@ DDPGTFPolicy = build_tf_policy(
     after_init=setup_late_mixins,
     mixins=[
         TargetNetworkMixin,
+        ActorCriticOptimizerMixin,
         ComputeTDErrorMixin,
     ])
