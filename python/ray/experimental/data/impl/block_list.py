@@ -1,4 +1,7 @@
+import math
 from typing import Iterable, List
+
+import numpy as np
 
 from ray.types import ObjectRef
 from ray.experimental.data.block import Block, BlockMetadata
@@ -16,6 +19,15 @@ class BlockList(Iterable[ObjectRef[Block]]):
 
     def get_metadata(self) -> List[BlockMetadata]:
         return self._metadata.copy()
+
+    def split(self, split_size: int) -> List["BlockList"]:
+        num_splits = math.ceil(len(self._blocks) / split_size)
+        blocks = np.array_split(self._blocks, num_splits)
+        meta = np.array_split(self._metadata, num_splits)
+        output = []
+        for b, m in zip(blocks, meta):
+            output.append(BlockList(b.tolist(), m.tolist()))
+        return output
 
     def __len__(self):
         return len(self._blocks)

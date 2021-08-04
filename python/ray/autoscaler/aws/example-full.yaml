@@ -21,7 +21,8 @@ docker:
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
     pull_before_run: True
-    run_options: []  # Extra options to pass into "docker run"
+    run_options:   # Extra options to pass into "docker run"
+        - --ulimit nofile=65536:65536
 
     # Example of running a GPU head with CPU workers
     # head_image: "rayproject/ray-ml:latest-gpu"
@@ -165,12 +166,12 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
 
 head_node: {}
 worker_nodes: {}

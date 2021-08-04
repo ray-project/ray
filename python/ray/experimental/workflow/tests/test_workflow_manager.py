@@ -1,3 +1,5 @@
+import time
+
 import pytest
 import ray
 from ray.experimental import workflow
@@ -110,6 +112,11 @@ def test_actor_manager(workflow_start_regular, tmp_path):
             with FileLock(self.lck):
                 return self.counter
 
+        def incr(self):
+            with FileLock(self.lck):
+                self.counter += 1
+                return self.counter
+
         def __getstate__(self):
             return (self.lck, self.counter)
 
@@ -124,9 +131,19 @@ def test_actor_manager(workflow_start_regular, tmp_path):
 
     assert [("counter", workflow.SUCCESSFUL)] == workflow.list_all()
 
-    actor.val.run_async()
+    v = actor.val.run_async()
     # Readonly function won't make the workflow running
     assert [("counter", workflow.SUCCESSFUL)] == workflow.list_all()
+    lock.release()
+    assert ray.get(v) == 0
+
+    # Writer function would make the workflow running
+    lock.acquire()
+    v = actor.incr.run_async()
+    time.sleep(2)
+    assert [("counter", workflow.RUNNING)] == workflow.list_all()
+    lock.release()
+    assert ray.get(v) == 1
 
 
 if __name__ == "__main__":

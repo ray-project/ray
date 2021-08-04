@@ -2,6 +2,7 @@ from typing import List
 
 import ray
 from ray.types import ObjectRef
+from ray.util.annotations import PublicAPI
 
 try:
     import tqdm
@@ -10,12 +11,30 @@ except ImportError:
     tqdm = None
     needs_warning = True
 
+# Whether progress bars are enabled in this process.
+_enabled: bool = True
+
+
+@PublicAPI
+def set_progress_bars(enabled: bool) -> bool:
+    """Set whether progress bars are enabled.
+
+    Returns:
+        Whether progress bars were previously enabled.
+    """
+    global _enabled
+    old_value = _enabled
+    _enabled = enabled
+    return old_value
+
 
 class ProgressBar:
     """Thin wrapper around tqdm to handle soft imports."""
 
     def __init__(self, name: str, total: int, position: int = 0):
-        if tqdm:
+        if not _enabled:
+            self._bar = None
+        elif tqdm:
             self._bar = tqdm.tqdm(total=total, position=position)
             self._bar.set_description(name)
         else:

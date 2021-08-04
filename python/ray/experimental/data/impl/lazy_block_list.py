@@ -1,4 +1,7 @@
+import math
 from typing import Callable, List
+
+import numpy as np
 
 from ray.types import ObjectRef
 from ray.experimental.data.block import Block, BlockMetadata, T
@@ -12,6 +15,15 @@ class LazyBlockList(BlockList[T]):
         self._calls = calls
         self._blocks = [calls[0]()] if calls else []
         self._metadata = metadata
+
+    def split(self, split_size: int) -> List["LazyBlockList"]:
+        num_splits = math.ceil(len(self._calls) / split_size)
+        calls = np.array_split(self._calls, num_splits)
+        meta = np.array_split(self._metadata, num_splits)
+        output = []
+        for c, m in zip(calls, meta):
+            output.append(LazyBlockList(c.tolist(), m.tolist()))
+        return output
 
     def __len__(self):
         return len(self._calls)
