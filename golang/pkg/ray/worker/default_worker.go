@@ -4,8 +4,8 @@ import (
     "flag"
 
     _ "github.com/ray-project/ray-go-worker/pkg/actor"
-    "github.com/ray-project/ray-go-worker/pkg/generated"
     "github.com/ray-project/ray-go-worker/pkg/ray"
+    "github.com/ray-project/ray-go-worker/pkg/ray/generated"
 )
 
 func main() {

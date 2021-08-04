@@ -15,9 +15,9 @@ import (
     "strings"
     "unsafe"
 
-    _ "github.com/ray-project/ray-go-worker/pkg/actor"
     "github.com/golang/protobuf/proto"
-    ray_rpc "github.com/ray-project/ray-go-worker/pkg/generated"
+    _ "github.com/ray-project/ray-go-worker/pkg/actor"
+    ray_rpc "github.com/ray-project/ray-go-worker/pkg/ray/generated"
     "github.com/ray-project/ray-go-worker/pkg/util"
 )
 
@@ -90,7 +90,9 @@ func Run() {
 }
 
 func RegisterType(t reflect.Type) error {
-    typesMap[getRegisterTypeKey(t.Elem())] = t.Elem()
+    typeName := getRegisterTypeKey(t.Elem())
+    typesMap[typeName] = t.Elem()
+    util.Logger.Debugf("register type: %s", typeName)
     // todo check conflict
     return nil
 }

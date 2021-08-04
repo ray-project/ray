@@ -6,7 +6,7 @@ import (
     "reflect"
     "unsafe"
 
-    "github.com/ray-project/ray-go-worker/pkg/generated"
+    "github.com/ray-project/ray-go-worker/pkg/ray/generated"
     "github.com/ray-project/ray-go-worker/pkg/util"
 )
 
