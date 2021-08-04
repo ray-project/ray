@@ -350,10 +350,6 @@ class TrialRunner:
     def scheduler_alg(self):
         return self._scheduler_alg
 
-    @property
-    def iteration(self):
-        return self._iteration
-
     def _validate_resume(self, resume_type):
         """Checks whether to resume experiment.
 

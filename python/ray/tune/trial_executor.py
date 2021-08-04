@@ -1,5 +1,7 @@
 # coding: utf-8
 import logging
+import os
+import time
 
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.error import TuneError
@@ -7,15 +9,15 @@ from ray.tune.cluster_info import is_ray_cluster
 
 logger = logging.getLogger(__name__)
 
-# We may prompt user to check if resource is insufficent to start even one
-# single trial run if we observe the following:
-# 1. all trials are in pending state
-# 2. autoscaler is disabled
-# 3. No progress is made after this number of iterations (executor.step()
-# is looped this number of times).
-# Shown every this number of times as a warning msg so as not to pollute
-# logging.
-SHOW_MAYBE_INSUFFICIENT_RESOURCE_WARNING_ITER_DELAY = 100
+
+def get_warn_threshold(autoscaler_enabled: bool):
+    if autoscaler_enabled:
+        return float(
+            os.environ.get(
+                "TUNE_INSUFFICENT_RESOURCE_WARN_THRESHOLD_S_AUTOSCALER", "60"))
+    else:
+        return float(
+            os.environ.get("TUNE_INSUFFICENT_RESOURCE_WARN_THRESHOLD_S", "5"))
 
 
 class TrialExecutor:
@@ -37,6 +39,12 @@ class TrialExecutor:
         self._queue_trials = queue_trials
         self._cached_trial_state = {}
         self._trials_to_cache = set()
+        # The start time since when all active trials have been in PENDING
+        # state, or since last time we output a resource insufficent
+        # warning message, whichever comes later.
+        # -1 means either the TrialExecutor is just initialized without any
+        # trials yet, or there are some trials in RUNNING state.
+        self._no_running_trials_since = -1
 
     def set_status(self, trial, status):
         """Sets status and checkpoints metadata if needed.
@@ -184,21 +192,32 @@ class TrialExecutor:
     def force_reconcilation_on_next_step_end(self):
         pass
 
+    def may_warn_insufficient_resource(self, all_trials):
+        autoscaler_enabled = is_ray_cluster()
+        if not any(trial.status == Trial.RUNNING for trial in all_trials):
+            if self._no_running_trials_since == -1:
+                self._no_running_trials_since = time.monotonic()
+            elif time.monotonic(
+            ) - self._no_running_trials_since > get_warn_threshold(
+                    autoscaler_enabled):
+                warn_prefix = ("If autoscaler is still scaling up, ignore " \
+                              "this message. " if autoscaler_enabled
+                               else "Autoscaler is disabled. ")
+                logger.warn(
+                    warn_prefix +
+                    "Resource is not ready after extended amount of time "
+                    "without any trials running - please consider if the "
+                    "allocated resource is not enough.")
+                self._no_running_trials_since = time.time()
+        else:
+            self._no_running_trials_since = -1
+
     def on_no_available_trials(self, trial_runner):
         if self._queue_trials:
             return
 
         all_trials = trial_runner.get_trials()
-        all_trials_are_pending = all(
-            trial.status == Trial.PENDING for trial in all_trials)
-        if all_trials_are_pending and not is_ray_cluster() and (
-                trial_runner.iteration +
-                1) % SHOW_MAYBE_INSUFFICIENT_RESOURCE_WARNING_ITER_DELAY == 0:
-            logger.warning(
-                "Autoscaler is not enabled and resource is not ready after "
-                "extended amoung of time - please consider if the allocated "
-                "resource is not enough for starting even a single trial."
-            )
+        self.may_warn_insufficient_resource(all_trials)
         for trial in all_trials:
             if trial.uses_placement_groups:
                 return
