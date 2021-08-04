@@ -7,7 +7,7 @@ import random
 import time
 import traceback
 from contextlib import contextmanager
-from typing import Iterable, Optional
+from typing import Dict, Iterable, List, Optional
 
 import ray
 from ray.actor import ActorHandle
@@ -949,20 +949,19 @@ class RayTrialExecutor(TrialExecutor):
         else:
             return "? CPUs, ? GPUs"
 
-    def on_step_begin(self, trial_runner):
+    def on_step_begin(self, trials: List[Trial]):
         """Before step() called, update the available resources."""
         self._update_avail_resources()
         self._trial_just_finished_before = self._trial_just_finished
         self._trial_just_finished = False
 
-    def on_step_end(self, trial_runner):
+    def on_step_end(self, trials: List[Trial]):
         self._just_staged_trials.clear()
 
         if time.time() > self.last_pg_recon + self.pg_recon_interval:
             # Only do this every now and then - usually the placement groups
             # should not get out of sync, and calling this often is inefficient
-            self._pg_manager.reconcile_placement_groups(
-                trial_runner.get_trials())
+            self._pg_manager.reconcile_placement_groups(trials)
             self.last_pg_recon = time.time()
 
         self._pg_manager.cleanup()
@@ -1069,9 +1068,9 @@ class RayTrialExecutor(TrialExecutor):
             self._update_avail_resources()
             return self._avail_resources.gpu > 0
 
-    def cleanup(self, trial_runner):
+    def cleanup(self, trials: List[Trial]):
         self._trial_cleanup.cleanup(partial=False)
-        self._pg_manager.reconcile_placement_groups(trial_runner.get_trials())
+        self._pg_manager.reconcile_placement_groups(trials)
         self._pg_manager.cleanup(force=True)
         self._pg_manager.cleanup_existing_pg(block=True)
 

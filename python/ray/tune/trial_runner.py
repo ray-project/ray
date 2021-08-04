@@ -501,7 +501,7 @@ class TrialRunner:
         if self.is_finished():
             raise TuneError("Called step when all trials finished?")
         with warn_if_slow("on_step_begin"):
-            self.trial_executor.on_step_begin(self)
+            self.trial_executor.on_step_begin(self.get_trials())
         with warn_if_slow("callbacks.on_step_begin"):
             self._callbacks.on_step_begin(
                 iteration=self._iteration, trials=self._trials)
@@ -553,7 +553,7 @@ class TrialRunner:
                     timeout = 0.1
                 self._process_events(timeout=timeout)  # blocking
             else:
-                self.trial_executor.on_no_available_trials(self)
+                self.trial_executor.on_no_available_trials(self.get_trials())
 
         self._stop_experiment_if_needed()
 
@@ -570,7 +570,7 @@ class TrialRunner:
             if self.is_finished():
                 self._server.shutdown()
         with warn_if_slow("on_step_end"):
-            self.trial_executor.on_step_end(self)
+            self.trial_executor.on_step_end(self.get_trials())
         with warn_if_slow("callbacks.on_step_end"):
             self._callbacks.on_step_end(
                 iteration=self._iteration, trials=self._trials)
@@ -1188,7 +1188,7 @@ class TrialRunner:
         self._live_trials.discard(trial)
 
     def cleanup_trials(self):
-        self.trial_executor.cleanup(self)
+        self.trial_executor.cleanup(self.get_trials())
 
     def _reconcile_live_trials(self):
         """Loop through live trials and remove if terminated"""
