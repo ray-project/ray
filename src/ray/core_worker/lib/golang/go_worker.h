@@ -10,7 +10,7 @@ extern "C" {
 #define GO_CGO_PROLOGUE_H
 typedef long long GoInt64;
 typedef GoInt64 GoInt;
-typedef struct {
+typedef struct GoSlice{
   void *data;
   GoInt len;
   GoInt cap;

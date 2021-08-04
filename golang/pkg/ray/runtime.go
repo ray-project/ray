@@ -157,7 +157,7 @@ type ActorTaskCaller struct {
 // 发出调用
 func (or *ActorTaskCaller) Remote() *ObjectRef {
     returnNum := or.invokeMethod.NumOut()
-    var objectIds []*C.struct_DataBuffer = C.go_worker_SubmitActorTask(C.CBytes(or.actorHandle.actorId), C.CString(or.invokeMethod.Name()), C.int(returnNum))
+    objectIds := C.go_worker_SubmitActorTask(C.CBytes(or.actorHandle.actorId), C.CString(or.invokeMethod.Name()), C.int(returnNum))
     resultIds := make([]ObjectId, 0, len(objectIds))
     for _, objectId := range objectIds {
         resultIds = append(resultIds, ObjectId{
