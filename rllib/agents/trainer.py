@@ -984,12 +984,12 @@ class Trainer(Trainable):
                 full_fetch=True or we have an RNN-based Policy.
 
         Raises:
-            ValueError: If the `policy_id` cannot be found in this Trainer's
+            KeyError: If the `policy_id` cannot be found in this Trainer's
                 local worker.
         """
         policy = self.get_policy(policy_id)
         if policy is None:
-            raise ValueError(
+            raise KeyError(
                 f"PolicyID '{policy_id}' not found in PolicyMap of the "
                 f"Trainer's local worker!")
 

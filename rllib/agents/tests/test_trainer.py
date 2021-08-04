@@ -41,7 +41,7 @@ class TestTrainer(unittest.TestCase):
             r = trainer.train()
             self.assertTrue("p0" in r["policy_reward_min"])
             checkpoints = []
-            for i in range(1, 4):
+            for i in range(1, 3):
 
                 def new_mapping_fn(agent_id, episode, **kwargs):
                     return f"p{choice([i, i - 1])}"
@@ -78,7 +78,7 @@ class TestTrainer(unittest.TestCase):
                 test.stop()
 
             # Delete all added policies again from trainer.
-            for i in range(3, 0, -1):
+            for i in range(2, 0, -1):
                 trainer.remove_policy(
                     f"p{i}",
                     policy_mapping_fn=lambda aid, eps, **kwargs: f"p{i - 1}",
