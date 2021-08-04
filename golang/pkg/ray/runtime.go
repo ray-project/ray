@@ -16,7 +16,6 @@ import (
     "unsafe"
 
     "github.com/golang/protobuf/proto"
-    _ "github.com/ray-project/ray-go-worker/pkg/actor"
     ray_rpc "github.com/ray-project/ray-go-worker/pkg/ray/generated"
     "github.com/ray-project/ray-go-worker/pkg/util"
 )
