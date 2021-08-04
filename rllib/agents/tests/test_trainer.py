@@ -136,7 +136,7 @@ class TestTrainer(unittest.TestCase):
 
             # Try again using `create_env_on_driver=True`.
             # This force-adds the env on the local-worker, so this Trainer
-            # can `evaluate` even though, it doesn't have an evaluation-worker
+            # can `evaluate` even though it doesn't have an evaluation-worker
             # set.
             config["create_env_on_driver"] = True
             trainer_w_env_on_driver = a3c.A3CTrainer(config=config)
