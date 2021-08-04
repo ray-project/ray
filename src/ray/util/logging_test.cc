@@ -23,11 +23,9 @@
 #include "gtest/gtest.h"
 #include "ray/util/filesystem.h"
 
-using namespace ray::core;
 using namespace testing;
 
 namespace ray {
-namespace core {
 
 int64_t current_time_ms() {
   std::chrono::milliseconds ms_since_epoch =
@@ -280,7 +278,6 @@ TEST(PrintLogTest, RayCheckAbortTest) {
 }
 */
 
-}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

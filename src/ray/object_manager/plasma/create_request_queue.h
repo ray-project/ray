@@ -34,11 +34,12 @@ class CreateRequestQueue {
   using CreateObjectCallback = std::function<PlasmaError(
       bool fallback_allocator, PlasmaObject *result, bool *spilling_required)>;
 
-  CreateRequestQueue(
-      int64_t oom_grace_period_s, ray::SpillObjectsCallback spill_objects_callback,
-      std::function<void()> trigger_global_gc, std::function<int64_t()> get_time,
-      std::function<std::string()> dump_debug_info_callback = nullptr,
-      bool plasma_unlimited = ray::core::RayConfig::instance().plasma_unlimited())
+  CreateRequestQueue(int64_t oom_grace_period_s,
+                     ray::SpillObjectsCallback spill_objects_callback,
+                     std::function<void()> trigger_global_gc,
+                     std::function<int64_t()> get_time,
+                     std::function<std::string()> dump_debug_info_callback = nullptr,
+                     bool plasma_unlimited = RayConfig::instance().plasma_unlimited())
       : oom_grace_period_ns_(oom_grace_period_s * 1e9),
         spill_objects_callback_(spill_objects_callback),
         trigger_global_gc_(trigger_global_gc),

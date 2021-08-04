@@ -43,9 +43,6 @@ inline bool ConvertValue<bool>(const std::string &type_string, const std::string
   return new_value == "true" || new_value == "1";
 }
 
-namespace ray {
-namespace core {
-
 class RayConfig {
 /// -----------Include ray_config_def.h to define config items.----------------
 /// A helper macro that defines a config item.
@@ -85,6 +82,3 @@ class RayConfig {
     }
   }
 };
-
-}  // namespace core
-}  // namespace ray

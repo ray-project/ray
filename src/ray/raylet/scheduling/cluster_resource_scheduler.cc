@@ -23,15 +23,15 @@
 namespace ray {
 
 ClusterResourceScheduler::ClusterResourceScheduler()
-    : hybrid_spillback_(ray::core::RayConfig::instance().scheduler_hybrid_scheduling()),
-      spread_threshold_(ray::core::RayConfig::instance().scheduler_spread_threshold())
+    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
+      spread_threshold_(RayConfig::instance().scheduler_spread_threshold())
 
           {};
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
-    : hybrid_spillback_(ray::core::RayConfig::instance().scheduler_hybrid_scheduling()),
-      spread_threshold_(ray::core::RayConfig::instance().scheduler_spread_threshold()),
+    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
+      spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
       local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
   InitResourceUnitInstanceInfo();
@@ -43,8 +43,8 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id,
     const std::unordered_map<std::string, double> &local_node_resources,
     std::function<int64_t(void)> get_used_object_store_memory)
-    : hybrid_spillback_(ray::core::RayConfig::instance().scheduler_hybrid_scheduling()),
-      spread_threshold_(ray::core::RayConfig::instance().scheduler_spread_threshold()) {
+    : hybrid_spillback_(RayConfig::instance().scheduler_hybrid_scheduling()),
+      spread_threshold_(RayConfig::instance().scheduler_spread_threshold()) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
@@ -57,7 +57,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 
 void ClusterResourceScheduler::InitResourceUnitInstanceInfo() {
   std::string predefined_unit_instance_resources =
-      ray::core::RayConfig::instance().predefined_unit_instance_resources();
+      RayConfig::instance().predefined_unit_instance_resources();
   if (!predefined_unit_instance_resources.empty()) {
     std::vector<std::string> results;
     boost::split(results, predefined_unit_instance_resources, boost::is_any_of(","));
@@ -69,7 +69,7 @@ void ClusterResourceScheduler::InitResourceUnitInstanceInfo() {
     }
   }
   std::string custom_unit_instance_resources =
-      ray::core::RayConfig::instance().custom_unit_instance_resources();
+      RayConfig::instance().custom_unit_instance_resources();
   if (!custom_unit_instance_resources.empty()) {
     std::vector<std::string> results;
     boost::split(results, custom_unit_instance_resources, boost::is_any_of(","));
@@ -1085,7 +1085,7 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
     last_report_resources_.reset(new NodeResources(resources));
   }
 
-  if (!ray::core::RayConfig::instance().enable_light_weight_resource_report()) {
+  if (!RayConfig::instance().enable_light_weight_resource_report()) {
     resources_data.set_resources_available_changed(true);
   }
 }

@@ -28,7 +28,7 @@ namespace ray {
 class ServiceBasedGcsClientTest : public ::testing::Test {
  public:
   ServiceBasedGcsClientTest() {
-    ray::core::RayConfig::instance().initialize(
+    RayConfig::instance().initialize(
         R"(
 {
   "ping_gcs_rpc_server_max_retries": 60,
@@ -1292,8 +1292,7 @@ TEST_F(ServiceBasedGcsClientTest, TestGcsRedisFailureDetector) {
 
   // Sleep 3 times of gcs_redis_heartbeat_interval_milliseconds to make sure gcs_server
   // detects that the redis is failure and then stop itself.
-  auto interval_ms =
-      ray::core::RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds();
+  auto interval_ms = RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds();
   std::this_thread::sleep_for(std::chrono::milliseconds(3 * interval_ms));
 
   // Check if GCS server has exited.
@@ -1380,8 +1379,7 @@ TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDestroyedActors) {
   JobID job_id = JobID::FromInt(1);
   AddJob(job_id);
   absl::flat_hash_set<ActorID> actor_ids;
-  int actor_count =
-      ray::core::RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
+  int actor_count = RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
   for (int index = 0; index < actor_count; ++index) {
     auto actor_table_data = Mocker::GenActorTableData(job_id);
     RegisterActor(actor_table_data, false);
@@ -1402,7 +1400,7 @@ TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDestroyedActors) {
   // `DEPENDENCIES_UNREADY` or `DEAD`. We should get all dead actors.
   auto condition = [this]() {
     return GetAllActors(true).size() ==
-           ray::core::RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
+           RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
   };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 
@@ -1414,7 +1412,7 @@ TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDestroyedActors) {
 
 TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDeadNodes) {
   // Simulate the scenario of node dead.
-  int node_count = ray::core::RayConfig::instance().maximum_gcs_dead_node_cached_count();
+  int node_count = RayConfig::instance().maximum_gcs_dead_node_cached_count();
   RegisterNodeAndMarkDead(node_count);
 
   // Restart GCS.
@@ -1425,7 +1423,7 @@ TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDeadNodes) {
   // Get all nodes.
   auto condition = [this]() {
     return GetNodeInfoList().size() ==
-           ray::core::RayConfig::instance().maximum_gcs_dead_node_cached_count();
+           RayConfig::instance().maximum_gcs_dead_node_cached_count();
   };
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 
@@ -1440,9 +1438,9 @@ TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDeadNodes) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(ray::core::RayLog::StartRayLog,
-                                         ray::core::RayLog::ShutDownRayLog, argv[0],
-                                         ray::core::RayLogLevel::INFO,
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 3);

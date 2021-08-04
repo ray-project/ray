@@ -116,10 +116,10 @@ WorkerPool::WorkerPool(
       free_ports_->push(port);
     }
   }
-  if (ray::core::RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
+  if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
     periodical_runner_.RunFnPeriodically(
         [this] { TryKillingIdleWorkers(); },
-        ray::core::RayConfig::instance().kill_idle_workers_interval_ms(),
+        RayConfig::instance().kill_idle_workers_interval_ms(),
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
 }
@@ -278,12 +278,12 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   if (IsIOWorkerType(worker_type)) {
-    RAY_CHECK(!ray::core::RayConfig::instance().object_spilling_config().empty());
+    RAY_CHECK(!RayConfig::instance().object_spilling_config().empty());
     RAY_LOG(DEBUG) << "Adding object spill config "
-                   << ray::core::RayConfig::instance().object_spilling_config();
+                   << RayConfig::instance().object_spilling_config();
     worker_command_args.push_back(
         "--object-spilling-config=" +
-        absl::Base64Escape(ray::core::RayConfig::instance().object_spilling_config()));
+        absl::Base64Escape(RayConfig::instance().object_spilling_config()));
   }
 
   ProcessEnvironment env;
@@ -362,9 +362,8 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
                                               const Language &language,
                                               const rpc::WorkerType worker_type) {
   auto timer = std::make_shared<boost::asio::deadline_timer>(
-      *io_service_,
-      boost::posix_time::seconds(
-          ray::core::RayConfig::instance().worker_register_timeout_seconds()));
+      *io_service_, boost::posix_time::seconds(
+                        RayConfig::instance().worker_register_timeout_seconds()));
   // Capture timer in lambda to copy it once, so that it can avoid destructing timer.
   timer->async_wait(
       [timer, language, proc, worker_type, this](const boost::system::error_code e) {
@@ -749,7 +748,7 @@ void WorkerPool::TryKillingIdleWorkers() {
     }
 
     if (now - idle_pair.second <
-        ray::core::RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+        RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
       break;
     }
 
@@ -775,7 +774,7 @@ void WorkerPool::TryKillingIdleWorkers() {
     for (const auto &worker : workers_in_the_same_process) {
       if (worker_state.idle.count(worker) == 0 ||
           now - idle_of_all_languages_map_[worker] <
-              ray::core::RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+              RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
         // Another worker in this process isn't idle, or hasn't been idle for a while, so
         // this process can't be killed.
         can_be_killed = false;
@@ -871,7 +870,7 @@ int GetRuntimeEnvHash(const TaskSpecification &task_spec) {
   // We add required_resource instead of allocated_instances because allocated_instances
   // may contains resource ID.
   std::unordered_map<std::string, double> required_resource{};
-  if (ray::core::RayConfig::instance().worker_resource_limits_enabled()) {
+  if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = task_spec.GetRequiredResources().GetResourceMap();
   }
   const WorkerCacheKey env = {task_spec.OverrideEnvironmentVariables(),
@@ -1181,22 +1180,23 @@ void WorkerPool::WarnAboutSize() {
     for (const auto &starting_process : state.starting_worker_processes) {
       num_workers_started_or_registered += starting_process.second.num_starting_workers;
     }
+    // Don't count IO workers towards the warning message threshold.
+    num_workers_started_or_registered -= RayConfig::instance().max_io_workers() * 2;
     int64_t multiple = num_workers_started_or_registered / state.multiple_for_warning;
     std::stringstream warning_message;
-    if (multiple >= 3 && multiple > state.last_warning_multiple) {
+    if (multiple >= 4 && multiple > state.last_warning_multiple) {
       // Push an error message to the user if the worker pool tells us that it is
       // getting too big.
       state.last_warning_multiple = multiple;
-      warning_message << "WARNING: " << num_workers_started_or_registered << " "
-                      << Language_Name(entry.first)
-                      << " workers have been started on a node of the id: " << node_id_
-                      << " "
-                      << "and address: " << node_address_ << ". "
-                      << "This could be a result of using "
-                      << "a large number of actors, or it could be a consequence of "
-                      << "using nested tasks "
-                      << "(see https://github.com/ray-project/ray/issues/3644) for "
-                      << "some a discussion of workarounds.";
+      warning_message
+          << "WARNING: " << num_workers_started_or_registered << " "
+          << Language_Name(entry.first)
+          << " worker processes have been started on node: " << node_id_
+          << " with address: " << node_address_ << ". "
+          << "This could be a result of using "
+          << "a large number of actors, or due to tasks blocked in ray.get() calls "
+          << "(see https://github.com/ray-project/ray/issues/3644 for "
+          << "some discussion of workarounds).";
       std::string warning_message_str = warning_message.str();
       RAY_LOG(WARNING) << warning_message_str;
       auto error_data_ptr = gcs::CreateErrorTableData("worker_pool_large",
@@ -1234,7 +1234,7 @@ void WorkerPool::TryStartIOWorkers(const Language &language,
   int available_io_workers_num = io_worker_state.num_starting_io_workers +
                                  io_worker_state.registered_io_workers.size();
   int max_workers_to_start =
-      ray::core::RayConfig::instance().max_io_workers() - available_io_workers_num;
+      RayConfig::instance().max_io_workers() - available_io_workers_num;
   // Compare first to prevent unsigned underflow.
   if (io_worker_state.pending_io_tasks.size() > io_worker_state.idle_io_workers.size()) {
     int expected_workers_num =

@@ -871,7 +871,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] actor_id The actor handle to get.
   /// \return Status::Invalid if we don't have this actor handle.
-  std::shared_ptr<const core::ActorHandle> GetActorHandle(const ActorID &actor_id) const;
+  std::shared_ptr<const ActorHandle> GetActorHandle(const ActorID &actor_id) const;
 
   /// Get a handle to a named actor.
   ///
@@ -882,7 +882,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] actor_handle A handle to the requested actor.
   /// \return The shared_ptr to the actor handle if found, nullptr otherwise.
   /// The second pair contains the status of getting a named actor handle.
-  std::pair<std::shared_ptr<const core::ActorHandle>, Status> GetNamedActorHandle(
+  std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandle(
       const std::string &name, const std::string &ray_namespace);
 
   /// Returns a list of the named actors currently in the system.
@@ -1125,8 +1125,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status KillActorLocalMode(const ActorID &actor_id);
 
   /// Get a handle to a named actor for local mode.
-  std::pair<std::shared_ptr<const core::ActorHandle>, Status>
-  GetNamedActorHandleLocalMode(const std::string &name);
+  std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandleLocalMode(
+      const std::string &name);
 
   /// Get all named actors in local mode.
   std::pair<std::vector<std::pair<std::string, std::string>>, Status>

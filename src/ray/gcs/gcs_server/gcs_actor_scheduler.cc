@@ -37,7 +37,7 @@ GcsActorScheduler::GcsActorScheduler(
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       schedule_failure_handler_(std::move(schedule_failure_handler)),
       schedule_success_handler_(std::move(schedule_success_handler)),
-      report_worker_backlog_(ray::core::RayConfig::instance().report_worker_backlog()),
+      report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       raylet_client_pool_(raylet_client_pool),
       core_worker_clients_(client_factory) {
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
@@ -241,7 +241,7 @@ void GcsActorScheduler::RetryLeasingWorkerFromNode(
     std::shared_ptr<GcsActor> actor, std::shared_ptr<rpc::GcsNodeInfo> node) {
   RAY_UNUSED(execute_after(
       io_context_, [this, node, actor] { DoRetryLeasingWorkerFromNode(actor, node); },
-      ray::core::RayConfig::instance().gcs_lease_worker_retry_interval_ms()));
+      RayConfig::instance().gcs_lease_worker_retry_interval_ms()));
 }
 
 void GcsActorScheduler::DoRetryLeasingWorkerFromNode(
@@ -369,7 +369,7 @@ void GcsActorScheduler::RetryCreatingActorOnWorker(
     std::shared_ptr<GcsActor> actor, std::shared_ptr<GcsLeasedWorker> worker) {
   RAY_UNUSED(execute_after(
       io_context_, [this, actor, worker] { DoRetryCreatingActorOnWorker(actor, worker); },
-      ray::core::RayConfig::instance().gcs_create_actor_retry_interval_ms()));
+      RayConfig::instance().gcs_create_actor_retry_interval_ms()));
 }
 
 void GcsActorScheduler::DoRetryCreatingActorOnWorker(

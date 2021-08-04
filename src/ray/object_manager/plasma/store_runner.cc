@@ -88,13 +88,12 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
     absl::MutexLock lock(&store_runner_mutex_);
     allocator_ = std::make_unique<PlasmaAllocator>(
         plasma_directory_, fallback_directory_, hugepages_enabled_, system_memory_,
-        ray::core::RayConfig::instance().plasma_unlimited());
-    store_.reset(
-        new PlasmaStore(main_service_, *allocator_, socket_name_,
-                        ray::core::RayConfig::instance().object_store_full_delay_ms(),
-                        ray::core::RayConfig::instance().object_spilling_threshold(),
-                        spill_objects_callback, object_store_full_callback,
-                        add_object_callback, delete_object_callback));
+        RayConfig::instance().plasma_unlimited());
+    store_.reset(new PlasmaStore(main_service_, *allocator_, socket_name_,
+                                 RayConfig::instance().object_store_full_delay_ms(),
+                                 RayConfig::instance().object_spilling_threshold(),
+                                 spill_objects_callback, object_store_full_callback,
+                                 add_object_callback, delete_object_callback));
     store_->Start();
   }
   main_service_.run();

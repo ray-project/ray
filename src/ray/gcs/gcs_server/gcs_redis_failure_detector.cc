@@ -30,7 +30,7 @@ void GcsRedisFailureDetector::Start() {
   RAY_LOG(INFO) << "Starting redis failure detector.";
   periodical_runner_.RunFnPeriodically(
       [this] { DetectRedis(); },
-      ray::core::RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
+      RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
       "GcsRedisFailureDetector.deadline_timer.detect_redis_failure");
 }
 

@@ -66,9 +66,8 @@ void GcsServer::Start() {
     grpc_pubsub_publisher_.reset(new pubsub::Publisher(
         /*periodical_runner=*/&pubsub_periodical_runner_,
         /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
-        /*subscriber_timeout_ms=*/
-        ray::core::RayConfig::instance().subscriber_timeout_ms(),
-        /*publish_batch_size_=*/ray::core::RayConfig::instance().publish_batch_size()));
+        /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+        /*publish_batch_size_=*/RayConfig::instance().publish_batch_size()));
   }
 
   // Init gcs table storage.
@@ -320,9 +319,9 @@ void GcsServer::InitObjectManager(const GcsInitData &gcs_init_data) {
 void GcsServer::StoreGcsServerAddressInRedis() {
   std::string ip = config_.node_ip_address;
   if (ip.empty()) {
-    ip =
-        GetValidLocalIp(GetPort(), ray::core::RayConfig::instance()
-                                       .internal_gcs_service_connect_wait_milliseconds());
+    ip = GetValidLocalIp(
+        GetPort(),
+        RayConfig::instance().internal_gcs_service_connect_wait_milliseconds());
   }
   std::string address = ip + ":" + std::to_string(GetPort());
   RAY_LOG(INFO) << "Gcs server address = " << address;
@@ -478,9 +477,9 @@ void GcsServer::InstallEventListeners() {
 void GcsServer::CollectStats() {
   gcs_actor_manager_->CollectStats();
   gcs_placement_group_manager_->CollectStats();
-  execute_after(main_service_, [this] { CollectStats(); },
-                (ray::core::RayConfig::instance().metrics_report_interval_ms() /
-                 2) /* milliseconds */);
+  execute_after(
+      main_service_, [this] { CollectStats(); },
+      (RayConfig::instance().metrics_report_interval_ms() / 2) /* milliseconds */);
 }
 
 void GcsServer::PrintDebugInfo() {
@@ -499,16 +498,15 @@ void GcsServer::PrintDebugInfo() {
   // gcs_debug_state.txt.
   RAY_LOG(INFO) << stream.str();
   execute_after(main_service_, [this] { PrintDebugInfo(); },
-                (ray::core::RayConfig::instance().gcs_dump_debug_log_interval_minutes() *
+                (RayConfig::instance().gcs_dump_debug_log_interval_minutes() *
                  60000) /* milliseconds */);
 }
 
 void GcsServer::PrintAsioStats() {
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
-      ray::core::RayConfig::instance().event_stats_print_interval_ms();
-  if (event_stats_print_interval_ms != -1 &&
-      ray::core::RayConfig::instance().event_stats()) {
+      RayConfig::instance().event_stats_print_interval_ms();
+  if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.StatsString() << "\n\n";
     execute_after(main_service_, [this] { PrintAsioStats(); },
                   event_stats_print_interval_ms /* milliseconds */);

@@ -58,10 +58,9 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
     get_server_address_func_(&current_gcs_server_address_);
     int i = 0;
     while (current_gcs_server_address_.first.empty() &&
-           i < ray::core::RayConfig::instance().gcs_service_connect_retries()) {
+           i < RayConfig::instance().gcs_service_connect_retries()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(
-          ray::core::RayConfig::instance()
-              .internal_gcs_service_connect_wait_milliseconds()));
+          RayConfig::instance().internal_gcs_service_connect_wait_milliseconds()));
       get_server_address_func_(&current_gcs_server_address_);
       i++;
     }
@@ -72,7 +71,7 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
     };
     RAY_CHECK(GetGcsServerAddressFromRedis(
         redis_client_->GetPrimaryContext()->sync_context(), &current_gcs_server_address_,
-        ray::core::RayConfig::instance().gcs_service_connect_retries()))
+        RayConfig::instance().gcs_service_connect_retries()))
         << "Failed to get gcs server address when init gcs client.";
   }
 
@@ -107,7 +106,7 @@ Status ServiceBasedGcsClient::Connect(instrumented_io_context &io_service) {
   periodical_runner_.reset(new PeriodicalRunner(io_service));
   periodical_runner_->RunFnPeriodically(
       [this] { PeriodicallyCheckGcsServerAddress(); },
-      ray::core::RayConfig::instance().gcs_service_address_check_interval_milliseconds(),
+      RayConfig::instance().gcs_service_address_check_interval_milliseconds(),
       "GcsClient.deadline_timer.check_gcs_service_address");
 
   is_connected_ = true;
@@ -150,8 +149,7 @@ bool ServiceBasedGcsClient::GetGcsServerAddressFromRedis(
 
     if (num_attempts < max_attempts) {
       std::this_thread::sleep_for(std::chrono::milliseconds(
-          ray::core::RayConfig::instance()
-              .internal_gcs_service_connect_wait_milliseconds()));
+          RayConfig::instance().internal_gcs_service_connect_wait_milliseconds()));
     }
   }
 
@@ -211,8 +209,7 @@ void ServiceBasedGcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType
 void ServiceBasedGcsClient::ReconnectGcsServer() {
   std::pair<std::string, int> address;
   int index = 0;
-  for (; index < ray::core::RayConfig::instance().ping_gcs_rpc_server_max_retries();
-       ++index) {
+  for (; index < RayConfig::instance().ping_gcs_rpc_server_max_retries(); ++index) {
     if (get_server_address_func_(&address)) {
       // After GCS is restarted, the gcs client will reestablish the connection. At
       // present, every failed RPC request will trigger `ReconnectGcsServer`. In order to
@@ -222,12 +219,11 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
       // `minimum_gcs_reconnect_interval_milliseconds` milliseconds.
       if (last_reconnect_address_ == address &&
           (current_sys_time_ms() - last_reconnect_timestamp_ms_) <
-              ray::core::RayConfig::instance()
-                  .minimum_gcs_reconnect_interval_milliseconds()) {
-        RAY_LOG(DEBUG) << "Repeated reconnection in "
-                       << ray::core::RayConfig::instance()
-                              .minimum_gcs_reconnect_interval_milliseconds()
-                       << " milliseconds, return directly.";
+              RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()) {
+        RAY_LOG(DEBUG)
+            << "Repeated reconnection in "
+            << RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()
+            << " milliseconds, return directly.";
         return;
       }
 
@@ -244,10 +240,10 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
       }
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(
-        ray::core::RayConfig::instance().ping_gcs_rpc_server_interval_milliseconds()));
+        RayConfig::instance().ping_gcs_rpc_server_interval_milliseconds()));
   }
 
-  if (index < ray::core::RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
+  if (index < RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
     gcs_rpc_client_->Reset(address.first, address.second, *client_call_manager_);
     last_reconnect_address_ = address;
     last_reconnect_timestamp_ms_ = current_sys_time_ms();

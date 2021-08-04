@@ -236,8 +236,7 @@ TEST_F(GlobalStateAccessorTest, TestGetAllResourceUsage) {
 }
 
 TEST_F(GlobalStateAccessorTest, TestProfileTable) {
-  int profile_count =
-      ray::core::RayConfig::instance().maximum_profile_table_rows_count() + 1;
+  int profile_count = RayConfig::instance().maximum_profile_table_rows_count() + 1;
   ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);
   for (int index = 0; index < profile_count; ++index) {
     auto node_id = NodeID::FromRandom();
@@ -249,7 +248,7 @@ TEST_F(GlobalStateAccessorTest, TestProfileTable) {
     WaitReady(promise.get_future(), timeout_ms_);
   }
   ASSERT_EQ(global_state_->GetAllProfileInfo().size(),
-            ray::core::RayConfig::instance().maximum_profile_table_rows_count());
+            RayConfig::instance().maximum_profile_table_rows_count());
 }
 
 TEST_F(GlobalStateAccessorTest, TestObjectTable) {
@@ -302,9 +301,9 @@ TEST_F(GlobalStateAccessorTest, TestPlacementGroupTable) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(ray::core::RayLog::StartRayLog,
-                                         ray::core::RayLog::ShutDownRayLog, argv[0],
-                                         ray::core::RayLogLevel::INFO,
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 3);

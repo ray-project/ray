@@ -65,11 +65,11 @@ DEFINE_bool(huge_pages, false, "Whether enable huge pages");
 #ifndef RAYLET_TEST
 
 int main(int argc, char *argv[]) {
-  InitShutdownRAII ray_log_shutdown_raii(ray::core::RayLog::StartRayLog,
-                                         ray::core::RayLog::ShutDownRayLog, argv[0],
-                                         ray::core::RayLogLevel::INFO,
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
-  ray::core::RayLog::InstallFailureSignalHandler();
+  ray::RayLog::InstallFailureSignalHandler();
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   const std::string raylet_socket_name = FLAGS_raylet_socket_name;
@@ -132,7 +132,7 @@ int main(int argc, char *argv[]) {
           const boost::optional<std::string> &stored_raylet_config) {
         RAY_CHECK_OK(status);
         RAY_CHECK(stored_raylet_config.has_value());
-        ray::core::RayConfig::instance().initialize(stored_raylet_config.get());
+        RayConfig::instance().initialize(stored_raylet_config.get());
 
         // Parse the worker port list.
         std::istringstream worker_port_list_string(worker_port_list);
@@ -172,7 +172,7 @@ int main(int argc, char *argv[]) {
         node_manager_config.max_worker_port = max_worker_port;
         node_manager_config.worker_ports = worker_ports;
         node_manager_config.pull_based_resource_reporting =
-            ray::core::RayConfig::instance().pull_based_resource_reporting();
+            RayConfig::instance().pull_based_resource_reporting();
 
         if (!python_worker_command.empty()) {
           node_manager_config.worker_commands.emplace(
@@ -198,19 +198,16 @@ int main(int argc, char *argv[]) {
         }
 
         node_manager_config.report_resources_period_ms =
-            ray::core::RayConfig::instance()
-                .raylet_report_resources_period_milliseconds();
+            RayConfig::instance().raylet_report_resources_period_milliseconds();
         node_manager_config.record_metrics_period_ms =
-            ray::core::RayConfig::instance().metrics_report_interval_ms() / 2;
+            RayConfig::instance().metrics_report_interval_ms() / 2;
         node_manager_config.store_socket_name = store_socket_name;
         node_manager_config.temp_dir = temp_dir;
         node_manager_config.session_dir = session_dir;
         node_manager_config.resource_dir = resource_dir;
         node_manager_config.ray_debugger_external = ray_debugger_external;
-        node_manager_config.max_io_workers =
-            ray::core::RayConfig::instance().max_io_workers();
-        node_manager_config.min_spilling_size =
-            ray::core::RayConfig::instance().min_spilling_size();
+        node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
+        node_manager_config.min_spilling_size = RayConfig::instance().min_spilling_size();
 
         // Configuration for the object manager.
         ray::ObjectManagerConfig object_manager_config;
@@ -218,17 +215,17 @@ int main(int argc, char *argv[]) {
         object_manager_config.store_socket_name = store_socket_name;
 
         object_manager_config.timer_freq_ms =
-            ray::core::RayConfig::instance().object_manager_timer_freq_ms();
+            RayConfig::instance().object_manager_timer_freq_ms();
         object_manager_config.pull_timeout_ms =
-            ray::core::RayConfig::instance().object_manager_pull_timeout_ms();
+            RayConfig::instance().object_manager_pull_timeout_ms();
         object_manager_config.push_timeout_ms =
-            ray::core::RayConfig::instance().object_manager_push_timeout_ms();
+            RayConfig::instance().object_manager_push_timeout_ms();
         if (object_store_memory <= 0) {
           RAY_LOG(FATAL) << "Object store memory should be set.";
         }
         object_manager_config.object_store_memory = object_store_memory;
         object_manager_config.max_bytes_in_flight =
-            ray::core::RayConfig::instance().object_manager_max_bytes_in_flight();
+            RayConfig::instance().object_manager_max_bytes_in_flight();
         object_manager_config.plasma_directory = plasma_directory;
         object_manager_config.fallback_directory = temp_dir;
         object_manager_config.huge_pages = huge_pages;
@@ -236,7 +233,7 @@ int main(int argc, char *argv[]) {
         object_manager_config.rpc_service_threads_number =
             std::min(std::max(2, num_cpus / 4), 8);
         object_manager_config.object_chunk_size =
-            ray::core::RayConfig::instance().object_manager_default_chunk_size();
+            RayConfig::instance().object_manager_default_chunk_size();
 
         RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
                        << "rpc_service_threads_number = "

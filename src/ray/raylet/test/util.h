@@ -36,7 +36,7 @@ class MockWorker : public WorkerInterface {
 
   void AssignTaskId(const TaskID &task_id) {}
 
-  void SetAssignedTask(const ray::core::Task &assigned_task) { task_ = assigned_task; }
+  void SetAssignedTask(const Task &assigned_task) { task_ = assigned_task; }
 
   const std::string IpAddress() const { return address_.ip_address(); }
 
@@ -154,7 +154,7 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
   }
 
-  Status AssignTask(const ray::core::Task &task, const ResourceIdSet &resource_id_set) {
+  Status AssignTask(const Task &task, const ResourceIdSet &resource_id_set) {
     RAY_CHECK(false) << "Method unused";
     Status s;
     return s;
@@ -174,7 +174,7 @@ class MockWorker : public WorkerInterface {
 
   void SetBundleId(const BundleID &bundle_id) { bundle_id_ = bundle_id; }
 
-  ray::core::Task &GetAssignedTask() { return task_; }
+  Task &GetAssignedTask() { return task_; }
 
   bool IsRegistered() {
     RAY_CHECK(false) << "Method unused";
@@ -196,7 +196,7 @@ class MockWorker : public WorkerInterface {
   bool is_detached_actor_;
   BundleID bundle_id_;
   bool blocked_ = false;
-  ray::core::Task task_;
+  Task task_;
   int runtime_env_hash_;
 };
 

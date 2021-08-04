@@ -57,7 +57,7 @@ std::string to_human_readable(int64_t duration) {
 
 void instrumented_io_context::post(std::function<void()> handler,
                                    const std::string name) {
-  if (!ray::core::RayConfig::instance().event_stats()) {
+  if (!RayConfig::instance().event_stats()) {
     return boost::asio::io_context::post(std::move(handler));
   }
   const auto stats_handle = RecordStart(name);
@@ -74,7 +74,7 @@ void instrumented_io_context::post(std::function<void()> handler,
 
 void instrumented_io_context::post(std::function<void()> handler,
                                    std::shared_ptr<StatsHandle> stats_handle) {
-  if (!ray::core::RayConfig::instance().event_stats()) {
+  if (!RayConfig::instance().event_stats()) {
     return boost::asio::io_context::post(std::move(handler));
   }
   // Reset the handle start time, so that we effectively measure the queueing
@@ -191,7 +191,7 @@ instrumented_io_context::get_handler_stats() const {
 }
 
 std::string instrumented_io_context::StatsString() const {
-  if (!ray::core::RayConfig::instance().event_stats()) {
+  if (!RayConfig::instance().event_stats()) {
     return "Stats collection disabled, turn on "
            "event_stats "
            "flag to enable event loop stats collection";

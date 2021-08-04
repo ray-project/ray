@@ -113,8 +113,7 @@ GcsActorManager::GcsActorManager(
       get_ray_namespace_(get_ray_namespace),
       runtime_env_manager_(runtime_env_manager),
       run_delayed_(run_delayed),
-      actor_gc_delay_(
-          ray::core::RayConfig::instance().gcs_actor_table_min_duration_ms()) {
+      actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
 }
@@ -1147,7 +1146,7 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill,
 
 void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor) {
   if (destroyed_actors_.size() >=
-      ray::core::RayConfig::instance().maximum_gcs_destroyed_actor_cached_count()) {
+      RayConfig::instance().maximum_gcs_destroyed_actor_cached_count()) {
     const auto &actor_id = sorted_destroyed_actor_list_.front().first;
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Delete(actor_id, nullptr));
     destroyed_actors_.erase(actor_id);

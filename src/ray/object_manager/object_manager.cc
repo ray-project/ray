@@ -341,8 +341,7 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
 
   // Push from spilled object directly if the object is on local disk.
   auto object_url = get_spilled_object_url_(object_id);
-  if (!object_url.empty() &&
-      ray::core::RayConfig::instance().is_external_storage_type_fs()) {
+  if (!object_url.empty() && RayConfig::instance().is_external_storage_type_fs()) {
     return PushFromFilesystem(object_id, node_id, object_url);
   }
 

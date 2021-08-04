@@ -166,7 +166,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   // which avoids work when accessing the pages later. However it causes long pauses
   // when mmapping the files. Only supported on Linux.
   auto flags = MAP_SHARED;
-  if (ray::core::RayConfig::instance().preallocate_plasma_memory()) {
+  if (RayConfig::instance().preallocate_plasma_memory()) {
     if (!MAP_POPULATE) {
       RAY_LOG(FATAL) << "MAP_POPULATE is not supported on this platform.";
     }

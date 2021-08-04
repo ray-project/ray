@@ -34,11 +34,10 @@ Status ConnectSocketRetry(local_stream_socket &socket, const std::string &endpoi
   RAY_CHECK(num_retries != 0);
   // Pick the default values if the user did not specify.
   if (num_retries < 0) {
-    num_retries = ray::core::RayConfig::instance().raylet_client_num_connect_attempts();
+    num_retries = RayConfig::instance().raylet_client_num_connect_attempts();
   }
   if (timeout_in_ms < 0) {
-    timeout_in_ms =
-        ray::core::RayConfig::instance().raylet_client_connect_timeout_milliseconds();
+    timeout_in_ms = RayConfig::instance().raylet_client_connect_timeout_milliseconds();
   }
   boost::system::error_code ec;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
@@ -108,7 +107,7 @@ void ServerConnection::WriteBufferAsync(
     const std::vector<boost::asio::const_buffer> &buffer,
     const std::function<void(const ray::Status &)> &handler) {
   // Wait for the message to be written.
-  if (ray::core::RayConfig::instance().event_stats()) {
+  if (RayConfig::instance().event_stats()) {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
     const auto stats_handle =
@@ -156,7 +155,7 @@ void ServerConnection::ReadBufferAsync(
     const std::vector<boost::asio::mutable_buffer> &buffer,
     const std::function<void(const ray::Status &)> &handler) {
   // Wait for the message to be read.
-  if (ray::core::RayConfig::instance().event_stats()) {
+  if (RayConfig::instance().event_stats()) {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
     const auto stats_handle =
@@ -183,7 +182,7 @@ ray::Status ServerConnection::WriteMessage(int64_t type, int64_t length,
   sync_writes_ += 1;
   bytes_written_ += length;
 
-  auto write_cookie = ray::core::RayConfig::instance().ray_cookie();
+  auto write_cookie = RayConfig::instance().ray_cookie();
   return WriteBuffer({
       boost::asio::buffer(&write_cookie, sizeof(write_cookie)),
       boost::asio::buffer(&type, sizeof(type)),
@@ -201,7 +200,7 @@ Status ServerConnection::ReadMessage(int64_t type, std::vector<uint8_t> *message
       boost::asio::buffer(&read_type, sizeof(read_type)),
       boost::asio::buffer(&read_length, sizeof(read_length)),
   }));
-  if (read_cookie != ray::core::RayConfig::instance().ray_cookie()) {
+  if (read_cookie != RayConfig::instance().ray_cookie()) {
     std::ostringstream ss;
     ss << "Ray cookie mismatch for received message. "
        << "Received cookie: " << read_cookie;
@@ -224,7 +223,7 @@ void ServerConnection::WriteMessageAsync(
   bytes_written_ += length;
 
   auto write_buffer = std::make_unique<AsyncWriteBuffer>();
-  write_buffer->write_cookie = ray::core::RayConfig::instance().ray_cookie();
+  write_buffer->write_cookie = RayConfig::instance().ray_cookie();
   write_buffer->write_type = type;
   write_buffer->write_length = length;
   write_buffer->write_message.resize(length);
@@ -288,7 +287,7 @@ void ServerConnection::DoAsyncWrites() {
     return;
   }
   auto this_ptr = this->shared_from_this();
-  if (ray::core::RayConfig::instance().event_stats()) {
+  if (RayConfig::instance().event_stats()) {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
     const auto stats_handle =
@@ -379,7 +378,7 @@ void ClientConnection::ProcessMessages() {
       boost::asio::buffer(&read_type_, sizeof(read_type_)),
       boost::asio::buffer(&read_length_, sizeof(read_length_)),
   };
-  if (ray::core::RayConfig::instance().event_stats()) {
+  if (RayConfig::instance().event_stats()) {
     auto this_ptr = shared_ClientConnection_from_this();
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());
@@ -420,7 +419,7 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
   read_message_.resize(read_length_);
   ServerConnection::bytes_read_ += read_length_;
   // Wait for the message to be read.
-  if (ray::core::RayConfig::instance().event_stats()) {
+  if (RayConfig::instance().event_stats()) {
     auto this_ptr = shared_ClientConnection_from_this();
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());
@@ -442,7 +441,7 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
 }
 
 bool ClientConnection::CheckRayCookie() {
-  if (read_cookie_ == ray::core::RayConfig::instance().ray_cookie()) {
+  if (read_cookie_ == RayConfig::instance().ray_cookie()) {
     return true;
   }
 
@@ -481,7 +480,7 @@ void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
   int64_t start_ms = current_time_ms();
   message_handler_(shared_ClientConnection_from_this(), read_type_, read_message_);
   int64_t interval = current_time_ms() - start_ms;
-  if (interval > ray::core::RayConfig::instance().handler_warning_timeout_ms()) {
+  if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
     std::string message_type;
     if (message_type_enum_names_.empty()) {
       message_type = std::to_string(read_type_);

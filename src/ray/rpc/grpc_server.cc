@@ -38,9 +38,9 @@ void GrpcServer::Run() {
   // the requests sent to this port may be handled by any of the workers.
   builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
   builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH,
-                             ray::core::RayConfig::instance().max_grpc_message_size());
+                             RayConfig::instance().max_grpc_message_size());
   builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
-                             ray::core::RayConfig::instance().max_grpc_message_size());
+                             RayConfig::instance().max_grpc_message_size());
   // TODO(hchen): Add options for authentication.
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.

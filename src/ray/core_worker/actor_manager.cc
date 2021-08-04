@@ -16,8 +16,6 @@
 
 #include "ray/gcs/pb_util.h"
 
-using namespace ray::core;
-
 namespace ray {
 
 ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle,

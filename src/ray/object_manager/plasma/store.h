@@ -197,7 +197,7 @@ class PlasmaStore {
     // created by the object manager.
     int64_t num_bytes_in_use =
         static_cast<int64_t>(num_bytes_in_use_ - num_bytes_unsealed_);
-    if (!ray::core::RayConfig::instance().plasma_unlimited()) {
+    if (!RayConfig::instance().plasma_unlimited()) {
       RAY_CHECK(allocator_.GetFootprintLimit() >= num_bytes_in_use);
     }
     size_t available = 0;

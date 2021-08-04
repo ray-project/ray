@@ -3,7 +3,6 @@
 #include <sstream>
 
 namespace ray {
-namespace core {
 
 Task::Task(const rpc::Task &message, int64_t backlog_size)
     : task_spec_(message.task_spec()),
@@ -47,5 +46,4 @@ std::string Task::DebugString() const {
   return stream.str();
 }
 
-}  // namespace core
 }  // namespace ray

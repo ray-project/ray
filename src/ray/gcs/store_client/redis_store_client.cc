@@ -262,7 +262,7 @@ RedisStoreClient::GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_
     } else {
       // If the last batch is full, add a new batch.
       if (it->second.back().size() - 1 ==
-          ray::core::RayConfig::instance().maximum_gcs_storage_operation_batch_size()) {
+          RayConfig::instance().maximum_gcs_storage_operation_batch_size()) {
         it->second.emplace_back(std::vector<std::string>());
         it->second.back().push_back(command);
         (*count)++;
@@ -395,8 +395,7 @@ void RedisStoreClient::RedisScanner::Scan(std::string match_pattern,
     return;
   }
 
-  size_t batch_count =
-      ray::core::RayConfig::instance().maximum_gcs_storage_operation_batch_size();
+  size_t batch_count = RayConfig::instance().maximum_gcs_storage_operation_batch_size();
   for (const auto &item : shard_to_cursor_) {
     ++pending_request_count_;
 

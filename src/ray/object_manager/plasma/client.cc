@@ -350,8 +350,8 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(
   while (retry_with_request_id > 0) {
     guard.unlock();
     // TODO(sang): Consider using exponential backoff here.
-    std::this_thread::sleep_for(std::chrono::milliseconds(
-        ray::core::RayConfig::instance().object_store_full_delay_ms()));
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(RayConfig::instance().object_store_full_delay_ms()));
     guard.lock();
     RAY_LOG(DEBUG) << "Retrying request for object " << object_id << " with request ID "
                    << retry_with_request_id;

@@ -91,9 +91,9 @@ TEST_F(RedisAsioTest, TestRedisCommands) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(ray::core::RayLog::StartRayLog,
-                                         ray::core::RayLog::ShutDownRayLog, argv[0],
-                                         ray::core::RayLogLevel::INFO,
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog, argv[0],
+                                         ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 3);

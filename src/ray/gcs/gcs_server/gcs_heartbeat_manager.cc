@@ -25,7 +25,7 @@ GcsHeartbeatManager::GcsHeartbeatManager(
     std::function<void(const NodeID &)> on_node_death_callback)
     : io_service_(io_service),
       on_node_death_callback_(std::move(on_node_death_callback)),
-      num_heartbeats_timeout_(ray::core::RayConfig::instance().num_heartbeats_timeout()),
+      num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       periodical_runner_(io_service) {
   RAY_LOG(INFO) << "GcsHeartbeatManager start, num_heartbeats_timeout="
                 << num_heartbeats_timeout_;
@@ -51,7 +51,7 @@ void GcsHeartbeatManager::Start() {
         if (!is_started_) {
           periodical_runner_.RunFnPeriodically(
               [this] { DetectDeadNodes(); },
-              ray::core::RayConfig::instance().raylet_heartbeat_period_milliseconds(),
+              RayConfig::instance().raylet_heartbeat_period_milliseconds(),
               "GcsHeartbeatManager.deadline_timer.detect_dead_nodes");
           is_started_ = true;
         }

@@ -12,15 +12,13 @@ GcsResourceReportPoller::GcsResourceReportPoller(
         std::function<void(const Status &, const rpc::RequestResourceReportReply &)>)>
         request_report)
     : ticker_(polling_service_),
-      max_concurrent_pulls_(
-          ray::core::RayConfig::instance().gcs_max_concurrent_resource_pulls()),
+      max_concurrent_pulls_(RayConfig::instance().gcs_max_concurrent_resource_pulls()),
       inflight_pulls_(0),
       raylet_client_pool_(raylet_client_pool),
       handle_resource_report_(handle_resource_report),
       get_current_time_milli_(get_current_time_milli),
       request_report_(request_report),
-      poll_period_ms_(
-          ray::core::RayConfig::instance().gcs_resource_report_poll_period_ms()) {}
+      poll_period_ms_(RayConfig::instance().gcs_resource_report_poll_period_ms()) {}
 
 GcsResourceReportPoller::~GcsResourceReportPoller() { Stop(); }
 

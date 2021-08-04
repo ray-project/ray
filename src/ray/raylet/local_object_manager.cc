@@ -112,7 +112,7 @@ void LocalObjectManager::FlushFreeObjects() {
 }
 
 void LocalObjectManager::SpillObjectUptoMaxThroughput() {
-  if (ray::core::RayConfig::instance().object_spilling_config().empty()) {
+  if (RayConfig::instance().object_spilling_config().empty()) {
     return;
   }
 
@@ -136,7 +136,7 @@ bool LocalObjectManager::IsSpillingInProgress() {
 }
 
 bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
-  if (ray::core::RayConfig::instance().object_spilling_config().empty()) {
+  if (RayConfig::instance().object_spilling_config().empty()) {
     return false;
   }
 

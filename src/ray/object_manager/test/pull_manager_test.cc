@@ -656,18 +656,18 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   pull_manager_.UpdatePullsBasedOnAvailableMemory(oids.size() * object_size - 1);
 
   // In unlimited mode, we fulfill all ray.gets using the fallback allocator.
-  if (ray::core::RayConfig::instance().plasma_unlimited() && GetParam()) {
+  if (RayConfig::instance().plasma_unlimited() && GetParam()) {
     AssertNumActiveRequestsEquals(3);
     AssertNumActiveBundlesEquals(1);
-    if (!ray::core::RayConfig::instance().plasma_unlimited()) {
+    if (!RayConfig::instance().plasma_unlimited()) {
       ASSERT_EQ(num_object_store_full_calls_, 1);  // Spill on fallback.
     }
     return;
   }
 
-  if (ray::core::RayConfig::instance().pull_manager_min_active_pulls() == 0) {
+  if (RayConfig::instance().pull_manager_min_active_pulls() == 0) {
     AssertNumActiveRequestsEquals(0);
-    if (!ray::core::RayConfig::instance().plasma_unlimited()) {
+    if (!RayConfig::instance().plasma_unlimited()) {
       ASSERT_EQ(num_object_store_full_calls_, 1);
     }
     for (auto &oid : oids) {
@@ -677,7 +677,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
     ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
   } else {
     AssertNumActiveRequestsEquals(3);
-    if (!ray::core::RayConfig::instance().plasma_unlimited()) {
+    if (!RayConfig::instance().plasma_unlimited()) {
       ASSERT_EQ(num_object_store_full_calls_, 1);
     }
     for (auto &oid : oids) {
@@ -730,16 +730,15 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
   for (int capacity = 0; capacity < 20; capacity++) {
     int num_requests_quota =
         std::min(num_requests, capacity / (object_size * num_oids_per_request));
-    int num_requests_expected =
-        std::max(ray::core::RayConfig::instance().pull_manager_min_active_pulls(),
-                 num_requests_quota);
-    if (ray::core::RayConfig::instance().plasma_unlimited() && GetParam()) {
+    int num_requests_expected = std::max(
+        RayConfig::instance().pull_manager_min_active_pulls(), num_requests_quota);
+    if (RayConfig::instance().plasma_unlimited() && GetParam()) {
       num_requests_expected = num_requests;
     }
     pull_manager_.UpdatePullsBasedOnAvailableMemory(capacity);
 
     AssertNumActiveRequestsEquals(num_requests_expected * num_oids_per_request);
-    if (!ray::core::RayConfig::instance().plasma_unlimited()) {
+    if (!RayConfig::instance().plasma_unlimited()) {
       // The total requests that are active is under the specified capacity.
       ASSERT_TRUE(
           IsUnderCapacity(num_requests_expected * num_oids_per_request * object_size));
@@ -751,7 +750,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
                                    object_size));
     }
     // Check that OOM was triggered.
-    if (!ray::core::RayConfig::instance().plasma_unlimited()) {
+    if (!RayConfig::instance().plasma_unlimited()) {
       if (num_requests_quota == num_requests_expected) {
         ASSERT_EQ(num_object_store_full_calls_, 0);
       } else {
@@ -779,7 +778,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestCancel) {
   if (GetParam()) {
     prio = BundlePriority::GET_REQUEST;
   }
-  if (ray::core::RayConfig::instance().plasma_unlimited() && GetParam()) {
+  if (RayConfig::instance().plasma_unlimited() && GetParam()) {
     return;  // This case isn't meaningful to test.
   }
   /// Test admission control while requests are cancelled out-of-order. When an
@@ -938,7 +937,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   // the same type by FIFO order.
   pull_manager_.UpdatePullsBasedOnAvailableMemory(2);
   ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[0]));
-  if (ray::core::RayConfig::instance().plasma_unlimited()) {
+  if (RayConfig::instance().plasma_unlimited()) {
     ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[1]));
   } else {
     ASSERT_FALSE(pull_manager_.IsObjectActive(get_oids[1]));

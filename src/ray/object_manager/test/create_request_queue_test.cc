@@ -431,7 +431,7 @@ TEST_F(CreateRequestQueueTest, TestTryRequestImmediately) {
   // Request would block.
   auto req_id = queue_.AddRequest(ObjectID::Nil(), client, request, 1234);
   result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request, 1234);
-  if (ray::core::RayConfig::instance().plasma_unlimited()) {
+  if (RayConfig::instance().plasma_unlimited()) {
     result = queue_.TryRequestImmediately(ObjectID::Nil(), client, request, 1234);
     ASSERT_EQ(result.first.data_size, 1234);
   } else {

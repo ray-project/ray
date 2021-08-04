@@ -366,7 +366,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
             // put it to wait_for_death_info_tasks and wait for Death info
             int64_t death_info_timeout_ts =
                 current_time_ms() +
-                ray::core::RayConfig::instance().timeout_ms_task_wait_for_death_info();
+                RayConfig::instance().timeout_ms_task_wait_for_death_info();
             queue.wait_for_death_info_tasks.emplace_back(death_info_timeout_ts,
                                                          task_spec);
             RAY_LOG(INFO)

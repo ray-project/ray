@@ -66,7 +66,6 @@ ray::rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
 }  // namespace
 
 namespace ray {
-namespace core {
 
 ActorHandle::ActorHandle(
     const class ActorID &actor_id, const TaskID &owner_id,
@@ -107,5 +106,4 @@ void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec,
 
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }
 
-}  // namespace core
 }  // namespace ray

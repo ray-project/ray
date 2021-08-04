@@ -43,7 +43,6 @@
 #include "ray/util/filesystem.h"
 
 namespace ray {
-namespace core {
 
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";
@@ -116,7 +115,7 @@ class SpdLogMessage final {
     }
 
     if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
-      stream() << "\n*** StackTrace Information ***\n" << core::GetCallTrace();
+      stream() << "\n*** StackTrace Information ***\n" << ray::GetCallTrace();
     }
     // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
     logger->log(static_cast<spdlog::level::level_enum>(loglevel_), /*fmt*/ "{}",
@@ -139,7 +138,7 @@ class SpdLogMessage final {
   int loglevel_;
 };
 
-typedef core::SpdLogMessage LoggingProvider;
+typedef ray::SpdLogMessage LoggingProvider;
 
 // Spdlog's severity map.
 static int GetMappedSeverity(RayLogLevel severity) {
@@ -360,5 +359,4 @@ RayLog::~RayLog() {
   }
 }
 
-}  // namespace core
 }  // namespace ray

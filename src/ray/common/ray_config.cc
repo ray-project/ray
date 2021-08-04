@@ -21,9 +21,6 @@
 
 using json = nlohmann::json;
 
-namespace ray {
-namespace core {
-
 RayConfig &RayConfig::instance() {
   static RayConfig config;
   return config;
@@ -52,19 +49,16 @@ void RayConfig::initialize(const std::string &config_list) {
     }
     if (RAY_LOG_ENABLED(DEBUG)) {
       std::ostringstream oss;
-      oss << "ray::core::RayConfig is initialized with: ";
+      oss << "RayConfig is initialized with: ";
       for (auto const &pair : config_map.items()) {
         oss << pair.key() << "=" << pair.value() << ",";
       }
       RAY_LOG(DEBUG) << oss.str();
     }
   } catch (json::exception &ex) {
-    RAY_LOG(FATAL) << "Failed to initialize ray::core::RayConfig: " << ex.what()
+    RAY_LOG(FATAL) << "Failed to initialize RayConfig: " << ex.what()
                    << " The config string is: " << config_list;
   }
 }
-
 /// ---------------------------------------------------------------------
 #undef RAY_CONFIG
-}  // namespace core
-}  // namespace ray

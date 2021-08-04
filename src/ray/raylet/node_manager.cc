@@ -132,7 +132,7 @@ HeartbeatSender::HeartbeatSender(NodeID self_node_id,
   last_heartbeat_at_ms_ = current_time_ms();
   heartbeat_runner_->RunFnPeriodically(
       [this] { Heartbeat(); },
-      ray::core::RayConfig::instance().raylet_heartbeat_period_milliseconds(),
+      RayConfig::instance().raylet_heartbeat_period_milliseconds(),
       "NodeManager.deadline_timer.heartbeat");
 }
 
@@ -148,9 +148,8 @@ HeartbeatSender::~HeartbeatSender() {
 void HeartbeatSender::Heartbeat() {
   uint64_t now_ms = current_time_ms();
   uint64_t interval = now_ms - last_heartbeat_at_ms_;
-  if (interval >
-      ray::core::RayConfig::instance().num_heartbeats_warning() *
-          ray::core::RayConfig::instance().raylet_heartbeat_period_milliseconds()) {
+  if (interval > RayConfig::instance().num_heartbeats_warning() *
+                     RayConfig::instance().raylet_heartbeat_period_milliseconds()) {
     RAY_LOG(WARNING)
         << "Last heartbeat was sent " << interval
         << " ms ago. There might be resource pressure on this node. If heartbeat keeps "
@@ -194,7 +193,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
-          self_node_id_, ray::core::RayConfig::instance().max_command_batch_size(),
+          self_node_id_, RayConfig::instance().max_command_batch_size(),
           /*get_client=*/
           [this](const rpc::Address &address) {
             return worker_rpc_pool_.GetOrConnect(address);
@@ -260,15 +259,14 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       agent_manager_service_(io_service, *agent_manager_service_handler_),
       local_object_manager_(
           self_node_id_, config.node_manager_address, config.node_manager_port,
-          ray::core::RayConfig::instance().free_objects_batch_size(),
-          ray::core::RayConfig::instance().free_objects_period_milliseconds(),
-          worker_pool_, gcs_client_->Objects(), worker_rpc_pool_,
+          RayConfig::instance().free_objects_batch_size(),
+          RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
+          gcs_client_->Objects(), worker_rpc_pool_,
           /*max_io_workers*/ config.max_io_workers,
           /*min_spilling_size*/ config.min_spilling_size,
           /*is_external_storage_type_fs*/
-          ray::core::RayConfig::instance().is_external_storage_type_fs(),
-          /*max_fused_object_count*/
-          ray::core::RayConfig::instance().max_fused_object_count(),
+          RayConfig::instance().is_external_storage_type_fs(),
+          /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),
           /*on_objects_freed*/
           [this](const std::vector<ObjectID> &object_ids) {
             object_manager_.FreeObjects(object_ids,
@@ -279,21 +277,18 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             return object_manager_.IsPlasmaObjectSpillable(object_id);
           },
           /*core_worker_subscriber_=*/core_worker_subscriber_.get()),
-      high_plasma_storage_usage_(
-          ray::core::RayConfig::instance().high_plasma_storage_usage()),
+      high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
       local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
-      local_gc_throttler_(ray::core::RayConfig::instance().local_gc_min_interval_s() *
-                          1e9),
-      global_gc_throttler_(ray::core::RayConfig::instance().global_gc_min_interval_s() *
-                           1e9),
-      local_gc_interval_ns_(ray::core::RayConfig::instance().local_gc_interval_s() * 1e9),
+      local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
+      global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
+      local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       runtime_env_manager_([this](const std::string &uri, std::function<void(bool)> cb) {
         return DeleteLocalURI(uri, cb);
       }),
       next_resource_seq_no_(0) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
-  RAY_CHECK(ray::core::RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
+  RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   SchedulingResources local_resources(config.resource_config);
   cluster_resource_scheduler_ =
       std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
@@ -308,15 +303,14 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
     return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
              failed_nodes_cache_.count(owner_node_id) > 0);
   };
-  auto announce_infeasible_task = [this](const ray::core::Task &task) {
+  auto announce_infeasible_task = [this](const Task &task) {
     PublishInfeasibleTaskError(task);
   };
-  RAY_CHECK(ray::core::RayConfig::instance().max_task_args_memory_fraction() > 0 &&
-            ray::core::RayConfig::instance().max_task_args_memory_fraction() <= 1)
+  RAY_CHECK(RayConfig::instance().max_task_args_memory_fraction() > 0 &&
+            RayConfig::instance().max_task_args_memory_fraction() <= 1)
       << "max_task_args_memory_fraction must be a nonzero fraction.";
-  int64_t max_task_args_memory =
-      object_manager_.GetMemoryCapacity() *
-      ray::core::RayConfig::instance().max_task_args_memory_fraction();
+  int64_t max_task_args_memory = object_manager_.GetMemoryCapacity() *
+                                 RayConfig::instance().max_task_args_memory_fraction();
   if (max_task_args_memory <= 0) {
     RAY_LOG(WARNING)
         << "Max task args should be a fraction of the object store capacity, but object "
@@ -462,17 +456,17 @@ ray::Status NodeManager::RegisterGcs() {
         DumpDebugState();
         WarnResourceDeadlock();
       },
-      ray::core::RayConfig::instance().debug_dump_period_milliseconds(),
+      RayConfig::instance().debug_dump_period_milliseconds(),
       "NodeManager.deadline_timer.debug_state_dump");
   uint64_t now_ms = current_time_ms();
   last_metrics_recorded_at_ms_ = now_ms;
   periodical_runner_.RunFnPeriodically([this] { RecordMetrics(); },
                                        record_metrics_period_ms_,
                                        "NodeManager.deadline_timer.record_metrics");
-  if (ray::core::RayConfig::instance().free_objects_period_milliseconds() > 0) {
+  if (RayConfig::instance().free_objects_period_milliseconds() > 0) {
     periodical_runner_.RunFnPeriodically(
         [this] { local_object_manager_.FlushFreeObjects(); },
-        ray::core::RayConfig::instance().free_objects_period_milliseconds(),
+        RayConfig::instance().free_objects_period_milliseconds(),
         "NodeManager.deadline_timer.flush_free_objects");
   }
   last_resource_report_at_ms_ = now_ms;
@@ -483,14 +477,13 @@ ray::Status NodeManager::RegisterGcs() {
   // to the GCS.
   periodical_runner_.RunFnPeriodically(
       [this] { GetObjectManagerProfileInfo(); },
-      ray::core::RayConfig::instance().raylet_heartbeat_period_milliseconds(),
+      RayConfig::instance().raylet_heartbeat_period_milliseconds(),
       "NodeManager.deadline_timer.object_manager_profiling");
 
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
-      ray::core::RayConfig::instance().event_stats_print_interval_ms();
-  if (event_stats_print_interval_ms != -1 &&
-      ray::core::RayConfig::instance().event_stats()) {
+      RayConfig::instance().event_stats_print_interval_ms();
+  if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     periodical_runner_.RunFnPeriodically(
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n" << io_service_.StatsString() << "\n\n";
@@ -515,7 +508,7 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
 
   auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
   auto retry_duration = boost::posix_time::milliseconds(
-      ray::core::RayConfig::instance().kill_worker_timeout_milliseconds());
+      RayConfig::instance().kill_worker_timeout_milliseconds());
   retry_timer->expires_from_now(retry_duration);
   retry_timer->async_wait([retry_timer, worker](const boost::system::error_code &error) {
     RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->GetProcess().GetId();
@@ -578,7 +571,7 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
   cluster_task_manager_->FillResourceUsage(
       resources_data, gcs_client_->NodeResources().GetLastResourceUsage());
-  if (ray::core::RayConfig::instance().gcs_task_scheduling_enabled()) {
+  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
   }
 
@@ -612,9 +605,9 @@ void NodeManager::ReportResourceUsage() {
   }
   uint64_t now_ms = current_time_ms();
   uint64_t interval = now_ms - last_resource_report_at_ms_;
-  if (interval > ray::core::RayConfig::instance().num_resource_report_periods_warning() *
-                     ray::core::RayConfig::instance()
-                         .raylet_report_resources_period_milliseconds()) {
+  if (interval >
+      RayConfig::instance().num_resource_report_periods_warning() *
+          RayConfig::instance().raylet_report_resources_period_milliseconds()) {
     RAY_LOG(WARNING)
         << "Last resource report was sent " << interval
         << " ms ago. There might be resource pressure on this node. If "
@@ -721,7 +714,7 @@ void NodeManager::HandleReleaseUnusedBundles(
 // debug_dump_period_ milliseconds.
 // See https://github.com/ray-project/ray/issues/5790 for details.
 void NodeManager::WarnResourceDeadlock() {
-  ray::core::Task exemplar;
+  ray::Task exemplar;
   bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
@@ -797,7 +790,7 @@ void NodeManager::GetObjectManagerProfileInfo() {
   }
 
   int64_t interval = current_time_ms() - start_time_ms;
-  if (interval > ray::core::RayConfig::instance().handler_warning_timeout_ms()) {
+  if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
     RAY_LOG(WARNING) << "GetObjectManagerProfileInfo handler took " << interval << " ms.";
   }
 }
@@ -839,8 +832,8 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   RAY_CHECK(node_id != self_node_id_)
       << "Exiting because this node manager has mistakenly been marked dead by the "
       << "monitor: GCS didn't receive heartbeats within timeout "
-      << ray::core::RayConfig::instance().num_heartbeats_timeout() *
-             ray::core::RayConfig::instance().raylet_heartbeat_period_milliseconds()
+      << RayConfig::instance().num_heartbeats_timeout() *
+             RayConfig::instance().raylet_heartbeat_period_milliseconds()
       << " ms. This is likely since the machine or raylet became overloaded.";
 
   // Below, when we remove node_id from all of these data structures, we could
@@ -1269,7 +1262,7 @@ void NodeManager::DisconnectClient(
       // If the worker was an actor, it'll be cleaned by GCS.
       if (actor_id.IsNil()) {
         // Return the resources that were being used by this worker.
-        ray::core::Task task;
+        Task task;
         cluster_task_manager_->TaskFinished(worker, &task);
       }
 
@@ -1609,10 +1602,10 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   auto backlog_size = -1;
-  if (ray::core::RayConfig::instance().report_worker_backlog()) {
+  if (RayConfig::instance().report_worker_backlog()) {
     backlog_size = request.backlog_size();
   }
-  ray::core::Task task(task_message, backlog_size);
+  Task task(task_message, backlog_size);
   bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
   metrics_num_task_scheduled_ += 1;
@@ -1628,7 +1621,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
   }
 
-  if (ray::core::RayConfig::instance().enable_worker_prestart()) {
+  if (RayConfig::instance().enable_worker_prestart()) {
     auto task_spec = task.GetTaskSpecification();
     worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
   }
@@ -1873,7 +1866,7 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
-  ray::core::Task task;
+  Task task;
   cluster_task_manager_->TaskFinished(worker_ptr, &task);
 
   const auto &spec = task.GetTaskSpecification();  //
@@ -1903,7 +1896,7 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
 }
 
 void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
-                                                  const ray::core::Task &task) {
+                                                  const Task &task) {
   RAY_LOG(DEBUG) << "Finishing assigned actor creation task";
   const TaskSpecification task_spec = task.GetTaskSpecification();
   ActorID actor_id = task_spec.ActorCreationId();
@@ -2436,7 +2429,7 @@ void NodeManager::RecordMetrics() {
   object_directory_->RecordMetrics(duration_ms);
 }
 
-void NodeManager::PublishInfeasibleTaskError(const ray::core::Task &task) const {
+void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
   bool suppress_warning = false;
 
   if (!task.GetTaskSpecification().PlacementGroupBundleId().first.IsNil()) {

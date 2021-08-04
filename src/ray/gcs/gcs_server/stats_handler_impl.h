@@ -26,8 +26,7 @@ class DefaultStatsHandler : public rpc::StatsHandler {
  public:
   explicit DefaultStatsHandler(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
       : gcs_table_storage_(std::move(gcs_table_storage)) {
-    for (int index = 0;
-         index < ray::core::RayConfig::instance().maximum_profile_table_rows_count();
+    for (int index = 0; index < RayConfig::instance().maximum_profile_table_rows_count();
          ++index) {
       ids_.emplace_back(UniqueID::FromRandom());
     }

@@ -716,7 +716,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
             if (cancel_retry_timer_->expiry().time_since_epoch() <=
                 std::chrono::high_resolution_clock::now().time_since_epoch()) {
               cancel_retry_timer_->expires_after(boost::asio::chrono::milliseconds(
-                  ray::core::RayConfig::instance().cancellation_retry_ms()));
+                  RayConfig::instance().cancellation_retry_ms()));
             }
             cancel_retry_timer_->async_wait(
                 boost::bind(&CoreWorkerDirectTaskSubmitter::CancelTask, this, task_spec,

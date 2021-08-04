@@ -49,8 +49,7 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
 inline std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
     const std::string &error_type, const std::string &error_msg, double timestamp,
     const JobID &job_id = JobID::Nil()) {
-  uint32_t max_error_msg_size_bytes =
-      ray::core::RayConfig::instance().max_error_msg_size_bytes();
+  uint32_t max_error_msg_size_bytes = RayConfig::instance().max_error_msg_size_bytes();
   auto error_info_ptr = std::make_shared<ray::rpc::ErrorTableData>();
   error_info_ptr->set_type(error_type);
   if (error_msg.length() > max_error_msg_size_bytes) {

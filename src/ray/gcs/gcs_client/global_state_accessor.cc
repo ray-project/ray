@@ -278,7 +278,7 @@ std::string GlobalStateAccessor::GetSystemConfig() {
       }));
   auto future = promise.get_future();
   if (future.wait_for(std::chrono::seconds(
-          ray::core::RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
       std::future_status::ready) {
     RAY_LOG(FATAL) << "Failed to get system config within the timeout setting.";
   }
@@ -359,7 +359,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
     }
 
     if (current_time_ms() - start_ms >=
-        ray::core::RayConfig::instance().raylet_start_wait_time_s() * 1000) {
+        RayConfig::instance().raylet_start_wait_time_s() * 1000) {
       return status;
     }
     RAY_LOG(WARNING) << "Some processes that the driver needs to connect to have "

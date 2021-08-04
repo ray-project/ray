@@ -36,7 +36,7 @@ GcsServerAddressUpdater::GcsServerAddressUpdater(
   // Start updating gcs server address.
   updater_runner_->RunFnPeriodically(
       [this] { UpdateGcsServerAddress(); },
-      ray::core::RayConfig::instance().gcs_service_address_check_interval_milliseconds());
+      RayConfig::instance().gcs_service_address_check_interval_milliseconds());
 }
 
 GcsServerAddressUpdater::~GcsServerAddressUpdater() {
@@ -51,21 +51,20 @@ GcsServerAddressUpdater::~GcsServerAddressUpdater() {
 
 void GcsServerAddressUpdater::UpdateGcsServerAddress() {
   RAY_LOG(DEBUG) << "Getting gcs server address from raylet.";
-  raylet_client_->GetGcsServerAddress(
-      [this](const Status &status, const rpc::GetGcsServerAddressReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(WARNING) << "Failed to get gcs server address from Raylet: " << status;
-          failed_ping_count_ += 1;
-          if (failed_ping_count_ ==
-              ray::core::RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
-            RAY_LOG(FATAL) << "Failed to receive the GCS address from the raylet for "
-                           << failed_ping_count_ << " times. Killing itself.";
-          }
-        } else {
-          failed_ping_count_ = 0;
-          update_func_(reply.ip(), reply.port());
-        }
-      });
+  raylet_client_->GetGcsServerAddress([this](const Status &status,
+                                             const rpc::GetGcsServerAddressReply &reply) {
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Failed to get gcs server address from Raylet: " << status;
+      failed_ping_count_ += 1;
+      if (failed_ping_count_ == RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
+        RAY_LOG(FATAL) << "Failed to receive the GCS address from the raylet for "
+                       << failed_ping_count_ << " times. Killing itself.";
+      }
+    } else {
+      failed_ping_count_ = 0;
+      update_func_(reply.ip(), reply.port());
+    }
+  });
 }
 
 }  // namespace ray

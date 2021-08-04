@@ -329,21 +329,18 @@ Status ConnectWithRetries(const std::string &address, int port,
   Status status =
       ConnectWithoutRetries(address, port, connect_function, context, errorMessage);
   while (!status.ok()) {
-    if (connection_attempts >=
-        ray::core::RayConfig::instance().redis_db_connect_retries()) {
-      RAY_LOG(FATAL) << ray::core::RayConfig::instance().redis_db_connect_retries()
-                     << " attempts "
+    if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
+      RAY_LOG(FATAL) << RayConfig::instance().redis_db_connect_retries() << " attempts "
                      << "to connect have all failed. The last error message was: "
                      << errorMessage;
       break;
     }
-    RAY_LOG(WARNING)
-        << errorMessage << " Will retry in "
-        << ray::core::RayConfig::instance().redis_db_connect_wait_milliseconds()
-        << " milliseconds. Each retry takes about two minutes.";
+    RAY_LOG(WARNING) << errorMessage << " Will retry in "
+                     << RayConfig::instance().redis_db_connect_wait_milliseconds()
+                     << " milliseconds. Each retry takes about two minutes.";
     // Sleep for a little.
     std::this_thread::sleep_for(std::chrono::milliseconds(
-        ray::core::RayConfig::instance().redis_db_connect_wait_milliseconds()));
+        RayConfig::instance().redis_db_connect_wait_milliseconds()));
     status =
         ConnectWithoutRetries(address, port, connect_function, context, errorMessage);
     connection_attempts += 1;

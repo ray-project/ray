@@ -64,7 +64,7 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
   PlasmaObject result = {};
 
   // Immediately fulfill it using the fallback allocator.
-  if (ray::core::RayConfig::instance().plasma_unlimited()) {
+  if (RayConfig::instance().plasma_unlimited()) {
     PlasmaError error = create_callback(/*fallback_allocator=*/true, &result,
                                         /*spilling_required=*/nullptr);
     return {result, error};

@@ -7,7 +7,6 @@
 #include "ray/common/task/task_spec.h"
 
 namespace ray {
-namespace core {
 
 typedef std::function<void(const std::shared_ptr<void>, const std::string &, int,
                            const WorkerID &, const ResourceIdSet &)>
@@ -124,5 +123,4 @@ class Task {
   int64_t backlog_size_ = -1;
 };
 
-}  // namespace core
 }  // namespace ray

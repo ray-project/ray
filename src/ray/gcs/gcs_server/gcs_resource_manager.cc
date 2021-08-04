@@ -27,11 +27,11 @@ GcsResourceManager::GcsResourceManager(
       gcs_table_storage_(gcs_table_storage),
       redis_broadcast_enabled_(redis_broadcast_enabled),
       max_broadcasting_batch_size_(
-          ray::core::RayConfig::instance().resource_broadcast_batch_size()) {
+          RayConfig::instance().resource_broadcast_batch_size()) {
   if (redis_broadcast_enabled_) {
     periodical_runner_.RunFnPeriodically(
         [this] { SendBatchedResourceUsage(); },
-        ray::core::RayConfig::instance().raylet_report_resources_period_milliseconds(),
+        RayConfig::instance().raylet_report_resources_period_milliseconds(),
         "GcsResourceManager.deadline_timer.send_batched_resource_usage");
   }
 }
@@ -185,7 +185,7 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   resources_data->CopyFrom(data);
 
-  if (ray::core::RayConfig::instance().gcs_task_scheduling_enabled()) {
+  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, *resources_data);
   } else {
     if (node_resource_usages_.count(node_id) == 0 ||
@@ -233,7 +233,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
         aggregate_demand.set_num_infeasible_requests_queued(
             aggregate_demand.num_infeasible_requests_queued() +
             demand.num_infeasible_requests_queued());
-        if (ray::core::RayConfig::instance().report_worker_backlog()) {
+        if (RayConfig::instance().report_worker_backlog()) {
           aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
                                             demand.backlog_size());
         }

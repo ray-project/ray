@@ -80,8 +80,6 @@ enum { ERROR = 0 };
 #endif
 
 namespace ray {
-namespace core {
-
 /// This function returns the current call stack information.
 std::string GetCallTrace();
 
@@ -94,30 +92,29 @@ enum class RayLogLevel {
   FATAL = 3
 };
 
-#define RAY_LOG_INTERNAL(level) ray::core::RayLog(__FILE__, __LINE__, level)
+#define RAY_LOG_INTERNAL(level) ::ray::RayLog(__FILE__, __LINE__, level)
 
-#define RAY_LOG_ENABLED(level) \
-  ray::core::RayLog::IsLevelEnabled(ray::core::RayLogLevel::level)
+#define RAY_LOG_ENABLED(level) ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)
 
-#define RAY_LOG(level)                                                  \
-  if (ray::core::RayLog::IsLevelEnabled(ray::core::RayLogLevel::level)) \
-  RAY_LOG_INTERNAL(ray::core::RayLogLevel::level)
+#define RAY_LOG(level)                                      \
+  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)) \
+  RAY_LOG_INTERNAL(ray::RayLogLevel::level)
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
-#define RAY_CHECK(condition)                                                             \
-  (condition) ? RAY_IGNORE_EXPR(0)                                                       \
-              : ray::core::Voidify() &                                                   \
-                    ray::core::RayLog(__FILE__, __LINE__, ray::core::RayLogLevel::FATAL) \
-                        << " Check failed: " #condition " "
+#define RAY_CHECK(condition)                                                          \
+  (condition)                                                                         \
+      ? RAY_IGNORE_EXPR(0)                                                            \
+      : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
+                               << " Check failed: " #condition " "
 
 #ifdef NDEBUG
 
-#define RAY_DCHECK(condition)                                                            \
-  (condition) ? RAY_IGNORE_EXPR(0)                                                       \
-              : ray::core::Voidify() &                                                   \
-                    ray::core::RayLog(__FILE__, __LINE__, ray::core::RayLogLevel::ERROR) \
-                        << " Debug check failed: " #condition " "
+#define RAY_DCHECK(condition)                                                         \
+  (condition)                                                                         \
+      ? RAY_IGNORE_EXPR(0)                                                            \
+      : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::ERROR) \
+                               << " Debug check failed: " #condition " "
 #else
 
 #define RAY_DCHECK(condition) RAY_CHECK(condition)
@@ -132,23 +129,23 @@ enum class RayLogLevel {
 #define RAY_LOG_OCCURRENCES RAY_LOG_EVERY_N_VARNAME(occurrences_, __LINE__)
 
 // Occasional logging, log every n'th occurrence of an event.
-#define RAY_LOG_EVERY_N(level, n)                                         \
-  static std::atomic<uint64_t> RAY_LOG_OCCURRENCES(0);                    \
-  if (ray::core::RayLog::IsLevelEnabled(ray::core::RayLogLevel::level) && \
-      RAY_LOG_OCCURRENCES.fetch_add(1) % n == 0)                          \
-  RAY_LOG_INTERNAL(ray::core::RayLogLevel::level) << "[" << RAY_LOG_OCCURRENCES << "] "
+#define RAY_LOG_EVERY_N(level, n)                             \
+  static std::atomic<uint64_t> RAY_LOG_OCCURRENCES(0);        \
+  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) && \
+      RAY_LOG_OCCURRENCES.fetch_add(1) % n == 0)              \
+  RAY_LOG_INTERNAL(ray::RayLogLevel::level) << "[" << RAY_LOG_OCCURRENCES << "] "
 
 // Occasional logging with DEBUG fallback:
 // If DEBUG is not enabled, log every n'th occurrence of an event.
 // Otherwise, if DEBUG is enabled, always log as DEBUG events.
-#define RAY_LOG_EVERY_N_OR_DEBUG(level, n)                                          \
-  static std::atomic<uint64_t> RAY_LOG_OCCURRENCES(0);                              \
-  if (ray::core::RayLog::IsLevelEnabled(ray::core::RayLogLevel::DEBUG) ||           \
-      (ray::core::RayLog::IsLevelEnabled(ray::core::RayLogLevel::level) &&          \
-       RAY_LOG_OCCURRENCES.fetch_add(1) % n == 0))                                  \
-  RAY_LOG_INTERNAL(ray::core::RayLog::IsLevelEnabled(ray::core::RayLogLevel::level) \
-                       ? ray::core::RayLogLevel::level                              \
-                       : ray::core::RayLogLevel::DEBUG)                             \
+#define RAY_LOG_EVERY_N_OR_DEBUG(level, n)                              \
+  static std::atomic<uint64_t> RAY_LOG_OCCURRENCES(0);                  \
+  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::DEBUG) ||           \
+      (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) &&          \
+       RAY_LOG_OCCURRENCES.fetch_add(1) % n == 0))                      \
+  RAY_LOG_INTERNAL(ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) \
+                       ? ray::RayLogLevel::level                        \
+                       : ray::RayLogLevel::DEBUG)                       \
       << "[" << RAY_LOG_OCCURRENCES << "] "
 
 /// Macros for RAY_LOG_EVERY_MS
@@ -168,9 +165,9 @@ enum class RayLogLevel {
   if (RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD)                                          \
     RAY_LOG_PREVIOUS_TIME_RAW.store(RAY_LOG_CURRENT_TIME.count(),                        \
                                     std::memory_order_relaxed);                          \
-  if (ray::core::RayLog::IsLevelEnabled(ray::core::RayLogLevel::level) &&                \
+  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) &&                            \
       RAY_LOG_TIME_DELTA > RAY_LOG_TIME_PERIOD)                                          \
-  RAY_LOG_INTERNAL(ray::core::RayLogLevel::level)
+  RAY_LOG_INTERNAL(ray::RayLogLevel::level)
 
 // To make the logging lib plugable with other logging libs and make
 // the implementation unawared by the user, RayLog is only a declaration
@@ -282,5 +279,4 @@ class Voidify {
   void operator&(RayLogBase &) {}
 };
 
-}  // namespace core
 }  // namespace ray

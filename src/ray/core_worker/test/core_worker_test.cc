@@ -506,10 +506,10 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                                      ray_namespace,
                                      /*is_asyncio=*/false};
   const auto job_id = NextJobId();
-  core::ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-                                 TaskID::Nil(), rpc::Address(), job_id,
-                                 ObjectID::FromRandom(), function.GetLanguage(),
-                                 function.GetFunctionDescriptor(), "", 0);
+  ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
+                           TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+                           function.GetLanguage(), function.GetFunctionDescriptor(), "",
+                           0);
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -627,13 +627,13 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 TEST_F(ZeroNodeTest, TestActorHandle) {
   // Test actor handle serialization and deserialization round trip.
   JobID job_id = NextJobId();
-  core::ActorHandle original(
+  ActorHandle original(
       ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0), TaskID::Nil(),
       rpc::Address(), job_id, ObjectID::FromRandom(), Language::PYTHON,
       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""), "", 0);
   std::string output;
   original.Serialize(&output);
-  core::ActorHandle deserialized(output);
+  ActorHandle deserialized(output);
   ASSERT_EQ(deserialized.GetActorID(), original.GetActorID());
   ASSERT_EQ(deserialized.ActorLanguage(), original.ActorLanguage());
   ASSERT_EQ(deserialized.ActorCreationTaskFunctionDescriptor(),

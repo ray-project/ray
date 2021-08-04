@@ -348,9 +348,9 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   Status signal_status = Status::OK();
   int64_t remaining_timeout = timeout_ms;
   int64_t iteration_timeout =
-      std::min(timeout_ms, ray::core::RayConfig::instance().get_timeout_milliseconds());
+      std::min(timeout_ms, RayConfig::instance().get_timeout_milliseconds());
   if (timeout_ms == -1) {
-    iteration_timeout = ray::core::RayConfig::instance().get_timeout_milliseconds();
+    iteration_timeout = RayConfig::instance().get_timeout_milliseconds();
   }
 
   // Repeatedly call Wait() on a shorter timeout so we can check for signals between

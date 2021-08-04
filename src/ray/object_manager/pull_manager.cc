@@ -262,8 +262,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
     // mode.
     get_requests_remaining = ActivateNextPullBundleRequest(
         get_request_bundles_, &highest_get_req_id_being_pulled_,
-        /*respect_quota=*/!ray::core::RayConfig::instance().plasma_unlimited(),
-        &objects_to_pull);
+        /*respect_quota=*/!RayConfig::instance().plasma_unlimited(), &objects_to_pull);
   }
 
   // Do the same but for wait requests (medium priority).
@@ -298,7 +297,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
                                  &object_ids_to_cancel);
   // It should always be possible to stay under the available memory by
   // canceling all requests.
-  if (!ray::core::RayConfig::instance().plasma_unlimited()) {
+  if (!RayConfig::instance().plasma_unlimited()) {
     DeactivateUntilMarginAvailable("get request", get_request_bundles_, min_active_pulls_,
                                    /*quota_margin=*/0L, &highest_get_req_id_being_pulled_,
                                    &object_ids_to_cancel);
@@ -310,7 +309,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
     cancel_pull_request_(obj_id);
   }
 
-  if (!ray::core::RayConfig::instance().plasma_unlimited()) {
+  if (!RayConfig::instance().plasma_unlimited()) {
     TriggerOutOfMemoryHandlingIfNeeded();
   }
 
@@ -612,7 +611,7 @@ void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
 }
 
 bool PullManager::TryPinObject(const ObjectID &object_id) {
-  if (!ray::core::RayConfig::instance().pull_manager_pin_active_objects()) {
+  if (!RayConfig::instance().pull_manager_pin_active_objects()) {
     return true;
   }
   if (pinned_objects_.count(object_id) == 0) {
@@ -765,7 +764,7 @@ std::string PullManager::DebugString() const {
     result << "\n- max timeout request is already processed. No entry.";
   }
   // Guard this more expensive debug message under event stats.
-  if (ray::core::RayConfig::instance().event_stats()) {
+  if (RayConfig::instance().event_stats()) {
     for (const auto &entry : active_object_pull_requests_) {
       auto obj_id = entry.first;
       if (!pinned_objects_.contains(obj_id)) {

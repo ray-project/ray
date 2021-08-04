@@ -20,7 +20,7 @@ ClusterTaskManager::ClusterTaskManager(
     TaskDependencyManagerInterface &task_dependency_manager,
     std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
     NodeInfoGetter get_node_info,
-    std::function<void(const ray::core::Task &)> announce_infeasible_task,
+    std::function<void(const Task &)> announce_infeasible_task,
     WorkerPoolInterface &worker_pool,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
     std::function<bool(const std::vector<ObjectID> &object_ids,
@@ -34,8 +34,8 @@ ClusterTaskManager::ClusterTaskManager(
       get_node_info_(get_node_info),
       announce_infeasible_task_(announce_infeasible_task),
       max_resource_shapes_per_load_report_(
-          ray::core::RayConfig::instance().max_resource_shapes_per_load_report()),
-      report_worker_backlog_(ray::core::RayConfig::instance().report_worker_backlog()),
+          RayConfig::instance().max_resource_shapes_per_load_report()),
+      report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       worker_pool_(worker_pool),
       leased_workers_(leased_workers),
       get_task_arguments_(get_task_arguments),
@@ -59,7 +59,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // there are not enough available resources blocks other
       // tasks from being scheduled.
       const Work &work = *work_it;
-      ray::core::Task task = std::get<0>(work);
+      Task task = std::get<0>(work);
       RAY_LOG(DEBUG) << "Scheduling pending task "
                      << task.GetTaskSpecification().TaskId();
       auto placement_resources =
@@ -97,7 +97,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // Only announce the first item as infeasible.
       auto &work_queue = shapes_it->second;
       const auto &work = work_queue[0];
-      const ray::core::Task task = std::get<0>(work);
+      const Task task = std::get<0>(work);
       announce_infeasible_task_(task);
 
       // TODO(sang): Use a shared pointer deque to reduce copy overhead.
@@ -241,7 +241,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         // The local node has the available resources to run the task, so we should run
         // it.
         std::string allocated_instances_serialized_json = "{}";
-        if (ray::core::RayConfig::instance().worker_resource_limits_enabled()) {
+        if (RayConfig::instance().worker_resource_limits_enabled()) {
           allocated_instances_serialized_json =
               cluster_resource_scheduler_->SerializedTaskResourceInstances(
                   allocated_instances);
@@ -309,7 +309,7 @@ bool ClusterTaskManager::TrySpillback(const Work &work, bool &is_infeasible) {
 }
 
 void ClusterTaskManager::QueueAndScheduleTask(
-    const ray::core::Task &task, rpc::RequestWorkerLeaseReply *reply,
+    const Task &task, rpc::RequestWorkerLeaseReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
@@ -351,7 +351,7 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
 }
 
 void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
-                                      ray::core::Task *task) {
+                                      Task *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
   ReleaseTaskArgs(task->GetTaskSpecification().TaskId());
@@ -559,7 +559,7 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
   for (const auto &shapes_it : infeasible_tasks_) {
     auto &work_queue = shapes_it.second;
     for (const auto &work_it : work_queue) {
-      ray::core::Task task = std::get<0>(work_it);
+      Task task = std::get<0>(work_it);
       if (task.GetTaskSpecification().IsActorCreationTask()) {
         if (num_reported++ > kMaxPendingActorsToReport) {
           break;  // Protect the raylet from reporting too much data.
@@ -574,7 +574,7 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
   for (const auto &shapes_it : boost::join(tasks_to_dispatch_, tasks_to_schedule_)) {
     auto &work_queue = shapes_it.second;
     for (const auto &work_it : work_queue) {
-      ray::core::Task task = std::get<0>(work_it);
+      Task task = std::get<0>(work_it);
       if (task.GetTaskSpecification().IsActorCreationTask()) {
         if (num_reported++ > kMaxPendingActorsToReport) {
           break;  // Protect the raylet from reporting too much data.
@@ -753,7 +753,7 @@ void ClusterTaskManager::FillResourceUsage(
     }
   }
 
-  if (ray::core::RayConfig::instance().enable_light_weight_resource_report()) {
+  if (RayConfig::instance().enable_light_weight_resource_report()) {
     // Check whether resources have been changed.
     std::unordered_map<std::string, double> local_resource_map(
         data.resource_load().begin(), data.resource_load().end());
@@ -767,7 +767,7 @@ void ClusterTaskManager::FillResourceUsage(
   }
 }
 
-bool ClusterTaskManager::AnyPendingTasks(ray::core::Task *exemplar, bool *any_pending,
+bool ClusterTaskManager::AnyPendingTasks(Task *exemplar, bool *any_pending,
                                          int *num_pending_actor_creation,
                                          int *num_pending_tasks) const {
   // We are guaranteed that these tasks are blocked waiting for resources after a
@@ -844,7 +844,7 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
     // We only need to check the first item because every task has the same shape.
     // If the first entry is infeasible, that means everything else is the same.
     const auto work = work_queue[0];
-    ray::core::Task task = std::get<0>(work);
+    Task task = std::get<0>(work);
     RAY_LOG(DEBUG) << "Check if the infeasible task is schedulable in any node. task_id:"
                    << task.GetTaskSpecification().TaskId();
     auto placement_resources =
@@ -875,9 +875,8 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
 void ClusterTaskManager::Dispatch(
     std::shared_ptr<WorkerInterface> worker,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
-    std::shared_ptr<TaskResourceInstances> &allocated_instances,
-    const ray::core::Task &task, rpc::RequestWorkerLeaseReply *reply,
-    std::function<void(void)> send_reply_callback) {
+    std::shared_ptr<TaskResourceInstances> &allocated_instances, const Task &task,
+    rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> send_reply_callback) {
   metric_tasks_dispatched_++;
   const auto &task_spec = task.GetTaskSpecification();
 
@@ -979,14 +978,14 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to, const Work &work)
   send_reply_callback();
 }
 
-void ClusterTaskManager::AddToBacklogTracker(const ray::core::Task &task) {
+void ClusterTaskManager::AddToBacklogTracker(const Task &task) {
   if (report_worker_backlog_) {
     auto cls = task.GetTaskSpecification().GetSchedulingClass();
     backlog_tracker_[cls] += task.BacklogSize();
   }
 }
 
-void ClusterTaskManager::RemoveFromBacklogTracker(const ray::core::Task &task) {
+void ClusterTaskManager::RemoveFromBacklogTracker(const Task &task) {
   if (report_worker_backlog_) {
     SchedulingClass cls = task.GetTaskSpecification().GetSchedulingClass();
     backlog_tracker_[cls] -= task.BacklogSize();

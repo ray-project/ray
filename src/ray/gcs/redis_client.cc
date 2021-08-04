@@ -31,7 +31,7 @@ static bool RunRedisCommandWithRetries(
     redisContext *context, const char *command, redisReply **reply,
     const std::function<bool(const redisReply *)> &condition) {
   int num_attempts = 0;
-  while (num_attempts < ray::core::RayConfig::instance().redis_db_connect_retries()) {
+  while (num_attempts < RayConfig::instance().redis_db_connect_retries()) {
     // Try to execute the command.
     *reply = reinterpret_cast<redisReply *>(redisCommand(context, command));
     if (condition(*reply)) {
@@ -41,10 +41,10 @@ static bool RunRedisCommandWithRetries(
     // Sleep for a little, and try again if the entry isn't there yet.
     freeReplyObject(*reply);
     std::this_thread::sleep_for(std::chrono::milliseconds(
-        ray::core::RayConfig::instance().redis_db_connect_wait_milliseconds()));
+        RayConfig::instance().redis_db_connect_wait_milliseconds()));
     num_attempts++;
   }
-  return num_attempts < ray::core::RayConfig::instance().redis_db_connect_retries();
+  return num_attempts < RayConfig::instance().redis_db_connect_retries();
 }
 
 static int DoGetNextJobID(redisContext *context) {
