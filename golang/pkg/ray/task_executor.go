@@ -1,5 +1,8 @@
 package ray
 
+/*
+  #include <string.h>
+*/
 import "C"
 import (
     "fmt"

@@ -23,8 +23,8 @@ struct DataBuffer {
 };
 
 struct ReturnValue {
-  DataBuffer *data;
-  DataBuffer *meta;
+  struct DataBuffer *data;
+  struct DataBuffer *meta;
 };
 
 void go_worker_Initialize(int workerMode, char *store_socket, char *raylet_socket,
