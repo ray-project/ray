@@ -99,7 +99,7 @@ def test_tensorflow_mnist(ray_start_2_cpus):
 
 
 @pytest.mark.skipif(
-    len(tf.config.list_physical_devices('GPU')) < 2,
+    len(tf.config.list_physical_devices("GPU")) < 2,
     reason="Only run if multiple GPUs are available.")
 def test_tensorflow_mnist_gpu(ray_start_2_cpus_2_gpus):
     num_workers = 2
