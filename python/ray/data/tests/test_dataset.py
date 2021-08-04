@@ -43,7 +43,7 @@ def test_avoid_placement_group_capture(shutdown_only, pipelined):
 
     @ray.remote
     def run():
-        ds = ray.experimental.data.range(5)
+        ds = ray.data.range(5)
         ds = maybe_pipeline(ds, pipelined)
         assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
         assert ds.count() == 5
