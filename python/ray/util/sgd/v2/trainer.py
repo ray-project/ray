@@ -3,7 +3,7 @@ import logging
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, Type
 
 from ray.tune import Trainable, PlacementGroupFactory
-from ray.tune.resources import Resources
+from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.trainable import DistributedTrainable
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
@@ -251,13 +251,18 @@ class Trainer:
                     self._started = True
 
                 report = self._trainer.fetch_next_report()
-                # TODO(matt): find a way to set this on previous `step` call.
                 if report is None:
                     self._finished = True
-                    return {}
+                    return {RESULT_DUPLICATE: True}
                 # Currently return the value from first worker.
                 # TODO(matt): add support for aggregation function.
                 return report[0]
+
+            def save_checkpoint(self, tmp_checkpoint_dir):
+                raise NotImplementedError
+
+            def load_checkpoint(self, checkpoint):
+                raise NotImplementedError
 
             def cleanup(self):
                 self._trainer.shutdown()
