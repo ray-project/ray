@@ -14,7 +14,6 @@ genrule(
         "redis-cli",
     ],
     cmd = """
-        export CC=$(CC)
         tmpdir="redis.tmp"
         p=$(location Makefile)
         cp -p -L -R -- "$${p%/*}" "$${tmpdir}"
@@ -28,7 +27,6 @@ genrule(
         rm -r -f -- "$${tmpdir}"
     """,
     visibility = ["//visibility:public"],
-    toolchains = ["@bazel_tools//tools/cpp:current_cc_toolchain"],
 )
 
 # This library is for internal hiredis use, because hiredis assumes a
