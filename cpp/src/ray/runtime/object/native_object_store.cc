@@ -49,15 +49,15 @@ std::shared_ptr<msgpack::sbuffer> NativeObjectStore::GetRaw(const ObjectID &obje
 }
 
 void NativeObjectStore::CheckException(const std::string &meta_str,
-                                       const std::string &data_str) {
+                                       const std::shared_ptr<Buffer> &data_buffer) {
   if (meta_str == std::to_string(ray::rpc::ErrorType::WORKER_DIED)) {
-    throw RayWorkerException(data_str);
+    throw RayWorkerException({(char *)data_buffer->Data(), data_buffer->Size()});
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::ACTOR_DIED)) {
-    throw RayActorException(data_str);
+    throw RayActorException({(char *)data_buffer->Data(), data_buffer->Size()});
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE)) {
-    throw UnreconstructableException(data_str);
+    throw UnreconstructableException({(char *)data_buffer->Data(), data_buffer->Size()});
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION)) {
-    throw RayTaskException(data_str);
+    throw RayTaskException({(char *)data_buffer->Data(), data_buffer->Size()});
   }
 }
 
@@ -73,14 +73,11 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> NativeObjectStore::GetRaw(
   std::vector<std::shared_ptr<msgpack::sbuffer>> result_sbuffers;
   result_sbuffers.reserve(results.size());
   for (size_t i = 0; i < results.size(); i++) {
-    auto meta = results[i]->GetMetadata();
-    auto data_buffer = results[i]->GetData();
+    const auto &meta = results[i]->GetMetadata();
+    const auto &data_buffer = results[i]->GetData();
     if (meta != nullptr) {
-      bool empty = data_buffer->Size() == 0;
-      std::string data_str =
-          empty ? "" : std::string((char *)data_buffer->Data(), data_buffer->Size());
       std::string meta_str((char *)meta->Data(), meta->Size());
-      CheckException(meta_str, data_str);
+      CheckException(meta_str, data_buffer);
     }
 
     auto sbuffer = std::make_shared<msgpack::sbuffer>(data_buffer->Size());
