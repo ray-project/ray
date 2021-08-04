@@ -224,7 +224,7 @@ __attribute__((visibility("default"))) GoSlice go_worker_SubmitActorTask(void *a
   std::vector<DataBuffer> return_object_ids;
   for (auto &it : return_obj_ids) {
     DataBuffer db;
-    db.p = it.Data();
+    db.p = const_cast<uint8_t*>(it.Data());
     db.size = it.Size();
     return_object_ids.push_back(db);
   }
