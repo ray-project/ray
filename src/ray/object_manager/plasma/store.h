@@ -51,8 +51,7 @@ struct GetRequest;
 class PlasmaStore {
  public:
   // TODO: PascalCase PlasmaStore methods.
-  PlasmaStore(instrumented_io_context &main_service, std::string directory,
-              std::string fallback_directory, bool hugepages_enabled,
+  PlasmaStore(instrumented_io_context &main_service, IAllocator &allocator,
               const std::string &socket_name, uint32_t delay_on_oom_ms,
               float object_spilling_threshold,
               ray::SpillObjectsCallback spill_objects_callback,
@@ -67,9 +66,6 @@ class PlasmaStore {
 
   /// Stop this store.
   void Stop();
-
-  /// Get a const pointer to the internal PlasmaStoreInfo object.
-  const PlasmaStoreInfo *GetPlasmaStoreInfo();
 
   /// Create a new object. The client must do a call to release_object to tell
   /// the store when it is done with the object.
@@ -202,11 +198,11 @@ class PlasmaStore {
     int64_t num_bytes_in_use =
         static_cast<int64_t>(num_bytes_in_use_ - num_bytes_unsealed_);
     if (!RayConfig::instance().plasma_unlimited()) {
-      RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
+      RAY_CHECK(allocator_.GetFootprintLimit() >= num_bytes_in_use);
     }
     size_t available = 0;
-    if (num_bytes_in_use < PlasmaAllocator::GetFootprintLimit()) {
-      available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
+    if (num_bytes_in_use < allocator_.GetFootprintLimit()) {
+      available = allocator_.GetFootprintLimit() - num_bytes_in_use;
     }
     callback(available);
   }
@@ -248,9 +244,8 @@ class PlasmaStore {
 
   void EraseFromObjectTable(const ObjectID &object_id);
 
-  uint8_t *AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_size,
-                          ptrdiff_t *offset, const std::shared_ptr<Client> &client,
-                          bool is_create, bool fallback_allocator, PlasmaError *error);
+  absl::optional<Allocation> AllocateMemory(size_t size, bool is_create,
+                                            bool fallback_allocator, PlasmaError *error);
 
   // Start listening for clients.
   void DoAccept();
@@ -264,6 +259,7 @@ class PlasmaStore {
   /// The socket to listen on for new clients.
   ray::local_stream_socket socket_;
 
+  IAllocator &allocator_;
   /// The plasma store information, including the object tables, that is exposed
   /// to the eviction policy.
   PlasmaStoreInfo store_info_;

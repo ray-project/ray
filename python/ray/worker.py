@@ -494,6 +494,12 @@ def get_gpu_ids():
     worker = global_worker
     worker.check_connected()
 
+    if worker.mode != WORKER_MODE:
+        logger.warning(
+            "`ray.get_gpu_ids()` will always return the empty list when "
+            "called from the driver. This is because Ray does not manage "
+            "GPU allocations to the driver process.")
+
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
     assigned_ids = set()

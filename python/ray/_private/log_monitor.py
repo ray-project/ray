@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 # The groups are worker id, job id, and pid.
 JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-(\d+)-(\d+)")
+# The groups are job id.
+RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
 
 
 class LogFileInfo:
@@ -100,6 +102,7 @@ class LogMonitor:
                 if (file_info.worker_pid != "raylet"
                         and file_info.worker_pid != "gcs_server"
                         and file_info.worker_pid != "autoscaler"
+                        and file_info.worker_pid != "runtime_env"
                         and file_info.worker_pid is not None):
                     assert not isinstance(file_info.worker_pid, str), (
                         "PID should be an int type. "
@@ -134,8 +137,11 @@ class LogMonitor:
         monitor_log_paths = glob.glob(f"{self.logs_dir}/monitor.log")
         # If gcs server restarts, there can be multiple log files.
         gcs_err_path = glob.glob(f"{self.logs_dir}/gcs_server*.err")
+        # runtime_env setup process is logged here
+        runtime_env_setup_paths = glob.glob(
+            f"{self.logs_dir}/runtime_env*.log")
         for file_path in (log_file_paths + raylet_err_paths + gcs_err_path +
-                          monitor_log_paths):
+                          monitor_log_paths + runtime_env_setup_paths):
             if os.path.isfile(
                     file_path) and file_path not in self.log_filenames:
                 job_match = JOB_LOG_PATTERN.match(file_path)
@@ -145,6 +151,14 @@ class LogMonitor:
                 else:
                     job_id = None
                     worker_pid = None
+
+                # Perform existence check first because most file will not be
+                # including runtime_env. This saves some cpu cycle.
+                if "runtime_env" in file_path:
+                    runtime_env_job_match = RUNTIME_ENV_SETUP_PATTERN.match(
+                        file_path)
+                    if runtime_env_job_match:
+                        job_id = runtime_env_job_match.group(1)
 
                 is_err_file = file_path.endswith("err")
 
@@ -256,6 +270,8 @@ class LogMonitor:
                     file_info.worker_pid = "gcs_server"
                 elif "/monitor" in file_info.filename:
                     file_info.worker_pid = "autoscaler"
+                elif "/runtime_env" in file_info.filename:
+                    file_info.worker_pid = "runtime_env"
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()

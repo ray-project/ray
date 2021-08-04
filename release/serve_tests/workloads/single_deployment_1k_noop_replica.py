@@ -39,7 +39,7 @@ from serve_test_utils import (
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
-    warm_up_cluster,
+    warm_up_one_cluster,
     NUM_CPU_PER_NODE,
     NUM_CONNECTIONS,
 )
@@ -115,7 +115,7 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
     deploy_replicas(num_replicas, max_batch_size)
 
     logger.info("Warming up cluster ....\n")
-    warm_up_cluster(10, http_host, http_port)
+    warm_up_one_cluster.remote(10, http_host, http_port, "echo")
 
     logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205

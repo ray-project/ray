@@ -155,6 +155,9 @@ RAY_CONFIG(uint64_t, raylet_death_check_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, get_timeout_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_get_request_size, 10000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
+/// How long to wait for a fetch to complete during ray.get before warning the
+/// user.
+RAY_CONFIG(int64_t, fetch_warn_timeout_milliseconds, 60000)
 
 /// Temporary workaround for https://github.com/ray-project/ray/pull/16402.
 RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
@@ -217,9 +220,6 @@ RAY_CONFIG(uint32_t, maximum_gcs_storage_operation_batch_size, 1000)
 
 /// Maximum number of rows in GCS profile table.
 RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
-
-/// When getting objects from object store, print a warning every this number of attempts.
-RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
 
 /// When getting objects from object store, max number of ids to print in the warning
 /// message.
@@ -352,7 +352,7 @@ RAY_CONFIG(bool, enable_timeline, true)
 
 /// The maximum number of pending placement group entries that are reported to monitor to
 /// autoscale the cluster.
-RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
+RAY_CONFIG(int64_t, max_placement_group_load_report_size, 1000)
 
 /* Configuration parameters for object spilling. */
 /// JSON configuration that describes the external storage. This is passed to
@@ -454,8 +454,8 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// When set it to "FPGA", we will treat FPGA as unit_instance.
 RAY_CONFIG(std::string, custom_unit_instance_resources, "")
 
-// Maximum size of the batch size when broadcasting resources to raylet.
-RAY_CONFIG(uint64_t, resource_broadcast_batch_size_bytes, 1024 * 1024 * 5);
+// Maximum size of the batches when broadcasting resources to raylet.
+RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
 
 // If enabled and worker stated in container, the container will add
 // resource limit.

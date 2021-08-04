@@ -1203,6 +1203,9 @@ def run_test_config(
             ))
 
     def _run(logger):
+        # These values will be set as the test runs.
+        session_url = None
+        runtime = None
         anyscale.conf.CLI_TOKEN = GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"]
 
         session_id = None
@@ -1779,6 +1782,7 @@ if __name__ == "__main__":
 
     if args.ray_wheels:
         os.environ["RAY_WHEELS"] = str(args.ray_wheels)
+        url = str(args.ray_wheels)
     elif not args.check:
         url = find_ray_wheels(
             GLOBAL_CONFIG["RAY_REPO"],

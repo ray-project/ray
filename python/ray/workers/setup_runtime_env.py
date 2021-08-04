@@ -19,9 +19,10 @@ from ray._private.conda import (get_conda_activate_commands,
 from ray._private.utils import try_to_create_directory
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
-from ray.workers.pluggable_runtime_env import RuntimeEnvContext
-logger = logging.getLogger(__name__)
+from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
+                                               get_hook_logger)
 
+logger = logging.getLogger(__name__)
 parser = argparse.ArgumentParser()
 
 parser.add_argument(
@@ -64,6 +65,7 @@ def _inject_ray_to_conda_site(conda_path):
          "import site; print(site.getsitepackages()[0])"]).decode().strip()
 
     ray_path = _resolve_current_ray_path()
+    logger = get_hook_logger()
     logger.warning(f"Injecting {ray_path} to environment {conda_path} "
                    "because _inject_current_ray flag is on.")
 
@@ -83,6 +85,8 @@ def _current_py_version():
 
 
 def setup_runtime_env(runtime_env: dict, session_dir):
+    logger = get_hook_logger()
+    logger.debug(f"Setting up runtime environment {runtime_env}")
     if runtime_env.get("conda") or runtime_env.get("pip"):
         conda_dict = get_conda_dict(runtime_env, session_dir)
         if isinstance(runtime_env.get("conda"), str):
@@ -95,11 +99,11 @@ def setup_runtime_env(runtime_env: dict, session_dir):
             elif runtime_env.get("_inject_current_ray"):
                 extra_pip_dependencies = (
                     _resolve_install_from_source_ray_dependencies())
-                print(extra_pip_dependencies)
             else:
                 extra_pip_dependencies = []
             conda_dict = inject_dependencies(conda_dict, _current_py_version(),
                                              extra_pip_dependencies)
+            logger.info(f"Setting up conda environment with {runtime_env}")
             # It is not safe for multiple processes to install conda envs
             # concurrently, even if the envs are different, so use a global
             # lock for all conda installs.
@@ -121,6 +125,8 @@ def setup_runtime_env(runtime_env: dict, session_dir):
             if runtime_env.get("_inject_current_ray"):
                 conda_path = os.path.join(conda_dir, conda_env_name)
                 _inject_ray_to_conda_site(conda_path)
+        logger.info(
+            f"Finished setting up runtime environment at {conda_env_name}")
 
         return RuntimeEnvContext(conda_env_name)
 
@@ -229,6 +235,7 @@ def current_ray_pip_specifier() -> Optional[str]:
         Returns "https://s3-us-west-2.amazonaws.com/ray-wheels/master/[..].whl"
             if running the nightly or a specific commit
     """
+    logger = get_hook_logger()
     if os.environ.get("RAY_CI_POST_WHEEL_TESTS"):
         # Running in Buildkite CI after the wheel has been built.
         # Wheels are at in the ray/.whl directory, and the present file is

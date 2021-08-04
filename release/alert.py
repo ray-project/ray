@@ -32,6 +32,8 @@ GLOBAL_CONFIG["SLACK_WEBHOOK"] = os.environ.get("SLACK_WEBHOOK", "")
 GLOBAL_CONFIG["SLACK_CHANNEL"] = os.environ.get("SLACK_CHANNEL",
                                                 "#oss-test-cop")
 
+RESULTS_LIMIT = 200
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler(stream=sys.stdout)
@@ -69,6 +71,7 @@ def fetch_latest_alerts(rds_data_client):
                last_notification_dt
         FROM   {schema}
         ORDER BY category, test_suite, test_name, last_notification_dt DESC
+        LIMIT {RESULTS_LIMIT}
         """)
 
     result = rds_data_client.execute_statement(
@@ -114,7 +117,8 @@ def fetch_latest_results(rds_data_client,
             },
         ]
 
-    sql += "ORDER BY category, test_suite, test_name, created_on DESC"
+    sql += "ORDER BY category, test_suite, test_name, created_on DESC "
+    sql += f"LIMIT {RESULTS_LIMIT}"
 
     result = rds_data_client.execute_statement(
         database=GLOBAL_CONFIG["RELEASE_AWS_DB_NAME"],
