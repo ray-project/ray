@@ -219,25 +219,21 @@ class SampleBatch(dict):
 
     @PublicAPI
     def copy(self, shallow: bool = False) -> "SampleBatch":
-        """Creates a (deep) copy of this SampleBatch and returns it.
+        """Creates a deep or shallow copy of this SampleBatch and returns it.
 
         Args:
             shallow (bool): Whether the copying should be done shallowly.
 
         Returns:
-            SampleBatch: A (deep) copy of this SampleBatch object.
+            SampleBatch: A deep or shallow copy of this SampleBatch object.
         """
+        copy_ = {k: v for k, v in self.items()}
         data = tree.map_structure(
-            lambda v: (np.array(v, copy=not shallow)
-                       if isinstance(v, np.ndarray) else v),
-            self)
-
-        copy_ = SampleBatch(
-            data,
-            _time_major=self.time_major,
-            _zero_padded=self.zero_padded,
-            _max_seq_len=self.max_seq_len,
+            lambda v: (np.array(v, copy=not shallow) if
+                       isinstance(v, np.ndarray) else v),
+            copy_,
         )
+        copy_ = SampleBatch(data)
         copy_.set_get_interceptor(self.get_interceptor)
         return copy_
 
