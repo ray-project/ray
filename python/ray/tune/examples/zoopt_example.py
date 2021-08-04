@@ -44,7 +44,7 @@ if __name__ == "__main__":
     if args.server_address:
         import ray
 
-        ray.util.connect(args.server_address)
+        ray.init(f"ray://{args.server_address}")
 
     num_samples = 10 if args.smoke_test else 1000
 

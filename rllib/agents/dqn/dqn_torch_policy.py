@@ -19,8 +19,9 @@ from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping, FLOAT_MIN, \
-    huber_loss, reduce_mean_ignore_inf, softmax_cross_entropy_with_logits
+from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+    concat_multi_gpu_td_errors, FLOAT_MIN, huber_loss, \
+    reduce_mean_ignore_inf, softmax_cross_entropy_with_logits
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -83,7 +84,6 @@ class QLoss:
             self.loss = torch.mean(self.td_error * importance_weights)
             self.stats = {
                 # TODO: better Q stats for dist dqn
-                "mean_td_error": torch.mean(self.td_error),
             }
         else:
             q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
@@ -99,7 +99,6 @@ class QLoss:
                 "mean_q": torch.mean(q_t_selected),
                 "min_q": torch.min(q_t_selected),
                 "max_q": torch.max(q_t_selected),
-                "mean_td_error": torch.mean(self.td_error),
             }
 
 
@@ -294,6 +293,11 @@ def build_q_losses(policy: Policy, model, _,
         config["n_step"], config["num_atoms"], config["v_min"],
         config["v_max"])
 
+    # Store td-error in model, such that for multi-GPU, we do not override
+    # them during the parallel loss phase. TD-error tensor in final stats
+    # can then be concatenated and retrieved for each individual batch item.
+    model.td_error = policy.q_loss.td_error
+
     return policy.q_loss.loss
 
 
@@ -399,7 +403,7 @@ DQNTorchPolicy = build_policy_class(
     postprocess_fn=postprocess_nstep_and_prio,
     optimizer_fn=adam_optimizer,
     extra_grad_process_fn=grad_process_and_td_error_fn,
-    extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
+    extra_learn_fetches_fn=concat_multi_gpu_td_errors,
     extra_action_out_fn=extra_action_out_fn,
     before_init=setup_early_mixins,
     before_loss_init=before_loss_init,

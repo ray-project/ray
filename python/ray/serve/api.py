@@ -594,7 +594,7 @@ def start(
     Client object (or when the script exits). If detached is set to True, the
     instance will instead persist until serve.shutdown() is called. This is
     only relevant if connecting to a long-running Ray cluster (e.g., with
-    ray.init(address="auto") or ray.util.connect("<remote_addr>")).
+    ray.init(address="auto") or ray.init("ray://<remote_addr>")).
 
     Args:
         detached (bool): Whether not the instance should be detached from this

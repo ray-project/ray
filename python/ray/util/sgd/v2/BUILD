@@ -1,4 +1,21 @@
 # --------------------------------------------------------------------
+# Tests from the python/ray/util/sgd/v2/examples directory.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "transformers_example",
+    size = "large",
+    main = "examples/transformers/transformers_example.py",
+    srcs = ["examples/transformers/transformers_example.py"],
+    tags = ["exclusive"],
+    deps = [":sgd_v2_lib"],
+    args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
+    "--max_length=32", "--per_device_train_batch_size=64",
+    "--num_train_epochs=1", "--start_local", "--num_workers=2"]
+)
+
+# --------------------------------------------------------------------
 # Tests from the python/ray/util/sgd/v2/tests directory.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
@@ -13,7 +30,7 @@ py_test(
 
 py_test(
     name = "test_trainer",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_trainer.py"],
     tags = ["exclusive"],
     deps = [":sgd_v2_lib"]
