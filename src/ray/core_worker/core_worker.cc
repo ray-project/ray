@@ -1531,8 +1531,6 @@ TaskID CoreWorker::GetCallerId() const {
 
 Status CoreWorker::PushError(const JobID &job_id, const std::string &type,
                              const std::string &error_message, double timestamp) {
-  if (!timestamp) {
-  }
   if (options_.is_local_mode) {
     RAY_LOG(ERROR) << "Pushed Error with JobID: " << job_id << " of type: " << type
                    << " with message: " << error_message << " at time: " << timestamp;
