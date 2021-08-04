@@ -11,7 +11,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping, sequence_mask
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
@@ -20,17 +20,15 @@ from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
 torch, nn = try_import_torch()
 
 
+@Deprecated(
+    old="rllib.agents.a3c.a3c_torch_policy.add_advantages",
+    new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
+    error=False)
 def add_advantages(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[PolicyID, SampleBatch]] = None,
         episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
-
-    # Stub serving backward compatibility.
-    deprecation_warning(
-        old="rllib.agents.a3c.a3c_torch_policy.add_advantages",
-        new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-        error=False)
 
     return compute_gae_for_sample_batch(policy, sample_batch,
                                         other_agent_batches, episode)

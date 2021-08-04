@@ -138,7 +138,7 @@ if __name__ == "__main__":
     if args.smoke_test:
         ray.init(num_cpus=2)
     elif args.server_address:
-        ray.util.connect(args.server_address)
+        ray.init(f"ray://{args.server_address}")
 
     # import ray
     # ray.init(address="auto")  # assumes ray is started with ray up
