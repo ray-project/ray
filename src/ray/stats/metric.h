@@ -15,13 +15,13 @@
 #pragma once
 
 #include <memory>
+#include <tuple>
 #include <unordered_map>
 
 #include "opencensus/stats/stats.h"
 #include "opencensus/stats/stats_exporter.h"
 #include "opencensus/tags/tag_key.h"
 #include "ray/util/logging.h"
-
 namespace ray {
 
 namespace stats {
@@ -97,7 +97,18 @@ class Metric {
         tag_keys_(tag_keys),
         measure_(nullptr) {}
 
-  virtual ~Metric() { opencensus::stats::StatsExporter::RemoveView(name_); }
+  Metric(Metric &&rhs)
+      : name_(std::move(rhs.name_)),
+        description_(std::move(rhs.description_)),
+        unit_(std::move(rhs.unit_)),
+        tag_keys_(std::move(rhs.tag_keys_)),
+        measure_(std::move(rhs.measure_)) {}
+
+  virtual ~Metric() {
+    if (!name_.empty()) {
+      opencensus::stats::StatsExporter::RemoveView(name_);
+    }
+  }
 
   Metric &operator()() { return *this; }
 
@@ -117,7 +128,7 @@ class Metric {
   ///
   /// \param value The value that we record.
   /// \param tags The map tag values that we want to record for this metric record.
-  void Record(double value, std::unordered_map<std::string, std::string> &tags);
+  void Record(double value, const std::unordered_map<std::string, std::string> &tags);
 
  protected:
   virtual void RegisterView() = 0;

@@ -115,7 +115,8 @@ void Metric::Record(double value, const TagsType &tags) {
   opencensus::stats::Record({{*measure_, value}}, combined_tags);
 }
 
-void Metric::Record(double value, std::unordered_map<std::string, std::string> &tags) {
+void Metric::Record(double value,
+                    const std::unordered_map<std::string, std::string> &tags) {
   TagsType tags_pair_vec;
   std::for_each(
       tags.begin(), tags.end(),

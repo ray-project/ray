@@ -204,6 +204,16 @@ TEST_F(StatsTest, TestShutdownTakesLongTime) {
   ray::stats::Shutdown();
 }
 
+DEFINE_stats(test, "", "TestStats", {}, ray::stats::COUNT, ray::stats::SUM);
+
+TEST_F(StatsTest, STAT_DEF) {
+  ray::stats::Shutdown();
+  std::shared_ptr<stats::MetricExporterClient> exporter(
+      new stats::StdoutExporterClient());
+  ray::stats::Init({}, MetricsAgentPort, exporter);
+  STATS_test.Record(1.0);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

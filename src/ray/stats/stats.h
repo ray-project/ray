@@ -122,6 +122,97 @@ static inline void Shutdown() {
   exporter = nullptr;
   StatsConfig::instance().SetIsInitialized(false);
 }
+enum StatsType : int {
+  COUNT,
+  SUM,
+  GAUGE
+  // HISTOGRAM is not supported right now
+  // HISTOGRAM
+};
+
+namespace details {
+template <StatsType T>
+struct StatsTypeMap {
+  using type = void;
+};
+
+template <>
+struct StatsTypeMap<COUNT> {
+  using type = Count;
+};
+
+template <>
+struct StatsTypeMap<SUM> {
+  using type = Sum;
+};
+
+template <>
+struct StatsTypeMap<GAUGE> {
+  using type = Gauge;
+};
+
+std::vector<opencensus::tags::TagKey> convertTags(const std::vector<std::string> &names) {
+  std::vector<opencensus::tags::TagKey> ret;
+  for (auto &n : names) {
+    ret.push_back(TagKeyType::Register(n));
+  }
+  return ret;
+}
+
+template <std::size_t I = 0, typename... Tp>
+inline typename std::enable_if<I == sizeof...(Tp), void>::type TupleRecord(
+    std::tuple<Tp...> &, double, const std::unordered_map<std::string, std::string> &) {}
+
+template <std::size_t I = 0, typename... Tp>
+    inline typename std::enable_if <
+    I<sizeof...(Tp), void>::type TupleRecord(
+        std::tuple<Tp...> &t, double val,
+        const std::unordered_map<std::string, std::string> &tags) {
+  std::get<I>(t).Record(val, tags);
+  TupleRecord<I + 1, Tp...>(t, val, tags);
+}
+
+template <StatsType... Ts>
+struct Stats {
+  Stats(const std::string &name, const std::string &description, const std::string &unit,
+        const std::vector<std::string> &tag_keys)
+      : stats_(std::make_tuple(std::move(typename StatsTypeMap<Ts>::type(
+            name, description, unit, convertTags(tag_keys)))...)),
+        tag_keys_(tag_keys) {}
+
+  Stats(const std::string &name, const std::string &description, const std::string &unit)
+      : Stats(name, description, unit, std::vector<std::string>()) {}
+
+  Stats(const std::string &name, const std::string &description, const std::string &unit,
+        const std::string &tag_key)
+      : Stats(name, description, unit, std::vector<std::string>({tag_key})) {}
+
+  std::tuple<typename StatsTypeMap<Ts>::type...> stats_;
+  std::vector<std::string> tag_keys_;
+
+  template <typename T>
+  void Record(T val) {
+    Record<T>(val, std::unordered_map<std::string, std::string>());
+  }
+
+  template <typename T>
+  void Record(T val, const std::string &tag_val) {
+    RAY_CHECK(tag_keys_.size() == 1);
+    Record(val, {tag_keys_[0], tag_val});
+  }
+
+  template <typename T>
+  void Record(T val, const std::unordered_map<std::string, std::string> &tags) {
+    TupleRecord(stats_, static_cast<double>(val), tags);
+  }
+};
+}  // namespace details
+
 }  // namespace stats
 
 }  // namespace ray
+
+#define DEFINE_stats(name, unit, description, tags, types...) \
+  static ray::stats::details::Stats<types> STATS_##name(#name, unit, tags, description)
+
+#define DECLARE_stats(name) extern ray::stats::details::Stats<types> STATS_ name
