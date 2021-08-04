@@ -282,9 +282,9 @@ class VirtualActorClass(VirtualActorClassBase):
         class ActorOptionWrapper(VirtualActorClassBase):
             def get_or_create(self, actor_id: str, *args, **kwargs):
                 return actor_cls._get_or_create(
+                    actor_id,
                     args=args,
                     kwargs=kwargs,
-                    actor_id=actor_id,
                     storage=get_global_storage())
 
         return ActorOptionWrapper()
