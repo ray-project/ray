@@ -24,7 +24,7 @@ func go_worker_execute(taskType int, rayFunctionInfo []*C.char, args []C.struct_
     if taskType == int(generated.TaskType_ACTOR_CREATION_TASK) {
         d := (*reflect.SliceHeader)(unsafe.Pointer(&rayFunctionInfo))
         util.Logger.Debugf("slice info:%v", *d)
-        goTypeName := C.GoString((*C.char)(unsafe.Pointer(rayFunctionInfo[0])))
+        goTypeName := C.GoString(rayFunctionInfo[0])
         goType, ok := typesMap[goTypeName]
         if !ok {
             panic(fmt.Errorf("type not found:%s", goTypeName))
@@ -33,7 +33,7 @@ func go_worker_execute(taskType int, rayFunctionInfo []*C.char, args []C.struct_
         actorType = reflect.ValueOf(actor)
         util.Logger.Debugf("created actor for:%s", goTypeName)
     } else if taskType == int(generated.TaskType_ACTOR_TASK) {
-        methodName := C.GoString((*C.char)(unsafe.Pointer(rayFunctionInfo[0])))
+        methodName := C.GoString(rayFunctionInfo[0])
         methodValue := actorType.MethodByName(methodName)
         //if methodValue == nil {
         //    panic(fmt.Errorf("method not found:%s", methodName))

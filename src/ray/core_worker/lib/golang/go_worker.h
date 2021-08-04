@@ -48,8 +48,7 @@ int go_worker_GetNextJobID(void *p);
 int go_worker_CreateActor(char *type_name, char **result);
 
 // todo calloptions
-int go_worker_SubmitActorTask(void *actor_id, char *method_name, char ***return_ids,
-                              int num_returns);
+GoSlice go_worker_SubmitActorTask(void *actor_id, char *method_name, int num_returns);
 
 extern void go_worker_execute(GoInt task_type, GoSlice ray_function_info, GoSlice args,
                               GoSlice return_values);

@@ -202,9 +202,8 @@ __attribute__((visibility("default"))) int go_worker_CreateActor(char *type_name
   return result_length;
 }
 
-__attribute__((visibility("default"))) int go_worker_SubmitActorTask(void *actor_id,
+__attribute__((visibility("default"))) GoSlice go_worker_SubmitActorTask(void *actor_id,
                                                                      char *method_name,
-                                                                     char ***return_ids,
                                                                      int num_returns) {
   std::string *sp = static_cast<std::string *>(actor_id);
   auto actor_id_obj = ActorID::FromBinary(*sp);
@@ -221,5 +220,17 @@ __attribute__((visibility("default"))) int go_worker_SubmitActorTask(void *actor
   std::vector<ObjectID> return_obj_ids;
   ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id_obj, ray_function, {},
                                                           task_options, &return_obj_ids);
-  return 0;
+
+  std::vector<DataBuffer> return_object_ids;
+  for (auto &it : return_obj_ids) {
+    DataBuffer db;
+    db.p = it.Data();
+    db.size = it.Size();
+    return_object_ids.push_back(db);
+  }
+  GoSlice result;
+  result.data = &return_object_ids;
+  result.len = return_obj_ids.size();
+  result.cap = return_obj_ids.size();
+  return result;
 }

@@ -39,7 +39,7 @@ func innerInit(address, _redis_password string, workerType ray_rpc.WorkerType) {
         SetJobId(gsa.GetNextJobID())
         raySessionDir := gsa.GetInternalKV(sessionDir)
         if raySessionDir == "" {
-            panic(fmt.Errorf("Failed to get session dir"))
+            panic(fmt.Errorf("failed to get session dir"))
         }
         SetSessionDir(raySessionDir)
         gcsNodeInfo := &ray_rpc.GcsNodeInfo{}
@@ -73,13 +73,13 @@ func innerInit(address, _redis_password string, workerType ray_rpc.WorkerType) {
     if err != nil {
         panic(err)
     }
-    serialized_job_config := "{}"
+    serializedJobConfig := "{}"
     C.go_worker_Initialize(C.int(workerType), C.CString(GetObjectStoreSocket()),
         C.CString(GetRayletSocket()), C.CString(logDir),
         C.CString(GetNodeManagerAddress()), C.int(GetNodeManagerPort()),
         C.CString(GetNodeManagerAddress()),
         C.CString("GOLANG"), C.int(GetJobId()), C.CString(addressInfo[0]), C.int(addressPort),
-        C.CString(_redis_password), C.CString(serialized_job_config))
+        C.CString(_redis_password), C.CString(serializedJobConfig))
 }
 
 func innerRun() {
@@ -156,15 +156,17 @@ type ActorTaskCaller struct {
 
 // 发出调用
 func (or *ActorTaskCaller) Remote() *ObjectRef {
-    var res **C.char
     returnNum := or.invokeMethod.NumOut()
-    dataLen := C.go_worker_SubmitActorTask(C.CBytes(or.actorHandle.actorId), C.CString(or.invokeMethod.Name()), &res, C.int(returnNum))
-    if dataLen > 0 {
-        defer C.free(unsafe.Pointer(res))
-        return &ObjectRef{
-        }
+    var objectIds []*C.struct_DataBuffer = C.go_worker_SubmitActorTask(C.CBytes(or.actorHandle.actorId), C.CString(or.invokeMethod.Name()), C.int(returnNum))
+    resultIds := make([]ObjectId, 0, len(objectIds))
+    for _, objectId := range objectIds {
+        resultIds = append(resultIds, ObjectId{
+            id: C.GoBytes(objectId.p, objectId.size),
+        })
     }
-    return nil
+    return &ObjectRef{
+        ids: resultIds,
+    }
 }
 
 type ObjectRef struct {
