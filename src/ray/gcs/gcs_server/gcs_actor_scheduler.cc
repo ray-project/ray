@@ -470,8 +470,7 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
       if (actor->GetState() == rpc::ActorTableData::DEAD) {
         // If the actor has been killed, we need to kill the worker too
         // otherwise, the worker will be leaked
-        RAY_LOG(DEBUG) << "Actor " << actor->GetActorID()
-          << " is dead, kill the worker";
+        RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker";
         kill_worker();
       }
       return;
@@ -504,8 +503,7 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
   } else if (actor->GetState() == rpc::ActorTableData::DEAD) {
     // If the actor has been killed, we need to kill the worker too
     // otherwise, the worker will be leaked
-    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID()
-      << " is dead, kill the worker";
+    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker";
     kill_worker();
   }
 }
