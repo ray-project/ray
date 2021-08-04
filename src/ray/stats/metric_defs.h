@@ -167,7 +167,3 @@ static Histogram OutboundHeartbeatSizeKB("outbound_heartbeat_size_kb",
 static Histogram GcsUpdateResourceUsageTime(
     "gcs_update_resource_usage_time", "The average RTT of a UpdateResourceUsage RPC.",
     "ms", {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000}, {CustomKey});
-
-static Count AllocateResourceFailedCount("ray.gcs_server.allocate_resource_failed_count",
-                                         "Times of resource allocate failed.", "1",
-                                         {JobNameKey});

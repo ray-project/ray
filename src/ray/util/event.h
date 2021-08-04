@@ -164,11 +164,6 @@ class RayEvent {
     return *this;
   }
 
-  RayEvent &WithField(const std::string &key, const std::string &value) {
-    custom_fields_[key] = value;
-    return *this;
-  }
-
   static void ReportEvent(const std::string &severity, const std::string &label,
                           const std::string &message);
 
@@ -186,7 +181,6 @@ class RayEvent {
  private:
   rpc::Event_Severity severity_;
   std::string label_;
-  std::unordered_map<std::string, std::string> custom_fields_;
   std::ostringstream osstream_;
 };
 
