@@ -57,6 +57,9 @@ Datasource Compatibility Matrices
    * - Binary Files
      - ``ray.data.read_binary_files()``
      - ✅
+   * - Python Objects
+     - ``ray.data.from_items()``
+     - ✅
    * - Spark Dataframe
      - ``ray.data.from_spark()``
      - (todo)
