@@ -229,17 +229,6 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
                                                      *runtime_env_manager_);
   gcs_job_manager_->Initialize(gcs_init_data);
 
-  // Init job distribution.
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    gcs_job_distribution_ = std::make_shared<GcsJobDistribution>(
-        /*gcs_job_scheduling_factory=*/
-        [](const JobID &job_id) {
-          // TODO(Chong-Li): Get job config from gcs_job_manager_.
-          GcsJobConfig gcs_job_config(job_id);
-          return std::make_shared<GcsJobSchedulingContext>(gcs_job_config);
-        });
-  }
-
   // Register service.
   job_info_service_ =
       std::make_unique<rpc::JobInfoGrpcService>(main_service_, *gcs_job_manager_);
@@ -264,12 +253,11 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   };
 
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    RAY_CHECK(gcs_resource_manager_ && gcs_resource_scheduler_ && gcs_job_distribution_);
+    RAY_CHECK(gcs_resource_manager_ && gcs_resource_scheduler_);
     scheduler = std::make_shared<GcsBasedActorScheduler>(
         main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
-        gcs_resource_manager_, gcs_resource_scheduler_, gcs_job_distribution_,
-        schedule_failure_handler, schedule_success_handler, raylet_client_pool_,
-        client_factory);
+        gcs_resource_manager_, gcs_resource_scheduler_, schedule_failure_handler,
+        schedule_success_handler, raylet_client_pool_, client_factory);
   } else {
     scheduler = std::make_shared<RayletBasedActorScheduler>(
         main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,

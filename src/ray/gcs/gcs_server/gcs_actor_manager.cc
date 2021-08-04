@@ -95,12 +95,13 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
-UniqueID GcsActor::GetActorWorkerAssignmentID() const {
-  return UniqueID::FromBinary(actor_table_data_.actor_worker_assignment_id());
+shared_ptr<GcsActorWorkerAssignment> GcsActor::GetActorWorkerAssignment() const {
+  return assignment_ptr_;
 }
 
-void GcsActor::SetActorWorkerAssignmentID(const UniqueID &actor_worker_assignment_id) {
-  actor_table_data_.set_actor_worker_assignment_id(actor_worker_assignment_id.Binary());
+void GcsActor::SetActorWorkerAssignment(
+    shared_ptr<GcsActorWorkerAssignment> assignment_ptr) {
+  assignment_ptr_ = assignment_ptr;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

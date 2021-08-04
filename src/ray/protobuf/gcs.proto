@@ -164,9 +164,6 @@ message ActorTableData {
   // The actor's serialized runtime environment. This is necessary because the
   // task spec's lifetime is shorter than the ActorTableData.
   string serialized_runtime_env = 24;
-  // ID of the actor worker assignment, generated in gcs server.
-  // It is used for both scheduling and failover.
-  bytes actor_worker_assignment_id = 25;
 }
 
 message ErrorTableData {
