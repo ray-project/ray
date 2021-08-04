@@ -309,9 +309,9 @@ def replace_symlinks_with_junctions():
         except subprocess.CalledProcessError:
             out = b""
         if os.path.basename(path) in out.decode("utf8").splitlines():
-            print(f"'{link}' is already converted to junction point")
+            logger.info(f"'{link}' is already converted to junction point")
         else:
-            print(f"Converting '{link}' to junction point...")
+            logger.info(f"Converting '{link}' to junction point...")
             if os.path.isfile(path):
                 with open(path) as inp:
                     target = inp.read()
@@ -333,7 +333,7 @@ def replace_symlinks_with_junctions():
                 raise ValueError(f"Unexpected type of entry: '{path}'")
             target = os.path.abspath(
                 os.path.join(os.path.dirname(path), target))
-            print("Setting {} -> {}".format(link, target))
+            logger.info("Setting {} -> {}".format(link, target))
             subprocess.check_call(
                 f"MKLINK /J '{os.path.basename(link)}' '{target}'",
                 shell=True,
