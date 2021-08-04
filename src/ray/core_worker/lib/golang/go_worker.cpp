@@ -47,8 +47,32 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
         args_go.len = args_array_list.size();
         args_go.cap = args_array_list.size();
 
+        std::vector<*ReturnValue> return_value_list;
+        for (size_t i = 0; i < results.size(); i++) {
+          ReturnValue rv;
+          return_value_list.push_back(&rv);
+        }
+
         // invoke golang method
-        go_worker_execute(task_type, fd_list, args_go);
+        go_worker_execute(task_type, fd_list, args_go, return_value_list);
+        results->clear();
+        for (size_t i = 0; i < return_value_list.size(); i++) {
+          auto &result_id = return_ids[i];
+          auto &return_value = return_value_list[i];
+          std::shared_ptr<ray::Buffer> data_buffer =
+              std::make_shared<JavaByteArrayBuffer>(env, javaByteArray);
+          std::shared_ptr<ray::Buffer> meta_buffer =
+              std::make_shared<JavaByteArrayBuffer>(env, javaByteArray);
+          std::vector<ray::ObjectID> contained_object_ids;
+          auto value = std::make_shared<ray::RayObject>(data_buffer, metadata_buffer,
+                                                        contained_object_ids);
+          native_vector->emplace_back(value);
+          RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
+              result_id, value->GetData()->Size(), value->GetMetadata(),
+              contained_object_id, value));
+          RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id,
+                                                                                result));
+        }
         return ray::Status::OK();
       };
 
@@ -175,7 +199,8 @@ __attribute__((visibility("default"))) int go_worker_CreateActor(char *type_name
 
 __attribute__((visibility("default"))) int go_worker_SubmitActorTask(void *actor_id,
                                                                      char *method_name,
-                                                                     char ***return_ids) {
+                                                                     char ***return_ids,
+                                                                     int num_returns) {
   std::string *sp = static_cast<std::string *>(actor_id);
   auto actor_id_obj = ActorID::FromBinary(*sp);
   std::vector<std::string> function_descriptor_list = {method_name};
@@ -184,8 +209,12 @@ __attribute__((visibility("default"))) int go_worker_SubmitActorTask(void *actor
                                                  function_descriptor_list);
 
   ray::RayFunction ray_function = ray::RayFunction(ray::rpc::GOLANG, function_descriptor);
+  std::string name = "";
+  std::unordered_map<std::string, double> resources;
+  ray::TaskOptions task_options{name, numReturns, resources};
+
   std::vector<ObjectID> return_obj_ids;
   ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id_obj, ray_function, {},
-                                                          {}, &return_obj_ids);
+                                                          task_options, &return_obj_ids);
   return 0;
 }

@@ -3,20 +3,28 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 #ifndef GO_CGO_PROLOGUE_H
 #define GO_CGO_PROLOGUE_H
- typedef long long GoInt64;
- typedef GoInt64 GoInt;
- typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
+typedef long long GoInt64;
+typedef GoInt64 GoInt;
+typedef struct {
+  void *data;
+  GoInt len;
+  GoInt cap;
+} GoSlice;
 #endif
 
 struct DataBuffer {
   int size;
   uint8_t *p;
+};
+
+struct ReturnValue {
+  DataBuffer *data;
+  DataBuffer *meta;
 };
 
 void go_worker_Initialize(int workerMode, char *store_socket, char *raylet_socket,
@@ -39,9 +47,14 @@ int go_worker_GetNextJobID(void *p);
 
 int go_worker_CreateActor(char *type_name, char **result);
 
-int go_worker_SubmitActorTask(void *actor_id, char *method_name, char ***return_ids);
+// todo calloptions
+int go_worker_SubmitActorTask(void *actor_id, char *method_name, char ***return_ids,
+                              int num_returns);
 
-extern void go_worker_execute(GoInt task_type, GoSlice ray_function_info, GoSlice args);
+extern void go_worker_execute(GoInt task_type, GoSlice ray_function_info, GoSlice args,
+                              GoSlice return_values);
+
+
 
 void SayHello(char *);
 
