@@ -36,7 +36,7 @@ if __name__ == "__main__":
         "Ray Client.")
     args, _ = parser.parse_known_args()
     if args.server_address is not None:
-        ray.util.connect(args.server_address)
+        ray.init(f"ray://{args.server_address}")
     else:
         ray.init(configure_logging=False)
 
