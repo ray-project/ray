@@ -5,7 +5,8 @@ import itertools
 from typing import Dict, List, Optional, Set, Union
 
 from ray.util import log_once
-from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, \
+    PublicAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -79,16 +80,18 @@ class SampleBatch(dict):
         self.get_interceptor = None
 
         # Clear out None seq-lens.
-        if self.get("seq_lens") is None or self.get("seq_lens") == []:
+        seq_lens_ = self.get("seq_lens")
+        if seq_lens_ is None or \
+                (isinstance(seq_lens_, list) and len(seq_lens_) == 0):
             self.pop("seq_lens", None)
         # Numpyfy seq_lens if list.
-        elif isinstance(self.get("seq_lens"), list):
-            self["seq_lens"] = np.array(self["seq_lens"], dtype=np.int32)
+        elif isinstance(seq_lens_, list):
+            self["seq_lens"] = seq_lens_ = np.array(seq_lens_, dtype=np.int32)
 
-        if self.max_seq_len is None and self.get("seq_lens") is not None and \
-                not (tf and tf.is_tensor(self["seq_lens"])) and \
-                len(self["seq_lens"]) > 0:
-            self.max_seq_len = max(self["seq_lens"])
+        if self.max_seq_len is None and seq_lens_ is not None and \
+                not (tf and tf.is_tensor(seq_lens_)) and \
+                len(seq_lens_) > 0:
+            self.max_seq_len = max(seq_lens_)
 
         if self.is_training is None:
             self.is_training = self.pop("is_training", False)
@@ -110,6 +113,12 @@ class SampleBatch(dict):
             self.count = sum(self["seq_lens"])
         else:
             self.count = lengths[0] if lengths else 0
+
+        # A convenience map for slicing this batch into sub-batches along
+        # the time axis. This helps reduce repeated iterations through the
+        # batch's seq_lens array to find good slicing points. Built lazily
+        # when needed.
+        self._slice_map = []
 
     @PublicAPI
     def __len__(self):
@@ -290,17 +299,17 @@ class SampleBatch(dict):
         for i in range(self.count):
             next_eps_id = self[SampleBatch.EPS_ID][i]
             if next_eps_id != cur_eps_id:
-                slices.append(self.slice(offset, i))
+                slices.append(self[offset:i])
                 offset = i
                 cur_eps_id = next_eps_id
-        slices.append(self.slice(offset, self.count))
+        slices.append(self[offset:self.count])
         for s in slices:
             slen = len(set(s[SampleBatch.EPS_ID]))
             assert slen == 1, (s, slen)
         assert sum(s.count for s in slices) == self.count, (slices, self.count)
         return slices
 
-    @PublicAPI
+    @Deprecated(new="SampleBatch[start:stop]", error=False)
     def slice(self, start: int, end: int, state_start=None,
               state_end=None) -> "SampleBatch":
         """Returns a slice of the row data of this batch (w/o copying).
@@ -387,38 +396,61 @@ class SampleBatch(dict):
                 _time_major=self.time_major)
 
     @PublicAPI
-    def timeslices(self, size=None, num_slices=None,
+    def timeslices(self,
+                   size: Optional[int] = None,
+                   num_slices: Optional[int] = None,
                    k: Optional[int] = None) -> List["SampleBatch"]:
         """Returns SampleBatches, each one representing a k-slice of this one.
 
         Will start from timestep 0 and produce slices of size=k.
 
         Args:
-            size (int): The size (in timesteps) of each returned SampleBatch.
-            num_slices (int): The number of slices to produce.
+            size (Optional[int]): The size (in timesteps) of each returned
+                SampleBatch.
+            num_slices (Optional[int]): The number of slices to produce.
             k (int): Obsoleted: Use size or num_slices instead!
                 The size (in timesteps) of each returned SampleBatch.
 
         Returns:
-            List[SampleBatch]: The list of (new) SampleBatches (each one of
-                size k).
+            List[SampleBatch]: The list of `num_slices` (new) SampleBatches
+                or n (new) SampleBatches each one of size `size`.
         """
         if size is None and num_slices is None:
-            deprecation_warning("k", "size and num_slices")
+            deprecation_warning("k", "size or num_slices")
             assert k is not None
             size = k
 
-        slices, state_slices = self._get_slice_indices(size)
-        if len(state_slices) == 0:
-            timeslices = [self.slice(i, j) for i, j in slices]
+        if size is None:
+            assert isinstance(num_slices, int)
+
+            slices = []
+            left = len(self)
+            start = 0
+            while left:
+                len_ = left // (num_slices - len(slices))
+                stop = start + len_
+                slices.append(self[start:stop])
+                left -= len_
+                start = stop
+
+            return slices
+
         else:
-            timeslices = [
-                self.slice(i, j, si, sj) for (i, j), (si, sj) in slices
-            ]
-        return timeslices
+            assert isinstance(size, int)
+
+            slices = []
+            left = len(self)
+            start = 0
+            while left:
+                stop = start + size
+                slices.append(self[start:stop])
+                left -= size
+                start = stop
+
+            return slices
 
     def zero_pad(self, max_seq_len: int, exclude_states: bool = True):
-        """Left zero-pad the data in this SampleBatch in place.
+        """Zero-pad the data in this SampleBatch in place.
 
         This will set the `self.zero_padded` flag to True and
         `self.max_seq_len` to the given `max_seq_len` value.
@@ -462,6 +494,18 @@ class SampleBatch(dict):
         self.zero_padded = True
         self.max_seq_len = max_seq_len
 
+    # Experimental method.
+    def to_device(self, device, framework="torch"):
+        """TODO: transfer batch to given device as framework tensor."""
+        if framework == "torch":
+            assert torch is not None
+            for k, v in self.items():
+                if isinstance(v, np.ndarray) and v.dtype != np.object:
+                    self[k] = torch.from_numpy(v).to(device)
+        else:
+            raise NotImplementedError
+        return self
+
     @PublicAPI
     def size_bytes(self) -> int:
         """
@@ -479,15 +523,20 @@ class SampleBatch(dict):
             return default
 
     @PublicAPI
-    def __getitem__(self, key: str) -> TensorType:
-        """Returns one column (by key) from the data.
+    def __getitem__(self, key: Union[str, slice]) -> TensorType:
+        """Returns one column (by key) from the data or a sliced new batch.
 
         Args:
-            key (str): The key (column name) to return.
+            key (Union[str, slice]): The key (column name) to return or
+                a slice object for slicing this SampleBatch.
 
         Returns:
-            TensorType: The data under the given key.
+            TensorType: The data under the given key or a sliced version of
+                this batch.
         """
+        if isinstance(key, slice):
+            return self._slice(key)
+
         if not hasattr(self, key) and key in self:
             self.accessed_keys.add(key)
 
@@ -577,12 +626,54 @@ class SampleBatch(dict):
 
     @DeveloperAPI
     def set_get_interceptor(self, fn):
+        # If get-interceptor changes, must erase old intercepted values.
+        if fn is not self.get_interceptor:
+            self.intercepted_values = {}
         self.get_interceptor = fn
 
     def __repr__(self):
         return "SampleBatch({})".format(list(self.keys()))
 
+    def _slice(self, slice_: slice):
+        assert slice_.start >= 0 and slice_.stop >= 0 and \
+               slice_.step in [1, None]
+        if self.get("seq_lens") is not None and len(self["seq_lens"]) > 0:
+            # Build our slice-map if not done already.
+            if not self._slice_map:
+                sum_ = 0
+                for i, l in enumerate(self["seq_lens"]):
+                    for _ in range(l):
+                        self._slice_map.append((i, sum_))
+                    sum_ += l
+                self._slice_map.append((len(self["seq_lens"]), sum_))
+
+            start_seq_len, start = self._slice_map[slice_.start]
+            stop_seq_len, stop = self._slice_map[slice_.stop]
+            if self.zero_padded:
+                start = start_seq_len * self.max_seq_len
+                stop = stop_seq_len * self.max_seq_len
+            data = {
+                k: v[start:stop]
+                if k != "seq_lens" and not k.startswith("state_in_") else
+                v[start_seq_len:stop_seq_len]
+                for k, v in self.items()
+            }
+            return SampleBatch(
+                data,
+                _is_training=self.is_training,
+                _time_major=self.time_major,
+            )
+        else:
+            start, stop = slice_.start, slice_.stop
+            data = {k: v[start:stop] for k, v in self.items()}
+            return SampleBatch(
+                data,
+                _is_training=self.is_training,
+                _time_major=self.time_major,
+            )
+
     def _get_slice_indices(self, slice_size):
+        deprecation_warning("SampleBatch._get_slice_indices", error=False)
         data_slices = []
         data_slices_states = []
         if self.get("seq_lens") is not None and len(self["seq_lens"]) > 0:
@@ -630,9 +721,8 @@ class SampleBatch(dict):
     # TODO: deprecate
     @property
     def data(self):
-        if log_once("SampleBatch.data"):
-            deprecation_warning(
-                old="SampleBatch.data[..]", new="SampleBatch[..]", error=False)
+        deprecation_warning(
+            old="SampleBatch.data[..]", new="SampleBatch[..]", error=True)
         return self
 
     # TODO: (sven) Experimental method.
