@@ -30,6 +30,7 @@ class TestTrainer(unittest.TestCase):
                     "num_agents": 4,
                 },
             },
+            "num_workers": 2,  # Test on remote workers as well.
             "multiagent": {
                 # Start with a single policy.
                 "policies": {
@@ -40,9 +41,7 @@ class TestTrainer(unittest.TestCase):
             },
         })
 
-        # TODO: (sven) this will work for tf, once we have the DynamicTFPolicy
-        #  refactor PR merged.
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+        for _ in framework_iterator(config):
             trainer = pg.PGTrainer(config=config)
             r = trainer.train()
             self.assertTrue("p0" in r["policy_reward_min"])
