@@ -10,7 +10,7 @@ from ray.tune.cluster_info import is_ray_cluster
 logger = logging.getLogger(__name__)
 
 
-def get_warn_threshold(autoscaler_enabled: bool):
+def get_warn_threshold(autoscaler_enabled: bool) -> float:
     if autoscaler_enabled:
         return float(
             os.environ.get(
@@ -200,14 +200,14 @@ class TrialExecutor:
             elif time.monotonic(
             ) - self._no_running_trials_since > get_warn_threshold(
                     autoscaler_enabled):
-                warn_prefix = ("If autoscaler is still scaling up, ignore " \
-                              "this message. " if autoscaler_enabled
-                               else "Autoscaler is disabled. ")
+                warn_prefix = ("If autoscaler is still scaling up, ignore "
+                              "this message." if autoscaler_enabled
+                               else "Autoscaler is disabled.")
                 logger.warn(
-                    warn_prefix +
-                    "Resource is not ready after extended amount of time "
-                    "without any trials running - please consider if the "
-                    "allocated resource is not enough.")
+                    f"{warn_prefix} "
+                    f"Resource is not ready after extended amount of time "
+                    f"without any trials running - please consider if the "
+                    f"allocated resource is not enough.")
                 self._no_running_trials_since = time.time()
         else:
             self._no_running_trials_since = -1

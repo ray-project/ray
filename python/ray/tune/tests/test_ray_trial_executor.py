@@ -303,7 +303,7 @@ class TrialExecutorInsufficientResourceTest(unittest.TestCase):
         self.cluster.shutdown()
         _register_all()  # re-register the evicted objects
 
-    @freeze_time("2012-01-14", auto_tick_seconds=15)
+    @freeze_time("2021-08-03", auto_tick_seconds=15)
     def testOutputWarningMessage(self):
         def train(config):
             pass
@@ -314,12 +314,12 @@ class TrialExecutorInsufficientResourceTest(unittest.TestCase):
                     "cpu": 1,
                     "gpu": 1,
                 })
-            msg = "Autoscaler is disabled. Resource is not ready after " \
-                  "extended amount of time without any trials running - " \
-                  "please consider if the allocated resource is not enough."
+            msg = ("Autoscaler is disabled. Resource is not ready after "
+                  "extended amount of time without any trials running - "
+                  "please consider if the allocated resource is not enough.")
             assert ctx.records[0].msg == msg
 
-    @freeze_time("2012-01-14")
+    @freeze_time("2021-08-03")
     def testNotOutputWarningMessage(self):
         def train(config):
             pass
