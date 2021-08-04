@@ -34,10 +34,15 @@ def scrub_traceback(ex):
     # These are used to coloring the string.
     ex = re.sub("\\x1b\[36m", "", ex)
     ex = re.sub("\\x1b\[39m", "", ex)
-    # noqa is required to ignore lint, so we just remove it.
-    ex = re.sub(" # noqa", "", ex)
     # Clean up object address.
     ex = re.sub("object at .*>", "object at ADDRESS>", ex)
+    return ex
+
+
+def clean_noqa(ex):
+    assert isinstance(ex, str)
+    # noqa is required to ignore lint, so we just remove it.
+    ex = re.sub(" # noqa", "", ex)
     return ex
 
 
@@ -46,10 +51,10 @@ def scrub_traceback(ex):
     reason="Clean stacktrace not supported on Windows")
 def test_actor_creation_stacktrace(ray_start_regular):
     """Test the actor creation task stacktrace."""
-    expected_output = """The actor died because of an error raised in its creation task, ray::A.__init__() (pid=55184, ip=192.168.1.5) # noqa
-  File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 50, in __init__
+    expected_output = """The actor died because of an error raised in its creation task, ray::A.__init__() (pid=XXX, ip=YYY) # noqa
+  File "FILE", line ZZ, in __init__
     g(3)
-  File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 45, in g
+  File "FILE", line ZZ, in g
     raise ValueError(a)
 ValueError: 3"""
 
@@ -69,7 +74,7 @@ ValueError: 3"""
         ray.get(a.ping.remote())
     except RayActorError as ex:
         print(ex)
-        assert scrub_traceback(expected_output) == scrub_traceback(str(ex))
+        assert clean_noqa(expected_output) == scrub_traceback(str(ex))
 
 
 @pytest.mark.skipif(
@@ -77,10 +82,10 @@ ValueError: 3"""
     reason="Clean stacktrace not supported on Windows")
 def test_task_stacktrace(ray_start_regular):
     """Test the normal task stacktrace."""
-    expected_output = """ray::f() (pid=57290, ip=192.168.1.5) # noqa
-  File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 96, in f
+    expected_output = """ray::f() (pid=XXX, ip=YYY)
+  File "FILE", line ZZ, in f
     return g(c)
-  File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 88, in g
+  File "FILE", line ZZ, in g
     raise ValueError(a)
 ValueError: 7"""
 
@@ -99,7 +104,7 @@ ValueError: 7"""
         ray.get(f.remote())
     except ValueError as ex:
         print(ex)
-        assert scrub_traceback(expected_output) == scrub_traceback(str(ex))
+        assert clean_noqa(expected_output) == scrub_traceback(str(ex))
 
 
 @pytest.mark.skipif(
@@ -107,10 +112,10 @@ ValueError: 7"""
     reason="Clean stacktrace not supported on Windows")
 def test_actor_task_stacktrace(ray_start_regular):
     """Test the actor task stacktrace."""
-    expected_output = """ray::A.f() (pid=57520, ip=192.168.1.5, repr=<test_traceback.A object at 0x7f8e0a557f90>) # noqa
-  File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 123, in f
+    expected_output = """ray::A.f() (pid=XXX, repr=<test_traceback.A object at ADDRESS>) # noqa
+  File "FILE", line ZZ, in f
     return g(c)
-  File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 115, in g
+  File "FILE", line ZZ, in g
     raise ValueError(a)
 ValueError: 7"""
 
@@ -130,7 +135,7 @@ ValueError: 7"""
         ray.get(a.f.remote())
     except ValueError as ex:
         print(ex)
-        assert scrub_traceback(expected_output) == scrub_traceback(str(ex))
+        assert clean_noqa(expected_output) == scrub_traceback(str(ex))
 
 
 @pytest.mark.skipif(
@@ -138,11 +143,11 @@ ValueError: 7"""
     reason="Clean stacktrace not supported on Windows")
 def test_exception_chain(ray_start_regular):
     """Test the chained stacktrace."""
-    expected_output = """ray::foo() (pid=58054, ip=192.168.1.5) # noqa
-  File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 156, in foo
+    expected_output = """ray::foo() (pid=XXX, ip=YYY) # noqa
+  File "FILE", line ZZ, in foo
     return ray.get(bar.remote())
-ray.exceptions.RayTaskError(ZeroDivisionError): ray::bar() (pid=58070, ip=192.168.1.5)
-  File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 152, in bar
+ray.exceptions.RayTaskError(ZeroDivisionError): ray::bar() (pid=XXX, ip=YYY)
+  File "FILE", line ZZ, in bar
     return 1 / 0
 ZeroDivisionError: division by zero"""
 
@@ -160,7 +165,7 @@ ZeroDivisionError: division by zero"""
     except ZeroDivisionError as ex:
         assert isinstance(ex, RayTaskError)
         print(ex)
-        assert scrub_traceback(expected_output) == scrub_traceback(str(ex))
+        assert clean_noqa(expected_output) == scrub_traceback(str(ex))
 
 
 @pytest.mark.skipif(
@@ -168,13 +173,13 @@ ZeroDivisionError: division by zero"""
     reason="Clean stacktrace not supported on Windows")
 def test_dep_failure(ray_start_regular):
     """Test the stacktrace genereated due to dependency failures."""
-    expected_output = """ray::f() (pid=58289, ip=192.168.1.5) # noqa
+    expected_output = """ray::f() (pid=XXX, ip=YYY) # noqa
   Some of the input arguments for this task could not be computed:
-ray.exceptions.RayTaskError: ray::a() (pid=58289, ip=192.168.1.5)
+ray.exceptions.RayTaskError: ray::a() (pid=XXX, ip=YYY)
   Some of the input arguments for this task could not be computed:
-ray.exceptions.RayTaskError: ray::b() (pid=58289, ip=192.168.1.5)
-  File "/Users/sangbincho/work/ray/python/ray/tests/test_traceback.py", line 192, in b
-    raise ValueError("b failed")
+ray.exceptions.RayTaskError: ray::b() (pid=XXX, ip=YYY)
+  File "FILE", line ZZ, in b
+    raise ValueError("FILE")
 ValueError: b failed"""
 
     @ray.remote
@@ -194,9 +199,9 @@ ValueError: b failed"""
     except Exception as ex:
         print(ex)
         from pprint import pprint
-        pprint(scrub_traceback(expected_output))
+        pprint(clean_noqa(expected_output))
         pprint(scrub_traceback(str(ex)))
-        assert scrub_traceback(expected_output) == scrub_traceback(str(ex))
+        assert clean_noqa(expected_output) == scrub_traceback(str(ex))
 
 
 @pytest.mark.skipif(
