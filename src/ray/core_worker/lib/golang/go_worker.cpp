@@ -27,8 +27,10 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
         auto function_descriptor = ray_function.GetFunctionDescriptor();
         auto typed_descriptor = function_descriptor->As<ray::CppFunctionDescriptor>();
 
+        char *fd_data[1];
+        fd_data[0] = const_cast<char *>(typed_descriptor->FunctionName().c_str());
         GoSlice fd_list;
-        fd_list.data = const_cast<char *>(typed_descriptor->FunctionName().c_str());
+        fd_list.data = fd_data;
         fd_list.len = 1;
         fd_list.cap = 1;
 
