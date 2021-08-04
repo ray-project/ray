@@ -187,7 +187,7 @@ TEST_F(DirectActorSubmitterTest, TestQueueingWarning) {
   }
   ASSERT_EQ(last_queue_warning_, 5000);
 
-  for (int i = 15000; i < 25000; i++) {
+  for (int i = 15000; i < 35000; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
     ASSERT_TRUE(submitter_.SubmitTask(task).ok());
     /* no ack */
