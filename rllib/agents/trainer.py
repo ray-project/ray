@@ -1193,7 +1193,6 @@ class Trainer(Trainable):
                 observation_space=observation_space,
                 action_space=action_space,
                 config=config,
-                policy_config=self.config,
                 policy_mapping_fn=policy_mapping_fn,
                 policies_to_train=policies_to_train,
             )

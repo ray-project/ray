@@ -1059,7 +1059,6 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_space: Optional[gym.spaces.Space] = None,
             action_space: Optional[gym.spaces.Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
-            policy_config: Optional[TrainerConfigDict] = None,
             policy_mapping_fn: Optional[Callable[
                 [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
@@ -1101,10 +1100,12 @@ class RolloutWorker(ParallelIteratorWorker):
             },
             self.env,
             spaces=self.spaces,
-            policy_config=policy_config)
-
+            policy_config=self.policy_config,
+        )
         self._build_policy_map(
-            policy_dict, policy_config, seed=policy_config.get("seed"))
+            policy_dict,
+            self.policy_config,
+            seed=self.policy_config.get("seed"))
         new_policy = self.policy_map[policy_id]
 
         self.filters[policy_id] = get_filter(
