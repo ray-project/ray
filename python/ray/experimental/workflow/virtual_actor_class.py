@@ -303,6 +303,9 @@ class VirtualActorClass(VirtualActorClassBase):
         """Construct a blank virtual actor."""
         return VirtualActor(self._metadata, actor_id, storage)
 
+    def __reduce__(self):
+        return decorate_actor, (self._metadata.cls, )
+
 
 def _wrap_readonly_actor_method(actor_id: str, cls: type, method_name: str):
     # generate better step names
