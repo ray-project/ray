@@ -1,4 +1,4 @@
-package main
+package worker
 
 import (
     "flag"
@@ -8,7 +8,7 @@ import (
     "github.com/ray-project/ray-go-worker/pkg/ray/generated"
 )
 
-func main() {
+func Run() {
     nodeManagerPort := flag.Int("node-manager-port", 0, "")
     nodeManagerAddress := flag.String("node-manager-address", "", "")
     objectStoreSocket := flag.String("object-store-socket-name", "", "")

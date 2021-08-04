@@ -1,9 +1,10 @@
-package actor
+package main
 
 import (
     "reflect"
 
     "github.com/ray-project/ray-go-worker/pkg/ray"
+    "github.com/ray-project/ray-go-worker/pkg/ray/worker"
 )
 
 func init() {
@@ -24,4 +25,8 @@ func (c *Count) Increase(i int) {
 
 func (c *Count) Get() int {
     return c.value
+}
+
+func main() {
+    worker.Run()
 }
