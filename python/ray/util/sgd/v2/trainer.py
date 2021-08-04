@@ -1,5 +1,6 @@
 import inspect
 import logging
+import time
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict
 
 from ray.tune import Trainable
@@ -129,6 +130,7 @@ class Trainer:
         callbacks = [] if callbacks is None else callbacks
 
         try:
+            import pdb; pdb.set_trace()
             self._executor.start_training(train_func)
             while True:
                 intermediate_results = self._executor.fetch_next_result()

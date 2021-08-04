@@ -190,9 +190,10 @@ def test_run_failure(ray_start_2_cpus):
     trainer.shutdown()
 
 
-def test_execute_worker_failure(ray_start_2_cpus):
+def test_worker_failure(ray_start_2_cpus):
     def train_actor_failure(config):
-        ray.actor.exit_actor()
+        import sys
+        sys.exit(0)
 
     trainer = Trainer("torch")
     trainer.start()
