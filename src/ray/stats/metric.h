@@ -90,12 +90,18 @@ class StatsConfig final {
 class Metric {
  public:
   Metric(const std::string &name, const std::string &description, const std::string &unit,
-         const std::vector<opencensus::tags::TagKey> &tag_keys = {})
+         const std::vector<opencensus::tags::TagKey> &tag_keys = {},
+         const std::string &measure_name = "")
       : name_(name),
+        measure_name_(measure_name),
         description_(description),
         unit_(unit),
         tag_keys_(tag_keys),
-        measure_(nullptr) {}
+        measure_(nullptr) {
+    if(measure_name_.empty()) {
+      measure_name_ = name;
+    }
+  }
 
   Metric(Metric &&rhs)
       : name_(std::move(rhs.name_)),
@@ -135,6 +141,7 @@ class Metric {
 
  protected:
   std::string name_;
+  std::string measure_name_;
   std::string description_;
   std::string unit_;
   std::vector<opencensus::tags::TagKey> tag_keys_;
@@ -160,8 +167,9 @@ class Histogram : public Metric {
  public:
   Histogram(const std::string &name, const std::string &description,
             const std::string &unit, const std::vector<double> boundaries,
-            const std::vector<opencensus::tags::TagKey> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys), boundaries_(boundaries) {}
+            const std::vector<opencensus::tags::TagKey> &tag_keys = {},
+            const std::string& measure_name = "")
+      : Metric(name, description, unit, tag_keys, measure_name), boundaries_(boundaries) {}
 
  private:
   void RegisterView() override;
@@ -174,8 +182,9 @@ class Histogram : public Metric {
 class Count : public Metric {
  public:
   Count(const std::string &name, const std::string &description, const std::string &unit,
-        const std::vector<opencensus::tags::TagKey> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys) {}
+        const std::vector<opencensus::tags::TagKey> &tag_keys = {},
+        const std::string& measure_name = "")
+      : Metric(name, description, unit, tag_keys, measure_name) {}
 
  private:
   void RegisterView() override;
@@ -185,8 +194,9 @@ class Count : public Metric {
 class Sum : public Metric {
  public:
   Sum(const std::string &name, const std::string &description, const std::string &unit,
-      const std::vector<opencensus::tags::TagKey> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys) {}
+      const std::vector<opencensus::tags::TagKey> &tag_keys = {},
+      const std::string& measure_name = "")
+      : Metric(name, description, unit, tag_keys, measure_name) {}
 
  private:
   void RegisterView() override;
