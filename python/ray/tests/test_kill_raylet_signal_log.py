@@ -27,11 +27,12 @@ def check_result(filename, num_signal, check_key):
     p = psutil.Process(pid)
     p.send_signal(num_signal)
     p.wait(timeout=15)
-    
+
     def check_file():
         with open(raylet_out_path) as f:
             s = f.read()
             return check_key in s
+
     wait_for_condition(check_file)
 
 
