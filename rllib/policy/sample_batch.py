@@ -672,8 +672,8 @@ class SampleBatch(dict):
                 _time_major=self.time_major,
             )
 
+    @Deprecated(error=False)
     def _get_slice_indices(self, slice_size):
-        deprecation_warning("SampleBatch._get_slice_indices", error=False)
         data_slices = []
         data_slices_states = []
         if self.get("seq_lens") is not None and len(self["seq_lens"]) > 0:
