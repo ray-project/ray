@@ -441,6 +441,7 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
   auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = node_to_actors_when_leasing_.find(node_id);
   auto kill_worker = [&reply, this]() {
+    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker";
     auto &worker_address = reply.worker_address();
     if (!worker_address.raylet_id().empty()) {
       auto cli = core_worker_clients_.GetOrConnect(worker_address);
@@ -467,6 +468,8 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
           << " has been already cancelled. The response will be ignored. Job id = "
           << actor->GetActorID().JobId();
       if (actor->GetState() == rpc::ActorTableData::DEAD) {
+        // If the actor has been killed, we need to kill the worker too
+        // otherwise, the worker will be leaked
         kill_worker();
       }
       return;
@@ -499,7 +502,6 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
   } else if (actor->GetState() == rpc::ActorTableData::DEAD) {
     // If the actor has been killed, we need to kill the worker too
     // otherwise, the worker will be leaked
-    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker";
     kill_worker();
   }
 }
