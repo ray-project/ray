@@ -17,6 +17,7 @@
 #include <memory>
 #include <tuple>
 #include <unordered_map>
+#include <ctype.h>
 
 #include "opencensus/stats/stats.h"
 #include "opencensus/stats/stats_exporter.h"
@@ -105,6 +106,7 @@ class Metric {
 
   Metric(Metric &&rhs)
       : name_(std::move(rhs.name_)),
+        measure_name_(std::move(rhs.measure_name_)),
         description_(std::move(rhs.description_)),
         unit_(std::move(rhs.unit_)),
         tag_keys_(std::move(rhs.tag_keys_)),
@@ -155,8 +157,8 @@ class Metric {
 class Gauge : public Metric {
  public:
   Gauge(const std::string &name, const std::string &description, const std::string &unit,
-        const std::vector<opencensus::tags::TagKey> &tag_keys = {})
-      : Metric(name, description, unit, tag_keys) {}
+        const std::vector<opencensus::tags::TagKey> &tag_keys = {}, const std::string& measure_name = "")
+      : Metric(name, description, unit, tag_keys, measure_name) {}
 
  private:
   void RegisterView() override;
@@ -224,25 +226,25 @@ namespace details {
 template <StatsType T>
 struct StatsTypeMap {
   using type = void;
-  static constexpr const char *val = "void";
+  static constexpr const char *val = "_void";
 };
 
 template <>
 struct StatsTypeMap<COUNT> {
   using type = Count;
-  static constexpr const char *val = ".count";
+  static constexpr const char *val = "";
 };
 
 template <>
 struct StatsTypeMap<SUM> {
   using type = Sum;
-  static constexpr const char *val = ".sum";
+  static constexpr const char *val = "_sum";
 };
 
 template <>
 struct StatsTypeMap<GAUGE> {
   using type = Gauge;
-  static constexpr const char *val = ".gauge";
+  static constexpr const char *val = "_gauge";
 };
 
 inline std::vector<opencensus::tags::TagKey> convertTags(
@@ -278,8 +280,8 @@ class StatsInternal : public IStatsRecord {
   StatsInternal(const std::string &name, const std::string &description,
                 const std::string &unit, const std::vector<std::string> &tag_keys)
       : stats_(std::make_tuple(std::move(
-            typename StatsTypeMap<Ts>::type(name + StatsTypeMap<Ts>::val, description,
-                                            unit, convertTags(tag_keys)))...)) {}
+            typename StatsTypeMap<Ts>::type(name, description,
+                                            unit, convertTags(tag_keys), name + StatsTypeMap<Ts>::val))...)) {}
 
   StatsInternal(const std::string &name, const std::string &description,
                 const std::string &unit)
@@ -305,7 +307,12 @@ class Stats {
 
   void Record(double val) { Record(val, std::unordered_map<std::string, std::string>()); }
 
-  void Record(double val, const std::string &tag_val) {
+  void Record(double val, std::string tag_val) {
+    for(char& c : tag_val) {
+      if (!isprint(c)) {
+        c = '?';
+      }
+    }
     RAY_CHECK(tag_keys_.size() == 1);
     std::unordered_map<std::string, std::string> tags{{tag_keys_[0], tag_val}};
     Record(val, tags);

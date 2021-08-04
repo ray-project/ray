@@ -16,6 +16,7 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <ctype.h>
 #include <boost/asio.hpp>
 
 #include "ray/common/asio/instrumented_io_context.h"
@@ -308,7 +309,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         cq_(cq),
         io_service_(io_service),
         call_name_(std::move(call_name)),
-        max_active_rpcs_(max_active_rpcs) {}
+        max_active_rpcs_(max_active_rpcs) {
+  }
 
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
