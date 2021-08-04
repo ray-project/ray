@@ -15,11 +15,6 @@ class RayException : public std::exception {
   std::string msg_;
 };
 
-class RayIntentionalSystemExitException : public RayException {
- public:
-  RayIntentionalSystemExitException(const std::string &msg) : RayException(msg){};
-};
-
 class RayActorException : public RayException {
  public:
   RayActorException(const std::string &msg) : RayException(msg){};
