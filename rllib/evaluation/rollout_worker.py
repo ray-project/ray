@@ -686,8 +686,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                sample_collector_class=policy_config.get(
-                    "sample_collector_class"),
+                sample_collector_class=policy_config.get("sample_collector"),
                 render=render,
             )
             # Start the Sampler thread.
@@ -707,8 +706,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                sample_collector_class=policy_config.get(
-                    "sample_collector_class"),
+                sample_collector_class=policy_config.get("sample_collector"),
                 render=render,
             )
 
