@@ -618,7 +618,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
            << " tasks are pending submission to actor " << actor_id
            << ". To reduce memory usage, wait for these tasks to finish before sending "
               "more.";
-    PushError(options_.job_id, "excess_queueing_warning", stream.str(), timestamp);
+    RAY_UNUSED(
+        PushError(options_.job_id, "excess_queueing_warning", stream.str(), timestamp));
   };
 
   std::shared_ptr<ActorCreatorInterface> actor_creator =
