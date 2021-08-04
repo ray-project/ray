@@ -618,7 +618,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
            << " tasks are pending submission to actor " << actor_id
            << ". To reduce memory usage, wait for these tasks to finish before sending "
               "more.";
-    RAY_UNUSED(
+    RAY_CHECK_OK(
         PushError(options_.job_id, "excess_queueing_warning", stream.str(), timestamp));
   };
 
