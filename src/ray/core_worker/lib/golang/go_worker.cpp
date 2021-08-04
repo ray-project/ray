@@ -47,8 +47,8 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
         args_go.len = args_array_list.size();
         args_go.cap = args_array_list.size();
 
-        std::vector<*ReturnValue> return_value_list;
-        for (size_t i = 0; i < results.size(); i++) {
+        std::vector<std::shared_ptr<ReturnValue>> return_value_list;
+        for (size_t i = 0; i < results->size(); i++) {
           ReturnValue rv;
           return_value_list.push_back(&rv);
         }
@@ -211,7 +211,7 @@ __attribute__((visibility("default"))) int go_worker_SubmitActorTask(void *actor
   ray::RayFunction ray_function = ray::RayFunction(ray::rpc::GOLANG, function_descriptor);
   std::string name = "";
   std::unordered_map<std::string, double> resources;
-  ray::TaskOptions task_options{name, numReturns, resources};
+  ray::TaskOptions task_options{name, num_returns, resources};
 
   std::vector<ObjectID> return_obj_ids;
   ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id_obj, ray_function, {},
