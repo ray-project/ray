@@ -460,14 +460,13 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
     auto actor_iter = iter->second.find(actor->GetActorID());
     if (actor_iter == iter->second.end()) {
       // if actor is not in leasing state, it means it is cancelled.
-      RAY_LOG(INFO) << "Raylet granted a lease request, but the outstanding lease "
-                       "request for "
-                    << actor->GetActorID() << " has been already cancelled. Job id = "
-                    << actor->GetActorID().JobId();
+      RAY_LOG(INFO)
+          << "Raylet granted a lease request, but the outstanding lease "
+             "request for "
+          << actor->GetActorID()
+          << " has been already cancelled. The response will be ignored. Job id = "
+          << actor->GetActorID().JobId();
       if (actor->GetState() == rpc::ActorTableData::DEAD) {
-        // If the actor has been killed, we need to kill the worker too
-        // otherwise, the worker will be leaked
-        RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker";
         kill_worker();
       }
       return;

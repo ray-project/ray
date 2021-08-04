@@ -170,7 +170,7 @@ if __name__ == "__main__":
     if args.smoke_test:
         ray.init(num_cpus=2)
     elif args.server_address:
-        ray.util.connect(args.server_address)
+        ray.init(f"ray://{args.server_address}")
     else:
         ray.init(address=args.address)
     train_fashion_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu)
