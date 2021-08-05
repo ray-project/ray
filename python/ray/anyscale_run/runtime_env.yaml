@@ -1,0 +1,4 @@
+working_dir: "."
+docker: "my_image:v1"
+pip:
+  "./requirements.txt"

@@ -1,0 +1,2 @@
+tensorflow==1.2.3
+requests==4.5.6
