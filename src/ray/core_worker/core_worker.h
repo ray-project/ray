@@ -590,11 +590,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results Result list of objects data.
-  /// \param[in] plasma_objects_only Only get objects from Plasma Store.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results,
-             bool plasma_objects_only = false);
+             std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Get objects directly from the local plasma store, without waiting for the
   /// objects to be fetched from another node. This should only be used
@@ -849,11 +847,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] data_size Size of the return value.
   /// \param[in] metadata Metadata buffer of the return value.
   /// \param[in] contained_object_id ID serialized within each return object.
+  /// \param[in][out] task_output_inlined_bytes Store the total size of all inlined
+  /// objects of a task. It is used to decide if the current object should be inlined. If
+  /// the current object is inlined, the task_output_inlined_bytes will be updated.
   /// \param[out] return_object RayObject containing buffers to write results into.
   /// \return Status.
   Status AllocateReturnObject(const ObjectID &object_id, const size_t &data_size,
                               const std::shared_ptr<Buffer> &metadata,
                               const std::vector<ObjectID> &contained_object_id,
+                              int64_t &task_output_inlined_bytes,
                               std::shared_ptr<RayObject> *return_object);
 
   /// Seal a return object for an executing task. The caller should already have
