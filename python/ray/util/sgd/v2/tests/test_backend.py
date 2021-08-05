@@ -2,13 +2,14 @@ import pytest
 from unittest.mock import patch
 
 import ray
+from ray.util.sgd import v2 as sgd
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.backends.torch import TorchConfig
 
 from ray.util.sgd.v2.backends.backend import BackendInterface, \
-    InactiveWorkerGroupError
+    InactiveWorkerGroupError, SGDBackendError
 
 
 @pytest.fixture
@@ -50,7 +51,7 @@ def test_start(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     with pytest.raises(InactiveWorkerGroupError):
-        e.run(lambda: 1)
+        e.start_training(lambda: 1)
     e.start()
     assert len(e.worker_group) == 2
 
@@ -69,7 +70,8 @@ def test_initialization_hook(ray_start_2_cpus):
         import os
         return os.getenv("TEST", "0")
 
-    assert e.run(check) == ["1", "1"]
+    e.start_training(check)
+    assert e.finish_training() == ["1", "1"]
 
 
 def test_shutdown(ray_start_2_cpus):
@@ -79,18 +81,38 @@ def test_shutdown(ray_start_2_cpus):
     assert len(e.worker_group) == 2
     e.shutdown()
     with pytest.raises(InactiveWorkerGroupError):
-        e.run(lambda: 1)
+        e.start_training(lambda: 1)
 
 
-def test_execute(ray_start_2_cpus):
+def test_train(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
 
-    assert e.run(lambda: 1) == [1, 1]
+    e.start_training(lambda: 1)
+    assert e.finish_training() == [1, 1]
 
 
-def test_execute_worker_failure(ray_start_2_cpus):
+def test_train_failure(ray_start_2_cpus):
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=2)
+    e.start()
+
+    with pytest.raises(SGDBackendError):
+        e.fetch_next_result()
+
+    with pytest.raises(SGDBackendError):
+        e.finish_training()
+
+    e.start_training(lambda: 1)
+
+    with pytest.raises(SGDBackendError):
+        e.start_training(lambda: 2)
+
+    assert e.finish_training() == [1, 1]
+
+
+def test_worker_failure(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
@@ -101,7 +123,26 @@ def test_execute_worker_failure(ray_start_2_cpus):
     new_execute_func = gen_execute_special(train_fail)
     with patch.object(WorkerGroup, "execute_async", new_execute_func):
         with pytest.raises(RuntimeError):
-            e.run(lambda: 1)
+            e.start_training(lambda: 1)
+            e.finish_training()
+
+
+def test_no_exhaust(ray_start_2_cpus):
+    """Tests if training can finish even if queue is not exhausted."""
+
+    def train():
+        for _ in range(2):
+            sgd.report(loss=1)
+        return 2
+
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=2)
+    e.start()
+
+    e.start_training(train)
+    output = e.finish_training()
+
+    assert output == [2, 2]
 
 
 def test_tensorflow_start(ray_start_2_cpus):
@@ -115,7 +156,8 @@ def test_tensorflow_start(ray_start_2_cpus):
         import os
         return json.loads(os.environ["TF_CONFIG"])
 
-    results = e.run(get_tf_config)
+    e.start_training(get_tf_config)
+    results = e.finish_training()
     assert len(results) == num_workers
 
     workers = [result["cluster"]["worker"] for result in results]
@@ -136,11 +178,13 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method):
         return torch.distributed.is_initialized(
         ) and torch.distributed.get_world_size() == 2
 
-    assert all(e.run(check_process_group))
+    e.start_training(check_process_group)
+    assert all(e.finish_training())
 
     e._backend.on_shutdown(e.worker_group, e._backend_config)
 
-    assert not any(e.run(check_process_group))
+    e.start_training(check_process_group)
+    assert not any(e.finish_training())
 
 
 if __name__ == "__main__":
