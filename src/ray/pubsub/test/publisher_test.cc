@@ -176,6 +176,29 @@ TEST_F(PublisherTest, TestSubscriptionIndexErase) {
   ASSERT_TRUE(subscription_index.CheckNoLeaks());
 }
 
+TEST_F(PublisherTest, TestSubscriptionIndexEraseMultiSubscribers) {
+  ///
+  /// Test erase entry.
+  ///
+  /// oid1 -> [nid1~nid5]
+  /// oid2 -> [nid1~nid5]
+  SubscriptionIndex<ObjectID> subscription_index;
+  auto oid = ObjectID::FromRandom();
+  auto oid2 = ObjectID::FromRandom();
+  std::unordered_set<NodeID> empty_set;
+  subscribers_map_.emplace(oid, empty_set);
+  subscribers_map_.emplace(oid2, empty_set);
+
+  // Add entries.
+  auto node_id = NodeID::FromRandom();
+  subscribers_map_.at(oid).emplace(node_id);
+  subscribers_map_.at(oid2).emplace(node_id);
+  subscription_index.AddEntry(oid.Binary(), node_id);
+  subscription_index.AddEntry(oid2.Binary(), node_id);
+  ASSERT_EQ(subscription_index.EraseEntry(oid.Binary(), node_id), 1);
+  ASSERT_FALSE(subscription_index.EraseEntry(oid.Binary(), node_id), 1);
+}
+
 TEST_F(PublisherTest, TestSubscriptionIndexEraseSubscriber) {
   ///
   /// Test erase subscriber.
