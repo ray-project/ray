@@ -176,10 +176,11 @@ func GetFunctionName(i interface{}) string {
 // 发出调用
 func (atc *ActorTaskCaller) Remote() *ObjectRef {
     returnNum := atc.invokeMethod.NumOut()
-    objectIds := C.go_worker_SubmitActorTask(atc.actorHandle.actorId, C.CString(atc.invokeMethodName), C.int(returnNum))
+    objectIds := C.go_worker_SubmitActorTask(unsafe.Pointer(atc.actorHandle.actorId), C.CString(atc.invokeMethodName), C.int(returnNum))
     resultIds := make([]ObjectId, 0, objectIds.len)
     v := (*[1 << 28]*C.struct_DataBuffer)(objectIds.data)[:objectIds.len:objectIds.len]
     for _, objectId := range v {
+        util.Logger.Debugf("objectId:%v", objectId)
         resultIds = append(resultIds, C.GoBytes(unsafe.Pointer(objectId.p), objectId.size))
     }
     return &ObjectRef{
@@ -202,9 +203,9 @@ func (or *ObjectRef) Get() []interface{} {
         objectIdsPointer[index] = C.CBytes(returnObjectId)
     }
     returnValues := C.go_worker_Get(&objectIdsPointer[0], C.int(returnObjectIdsSize), C.int(-1))
-    values := (*[1 << 28]*C.struct_ReturnValue)(returnValues)[:returnObjectIdsSize:returnObjectIdsSize]
+    values := (*[1 << 28]*C.struct_ReturnValue)(returnValues.data)[:returnObjectIdsSize:returnObjectIdsSize]
     for _, returnValue := range values {
-        dataBytes := C.GoBytes(returnValue.data, returnValue.data.size)
+        dataBytes := C.GoBytes(unsafe.Pointer(returnValue.data.p), returnValue.data.size)
         return []interface{}{dataBytes[0]}
     }
     return nil
