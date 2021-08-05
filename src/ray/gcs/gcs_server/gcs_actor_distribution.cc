@@ -30,6 +30,8 @@ const ResourceSet &GcsActorWorkerAssignment::GetResources() const {
   return acquired_resources_;
 }
 
+bool GcsActorWorkerAssignment::IsShared() const { return is_shared_; }
+
 GcsBasedActorScheduler::GcsBasedActorScheduler(
     instrumented_io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,

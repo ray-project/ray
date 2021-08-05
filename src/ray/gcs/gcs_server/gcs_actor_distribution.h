@@ -32,7 +32,8 @@ namespace ray {
 namespace gcs {
 
 /// `GcsActorWorkerAssignment` represents the assignment from one or multiple actors to a
-/// worker process. It contains multiple slots, and each of them can bind to an actor.
+/// worker process.
+/// TODO(Chong-Li): It contains multiple slots, and each of them can bind to an actor.
 class GcsActorWorkerAssignment
     : public std::enable_shared_from_this<GcsActorWorkerAssignment> {
  public:
@@ -48,13 +49,15 @@ class GcsActorWorkerAssignment
 
   const ResourceSet &GetResources() const;
 
+  bool IsShared() const;
+
  private:
   /// ID of node on which this actor worker assignment is allocated.
   NodeID node_id_;
   /// Resources owned by this actor worker assignment.
   ResourceSet acquired_resources_;
   /// A flag to represent that whether the worker process can be shared.
-  bool is_shared_ = true;
+  bool is_shared_;
 };
 
 /// GcsBasedActorScheduler inherits from GcsActorScheduler. Its scheduling strategy is
