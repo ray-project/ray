@@ -24,9 +24,11 @@ steps:
     # Cleanup environments
     - ./ci/travis/upload_build_info.sh
     - (which bazel && bazel clean) || true
-    # Special setup for jar builds
-    - brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
-    - brew install --cask adoptopenjdk/openjdk/adoptopenjdk8
+    # TODO(simon): make sure to change both PR and wheel builds
+    # Special setup for jar builds (will be installed to the machine instead)
+    # - brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
+    # - brew install --cask adoptopenjdk/openjdk/adoptopenjdk8
+    - diskutil list external physical
     - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
     - java -version
     # Build wheels
