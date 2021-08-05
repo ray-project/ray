@@ -5,3 +5,5 @@ BACKEND_NAME_TO_CONFIG_CLS = {
     "tensorflow": TensorflowConfig,
     "torch": TorchConfig
 }
+
+RESULT_FILE_JSON = "results.json"

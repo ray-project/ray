@@ -85,9 +85,13 @@ class JsonLogger(Logger):
     JsonLogger to be compatible with the ExperimentAnalysis tool.
     """
 
+    _expr_result_file = EXPR_RESULT_FILE
+    _expr_param_file = EXPR_PARAM_FILE
+    _expr_param_pickle_file = EXPR_PARAM_PICKLE_FILE
+
     def _init(self):
         self.update_config(self.config)
-        local_file = os.path.join(self.logdir, EXPR_RESULT_FILE)
+        local_file = os.path.join(self.logdir, self._expr_result_file)
         self.local_out = open(local_file, "a")
 
     def on_result(self, result: Dict):
@@ -107,7 +111,7 @@ class JsonLogger(Logger):
 
     def update_config(self, config: Dict):
         self.config = config
-        config_out = os.path.join(self.logdir, EXPR_PARAM_FILE)
+        config_out = os.path.join(self.logdir, self._expr_param_file)
         with open(config_out, "w") as f:
             json.dump(
                 self.config,
@@ -115,7 +119,7 @@ class JsonLogger(Logger):
                 indent=2,
                 sort_keys=True,
                 cls=SafeFallbackEncoder)
-        config_pkl = os.path.join(self.logdir, EXPR_PARAM_PICKLE_FILE)
+        config_pkl = os.path.join(self.logdir, self._expr_param_pickle_file)
         with open(config_pkl, "wb") as f:
             cloudpickle.dump(self.config, f)
 
@@ -130,9 +134,11 @@ class CSVLogger(Logger):
 
     """
 
+    _expr_progress_file = EXPR_PROGRESS_FILE
+
     def _init(self):
         """CSV outputted with Headers as first set of results."""
-        progress_file = os.path.join(self.logdir, EXPR_PROGRESS_FILE)
+        progress_file = os.path.join(self.logdir, self._expr_progress_file)
         self._continuing = os.path.exists(progress_file)
         self._file = open(progress_file, "a")
         self._csv_out = None
