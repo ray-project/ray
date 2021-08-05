@@ -803,9 +803,8 @@ class Keras_AttentionWrapper(tf.keras.Model if tf else object):
                         one_hot(input_dict[SampleBatch.PREV_ACTIONS][:, i],
                                 self.action_space))
             elif isinstance(self.action_space, MultiDiscrete):
-                for i in range(0,
-                        self.use_n_prev_actions,
-                        self.action_space.shape[0]):
+                for i in range(0, self.use_n_prev_actions,
+                              self.action_space.shape[0]):
                     prev_a_r.append(
                         one_hot(
                             tf.cast(
