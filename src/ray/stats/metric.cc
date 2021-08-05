@@ -22,9 +22,10 @@ namespace ray {
 
 namespace stats {
 
-absl::Mutex Metric::registration_mutex_;
+namespace details {
 
-static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
+absl::Mutex Metric::registration_mutex_;
+void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
                            const std::vector<opencensus::tags::TagKey> &keys) {
   // Register global keys.
   for (const auto &tag : ray::stats::StatsConfig::instance().GetGlobalTags()) {
@@ -39,6 +40,7 @@ static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
   view_descriptor.RegisterForExport();
 }
 
+}  // namespace details
 ///
 /// Stats Config
 ///
@@ -91,7 +93,7 @@ void Metric::Record(double value, const TagsType &tags) {
   // processing in multithread and avoid race since metrics may invoke
   // record in different threads or code pathes.
   if (measure_ == nullptr) {
-    absl::MutexLock lock(&registration_mutex_);
+    absl::MutexLock lock(&details::registration_mutex_);
     if (measure_ == nullptr) {
       // Measure could be registered before, so we try to get it first.
       MeasureDouble registered_measure =
@@ -133,7 +135,7 @@ void Gauge::RegisterView() {
           .set_description(description_)
           .set_measure(measure_name_)
           .set_aggregation(opencensus::stats::Aggregation::LastValue());
-  RegisterAsView(view_descriptor, tag_keys_);
+  details::RegisterAsView(view_descriptor, tag_keys_);
 }
 
 void Histogram::RegisterView() {
@@ -145,7 +147,7 @@ void Histogram::RegisterView() {
           .set_aggregation(opencensus::stats::Aggregation::Distribution(
               opencensus::stats::BucketBoundaries::Explicit(boundaries_)));
 
-  RegisterAsView(view_descriptor, tag_keys_);
+  details::RegisterAsView(view_descriptor, tag_keys_);
 }
 
 void Count::RegisterView() {
@@ -156,7 +158,7 @@ void Count::RegisterView() {
           .set_measure(measure_name_)
           .set_aggregation(opencensus::stats::Aggregation::Count());
 
-  RegisterAsView(view_descriptor, tag_keys_);
+  details::RegisterAsView(view_descriptor, tag_keys_);
 }
 
 void Sum::RegisterView() {
@@ -167,9 +169,8 @@ void Sum::RegisterView() {
           .set_measure(measure_name_)
           .set_aggregation(opencensus::stats::Aggregation::Sum());
 
-  RegisterAsView(view_descriptor, tag_keys_);
+  details::RegisterAsView(view_descriptor, tag_keys_);
 }
 
 }  // namespace stats
-
 }  // namespace ray
