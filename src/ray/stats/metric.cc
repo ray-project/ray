@@ -37,7 +37,7 @@ void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
   for (const auto &key : keys) {
     view_descriptor = view_descriptor.add_column(key);
   }
-  // opencensus::stats::View view(view_descriptor);
+  opencensus::stats::View view(view_descriptor);
   view_descriptor.RegisterForExport();
 }
 
@@ -98,13 +98,13 @@ void Metric::Record(double value, const TagsType &tags) {
     if (measure_ == nullptr) {
       // Measure could be registered before, so we try to get it first.
       MeasureDouble registered_measure =
-          opencensus::stats::MeasureRegistry::GetMeasureDoubleByName(measure_name_);
+          opencensus::stats::MeasureRegistry::GetMeasureDoubleByName(name_);
 
       if (registered_measure.IsValid()) {
         measure_.reset(new MeasureDouble(registered_measure));
       } else {
-        measure_.reset(new MeasureDouble(
-            MeasureDouble::Register(measure_name_, description_, unit_)));
+        measure_.reset(
+            new MeasureDouble(MeasureDouble::Register(name_, description_, unit_)));
       }
       RegisterView();
     }
@@ -134,7 +134,7 @@ void Gauge::RegisterView() {
       opencensus::stats::ViewDescriptor()
           .set_name(name_)
           .set_description(description_)
-          .set_measure(measure_name_)
+          .set_measure(name_)
           .set_aggregation(opencensus::stats::Aggregation::LastValue());
   details::RegisterAsView(view_descriptor, tag_keys_);
 }
@@ -144,7 +144,7 @@ void Histogram::RegisterView() {
       opencensus::stats::ViewDescriptor()
           .set_name(name_)
           .set_description(description_)
-          .set_measure(measure_name_)
+          .set_measure(name_)
           .set_aggregation(opencensus::stats::Aggregation::Distribution(
               opencensus::stats::BucketBoundaries::Explicit(boundaries_)));
 
@@ -156,7 +156,7 @@ void Count::RegisterView() {
       opencensus::stats::ViewDescriptor()
           .set_name(name_)
           .set_description(description_)
-          .set_measure(measure_name_)
+          .set_measure(name_)
           .set_aggregation(opencensus::stats::Aggregation::Count());
 
   details::RegisterAsView(view_descriptor, tag_keys_);
@@ -167,7 +167,7 @@ void Sum::RegisterView() {
       opencensus::stats::ViewDescriptor()
           .set_name(name_)
           .set_description(description_)
-          .set_measure(measure_name_)
+          .set_measure(name_)
           .set_aggregation(opencensus::stats::Aggregation::Sum());
 
   details::RegisterAsView(view_descriptor, tag_keys_);
