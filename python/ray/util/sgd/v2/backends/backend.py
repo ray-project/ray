@@ -121,12 +121,19 @@ class BackendExecutor:
                                       "`start_training` before "
                                       "`fetch_next_result`.")
 
-            return session.get_next()
+            try:
+                result = session.get_next()
+            except RuntimeError:
+                # Training thread has not been started yet.
+                raise SGDBackendError("`fetch_next_result` has been called "
+                                      "before `start_training`. Please call "
+                                      "`start_training` before "
+                                      "`fetch_next_result`.")
+
+            return result
 
         futures = self.worker_group.execute_async(get_next)
         results = self.get_with_failure_handling(futures)
-
-        print(results)
 
         # Check if any worker returned None.
         if any(r is None for r in results):

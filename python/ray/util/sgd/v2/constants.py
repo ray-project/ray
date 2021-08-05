@@ -13,7 +13,7 @@ TIME_TOTAL_S = "time_total_s"
 # env var is not 0
 DETAILED_AUTOFILLED_KEYS = {DATE, HOSTNAME, NODE_IP, PID, TIME_TOTAL_S}
 
-# Time between BackendExecutor.fetch_next checks when fetching
+# Time between Session.get_next checks when fetching
 # new results after signaling the training function to continue.
 RESULT_FETCH_TIMEOUT = 0.2
 
