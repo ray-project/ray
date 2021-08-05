@@ -720,6 +720,26 @@ if __name__ == "__main__":
         assert b"OK" in output
 
 
+def test_use_dynamic_function_and_class(ray_start_regular_shared):
+    current_path = os.path.dirname(__file__)
+    job_config = ray.job_config.JobConfig(code_search_path=[current_path])
+    ray.init({}, job_config=job_config)
+    @ray.remote
+    def foo():
+        return "OK"
+
+    @ray.remote
+    class Foo:
+        
+        def foo(self):
+            return "OK"
+
+    assert ray.get(foo.remote()) == "OK"
+    foo_actor = Foo.remote()
+    assert ray.get(foo_actor.foo.remote()) == "OK"
+
+
+
 if __name__ == "__main__":
     import pytest
     # Skip test_basic_2_client_mode for now- the test suite is breaking.

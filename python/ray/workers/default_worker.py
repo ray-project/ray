@@ -71,11 +71,6 @@ parser.add_argument(
     default=None,
     help="Specify the path of the temporary directory use by Ray process.")
 parser.add_argument(
-    "--load-code-from-local",
-    default=False,
-    action="store_true",
-    help="True if code is loaded from local files, as opposed to the GCS.")
-parser.add_argument(
     "--use-pickle",
     default=False,
     action="store_true",
@@ -199,17 +194,9 @@ if __name__ == "__main__":
         worker_shim_pid=args.worker_shim_pid,
         ray_debugger_external=args.ray_debugger_external)
 
-    # Add code search path to sys.path, set load_code_from_local.
+    # Add code search path to sys.path.
     core_worker = ray.worker.global_worker.core_worker
     code_search_path = core_worker.get_job_config().code_search_path
-    load_code_from_local = False
-    if code_search_path:
-        load_code_from_local = True
-        for p in code_search_path:
-            if os.path.isfile(p):
-                p = os.path.dirname(p)
-            sys.path.insert(0, p)
-    ray.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(

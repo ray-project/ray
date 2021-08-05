@@ -125,7 +125,6 @@ class Worker:
         # If True, make the debugger external to the node this worker is
         # running on.
         self.ray_debugger_external = False
-        self._load_code_from_local = False
         # Used to toggle whether or not logs should be filtered to only those
         # produced in the same job.
         self.filter_logs_by_job = True
@@ -140,10 +139,7 @@ class Worker:
         self.check_connected()
         return self.node.node_ip_address
 
-    @property
-    def load_code_from_local(self):
-        self.check_connected()
-        return self._load_code_from_local
+
 
     @property
     def current_job_id(self):
@@ -249,8 +245,7 @@ class Worker:
         """
         self.mode = mode
 
-    def set_load_code_from_local(self, load_code_from_local):
-        self._load_code_from_local = load_code_from_local
+
 
     def put_object(self, value, object_ref=None, owner_address=None):
         """Put value in the local object store with object reference `object_ref`.
@@ -554,6 +549,7 @@ def get_dashboard_url():
 
 
 global_worker = Worker()
+
 """Worker: The global Worker object for this worker process.
 
 We use a global Worker object to ensure that there is a single worker object
@@ -933,19 +929,6 @@ def init(
         job_id=None,
         namespace=namespace,
         job_config=job_config)
-    if job_config and job_config.code_search_path:
-        global_worker.set_load_code_from_local(True)
-    else:
-        # Because `ray.shutdown()` doesn't reset this flag, for multiple
-        # sessions in one process, the 2nd `ray.init()` will reuse the
-        # flag of last session. For example:
-        #     ray.init(load_code_from_local=True)
-        #     ray.shutdown()
-        #     ray.init()
-        #     # Here the flag `load_code_from_local` is still True if we
-        #     # doesn't have this `else` branch.
-        #     ray.shutdown()
-        global_worker.set_load_code_from_local(False)
 
     for hook in _post_init_hooks:
         hook()
