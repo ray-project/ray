@@ -178,15 +178,15 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     # TODO(Sang): Re-enable it after event is introduced.
     # transfer_events = ray.state.object_transfer_timeline()
 
-    # # Make sure that each object was transferred a reasonable number of times.
+    # # Make sure that each object was transferred a reasonable number of times. # noqa
     # for x_id in object_refs:
     #     relevant_events = [
     #         event for event in transfer_events if
-    #         event["cat"] == "transfer_send" and event["args"][0] == x_id.hex()
+    #         event["cat"] == "transfer_send" and event["args"][0] == x_id.hex() # noqa
     #     ]
 
     #     # NOTE: Each event currently appears twice because we duplicate the
-    #     # send and receive boxes to underline them with a box (black if it is a
+    #     # send and receive boxes to underline them with a box (black if it is a # noqa
     #     # send and gray if it is a receive). So we need to remove these extra
     #     # boxes here.
     #     deduplicated_relevant_events = [
@@ -200,10 +200,10 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     #     # If more object transfers than necessary have been done, print a
     #     # warning.
     #     if len(relevant_events) > num_nodes - 1:
-    #         warnings.warn("This object was transferred {} times, when only {} "
+    #         warnings.warn("This object was transferred {} times, when only {} " # noqa
     #                       "transfers were required.".format(
     #                           len(relevant_events), num_nodes - 1))
-    #     # Each object should not have been broadcast more than once from every
+    #     # Each object should not have been broadcast more than once from every # noqa
     #     # machine to every other machine. Also, a pair of machines should not
     #     # both have sent the object to each other.
     #     assert len(relevant_events) <= (num_nodes - 1) * num_nodes / 2
