@@ -42,24 +42,37 @@ def test_ray_internal_kv_collisions(serve_instance):
     assert kv2.get("1") == b"-1"
     assert kv1.get("1") == b"1"
 
+def _test_operations(kv_store):
+    # Trival get & put
+    kv_store.put("1", b"1")
+    assert kv_store.get("1") == b"1"
+    kv_store.put("2", b"2")
+    assert kv_store.get("1") == b"1"
+    assert kv_store.get("2") == b"2"
+
+    # Overwrite same key
+    kv_store.put("1", b"-1")
+    assert kv_store.get("1") == b"-1"
+
+    # Get non-existing key
+    assert kv_store.get("3") is None
+
+    # Delete existing key
+    kv_store.delete("1")
+    kv_store.delete("2")
+    assert kv_store.get("1") is None
+    assert kv_store.get("2") is None
+
+    # Delete non-existing key
+    kv_store.delete("3")
 
 def test_ray_serve_external_kv_local_disk():
     kv_store = RayExternalKVStore(
         "namespace",
         local_mode=True,
     )
-    kv_store.put("1", b"1")
-    assert kv_store.get("1") == b"1"
 
-    kv_store.put("2", b"2")
-    assert kv_store.get("1") == b"1"
-    assert kv_store.get("2") == b"2"
-
-    assert kv_store.get("3") is None
-    kv_store.delete("1")
-    kv_store.delete("2")
-    assert kv_store.get("1") is None
-    assert kv_store.get("2") is None
+    _test_operations(kv_store)
 
     if os.path.exists("/tmp/ray_serve_checkpoint_key.txt"):
         os.remove("/tmp/ray_serve_checkpoint_key.txt")
@@ -77,19 +90,8 @@ def test_ray_serve_external_kv_aws_s3():
         aws_session_token=os.environ.get("AWS_SESSION_TOKEN", None),
         local_mode=False,
     )
-    kv_store.put("1", b"1")
-    assert kv_store.get("1") == b"1"
 
-    kv_store.put("2", b"2")
-    assert kv_store.get("1") == b"1"
-    assert kv_store.get("2") == b"2"
-
-    assert kv_store.get("3") is None
-
-    kv_store.delete("1")
-    kv_store.delete("2")
-    assert kv_store.get("1") is None
-    assert kv_store.get("2") is None
+    _test_operations(kv_store)
 
 
 if __name__ == "__main__":
