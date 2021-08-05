@@ -338,7 +338,7 @@ class ActorCriticOptimizerMixin:
         if config["framework"] in ["tf2", "tfe"]:
             self.global_step = get_variable(0, tf_name="global_step")
             self._actor_optimizer = tf.keras.optimizers.Adam(
-                learning_rate=config["optimization"]["actor_lr"])
+                learning_rate=config["actor_lr"])
             self._critic_optimizer = \
                 tf.keras.optimizers.Adam(learning_rate=config["critic_lr"])
         # Static graph mode.
