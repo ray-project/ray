@@ -30,13 +30,6 @@ SchedulingClass TaskSpecification::GetSchedulingClass(
   absl::MutexLock lock(&mutex_);
   auto it = sched_cls_to_id_.find(sched_cls);
   if (it == sched_cls_to_id_.end()) {
-    std::stringstream buffer;
-    buffer << "Couldn't find scheduling class of type: " << sched_cls.DebugString();
-    for (const auto &pair : sched_cls_to_id_) {
-      buffer << "\t found: " << pair.first.DebugString();
-    }
-    // RAY_LOG(ERROR) << buffer.str();
-
     sched_cls_id = ++next_sched_id_;
     // TODO(ekl) we might want to try cleaning up task types in these cases
     if (sched_cls_id > 100) {
@@ -48,7 +41,6 @@ SchedulingClass TaskSpecification::GetSchedulingClass(
     }
     sched_cls_to_id_[sched_cls] = sched_cls_id;
     sched_id_to_cls_.emplace(sched_cls_id, sched_cls);
-    // sched_id_to_cls_[sched_cls_id] = sched_cls;
   } else {
     sched_cls_id = it->second;
   }

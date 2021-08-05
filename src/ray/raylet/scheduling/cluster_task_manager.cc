@@ -46,8 +46,6 @@ ClusterTaskManager::ClusterTaskManager(
 bool ClusterTaskManager::SchedulePendingTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
   TryLocalInfeasibleTaskScheduling();
-  // RAY_LOG(ERROR) << "Going to iterate through scheduling queue: " <<
-  // tasks_to_schedule_.DebugString();
   bool did_schedule = false;
   for (auto shapes_it = tasks_to_schedule_.begin();
        shapes_it != tasks_to_schedule_.end();) {
@@ -323,10 +321,7 @@ void ClusterTaskManager::QueueAndScheduleTask(
     infeasible_tasks_[scheduling_class].push_back(work);
   } else {
     tasks_to_schedule_.Push(work);
-    // tasks_to_schedule_[scheduling_class].push_back(work);
   }
-  // RAY_LOG(ERROR) << "Queued task of scheduling class" << scheduling_class << ", state
-  // is now: \n" << tasks_to_schedule_.DebugString();
   AddToBacklogTracker(task);
   ScheduleAndDispatchTasks();
 }
@@ -361,8 +356,6 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
     ReleaseWorkerResources(worker);
   }
   tasks_to_schedule_.MarkFinished(*task);
-  // RAY_LOG(ERROR) << "Task finished: " <<
-  // task->GetTaskSpecification().GetSchedulingClass();
 }
 
 bool ClusterTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec,
@@ -720,9 +713,9 @@ void ClusterTaskManager::FillResourceUsage(
 
   for (const auto &pair : infeasible_tasks_) {
     const auto &scheduling_class = pair.first;
-    // if (scheduling_class == one_cpu_scheduling_cls) {
-    //   continue;
-    // }
+    if (scheduling_class == one_cpu_scheduling_cls) {
+      continue;
+    }
     if (num_reported++ >= max_resource_shapes_per_load_report_ &&
         max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
@@ -871,7 +864,6 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
                      << task.GetTaskSpecification().TaskId()
                      << " is now feasible. Move the entry back to tasks_to_schedule_";
       tasks_to_schedule_.PushAll(shapes_it->first, shapes_it->second);
-      // tasks_to_schedule_.emplace(shapes_it->first, std::move(shapes_it->second));
       shapes_it = infeasible_tasks_.erase(shapes_it);
     }
   }
@@ -907,8 +899,6 @@ void ClusterTaskManager::Dispatch(
   leased_workers[worker->WorkerId()] = worker;
   RemoveFromBacklogTracker(task);
   tasks_to_schedule_.MarkRunning(task);
-  // RAY_LOG(ERROR) << "Dispatching task of class " <<
-  // task.GetTaskSpecification().GetSchedulingClass();
 
   // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;
@@ -1045,7 +1035,6 @@ bool ClusterTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
         RAY_CHECK(overflow_cpu_instances[i] == 0) << "Should not be overflow";
       }
       worker->MarkBlocked();
-      // RAY_LOG(ERROR) << "Worker blocked";
       return true;
     }
   }
@@ -1067,7 +1056,6 @@ bool ClusterTaskManager::ReturnCpuResourcesToBlockedWorker(
       cluster_resource_scheduler_->SubtractCPUResourceInstances(
           cpu_instances, /*allow_going_negative=*/true);
       worker->MarkUnblocked();
-      // RAY_LOG(ERROR) << "Worker unblocked";
       return true;
     }
   }

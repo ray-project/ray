@@ -345,7 +345,6 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       StealTasksOrReturnWorker(addr, was_error, scheduling_key, assigned_resources);
     }
   } else {
-    RAY_LOG(ERROR) << "Driver got a worker!";
     auto &client = *client_cache_->GetOrConnect(addr.ToProto());
 
     while (!current_queue.empty() &&
@@ -581,12 +580,10 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
-  RAY_LOG(ERROR) << "Pushing task: " << task_spec.TaskId();
   client.PushNormalTask(
       std::move(request),
       [this, task_spec, task_id, is_actor, is_actor_creation, scheduling_key, addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
-        RAY_LOG(ERROR) << "Got a response!!! " << task_spec.TaskId();
         {
           absl::MutexLock lock(&mu_);
           executing_tasks_.erase(task_id);

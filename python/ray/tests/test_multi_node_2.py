@@ -331,15 +331,10 @@ def test_multi_node_pgs(ray_start_cluster):
     assert len(ready) == 2
     assert len(not_ready) == 2
 
-    print("===========================")
-
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes(3)
     ready, not_ready = ray.wait(
         [pg.ready() for pg in pgs], timeout=5, num_returns=4)
-    print("read:", ready)
-    print("not read:", not_ready)
-    ray.get(not_ready)
     assert len(ready) == 4
     assert len(not_ready) == 0
 
