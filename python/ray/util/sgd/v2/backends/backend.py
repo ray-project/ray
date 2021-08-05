@@ -67,7 +67,7 @@ class BackendExecutor:
         """
 
         # First initialize the session.
-        def initialize_session(world_rank):
+        def initialize_session(world_rank, train_func):
             thread = PropagatingThread(target=train_func, daemon=True)
             try:
                 init_session(training_thread=thread, world_rank=world_rank)
@@ -81,7 +81,10 @@ class BackendExecutor:
         for world_rank in range(len(self.worker_group)):
             futures.append(
                 self.worker_group.execute_single_async(
-                    world_rank, initialize_session, world_rank=world_rank))
+                    world_rank,
+                    initialize_session,
+                    world_rank=world_rank,
+                    train_func=train_func))
 
         ray.get(futures)
 
@@ -180,14 +183,14 @@ class BackendExecutor:
                                    "`start_training` before "
                                    "`finish_training`.") from None
 
+            shutdown_session()
+
             training_thread = session.training_thread
 
             # Wait for training to finish.
-            # This will raise any errors that occur during training.
-            # TODO: Will this hang?
+            # This will raise any errors that occur during training, including
+            # SystemError
             func_output = training_thread.join()
-
-            shutdown_session()
 
             return func_output
 

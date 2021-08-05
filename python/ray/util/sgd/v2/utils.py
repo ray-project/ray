@@ -24,7 +24,7 @@ class PropagatingThread(Thread):
         self.exc = None
         try:
             self.ret = self._target(*self._args, **self._kwargs)
-        except Exception as e:
+        except BaseException as e:
             self.exc = e
 
     def join(self, timeout=None):
