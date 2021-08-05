@@ -175,7 +175,7 @@ Status TaskExecutor::ExecuteTask(
     auto result_ptr = &(*results)[0];
     int64_t task_output_inlined_bytes = 0;
     RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
-        result_id, data_size, nullptr, std::vector<ray::ObjectID>(),
+        result_id, data_size, meta_buffer, std::vector<ray::ObjectID>(),
         task_output_inlined_bytes, result_ptr));
 
     auto result = *result_ptr;
