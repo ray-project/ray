@@ -36,7 +36,8 @@ class BackendInfo:
         self.replica_config = replica_config
         self.actor_def = actor_def
         self.version = version
-        self.deployer_job_id = deployer_job_id or ray.get_runtime_context().job_id
+        self.deployer_job_id = deployer_job_id or ray.get_runtime_context(
+        ).job_id
 
 
 class TrafficPolicy:

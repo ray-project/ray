@@ -296,11 +296,12 @@ class ServeController:
 
             return goal_ids
 
-    async def deploy(
-            self, name: str, backend_config: BackendConfig,
-            replica_config: ReplicaConfig, python_methods: List[str],
-            version: Optional[str], prev_version: Optional[str],
-            route_prefix: Optional[str], deployer_job_id: ray._raylet.JobID) -> Tuple[Optional[GoalId], bool]:
+    async def deploy(self, name: str, backend_config: BackendConfig,
+                     replica_config: ReplicaConfig, python_methods: List[str],
+                     version: Optional[str], prev_version: Optional[str],
+                     route_prefix: Optional[str],
+                     deployer_job_id: ray._raylet.JobID
+                     ) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
