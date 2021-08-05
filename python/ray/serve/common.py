@@ -31,13 +31,12 @@ class BackendInfo:
                  replica_config: ReplicaConfig,
                  actor_def: Optional[ActorClass] = None,
                  version: Optional[str] = None,
-                 deployer_job_id: ray._raylet.JobID = None):
+                 deployer_job_id: "Optional[ray._raylet.JobID]" = None):
         self.backend_config = backend_config
         self.replica_config = replica_config
         self.actor_def = actor_def
         self.version = version
-        self.deployer_job_id = deployer_job_id or ray.get_runtime_context(
-        ).job_id
+        self.deployer_job_id = deployer_job_id
 
 
 class TrafficPolicy:

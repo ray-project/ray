@@ -131,7 +131,9 @@ class ServeController:
             deployment_info = {}
             deployment_info["name"] = name
             deployment_info["namespace"] = ray.get_runtime_context().namespace
-            deployment_info["ray_job_id"] = backend_info.deployer_job_id.hex()
+            deployment_info["ray_job_id"] = (
+                "None" if backend_info.deployer_job_id is None else
+                backend_info.deployer_job_id.hex())
             deployment_info[
                 "class_name"] = backend_info.replica_config.func_or_class_name
             deployment_info["version"] = backend_info.version or "Unversioned"
@@ -296,11 +298,15 @@ class ServeController:
 
             return goal_ids
 
-    async def deploy(self, name: str, backend_config: BackendConfig,
-                     replica_config: ReplicaConfig, python_methods: List[str],
-                     version: Optional[str], prev_version: Optional[str],
+    async def deploy(self,
+                     name: str,
+                     backend_config: BackendConfig,
+                     replica_config: ReplicaConfig,
+                     python_methods: List[str],
+                     version: Optional[str],
+                     prev_version: Optional[str],
                      route_prefix: Optional[str],
-                     deployer_job_id: ray._raylet.JobID
+                     deployer_job_id: "Optional[ray._raylet.JobID]" = None
                      ) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
