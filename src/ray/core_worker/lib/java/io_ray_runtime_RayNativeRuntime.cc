@@ -154,6 +154,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
         }
         RAY_CHECK_JAVA_EXCEPTION(env);
 
+        int64_t task_output_inlined_bytes = 0;
         // Process return objects.
         if (!return_ids.empty()) {
           std::vector<std::shared_ptr<ray::RayObject>> return_objects;
@@ -172,7 +173,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
             auto result_ptr = &(*results)[0];
 
             RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
-                result_id, data_size, metadata, contained_object_id, result_ptr));
+                result_id, data_size, metadata, contained_object_id,
+                task_output_inlined_bytes, result_ptr));
 
             // A nullptr is returned if the object already exists.
             auto result = *result_ptr;

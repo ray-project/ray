@@ -26,7 +26,7 @@ Here’s a simple FastAPI web server. It uses Huggingface Transformers to auto-g
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/fastapi/fastapi_simple.py
 
-To scale this up, we define a Ray Serve backend containing our text model and call it from Python using a ServeHandle:
+To scale this up, we define a Ray Serve deployment containing our text model and call it from Python:
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/fastapi/servehandle_fastapi.py
 
@@ -52,7 +52,7 @@ The terminal should then print the generated text:
 To clean up the Ray cluster, run ``ray stop`` in the terminal.
 
 .. tip::
-  According to the backend configuration parameter ``num_replicas``, Ray Serve will place multiple replicas of your model across multiple CPU cores and multiple machines (provided you have :ref:`started a multi-node Ray cluster <cluster-index>`), which will correspondingly multiply your throughput.
+  According to the deployment configuration parameter ``num_replicas``, Ray Serve will place multiple replicas of your model across multiple CPU cores and multiple machines (provided you have :ref:`started a multi-node Ray cluster <cluster-index>`), which will correspondingly multiply your throughput.
 
 Scaling Up an AIOHTTP Application
 ---------------------------------

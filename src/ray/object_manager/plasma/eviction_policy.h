@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "ray/object_manager/plasma/allocator.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/plasma.h"
 
@@ -96,8 +97,8 @@ class EvictionPolicy {
   ///
   /// \param store_info Information about the Plasma store that is exposed
   ///        to the eviction policy.
-  /// \param max_size Max size in bytes total of objects to store.
-  explicit EvictionPolicy(PlasmaStoreInfo *store_info, int64_t max_size);
+  /// \param allocator Memory allocator.
+  explicit EvictionPolicy(PlasmaStoreInfo *store_info, const IAllocator &allocator);
 
   /// Destroy an eviction policy.
   virtual ~EvictionPolicy() {}
@@ -173,6 +174,9 @@ class EvictionPolicy {
 
   /// Pointer to the plasma store info.
   PlasmaStoreInfo *store_info_;
+
+  const IAllocator &allocator_;
+
   /// Datastructure for the LRU cache.
   LRUCache cache_;
 };
