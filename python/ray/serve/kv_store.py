@@ -204,6 +204,6 @@ class RayExternalKVStore:
                     Bucket=self._bucket, Key=self.get_key_with_namespace(key))
             except ClientError as e:
                 message = e.response["Error"]["Message"]
-                logger.error(f"Encountered ClientError while calling get() "
+                logger.error(f"Encountered ClientError while calling delete() "
                              f"in RayExternalKVStore: {message}")
                 raise e
