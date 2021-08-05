@@ -82,21 +82,20 @@ def gen_new_backend_executor(special_f):
     return TestBackendExecutor
 
 
-def test_start_shutdown(ray_start_2_cpus):
+@pytest.mark.parametrize("num_workers", [1, 2])
+def test_start_shutdown(ray_start_2_cpus, num_workers):
     config = TestConfig()
     assert ray.available_resources()["CPU"] == 2
-    trainer = Trainer(config)
+    trainer = Trainer(config, num_workers=num_workers)
     trainer.start()
     time.sleep(1)
-    assert ray.available_resources()["CPU"] == 1
-    trainer.shutdown()
-    time.sleep(1)
-    assert ray.available_resources()["CPU"] == 2
 
-    trainer = Trainer(config, num_workers=2)
-    trainer.start()
-    time.sleep(1)
-    assert "CPU" not in ray.available_resources()
+    remaining = 2 - num_workers
+    if remaining == 0:
+        assert "CPU" not in ray.available_resources()
+    else:
+        assert ray.available_resources()["CPU"] == remaining
+
     trainer.shutdown()
     time.sleep(1)
     assert ray.available_resources()["CPU"] == 2

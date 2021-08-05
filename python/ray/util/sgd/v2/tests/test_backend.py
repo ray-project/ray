@@ -156,7 +156,8 @@ def test_tensorflow_start(ray_start_2_cpus):
         import os
         return json.loads(os.environ["TF_CONFIG"])
 
-    results = e.run(get_tf_config)
+    e.start_training(get_tf_config)
+    results = e.finish_training()
     assert len(results) == num_workers
 
     workers = [result["cluster"]["worker"] for result in results]
