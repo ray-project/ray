@@ -151,7 +151,7 @@ class Trainer:
             raise RuntimeError("Training failed. You should not be seeing "
                                "this error and this is a bug. Please create "
                                "a new issue at "
-                               "https://github.com/ray-project/ray.")
+                               "https://github.com/ray-project/ray.") from None
 
     def _get_train_func(
             self,

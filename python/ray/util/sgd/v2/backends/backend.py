@@ -163,10 +163,10 @@ class BackendExecutor:
                                       "`finish_training`.")
 
             try:
-                # session.end raises any Exceptions from training.
+                # session.finish raises any Exceptions from training.
                 output = session.finish()
             finally:
-                # Shutdown session even if session.end() raises an
+                # Shutdown session even if session.finish() raises an
                 # Exception.
                 shutdown_session()
 
