@@ -21,9 +21,12 @@
 #include "ray/stats/metric.h"
 
 DEFINE_stats(io_pool_req_num, "IO pool request num", {"Method"}, {}, ray::stats::GAUGE);
-DEFINE_stats(io_pool_req_execution_time_us, "IO pool execution time", {"Method"}, {}, ray::stats::GAUGE);
-DEFINE_stats(io_pool_req_queue_time_us, "IO pool queue time", {"Method"}, {}, ray::stats::GAUGE);
-DEFINE_stats(io_pool_req_activate_num, "IO pool request activate num", {"Method"}, {}, ray::stats::GAUGE);
+DEFINE_stats(io_pool_req_execution_time_us, "IO pool execution time", {"Method"}, {},
+             ray::stats::GAUGE);
+DEFINE_stats(io_pool_req_queue_time_us, "IO pool queue time", {"Method"}, {},
+             ray::stats::GAUGE);
+DEFINE_stats(io_pool_req_activate_num, "IO pool request activate num", {"Method"}, {},
+             ray::stats::GAUGE);
 namespace {
 
 /// A helper for creating a snapshot view of the global stats.
@@ -116,7 +119,8 @@ void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
   // Update execution time stats.
   const auto execution_time_ns = end_execution - start_execution;
   // Update handler-specific stats.
-  STATS_io_pool_req_execution_time_us.Record(execution_time_ns / 1000, handle->handler_name);
+  STATS_io_pool_req_execution_time_us.Record(execution_time_ns / 1000,
+                                             handle->handler_name);
   {
     auto &stats = handle->handler_stats;
     absl::MutexLock lock(&(stats->mutex));

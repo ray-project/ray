@@ -27,7 +27,7 @@ absl::Mutex Metric::registration_mutex_;
 namespace details {
 
 void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
-                           const std::vector<opencensus::tags::TagKey> &keys) {
+                    const std::vector<opencensus::tags::TagKey> &keys) {
   // Register global keys.
   for (const auto &tag : ray::stats::StatsConfig::instance().GetGlobalTags()) {
     view_descriptor = view_descriptor.add_column(tag.first);

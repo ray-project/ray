@@ -15,9 +15,9 @@
 #pragma once
 
 #include <ctype.h>
+#include <functional>
 #include <memory>
 #include <tuple>
-#include <functional>
 #include <unordered_map>
 
 #include "opencensus/stats/stats.h"
@@ -73,6 +73,7 @@ class StatsConfig final {
   std::vector<std::function<void()>> PopInitializers() {
     return std::move(initializers_);
   }
+
  private:
   StatsConfig() = default;
   ~StatsConfig() = default;
@@ -224,34 +225,27 @@ struct MetricPoint {
   const opencensus::stats::MeasureDescriptor &measure_descriptor;
 };
 
-enum StatsType : int {
-  COUNT,
-  SUM,
-  GAUGE,
-  HISTOGRAM
-};
+enum StatsType : int { COUNT, SUM, GAUGE, HISTOGRAM };
 
 namespace details {
 void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
                     const std::vector<opencensus::tags::TagKey> &keys);
 template <StatsType T>
 struct StatsTypeMap {
-
   static constexpr const char *val = "_void";
 };
 
 template <>
 struct StatsTypeMap<COUNT> {
-  static opencensus::stats::Aggregation Aggregation(const std::vector<double>&) {
+  static opencensus::stats::Aggregation Aggregation(const std::vector<double> &) {
     return opencensus::stats::Aggregation::Count();
   }
   static constexpr const char *val = "_cnt";
-
 };
 
 template <>
 struct StatsTypeMap<SUM> {
-  static opencensus::stats::Aggregation Aggregation(const std::vector<double>&) {
+  static opencensus::stats::Aggregation Aggregation(const std::vector<double> &) {
     return opencensus::stats::Aggregation::Sum();
   }
   static constexpr const char *val = "_sum";
@@ -259,7 +253,7 @@ struct StatsTypeMap<SUM> {
 
 template <>
 struct StatsTypeMap<GAUGE> {
-  static opencensus::stats::Aggregation Aggregation(const std::vector<double>&) {
+  static opencensus::stats::Aggregation Aggregation(const std::vector<double> &) {
     return opencensus::stats::Aggregation::LastValue();
   }
   static constexpr const char *val = "_gauge";
@@ -267,41 +261,35 @@ struct StatsTypeMap<GAUGE> {
 
 template <>
 struct StatsTypeMap<HISTOGRAM> {
-  static opencensus::stats::Aggregation Aggregation(const std::vector<double>& buckets) {
-    return opencensus::stats::Aggregation::Distribution(opencensus::stats::BucketBoundaries::Explicit(buckets));
+  static opencensus::stats::Aggregation Aggregation(const std::vector<double> &buckets) {
+    return opencensus::stats::Aggregation::Distribution(
+        opencensus::stats::BucketBoundaries::Explicit(buckets));
   }
   static constexpr const char *val = "_dist";
 };
 
-
 template <StatsType T>
-void RegisterView(
-    const std::string& name,
-    const std::string& description,
-    const std::vector<opencensus::tags::TagKey>& tag_keys,
-    const std::vector<double>& buckets) {
+void RegisterView(const std::string &name, const std::string &description,
+                  const std::vector<opencensus::tags::TagKey> &tag_keys,
+                  const std::vector<double> &buckets) {
   using I = StatsTypeMap<T>;
   auto view_descriptor = opencensus::stats::ViewDescriptor()
-                         .set_name(name + I::val)
-                         .set_description(description)
-                         .set_measure(name)
-                         .set_aggregation(I::Aggregation(buckets));
+                             .set_name(name + I::val)
+                             .set_description(description)
+                             .set_measure(name)
+                             .set_aggregation(I::Aggregation(buckets));
   details::RegisterAsView(view_descriptor, tag_keys);
 }
 
 template <typename T = void>
-void RegisterViewList(
-    const std::string& name,
-    const std::string& description,
-    const std::vector<opencensus::tags::TagKey>& tag_keys,
-    const std::vector<double>& buckets) {
-}
+void RegisterViewList(const std::string &name, const std::string &description,
+                      const std::vector<opencensus::tags::TagKey> &tag_keys,
+                      const std::vector<double> &buckets) {}
 
-template <StatsType T, StatsType...Ts>
-void RegisterViewList(const std::string& name,
-                      const std::string& description,
-                      const std::vector<opencensus::tags::TagKey>& tag_keys,
-                      const std::vector<double>& buckets) {
+template <StatsType T, StatsType... Ts>
+void RegisterViewList(const std::string &name, const std::string &description,
+                      const std::vector<opencensus::tags::TagKey> &tag_keys,
+                      const std::vector<double> &buckets) {
   RegisterView<T>(name, description, tag_keys, buckets);
   RegisterViewList<Ts...>(name, description, tag_keys, buckets);
 }
@@ -317,12 +305,14 @@ inline std::vector<opencensus::tags::TagKey> convertTags(
 
 class Stats {
   using Measure = opencensus::stats::Measure<double>;
+
  public:
-  Stats(const std::string& measure,
-        const std::string& description,
-        const std::vector<std::string> tag_keys,
-        const std::vector<double> buckets,
-        std::function<void(const std::string&, const std::string, const std::vector<opencensus::tags::TagKey>, const std::vector<double>& buckets)> register_func)
+  Stats(const std::string &measure, const std::string &description,
+        const std::vector<std::string> tag_keys, const std::vector<double> buckets,
+        std::function<void(const std::string &, const std::string,
+                           const std::vector<opencensus::tags::TagKey>,
+                           const std::vector<double> &buckets)>
+            register_func)
       : tag_keys_(tag_keys) {
     auto f = [register_func, measure, description, buckets, this]() {
       measure_ = std::make_unique<Measure>(Measure::Register(measure, description, ""));
@@ -350,9 +340,9 @@ class Stats {
       return;
     }
     TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
-    for(auto& t : tags) {
-      for(auto& c : t.second) {
-        if(!isprint(c)) {
+    for (auto &t : tags) {
+      for (auto &c : t.second) {
+        if (!isprint(c)) {
           c = '?';
         }
       }
@@ -372,9 +362,8 @@ class Stats {
 
 }  // namespace ray
 
-#define DEFINE_stats(name, description, tags, buckets, types...)        \
-  ray::stats::details::Stats STATS_##name(                              \
-      #name, description, tags, buckets,                                 \
-      ray::stats::details::RegisterViewList<types>)
+#define DEFINE_stats(name, description, tags, buckets, types...)             \
+  ray::stats::details::Stats STATS_##name(#name, description, tags, buckets, \
+                                          ray::stats::details::RegisterViewList<types>)
 
 #define DECLARE_stats(name) extern ray::stats::details::Stats STATS_##name

@@ -105,7 +105,7 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
       StatsConfig::instance().GetHarvestInterval());
   StatsConfig::instance().SetGlobalTags(global_tags);
   StatsConfig::instance().SetIsInitialized(true);
-  for(auto& f : StatsConfig::instance().PopInitializers()) {
+  for (auto &f : StatsConfig::instance().PopInitializers()) {
     f();
   }
 }
