@@ -144,7 +144,7 @@ class RayServeReplica:
             "serve_backend_request_counter",
             description=("The number of queries that have been "
                          "processed in this replica."),
-            tag_keys=("backend", ))
+            tag_keys=("backend", "replica"))
         self.request_counter.set_default_tags({
             "backend": self.backend_tag,
             "replica": self.replica_tag
@@ -164,7 +164,7 @@ class RayServeReplica:
             "serve_backend_error_counter",
             description=("The number of exceptions that have "
                          "occurred in this replica."),
-            tag_keys=("backend", ))
+            tag_keys=("backend", "replica"))
         self.error_counter.set_default_tags({
             "backend": self.backend_tag,
             "replica": self.replica_tag
