@@ -355,10 +355,10 @@ Handling Large Datasets
 You often will want to compute a large object (e.g., training data, model weights) on the driver and use that object within each trial.
 
 Tune provides a wrapper function ``tune.with_parameters()`` that allows you to broadcast large objects to your trainable.
-Objects passed with this wrapper will be stored on the Ray object store and will be automatically fetched
+Objects passed with this wrapper will be stored on the :ref:`Ray object store <objects-in-ray>` and will be automatically fetched
 and passed to your trainable as a parameter.
 
-.. tip:: If the objects are small in size or already exist in the Object Store, there's no need to use ``tune.with_parameters()``. You can use partials or pass in directly to ``config`` instead.
+.. tip:: If the objects are small in size or already exist in the :ref:`Ray Object Store <objects-in-ray>`, there's no need to use ``tune.with_parameters()``. You can use `partials <https://docs.python.org/3/library/functools.html#functools.partial>`__ or pass in directly to ``config`` instead.
 
 
 .. code-block:: python
