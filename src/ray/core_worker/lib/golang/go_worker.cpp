@@ -71,11 +71,13 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
           auto &result_id = return_ids[i];
           auto &return_value = return_value_list[i];
           std::shared_ptr<ray::Buffer> data_buffer =
-              std::make_shared<ray::LocalMemoryBuffer>(return_value->data->p,
-                                                       return_value->data->size, false);
+              std::make_shared<ray::LocalMemoryBuffer>(
+                  reinterpret_cast<uint8_t *>(return_value->data->p),
+                  return_value->data->size, false);
           std::shared_ptr<ray::Buffer> meta_buffer =
-              std::make_shared<ray::LocalMemoryBuffer>(return_value->meta->p,
-                                                       return_value->meta->size, false);
+              std::make_shared<ray::LocalMemoryBuffer>(
+                  reinterpret_cast<uint8_t *>(return_value->meta->p),
+                  return_value->meta->size, false);
           std::vector<ray::ObjectID> contained_object_ids;
           auto value = std::make_shared<ray::RayObject>(data_buffer, meta_buffer,
                                                         contained_object_ids);
@@ -257,7 +259,7 @@ __attribute__((visibility("default"))) GoSlice go_worker_Get(void **object_ids,
   char **object_id_arr = (char **)object_ids;
   for (int i = 0; i < object_ids_size; i++) {
     auto object_id_obj = ByteArrayToId<ray::ObjectID>(object_id_arr[i]);
-    RAY_LOG(WARNING)<< "try to get object:" << object_id_obj;
+    RAY_LOG(WARNING) << "try to get object:" << object_id_obj;
     object_ids_data.emplace_back(object_id_obj);
   }
   std::vector<std::shared_ptr<ray::RayObject>> results;
