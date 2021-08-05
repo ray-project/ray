@@ -139,8 +139,6 @@ class Worker:
         self.check_connected()
         return self.node.node_ip_address
 
-
-
     @property
     def current_job_id(self):
         if hasattr(self, "core_worker"):
@@ -244,8 +242,6 @@ class Worker:
             mode: One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         """
         self.mode = mode
-
-
 
     def put_object(self, value, object_ref=None, owner_address=None):
         """Put value in the local object store with object reference `object_ref`.
@@ -549,7 +545,6 @@ def get_dashboard_url():
 
 
 global_worker = Worker()
-
 """Worker: The global Worker object for this worker process.
 
 We use a global Worker object to ensure that there is a single worker object
