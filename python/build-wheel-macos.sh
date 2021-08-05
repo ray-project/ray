@@ -73,6 +73,9 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   #   # Install latest version of pip to avoid brownouts.
   #   curl https://bootstrap.pypa.io/get-pip.py | $PYTHON_EXE
   # popd
+  if [ -n "$TRAVIS_COMMIT" ]; then
+    TRAVIS_COMMIT=${BUILDKITE_COMMIT}
+  fi
 
   pushd python
     # Setuptools on CentOS is too old to install arrow 0.9.0, therefore we upgrade.
