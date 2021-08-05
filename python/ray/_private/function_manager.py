@@ -130,8 +130,6 @@ class FunctionActorManager:
         except:
             return
         
-
-
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
 
@@ -260,7 +258,6 @@ class FunctionActorManager:
             with profiling.profile("wait_for_function"):
                 self._wait_for_function(function_descriptor,job_id)
 
-                
         try:
             function_id = function_descriptor.function_id
             info = self._function_execution_info[function_id]
