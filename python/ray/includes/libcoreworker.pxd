@@ -136,6 +136,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const size_t &data_size,
             const shared_ptr[CBuffer] &metadata,
             const c_vector[CObjectID] &contained_object_id,
+            int64_t &task_output_inlined_bytes,
             shared_ptr[CRayObject] *return_object)
         CRayStatus SealReturnObject(
             const CObjectID& return_id,

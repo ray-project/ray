@@ -457,8 +457,9 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertTrue(
             pg.compute_single_action([0, 0, 0, 0], policy_id="policy_2") in
             [0, 1])
-        self.assertRaises(
+        self.assertRaisesRegex(
             KeyError,
+            "not found in PolicyMap",
             lambda: pg.compute_single_action(
                 [0, 0, 0, 0], policy_id="policy_3"))
 
