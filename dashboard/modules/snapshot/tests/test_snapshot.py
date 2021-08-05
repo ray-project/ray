@@ -106,3 +106,5 @@ my_func.deploy()
         assert deployment["version"] == "v1"
         assert deployment["httpRoute"] == "/my_func"
         assert deployment["className"] == "my_func"
+        assert deployment["status"] == "RUNNING"
+        assert deployment["ray_job_id"] is not None

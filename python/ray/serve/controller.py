@@ -130,8 +130,8 @@ class ServeController:
                    route_prefix) in self.list_deployments().items():
             deployment_info = {}
             deployment_info["name"] = name
-            deployment_info["namespace"] = "TODO"
-            deployment_info["ray_job_id"] = "TODO"
+            deployment_info["namespace"] = ray.get_runtime_context().namespace
+            deployment_info["ray_job_id"] = backend_info.deployer_job_id.hex()
             deployment_info[
                 "class_name"] = backend_info.replica_config.func_or_class_name
             deployment_info["version"] = backend_info.version or "Unversioned"
@@ -139,7 +139,7 @@ class ServeController:
             # deployments with no HTTP route, update the below line.
             # Or refactor the route_prefix logic in the Deployment class now.
             deployment_info["http_route"] = route_prefix or f"/{name}"
-            deployment_info["status"] = "TODO"
+            deployment_info["status"] = "RUNNING"
             deployment_info["start_time"] = "TODO"
             deployment_info["end_time"] = "TODO"
             val.append(deployment_info)
@@ -300,7 +300,7 @@ class ServeController:
             self, name: str, backend_config: BackendConfig,
             replica_config: ReplicaConfig, python_methods: List[str],
             version: Optional[str], prev_version: Optional[str],
-            route_prefix: Optional[str]) -> Tuple[Optional[GoalId], bool]:
+            route_prefix: Optional[str], deployer_job_id: ray._raylet.JobID) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
@@ -324,7 +324,8 @@ class ServeController:
                         name, replica_config.serialized_backend_def)),
                 version=version,
                 backend_config=backend_config,
-                replica_config=replica_config)
+                replica_config=replica_config,
+                deployer_job_id=deployer_job_id)
 
             goal_id, updating = self.backend_state.deploy_backend(
                 name, backend_info)

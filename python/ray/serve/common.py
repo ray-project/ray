@@ -1,3 +1,5 @@
+import ray
+
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from uuid import UUID
@@ -28,11 +30,13 @@ class BackendInfo:
                  backend_config: BackendConfig,
                  replica_config: ReplicaConfig,
                  actor_def: Optional[ActorClass] = None,
-                 version: Optional[str] = None):
+                 version: Optional[str] = None,
+                 deployer_job_id: ray._raylet.JobID = None):
         self.backend_config = backend_config
         self.replica_config = replica_config
         self.actor_def = actor_def
         self.version = version
+        self.deployer_job_id = deployer_job_id or ray.get_runtime_context().job_id
 
 
 class TrafficPolicy:
