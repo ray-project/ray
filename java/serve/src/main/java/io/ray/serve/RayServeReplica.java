@@ -79,15 +79,15 @@ public class RayServeReplica {
             .name("serve_backend_request_counter")
             .description("The number of queries that have been processed in this replica.")
             .unit("")
-            .tags(ImmutableMap.of("backend", backendTag))
+            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
             .register();
 
     errorCounter =
         Metrics.count()
             .name("serve_backend_error_counter")
-            .description("The number of exceptions that have occurred in the backend.")
+            .description("The number of exceptions that have occurred in this replica.")
             .unit("")
-            .tags(ImmutableMap.of("backend", backendTag))
+            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
             .register();
 
     restartCounter =

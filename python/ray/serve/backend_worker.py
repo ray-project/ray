@@ -145,7 +145,10 @@ class RayServeReplica:
             description=("The number of queries that have been "
                          "processed in this replica."),
             tag_keys=("backend", ))
-        self.request_counter.set_default_tags({"backend": self.backend_tag})
+        self.request_counter.set_default_tags({
+            "backend": self.backend_tag,
+            "replica": self.replica_tag
+        })
 
         self.loop = asyncio.get_event_loop()
         self.long_poll_client = LongPollClient(
@@ -160,9 +163,12 @@ class RayServeReplica:
         self.error_counter = metrics.Counter(
             "serve_backend_error_counter",
             description=("The number of exceptions that have "
-                         "occurred in the backend."),
+                         "occurred in this replica."),
             tag_keys=("backend", ))
-        self.error_counter.set_default_tags({"backend": self.backend_tag})
+        self.error_counter.set_default_tags({
+            "backend": self.backend_tag,
+            "replica": self.replica_tag
+        })
 
         self.restart_counter = metrics.Counter(
             "serve_backend_replica_starts",
