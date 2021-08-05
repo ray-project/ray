@@ -135,6 +135,10 @@ RAY_CONFIG(int64_t, grpc_server_retry_timeout_milliseconds, 1000)
 // of creation retries will be MAX(actor_creation_min_retries, max_restarts).
 RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 
+/// Warn if more than this many tasks are queued for submission to an actor.
+/// It likely indicates a bug in the user code.
+RAY_CONFIG(int64_t, actor_excess_queueing_warn_threshold, 5000)
+
 /// When trying to resolve an object, the initial period that the raylet will
 /// wait before contacting the object's owner to check if the object is still
 /// available. This is a lower bound on the time to report the loss of an
@@ -306,6 +310,9 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 
 /// Whether put small objects in the local memory store.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
+
+// Max number bytes of inlined objects in a task execution result.
+RAY_CONFIG(int64_t, task_output_inlined_bytes_limit, 10 * 1024 * 1024)
 
 /// Maximum number of tasks that can be in flight between an owner and a worker for which
 /// the owner has been granted a lease. A value >1 is used when we want to enable
