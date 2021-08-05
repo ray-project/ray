@@ -19,7 +19,7 @@ typedef struct GoSlice {
 
 typedef struct DataBuffer {
   int size;
-  uint8_t *p;
+  void *p;
 } DataBuffer;
 
 typedef struct ReturnValue {
