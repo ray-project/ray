@@ -292,7 +292,7 @@ py_test_module_list(
     "test_multiprocessing.py",
     "test_list_actors.py",
   ],
-  size = "medium",
+  size = "large",
   extra_srcs = SRCS,
   name_suffix = "_client_mode",
   # TODO(barakmich): py_test will support env in Bazel 4.0.0...
