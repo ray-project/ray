@@ -38,6 +38,22 @@ def test_basic_actors(shutdown_only, pipelined):
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
+def test_avoid_placement_group_capture(shutdown_only, pipelined):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def run():
+        ds = ray.data.range(5)
+        ds = maybe_pipeline(ds, pipelined)
+        assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
+        assert ds.count() == 5
+        assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
+
+    pg = ray.util.placement_group([{"CPU": 1}])
+    ray.get(run.options(placement_group=pg).remote())
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
 def test_equal_split(shutdown_only, pipelined):
     ray.init(num_cpus=2)
 
@@ -125,21 +141,6 @@ def test_basic(ray_start_regular_shared, pipelined):
     assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
     assert ds.count() == 5
     assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
-
-
-# TODO(ekl) enable this
-# @pytest.mark.parametrize("pipelined", [False, True])
-# def test_avoid_placement_group_capture(ray_start_regular_shared, pipelined):
-#    @ray.remote
-#    def run():
-#        ds = ray.data.range(5)
-#        ds = maybe_pipeline(ds, pipelined)
-#        assert sorted(ds.map(lambda x: x + 1).take()) == [1, 2, 3, 4, 5]
-#        assert ds.count() == 5
-#        assert sorted(ds.iter_rows()) == [0, 1, 2, 3, 4]
-#
-#    pg = ray.util.placement_group([{"CPU": 1}])
-#    ray.get(run.options(placement_group=pg).remote())
 
 
 def test_batch_tensors(ray_start_regular_shared):
