@@ -23,8 +23,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 #include "ray/stats/metric.h"
-DECLARE_stats(grpc_server_cq_pending);
-DECLARE_stats(grpc_server_processing_request_num);
+
 namespace ray {
 namespace rpc {
 
@@ -145,7 +144,6 @@ class ServerCallImpl : public ServerCall {
     if (call_name_.empty()) {
       call_name_ = "unknown";
     }
-    STATS_grpc_server_cq_pending.Record(1, call_name_);
   }
 
   ServerCallState GetState() const override { return state_; }
@@ -154,7 +152,6 @@ class ServerCallImpl : public ServerCall {
 
   void HandleRequest() override {
     if (!io_service_.stopped()) {
-      STATS_grpc_server_processing_request_num.Record(1, call_name_);
       io_service_.post(
           [this] {
             HandleRequestImpl();

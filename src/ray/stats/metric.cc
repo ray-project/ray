@@ -22,9 +22,10 @@ namespace ray {
 
 namespace stats {
 
+absl::Mutex Metric::registration_mutex_;
+
 namespace details {
 
-absl::Mutex Metric::registration_mutex_;
 void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
                            const std::vector<opencensus::tags::TagKey> &keys) {
   // Register global keys.
@@ -36,7 +37,7 @@ void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
   for (const auto &key : keys) {
     view_descriptor = view_descriptor.add_column(key);
   }
-  opencensus::stats::View view(view_descriptor);
+  // opencensus::stats::View view(view_descriptor);
   view_descriptor.RegisterForExport();
 }
 
@@ -93,7 +94,7 @@ void Metric::Record(double value, const TagsType &tags) {
   // processing in multithread and avoid race since metrics may invoke
   // record in different threads or code pathes.
   if (measure_ == nullptr) {
-    absl::MutexLock lock(&details::registration_mutex_);
+    absl::MutexLock lock(&registration_mutex_);
     if (measure_ == nullptr) {
       // Measure could be registered before, so we try to get it first.
       MeasureDouble registered_measure =

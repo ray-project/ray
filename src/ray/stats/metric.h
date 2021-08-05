@@ -17,6 +17,7 @@
 #include <ctype.h>
 #include <memory>
 #include <tuple>
+#include <functional>
 #include <unordered_map>
 
 #include "opencensus/stats/stats.h"
@@ -66,10 +67,10 @@ class StatsConfig final {
   /// Set the global tags that will be appended to all metrics in this process.
   void SetGlobalTags(const TagsType &global_tags);
   /// Add the initializer
-  void AddInitializer(std::functional<void()> func) {
+  void AddInitializer(std::function<void()> func) {
     initializers_.push_back(std::move(func));
   }
-  std::vector<std::functional<void()>> PopInitializers() {
+  std::vector<std::function<void()>> PopInitializers() {
     return std::move(initializers_);
   }
  private:
@@ -91,7 +92,7 @@ class StatsConfig final {
   absl::Duration harvest_interval_ = absl::Milliseconds(5000);
   // Whether or not if the stats has been initialized.
   bool is_initialized_ = false;
-  std::vector<std::functional<void()>> initializers_;
+  std::vector<std::function<void()>> initializers_;
 };
 
 /// A thin wrapper that wraps the `opencensus::tag::measure` for using it simply.
@@ -226,9 +227,8 @@ struct MetricPoint {
 enum StatsType : int {
   COUNT,
   SUM,
-  GAUGE
-  // HISTOGRAM is not supported right now
-  // HISTOGRAM
+  GAUGE,
+  HISTOGRAM
 };
 
 namespace details {
@@ -236,56 +236,74 @@ void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
                     const std::vector<opencensus::tags::TagKey> &keys);
 template <StatsType T>
 struct StatsTypeMap {
-  using aggregation = void;
+
   static constexpr const char *val = "_void";
 };
 
 template <>
 struct StatsTypeMap<COUNT> {
-  using aggregation = opencensus::stats::Aggregation::Count;
-  static constexpr const char *val = "";
+  static opencensus::stats::Aggregation Aggregation(const std::vector<double>&) {
+    return opencensus::stats::Aggregation::Count();
+  }
+  static constexpr const char *val = "_cnt";
 
 };
 
 template <>
 struct StatsTypeMap<SUM> {
-  using aggregation = opencensus::stats::Aggregation::Sum;
+  static opencensus::stats::Aggregation Aggregation(const std::vector<double>&) {
+    return opencensus::stats::Aggregation::Sum();
+  }
   static constexpr const char *val = "_sum";
 };
 
 template <>
 struct StatsTypeMap<GAUGE> {
-  using aggregation = opencensus::stats::Aggregation::LastValue;
+  static opencensus::stats::Aggregation Aggregation(const std::vector<double>&) {
+    return opencensus::stats::Aggregation::LastValue();
+  }
   static constexpr const char *val = "_gauge";
 };
+
+template <>
+struct StatsTypeMap<HISTOGRAM> {
+  static opencensus::stats::Aggregation Aggregation(const std::vector<double>& buckets) {
+    return opencensus::stats::Aggregation::Distribution(opencensus::stats::BucketBoundaries::Explicit(buckets));
+  }
+  static constexpr const char *val = "_dist";
+};
+
 
 template <StatsType T>
 void RegisterView(
     const std::string& name,
     const std::string& description,
-    const std::vector<opencensus::tags::TagKey>& tag_keys) {
+    const std::vector<opencensus::tags::TagKey>& tag_keys,
+    const std::vector<double>& buckets) {
   using I = StatsTypeMap<T>;
-  using A = typename I::aggregation;
   auto view_descriptor = opencensus::stats::ViewDescriptor()
                          .set_name(name + I::val)
                          .set_description(description)
                          .set_measure(name)
-                         .set_aggregation(A());
+                         .set_aggregation(I::Aggregation(buckets));
   details::RegisterAsView(view_descriptor, tag_keys);
 }
 
+template <typename T = void>
 void RegisterViewList(
-    const std::string&,
-    const std::string&,
-    const std::vector<opencensus::tags::TagKey>&) {
+    const std::string& name,
+    const std::string& description,
+    const std::vector<opencensus::tags::TagKey>& tag_keys,
+    const std::vector<double>& buckets) {
 }
 
 template <StatsType T, StatsType...Ts>
 void RegisterViewList(const std::string& name,
                       const std::string& description,
-                      const std::vector<opencensus::tags::TagKey>& tag_keys) {
-  RegisterView<T>(name, description, tag_keys);
-  RegisterView<Ts>(name, description, tag_keys);
+                      const std::vector<opencensus::tags::TagKey>& tag_keys,
+                      const std::vector<double>& buckets) {
+  RegisterView<T>(name, description, tag_keys, buckets);
+  RegisterViewList<Ts...>(name, description, tag_keys, buckets);
 }
 
 inline std::vector<opencensus::tags::TagKey> convertTags(
@@ -298,17 +316,17 @@ inline std::vector<opencensus::tags::TagKey> convertTags(
 }
 
 class Stats {
+  using Measure = opencensus::stats::Measure<double>;
  public:
   Stats(const std::string& measure,
         const std::string& description,
         const std::vector<std::string> tag_keys,
-        std::functional<void(const std::string&, const std::string, const std::vector<opencensus::tags::TagKey>)> register_func)
-      : measure_(measure),
-        tag_keys_(tag_keys) {
-    auto f = [register_func, measure, description, this]() {
-      init_func();
-      measure_ = opencensus::stats::MeasureDouble::Register(measure, description, "");
-      register_func(measure, description, convertTags(tag_keys_));
+        const std::vector<double> buckets,
+        std::function<void(const std::string&, const std::string, const std::vector<opencensus::tags::TagKey>, const std::vector<double>& buckets)> register_func)
+      : tag_keys_(tag_keys) {
+    auto f = [register_func, measure, description, buckets, this]() {
+      measure_ = std::make_unique<Measure>(Measure::Register(measure, description, ""));
+      register_func(measure, description, convertTags(tag_keys_), buckets);
     };
 
     if (StatsConfig::instance().IsInitialized()) {
@@ -321,28 +339,30 @@ class Stats {
   void Record(double val) { Record(val, std::unordered_map<std::string, std::string>()); }
 
   void Record(double val, std::string tag_val) {
+    RAY_CHECK(tag_keys_.size() == 1);
     std::unordered_map<std::string, std::string> tags{{tag_keys_[0], std::move(tag_val)}};
     Record(val, std::move(tags));
   }
 
   void Record(double val, std::unordered_map<std::string, std::string> tags) {
-    if (StatsConfig::instance().IsStatsDisabled()) {
+    if (StatsConfig::instance().IsStatsDisabled() ||
+        !StatsConfig::instance().IsInitialized()) {
       return;
     }
-    TagsType combined_tags;
+    TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
     for(auto& t : tags) {
       for(auto& c : t.second) {
         if(!isprint(c)) {
           c = '?';
         }
       }
-      combined_tags[TagKeyType::Register(t.first)] = std::move(t.second);
+      combined_tags.emplace_back(TagKeyType::Register(t.first), std::move(t.second));
     }
-    opencensus::stats::Record({{measure_, val}}, combined_tags);
+    opencensus::stats::Record({{*measure_, val}}, combined_tags);
   }
 
  private:
-  opencensus::stats::Measure<double> measure_;
+  std::unique_ptr<opencensus::stats::Measure<double>> measure_;
   std::vector<std::string> tag_keys_;
 };
 
@@ -352,9 +372,9 @@ class Stats {
 
 }  // namespace ray
 
-#define DEFINE_stats(name, description, tag, types...)              \
-  ray::stats::details::Stats STATS_##name(                          \
-      #name, description, std::vector<std::string>({tag}),          \
-      RegisterViewList<types>)
+#define DEFINE_stats(name, description, tags, buckets, types...)        \
+  ray::stats::details::Stats STATS_##name(                              \
+      #name, description, tags, buckets,                                 \
+      ray::stats::details::RegisterViewList<types>)
 
 #define DECLARE_stats(name) extern ray::stats::details::Stats STATS_##name
