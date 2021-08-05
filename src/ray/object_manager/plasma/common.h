@@ -26,6 +26,7 @@
 #include "ray/common/id.h"
 #include "ray/object_manager/plasma/compat.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
+#include "ray/util/macros.h"
 
 namespace plasma {
 
@@ -68,6 +69,11 @@ struct Allocation {
         offset(offset),
         device_num(device_num),
         mmap_size(mmap_size) {}
+
+  // only allow moves.
+  RAY_DISALLOW_COPY_AND_ASSIGN(Allocation);
+  Allocation(Allocation &&) noexcept = default;
+  Allocation &operator=(Allocation &&) noexcept = default;
 };
 
 /// This type is used by the Plasma store. It is here because it is exposed to

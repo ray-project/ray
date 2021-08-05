@@ -23,7 +23,8 @@ update the ``_generate_node_name`` method and finally update the
 node provider.
 """
 
-from typing import List, Optional, Tuple, Union
+from copy import deepcopy
+from typing import Any, Dict, List, Optional, Tuple, Union
 import logging
 import abc
 import time
@@ -383,24 +384,54 @@ class GCPCompute(GCPResource):
 
         return result
 
+    def _convert_resources_to_urls(
+            self, configuration_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Ensures that resources are in their full URL form.
+
+        GCP expects machineType and accleratorType to be a full URL (e.g.
+        `zones/us-west1/machineTypes/n1-standard-2`) instead of just the
+        type (`n1-standard-2`)
+
+        Args:
+            configuration_dict: Dict of options that will be passed to GCP
+        Returns:
+            Input dictionary, but with possibly expanding `machineType` and
+                `acceleratorType`.
+        """
+        configuration_dict = deepcopy(configuration_dict)
+        existing_machine_type = configuration_dict["machineType"]
+        if not re.search(".*/machineTypes/.*", existing_machine_type):
+            configuration_dict["machineType"] = (
+                "zones/{zone}/machineTypes/{machine_type}"
+                "".format(
+                    zone=self.availability_zone,
+                    machine_type=configuration_dict["machineType"]))
+
+        for accelerator in configuration_dict.get("guestAccelerators", []):
+            gpu_type = accelerator["acceleratorType"]
+            if not re.search(".*/acceleratorTypes/.*", gpu_type):
+                accelerator["acceleratorType"] = (
+                    "projects/{project}/zones/{zone}/"
+                    "acceleratorTypes/{accelerator}".format(
+                        project=self.project_id,
+                        zone=self.availability_zone,
+                        accelerator=gpu_type))
+
+        return configuration_dict
+
     def create_instance(self,
                         base_config: dict,
                         labels: dict,
                         wait_for_operation: bool = True) -> Tuple[dict, str]:
 
-        config = base_config.copy()
+        config = self._convert_resources_to_urls(base_config)
         # removing TPU-specific default key set in config.py
         config.pop("networkConfig", None)
         name = _generate_node_name(labels, GCPNodeType.COMPUTE.value)
 
-        machine_type = ("zones/{zone}/machineTypes/{machine_type}"
-                        "".format(
-                            zone=self.availability_zone,
-                            machine_type=base_config["machineType"]))
         labels = dict(config.get("labels", {}), **labels)
 
         config.update({
-            "machineType": machine_type,
             "labels": dict(labels,
                            **{TAG_RAY_CLUSTER_NAME: self.cluster_name}),
             "name": name

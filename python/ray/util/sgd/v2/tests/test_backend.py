@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import ray
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
+from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.backends.torch import TorchConfig
 
@@ -31,10 +32,6 @@ def gen_execute_special(special_f):
 
 
 class TestConfig(BackendConfig):
-    @property
-    def backend_name(self):
-        return "test"
-
     @property
     def backend_cls(self):
         return TestBackend
@@ -105,6 +102,27 @@ def test_execute_worker_failure(ray_start_2_cpus):
     with patch.object(WorkerGroup, "execute_async", new_execute_func):
         with pytest.raises(RuntimeError):
             e.run(lambda: 1)
+
+
+def test_tensorflow_start(ray_start_2_cpus):
+    num_workers = 2
+    tensorflow_config = TensorflowConfig()
+    e = BackendExecutor(tensorflow_config, num_workers=num_workers)
+    e.start()
+
+    def get_tf_config():
+        import json
+        import os
+        return json.loads(os.environ["TF_CONFIG"])
+
+    results = e.run(get_tf_config)
+    assert len(results) == num_workers
+
+    workers = [result["cluster"]["worker"] for result in results]
+    assert all(worker == workers[0] for worker in workers)
+
+    indexes = [result["task"]["index"] for result in results]
+    assert len(set(indexes)) == num_workers
 
 
 @pytest.mark.parametrize("init_method", ["env", "tcp"])
