@@ -256,10 +256,12 @@ def test_start_failure(ray_start_2_cpus):
 
 
 def test_run_failure(ray_start_2_cpus):
+    test_config = TestConfig()
+
     def train_invalid_signature(a, b):
         pass
 
-    trainer = Trainer("torch", num_workers=2)
+    trainer = Trainer(test_config, num_workers=2)
 
     # Raise RuntimeError when trainer has not been started yet.
     with pytest.raises(RuntimeError):

@@ -1,16 +1,19 @@
 import queue
 import time
 import threading
+from typing import Callable
 
-from ray.util.sgd.v2.constants import TIME_THIS_ITER_S
+from ray.util.sgd.v2.constants import TIME_THIS_ITER_S, RESULT_FETCH_TIMEOUT
+from ray.util.sgd.v2.utils import PropagatingThread
 
 
 class Session:
     """Holds information for training on each worker."""
 
-    def __init__(self, training_thread: threading.Thread, world_rank: int):
+    def __init__(self, training_func: Callable, world_rank: int):
         # The Thread object that is running the training function.
-        self.training_thread = training_thread
+        self.training_thread = PropagatingThread(
+            target=training_func, daemon=True)
         self.world_rank = world_rank
 
         # This lock is used to control the execution of the training thread.
@@ -21,16 +24,72 @@ class Session:
 
         self.last_report_time = time.time()
 
+        self.ignore_report = False
+
+    def start(self):
+        """Starts the training thread."""
+        self.training_thread.start()
+
+    def finish(self):
+        """Finishes the training thread.
+
+        Either returns the output from training or raises any Exception from
+        training.
+
+        """
+        # Ignore all future sgd.report calls.
+        self.ignore_report = True
+
+        # Release lock so that training will continue even if
+        # fetch_next_result is not exhausted.
+        self.continue_lock.release()
+
+        # Wait for training to finish.
+        # This will raise any errors that occur during training, including
+        # SystemError
+        func_output = self.training_thread.join()
+        # If training finished successfully, then return results.
+        return func_output
+
+    def get_next(self):
+        """Gets next result from the queue."""
+        result = None
+        # While training is still ongoing, attempt to get the result.
+        while result is None and self.training_thread.is_alive():
+            try:
+                result = self.result_queue.get(
+                    block=True, timeout=RESULT_FETCH_TIMEOUT)
+            except queue.Empty:
+                pass
+
+        # If no result was found, then the runner must no longer be alive.
+        if result is None:
+            # Try one last time to fetch results in case results were
+            # reported in between the time of the last check and the
+            # termination of the thread runner.
+            try:
+                result = self.result_queue.get(
+                    block=False, timeout=RESULT_FETCH_TIMEOUT)
+            except queue.Empty:
+                pass
+
+        # Release the lock to trigger training to continue.
+        self.continue_lock.release()
+
+        # Return None if there are no more results to fetch.
+        return result
+
     def report(self, **kwargs):
         """Adds kwargs to the queue to be consumed by main thread."""
+        if self.ignore_report:
+            return
         current_time = time.time()
         time_this_iter = current_time - self.last_report_time
         if TIME_THIS_ITER_S not in kwargs:
             kwargs[TIME_THIS_ITER_S] = time_this_iter
+        self.last_report_time = current_time
 
         # Add result to a thread-safe queue.
-
-        # TODO: Can this ever hang? Yes if the queue is already full.
         self.result_queue.put(kwargs.copy(), block=True)
 
         # Acquire lock to stop the training thread until main thread

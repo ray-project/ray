@@ -1,13 +1,10 @@
 import logging
-import queue
 from typing import Callable, TypeVar, List, Optional, Dict
 
 import ray
 from ray.exceptions import RayActorError
-from ray.util.sgd.v2.constants import RESULT_FETCH_TIMEOUT
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
-from ray.util.sgd.v2.utils import PropagatingThread
 
 T = TypeVar("T")
 
@@ -62,15 +59,16 @@ class BackendExecutor:
     def start_training(self, train_func: Callable[[], T]) -> None:
         """Executes a training function on all workers in a separate thread.
 
+        ``finish_training`` should be called after this.
+
         Args:
             train_func (Callable): The training function to run on each worker.
         """
 
         # First initialize the session.
         def initialize_session(world_rank, train_func):
-            thread = PropagatingThread(target=train_func, daemon=True)
             try:
-                init_session(training_thread=thread, world_rank=world_rank)
+                init_session(training_func=train_func, world_rank=world_rank)
             except ValueError:
                 raise RuntimeError("Attempting to start training but a "
                                    "previous training run is still ongoing. "
@@ -91,7 +89,7 @@ class BackendExecutor:
         # Run the training function asynchronously in its own thread.
         def train_async():
             session = get_session()
-            session.training_thread.start()
+            session.start()
 
         self.worker_group.execute_async(train_async)
 
@@ -118,31 +116,7 @@ class BackendExecutor:
                                    "`start_training` before "
                                    "`fetch_next_result`.")
 
-            # Release the lock to trigger training to continue.
-            session.continue_lock.release()
-
-            result = None
-            # While training is still ongoing, attempt to get the result.
-            while result is None and session.training_thread.is_alive():
-                try:
-                    result = session.result_queue.get(
-                        block=True, timeout=RESULT_FETCH_TIMEOUT)
-                except queue.Empty:
-                    pass
-
-            # If no result was found, then the runner must no longer be alive.
-            if result is None:
-                # Try one last time to fetch results in case results were
-                # reported in between the time of the last check and the
-                # termination of the thread runner.
-                try:
-                    result = session.result_queue.get(
-                        block=True, timeout=RESULT_FETCH_TIMEOUT)
-                except queue.Empty:
-                    pass
-
-            # Return None if there are no more results to fetch.
-            return result
+            return session.get_next()
 
         futures = self.worker_group.execute_async(get_next)
         results = self.get_with_failure_handling(futures)
@@ -183,16 +157,15 @@ class BackendExecutor:
                                    "`start_training` before "
                                    "`finish_training`.") from None
 
-            shutdown_session()
+            try:
+                # session.end raises any Exceptions from training.
+                output = session.finish()
+            finally:
+                # Shutdown session even if session.end() raises an
+                # Exception.
+                shutdown_session()
 
-            training_thread = session.training_thread
-
-            # Wait for training to finish.
-            # This will raise any errors that occur during training, including
-            # SystemError
-            func_output = training_thread.join()
-
-            return func_output
+            return output
 
         futures = self.worker_group.execute_async(end_training)
         return self.get_with_failure_handling(futures)

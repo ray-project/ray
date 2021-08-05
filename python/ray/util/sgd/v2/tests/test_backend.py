@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import patch
 
 import ray
+from ray.util.sgd import v2 as sgd
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.backends.torch import TorchConfig
@@ -123,6 +124,24 @@ def test_worker_failure(ray_start_2_cpus):
         with pytest.raises(RuntimeError):
             e.start_training(lambda: 1)
             e.finish_training()
+
+
+def test_no_exhaust(ray_start_2_cpus):
+    """Tests if training can finish even if queue is not exhausted."""
+
+    def train():
+        for _ in range(2):
+            sgd.report(loss=1)
+        return 2
+
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=2)
+    e.start()
+
+    e.start_training(train)
+    output = e.finish_training()
+
+    assert output == [2, 2]
 
 
 @pytest.mark.parametrize("init_method", ["env", "tcp"])
