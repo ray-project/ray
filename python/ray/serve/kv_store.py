@@ -1,5 +1,5 @@
-import aioboto3
-import tempfile
+import boto3
+
 import ray.experimental.internal_kv as ray_kv
 
 
@@ -68,7 +68,7 @@ class RayInternalKVStore:
 
 
 class RayExternalKVStore:
-    """Persistent and async version of RayInternalKVStore for cluster fault
+    """Persistent version of RayInternalKVStore for cluster fault
     tolerance. Writes to local disk in local / test mode, also external
     storage (such as amazon S3) with provided path.
 
@@ -89,27 +89,21 @@ class RayExternalKVStore:
         self._namespace = namepsace
         self._bucket = bucket
         self._s3_path = s3_path
-        self._region_name = region_name
-        self._aws_access_key_id = aws_access_key_id
-        self._aws_secret_access_key = aws_secret_access_key
-        self._aws_session_token = aws_session_token
         self._local_mode = local_mode
 
-        self._session = aioboto3.Session()
+        self._s3 = boto3.client(
+            's3',
+            endpoint_url="https://jiao-test.s3.us-west-2.amazonaws.com",
+            region_name=region_name,
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            aws_session_token=aws_session_token
+        )
 
     def get_key_with_namespace(self, key):
         return "{ns}-{key}".format(ns=self._namespace, key=key)
 
-    def get_aws_client(self):
-        return self._session.client(
-            "s3",
-            region_name=self._region_name,
-            aws_access_key_id=self._aws_access_key_id,
-            aws_secret_access_key=self._aws_secret_access_key,
-            aws_session_token=self._aws_session_token,
-        )
-
-    async def put(self, key, val):
+    def put(self, key, val):
         """Put the key-value pair into the store.
 
         Args:
@@ -122,16 +116,16 @@ class RayExternalKVStore:
             raise TypeError("val must be bytes, got: {}.".format(type(val)))
 
         if self._local_mode:
-            with open("/tmp/ray_serve_checkpoint_key.txt", 'a+') as f:
-                f.write(self.get_key_with_namespace(key) + "\n")
-            with open("/tmp/ray_serve_checkpoint_val.txt", 'ab+') as f:
-                f.write(val)
-                f.write(b"\n")
-        else:
-            async with self.get_aws_client() as s3:
-                await s3.upload_fileobj(val, self._bucket, key)
+            with open("/tmp/ray_serve_checkpoint_key.txt", 'a+') as key_file, \
+                open("/tmp/ray_serve_checkpoint_val.txt", 'ab+') as val_file:
+                key_file.write(self.get_key_with_namespace(key) + "\n")
+                val_file.write(val)
+                val_file.write(b"\n")
 
-    async def get(self, key):
+        else:
+            self._s3.put_object(Body=val, Bucket=self._bucket, Key=key)
+
+    def get(self, key):
         """Get the value associated with the given key from the store.
 
         Args:
@@ -153,11 +147,9 @@ class RayExternalKVStore:
                     if key_line.strip() == self.get_key_with_namespace(key):
                         return val_line.strip()
         else:
-            async with self.get_aws_client() as s3:
-                obj = await s3.get_object(Bucket=self._bucket, Key=key)
-                return obj
+            return self._s3.get_object(Bucket=self._bucket, Key=key)
 
-    async def delete(self, key):
+    def delete(self, key):
         """Delete the value associated with the given key from the store.
 
         Args:
