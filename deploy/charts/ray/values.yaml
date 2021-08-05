@@ -1,10 +1,5 @@
 # Default values for Ray.
 
-## Reference to one or more secrets to be used when pulling images
-## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
-imagePullSecrets: []
-# - name: "image-pull-secret"
-
 # RayCluster settings:
 
 # image is Ray image to use for the head and workers of this Ray cluster.
@@ -36,6 +31,22 @@ podTypes:
         rayResources: {}
         # Optionally, set a node selector for this podType: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector
         nodeSelector: {}
+
+        ## This toleration is for head nodes
+        ## If specified, the pod's tolerations.
+        ## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+        ##
+        tolerations: []
+        # - key: "nvidia.com/gpu"
+        #   operator: Exists
+        #   effect: NoSchedule
+
+        ## imagePullSecret for the head Node containers
+        ## Reference to one or more secrets to be used when pulling images
+        ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+        imagePullSecrets: []
+        # - name: "image-pull-secret"
+
     # The key for each podType is a user-defined string.
     rayWorkerType:
         # minWorkers is the minimum number of Ray workers of this pod type to keep running.
@@ -59,6 +70,20 @@ podTypes:
         # Optionally, set a node selector for this Pod type. See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector
         nodeSelector: {}
 
+        ## This toleration is for worker nodes
+        ## If specified, the pod's tolerations.
+        ## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+        ##
+        tolerations: []
+        # - key: nvidia.com/gpu
+        #   operator: Exists
+        #   effect: NoSchedule
+
+        ## imagePullSecret for the worker Node containers
+        ## Reference to one or more secrets to be used when pulling images
+        ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+        imagePullSecrets: []
+        # - name: "image-pull-secret"
 
 # Operator settings:
 
@@ -83,3 +108,10 @@ operatorImage: rayproject/ray:latest
 # For a particular official release version of Ray, use `rayproject/ray:1.x.y`.
 # For a specific master commit, use the first 6 characters of the commit SHA, e.g. `rayproject/ray:050a07`.
 # The operator and Ray cluster can use different Ray versions, provided both versions are >= 1.2.0
+
+## imagePullSecret for the rey operator
+## Reference to one or more secrets to be used when pulling images
+## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+imagePullSecrets: []
+# - name: docker-global-cred
+
