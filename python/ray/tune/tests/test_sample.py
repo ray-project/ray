@@ -1621,6 +1621,59 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(configs[8]["nested"]["random"] == 8.0)
         self.assertTrue(configs[8]["nested"]["dependent"] == -8.0)
 
+    def testPointsToEvaluateBasicVariantFixedParam(self):
+        config = {
+            "a": 1,
+            "b": tune.randint(0, 3),
+        }
+
+        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+
+        # Test whether the initial points of fixed parameters are correctly
+        # verified.
+        searcher = BasicVariantGenerator(points_to_evaluate=[
+            {
+                "a": 1,
+                "b": 2
+            },
+        ])
+        analysis = tune.run(
+            _mock_objective,
+            name="test",
+            config=config,
+            search_alg=searcher,
+            num_samples=2,
+        )
+        configs = [trial.config for trial in analysis.trials]
+
+        self.assertEqual(searcher.total_samples, 2)
+        self.assertEqual(len(configs), searcher.total_samples)
+        self.assertEqual([cfg["a"] for cfg in configs], [1] * 2)
+        self.assertEqual(configs[0]["b"], 2)
+
+        # Test whether correctly throwing warning if the pre-set value of fixed
+        # parameters isn't the same as its initial points
+        searcher = BasicVariantGenerator(points_to_evaluate=[
+            {
+                "a": 2,
+                "b": 2
+            },
+        ])
+
+        with self.assertLogs(
+                'ray.tune.suggest.variant_generator', level='WARN') as cm:
+            analysis = tune.run(
+                _mock_objective,
+                name="test",
+                config=config,
+                search_alg=searcher,
+                num_samples=2,
+            )
+        self.assertEqual(cm.output, [
+            "WARNING:ray.tune.suggest.variant_generator:Pre-set value `2` is "
+            "not equal to the value of parameter `a`: 1"
+        ])
+
     def testConstantGridSearchBasicVariant(self):
         config = {
             "grid": tune.grid_search([1, 2, 3]),
