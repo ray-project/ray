@@ -16,7 +16,8 @@
 
 #include <memory>
 
-namespace {
+namespace ray {
+namespace core {
 
 rpc::ActorHandle CreateInnerActorHandle(
     const class ActorID &actor_id, const TaskID &owner_id,
@@ -62,11 +63,6 @@ rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
       actor_table_data.task_spec().actor_creation_task_spec().max_task_retries());
   return inner;
 }
-
-}  // namespace
-
-namespace ray {
-namespace core {
 
 ActorHandle::ActorHandle(
     const class ActorID &actor_id, const TaskID &owner_id,
