@@ -107,18 +107,7 @@ class Metric {
         tag_keys_(tag_keys),
         measure_(nullptr) {}
 
-  Metric(Metric &&rhs)
-      : name_(std::move(rhs.name_)),
-        description_(std::move(rhs.description_)),
-        unit_(std::move(rhs.unit_)),
-        tag_keys_(std::move(rhs.tag_keys_)),
-        measure_(std::move(rhs.measure_)) {}
-
-  virtual ~Metric() {
-    if (!name_.empty()) {
-      opencensus::stats::StatsExporter::RemoveView(name_);
-    }
-  }
+  virtual ~Metric() { opencensus::stats::StatsExporter::RemoveView(name_); }
 
   Metric &operator()() { return *this; }
 

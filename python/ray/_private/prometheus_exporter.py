@@ -163,8 +163,6 @@ class Collector(object):
         metric_description = desc["documentation"]
         label_keys = desc["labels"]
         metric_units = desc["units"]
-        if len(tag_values) != len(label_keys):
-            print("ERROR!", metric_name, tag_values, label_keys)
         assert (len(tag_values) == len(label_keys))
         # Prometheus requires that all tag values be strings hence
         # the need to cast none to the empty string before exporting. See
