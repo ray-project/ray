@@ -312,7 +312,7 @@ class InboundRequest {
   }
 
   bool CanExecute() const { return !has_pending_dependencies_; }
-  TaskID TaskID() const { return task_id; }
+  ray::TaskID TaskID() const { return task_id; }
   void MarkDependenciesSatisfied() { has_pending_dependencies_ = false; }
 
  private:
