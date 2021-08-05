@@ -549,6 +549,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pubsub_rpc",
+        "@boost//:any",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
