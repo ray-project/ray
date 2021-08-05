@@ -557,7 +557,10 @@ class RayTrialExecutor(TrialExecutor):
         finally:
             trial.set_runner(None)
 
-    def start_trial(self, trial: Trial, checkpoint=None, train=True) -> bool:
+    def start_trial(self,
+                    trial: Trial,
+                    checkpoint: Optional[Checkpoint] = None,
+                    train: bool = True) -> bool:
         """Starts the trial.
 
         Will not return resources if trial repeatedly fails on start.
@@ -597,12 +600,11 @@ class RayTrialExecutor(TrialExecutor):
         out = [rid for rid, t in dictionary.items() if t is item]
         return out
 
-    def stop_trial(
-            self,
-            trial: Trial,
-            error: Optional[bool] = False,
-            error_msg: Optional[str] = None,
-            destroy_pg_if_cannot_replace: Optional[bool] = True) -> None:
+    def stop_trial(self,
+                   trial: Trial,
+                   error: bool = False,
+                   error_msg: Optional[str] = None,
+                   destroy_pg_if_cannot_replace: bool = True) -> None:
         """Only returns resources if resources allocated.
 
         If destroy_pg_if_cannot_replace is False, the Trial placement group
@@ -993,8 +995,10 @@ class RayTrialExecutor(TrialExecutor):
     def force_reconcilation_on_next_step_end(self) -> None:
         self.last_pg_recon = -float("inf")
 
-    def save(self, trial, storage=Checkpoint.PERSISTENT,
-             result=None) -> Checkpoint:
+    def save(self,
+             trial,
+             storage=Checkpoint.PERSISTENT,
+             result: Optional[Dict] = None) -> Checkpoint:
         """Saves the trial's state to a checkpoint asynchronously.
 
         Args:

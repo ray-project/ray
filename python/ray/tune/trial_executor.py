@@ -18,7 +18,7 @@ class TrialExecutor(ABC):
     and starting/stopping trials.
     """
 
-    def __init__(self, queue_trials: Optional[bool] = False):
+    def __init__(self, queue_trials: bool = False):
         """Initializes a new TrialExecutor.
 
         Args:
@@ -85,7 +85,7 @@ class TrialExecutor(ABC):
     def start_trial(self,
                     trial: Trial,
                     checkpoint: Optional[Checkpoint] = None,
-                    train: Optional[bool] = True) -> bool:
+                    train: bool = True) -> bool:
         """Starts the trial restoring from checkpoint if checkpoint is provided.
 
         Args:
@@ -100,12 +100,11 @@ class TrialExecutor(ABC):
         pass
 
     @abstractmethod
-    def stop_trial(
-            self,
-            trial: Trial,
-            error: Optional[bool] = False,
-            error_msg: Optional[str] = None,
-            destroy_pg_if_cannot_replace: Optional[bool] = True) -> None:
+    def stop_trial(self,
+                   trial: Trial,
+                   error: bool = False,
+                   error_msg: Optional[str] = None,
+                   destroy_pg_if_cannot_replace: bool = True) -> None:
         """Stops the trial.
 
         Stops this trial, releasing all allocating resources.
@@ -225,7 +224,7 @@ class TrialExecutor(ABC):
                                 "trials with sufficient resources.")
 
     @abstractmethod
-    def get_next_available_trial(self) -> Optional[Trial]:
+    def get_next_available_trial(self) -> Trial:
         """Blocking call that waits until one result is ready.
 
         Returns:
@@ -234,7 +233,7 @@ class TrialExecutor(ABC):
         pass
 
     @abstractmethod
-    def get_next_failed_trial(self) -> Optional[Trial]:
+    def get_next_failed_trial(self) -> Trial:
         """Non-blocking call that detects and returns one failed trial.
 
         Returns:
@@ -266,9 +265,9 @@ class TrialExecutor(ABC):
 
     @abstractmethod
     def restore(self,
-                trial,
+                trial: Trial,
                 checkpoint: Optional[Checkpoint] = None,
-                block: Optional[bool] = False) -> None:
+                block: bool = False) -> None:
         """Restores training state from a checkpoint.
 
         If checkpoint is None, try to restore from trial.checkpoint.
@@ -287,8 +286,8 @@ class TrialExecutor(ABC):
     @abstractmethod
     def save(self,
              trial,
-             storage: Optional[str] = Checkpoint.PERSISTENT,
-             result: Optional[bool] = None) -> Checkpoint:
+             storage: str = Checkpoint.PERSISTENT,
+             result: Optional[Dict] = None) -> Checkpoint:
         """Saves training state of this trial to a checkpoint.
 
         If result is None, this trial's last result will be used.
