@@ -19,6 +19,10 @@ class BackendConfig:
         raise NotImplementedError
 
 
+class SGDBackendError(Exception):
+    """Errors with BackendExecutor that should not be exposed to user."""
+
+
 class BackendExecutor:
     """Main execution class for training backends.
 
@@ -70,10 +74,11 @@ class BackendExecutor:
             try:
                 init_session(training_func=train_func, world_rank=world_rank)
             except ValueError:
-                raise RuntimeError("Attempting to start training but a "
-                                   "previous training run is still ongoing. "
-                                   "You must call `finish_training` before "
-                                   "calling `start_training` again.") from None
+                raise SGDBackendError(
+                    "Attempting to start training but a "
+                    "previous training run is still ongoing. "
+                    "You must call `finish_training` before "
+                    "calling `start_training` again.") from None
 
         futures = []
         for world_rank in range(len(self.worker_group)):
@@ -111,10 +116,10 @@ class BackendExecutor:
                 session = get_session()
             except ValueError:
                 # Session is not initialized yet.
-                raise RuntimeError("`fetch_next_result` has been called "
-                                   "before `start_training`. Please call "
-                                   "`start_training` before "
-                                   "`fetch_next_result`.")
+                raise SGDBackendError("`fetch_next_result` has been called "
+                                      "before `start_training`. Please call "
+                                      "`start_training` before "
+                                      "`fetch_next_result`.")
 
             return session.get_next()
 
@@ -152,10 +157,10 @@ class BackendExecutor:
                 session = get_session()
             except ValueError:
                 # Session is not initialized yet.
-                raise RuntimeError("`finish_training` has been called "
-                                   "before `start_training`. Please call "
-                                   "`start_training` before "
-                                   "`finish_training`.") from None
+                raise SGDBackendError("`finish_training` has been called "
+                                      "before `start_training`. Please call "
+                                      "`start_training` before "
+                                      "`finish_training`.") from None
 
             try:
                 # session.end raises any Exceptions from training.

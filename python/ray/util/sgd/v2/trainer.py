@@ -4,7 +4,7 @@ from typing import Union, Callable, List, TypeVar, Optional, Any, Dict
 
 from ray.tune import Trainable
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
-    InactiveWorkerGroupError
+    InactiveWorkerGroupError, SGDBackendError
 from ray.util.sgd.v2.backends.torch import TorchConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
 
@@ -143,6 +143,11 @@ class Trainer:
                 "This Trainer is not active. It is either shutdown already or "
                 "never started in the first place. Either create a new "
                 "Trainer or start this one.") from None
+        except SGDBackendError:
+            raise RuntimeError("Training failed. You should not be seeing "
+                               "this error and this is a bug. Please create "
+                               "a new issue at "
+                               "https://github.com/ray-project/ray.")
 
     def _get_train_func(
             self,

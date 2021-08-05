@@ -8,7 +8,7 @@ from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.backends.torch import TorchConfig
 
 from ray.util.sgd.v2.backends.backend import BackendInterface, \
-    InactiveWorkerGroupError
+    InactiveWorkerGroupError, SGDBackendError
 
 
 @pytest.fixture
@@ -97,15 +97,15 @@ def test_train_failure(ray_start_2_cpus):
     e = BackendExecutor(config, num_workers=2)
     e.start()
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(SGDBackendError):
         e.fetch_next_result()
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(SGDBackendError):
         e.finish_training()
 
     e.start_training(lambda: 1)
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(SGDBackendError):
         e.start_training(lambda: 2)
 
     assert e.finish_training() == [1, 1]
