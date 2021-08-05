@@ -24,7 +24,12 @@ def _internal_kv_initialized():
 
 @client_mode_hook
 def _internal_kv_get(key: Union[str, bytes], gcs_client=None) -> bytes:
-    """Fetch the value of a binary key."""
+    """Fetch the value of a binary key.
+
+    Args:
+        gcs_client: The GCS client to use to fetch the key.  If not provided,
+            the global worker's GCS client is used.
+    """
     if gcs_client:
         return gcs_client.kv_get(key)
     elif redis:
