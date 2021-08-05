@@ -160,7 +160,7 @@ if __name__ == "__main__":
     if args.smoke_test:
         ray.init()
     elif args.server_address:
-        ray.client(args.server_address).connect()
+        ray.init(f"ray://{args.server_address}")
     else:
         ray.init(args.ray_address)
 
