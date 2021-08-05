@@ -172,7 +172,7 @@ func (or *ActorTaskCaller) Remote() *ObjectRef {
     returnNum := or.invokeMethod.NumOut()
     objectIds := C.go_worker_SubmitActorTask(C.CBytes(or.actorHandle.actorId), C.CString(or.invokeMethodName), C.int(returnNum))
     resultIds := make([]ObjectId, 0, objectIds.len)
-    v := (*[1 << 28]*C.struct_DataBuffer)(objectIds.data)[:objectIds.len:objectIds.len]
+    v := (*[objectIds.len]*C.struct_DataBuffer)(objectIds.data)
     for _, objectId := range v {
         resultIds = append(resultIds, ObjectId{
             id: C.GoBytes(unsafe.Pointer(objectId.p), objectId.size),
@@ -192,7 +192,7 @@ type ObjectId struct {
     id []byte
 }
 
-func (or *ObjectRef) Get() {
+func (or *ObjectRef) Get() []reflect.Value {
 
 }
 

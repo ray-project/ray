@@ -4,10 +4,18 @@
 
 #include <iostream>
 
+#include "ray/common/id.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/gcs/gcs_client/global_state_accessor.h"
 
 using namespace std;
+
+template <typename ID>
+inline ID ByteArrayToId(void *bytes) {
+  std::string id_str(ID::Size(), 0);
+  memcpy(&id_str.front(), bytes, ID::Size());
+  return ID::FromBinary(id_str);
+}
 
 __attribute__((visibility("default"))) void go_worker_Initialize(
     int workerMode, char *store_socket, char *raylet_socket, char *log_dir,
@@ -75,8 +83,8 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
           RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
               result_id, value->GetData()->Size(), value->GetMetadata(),
               contained_object_ids, &value));
-          RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id,
-                                                                                value));
+          RAY_CHECK_OK(
+              ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, value));
         }
         return ray::Status::OK();
       };
@@ -202,13 +210,9 @@ __attribute__((visibility("default"))) int go_worker_CreateActor(char *type_name
   return result_length;
 }
 
-__attribute__((visibility("default"))) GoSlice go_worker_SubmitActorTask(void *actor_id,
-                                                                     char *method_name,
-                                                                     int num_returns) {
-  std::string id_str(ActorID::Size(), 0);
-  memcpy(&id_str.front(), actor_id, ActorID::Size());
-  auto actor_id_obj = ActorID::FromBinary(id_str);
-  RAY_LOG(WARNING) << "method_name:" << method_name;
+__attribute__((visibility("default"))) GoSlice go_worker_SubmitActorTask(
+    void *actor_id, char *method_name, int num_returns) {
+  auto actor_id_obj = ByteArrayToId<ray::ActorID>(actor_id);
   std::vector<std::string> function_descriptor_list = {method_name};
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::GOLANG,
@@ -225,7 +229,7 @@ __attribute__((visibility("default"))) GoSlice go_worker_SubmitActorTask(void *a
   std::vector<DataBuffer> return_object_ids;
   for (auto &it : return_obj_ids) {
     DataBuffer db;
-    db.p = const_cast<uint8_t*>(it.Data());
+    db.p = const_cast<uint8_t *>(it.Data());
     db.size = it.Size();
     return_object_ids.push_back(db);
   }
@@ -234,4 +238,42 @@ __attribute__((visibility("default"))) GoSlice go_worker_SubmitActorTask(void *a
   result.len = return_obj_ids.size();
   result.cap = return_obj_ids.size();
   return result;
+}
+
+DataBuffer *RayObjectToDataBuffer(std::shared_ptr<ray::Buffer> buffer) {
+  DataBuffer *data_db = new DataBuffer();
+  data_db->p = buffer->Data();
+  data_db->size = buffer->Size();
+  return data_db;
+}
+
+__attribute__((visibility("default"))) GoSlice go_worker_Get(void **object_ids,
+                                                             int object_ids_size,
+                                                             int timeout) {
+  std::vector<ray::ObjectID> object_ids_data;
+  char *object_id_arr = (char *)object_ids;
+  for (int i = 0; i < object_ids_size; i++) {
+    auto object_id_obj = ByteArrayToId<ray::ObjectID>((void *)object_id_arr[i]);
+    object_ids_data.emplace_back(object_id_obj);
+  }
+  std::vector<std::shared_ptr<ray::RayObject>> results;
+  auto status =
+      ray::CoreWorkerProcess::GetCoreWorker().Get(object_ids_data, timeout, &results);
+  GoSlice return_value_list_go;
+  // todo throw error, not exit now
+  if (!status.ok()) {
+    RAY_LOG(FATAL) << "Failed to get object";
+    return return_value_list_go;
+  }
+  std::vector<std::shared_ptr<ReturnValue>> return_value_list;
+  for (size_t i = 0; i < results.size(); i++) {
+    std::shared_ptr<ReturnValue> rv = make_shared<ReturnValue>();
+    rv->data = RayObjectToDataBuffer(results[i]->GetData());
+    rv->meta = RayObjectToDataBuffer(results[i]->GetMetadata());
+    return_value_list.emplace_back(rv);
+  }
+  return_value_list_go.data = &return_value_list[0];
+  return_value_list_go.cap = results.size();
+  return_value_list_go.len = results.size();
+  return return_value_list_go;
 }
