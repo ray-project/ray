@@ -34,6 +34,7 @@ func go_worker_execute(taskType int, rayFunctionInfo []*C.char, args []C.struct_
         util.Logger.Debugf("created actor for:%s", goTypeName)
     } else if taskType == int(generated.TaskType_ACTOR_TASK) {
         methodName := C.GoString(rayFunctionInfo[0])
+        util.Logger.Debugf("invoke %s", methodName)
         methodValue := actorType.MethodByName(methodName)
         //if methodValue == nil {
         //    panic(fmt.Errorf("method not found:%s", methodName))

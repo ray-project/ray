@@ -158,10 +158,11 @@ type ActorTaskCaller struct {
 func (or *ActorTaskCaller) Remote() *ObjectRef {
     returnNum := or.invokeMethod.NumOut()
     objectIds := C.go_worker_SubmitActorTask(C.CBytes(or.actorHandle.actorId), C.CString(or.invokeMethod.Name()), C.int(returnNum))
-    resultIds := make([]ObjectId, 0, len(objectIds))
-    for _, objectId := range objectIds {
+    resultIds := make([]ObjectId, 0, objectIds.len)
+    v := (*[1 << 28]*C.struct_DataBuffer)(objectIds.data)[:objectIds.len:objectIds.len]
+    for _, objectId := range v {
         resultIds = append(resultIds, ObjectId{
-            id: C.GoBytes(objectId.p, objectId.size),
+            id: C.GoBytes(unsafe.Pointer(objectId.p), objectId.size),
         })
     }
     return &ObjectRef{

@@ -198,20 +198,21 @@ __attribute__((visibility("default"))) int go_worker_CreateActor(char *type_name
   }
   int result_length = actor_id.Size();
   *result = (char *)malloc(result_length + 1);
-  memcpy(*result, actor_id.Data(), result_length);
+  memcpy(*result, (char *)actor_id.Data(), result_length);
   return result_length;
 }
 
 __attribute__((visibility("default"))) GoSlice go_worker_SubmitActorTask(void *actor_id,
                                                                      char *method_name,
                                                                      int num_returns) {
-  std::string *sp = static_cast<std::string *>(actor_id);
-  auto actor_id_obj = ActorID::FromBinary(*sp);
+  std::string id_str(ActorID::Size(), 0);
+  memcpy(&id_str.front(), actor_id, ActorID::Size());
+  auto actor_id_obj = ActorID::FromBinary(id_str);
+  RAY_LOG(WARNING) << "method_name:" << method_name;
   std::vector<std::string> function_descriptor_list = {method_name};
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::GOLANG,
                                                  function_descriptor_list);
-
   ray::RayFunction ray_function = ray::RayFunction(ray::rpc::GOLANG, function_descriptor);
   std::string name = "";
   std::unordered_map<std::string, double> resources;
