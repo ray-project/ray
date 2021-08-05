@@ -142,7 +142,7 @@ class Trainer:
             raise RuntimeError(
                 "This Trainer is not active. It is either shutdown already or "
                 "never started in the first place. Either create a new "
-                "Trainer or start this one.")
+                "Trainer or start this one.") from None
 
     def _get_train_func(
             self,
