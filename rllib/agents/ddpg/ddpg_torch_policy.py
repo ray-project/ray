@@ -255,7 +255,7 @@ class ComputeTDErrorMixin:
             loss_fn(self, self.model, None, input_dict)
 
             # Self.td_error is set within actor_critic_loss call.
-            return self.td_error
+            return self.model.td_error
 
         self.compute_td_error = compute_td_error
 
