@@ -222,21 +222,22 @@ __attribute__((visibility("default"))) GoSlice go_worker_SubmitActorTask(
   std::unordered_map<std::string, double> resources;
   ray::TaskOptions task_options{name, num_returns, resources};
 
-  std::vector<ObjectID> return_obj_ids;
+  std::vector<ObjectID> obj_ids;
   ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id_obj, ray_function, {},
-                                                          task_options, &return_obj_ids);
+                                                          task_options, &obj_ids);
 
   std::vector<DataBuffer> return_object_ids;
-  for (auto &it : return_obj_ids) {
+  for (auto &it : obj_ids) {
     DataBuffer db;
     db.p = const_cast<uint8_t *>(it.Data());
     db.size = it.Size();
+    RAY_LOG(WARNING) << "return object id:" << it << "p:" << it.Data() << " size:" << it.Size();
     return_object_ids.push_back(db);
   }
   GoSlice result;
   result.data = &return_object_ids;
-  result.len = return_obj_ids.size();
-  result.cap = return_obj_ids.size();
+  result.len = return_object_ids.size();
+  result.cap = return_object_ids.size();
   return result;
 }
 
