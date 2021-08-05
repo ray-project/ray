@@ -11,6 +11,7 @@ import (
     "errors"
     "fmt"
     "reflect"
+    "runtime"
     "strconv"
     "strings"
     "unsafe"
@@ -141,23 +142,35 @@ type Convert func(a, i Param)
 // 参数填这里
 func (ah *ActorHandle) Task(f interface{}) *ActorTaskCaller {
     methodType := reflect.TypeOf(f)
+    methodName := GetFunctionName(f)
+    lastIndex := strings.LastIndex(methodName, ".")
+    if lastIndex != -1 {
+        methodName = methodName[lastIndex+1:]
+    }
+
     return &ActorTaskCaller{
-        actorHandle:  ah,
-        invokeMethod: methodType,
-        params:       []reflect.Value{},
+        actorHandle:      ah,
+        invokeMethod:     methodType,
+        invokeMethodName: methodName,
+        params:           []reflect.Value{},
     }
 }
 
 type ActorTaskCaller struct {
-    actorHandle  *ActorHandle
-    invokeMethod reflect.Type
-    params       []reflect.Value
+    actorHandle      *ActorHandle
+    invokeMethod     reflect.Type
+    invokeMethodName string
+    params           []reflect.Value
+}
+
+func GetFunctionName(i interface{}) string {
+    return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
 }
 
 // 发出调用
 func (or *ActorTaskCaller) Remote() *ObjectRef {
     returnNum := or.invokeMethod.NumOut()
-    objectIds := C.go_worker_SubmitActorTask(C.CBytes(or.actorHandle.actorId), C.CString(or.invokeMethod.Name()), C.int(returnNum))
+    objectIds := C.go_worker_SubmitActorTask(C.CBytes(or.actorHandle.actorId), C.CString(or.invokeMethodName), C.int(returnNum))
     resultIds := make([]ObjectId, 0, objectIds.len)
     v := (*[1 << 28]*C.struct_DataBuffer)(objectIds.data)[:objectIds.len:objectIds.len]
     for _, objectId := range v {
