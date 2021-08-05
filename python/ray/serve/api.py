@@ -668,7 +668,6 @@ def start(
     except RayServeException:
         pass
 
-    controller_name = SERVE_CONTROLLER_NAME
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
     else:
