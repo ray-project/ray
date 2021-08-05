@@ -104,7 +104,7 @@ rpc::Event GetEventFromString(std::string seq, json *custom_fields) {
   std::unordered_map<std::string, std::string> mutable_custom_fields;
   *custom_fields = j["custom_fields"];
   for (auto const &pair : (*custom_fields).items()) {
-    if (pair.key() == "job_id" or pair.key() == "node_id" or pair.key() == "task_id") {
+    if (pair.key() == "job_id" || pair.key() == "node_id" || pair.key() == "task_id") {
       mutable_custom_fields[pair.key()] = pair.value().get<std::string>();
     }
   }
