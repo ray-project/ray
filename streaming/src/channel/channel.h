@@ -10,7 +10,7 @@
 namespace ray {
 namespace streaming {
 
-using ray::core::RayFunction;
+using namespace ray::core;
 
 enum class TransferCreationStatus : uint32_t {
   FreshStarted = 0,
