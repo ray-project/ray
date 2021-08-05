@@ -200,7 +200,7 @@ type ObjectId []byte
 
 func (or *ObjectRef) Get() []interface{} {
     returnObjectIdsSize := len(or.returnObjectIds)
-    returnValues := C.go_worker_Get(&or.returnObjectIds[0], C.int(returnObjectIdsSize), C.int(-1))
+    returnValues := C.go_worker_Get((*unsafe.Pointer)(&or.returnObjectIds[0]), C.int(returnObjectIdsSize), C.int(-1))
     values := (*[1 << 28]*C.struct_ReturnValue)(returnValues.data)[:returnObjectIdsSize:returnObjectIdsSize]
     for _, returnValue := range values {
         dataBytes := C.GoBytes(unsafe.Pointer(returnValue.data.p), returnValue.data.size)

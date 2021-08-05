@@ -255,6 +255,7 @@ __attribute__((visibility("default"))) GoSlice go_worker_Get(void **object_ids,
   char **object_id_arr = (char **)object_ids;
   for (int i = 0; i < object_ids_size; i++) {
     auto object_id_obj = ByteArrayToId<ray::ObjectID>(object_id_arr[i]);
+    RAY_LOG(WARNING)<< "try to get object:" << object_id_obj;
     object_ids_data.emplace_back(object_id_obj);
   }
   std::vector<std::shared_ptr<ray::RayObject>> results;
