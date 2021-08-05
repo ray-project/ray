@@ -42,6 +42,7 @@ def test_ray_internal_kv_collisions(serve_instance):
     assert kv2.get("1") == b"-1"
     assert kv1.get("1") == b"1"
 
+
 def _test_operations(kv_store):
     # Trival get & put
     kv_store.put("1", b"1")
@@ -65,6 +66,7 @@ def _test_operations(kv_store):
 
     # Delete non-existing key
     kv_store.delete("3")
+
 
 def test_ray_serve_external_kv_local_disk():
     kv_store = RayExternalKVStore(
