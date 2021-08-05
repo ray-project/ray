@@ -157,32 +157,32 @@ std::string GenerateLogDir() {
 
 TEST(EVENT_TEST, TEST_BASIC) {
   TestEventReporter::event_list.clear();
-  ray::EventManager::Instance().ClearReporters();
+  EventManager::Instance().ClearReporters();
 
   RAY_EVENT(WARNING, "label") << "test for empty reporters";
 
   // If there are no reporters, it would not Publish event
   EXPECT_EQ(TestEventReporter::event_list.size(), 0);
 
-  ray::EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
+  EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
 
   RAY_EVENT(WARNING, "label 0") << "send message 0";
 
-  ray::RayEventContext::Instance().SetEventContext(
+  RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
       std::unordered_map<std::string, std::string>(
           {{"node_id", "node 1"}, {"job_id", "job 1"}, {"task_id", "task 1"}}));
 
   RAY_EVENT(INFO, "label 1") << "send message 1";
 
-  ray::RayEventContext::Instance().SetEventContext(
+  RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
       std::unordered_map<std::string, std::string>(
           {{"node_id", "node 2"}, {"job_id", "job 2"}}));
   RAY_EVENT(ERROR, "label 2") << "send message 2 "
                               << "send message again";
 
-  ray::RayEventContext::Instance().SetEventContext(
+  RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_GCS);
   RAY_EVENT(FATAL, "") << "";
 
@@ -205,13 +205,13 @@ TEST(EVENT_TEST, TEST_BASIC) {
 TEST(EVENT_TEST, LOG_ONE_THREAD) {
   std::string log_dir = GenerateLogDir();
 
-  ray::EventManager::Instance().ClearReporters();
-  ray::RayEventContext::Instance().SetEventContext(
+  EventManager::Instance().ClearReporters();
+  RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
       std::unordered_map<std::string, std::string>(
           {{"node_id", "node 1"}, {"job_id", "job 1"}, {"task_id", "task 1"}}));
 
-  ray::EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
+  EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
       rpc::Event_SourceType::Event_SourceType_RAYLET, log_dir));
 
   int print_times = 1000;
@@ -238,9 +238,9 @@ TEST(EVENT_TEST, LOG_ONE_THREAD) {
 TEST(EVENT_TEST, LOG_MULTI_THREAD) {
   std::string log_dir = GenerateLogDir();
 
-  ray::EventManager::Instance().ClearReporters();
+  EventManager::Instance().ClearReporters();
 
-  ray::EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
+  EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
       rpc::Event_SourceType::Event_SourceType_GCS, log_dir));
   int nthreads = 80;
   int print_times = 1000;
@@ -248,7 +248,7 @@ TEST(EVENT_TEST, LOG_MULTI_THREAD) {
   ParallelRunning(
       nthreads, print_times,
       []() {
-        ray::RayEventContext::Instance().SetEventContext(
+        RayEventContext::Instance().SetEventContext(
             rpc::Event_SourceType::Event_SourceType_GCS,
             std::unordered_map<std::string, std::string>(
                 {{"node_id", "node 2"}, {"job_id", "job 2"}, {"task_id", "task 2"}}));
@@ -285,13 +285,13 @@ TEST(EVENT_TEST, LOG_MULTI_THREAD) {
 TEST(EVENT_TEST, LOG_ROTATE) {
   std::string log_dir = GenerateLogDir();
 
-  ray::EventManager::Instance().ClearReporters();
-  ray::RayEventContext::Instance().SetEventContext(
+  EventManager::Instance().ClearReporters();
+  RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
       std::unordered_map<std::string, std::string>(
           {{"node_id", "node 1"}, {"job_id", "job 1"}, {"task_id", "task 1"}}));
 
-  ray::EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
+  EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
       rpc::Event_SourceType::Event_SourceType_RAYLET, log_dir, true, 1, 20));
 
   int print_times = 100000;
@@ -313,13 +313,13 @@ TEST(EVENT_TEST, LOG_ROTATE) {
 TEST(EVENT_TEST, WITH_FIELD) {
   std::string log_dir = GenerateLogDir();
 
-  ray::EventManager::Instance().ClearReporters();
-  ray::RayEventContext::Instance().SetEventContext(
+  EventManager::Instance().ClearReporters();
+  RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET,
       std::unordered_map<std::string, std::string>(
           {{"node_id", "node 1"}, {"job_id", "job 1"}, {"task_id", "task 1"}}));
 
-  ray::EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
+  EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
       rpc::Event_SourceType::Event_SourceType_RAYLET, log_dir));
 
   RAY_EVENT(INFO, "label 1")

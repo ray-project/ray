@@ -172,6 +172,9 @@ class RayEvent {
     return *this;
   }
 
+  /// Set custom field to current event.
+  /// All the supported value type: `bool`, `int`, `unsigned int`, `float`, `double`,
+  /// `std::string` and `nlohmann::json`.
   template <typename T>
   RayEvent &WithField(const std::string &key, const T &value) {
     custom_fields_[key] = value;
