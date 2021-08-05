@@ -112,35 +112,33 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
           }
         }
 
-  .. group-tab:: C++ (EXPERIMENTAL)
+  .. group-tab:: C++
 
     | The C++ Ray API is currently experimental with limited support. You can track its development `here <https://github.com/ray-project/ray/milestone/17>`__ and report issues on GitHub.
     | Run the following commands to get started:
 
-    | - Install ray with C++ API support and generate bazel project template by ray script.
+    | - Install ray with C++ API support and generate a bazel project with the ray command.
 
     .. code-block:: shell
 
       pip install ray[cpp]
       mkdir ray-template && ray cpp --generate-bazel-project-template-to ray-template
 
-    | - Option 1: run the example directly. It will start a Ray cluster automatically.
+    | - The project template comes with a simple example application. You can try this example out in 2 ways:
+    | - 1. Run the example application directly, which will start a Ray cluster locally.
 
     .. code-block:: shell
 
       cd ray-template && bazel run //:example
 
-    | - Option 2: connect to an existing Ray cluster with a known redis address (e.g. `127.0.0.1:6379`).
+    | - 2. Connect the example application to an existing Ray cluster by specifying the RAY_ADDRESS env var.
 
     .. code-block:: shell
 
       ray start --head
       RAY_ADDRESS=127.0.0.1:6379 ./bazel-bin/example
 
-    | - Now, you can start to modify example.cc and build your ray C++ application.
-
-    .. literalinclude:: ../../cpp/example/example.cc
-       :language: cpp
+    | - Now you can build your own Ray C++ application based on this project template.
 
 You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
 
