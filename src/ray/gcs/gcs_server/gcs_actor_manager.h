@@ -126,16 +126,16 @@ class GcsActor {
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
 
-  shared_ptr<GcsActorWorkerAssignment> GetActorWorkerAssignment() const;
+  std::shared_ptr<GcsActorWorkerAssignment> GetActorWorkerAssignment() const;
 
-  void SetActorWorkerAssignment(shared_ptr<GcsActorWorkerAssignment> assignment_ptr);
+  void SetActorWorkerAssignment(std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr);
 
  private:
   /// The actor meta data which contains the task specification as well as the state of
   /// the gcs actor and so on (see gcs.proto).
   rpc::ActorTableData actor_table_data_;
   // TODO(Chong-Li): Considering shared assignments, this pointer would be moved out.
-  shared_ptr<GcsActorWorkerAssignment> assignment_ptr_ = nullptr;
+  std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr_ = nullptr;
 };
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
