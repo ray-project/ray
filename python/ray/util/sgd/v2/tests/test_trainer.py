@@ -2,12 +2,17 @@ import time
 import pytest
 from unittest.mock import patch
 
+import tensorflow as tf
+import torch
+
 import ray
 import ray.util.sgd.v2 as sgd
 from ray.util.sgd.v2 import Trainer
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface, \
     BackendExecutor
+from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
+    tensorflow_mnist_train_func
 from ray.util.sgd.v2.examples.train_linear import train_func as \
     linear_train_func
 from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
@@ -18,6 +23,14 @@ from ray.util.sgd.v2.worker_group import WorkerGroup
 @pytest.fixture
 def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_2_cpus_2_gpus():
+    address_info = ray.init(num_cpus=2, num_gpus=2)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -207,6 +220,53 @@ def test_world_rank(ray_start_2_cpus):
     assert set(results) == {0, 1}
 
 
+def test_tensorflow_mnist(ray_start_2_cpus):
+    num_workers = 2
+    epochs = 3
+
+    trainer = Trainer("tensorflow", num_workers=num_workers)
+    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
+    trainer.start()
+    results = trainer.run(tensorflow_mnist_train_func, config)
+    trainer.shutdown()
+
+    assert len(results) == num_workers
+    result = results[0]
+
+    loss = result["loss"]
+    assert len(loss) == epochs
+    assert loss[-1] < loss[0]
+
+    accuracy = result["accuracy"]
+    assert len(accuracy) == epochs
+    assert accuracy[-1] > accuracy[0]
+
+
+@pytest.mark.skipif(
+    len(tf.config.list_physical_devices("GPU")) < 2,
+    reason="Only run if multiple GPUs are available.")
+def test_tensorflow_mnist_gpu(ray_start_2_cpus_2_gpus):
+    num_workers = 2
+    epochs = 3
+
+    trainer = Trainer("tensorflow", num_workers=num_workers, use_gpu=True)
+    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
+    trainer.start()
+    results = trainer.run(tensorflow_mnist_train_func, config)
+    trainer.shutdown()
+
+    assert len(results) == num_workers
+    result = results[0]
+
+    loss = result["loss"]
+    assert len(loss) == epochs
+    assert loss[-1] < loss[0]
+
+    accuracy = result["accuracy"]
+    assert len(accuracy) == epochs
+    assert accuracy[-1] > accuracy[0]
+
+
 def test_torch_linear(ray_start_2_cpus):
     num_workers = 2
     epochs = 3
@@ -229,6 +289,26 @@ def test_torch_fashion_mnist(ray_start_2_cpus):
     epochs = 3
 
     trainer = Trainer("torch", num_workers=num_workers)
+    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
+    trainer.start()
+    results = trainer.run(fashion_mnist_train_func, config)
+    trainer.shutdown()
+
+    assert len(results) == num_workers
+
+    for result in results:
+        assert len(result) == epochs
+        assert result[-1] < result[0]
+
+
+@pytest.mark.skipif(
+    torch.cuda.device_count() < 2,
+    reason="Only run if multiple GPUs are available.")
+def test_torch_fashion_mnist_gpu(ray_start_2_cpus_2_gpus):
+    num_workers = 2
+    epochs = 3
+
+    trainer = Trainer("torch", num_workers=num_workers, use_gpu=True)
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
     trainer.start()
     results = trainer.run(fashion_mnist_train_func, config)

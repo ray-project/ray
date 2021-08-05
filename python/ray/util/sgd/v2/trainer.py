@@ -5,6 +5,7 @@ from typing import Union, Callable, List, TypeVar, Optional, Any, Dict
 from ray.tune import Trainable
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
     InactiveWorkerGroupError, SGDBackendError
+from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.backends.torch import TorchConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
 
@@ -13,7 +14,10 @@ S = TypeVar("S")
 
 logger = logging.getLogger(__name__)
 
-BACKEND_NAME_TO_CONFIG_CLS = {"torch": TorchConfig}
+BACKEND_NAME_TO_CONFIG_CLS = {
+    "tensorflow": TensorflowConfig,
+    "torch": TorchConfig
+}
 
 
 class Trainer:
