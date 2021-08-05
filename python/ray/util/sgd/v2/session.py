@@ -25,9 +25,11 @@ class Session:
         self.last_report_time = time.time()
 
         self.ignore_report = False
+        self.training_started = False
 
     def start(self):
         """Starts the training thread."""
+        self.training_started = True
         self.training_thread.start()
 
     def finish(self):
@@ -53,6 +55,8 @@ class Session:
 
     def get_next(self):
         """Gets next result from the queue."""
+        if not self.training_started:
+            raise RuntimeError("Please call start before calling get_next.")
         result = None
         # While training is still ongoing, attempt to get the result.
         while result is None and self.training_thread.is_alive():
