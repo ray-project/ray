@@ -228,15 +228,10 @@ __attribute__((visibility("default"))) GoSlice go_worker_SubmitActorTask(
   ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id_obj, ray_function, {},
                                                           task_options, &obj_ids);
 
-  std::vector<DataBuffer> return_object_ids;
+  std::vector<void *> return_object_ids;
   for (auto &it : obj_ids) {
-    DataBuffer db;
-    void *obj_id_data = malloc(it.Size() + 1);
-    memcpy(obj_id_data, it.Data(), it.Size());
-    db.p = obj_id_data;
-    db.size = it.Size();
     RAY_LOG(WARNING) << "return object id:" << it << " p:" << (void*)obj_id_data;
-    return_object_ids.push_back(db);
+    return_object_ids.push_back(it.Data());
   }
   GoSlice result;
   result.data = &return_object_ids;
