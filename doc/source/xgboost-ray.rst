@@ -611,14 +611,14 @@ API reference
 scikit-learn API
 ^^^^^^^^^^^^^^^^
 
-.. .. autoclass:: xgboost_ray.RayXGBClassifier
-..     :members:
+.. autoclass:: xgboost_ray.RayXGBClassifier
+    :members:
 
-.. .. autoclass:: xgboost_ray.RayXGBRegressor
-..     :members:
+.. autoclass:: xgboost_ray.RayXGBRegressor
+    :members:
 
-.. .. autoclass:: xgboost_ray.RayXGBRFClassifier
-..     :members:
+.. autoclass:: xgboost_ray.RayXGBRFClassifier
+    :members:
 
-.. .. autoclass:: xgboost_ray.RayXGBRFRegressor
-..     :members:
+.. autoclass:: xgboost_ray.RayXGBRFRegressor
+    :members:

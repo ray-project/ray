@@ -315,7 +315,44 @@ class Dataset(Generic[T]):
         new_blocks = simple_shuffle(self._blocks, num_blocks)
         return Dataset(new_blocks)
 
-    def split(self, n: int, *,
+    def random_shuffle(self,
+                       *,
+                       seed: Optional[int] = None,
+                       num_blocks: Optional[int] = None) -> "Dataset[T]":
+        """Randomly shuffle the elements of this dataset.
+
+        This is a blocking operation similar to repartition().
+
+        Examples:
+            >>> # Shuffle this dataset randomly.
+            >>> ds.random_shuffle()
+
+            >>> # Shuffle this dataset with a fixed random seed.
+            >>> ds.random_shuffle(seed=12345)
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            seed: Fix the random seed to use, otherwise one will be chosen
+                based on system randomness.
+            num_blocks: The number of output blocks after the shuffle, or None
+                to retain the number of blocks.
+
+        Returns:
+            The shuffled dataset.
+        """
+
+        new_blocks = simple_shuffle(
+            self._blocks,
+            num_blocks or self.num_blocks(),
+            random_shuffle=True,
+            random_seed=seed)
+        return Dataset(new_blocks)
+
+    def split(self,
+              n: int,
+              *,
+              equal: bool = False,
               locality_hints: List[Any] = None) -> List["Dataset[T]"]:
         """Split the dataset into ``n`` disjoint pieces.
 
@@ -332,6 +369,9 @@ class Dataset(Generic[T]):
 
         Args:
             n: Number of child datasets to return.
+            equal: Whether to guarantee each split has an equal
+                number of records. This may drop records if they cannot be
+                divided equally among the splits.
             locality_hints: A list of Ray actor handles of size ``n``. The
                 system will try to co-locate the blocks of the ith dataset
                 with the ith actor to maximize data locality.
@@ -340,12 +380,26 @@ class Dataset(Generic[T]):
             A list of ``n`` disjoint dataset splits.
         """
         if n <= 0:
-            raise ValueError(f"The num of splits {n} is not positive.")
+            raise ValueError(f"The number of splits {n} is not positive.")
+
+        if n > self.num_blocks() and equal:
+            raise NotImplementedError(
+                f"The number of splits {n} > the number of dataset blocks "
+                f"{self.num_blocks()}, yet an equal split was requested.")
 
         if locality_hints and len(locality_hints) != n:
             raise ValueError(
                 f"The length of locality_hints {len(locality_hints)} "
                 "doesn't equal the number of splits {n}.")
+
+        # TODO(ekl) we could do better than truncation here. This could be a
+        # problem if block sizes are very skewed.
+        def equalize(splits: List[Dataset[T]]) -> List[Dataset[T]]:
+            if not equal:
+                return splits
+            lower_bound = min([s.count() for s in splits])
+            assert lower_bound > 0, splits
+            return [s.limit(lower_bound) for s in splits]
 
         block_refs = list(self._blocks)
         metadata_mapping = {
@@ -354,12 +408,12 @@ class Dataset(Generic[T]):
         }
 
         if locality_hints is None:
-            return [
+            return equalize([
                 Dataset(
                     BlockList(
                         list(blocks), [metadata_mapping[b] for b in blocks]))
                 for blocks in np.array_split(block_refs, n)
-            ]
+            ])
 
         # If the locality_hints is set, we use a two-round greedy algorithm
         # to co-locate the blocks with the actors based on block
@@ -451,43 +505,14 @@ class Dataset(Generic[T]):
 
         assert len(remaining_block_refs) == 0, len(remaining_block_refs)
 
-        return [
+        return equalize([
             Dataset(
                 BlockList(
                     allocation_per_actor[actor],
                     [metadata_mapping[b]
                      for b in allocation_per_actor[actor]]))
             for actor in locality_hints
-        ]
-
-    def random_shuffle(self,
-                       *,
-                       num_blocks: int = None,
-                       equal_block_sizes: bool = False,
-                       seed: int = None) -> "Dataset[T]":
-        """Randomly shuffle the elements of this dataset.
-
-        This is a blocking operation similar to repartition().
-
-        Examples:
-            >>> # Shuffle this dataset into one with 100 equi-sized blocks.
-            >>> ds.random_shuffle(num_blocks=100, equal_block_sizes=True)
-
-        Time complexity: O(dataset size / parallelism)
-
-        Args:
-            num_blocks: The number of output blocks after the shuffle, or None
-                to retain the number of blocks.
-            equal_block_sizes: If True, the output blocks will be truncated
-                to have an identical number of rows each.
-            seed: Fix the random seed to use, otherwise one will be chosen
-                based on system randomness.
-
-        Returns:
-            The shuffled dataset.
-        """
-
-        raise NotImplementedError
+        ])
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,

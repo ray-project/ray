@@ -1,5 +1,7 @@
 import math
-from typing import TypeVar, List
+from typing import TypeVar, List, Optional
+
+import numpy as np
 
 import ray
 from ray.experimental.data.block import Block, BlockAccessor, BlockMetadata
@@ -11,17 +13,34 @@ T = TypeVar("T")
 
 
 def simple_shuffle(input_blocks: BlockList[T],
-                   output_num_blocks: int) -> BlockList[T]:
+                   output_num_blocks: int,
+                   *,
+                   random_shuffle: bool = False,
+                   random_seed: Optional[int] = None) -> BlockList[T]:
     input_num_blocks = len(input_blocks)
 
     @ray.remote(num_returns=output_num_blocks)
-    def shuffle_map(block: Block) -> List[Block]:
+    def shuffle_map(block: Block, idx: int) -> List[Block]:
         block = BlockAccessor.for_block(block)
+
+        # Randomize the distribution of records to blocks.
+        if random_shuffle:
+            seed_i = random_seed + idx if random_seed is not None else None
+            block = block.random_shuffle(seed_i)
+            block = BlockAccessor.for_block(block)
+
         slice_sz = max(1, math.ceil(block.num_rows() / output_num_blocks))
         slices = []
         for i in range(output_num_blocks):
             slices.append(
                 block.slice(i * slice_sz, (i + 1) * slice_sz, copy=True))
+
+        # Randomize the distribution order of the blocks (this matters when
+        # some blocks are larger than others).
+        if random_shuffle:
+            random = np.random.RandomState(seed_i)
+            random.shuffle(slices)
+
         num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
         assert num_rows == block.num_rows(), (num_rows, block.num_rows())
         # Needed to handle num_returns=1 edge case in Ray API.
@@ -47,12 +66,19 @@ def simple_shuffle(input_blocks: BlockList[T],
 
     map_bar = ProgressBar("Shuffle Map", position=0, total=input_num_blocks)
 
-    shuffle_map_out = [shuffle_map.remote(block) for block in input_blocks]
+    shuffle_map_out = [
+        shuffle_map.remote(block, i) for i, block in enumerate(input_blocks)
+    ]
     if output_num_blocks == 1:
         # Handle the num_returns=1 edge case which doesn't return a list.
         shuffle_map_out = [[x] for x in shuffle_map_out]
     map_bar.block_until_complete([x[0] for x in shuffle_map_out])
     map_bar.close()
+
+    # Randomize the reduce order of the blocks.
+    if random_shuffle:
+        random = np.random.RandomState(random_seed)
+        random.shuffle(shuffle_map_out)
 
     reduce_bar = ProgressBar(
         "Shuffle Reduce", position=0, total=output_num_blocks)

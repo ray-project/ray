@@ -150,7 +150,7 @@ if setup_spec.type == SetupType.RAY:
         "default": [
             "aiohttp",  # noqa
             "aiohttp_cors",  # noqa
-            "aioredis",  # noqa
+            "aioredis < 2",  # noqa
             "colorful",  # noqa
             "py-spy >= 0.2.0",  # noqa
             "jsonschema",  # noqa

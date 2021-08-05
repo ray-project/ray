@@ -86,11 +86,12 @@ class PipelineExecutor:
 
 @ray.remote
 class PipelineSplitExecutorCoordinator:
-    def __init__(self, pipeline: "DatasetPipeline[T]", n: int,
+    def __init__(self, pipeline: "DatasetPipeline[T]", n: int, equal: bool,
                  locality_hints: List[Any]):
         self.executor = PipelineExecutor(pipeline)
         self.n = n
         self.locality_hints = locality_hints
+        self.equal = equal
         self.cur_splits = [None] * self.n
 
     def next_dataset_if_ready(self, split_index: int) -> Optional[Dataset[T]]:
@@ -98,7 +99,7 @@ class PipelineSplitExecutorCoordinator:
         if all(s is None for s in self.cur_splits):
             ds = next(self.executor)
             self.cur_splits = ds.split(
-                self.n, locality_hints=self.locality_hints)
+                self.n, equal=self.equal, locality_hints=self.locality_hints)
 
         # Return the dataset at the split index once per split.
         ret = self.cur_splits[split_index]

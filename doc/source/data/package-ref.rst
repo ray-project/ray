@@ -40,3 +40,7 @@ Custom Datasource API
 
 .. autoclass:: ray.data.WriteTask
     :members:
+
+Utility
+-------
+.. autofunction:: ray.data.set_progress_bars

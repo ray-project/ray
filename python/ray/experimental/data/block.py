@@ -74,6 +74,10 @@ class BlockAccessor(Generic[T]):
         """
         raise NotImplementedError
 
+    def random_shuffle(self, random_seed: Optional[int]) -> Block:
+        """Randomly shuffle this block."""
+        raise NotImplementedError
+
     def to_pandas(self) -> "pandas.DataFrame":
         """Convert this block into a Pandas dataframe."""
         raise NotImplementedError
