@@ -177,7 +177,7 @@ def train_mnist_tune_checkpoint(config,
 
     if checkpoint_dir:
         kwargs['resume_from_checkpoint'] = os.path.join(checkpoint_dir, 'checkpoint')
-    
+
     model = LightningMNISTClassifier(config=config, data_dir=data_dir)
     trainer = pl.Trainer(**kwargs)
 
