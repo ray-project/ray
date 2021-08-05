@@ -54,6 +54,36 @@ TEST_F(FairSchedulingQueueTest, TestBasic) {
   }
 }
 
+
+TEST_F(FairSchedulingQueueTest, TestPushAll) {
+  /*
+    * When tasks are queued, make sure we prioritize the shapes that aren't
+    * currently running.
+    */
+  std::deque<Work> to_add;
+
+  Task task;
+
+  for (int i = 0; i < 10; i++) {
+    task = CreateTask({{ray::kCPU_ResourceLabel, 4}}, i);
+    to_add.push_back(TaskToWork(task));
+  }
+
+  // queue_.PushAll(task.GetTaskSpecification().GetSchedulingClass(), to_add);
+
+  // auto deque = queue_.begin()->second;
+
+  // auto it1 = to_add.begin();
+  // auto it2 = deque.begin();
+
+  // while (it1 != to_add.end() && it2 != deque.end()) {
+  //   ASSERT_EQ(*it1++, *it2++);
+  // }
+
+  // ASSERT_EQ(it1, to_add.end());
+  // ASSERT_EQ(it2, deque.end());
+}
+
 TEST_F(FairSchedulingQueueTest, TestFreeAfterErase) {
   /*
    * Ensure we dont' leak memory by accidently storing keys after the queue has been

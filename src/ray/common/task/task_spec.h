@@ -17,7 +17,50 @@ extern "C" {
 }
 
 namespace ray {
-typedef ResourceSet SchedulingClassDescriptor;
+
+struct SchedulingClassDescriptor {
+ public:
+  explicit SchedulingClassDescriptor(const ResourceSet resource_set,
+                                     const FunctionDescriptor function_descriptor)
+      : resource_set_(resource_set), function_descriptor_(function_descriptor) {}
+  explicit SchedulingClassDescriptor(const SchedulingClassDescriptor &sched_cls) :
+  resource_set_(sched_cls.resource_set_), function_descriptor_(sched_cls.function_descriptor_) {}
+
+  const std::unordered_map<std::string, double> GetResourceMap() const {
+    return resource_set_.GetResourceMap();
+  }
+
+  std::string DebugString() const {
+    std::stringstream buffer;
+    if (function_descriptor_)
+      buffer << "{Resources: " << resource_set_.ToString() << ", Function: " << function_descriptor_->ToString() << "}";
+    else
+      buffer << "{Resources: " << resource_set_.ToString() << "}";
+    return buffer.str();
+  }
+
+  bool operator==(const SchedulingClassDescriptor &other) const {
+    bool resource_sets_match = resource_set_ == other.resource_set_;
+    bool functions_match = function_descriptor_ == other.function_descriptor_;
+    return resource_sets_match && functions_match;
+  }
+
+  // The specialized hash function for `unordered_map` keys
+  struct hash_fn {
+    std::size_t operator()(const SchedulingClassDescriptor &sched_cls) const {
+      std::size_t hash = std::hash<ResourceSet>()(sched_cls.resource_set_);
+      if (sched_cls.function_descriptor_) {
+        hash ^= sched_cls.function_descriptor_->Hash();
+      }
+      return hash;
+    }
+  };
+
+ private:
+  ResourceSet resource_set_;
+  FunctionDescriptor function_descriptor_;
+};
+
 typedef int SchedulingClass;
 
 static inline rpc::ObjectReference GetReferenceForActorDummyObject(
@@ -206,7 +249,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
 
   // Compute a static key that represents the given resource shape.
-  static SchedulingClass GetSchedulingClass(const ResourceSet &sched_cls);
+  static SchedulingClass GetSchedulingClass(const SchedulingClassDescriptor &sched_cls);
 
   // Placement Group bundle that this task or actor creation is associated with.
   const BundleID PlacementGroupBundleId() const;
@@ -230,8 +273,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// multi-threading, we need a mutex to protect it.
   static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
-  static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
-      GUARDED_BY(mutex_);
+  static std::unordered_map<SchedulingClassDescriptor, SchedulingClass,
+                            SchedulingClassDescriptor::hash_fn>
+      sched_cls_to_id_ GUARDED_BY(mutex_);
   static std::unordered_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
       GUARDED_BY(mutex_);
   static int next_sched_id_ GUARDED_BY(mutex_);

@@ -40,10 +40,10 @@ def attempt_to_load_balance(remote_function,
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
-def test_load_balancing(ray_start_cluster):
+def test_load_balancing(ray_start_regular_shared):
     # This test ensures that tasks are being assigned to all raylets
     # in a roughly equal manner.
-    cluster = ray_start_cluster
+    cluster = ray_start_regular_shared
     num_nodes = 3
     num_cpus = 7
     for _ in range(num_nodes):
@@ -60,9 +60,9 @@ def test_load_balancing(ray_start_cluster):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Times out on Windows")
-def test_hybrid_policy(ray_start_cluster):
+def test_hybrid_policy(ray_start_regular_shared):
 
-    cluster = ray_start_cluster
+    cluster = ray_start_regular_shared
     num_nodes = 2
     num_cpus = 10
     for _ in range(num_nodes):
@@ -114,8 +114,8 @@ def test_hybrid_policy(ray_start_cluster):
         assert counter[node_id] == 10, counter
 
 
-def test_legacy_spillback_distribution(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_legacy_spillback_distribution(ray_start_regular_shared):
+    cluster = ray_start_regular_shared
     # Create a head node and wait until it is up.
     cluster.add_node(
         num_cpus=0, _system_config={
@@ -162,8 +162,8 @@ def test_legacy_spillback_distribution(ray_start_cluster):
     assert len(counter) > 1
 
 
-def test_local_scheduling_first(ray_start_cluster):
-    cluster = ray_start_cluster
+def test_local_scheduling_first(ray_start_regular_shared):
+    cluster = ray_start_regular_shared
     num_cpus = 8
     # Disable worker caching.
     cluster.add_node(
@@ -191,7 +191,7 @@ def test_local_scheduling_first(ray_start_cluster):
 
 
 @pytest.mark.parametrize("fast", [True, False])
-def test_load_balancing_with_dependencies(ray_start_cluster, fast):
+def test_load_balancing_with_dependencies(ray_start_regular_shared, fast):
     if fast and new_scheduler_enabled:
         # Load-balancing on new scheduler can be inefficient if (task
         # duration:heartbeat interval) is small enough.
@@ -199,7 +199,7 @@ def test_load_balancing_with_dependencies(ray_start_cluster, fast):
 
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
-    cluster = ray_start_cluster
+    cluster = ray_start_regular_shared
     num_nodes = 3
     for _ in range(num_nodes):
         cluster.add_node(num_cpus=1)
@@ -222,10 +222,10 @@ def test_load_balancing_with_dependencies(ray_start_cluster, fast):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows. Multi node.")
-def test_load_balancing_under_constrained_memory(ray_start_cluster):
+def test_load_balancing_under_constrained_memory(ray_start_regular_shared):
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
-    cluster = ray_start_cluster
+    cluster = ray_start_regular_shared
     num_nodes = 3
     num_cpus = 4
     object_size = 4e7
@@ -268,10 +268,10 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows. Multi node.")
-def test_spillback_waiting_task_on_oom(ray_start_cluster):
+def test_spillback_waiting_task_on_oom(ray_start_regular_shared):
     # This test ensures that tasks are spilled if they are not schedulable due
     # to lack of object store memory.
-    cluster = ray_start_cluster
+    cluster = ray_start_regular_shared
     object_size = 1e8
     cluster.add_node(
         num_cpus=1,
@@ -308,13 +308,13 @@ def test_spillback_waiting_task_on_oom(ray_start_cluster):
     ray.get(f.remote(dep), timeout=30)
 
 
-def test_locality_aware_leasing(ray_start_cluster):
+def test_locality_aware_leasing(ray_start_regular_shared):
     # This test ensures that a task will run where its task dependencies are
     # located. We run an initial non_local() task that is pinned to a
     # non-local node via a custom resource constraint, and then we run an
     # unpinned task f() that depends on the output of non_local(), ensuring
     # that f() runs on the same node as non_local().
-    cluster = ray_start_cluster
+    cluster = ray_start_regular_shared
 
     # Disable worker caching so worker leases are not reused, and disable
     # inlining of return objects so return objects are always put into Plasma.
@@ -342,10 +342,10 @@ def test_locality_aware_leasing(ray_start_cluster):
     assert ray.get(f.remote(non_local.remote())) == non_local_node.unique_id
 
 
-def test_locality_aware_leasing_cached_objects(ray_start_cluster):
+def test_locality_aware_leasing_cached_objects(ray_start_regular_shared):
     # This test ensures that a task will run where its task dependencies are
     # located, even when those objects aren't primary copies.
-    cluster = ray_start_cluster
+    cluster = ray_start_regular_shared
 
     # Disable worker caching so worker leases are not reused, and disable
     # inlining of return objects so return objects are always put into Plasma.
@@ -383,10 +383,10 @@ def test_locality_aware_leasing_cached_objects(ray_start_cluster):
     assert ray.get(h.remote(f_obj1, f_obj2)) == worker2.unique_id
 
 
-def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
+def test_locality_aware_leasing_borrowed_objects(ray_start_regular_shared):
     # This test ensures that a task will run where its task dependencies are
     # located, even when those objects are borrowed.
-    cluster = ray_start_cluster
+    cluster = ray_start_regular_shared
 
     # Disable worker caching so worker leases are not reused, and disable
     # inlining of return objects so return objects are always put into Plasma.
@@ -445,10 +445,10 @@ def test_lease_request_leak(shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
-def test_many_args(ray_start_cluster):
+def test_many_args(ray_start_regular_shared):
     # This test ensures that a task will run where its task dependencies are
     # located, even when those objects are borrowed.
-    cluster = ray_start_cluster
+    cluster = ray_start_regular_shared
     object_size = int(1e6)
 
     # Disable worker caching so worker leases are not reused, and disable
@@ -475,6 +475,24 @@ def test_many_args(ray_start_cluster):
         tasks.append(f.remote(i, *args))
 
     ray.get(tasks, timeout=30)
+
+
+def test_nested_task(ray_start_regular_shared):
+    @ray.remote
+    def outer():
+        ref = inner.remote()
+        time.sleep(0.01)
+        return ray.get(ref)
+
+    @ray.remote
+    def inner():
+        return 0
+
+    ray.get([outer.remote() for _ in range(1000)])
+
+    # If we don't schedule the inner tasks before the outer ones, we will
+    # crash before this point.
+    assert True
 
 
 if __name__ == "__main__":

@@ -48,7 +48,7 @@ class FairSchedulingQueue {
   ///
   /// \param scheduling_class The scheduling class of the queue.
   /// \param work All the work for the scheduling class.
-  void Set(const SchedulingClass scheduling_class, const std::deque<Work> work_queue);
+  void PushAll(const SchedulingClass scheduling_class, const std::deque<Work> work_queue);
 
   /// Mark a task as running, which may or may not influence the next element
   /// to be pushed/popped. This may invalidate existing iterators.
@@ -61,6 +61,9 @@ class FairSchedulingQueue {
   ///
   /// \param The task that has finished.
   void MarkFinished(const Task &task);
+
+  /// Debug string.
+  std::string DebugString() const;
 
   /// NOTE: We only expose these methods instead of the entire map so that
   /// FairSchedulingQueue controls its modification since the comparator is

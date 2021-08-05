@@ -14,11 +14,13 @@ void FairSchedulingQueue::Push(const Work &work) {
   work_queue_[scheduling_class].push_back(work);
 }
 
-void FairSchedulingQueue::Set(const SchedulingClass scheduling_class,
+void FairSchedulingQueue::PushAll(const SchedulingClass scheduling_class,
                               std::deque<Work> works) {
   // TODO (Alex): We may want to do an O(1) move here if this gets too
   // inefficient.
-  work_queue_.emplace(scheduling_class, works);
+  for (const auto &work : works) {
+    Push(work);
+  }
 }
 
 void FairSchedulingQueue::MarkRunning(const Task &task) {
@@ -56,6 +58,20 @@ void FairSchedulingQueue::MarkFinished(const Task &task) {
       active_tasks_.erase(scheduling_class);
     }
   }
+}
+
+std::string FairSchedulingQueue::DebugString() const {
+  std::stringstream buffer;
+  buffer << "============== Running==============\n";
+  for (const auto &pair : active_tasks_) {
+    buffer << "\t" << pair.first << ":\t" << pair.second << "\n";
+  }
+  buffer << "--------------Queue order--------------\n";
+  for (const auto &pair : work_queue_) {
+    buffer << "\t" << pair.first << ":\t" << pair.second.size() << "\n";
+  }
+  buffer << "====================================";
+  return buffer.str();
 }
 
 WorkQueueIterator FairSchedulingQueue::begin() { return work_queue_.begin(); }

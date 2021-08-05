@@ -9,7 +9,7 @@
 namespace ray {
 
 absl::Mutex TaskSpecification::mutex_;
-std::unordered_map<SchedulingClassDescriptor, SchedulingClass>
+  std::unordered_map<SchedulingClassDescriptor, SchedulingClass, SchedulingClassDescriptor::hash_fn>
     TaskSpecification::sched_cls_to_id_;
 std::unordered_map<SchedulingClass, SchedulingClassDescriptor>
     TaskSpecification::sched_id_to_cls_;
@@ -23,11 +23,21 @@ SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
   return it->second;
 }
 
-SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_cls) {
+SchedulingClass TaskSpecification::GetSchedulingClass(
+    const SchedulingClassDescriptor &sched_cls) {
   SchedulingClass sched_cls_id;
   absl::MutexLock lock(&mutex_);
   auto it = sched_cls_to_id_.find(sched_cls);
   if (it == sched_cls_to_id_.end()) {
+
+    std::stringstream buffer;
+    buffer << "Couldn't find scheduling class of type: " << sched_cls.DebugString();
+    for (const auto &pair : sched_cls_to_id_) {
+      buffer << "\t found: " << pair.first.DebugString();
+    }
+    // RAY_LOG(ERROR) << buffer.str();
+
+
     sched_cls_id = ++next_sched_id_;
     // TODO(ekl) we might want to try cleaning up task types in these cases
     if (sched_cls_id > 100) {
@@ -38,7 +48,8 @@ SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_c
                      << " types of tasks seen, this may reduce performance.";
     }
     sched_cls_to_id_[sched_cls] = sched_cls_id;
-    sched_id_to_cls_[sched_cls_id] = sched_cls;
+    sched_id_to_cls_.emplace(sched_cls_id, sched_cls);
+    // sched_id_to_cls_[sched_cls_id] = sched_cls;
   } else {
     sched_cls_id = it->second;
   }
@@ -80,7 +91,7 @@ void TaskSpecification::ComputeResources() {
     // the actor tasks need not be scheduled.
 
     // Map the scheduling class descriptor to an integer for performance.
-    auto sched_cls = GetRequiredPlacementResources();
+    SchedulingClassDescriptor sched_cls(GetRequiredPlacementResources(), FunctionDescriptor());
     sched_cls_id_ = GetSchedulingClass(sched_cls);
   }
 }
