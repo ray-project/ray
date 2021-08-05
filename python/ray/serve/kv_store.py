@@ -1,6 +1,8 @@
 import boto3
+from botocore.exceptions import ClientError
 
 import ray.experimental.internal_kv as ray_kv
+from ray.serve.utils import logger
 
 
 def format_key(name, key):
@@ -90,10 +92,10 @@ class RayExternalKVStore:
         self._bucket = bucket
         self._s3_path = s3_path
         self._local_mode = local_mode
+        self._tombstone = b"\##DELETED\##"
 
         self._s3 = boto3.client(
             's3',
-            endpoint_url="https://jiao-test.s3.us-west-2.amazonaws.com",
             region_name=region_name,
             aws_access_key_id=aws_access_key_id,
             aws_secret_access_key=aws_secret_access_key,
@@ -123,7 +125,19 @@ class RayExternalKVStore:
                 val_file.write(b"\n")
 
         else:
-            self._s3.put_object(Body=val, Bucket=self._bucket, Key=key)
+            try:
+                self._s3.put_object(
+                    Body=val,
+                    Bucket=self._bucket,
+                    Key=self.get_key_with_namespace(key)
+                )
+            except ClientError as e:
+                message = e.response["Error"]["Message"]
+                logger.error(
+                    f"Encountered ClientError while calling put() "
+                    f"in RayExternalKVStore: {message}"
+                )
+                raise e
 
     def get(self, key):
         """Get the value associated with the given key from the store.
@@ -145,9 +159,30 @@ class RayExternalKVStore:
                     reversed(val_file.readlines())
                 ):
                     if key_line.strip() == self.get_key_with_namespace(key):
-                        return val_line.strip()
+                        if val_line.strip() == self._tombstone:
+                            # Key deleted
+                            return None
+                        else:
+                            return val_line.strip()
+            return None
         else:
-            return self._s3.get_object(Bucket=self._bucket, Key=key)
+            try:
+                response = self._s3.get_object(
+                    Bucket=self._bucket,
+                    Key=self.get_key_with_namespace(key)
+                )
+                return response['Body'].read()
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "NoSuchKey":
+                    logger.warning(f"No such key in s3 for key = {key}")
+                    return None
+                else:
+                    message = e.response["Error"]["Message"]
+                    logger.error(
+                        f"Encountered ClientError while calling get() "
+                        f"in RayExternalKVStore: {message}"
+                    )
+                    raise e
 
     def delete(self, key):
         """Delete the value associated with the given key from the store.
@@ -160,4 +195,22 @@ class RayExternalKVStore:
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
 
-        pass
+        if self._local_mode:
+            with open("/tmp/ray_serve_checkpoint_key.txt", 'a+') as key_file, \
+                open("/tmp/ray_serve_checkpoint_val.txt", 'ab+') as val_file:
+                key_file.write(self.get_key_with_namespace(key) + "\n")
+                val_file.write(self._tombstone)
+                val_file.write(b"\n")
+        else:
+            try:
+                self._s3.delete_object(
+                    Bucket=self._bucket,
+                    Key=self.get_key_with_namespace(key)
+                )
+            except ClientError as e:
+                message = e.response["Error"]["Message"]
+                logger.error(
+                    f"Encountered ClientError while calling get() "
+                    f"in RayExternalKVStore: {message}"
+                )
+                raise e

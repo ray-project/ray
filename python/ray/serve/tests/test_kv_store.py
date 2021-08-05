@@ -42,8 +42,12 @@ def test_ray_internal_kv_collisions(serve_instance):
     assert kv2.get("1") == b"-1"
     assert kv1.get("1") == b"1"
 
+
 def test_ray_serve_external_kv_local_disk():
-    kv_store = RayExternalKVStore("namespace")
+    kv_store = RayExternalKVStore(
+        "namespace",
+        local_mode=True,
+    )
     kv_store.put("1", b"1")
     assert kv_store.get("1") == b"1"
 
@@ -51,18 +55,26 @@ def test_ray_serve_external_kv_local_disk():
     assert kv_store.get("1") == b"1"
     assert kv_store.get("2") == b"2"
 
+    assert kv_store.get("3") == None
+    kv_store.delete("1")
+    kv_store.delete("2")
+    assert kv_store.get("1") == None
+    assert kv_store.get("2") == None
+
     if os.path.exists("/tmp/ray_serve_checkpoint_key.txt"):
         os.remove("/tmp/ray_serve_checkpoint_key.txt")
     if os.path.exists("/tmp/ray_serve_checkpoint_val.txt"):
         os.remove("/tmp/ray_serve_checkpoint_val.txt")
 
+
 def test_ray_serve_external_kv_aws_s3():
     kv_store = RayExternalKVStore(
         "namespace",
-        bucket="test-jiao",
+        bucket="jiao-test",
         s3_path="/ray_serve_checkpoint",
         aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", None),
         aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", None),
+        aws_session_token=os.environ.get("AWS_SESSION_TOKEN", None),
         local_mode=False,
     )
     kv_store.put("1", b"1")
@@ -72,6 +84,12 @@ def test_ray_serve_external_kv_aws_s3():
     assert kv_store.get("1") == b"1"
     assert kv_store.get("2") == b"2"
 
+    assert kv_store.get("3") == None
+
+    kv_store.delete("1")
+    kv_store.delete("2")
+    assert kv_store.get("1") == None
+    assert kv_store.get("2") == None
 
 
 if __name__ == "__main__":
