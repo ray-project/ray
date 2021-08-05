@@ -14,10 +14,6 @@ class BackendConfig:
     """Parent class for configurations of training backend."""
 
     @property
-    def backend_name(self):
-        raise NotImplementedError
-
-    @property
     def backend_cls(self):
         raise NotImplementedError
 
@@ -50,7 +46,7 @@ class BackendExecutor:
 
         self.worker_group = InactiveWorkerGroup()
 
-    def start(self, initialization_hook: Optional[Callable] = None):
+    def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the worker group."""
         self.worker_group = WorkerGroup(self._num_workers,
                                         self._num_cpus_per_worker,
@@ -63,8 +59,7 @@ class BackendExecutor:
         """Executes a training function on all workers.
 
         Args:
-            train_func (Callable): The training function to run on each
-                worker. It must not have any required arguments.
+            train_func (Callable): The training function to run on each worker.
 
         Returns:
             A list of return values from calling ``train_func`` on each worker.
@@ -107,7 +102,11 @@ class BackendExecutor:
 
     def shutdown(self):
         """Shuts down the workers in the worker group."""
-        self._backend.on_shutdown(self.worker_group, self._backend_config)
+        try:
+            self._backend.on_shutdown(self.worker_group, self._backend_config)
+        except RayActorError:
+            logger.warning("Graceful shutdown of backend failed. This is "
+                           "expected if one of the workers has crashed.")
         self.worker_group.shutdown()
         self.worker_group = InactiveWorkerGroup()
 
