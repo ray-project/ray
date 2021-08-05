@@ -55,11 +55,11 @@ def test_ray_serve_external_kv_local_disk():
     assert kv_store.get("1") == b"1"
     assert kv_store.get("2") == b"2"
 
-    assert kv_store.get("3") == None
+    assert kv_store.get("3") is None
     kv_store.delete("1")
     kv_store.delete("2")
-    assert kv_store.get("1") == None
-    assert kv_store.get("2") == None
+    assert kv_store.get("1") is None
+    assert kv_store.get("2") is None
 
     if os.path.exists("/tmp/ray_serve_checkpoint_key.txt"):
         os.remove("/tmp/ray_serve_checkpoint_key.txt")
@@ -84,12 +84,12 @@ def test_ray_serve_external_kv_aws_s3():
     assert kv_store.get("1") == b"1"
     assert kv_store.get("2") == b"2"
 
-    assert kv_store.get("3") == None
+    assert kv_store.get("3") is None
 
     kv_store.delete("1")
     kv_store.delete("2")
-    assert kv_store.get("1") == None
-    assert kv_store.get("2") == None
+    assert kv_store.get("1") is None
+    assert kv_store.get("2") is None
 
 
 if __name__ == "__main__":

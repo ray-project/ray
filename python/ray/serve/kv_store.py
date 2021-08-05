@@ -78,15 +78,15 @@ class RayExternalKVStore:
     """
 
     def __init__(
-        self,
-        namepsace: str,
-        bucket="",
-        s3_path="",
-        region_name="us-west-2",
-        aws_access_key_id=None,
-        aws_secret_access_key=None,
-        aws_session_token=None,
-        local_mode=True,
+            self,
+            namepsace: str,
+            bucket="",
+            s3_path="",
+            region_name="us-west-2",
+            aws_access_key_id=None,
+            aws_secret_access_key=None,
+            aws_session_token=None,
+            local_mode=True,
     ):
         self._namespace = namepsace
         self._bucket = bucket
@@ -95,12 +95,11 @@ class RayExternalKVStore:
         self._tombstone = b"\##DELETED\##"
 
         self._s3 = boto3.client(
-            's3',
+            "s3",
             region_name=region_name,
             aws_access_key_id=aws_access_key_id,
             aws_secret_access_key=aws_secret_access_key,
-            aws_session_token=aws_session_token
-        )
+            aws_session_token=aws_session_token)
 
     def get_key_with_namespace(self, key):
         return "{ns}-{key}".format(ns=self._namespace, key=key)
@@ -118,8 +117,10 @@ class RayExternalKVStore:
             raise TypeError("val must be bytes, got: {}.".format(type(val)))
 
         if self._local_mode:
-            with open("/tmp/ray_serve_checkpoint_key.txt", 'a+') as key_file, \
-                open("/tmp/ray_serve_checkpoint_val.txt", 'ab+') as val_file:
+            with open("/tmp/ray_serve_checkpoint_key.txt",
+                      "a+") as key_file, open(
+                          "/tmp/ray_serve_checkpoint_val.txt",
+                          "ab+") as val_file:
                 key_file.write(self.get_key_with_namespace(key) + "\n")
                 val_file.write(val)
                 val_file.write(b"\n")
@@ -129,14 +130,11 @@ class RayExternalKVStore:
                 self._s3.put_object(
                     Body=val,
                     Bucket=self._bucket,
-                    Key=self.get_key_with_namespace(key)
-                )
+                    Key=self.get_key_with_namespace(key))
             except ClientError as e:
                 message = e.response["Error"]["Message"]
-                logger.error(
-                    f"Encountered ClientError while calling put() "
-                    f"in RayExternalKVStore: {message}"
-                )
+                logger.error(f"Encountered ClientError while calling put() "
+                             f"in RayExternalKVStore: {message}")
                 raise e
 
     def get(self, key):
@@ -152,12 +150,13 @@ class RayExternalKVStore:
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
         if self._local_mode:
-            with open("/tmp/ray_serve_checkpoint_key.txt", 'r') as key_file, \
-                open("/tmp/ray_serve_checkpoint_val.txt", 'rb') as val_file:
+            with open("/tmp/ray_serve_checkpoint_key.txt",
+                      "r") as key_file, open(
+                          "/tmp/ray_serve_checkpoint_val.txt",
+                          "rb") as val_file:
                 for key_line, val_line in zip(
-                    reversed(key_file.readlines()),
-                    reversed(val_file.readlines())
-                ):
+                        reversed(key_file.readlines()),
+                        reversed(val_file.readlines())):
                     if key_line.strip() == self.get_key_with_namespace(key):
                         if val_line.strip() == self._tombstone:
                             # Key deleted
@@ -168,10 +167,8 @@ class RayExternalKVStore:
         else:
             try:
                 response = self._s3.get_object(
-                    Bucket=self._bucket,
-                    Key=self.get_key_with_namespace(key)
-                )
-                return response['Body'].read()
+                    Bucket=self._bucket, Key=self.get_key_with_namespace(key))
+                return response["Body"].read()
             except ClientError as e:
                 if e.response["Error"]["Code"] == "NoSuchKey":
                     logger.warning(f"No such key in s3 for key = {key}")
@@ -180,8 +177,7 @@ class RayExternalKVStore:
                     message = e.response["Error"]["Message"]
                     logger.error(
                         f"Encountered ClientError while calling get() "
-                        f"in RayExternalKVStore: {message}"
-                    )
+                        f"in RayExternalKVStore: {message}")
                     raise e
 
     def delete(self, key):
@@ -194,23 +190,20 @@ class RayExternalKVStore:
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
-
         if self._local_mode:
-            with open("/tmp/ray_serve_checkpoint_key.txt", 'a+') as key_file, \
-                open("/tmp/ray_serve_checkpoint_val.txt", 'ab+') as val_file:
+            with open("/tmp/ray_serve_checkpoint_key.txt",
+                      "a+") as key_file, open(
+                          "/tmp/ray_serve_checkpoint_val.txt",
+                          "ab+") as val_file:
                 key_file.write(self.get_key_with_namespace(key) + "\n")
                 val_file.write(self._tombstone)
                 val_file.write(b"\n")
         else:
             try:
                 self._s3.delete_object(
-                    Bucket=self._bucket,
-                    Key=self.get_key_with_namespace(key)
-                )
+                    Bucket=self._bucket, Key=self.get_key_with_namespace(key))
             except ClientError as e:
                 message = e.response["Error"]["Message"]
-                logger.error(
-                    f"Encountered ClientError while calling get() "
-                    f"in RayExternalKVStore: {message}"
-                )
+                logger.error(f"Encountered ClientError while calling get() "
+                             f"in RayExternalKVStore: {message}")
                 raise e
