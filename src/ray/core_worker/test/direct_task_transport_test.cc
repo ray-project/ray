@@ -23,6 +23,7 @@
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
+namespace core {
 
 // Used to prevent leases from timing out when not testing that logic. It would
 // be better to use a mock clock or lease manager interface, but that's high
@@ -1984,6 +1985,7 @@ TEST(DirectTaskTransportTest, TestNoWorkerRequestedIfStealingUnavailable) {
   ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

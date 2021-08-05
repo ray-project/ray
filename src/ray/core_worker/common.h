@@ -23,6 +23,7 @@
 #include "ray/util/util.h"
 
 namespace ray {
+namespace core {
 
 using WorkerType = rpc::WorkerType;
 
@@ -214,4 +215,5 @@ class ObjectLocation {
   const NodeID spilled_node_id_;
 };
 
+}  // namespace core
 }  // namespace ray

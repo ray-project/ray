@@ -21,6 +21,7 @@
 #include "msgpack.hpp"
 
 namespace ray {
+namespace core {
 
 // Start throttling task failure logs once we hit this threshold.
 const int64_t kTaskFailureThrottlingThreshold = 50;
@@ -505,4 +506,5 @@ std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
   return ret_vec;
 }
 
+}  // namespace core
 }  // namespace ray

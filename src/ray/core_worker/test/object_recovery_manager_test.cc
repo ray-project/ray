@@ -26,6 +26,7 @@
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
+namespace core {
 
 // Used to prevent leases from timing out when not testing that logic. It would
 // be better to use a mock clock or lease manager interface, but that's high
@@ -254,6 +255,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionChain) {
   }
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

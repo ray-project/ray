@@ -54,6 +54,7 @@
 /// 4) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
 
 namespace ray {
+namespace core {
 
 class CoreWorker;
 
@@ -1422,4 +1423,5 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unique_ptr<rpc::JobConfig> job_config_;
 };
 
+}  // namespace core
 }  // namespace ray

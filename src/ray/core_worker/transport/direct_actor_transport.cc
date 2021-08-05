@@ -21,6 +21,7 @@
 using ray::rpc::ActorTableData;
 
 namespace ray {
+namespace core {
 
 void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
     const ActorID &actor_id) {
@@ -618,4 +619,5 @@ void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(bool is_asyncio,
   }
 }
 
+}  // namespace core
 }  // namespace ray

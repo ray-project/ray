@@ -44,6 +44,7 @@ int node_manager_port = 0;
 }  // namespace
 
 namespace ray {
+namespace core {
 
 static void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
@@ -915,6 +916,7 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
   TestActorFailure(resources);
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

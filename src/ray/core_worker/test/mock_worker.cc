@@ -20,6 +20,7 @@
 using namespace std::placeholders;
 
 namespace ray {
+namespace core {
 
 /// A mock C++ worker used by core_worker_test.cc to verify the task submission/execution
 /// interfaces in both single node and cross-nodes scenarios. As the raylet client can
@@ -142,6 +143,7 @@ class MockWorker {
   int64_t prev_seq_no_ = 0;
 };
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

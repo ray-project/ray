@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 namespace ray {
+namespace core {
 
 using ::testing::_;
 
@@ -287,6 +288,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
       actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

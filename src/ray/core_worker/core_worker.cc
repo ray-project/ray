@@ -26,6 +26,7 @@
 #include "ray/util/util.h"
 
 namespace ray {
+namespace core {
 namespace {
 
 // Duration between internal book-keeping heartbeats.
@@ -3226,4 +3227,5 @@ std::shared_ptr<gcs::GcsClient> CoreWorker::GetGcsClient() const { return gcs_cl
 
 bool CoreWorker::IsExiting() const { return exiting_; }
 
+}  // namespace core
 }  // namespace ray

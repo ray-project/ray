@@ -20,6 +20,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
 namespace ray {
+namespace core {
 
 class MockWaiter : public DependencyWaiter {
  public:
@@ -308,6 +309,7 @@ TEST(SchedulingQueueTest, TestStealingOddNumberTasks) {
   ASSERT_EQ(n_steal, 5);
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

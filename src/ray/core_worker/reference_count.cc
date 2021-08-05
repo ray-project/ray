@@ -29,6 +29,7 @@
 namespace {}  // namespace
 
 namespace ray {
+namespace core {
 
 bool ReferenceCounter::OwnObjects() const {
   absl::MutexLock lock(&mutex_);
@@ -1226,4 +1227,5 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref) const 
   }
 }
 
+}  // namespace core
 }  // namespace ray

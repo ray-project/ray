@@ -39,6 +39,7 @@
 namespace {}  // namespace
 
 namespace ray {
+namespace core {
 
 /// The max time to wait for out-of-order tasks.
 const int kMaxReorderWaitSeconds = 30;
@@ -772,4 +773,5 @@ class CoreWorkerDirectTaskReceiver {
   void SetMaxActorConcurrency(bool is_asyncio, int max_concurrency);
 };
 
+}  // namespace core
 }  // namespace ray
