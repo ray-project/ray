@@ -443,7 +443,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         f"using JobConfig: {job_config}!")
                     raise RuntimeError(
                         "Starting up Server Failed! Check "
-                        "`ray_client_server.err` on the cluster.")
+                        "`ray_client_server_[port].err` on the cluster.")
                 channel = self.proxy_manager.get_channel(client_id)
                 if channel is None:
                     logger.error(f"Channel not found for {client_id}")
