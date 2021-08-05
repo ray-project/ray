@@ -11,7 +11,7 @@
 using namespace std;
 
 template <typename ID>
-inline ID ByteArrayToId(void *bytes) {
+inline ID ByteArrayToId(char *bytes) {
   std::string id_str(ID::Size(), 0);
   memcpy(&id_str.front(), bytes, ID::Size());
   return ID::FromBinary(id_str);
@@ -212,7 +212,7 @@ __attribute__((visibility("default"))) int go_worker_CreateActor(char *type_name
 
 __attribute__((visibility("default"))) GoSlice go_worker_SubmitActorTask(
     void *actor_id, char *method_name, int num_returns) {
-  auto actor_id_obj = ByteArrayToId<ray::ActorID>(actor_id);
+  auto actor_id_obj = ByteArrayToId<ray::ActorID>((char *)actor_id);
   std::vector<std::string> function_descriptor_list = {method_name};
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::GOLANG,
@@ -251,9 +251,9 @@ __attribute__((visibility("default"))) GoSlice go_worker_Get(void **object_ids,
                                                              int object_ids_size,
                                                              int timeout) {
   std::vector<ray::ObjectID> object_ids_data;
-  char *object_id_arr = (char *)object_ids;
+  char **object_id_arr = (char **)object_ids;
   for (int i = 0; i < object_ids_size; i++) {
-    auto object_id_obj = ByteArrayToId<ray::ObjectID>((void *)object_id_arr[i]);
+    auto object_id_obj = ByteArrayToId<ray::ObjectID>(object_id_arr[i]);
     object_ids_data.emplace_back(object_id_obj);
   }
   std::vector<std::shared_ptr<ray::RayObject>> results;
