@@ -54,6 +54,6 @@ func create_data_buffer() *C.struct_DataBuffer {
     C.memset(p, 1, 1)
     return &C.struct_DataBuffer{
         size: 1,
-        p:    (*C.uchar)(p),
+        p:    p,
     }
 }

@@ -179,10 +179,12 @@ type ID unsafe.Pointer
 func (atc *ActorTaskCaller) Remote() *ObjectRef {
     returnNum := atc.invokeMethod.NumOut()
     objectIds := C.go_worker_SubmitActorTask(unsafe.Pointer(atc.actorHandle.actorId), C.CString(atc.invokeMethodName), C.int(returnNum))
+    util.Logger.Debugf("objectIds:%v", objectIds)
     resultIds := make([]ID, 0, objectIds.len)
     v := (*[1 << 28]*C.struct_DataBuffer)(objectIds.data)[:objectIds.len:objectIds.len]
+    util.Logger.Debugf("v:%v", v)
     for _, objectId := range v {
-        util.Logger.Debugf("objectId:%v", objectId)
+        util.Logger.Debugf("objectId:%v", objectId.p)
         resultIds = append(resultIds, ID(objectId.p))
     }
     return &ObjectRef{

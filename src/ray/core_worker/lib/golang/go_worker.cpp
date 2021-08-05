@@ -235,7 +235,7 @@ __attribute__((visibility("default"))) GoSlice go_worker_SubmitActorTask(
     memcpy(obj_id_data, it.Data(), it.Size());
     db.p = obj_id_data;
     db.size = it.Size();
-    RAY_LOG(WARNING) << "return object id:" << it;
+    RAY_LOG(WARNING) << "return object id:" << it << " p:" << (void*)obj_id_data;
     return_object_ids.push_back(db);
   }
   GoSlice result;
