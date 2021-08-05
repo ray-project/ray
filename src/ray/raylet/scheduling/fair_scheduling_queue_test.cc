@@ -54,12 +54,11 @@ TEST_F(FairSchedulingQueueTest, TestBasic) {
   }
 }
 
-
 TEST_F(FairSchedulingQueueTest, TestPushAll) {
   /*
-    * When tasks are queued, make sure we prioritize the shapes that aren't
-    * currently running.
-    */
+   * When tasks are queued, make sure we prioritize the shapes that aren't
+   * currently running.
+   */
   std::deque<Work> to_add;
 
   Task task;

@@ -46,7 +46,8 @@ ClusterTaskManager::ClusterTaskManager(
 bool ClusterTaskManager::SchedulePendingTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
   TryLocalInfeasibleTaskScheduling();
-  // RAY_LOG(ERROR) << "Going to iterate through scheduling queue: " << tasks_to_schedule_.DebugString();
+  // RAY_LOG(ERROR) << "Going to iterate through scheduling queue: " <<
+  // tasks_to_schedule_.DebugString();
   bool did_schedule = false;
   for (auto shapes_it = tasks_to_schedule_.begin();
        shapes_it != tasks_to_schedule_.end();) {
@@ -324,7 +325,8 @@ void ClusterTaskManager::QueueAndScheduleTask(
     tasks_to_schedule_.Push(work);
     // tasks_to_schedule_[scheduling_class].push_back(work);
   }
-  // RAY_LOG(ERROR) << "Queued task of scheduling class" << scheduling_class << ", state is now: \n" << tasks_to_schedule_.DebugString();
+  // RAY_LOG(ERROR) << "Queued task of scheduling class" << scheduling_class << ", state
+  // is now: \n" << tasks_to_schedule_.DebugString();
   AddToBacklogTracker(task);
   ScheduleAndDispatchTasks();
 }
@@ -359,7 +361,8 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
     ReleaseWorkerResources(worker);
   }
   tasks_to_schedule_.MarkFinished(*task);
-  // RAY_LOG(ERROR) << "Task finished: " << task->GetTaskSpecification().GetSchedulingClass();
+  // RAY_LOG(ERROR) << "Task finished: " <<
+  // task->GetTaskSpecification().GetSchedulingClass();
 }
 
 bool ClusterTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec,
@@ -600,8 +603,10 @@ void ClusterTaskManager::FillResourceUsage(
   // 1-CPU optimization
   static const ResourceSet one_cpu_resource_set(
       std::unordered_map<std::string, double>({{kCPU_ResourceLabel, 1}}));
-  static const SchedulingClassDescriptor sched_cls(one_cpu_resource_set, ray::FunctionDescriptor());
-  static const SchedulingClass one_cpu_scheduling_cls = TaskSpecification::GetSchedulingClass(sched_cls);
+  static const SchedulingClassDescriptor sched_cls(one_cpu_resource_set,
+                                                   ray::FunctionDescriptor());
+  static const SchedulingClass one_cpu_scheduling_cls =
+      TaskSpecification::GetSchedulingClass(sched_cls);
   {
     num_reported++;
     int count = 0;
@@ -902,7 +907,8 @@ void ClusterTaskManager::Dispatch(
   leased_workers[worker->WorkerId()] = worker;
   RemoveFromBacklogTracker(task);
   tasks_to_schedule_.MarkRunning(task);
-  // RAY_LOG(ERROR) << "Dispatching task of class " << task.GetTaskSpecification().GetSchedulingClass();
+  // RAY_LOG(ERROR) << "Dispatching task of class " <<
+  // task.GetTaskSpecification().GetSchedulingClass();
 
   // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;

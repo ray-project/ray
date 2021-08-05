@@ -9,7 +9,8 @@
 namespace ray {
 
 absl::Mutex TaskSpecification::mutex_;
-  std::unordered_map<SchedulingClassDescriptor, SchedulingClass, SchedulingClassDescriptor::hash_fn>
+std::unordered_map<SchedulingClassDescriptor, SchedulingClass,
+                   SchedulingClassDescriptor::hash_fn>
     TaskSpecification::sched_cls_to_id_;
 std::unordered_map<SchedulingClass, SchedulingClassDescriptor>
     TaskSpecification::sched_id_to_cls_;
@@ -29,14 +30,12 @@ SchedulingClass TaskSpecification::GetSchedulingClass(
   absl::MutexLock lock(&mutex_);
   auto it = sched_cls_to_id_.find(sched_cls);
   if (it == sched_cls_to_id_.end()) {
-
     std::stringstream buffer;
     buffer << "Couldn't find scheduling class of type: " << sched_cls.DebugString();
     for (const auto &pair : sched_cls_to_id_) {
       buffer << "\t found: " << pair.first.DebugString();
     }
     // RAY_LOG(ERROR) << buffer.str();
-
 
     sched_cls_id = ++next_sched_id_;
     // TODO(ekl) we might want to try cleaning up task types in these cases
@@ -91,7 +90,8 @@ void TaskSpecification::ComputeResources() {
     // the actor tasks need not be scheduled.
 
     // Map the scheduling class descriptor to an integer for performance.
-    SchedulingClassDescriptor sched_cls(GetRequiredPlacementResources(), FunctionDescriptor());
+    SchedulingClassDescriptor sched_cls(GetRequiredPlacementResources(),
+                                        FunctionDescriptor());
     sched_cls_id_ = GetSchedulingClass(sched_cls);
   }
 }

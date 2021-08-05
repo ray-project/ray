@@ -15,7 +15,7 @@ void FairSchedulingQueue::Push(const Work &work) {
 }
 
 void FairSchedulingQueue::PushAll(const SchedulingClass scheduling_class,
-                              std::deque<Work> works) {
+                                  std::deque<Work> works) {
   // TODO (Alex): We may want to do an O(1) move here if this gets too
   // inefficient.
   for (const auto &work : works) {

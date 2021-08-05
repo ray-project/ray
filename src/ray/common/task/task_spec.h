@@ -23,8 +23,9 @@ struct SchedulingClassDescriptor {
   explicit SchedulingClassDescriptor(const ResourceSet resource_set,
                                      const FunctionDescriptor function_descriptor)
       : resource_set_(resource_set), function_descriptor_(function_descriptor) {}
-  explicit SchedulingClassDescriptor(const SchedulingClassDescriptor &sched_cls) :
-  resource_set_(sched_cls.resource_set_), function_descriptor_(sched_cls.function_descriptor_) {}
+  explicit SchedulingClassDescriptor(const SchedulingClassDescriptor &sched_cls)
+      : resource_set_(sched_cls.resource_set_),
+        function_descriptor_(sched_cls.function_descriptor_) {}
 
   const std::unordered_map<std::string, double> GetResourceMap() const {
     return resource_set_.GetResourceMap();
@@ -33,7 +34,8 @@ struct SchedulingClassDescriptor {
   std::string DebugString() const {
     std::stringstream buffer;
     if (function_descriptor_)
-      buffer << "{Resources: " << resource_set_.ToString() << ", Function: " << function_descriptor_->ToString() << "}";
+      buffer << "{Resources: " << resource_set_.ToString()
+             << ", Function: " << function_descriptor_->ToString() << "}";
     else
       buffer << "{Resources: " << resource_set_.ToString() << "}";
     return buffer.str();
