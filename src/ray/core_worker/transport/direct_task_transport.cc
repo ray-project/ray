@@ -750,4 +750,5 @@ Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id
   return Status::OK();
 }
 
-};  // namespace ray
+}  // namespace core
+}  // namespace ray

@@ -360,4 +360,5 @@ class CoreWorkerDirectTaskSubmitter {
   int64_t num_leases_requested_ GUARDED_BY(mu_) = 0;
 };
 
-};  // namespace ray
+}  // namespace core
+}  // namespace ray
