@@ -11,7 +11,7 @@
 namespace ray {
 namespace streaming {
 
-using ray::core::RayFunction;
+using namespace ray::core;
 
 enum class StreamingQueueStatus : uint32_t {
   OK = 0,

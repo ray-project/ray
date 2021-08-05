@@ -8,6 +8,8 @@
 #include "ray/core_worker/common.h"
 #include "util/streaming_logging.h"
 
+using namespace ray::core;
+
 class UniqueIdFromJByteArray {
  private:
   JNIEnv *_env;
@@ -100,7 +102,7 @@ jint throwRuntimeException(JNIEnv *env, const char *message);
 jint throwChannelInitException(JNIEnv *env, const char *message,
                                const std::vector<ray::ObjectID> &abnormal_queues);
 jint throwChannelInterruptException(JNIEnv *env, const char *message);
-std::shared_ptr<ray::core::RayFunction> FunctionDescriptorToRayFunction(
+std::shared_ptr<RayFunction> FunctionDescriptorToRayFunction(
     JNIEnv *env, jobject functionDescriptor);
 void ParseChannelInitParameters(
     JNIEnv *env, jobject param_obj,

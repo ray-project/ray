@@ -7,7 +7,7 @@
 namespace ray {
 namespace streaming {
 
-using ray::core::RayFunction;
+using namespace ray::core;
 
 ray::ObjectID RandomObjectID() { return ObjectID::FromRandom(); }
 
