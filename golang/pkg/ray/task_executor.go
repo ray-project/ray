@@ -40,6 +40,7 @@ func go_worker_execute(taskType int, rayFunctionInfo []*C.char, args []C.struct_
         //    panic(fmt.Errorf("method not found:%s", methodName))
         //}
         callResults := methodValue.Call([]reflect.Value{})
+        util.Logger.Debugf("invoke result:%v %v", callResults, returnValue)
         for index, _ := range callResults {
             rv := (*C.struct_ReturnValue)(unsafe.Pointer(returnValue[index]))
             rv.data = create_data_buffer()
