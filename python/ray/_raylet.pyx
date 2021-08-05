@@ -1694,12 +1694,14 @@ cdef class CoreWorker:
             shared_ptr[CBuffer] metadata
             c_vector[CObjectID] contained_id
             c_vector[CObjectID] return_ids_vector
+            int64_t task_output_inlined_bytes
 
         if return_ids.size() == 0:
             return
 
         n_returns = len(outputs)
         returns.resize(n_returns)
+        task_output_inlined_bytes = 0
         for i in range(n_returns):
             return_id, output = return_ids[i], outputs[i]
             context = worker.get_serialization_context()
@@ -1722,7 +1724,7 @@ cdef class CoreWorker:
                 check_status(
                     CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
                         return_id, data_size, metadata, contained_id,
-                        &returns[0][i]))
+                        task_output_inlined_bytes, &returns[0][i]))
 
             if returns[0][i].get() != NULL:
                 if returns[0][i].get().HasData():

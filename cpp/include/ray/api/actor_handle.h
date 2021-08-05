@@ -41,6 +41,9 @@ class ActorHandle {
   template <typename F>
   ActorTaskCaller<F> Task(F actor_func);
 
+  void Kill();
+  void Kill(bool no_restart);
+
   /// Make ActorHandle serializable
   MSGPACK_DEFINE(id_);
 
@@ -72,6 +75,16 @@ ActorTaskCaller<F> ActorHandle<ActorType>::Task(F actor_func) {
   RemoteFunctionHolder remote_func_holder(actor_func);
   return ActorTaskCaller<F>(internal::RayRuntime().get(), id_,
                             std::move(remote_func_holder));
+}
+
+template <typename ActorType>
+void ActorHandle<ActorType>::Kill() {
+  ray::internal::RayRuntime()->KillActor(id_, true);
+}
+
+template <typename ActorType>
+void ActorHandle<ActorType>::Kill(bool no_restart) {
+  ray::internal::RayRuntime()->KillActor(id_, no_restart);
 }
 
 }  // namespace api
