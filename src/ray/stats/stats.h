@@ -104,10 +104,10 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
       StatsConfig::instance().GetHarvestInterval());
   StatsConfig::instance().SetGlobalTags(global_tags);
-  StatsConfig::instance().SetIsInitialized(true);
   for (auto &f : StatsConfig::instance().PopInitializers()) {
     f();
   }
+  StatsConfig::instance().SetIsInitialized(true);
 }
 
 /// Shutdown the initialized stats library.

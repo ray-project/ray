@@ -335,11 +335,11 @@ class Stats {
   }
 
   void Record(double val, std::unordered_map<std::string, std::string> tags) {
-    if (StatsConfig::instance().IsStatsDisabled() ||
-        !StatsConfig::instance().IsInitialized()) {
+    if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
     }
     TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
+    // In case that tag containing non-printable chars
     for (auto &t : tags) {
       for (auto &c : t.second) {
         if (!isprint(c)) {
