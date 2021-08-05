@@ -173,9 +173,7 @@ func GetFunctionName(i interface{}) string {
     return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
 }
 
-type ID struct {
-    p unsafe.Pointer
-}
+type ID unsafe.Pointer
 
 // 发出调用
 func (atc *ActorTaskCaller) Remote() *ObjectRef {
@@ -185,7 +183,7 @@ func (atc *ActorTaskCaller) Remote() *ObjectRef {
     v := (*[1 << 28]*C.struct_DataBuffer)(objectIds.data)[:objectIds.len:objectIds.len]
     for _, objectId := range v {
         util.Logger.Debugf("objectId:%v", objectId)
-        resultIds = append(resultIds, ID{p: unsafe.Pointer(objectId.p)})
+        resultIds = append(resultIds, ID(objectId.p))
     }
     return &ObjectRef{
         returnObjectIds: resultIds,
