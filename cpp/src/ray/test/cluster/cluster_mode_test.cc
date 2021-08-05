@@ -41,6 +41,10 @@ TEST(RayClusterModeTest, FullTest) {
   auto get_result = *(Ray::Get(obj));
   EXPECT_EQ(12345, get_result);
 
+  auto named_obj =
+      Ray::Task(Return1).SetName("named_task").SetResources({{"CPU", 1.0}}).Remote();
+  EXPECT_EQ(1, *named_obj.Get());
+
   /// common task without args
   auto task_obj = Ray::Task(Return1).Remote();
   int task_result = *(Ray::Get(task_obj));
@@ -50,6 +54,35 @@ TEST(RayClusterModeTest, FullTest) {
   task_obj = Ray::Task(Plus1).Remote(5);
   task_result = *(Ray::Get(task_obj));
   EXPECT_EQ(6, task_result);
+
+  ActorHandle<Counter> actor = Ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+                                   .SetMaxRestarts(1)
+                                   .SetGlobalName("named_actor")
+                                   .Remote();
+  auto named_actor_obj = actor.Task(&Counter::Plus1)
+                             .SetName("named_actor_task")
+                             .SetResources({{"CPU", 1.0}})
+                             .Remote();
+  EXPECT_EQ(1, *named_actor_obj.Get());
+
+  auto named_actor_handle_optional = Ray::GetGlobalActor<Counter>("named_actor");
+  EXPECT_TRUE(named_actor_handle_optional);
+  auto &named_actor_handle = *named_actor_handle_optional;
+  auto named_actor_obj1 = named_actor_handle.Task(&Counter::Plus1).Remote();
+  EXPECT_EQ(2, *named_actor_obj1.Get());
+  EXPECT_FALSE(Ray::GetGlobalActor<Counter>("not_exist_actor"));
+
+  named_actor_handle.Kill(false);
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+  auto named_actor_obj2 = named_actor_handle.Task(&Counter::Plus1).Remote();
+  EXPECT_EQ(1, *named_actor_obj2.Get());
+
+  named_actor_handle.Kill();
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+  EXPECT_THROW(named_actor_handle.Task(&Counter::Plus1).Remote().Get(),
+               RayActorException);
+
+  EXPECT_FALSE(Ray::GetGlobalActor<Counter>("named_actor"));
 
   /// actor task without args
   ActorHandle<Counter> actor1 = Ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
@@ -146,11 +179,58 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result15, 29);
   EXPECT_EQ(result16, 30);
 
-  Ray::Shutdown();
+  uint64_t pid = *actor1.Task(&Counter::GetPid).Remote().Get();
+  EXPECT_TRUE(Counter::IsProcessAlive(pid));
 
-  if (FLAGS_external_cluster) {
-    ProcessHelper::GetInstance().StopRayNode();
-  }
+  auto actor_object4 = actor1.Task(&Counter::Exit).Remote();
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+  EXPECT_THROW(actor_object4.Get(), RayActorException);
+  EXPECT_FALSE(Counter::IsProcessAlive(pid));
+}
+
+TEST(RayClusterModeTest, MaxConcurrentTest) {
+  auto actor1 =
+      Ray::Actor(ActorConcurrentCall::FactoryCreate).SetMaxConcurrency(3).Remote();
+  auto object1 = actor1.Task(&ActorConcurrentCall::CountDown).Remote();
+  auto object2 = actor1.Task(&ActorConcurrentCall::CountDown).Remote();
+  auto object3 = actor1.Task(&ActorConcurrentCall::CountDown).Remote();
+
+  EXPECT_EQ(*object1.Get(), "ok");
+  EXPECT_EQ(*object2.Get(), "ok");
+  EXPECT_EQ(*object3.Get(), "ok");
+}
+
+TEST(RayClusterModeTest, ResourcesManagementTest) {
+  auto actor1 =
+      Ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetResources({{"CPU", 1.0}}).Remote();
+  auto r1 = actor1.Task(&Counter::Plus1).Remote();
+  EXPECT_EQ(*r1.Get(), 1);
+
+  auto actor2 = Ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+                    .SetResources({{"CPU", 100.0}})
+                    .Remote();
+  auto r2 = actor2.Task(&Counter::Plus1).Remote();
+  std::vector<ObjectRef<int>> objects{r2};
+  WaitResult<int> result = Ray::Wait(objects, 1, 1000);
+  EXPECT_EQ(result.ready.size(), 0);
+  EXPECT_EQ(result.unready.size(), 1);
+
+  auto r3 = Ray::Task(Return1).SetResource("CPU", 1.0).Remote();
+  EXPECT_EQ(*r3.Get(), 1);
+
+  auto r4 = Ray::Task(Return1).SetResource("CPU", 100.0).Remote();
+  std::vector<ObjectRef<int>> objects1{r4};
+  WaitResult<int> result2 = Ray::Wait(objects1, 1, 1000);
+  EXPECT_EQ(result2.ready.size(), 0);
+  EXPECT_EQ(result2.unready.size(), 1);
+}
+
+TEST(RayClusterModeTest, ExceptionTest) {
+  EXPECT_THROW(Ray::Task(ThrowTask).Remote().Get(), RayTaskException);
+
+  auto actor1 = Ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(1);
+  auto object1 = actor1.Task(&Counter::ExceptionFunc).Remote();
+  EXPECT_THROW(object1.Get(), RayTaskException);
 }
 
 int main(int argc, char **argv) {
@@ -158,5 +238,13 @@ int main(int argc, char **argv) {
   cmd_argc = &argc;
   cmd_argv = &argv;
   ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  int ret = RUN_ALL_TESTS();
+
+  Ray::Shutdown();
+
+  if (FLAGS_external_cluster) {
+    ProcessHelper::GetInstance().StopRayNode();
+  }
+
+  return ret;
 }
