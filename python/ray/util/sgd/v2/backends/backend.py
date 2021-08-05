@@ -78,7 +78,7 @@ class BackendExecutor:
                     "Attempting to start training but a "
                     "previous training run is still ongoing. "
                     "You must call `finish_training` before "
-                    "calling `start_training` again.") from None
+                    "calling `start_training` again.")
 
         futures = []
         for world_rank in range(len(self.worker_group)):
@@ -160,7 +160,7 @@ class BackendExecutor:
                 raise SGDBackendError("`finish_training` has been called "
                                       "before `start_training`. Please call "
                                       "`start_training` before "
-                                      "`finish_training`.") from None
+                                      "`finish_training`.")
 
             try:
                 # session.end raises any Exceptions from training.
