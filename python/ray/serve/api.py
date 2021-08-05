@@ -657,15 +657,13 @@ def start(
         pass
 
     # Try to get serve controller if it exists
-    serve_controller_namespace = current_namespace
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
-        if _UUID_RE.fullmatch(current_namespace) is not None:
-            controller_name = f"serve/{controller_name}"
-            serve_controller_namespace = "serve"
     else:
         controller_name = format_actor_name(SERVE_CONTROLLER_NAME,
                                             get_random_letters())
+    # Always start controller in "serve" namespace
+    controller_name = f"serve/{controller_name}"
 
     if isinstance(http_options, dict):
         http_options = HTTPOptions.parse_obj(http_options)
@@ -703,7 +701,7 @@ def start(
     client = Client(controller, controller_name, detached=detached)
     _set_global_client(client)
     logger.info(f"Started{' detached ' if detached else ' '}Serve instance in "
-                f"namespace '{serve_controller_namespace}'.")
+                f"namespace 'serve'.")
     return client
 
 
