@@ -117,9 +117,8 @@ func (ac *ActorCreator) Remote() *ActorHandle {
     var res *C.char
     dataLen := C.go_worker_CreateActor(C.CString(ac.registerTypeName), &res)
     if dataLen > 0 {
-        defer C.free(unsafe.Pointer(res))
         return &ActorHandle{
-            actorId:   C.GoBytes(unsafe.Pointer(res), dataLen),
+            actorId:   res,
             language:  ray_rpc.Language_GOLANG,
             actorType: typesMap[ac.registerTypeName],
         }
@@ -128,7 +127,7 @@ func (ac *ActorCreator) Remote() *ActorHandle {
 }
 
 type ActorHandle struct {
-    actorId   []byte
+    actorId   *C.char
     language  ray_rpc.Language
     actorType reflect.Type
 }
@@ -147,20 +146,27 @@ func (ah *ActorHandle) Task(f interface{}) *ActorTaskCaller {
     if lastIndex != -1 {
         methodName = methodName[lastIndex+1:]
     }
+    returnNum := methodType.NumOut()
+    methodReturnTypes := make([]reflect.Type, 0, returnNum)
+    for i := 0; i < returnNum; i++ {
+        methodReturnTypes = append(methodReturnTypes, methodType.Out(i))
+    }
 
     return &ActorTaskCaller{
-        actorHandle:      ah,
-        invokeMethod:     methodType,
-        invokeMethodName: methodName,
-        params:           []reflect.Value{},
+        actorHandle:             ah,
+        invokeMethod:            methodType,
+        invokeMethodName:        methodName,
+        invokeMethodReturnTypes: methodReturnTypes,
+        params:                  []reflect.Value{},
     }
 }
 
 type ActorTaskCaller struct {
-    actorHandle      *ActorHandle
-    invokeMethod     reflect.Type
-    invokeMethodName string
-    params           []reflect.Value
+    actorHandle             *ActorHandle
+    invokeMethod            reflect.Type
+    invokeMethodName        string
+    invokeMethodReturnTypes []reflect.Type
+    params                  []reflect.Value
 }
 
 func GetFunctionName(i interface{}) string {
@@ -168,31 +174,39 @@ func GetFunctionName(i interface{}) string {
 }
 
 // 发出调用
-func (or *ActorTaskCaller) Remote() *ObjectRef {
-    returnNum := or.invokeMethod.NumOut()
-    objectIds := C.go_worker_SubmitActorTask(C.CBytes(or.actorHandle.actorId), C.CString(or.invokeMethodName), C.int(returnNum))
+func (atc *ActorTaskCaller) Remote() *ObjectRef {
+    returnNum := atc.invokeMethod.NumOut()
+    objectIds := C.go_worker_SubmitActorTask(atc.actorHandle.actorId, C.CString(atc.invokeMethodName), C.int(returnNum))
     resultIds := make([]ObjectId, 0, objectIds.len)
     v := (*[1 << 28]*C.struct_DataBuffer)(objectIds.data)[:objectIds.len:objectIds.len]
     for _, objectId := range v {
-        resultIds = append(resultIds, ObjectId{
-            id: C.GoBytes(unsafe.Pointer(objectId.p), objectId.size),
-        })
+        resultIds = append(resultIds, C.GoBytes(unsafe.Pointer(objectId.p), objectId.size))
     }
     return &ObjectRef{
-        ids: resultIds,
+        returnObjectIds: resultIds,
+        returnTypes:     atc.invokeMethodReturnTypes,
     }
 }
 
 type ObjectRef struct {
-    ids   []ObjectId
-    types []reflect.Type
+    returnObjectIds []ObjectId
+    returnTypes     []reflect.Type
 }
 
-type ObjectId struct {
-    id []byte
-}
+type ObjectId []byte
 
-func (or *ObjectRef) Get() []reflect.Value {
+func (or *ObjectRef) Get() []interface{} {
+    returnObjectIdsSize := len(or.returnObjectIds)
+    objectIdsPointer := make([]unsafe.Pointer, returnObjectIdsSize, returnObjectIdsSize)
+    for index, returnObjectId := range or.returnObjectIds {
+        objectIdsPointer[index] = C.CBytes(returnObjectId)
+    }
+    returnValues := C.go_worker_Get(&objectIdsPointer[0], C.int(returnObjectIdsSize), C.int(-1))
+    for _, returnValue := range returnValues {
+        rv := *C.struct_ReturnValue(returnValue)
+        dataBytes := C.GoBytes(rv.data, rv.data.size)
+        return []interface{}{dataBytes[0]}
+    }
     return nil
 }
 

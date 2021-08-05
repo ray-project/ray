@@ -42,7 +42,7 @@ func go_worker_execute(taskType int, rayFunctionInfo []*C.char, args []C.struct_
         callResults := methodValue.Call([]reflect.Value{})
         util.Logger.Debugf("invoke result:%v %v", callResults, returnValue)
         for index, _ := range callResults {
-            rv := (*C.struct_ReturnValue)(unsafe.Pointer(returnValue[index]))
+            rv := returnValue[index]
             rv.data = create_data_buffer()
             rv.meta = create_data_buffer()
         }
