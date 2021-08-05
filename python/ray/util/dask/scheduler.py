@@ -80,6 +80,7 @@ def ray_dask_get(dsk, keys, **kwargs):
 
     ray_callbacks = kwargs.pop("ray_callbacks", None)
     persist = kwargs.pop("ray_persist", False)
+    enable_progress_bar = kwargs.pop("_ray_enable_progress_bar", None)
 
     with local_ray_callbacks(ray_callbacks) as ray_callbacks:
         # Unpack the Ray-specific callbacks.
@@ -120,7 +121,10 @@ def ray_dask_get(dsk, keys, **kwargs):
         if persist:
             result = object_refs
         else:
-            result = ray_get_unpack(object_refs)
+            pb_actor = None
+            if enable_progress_bar:
+                pb_actor = ray.get_actor("_dask_on_ray_pb")
+            result = ray_get_unpack(object_refs, progress_bar_actor=pb_actor)
         if ray_finish_cbs is not None:
             for cb in ray_finish_cbs:
                 cb(result)
@@ -353,7 +357,24 @@ def dask_task_wrapper(func, repack, key, ray_pretask_cbs, ray_posttask_cbs,
     return result
 
 
-def ray_get_unpack(object_refs):
+def render_progress_bar(tracker):
+    from tqdm import tqdm
+    # At this time, every task should be submitted.
+    total, finished = ray.get(tracker.result.remote())
+    reported_finished_so_far = 0
+    pb_bar = tqdm(total=total, position=0)
+    pb_bar.set_description("")
+
+    while finished < total:
+        submitted, finished = ray.get(tracker.result.remote())
+        pb_bar.update(finished - reported_finished_so_far)
+        reported_finished_so_far = finished
+        import time
+        time.sleep(0.1)
+    pb_bar.close()
+
+
+def ray_get_unpack(object_refs, progress_bar_actor=None):
     """
     Unpacks object references, gets the object references, and repacks.
     Traverses arbitrary data structures.
@@ -366,6 +387,12 @@ def ray_get_unpack(object_refs):
         The input Python object with all contained Ray object references
         resolved with their concrete values.
     """
+
+    def get_result(object_refs):
+        if progress_bar_actor:
+            render_progress_bar(progress_bar_actor)
+        return ray.get(object_refs)
+
     if isinstance(object_refs, tuple):
         object_refs = list(object_refs)
 
@@ -376,10 +403,10 @@ def ray_get_unpack(object_refs):
         # list of object references. We repack the results after ray.get()
         # completes.
         object_refs, repack = unpack_object_refs(*object_refs)
-        computed_result = ray.get(object_refs)
+        computed_result = get_result(object_refs)
         return repack(computed_result)
     else:
-        return ray.get(object_refs)
+        return get_result(object_refs)
 
 
 def ray_dask_get_sync(dsk, keys, **kwargs):
