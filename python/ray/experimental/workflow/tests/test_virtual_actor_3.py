@@ -118,3 +118,8 @@ def test_writer_actor_pressure_test(workflow_start_regular):
     assert ray.get(balance_3) == 80
     assert user.balance.run() == 85
     assert user.goods_value.run() == (5, [])
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
