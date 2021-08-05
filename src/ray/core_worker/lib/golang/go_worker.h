@@ -10,7 +10,7 @@ extern "C" {
 #define GO_CGO_PROLOGUE_H
 typedef long long GoInt64;
 typedef GoInt64 GoInt;
-typedef struct GoSlice{
+typedef struct GoSlice {
   void *data;
   GoInt len;
   GoInt cap;
@@ -20,12 +20,12 @@ typedef struct GoSlice{
 typedef struct DataBuffer {
   int size;
   uint8_t *p;
-}DataBuffer;
+} DataBuffer;
 
 typedef struct ReturnValue {
   struct DataBuffer *data;
   struct DataBuffer *meta;
-}ReturnValue;
+} ReturnValue;
 
 void go_worker_Initialize(int workerMode, char *store_socket, char *raylet_socket,
                           char *log_dir, char *node_ip_address, int node_manager_port,
@@ -50,13 +50,10 @@ int go_worker_CreateActor(char *type_name, char **result);
 // todo calloptions
 GoSlice go_worker_SubmitActorTask(void *actor_id, char *method_name, int num_returns);
 
-int go_worker_Get(void **object_ids, int timeout);
-
+GoSlice go_worker_Get(void **object_ids, int object_ids_size, int timeout);
 
 extern void go_worker_execute(GoInt task_type, GoSlice ray_function_info, GoSlice args,
                               GoSlice return_values);
-
-
 
 void SayHello(char *);
 
