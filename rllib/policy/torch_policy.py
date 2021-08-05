@@ -19,7 +19,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.utils import force_list, NullContextManager
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
@@ -885,10 +884,8 @@ class TorchPolicy(Policy):
             file_name = os.path.join(export_dir, "model.pt")
             traced.save(file_name)
 
-    # TODO: (sven) Deprecate this in favor of `save()`.
     @override(Policy)
     def export_checkpoint(self, export_dir: str) -> None:
-        deprecation_warning("export_checkpoint", "save")
         raise NotImplementedError
 
     @override(Policy)

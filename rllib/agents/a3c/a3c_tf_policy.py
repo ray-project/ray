@@ -9,7 +9,7 @@ from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import explained_variance
 from ray.rllib.policy.policy import Policy
@@ -22,17 +22,15 @@ from ray.rllib.evaluation import MultiAgentEpisode
 tf1, tf, tfv = try_import_tf()
 
 
+@Deprecated(
+    old="rllib.agents.a3c.a3c_tf_policy.postprocess_advantages",
+    new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
+    error=False)
 def postprocess_advantages(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[PolicyID, SampleBatch]] = None,
         episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
-
-    # Stub serving backward compatibility.
-    deprecation_warning(
-        old="rllib.agents.a3c.a3c_tf_policy.postprocess_advantages",
-        new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-        error=False)
 
     return compute_gae_for_sample_batch(policy, sample_batch,
                                         other_agent_batches, episode)

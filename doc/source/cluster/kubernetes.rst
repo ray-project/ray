@@ -156,7 +156,7 @@ on your Ray cluster. The Ray Client server runs on the Ray head node, on port ``
 
   Connecting with Ray client requires using matching minor versions of Python (for example 3.7)
   on the server and client end, that is, on the Ray head node and in the environment where
-  ``ray.util.connect`` is invoked. Note that the default ``rayproject/ray`` images use Python 3.7.
+  ``ray.init("ray://<host>:<port>")`` is invoked. Note that the default ``rayproject/ray`` images use Python 3.7.
   The latest offical Ray release builds are available for Python 3.6 and 3.8 at the `Ray Docker Hub <https://hub.docker.com/r/rayproject/ray>`_.
 
   Connecting with Ray client also requires matching Ray versions. To connect from a local machine to a cluster running the examples in this document, the :ref:`latest release version<installation>` of Ray must be installed locally.
@@ -176,7 +176,7 @@ Then open a new shell and try out a `sample Ray program`_:
 
   $ python ray/doc/kubernetes/example_scripts/run_local_example.py
 
-The program in this example uses ``ray.client(127.0.0.1:10001).connect()`` to connect to the Ray cluster.
+The program in this example uses ``ray.init("ray://127.0.0.1:10001")`` to connect to the Ray cluster.
 The program waits for three Ray nodes to connect and then tests object transfer
 between the nodes.
 
@@ -197,7 +197,7 @@ The following command submits a Job which executes an `example Ray program`_.
   job.batch/ray-test-job created
 
 The program executed by the job uses the name of the Ray cluster's head Service to connect:
-``ray.client("example-cluster-ray-head:10001").connect()``.
+``ray.init("ray://example-cluster-ray-head:10001")``.
 The program waits for three Ray nodes to connect and then tests object transfer
 between the nodes.
 
