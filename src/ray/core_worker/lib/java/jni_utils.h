@@ -24,6 +24,9 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/core_worker.h"
 
+using namespace ray;
+using namespace ray::core;
+
 /// Boolean class
 extern jclass java_boolean_class;
 /// Constructor of Boolean class
