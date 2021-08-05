@@ -48,13 +48,13 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
         args_go.cap = args_array_list.size();
 
         std::vector<std::shared_ptr<ReturnValue>> return_value_list;
-        for (size_t i = 0; i < results->size(); i++) {
+        for (size_t i = 0; i < return_ids.size(); i++) {
           return_value_list.push_back(make_shared<ReturnValue>());
         }
         GoSlice return_value_list_go;
         return_value_list_go.data = &return_value_list[0];
-        return_value_list_go.cap = results->size();
-        return_value_list_go.len = results->size();
+        return_value_list_go.cap = return_ids.size();
+        return_value_list_go.len = return_ids.size();
 
         // invoke golang method
         go_worker_execute(task_type, fd_list, args_go, return_value_list_go);
