@@ -178,10 +178,8 @@ TEST_F(PublisherTest, TestSubscriptionIndexErase) {
 
 TEST_F(PublisherTest, TestSubscriptionIndexEraseMultiSubscribers) {
   ///
-  /// Test erase entry.
+  /// Test erase the duplicated entries with multi subscribers.
   ///
-  /// oid1 -> [nid1~nid5]
-  /// oid2 -> [nid1~nid5]
   SubscriptionIndex<ObjectID> subscription_index;
   auto oid = ObjectID::FromRandom();
   auto oid2 = ObjectID::FromRandom();
