@@ -321,7 +321,7 @@ class InboundRequest {
   std::function<void(rpc::SendReplyCallback)> steal_callback_;
   rpc::SendReplyCallback send_reply_callback_;
 
-  TaskID task_id;
+  ray::TaskID task_id;
   bool has_pending_dependencies_;
 };
 
