@@ -158,7 +158,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
         functionDescriptor,
         args,
         /*returnType=*/ Optional.of(pyActorMethod.returnType),
-        null);
+        new CallOptions.Builder().build());
   }
 
   @Override

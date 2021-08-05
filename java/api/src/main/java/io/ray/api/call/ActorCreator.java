@@ -45,7 +45,7 @@ public class ActorCreator<A> extends BaseActorCreator<ActorCreator<A>> {
     return Ray.internal().createActor(func, args, buildOptions());
   }
 
-  /** Set the concurrency groups for this actor. */
+  /** Set the concurrency groups for this actor to declare how to perform tasks concurrently. */
   public ActorCreator<A> setConcurrencyGroups(ConcurrencyGroup... groups) {
     ArrayList<ConcurrencyGroup> list = new ArrayList<>();
     Collections.addAll(list, groups);

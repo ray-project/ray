@@ -211,7 +211,7 @@ message TaskSpec {
   bytes debugger_breakpoint = 23;
   // Serialized JSON string of the parsed runtime environment dict for this task.
   string serialized_runtime_env = 24;
-  // TODO(qwang): doc comments
+  // The concurrency group name in which this task will be performed.
   string concurrency_group_name = 25;
 }
 

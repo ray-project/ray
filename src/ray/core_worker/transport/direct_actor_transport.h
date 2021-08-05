@@ -489,7 +489,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
   ActorSchedulingQueue(
       instrumented_io_context &main_io_service, DependencyWaiter &waiter,
       std::shared_ptr<PoolManager> pool_manager = std::make_shared<PoolManager>(),
-      bool is_asyncio = false, int max_concurrency = 1,
+      bool is_asyncio = false, int fiber_max_concurrency = 1,
       int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : reorder_wait_seconds_(reorder_wait_seconds),
         wait_timer_(main_io_service),
@@ -498,9 +498,9 @@ class ActorSchedulingQueue : public SchedulingQueue {
         pool_manager_(pool_manager),
         is_asyncio_(is_asyncio) {
     if (is_asyncio_) {
-      RAY_LOG(INFO) << "Setting actor as async with max_concurrency=" << max_concurrency
-                    << ", creating new fiber thread.";
-      fiber_state_ = std::make_unique<FiberState>(max_concurrency);
+      RAY_LOG(INFO) << "Setting actor as async with max_concurrency="
+                    << fiber_max_concurrency << ", creating new fiber thread.";
+      fiber_state_ = std::make_unique<FiberState>(fiber_max_concurrency);
     }
   }
 
@@ -843,17 +843,18 @@ class CoreWorkerDirectTaskReceiver {
   // Queue of pending normal (non-actor) tasks.
   std::unique_ptr<SchedulingQueue> normal_scheduling_queue_ =
       std::unique_ptr<SchedulingQueue>(new NormalSchedulingQueue());
-  /// The max number of concurrent calls to allow.
+  /// The max number of concurrent calls to allow for fiber mode.
   /// 0 indicates that the value is not set yet.
-  int max_concurrency_ = 0;
+  int fiber_max_concurrency_ = 0;
+
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<PoolManager> pool_manager_;
   /// Whether this actor use asyncio for concurrency.
   bool is_asyncio_ = false;
 
-  /// Set the max concurrency of an actor.
+  /// Set the max concurrency for fiber actor.
   /// This should be called once for the actor creation task.
-  void SetMaxActorConcurrency(bool is_asyncio, int max_concurrency);
+  void SetMaxActorConcurrency(bool is_asyncio, int fiber_max_concurrency);
 };
 
 }  // namespace ray
