@@ -69,10 +69,15 @@ class CoreWorkerDirectActorTaskSubmitter
   CoreWorkerDirectActorTaskSubmitter(
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
       std::shared_ptr<CoreWorkerMemoryStore> store,
-      std::shared_ptr<TaskFinisherInterface> task_finisher)
+      std::shared_ptr<TaskFinisherInterface> task_finisher,
+      std::function<void(const ActorID &, int64_t)> warn_excess_queueing)
       : core_worker_client_pool_(core_worker_client_pool),
         resolver_(store, task_finisher),
-        task_finisher_(task_finisher) {}
+        task_finisher_(task_finisher),
+        warn_excess_queueing_(warn_excess_queueing) {
+    next_queueing_warn_threshold_ =
+        RayConfig::instance().actor_excess_queueing_warn_threshold();
+  }
 
   /// Add an actor queue. This should be called whenever a reference to an
   /// actor is created in the language frontend.
@@ -268,6 +273,13 @@ class CoreWorkerDirectActorTaskSubmitter
 
   /// Used to complete tasks.
   std::shared_ptr<TaskFinisherInterface> task_finisher_;
+
+  /// Used to warn of excessive queueing.
+  std::function<void(const ActorID &, int64_t num_queued)> warn_excess_queueing_;
+
+  /// Warn the next time the number of queued task submissions to an actor
+  /// exceeds this quantity. This threshold is doubled each time it is hit.
+  int64_t next_queueing_warn_threshold_;
 
   friend class CoreWorkerTest;
 };
