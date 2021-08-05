@@ -197,6 +197,11 @@ if __name__ == "__main__":
     # Add code search path to sys.path.
     core_worker = ray.worker.global_worker.core_worker
     code_search_path = core_worker.get_job_config().code_search_path
+    if code_search_path:
+        for p in code_search_path:
+            if os.path.isfile(p):
+                p = os.path.dirname(p)
+            sys.path.insert(0, p)
 
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(
