@@ -27,8 +27,8 @@ struct StreamingQueueInfo {
 
 struct ChannelCreationParameter {
   ActorID actor_id;
-  std::shared_ptr<ray::RayFunction> async_function;
-  std::shared_ptr<ray::RayFunction> sync_function;
+  std::shared_ptr<ray::core::RayFunction> async_function;
+  std::shared_ptr<ray::core::RayFunction> sync_function;
 };
 
 /// PrducerChannelinfo and ConsumerChannelInfo contains channel information and

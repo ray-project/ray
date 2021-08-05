@@ -7,6 +7,8 @@
 namespace ray {
 namespace streaming {
 
+using ray::core::RayFunction;
+
 ray::ObjectID RandomObjectID() { return ObjectID::FromRandom(); }
 
 static void flushall_redis(void) {
