@@ -202,9 +202,9 @@ func (or *ObjectRef) Get() []interface{} {
         objectIdsPointer[index] = C.CBytes(returnObjectId)
     }
     returnValues := C.go_worker_Get(&objectIdsPointer[0], C.int(returnObjectIdsSize), C.int(-1))
-    for _, returnValue := range returnValues {
-        rv := *C.struct_ReturnValue(returnValue)
-        dataBytes := C.GoBytes(rv.data, rv.data.size)
+    values := (*[1 << 28]*C.struct_ReturnValue)(returnValues)[:returnObjectIdsSize:returnObjectIdsSize]
+    for _, returnValue := range values {
+        dataBytes := C.GoBytes(returnValue.data, returnValue.data.size)
         return []interface{}{dataBytes[0]}
     }
     return nil
