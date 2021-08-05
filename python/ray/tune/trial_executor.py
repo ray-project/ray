@@ -173,16 +173,26 @@ class TrialExecutor(ABC):
 
     def on_step_begin(
             self,
-            trials: Union[List[Trial], 'ray.tune.trial_runner.TrialRunner']
+            trials: Union[List[Trial], "ray.tune.trial_runner.TrialRunner"]
     ) -> None:
-        """A hook called before running one step of the trial event loop."""
+        """A hook called before running one step of the trial event loop.
+
+        Args:
+            trials (List[Trial]): The list of trials. Note, refrain from
+                providing TrialRunner directly here.
+        """
         pass
 
     def on_step_end(
             self,
-            trials: Union[List[Trial], 'ray.tune.trial_runner.TrialRunner']
+            trials: Union[List[Trial], "ray.tune.trial_runner.TrialRunner"]
     ) -> None:
-        """A hook called after running one step of the trial event loop."""
+        """A hook called after running one step of the trial event loop.
+
+        Args:
+            trials (List[Trial]): The list of trials. Note, refrain from
+                providing TrialRunner directly here.
+        """
         pass
 
     def force_reconcilation_on_next_step_end(self) -> None:
@@ -190,8 +200,14 @@ class TrialExecutor(ABC):
 
     def on_no_available_trials(
             self,
-            trials: Union[List[Trial], 'ray.tune.trial_runner.TrialRunner']
+            trials: Union[List[Trial], "ray.tune.trial_runner.TrialRunner"]
     ) -> None:
+        """
+        Args:
+            trials (List[Trial]): The list of trials. Note, refrain from
+                providing TrialRunner directly here.
+        """
+
         # avoid circular dependency
         from ray.tune.trial_runner import TrialRunner
         if isinstance(trials, TrialRunner):
@@ -320,9 +336,14 @@ class TrialExecutor(ABC):
         return None
 
     def cleanup(self,
-                trials: Union[List[Trial], 'ray.tune.trial_runner.TrialRunner']
+                trials: Union[List[Trial], "ray.tune.trial_runner.TrialRunner"]
                 ) -> None:
-        """Ensures that trials are cleaned up after stopping."""
+        """Ensures that trials are cleaned up after stopping.
+
+        Args:
+            trials (List[Trial]): The list of trials. Note, refrain from
+                providing TrialRunner directly here.
+        """
         pass
 
     def in_staging_grace_period(self) -> bool:

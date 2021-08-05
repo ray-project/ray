@@ -643,7 +643,7 @@ class RayTrialExecutor(TrialExecutor):
                     new_config: Dict,
                     new_experiment_tag: str,
                     logger_creator: Optional[Callable[
-                        [Dict], 'ray.tune.Logger']] = None) -> bool:
+                        [Dict], "ray.tune.Logger"]] = None) -> bool:
         """Tries to invoke `Trainable.reset()` to reset trial.
 
         Args:
@@ -963,12 +963,15 @@ class RayTrialExecutor(TrialExecutor):
 
     def on_step_begin(
             self,
-            trials: Union[List[Trial], 'ray.tune.trial_runner.TrialRunner']
+            trials: Union[List[Trial], "ray.tune.trial_runner.TrialRunner"]
     ) -> None:
-        """Before step() called, update the available resources."""
+        """Before step() is called, update the available resources."""
         # avoid circular dependency
         from ray.tune.trial_runner import TrialRunner
         if isinstance(trials, TrialRunner):
+            logger.warning(
+                "TrialExecutor should not depend on TrialRunner interface. "
+                "Provide List[Trial] directly.")
             trials = trials.get_running_trials()
         self._update_avail_resources()
         self._trial_just_finished_before = self._trial_just_finished
@@ -976,11 +979,14 @@ class RayTrialExecutor(TrialExecutor):
 
     def on_step_end(
             self,
-            trials: Union[List[Trial], 'ray.tune.trial_runner.TrialRunner']
+            trials: Union[List[Trial], "ray.tune.trial_runner.TrialRunner"]
     ) -> None:
         # avoid circular dependency
         from ray.tune.trial_runner import TrialRunner
         if isinstance(trials, TrialRunner):
+            logger.warning(
+                "TrialExecutor should not depend on TrialRunner interface. "
+                "Provide List[Trial] directly.")
             trials = trials.get_running_trials()
         self._just_staged_trials.clear()
 
@@ -1098,11 +1104,14 @@ class RayTrialExecutor(TrialExecutor):
             return self._avail_resources.gpu > 0
 
     def cleanup(self,
-                trials: Union[List[Trial], 'ray.tune.trial_runner.TrialRunner']
+                trials: Union[List[Trial], "ray.tune.trial_runner.TrialRunner"]
                 ) -> None:
         # avoid circular dependency
         from ray.tune.trial_runner import TrialRunner
         if isinstance(trials, TrialRunner):
+            logger.warning(
+                "TrialExecutor should not depend on TrialRunner interface. "
+                "Provide List[Trial] directly.")
             trials = trials.get_running_trials()
         self._trial_cleanup.cleanup(partial=False)
         self._pg_manager.reconcile_placement_groups(trials)
