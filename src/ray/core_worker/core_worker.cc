@@ -33,14 +33,14 @@ namespace {
 const uint64_t kInternalHeartbeatMillis = 1000;
 
 void BuildCommonTaskSpec(
-    ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
+    TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
     const std::string name, const TaskID &current_task_id, const uint64_t task_index,
-    const TaskID &caller_id, const ray::rpc::Address &address,
-    const ray::RayFunction &function,
-    const std::vector<std::unique_ptr<ray::TaskArg>> &args, uint64_t num_returns,
+    const TaskID &caller_id, const rpc::Address &address,
+    const RayFunction &function,
+    const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    std::vector<ObjectID> *return_ids, const ray::BundleID &bundle_id,
+    std::vector<ObjectID> *return_ids, const BundleID &bundle_id,
     bool placement_group_capture_child_tasks, const std::string debugger_breakpoint,
     const std::string &serialized_runtime_env,
     const std::unordered_map<std::string, std::string> &override_environment_variables) {
@@ -62,18 +62,18 @@ void BuildCommonTaskSpec(
   }
 }
 
-ray::JobID GetProcessJobID(const ray::CoreWorkerOptions &options) {
-  if (options.worker_type == ray::WorkerType::DRIVER) {
+JobID GetProcessJobID(const CoreWorkerOptions &options) {
+  if (options.worker_type == WorkerType::DRIVER) {
     RAY_CHECK(!options.job_id.IsNil());
   } else {
     RAY_CHECK(options.job_id.IsNil());
   }
 
-  if (options.worker_type == ray::WorkerType::WORKER) {
+  if (options.worker_type == WorkerType::WORKER) {
     // For workers, the job ID is assigned by Raylet via an environment variable.
     const char *job_id_env = std::getenv(kEnvVarKeyJobId);
     RAY_CHECK(job_id_env);
-    return ray::JobID::FromHex(job_id_env);
+    return JobID::FromHex(job_id_env);
   }
   return options.job_id;
 }
@@ -174,13 +174,13 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // by all of core worker.
   RAY_LOG(DEBUG) << "Stats setup in core worker.";
   // Initialize stats in core worker global tags.
-  const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "core_worker"},
-                                            {ray::stats::VersionKey, "2.0.0.dev0"}};
+  const stats::TagsType global_tags = {{stats::ComponentKey, "core_worker"},
+                                            {stats::VersionKey, "2.0.0.dev0"}};
 
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
   // for java worker or in constructor of CoreWorker for python worker.
-  ray::stats::Init(global_tags, options_.metrics_agent_port);
+  stats::Init(global_tags, options_.metrics_agent_port);
 
 #ifndef _WIN32
   // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
@@ -198,7 +198,7 @@ CoreWorkerProcess::~CoreWorkerProcess() {
   RAY_LOG(INFO) << "Destructing CoreWorkerProcess. pid: " << getpid();
   RAY_LOG(DEBUG) << "Stats stop in core worker.";
   // Shutdown stats module if worker process exits.
-  ray::stats::Shutdown();
+  stats::Shutdown();
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
   }
@@ -458,7 +458,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.gcs_options.password_,
       /*enable_sync_conn=*/false, /*enable_async_conn=*/false,
       /*enable_subscribe_conn=*/true);
-  gcs_client_ = std::make_shared<ray::gcs::ServiceBasedGcsClient>(
+  gcs_client_ = std::make_shared<gcs::ServiceBasedGcsClient>(
       gcs_options, [this](std::pair<std::string, int> *address) {
         absl::MutexLock lock(&gcs_server_address_mutex_);
         if (gcs_server_address_.second != 0) {
@@ -511,7 +511,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             new rpc::CoreWorkerClient(addr, *client_call_manager_));
       });
 
-  if (options_.worker_type == ray::WorkerType::WORKER) {
+  if (options_.worker_type == WorkerType::WORKER) {
     periodical_runner_.RunFnPeriodically(
         [this] { CheckForRayletFailure(); },
         RayConfig::instance().raylet_death_check_interval_milliseconds());
@@ -521,9 +521,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.store_socket, local_raylet_client_, reference_counter_,
       options_.check_signals,
       /*warmup=*/
-      (options_.worker_type != ray::WorkerType::SPILL_WORKER &&
-       options_.worker_type != ray::WorkerType::RESTORE_WORKER &&
-       options_.worker_type != ray::WorkerType::UTIL_WORKER),
+      (options_.worker_type != WorkerType::SPILL_WORKER &&
+       options_.worker_type != WorkerType::RESTORE_WORKER &&
+       options_.worker_type != WorkerType::UTIL_WORKER),
       /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &object, const ObjectID &object_id) {

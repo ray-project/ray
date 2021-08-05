@@ -61,7 +61,7 @@ class MockRayletClient : public PinObjectsInterface {
  public:
   void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
-      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {
+      const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) override {
     RAY_LOG(INFO) << "PinObjectIDs " << object_ids.size();
     callbacks.push_back(callback);
   }

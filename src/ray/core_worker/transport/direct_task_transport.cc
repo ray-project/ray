@@ -195,7 +195,7 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
         ((candidate_entry.tasks_in_flight > victim_entry.tasks_in_flight) &&
          candidate_addr.worker_id != thief_addr.worker_id)) {
       // We copy the candidate's rpc::Address (instead of its rpc::WorkerAddress) because
-      // objects of type 'ray::rpc::WorkerAddress' cannot be assigned as their copy
+      // objects of type 'rpc::WorkerAddress' cannot be assigned as their copy
       // assignment operator is implicitly deleted
       *victim_raw_addr = candidate_addr.ToProto();
     }

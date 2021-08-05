@@ -655,10 +655,10 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
 
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog, argv[0],
-                                         ray::RayLogLevel::INFO,
+  InitShutdownRAII ray_log_shutdown_raii(RayLog::StartRayLog,
+                                         RayLog::ShutDownRayLog, argv[0],
+                                         RayLogLevel::INFO,
                                          /*log_dir=*/"");
-  ray::RayLog::InstallFailureSignalHandler();
+  RayLog::InstallFailureSignalHandler();
   return RUN_ALL_TESTS();
 }

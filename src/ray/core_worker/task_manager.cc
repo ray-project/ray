@@ -467,7 +467,7 @@ void TaskManager::MarkPendingTaskFailed(
       packer.pack_bin(pb_serialized_exception.size());
       packer.pack_bin_body(pb_serialized_exception.data(),
                            pb_serialized_exception.size());
-      ray::LocalMemoryBuffer final_buffer(msgpack_serialized_exception.size() +
+      LocalMemoryBuffer final_buffer(msgpack_serialized_exception.size() +
                                           kMessagePackOffset);
       // copy msgpack-serialized bytes
       std::memcpy(final_buffer.Data() + kMessagePackOffset,

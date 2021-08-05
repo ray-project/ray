@@ -35,7 +35,7 @@ class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
 
   ~MockActorInfoAccessor() {}
 
-  ray::Status AsyncSubscribe(
+  Status AsyncSubscribe(
       const ActorID &actor_id,
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const gcs::StatusCallback &done) {
@@ -138,8 +138,8 @@ class ActorManagerTest : public ::testing::Test {
     ActorID actor_id = ActorID::Of(job_id, task_id, 1);
     const auto caller_address = rpc::Address();
     const auto call_site = "";
-    RayFunction function(ray::Language::PYTHON,
-                         ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+    RayFunction function(Language::PYTHON,
+                         FunctionDescriptorBuilder::BuildPython("", "", "", ""));
 
     auto actor_handle = absl::make_unique<ActorHandle>(
         actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
@@ -165,8 +165,8 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   ActorID actor_id = ActorID::Of(job_id, task_id, 1);
   const auto caller_address = rpc::Address();
   const auto call_site = "";
-  RayFunction function(ray::Language::PYTHON,
-                       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+  RayFunction function(Language::PYTHON,
+                       FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   auto actor_handle = absl::make_unique<ActorHandle>(
       actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
       function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
@@ -218,8 +218,8 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
   ActorID actor_id = ActorID::Of(job_id, task_id, 1);
   const auto caller_address = rpc::Address();
   const auto call_site = "";
-  RayFunction function(ray::Language::PYTHON,
-                       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+  RayFunction function(Language::PYTHON,
+                       FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   auto actor_handle = absl::make_unique<ActorHandle>(
       actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
       function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);

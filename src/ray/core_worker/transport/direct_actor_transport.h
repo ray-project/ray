@@ -312,7 +312,7 @@ class InboundRequest {
   }
 
   bool CanExecute() const { return !has_pending_dependencies_; }
-  ray::TaskID TaskID() const { return task_id; }
+  TaskID TaskID() const { return task_id; }
   void MarkDependenciesSatisfied() { has_pending_dependencies_ = false; }
 
  private:
@@ -321,7 +321,7 @@ class InboundRequest {
   std::function<void(rpc::SendReplyCallback)> steal_callback_;
   rpc::SendReplyCallback send_reply_callback_;
 
-  ray::TaskID task_id;
+  TaskID task_id;
   bool has_pending_dependencies_;
 };
 
@@ -700,7 +700,7 @@ class CoreWorkerDirectTaskReceiver {
                            std::vector<std::shared_ptr<RayObject>> *return_objects,
                            ReferenceCounter::ReferenceTableProto *borrower_refs)>;
 
-  using OnTaskDone = std::function<ray::Status()>;
+  using OnTaskDone = std::function<Status()>;
 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                instrumented_io_context &main_io_service,

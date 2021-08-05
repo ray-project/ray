@@ -69,7 +69,7 @@ ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
     const ReferenceTableProto &proto) {
   ReferenceTable refs;
   for (const auto &ref : proto) {
-    refs.emplace(ray::ObjectID::FromBinary(ref.reference().object_id()),
+    refs.emplace(ObjectID::FromBinary(ref.reference().object_id()),
                  Reference::FromProto(ref));
   }
   return refs;

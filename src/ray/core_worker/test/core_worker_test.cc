@@ -59,7 +59,7 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
-  RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+  RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                               "actor creation task", "", "", ""));
   std::vector<std::unique_ptr<TaskArg>> args;
   args.emplace_back(new TaskArgByValue(
@@ -206,13 +206,13 @@ int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
   std::vector<std::unique_ptr<TaskArg>> args;
   TaskOptions options{"", 1, resources};
   std::vector<ObjectID> return_ids;
-  RayFunction func{Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+  RayFunction func{Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                          "GetWorkerPid", "", "", "")};
 
   CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, func, args, options,
                                                      &return_ids);
 
-  std::vector<std::shared_ptr<ray::RayObject>> results;
+  std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().Get(return_ids, -1, &results));
 
   if (nullptr == results[0]->GetData()) {
@@ -244,7 +244,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
           std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
       args.emplace_back(new TaskArgByReference(object_id, driver.GetRpcAddress()));
 
-      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+      RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                                   "MergeInputArgsAsOutput", "", "", ""));
       TaskOptions options;
       std::vector<ObjectID> return_ids;
@@ -254,7 +254,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
 
       ASSERT_EQ(return_ids.size(), 1);
 
-      std::vector<std::shared_ptr<ray::RayObject>> results;
+      std::vector<std::shared_ptr<RayObject>> results;
       RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
@@ -289,13 +289,13 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
       TaskOptions options{"", 1, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+      RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                                   "MergeInputArgsAsOutput", "", "", ""));
 
       driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
       ASSERT_EQ(return_ids.size(), 1);
 
-      std::vector<std::shared_ptr<ray::RayObject>> results;
+      std::vector<std::shared_ptr<RayObject>> results;
       RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
@@ -331,13 +331,13 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
     TaskOptions options{"", 1, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+    RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                                 "MergeInputArgsAsOutput", "", "", ""));
     driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
 
     ASSERT_EQ(return_ids.size(), 1);
 
-    std::vector<std::shared_ptr<ray::RayObject>> results;
+    std::vector<std::shared_ptr<RayObject>> results;
     RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
 
     ASSERT_EQ(results.size(), 1);
@@ -393,7 +393,7 @@ void CoreWorkerTest::TestActorRestart(
 
       TaskOptions options{"", 1, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+      RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                                   "MergeInputArgsAsOutput", "", "", ""));
 
       driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
@@ -436,7 +436,7 @@ void CoreWorkerTest::TestActorFailure(
 
       TaskOptions options{"", 1, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+      RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                                   "MergeInputArgsAsOutput", "", "", ""));
 
       driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
@@ -487,8 +487,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   // to benchmark performance.
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
-  RayFunction function(ray::Language::PYTHON,
-                       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+  RayFunction function(Language::PYTHON,
+                       FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   std::vector<std::unique_ptr<TaskArg>> args;
   args.emplace_back(new TaskArgByValue(
       std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
@@ -570,7 +570,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
 
     TaskOptions options{"", 1, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+    RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                                 "MergeInputArgsAsOutput", "", "", ""));
 
     driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
@@ -631,7 +631,7 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
   ActorHandle original(
       ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0), TaskID::Nil(),
       rpc::Address(), job_id, ObjectID::FromRandom(), Language::PYTHON,
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""), "", 0);
+      FunctionDescriptorBuilder::BuildPython("", "", "", ""), "", 0);
   std::string output;
   original.Serialize(&output);
   ActorHandle deserialized(output);
@@ -839,9 +839,9 @@ TEST_F(SingleNodeTest, TestCancelTasks) {
   auto &driver = CoreWorkerProcess::GetCoreWorker();
 
   // Create two functions, each implementing a while(true) loop.
-  RayFunction func1(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+  RayFunction func1(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                                "WhileTrueLoop", "", "", ""));
-  RayFunction func2(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+  RayFunction func2(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                                "WhileTrueLoop", "", "", ""));
   // Return IDs for the two functions that implement while(true) loops.
   std::vector<ObjectID> return_ids1;
@@ -922,17 +922,17 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 6);
-  ray::TEST_RAYLET_EXEC_PATH = std::string(argv[1]);
+  TEST_RAYLET_EXEC_PATH = std::string(argv[1]);
 
   auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
   std::mt19937 gen(seed);
   std::uniform_int_distribution<int> random_gen{2000, 2009};
   // Use random port to avoid port conflicts between UTs.
   node_manager_port = random_gen(gen);
-  ray::TEST_MOCK_WORKER_EXEC_PATH = std::string(argv[2]);
-  ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[3]);
+  TEST_MOCK_WORKER_EXEC_PATH = std::string(argv[2]);
+  TEST_GCS_SERVER_EXEC_PATH = std::string(argv[3]);
 
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = std::string(argv[4]);
-  ray::TEST_REDIS_SERVER_EXEC_PATH = std::string(argv[5]);
+  TEST_REDIS_CLIENT_EXEC_PATH = std::string(argv[4]);
+  TEST_REDIS_SERVER_EXEC_PATH = std::string(argv[5]);
   return RUN_ALL_TESTS();
 }
