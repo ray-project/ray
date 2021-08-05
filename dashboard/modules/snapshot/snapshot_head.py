@@ -85,11 +85,7 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
                 "current_worker_id": actor_table_entry.address.worker_id.hex(),
                 "current_raylet_id": actor_table_entry.address.raylet_id.hex(),
                 "ip_address": actor_table_entry.address.ip_address,
-                "port": actor_table_entry.address.port,
-                "ray_replica_id": "TODO",
-                "metadata": {
-                    "deployment_id": "TODO"
-                }
+                "port": actor_table_entry.address.port
             }
             actors[actor_id] = entry
         return actors
