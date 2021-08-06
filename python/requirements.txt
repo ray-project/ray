@@ -6,6 +6,7 @@
 #
 # setup.py install_requires
 aiohttp==3.7
+aiohttp_cors
 aioredis < 2
 click >= 7.0
 cloudpickle
@@ -82,3 +83,8 @@ smart_open[s3]
 tqdm
 async-exit-stack
 async-generator
+
+# [default]
+colorful
+# Needs gcc
+py-spy
