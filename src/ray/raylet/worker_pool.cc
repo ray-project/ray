@@ -152,18 +152,18 @@ void WorkerPool::SetAgentManager(std::shared_ptr<AgentManager> agent_manager) {
   agent_manager_ = agent_manager;
 }
 
-inline void WorkerPool::PopWorkerCallbackAsync(const PopWorkerCallback &callback,
-                                               std::shared_ptr<WorkerInterface> worker,
-                                               PopWorkerStatus status) {
+void WorkerPool::PopWorkerCallbackAsync(const PopWorkerCallback &callback,
+                                        std::shared_ptr<WorkerInterface> worker,
+                                        PopWorkerStatus status) {
   // Call back this function asynchronously to make sure executed in different stack.
   io_service_->post([this, callback, worker, status]() {
     PopWorkerCallbackInternal(callback, worker, status);
   });
 }
 
-inline void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
-                                                  std::shared_ptr<WorkerInterface> worker,
-                                                  PopWorkerStatus status) {
+void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
+                                           std::shared_ptr<WorkerInterface> worker,
+                                           PopWorkerStatus status) {
   RAY_CHECK(callback);
   auto dispatched = callback(worker, status);
   if (worker && !dispatched) {
