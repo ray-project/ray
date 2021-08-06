@@ -578,6 +578,30 @@ def test_warning_all_tasks_blocked(shutdown_only):
     assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR
 
 
+def test_warning_many_actor_tasks_queued(shutdown_only):
+    ray.init(num_cpus=1)
+    p = init_error_pubsub()
+
+    @ray.remote(num_cpus=1)
+    class Foo:
+        def f(self):
+            import time
+            time.sleep(1)
+
+    a = Foo.remote()
+    [a.f.remote() for _ in range(50000)]
+    errors = get_error_message(p, 4, ray_constants.EXCESS_QUEUEING_WARNING)
+    msgs = [e.error_message for e in errors]
+    assert ("Warning: More than 5000 tasks are pending submission to actor" in
+            msgs[0])
+    assert ("Warning: More than 10000 tasks are pending submission to actor" in
+            msgs[1])
+    assert ("Warning: More than 20000 tasks are pending submission to actor" in
+            msgs[2])
+    assert ("Warning: More than 40000 tasks are pending submission to actor" in
+            msgs[3])
+
+
 def test_warning_actor_waiting_on_actor(shutdown_only):
     ray.init(
         num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})

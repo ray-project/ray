@@ -85,11 +85,11 @@ class WorkerPoolInterface {
   /// cases:
   /// Case 1: An suitable worker was found in idle worker pool.
   /// Case 2: An suitable worker registered to raylet.
-  /// \param allocated_instances_serialized_json The allocated resouce instances
+  /// \param allocated_instances_serialized_json The allocated resource instances
   /// json string, it contains resource ID which assigned to this worker.
   /// Instance resource value will be like {"GPU":[10000,0,10000]}, non-instance
   /// resource value will be {"CPU":20000}.
-  /// \return An idle worker with tit he requested task spec. Returns nullptr if no
+  /// \return An idle worker with the requested task spec. Returns nullptr if no
   /// such worker exists.
   virtual void PopWorker(
       const TaskSpecification &task_spec, const PopWorkerCallback &callback,
@@ -628,7 +628,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// The number of registered workers of the first job.
   int first_job_registered_python_worker_count_;
 
-  /// The umber of initial Python workers to wait for the first job before the driver
+  /// The number of initial Python workers to wait for the first job before the driver
   /// receives RegisterClientReply.
   int first_job_driver_wait_num_python_workers_;
 

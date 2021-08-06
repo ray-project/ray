@@ -1554,6 +1554,13 @@ py_test(
     srcs = ["tests/test_filters.py"]
 )
 
+py_test(
+    name = "tests/test_gpus",
+    tags = ["tests_dir", "tests_dir_G"],
+    size = "large",
+    srcs = ["tests/test_gpus.py"]
+)
+
 #py_test(
 #    name = "tests/test_ignore_worker_failure",
 #    tags = ["tests_dir", "tests_dir_I"],

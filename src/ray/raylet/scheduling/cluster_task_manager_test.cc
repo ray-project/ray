@@ -89,6 +89,15 @@ class MockWorkerPool : public WorkerPoolInterface {
     }
   }
 
+  size_t CallbackSize(int runtime_env_hash) {
+    auto cb_it = callbacks.find(runtime_env_hash);
+    if (cb_it != callbacks.end()) {
+      auto &list = cb_it->second;
+      return list.size();
+    }
+    return 0;
+  }
+
   std::list<std::shared_ptr<WorkerInterface>> workers;
   std::unordered_map<int, std::list<PopWorkerCallback>> callbacks;
   int num_pops;
@@ -159,6 +168,8 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
   bool TaskDependenciesBlocked(const TaskID &task_id) const {
     return blocked_tasks.count(task_id);
   }
+
+  bool CheckObjectLocal(const ObjectID &object_id) const { return true; }
 
   std::unordered_set<ObjectID> &missing_objects_;
   std::unordered_set<TaskID> subscribed_tasks;
@@ -1458,6 +1469,53 @@ TEST_F(ClusterTaskManagerTest, TestResourceDiff) {
   scheduling_resources->SetLoadResources(std::move(res));
   task_manager_.FillResourceUsage(resource_data, scheduling_resources);
   ASSERT_TRUE(resource_data.resource_load_changed());
+}
+
+TEST_F(ClusterTaskManagerTest, PopWorkerExactlyOnce) {
+  // Create and queue one task.
+  std::string serialized_runtime_env = "mock_env";
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}}, /*num_args=*/0, /*args=*/{},
+                         serialized_runtime_env);
+  auto runtime_env_hash = task.GetTaskSpecification().GetRuntimeEnvHash();
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
+                                          std::function<void()>) {
+    *callback_occurred_ptr = true;
+  };
+
+  task_manager_.QueueAndScheduleTask(task, &reply, callback);
+
+  // Make sure callback doesn't occurred.
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  // Popworker was called once.
+  ASSERT_EQ(pool_.CallbackSize(runtime_env_hash), 1);
+  // Try to schedule and dispatch tasks.
+  task_manager_.ScheduleAndDispatchTasks();
+  // Popworker has been called once, don't call it repeatedly.
+  ASSERT_EQ(pool_.CallbackSize(runtime_env_hash), 1);
+  // Push a worker and try to call back.
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  pool_.TryToCallback();
+  // Make sure callback has occurred.
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  // Try to schedule and dispatch tasks.
+  task_manager_.ScheduleAndDispatchTasks();
+  // Worker has been popped. Don't call `PopWorker` repeatedly.
+  ASSERT_EQ(pool_.CallbackSize(runtime_env_hash), 0);
+
+  Task finished_task;
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
+            task.GetTaskSpecification().TaskId());
+  AssertNoLeaks();
 }
 
 int main(int argc, char **argv) {
