@@ -222,6 +222,39 @@ class TestSampleBatch(unittest.TestCase):
                 "state_in_0": [1.0, 3.0, 4.0],
             })
 
+    def test_copy(self):
+        s = SampleBatch({
+            "a": np.array([1, 2, 3, 2, 3, 4]),
+            "b": {
+                "c": np.array([4, 5, 6, 5, 6, 7])
+            },
+            "seq_lens": [2, 3, 1],
+            "state_in_0": [1.0, 3.0, 4.0],
+        })
+        s_copy = s.copy(shallow=False)
+        s_copy["a"][0] = 100
+        s_copy["b"]["c"][0] = 200
+        s_copy["seq_lens"][0] = 3
+        s_copy["seq_lens"][1] = 2
+        s_copy["state_in_0"][0] = 400.0
+        self.assertNotEqual(s["a"][0], s_copy["a"][0])
+        self.assertNotEqual(s["b"]["c"][0], s_copy["b"]["c"][0])
+        self.assertNotEqual(s["seq_lens"][0], s_copy["seq_lens"][0])
+        self.assertNotEqual(s["seq_lens"][1], s_copy["seq_lens"][1])
+        self.assertNotEqual(s["state_in_0"][0], s_copy["state_in_0"][0])
+
+        s_copy = s.copy(shallow=True)
+        s_copy["a"][0] = 100
+        s_copy["b"]["c"][0] = 200
+        s_copy["seq_lens"][0] = 3
+        s_copy["seq_lens"][1] = 2
+        s_copy["state_in_0"][0] = 400.0
+        self.assertEqual(s["a"][0], s_copy["a"][0])
+        self.assertEqual(s["b"]["c"][0], s_copy["b"]["c"][0])
+        self.assertEqual(s["seq_lens"][0], s_copy["seq_lens"][0])
+        self.assertEqual(s["seq_lens"][1], s_copy["seq_lens"][1])
+        self.assertEqual(s["state_in_0"][0], s_copy["state_in_0"][0])
+
 
 if __name__ == "__main__":
     import pytest

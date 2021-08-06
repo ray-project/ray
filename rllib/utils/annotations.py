@@ -1,3 +1,7 @@
+from ray.util import log_once
+from ray.rllib.utils.deprecation import deprecation_warning
+
+
 def override(cls):
     """Annotation for documenting method overrides.
 
@@ -47,7 +51,7 @@ def DeveloperAPI(obj):
     return obj
 
 
-def Deprecated(obj):
+def Deprecated(old=None, *, new=None, help=None, error):
     """Annotation for documenting a (soon-to-be) deprecated method.
 
     Methods tagged with this decorator should produce a
@@ -60,4 +64,17 @@ def Deprecated(obj):
     In a further major release, the method should be erased.
     """
 
-    return obj
+    def _inner(obj):
+        def _ctor(*args, **kwargs):
+            if log_once(old or obj.__name__):
+                deprecation_warning(
+                    old=old or obj.__name__,
+                    new=new,
+                    help=help,
+                    error=error,
+                )
+            return obj(*args, **kwargs)
+
+        return _ctor
+
+    return _inner

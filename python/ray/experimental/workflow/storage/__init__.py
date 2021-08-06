@@ -1,7 +1,8 @@
 import logging
 import urllib.parse as parse
 from ray.experimental.workflow.storage.base import Storage
-from ray.experimental.workflow.storage.base import DataLoadError, DataSaveError
+from ray.experimental.workflow.storage.base import (
+    DataLoadError, DataSaveError, KeyNotFoundError)
 
 logger = logging.getLogger(__name__)
 
@@ -63,4 +64,5 @@ def set_global_storage(storage: Storage) -> None:
 
 
 __all__ = ("Storage", "get_global_storage", "create_storage",
-           "set_global_storage", "DataLoadError", "DataSaveError")
+           "set_global_storage", "DataLoadError", "DataSaveError",
+           "KeyNotFoundError")

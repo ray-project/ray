@@ -25,7 +25,7 @@ from ray.serve.common import BackendInfo, GoalId
 from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
-from ray.serve.controller import BackendTag, ReplicaTag, ServeController
+from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view)
@@ -60,21 +60,21 @@ def _set_global_client(client):
 @dataclass
 class ReplicaContext:
     """Stores data for Serve API calls from within the user's backend code."""
-    backend_tag: BackendTag
+    deployment: str
     replica_tag: ReplicaTag
     _internal_controller_name: str
     servable_object: Callable
 
 
 def _set_internal_replica_context(
-        backend_tag: BackendTag,
+        deployment: str,
         replica_tag: ReplicaTag,
         controller_name: str,
         servable_object: Callable,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        backend_tag, replica_tag, controller_name, servable_object)
+        deployment, replica_tag, controller_name, servable_object)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -594,7 +594,7 @@ def start(
     Client object (or when the script exits). If detached is set to True, the
     instance will instead persist until serve.shutdown() is called. This is
     only relevant if connecting to a long-running Ray cluster (e.g., with
-    ray.init(address="auto") or ray.util.connect("<remote_addr>")).
+    ray.init(address="auto") or ray.init("ray://<remote_addr>")).
 
     Args:
         detached (bool): Whether not the instance should be detached from this
@@ -987,19 +987,17 @@ def get_handle(
 
 @PublicAPI
 def get_replica_context() -> ReplicaContext:
-    """When called from a backend, returns the backend tag and replica tag.
-
-    When not called from a backend, returns None.
+    """If called from a deployment, returns the deployment and replica tag.
 
     A replica tag uniquely identifies a single replica for a Ray Serve
-    backend at runtime.  Replica tags are of the form
-    `<backend tag>#<random letters>`.
+    deployment at runtime.  Replica tags are of the form
+    `<deployment_name>#<random letters>`.
 
     Raises:
-        RayServeException: if not called from within a Ray Serve backend
+        RayServeException: if not called from within a Ray Serve deployment.
     Example:
-        >>> serve.get_replica_context().backend_tag # my_backend
-        >>> serve.get_replica_context().replica_tag # my_backend#krcwoa
+        >>> serve.get_replica_context().deployment # deployment_name
+        >>> serve.get_replica_context().replica_tag # deployment_name#krcwoa
     """
     if _INTERNAL_REPLICA_CONTEXT is None:
         raise RayServeException("`serve.get_replica_context()` "

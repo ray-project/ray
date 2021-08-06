@@ -554,8 +554,12 @@ def _env_runner(
             extra_batch_callback,
             env_id=env_id)
         # Call each policy's Exploration.on_episode_start method.
-        # types: Policy
-        for p in worker.policy_map.values():
+        # Note: This may break the exploration (e.g. ParameterNoise) of
+        # policies in the `policy_map` that have not been recently used
+        # (and are therefore stashed to disk). However, we certainly do not
+        # want to loop through all (even stashed) policies here as that
+        # would counter the purpose of the LRU policy caching.
+        for p in worker.policy_map.cache.values():
             if getattr(p, "exploration", None) is not None:
                 p.exploration.on_episode_start(
                     policy=p,
@@ -904,8 +908,14 @@ def _process_observations(
             if ma_sample_batch:
                 outputs.append(ma_sample_batch)
 
-            # Call each policy's Exploration.on_episode_end method.
-            for p in worker.policy_map.values():
+            # Call each (in-memory) policy's Exploration.on_episode_end
+            # method.
+            # Note: This may break the exploration (e.g. ParameterNoise) of
+            # policies in the `policy_map` that have not been recently used
+            # (and are therefore stashed to disk). However, we certainly do not
+            # want to loop through all (even stashed) policies here as that
+            # would counter the purpose of the LRU policy caching.
+            for p in worker.policy_map.cache.values():
                 if getattr(p, "exploration", None) is not None:
                     p.exploration.on_episode_end(
                         policy=p,

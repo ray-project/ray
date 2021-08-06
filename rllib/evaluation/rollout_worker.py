@@ -2,13 +2,13 @@ import random
 import numpy as np
 import gym
 import logging
-import pickle
 import platform
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
     TYPE_CHECKING, Union
 
 import ray
+from ray import cloudpickle as pickle
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
@@ -29,7 +29,6 @@ from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
-from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -688,8 +687,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                sample_collector_class=policy_config.get(
-                    "sample_collector_class"),
+                sample_collector_class=policy_config.get("sample_collector"),
                 render=render,
             )
             # Start the Sampler thread.
@@ -709,8 +707,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                sample_collector_class=policy_config.get(
-                    "sample_collector_class"),
+                sample_collector_class=policy_config.get("sample_collector"),
                 render=render,
             )
 
@@ -1058,7 +1055,6 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_space: Optional[gym.spaces.Space] = None,
             action_space: Optional[gym.spaces.Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
-            policy_config: Optional[TrainerConfigDict] = None,
             policy_mapping_fn: Optional[Callable[
                 [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
@@ -1096,14 +1092,16 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_dict = _determine_spaces_for_multi_agent_dict(
             {
                 policy_id: PolicySpec(policy_cls, observation_space,
-                                      action_space, config)
+                                      action_space, config or {})
             },
             self.env,
             spaces=self.spaces,
-            policy_config=policy_config)
-
+            policy_config=self.policy_config,
+        )
         self._build_policy_map(
-            policy_dict, policy_config, seed=policy_config.get("seed"))
+            policy_dict,
+            self.policy_config,
+            seed=self.policy_config.get("seed"))
         new_policy = self.policy_map[policy_id]
 
         self.filters[policy_id] = get_filter(
@@ -1245,11 +1243,16 @@ class RolloutWorker(ParallelIteratorWorker):
     @DeveloperAPI
     def save(self) -> bytes:
         filters = self.get_filters(flush_after=True)
-        state = {
-            pid: self.policy_map[pid].get_state()
-            for pid in self.policy_map
-        }
-        return pickle.dumps({"filters": filters, "state": state})
+        state = {}
+        policy_specs = {}
+        for pid in self.policy_map:
+            state[pid] = self.policy_map[pid].get_state()
+            policy_specs[pid] = self.policy_map.policy_specs[pid]
+        return pickle.dumps({
+            "filters": filters,
+            "state": state,
+            "policy_specs": policy_specs,
+        })
 
     @DeveloperAPI
     def restore(self, objs: bytes) -> None:
@@ -1257,12 +1260,23 @@ class RolloutWorker(ParallelIteratorWorker):
         self.sync_filters(objs["filters"])
         for pid, state in objs["state"].items():
             if pid not in self.policy_map:
-                logger.warning(
-                    f"pid={pid} not found in policy_map! It was probably added"
-                    " on-the-fly and is not part of the static `config."
-                    "multiagent.policies` dict. Ignoring it for now.")
-                continue
-            self.policy_map[pid].set_state(state)
+                pol_spec = objs.get("policy_specs", {}).get(pid)
+                if not pol_spec:
+                    logger.warning(
+                        f"PolicyID '{pid}' was probably added on-the-fly (not"
+                        " part of the static `multagent.policies` config) and"
+                        " no PolicySpec objects found in the pickled policy "
+                        "state. Will not add `{pid}`, but ignore it for now.")
+                else:
+                    self.add_policy(
+                        policy_id=pid,
+                        policy_cls=pol_spec.policy_class,
+                        observation_space=pol_spec.observation_space,
+                        action_space=pol_spec.action_space,
+                        config=pol_spec.config,
+                    )
+            else:
+                self.policy_map[pid].set_state(state)
 
     @DeveloperAPI
     def set_global_vars(self, global_vars: dict) -> None:
@@ -1475,10 +1489,3 @@ def _validate_env(env: Any) -> EnvType:
             "ExternalEnv, VectorEnv, or BaseEnv. The provided env creator "
             "function returned {} ({}).".format(env, type(env)))
     return env
-
-
-def _has_tensorflow_graph(policy_dict: MultiAgentPolicyConfigDict) -> bool:
-    for policy, _, _, _ in policy_dict.values():
-        if issubclass(policy, TFPolicy):
-            return True
-    return False

@@ -205,6 +205,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
                                  const ClientCallback<AssignObjectOwnerReply> &callback) {
   }
 
+  /// Returns the max acked sequence number, useful for checking on progress.
+  virtual int64_t ClientProcessedUpToSeqno() { return -1; }
+
   virtual ~CoreWorkerClientInterface(){};
 };
 
@@ -345,6 +348,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     if (!send_queue_.empty()) {
       RAY_LOG(DEBUG) << "client send queue size " << send_queue_.size();
     }
+  }
+
+  /// Returns the max acked sequence number, useful for checking on progress.
+  int64_t ClientProcessedUpToSeqno() override {
+    absl::MutexLock lock(&mutex_);
+    return max_finished_seq_no_;
   }
 
  private:

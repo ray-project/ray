@@ -303,6 +303,8 @@ Cancelling tasks
 
     Task cancellation hasn't been implemented in Java yet.
 
+.. _objects-in-ray:
+
 Objects in Ray
 --------------
 
