@@ -30,8 +30,8 @@ flask
 gym
 lz4
 scikit-image
-pandas==1.3.0
-scipy==1.7.0
+pandas>=1.3.0
+scipy>=1.7.0
 tabulate
 tensorboardX >= 1.9
 uvicorn
