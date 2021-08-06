@@ -20,12 +20,16 @@ def pass_1(x: str, y: str):
 
 @workflow.step
 def pass_2(x: str, y: str):
-    return sha1((x + y + "2").encode()).hexdigest()
+    if sha1((x + y + "_2").encode()).hexdigest() > x:
+        return sha1((x + y + "2").encode()).hexdigest()
+    return pass_1.step(x, y)
 
 
 @workflow.step
 def pass_3(x: str, y: str):
-    return sha1((x + y + "3").encode()).hexdigest()
+    if sha1((x + y + "_3").encode()).hexdigest() > x:
+        return sha1((x + y + "3").encode()).hexdigest()
+    return pass_2.step(x, y)
 
 
 def construct_linear_workflow(input: str, length: int):
