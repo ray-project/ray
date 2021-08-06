@@ -27,6 +27,9 @@
 namespace ray {
 
 namespace internal {
+
+using ray::core::RayFunction;
+
 /// Execute remote functions by networking stream.
 msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
                                       const std::vector<msgpack::sbuffer> &args_buffer,
