@@ -79,11 +79,16 @@ def test_failure_with_storage(workflow_start_regular):
     debug_store = DebugStorage(get_global_storage())
     _alter_storage(debug_store)
 
-    wf = construct_workflow(10)
+    wf = construct_workflow(5)
     result = wf.run(workflow_id="complex_workflow")
+    key = debug_store.wrapped_storage.make_key("complex_workflow")
+    index = _locate_initial_commit(debug_store) + 1
 
-    index = _locate_initial_commit(debug_store)
-    replays = [debug_store.replay(i) for i in range(index)]
-    asyncio_run(asyncio.gather(*replays))
-    resumed_result = ray.get(workflow.resume(workflow_id="complex_workflow"))
-    assert resumed_result == result
+    step_len = max((len(debug_store) - index) // 5, 1)
+    for j in range(index, len(debug_store), step_len):
+        asyncio_run(debug_store.wrapped_storage.delete_prefix(key))
+        replays = [debug_store.replay(i) for i in range(j)]
+        asyncio_run(asyncio.gather(*replays))
+        resumed_result = ray.get(
+            workflow.resume(workflow_id="complex_workflow"))
+        assert resumed_result == result
