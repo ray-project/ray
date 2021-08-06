@@ -838,6 +838,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
 
+  int64_t GetNumTasksSubmitted() const {
+    return direct_task_submitter_->GetNumTasksSubmitted();
+  }
+
+  int64_t GetNumLeasesRequested() const {
+    return direct_task_submitter_->GetNumLeasesRequested();
+  }
+
  public:
   /// Allocate the return object for an executing task. The caller should write into the
   /// data buffer of the allocated buffer, then call SealReturnObject() to seal it.

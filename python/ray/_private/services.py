@@ -16,10 +16,12 @@ import subprocess
 import sys
 import time
 from typing import Optional
+import warnings
 
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
+from ray.util.debug import log_once
 import redis
 
 # Import psutil and colorama after ray so the packaged version is used.
@@ -1184,10 +1186,18 @@ def start_dashboard(require_dashboard,
         except ImportError:
             warning_message = (
                 "Not all Ray Dashboard dependencies were found. "
-                "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
-                "only be usable via `pip install 'ray[default]'`. Please "
-                "update your install command.")
-            raise ImportError(warning_message)
+                "To use the dashboard please install Ray like so: `pip "
+                "install ray[default]`.")
+            if require_dashboard:
+                raise ImportError(warning_message)
+            else:
+                if log_once("dashboard_failed_import") and not os.getenv(
+                        "RAY_DISABLE_IMPORT_WARNING") == "1":
+                    warning_message += " To disable this message, set " \
+                                       "RAY_DISABLE_IMPORT_WARNING " \
+                                       "env var to '1'."
+                    warnings.warn(warning_message)
+                return None, None
 
         # Start the dashboard process.
         dashboard_dir = "new_dashboard"

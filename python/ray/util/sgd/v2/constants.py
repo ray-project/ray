@@ -1,7 +1,5 @@
-from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
-from ray.util.sgd.v2.backends.torch import TorchConfig
+TIME_THIS_ITER_S = "_time_this_iter_s"
 
-BACKEND_NAME_TO_CONFIG_CLS = {
-    "tensorflow": TensorflowConfig,
-    "torch": TorchConfig
-}
+# Time between Session.get_next checks when fetching
+# new results after signaling the training function to continue.
+RESULT_FETCH_TIMEOUT = 0.2

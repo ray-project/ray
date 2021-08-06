@@ -20,7 +20,8 @@ import ray._private.utils
 from ray.util.queue import Queue, _QueueActor, Empty
 import requests
 from ray.scripts.scripts import main as ray_main
-
+from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
+                                               get_hook_logger)
 try:
     from prometheus_client.parser import text_string_to_metric_families
 except (ImportError, ModuleNotFoundError):
@@ -592,6 +593,15 @@ def load_test_config(config_file_name):
 def set_setup_func():
     import ray._private.runtime_env as runtime_env
     runtime_env.VAR = "hello world"
+
+
+def sleep_setup_runtime_env(runtime_env: dict, session_dir):
+    logger = get_hook_logger()
+    logger.info(f"Setting up runtime environment {runtime_env}")
+    logger.info("Simulating long runtime env setup.  Sleeping for 15s...")
+    time.sleep(15)
+    logger.info("Finished sleeping for 15s")
+    return RuntimeEnvContext()
 
 
 class BatchQueue(Queue):
