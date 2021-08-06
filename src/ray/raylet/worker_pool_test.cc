@@ -116,6 +116,15 @@ class WorkerPoolMock : public WorkerPool {
 
   using WorkerPool::StartWorkerProcess;  // we need this to be public for testing
 
+  using WorkerPool::PopWorkerCallbackInternal;
+
+  // Mock `PopWorkerCallbackAsync` to synchronized function.
+  void PopWorkerCallbackAsync(const PopWorkerCallback &callback,
+                              std::shared_ptr<WorkerInterface> worker,
+                              PopWorkerStatus status = PopWorkerStatus::OK) override {
+    PopWorkerCallbackInternal(callback, worker, status);
+  }
+
   Process StartProcess(const std::vector<std::string> &worker_command_args,
                        const ProcessEnvironment &env) override {
     // Use a bogus process ID that won't conflict with those in the system
@@ -262,8 +271,9 @@ class WorkerPoolMock : public WorkerPool {
   }
 
   // We have mocked worker starting and runtime env creation to make the execution of pop
-  // worker synchronously. \param[in] push_workers If true, tries to push the workers from
-  // the started processes.
+  // worker synchronously.
+  // \param[in] push_workers If true, tries to push the workers from the started
+  // processes.
   std::shared_ptr<WorkerInterface> PopWorkerSync(const TaskSpecification &task_spec,
                                                  bool push_workers = true) {
     std::shared_ptr<WorkerInterface> popped_worker = nullptr;
@@ -1297,6 +1307,48 @@ TEST_F(WorkerPoolTest, StartWorkWithDifferentShimPid) {
   last_process = worker_pool_->LastStartedWorkerProcess();
   shim_pid = last_process.GetId();
   ASSERT_EQ(shim_pid, worker->GetShimProcess().GetId());
+  worker_pool_->ClearProcesses();
+}
+
+TEST_F(WorkerPoolTest, WorkerNoLeaks) {
+  std::shared_ptr<WorkerInterface> popped_worker;
+  const auto task_spec = ExampleTaskSpec();
+
+  // Pop a worker and don't dispatch.
+  worker_pool_->PopWorker(
+      task_spec,
+      [](const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status) -> bool {
+        // Don't dispatch this worker.
+        return false;
+      });
+  // One worker process has been started.
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+  // No idle workers because no workers pushed.
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
+  // push workers.
+  worker_pool_->PushWorkers();
+  // The worker has been pushed but not dispatched.
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+  // Pop a worker and don't dispatch.
+  worker_pool_->PopWorker(
+      task_spec,
+      [](const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status) -> bool {
+        // Don't dispatch this worker.
+        return false;
+      });
+  // The worker is popped but not dispatched.
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+  // Pop a worker and dispatch.
+  worker_pool_->PopWorker(
+      task_spec,
+      [](const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status) -> bool {
+        // Dispatch this worker.
+        return true;
+      });
+  // The worker is popped and dispatched.
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
   worker_pool_->ClearProcesses();
 }
 

@@ -429,6 +429,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
 
+  /// Make this synchronized function for unit test.
+  void PopWorkerCallbackInternal(const PopWorkerCallback &callback,
+                                 std::shared_ptr<WorkerInterface> worker,
+                                 PopWorkerStatus status);
+
   struct IOWorkerState {
     /// The pool of idle I/O workers.
     std::queue<std::shared_ptr<WorkerInterface>> idle_io_workers;
@@ -576,9 +581,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Call the `PopWorkerCallback` function asynchronously to make sure executed in
   /// different stack.
-  inline void PopWorkerCallbackAsync(const PopWorkerCallback &callback,
-                                     std::shared_ptr<WorkerInterface> worker,
-                                     PopWorkerStatus status = PopWorkerStatus::OK);
+  virtual void PopWorkerCallbackAsync(const PopWorkerCallback &callback,
+                                      std::shared_ptr<WorkerInterface> worker,
+                                      PopWorkerStatus status = PopWorkerStatus::OK);
 
   /// Try to assign task which waiting for workers.
   /// \param workers_to_tasks The queue of tasks which waiting for workers.
