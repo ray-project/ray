@@ -1,12 +1,15 @@
 # coding: utf-8
 from abc import ABC, abstractmethod
 import logging
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
 from ray.tune.resources import Resources
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.error import TuneError
 from ray.tune.cluster_info import is_ray_cluster
+
+if TYPE_CHECKING:
+    from ray.tune.trial_runner import TrialRunner
 
 logger = logging.getLogger(__name__)
 
@@ -171,10 +174,7 @@ class TrialExecutor(ABC):
         """Returns all running trials."""
         pass
 
-    def on_step_begin(
-            self,
-            trials: Union[List[Trial], "ray.tune.trial_runner.TrialRunner"]
-    ) -> None:
+    def on_step_begin(self, trials: Union[List[Trial], "TrialRunner"]) -> None:
         """A hook called before running one step of the trial event loop.
 
         Args:
@@ -183,10 +183,7 @@ class TrialExecutor(ABC):
         """
         pass
 
-    def on_step_end(
-            self,
-            trials: Union[List[Trial], "ray.tune.trial_runner.TrialRunner"]
-    ) -> None:
+    def on_step_end(self, trials: Union[List[Trial], "TrialRunner"]) -> None:
         """A hook called after running one step of the trial event loop.
 
         Args:
@@ -199,9 +196,7 @@ class TrialExecutor(ABC):
         pass
 
     def on_no_available_trials(
-            self,
-            trials: Union[List[Trial], "ray.tune.trial_runner.TrialRunner"]
-    ) -> None:
+            self, trials: Union[List[Trial], "TrialRunner"]) -> None:
         """
         Args:
             trials (List[Trial]): The list of trials. Note, refrain from
@@ -240,7 +235,7 @@ class TrialExecutor(ABC):
                                 "trials with sufficient resources.")
 
     @abstractmethod
-    def get_next_available_trial(self) -> Trial:
+    def get_next_available_trial(self) -> Optional[Trial]:
         """Blocking call that waits until one result is ready.
 
         Returns:
@@ -249,7 +244,7 @@ class TrialExecutor(ABC):
         pass
 
     @abstractmethod
-    def get_next_failed_trial(self) -> Trial:
+    def get_next_failed_trial(self) -> Optional[Trial]:
         """Non-blocking call that detects and returns one failed trial.
 
         Returns:
@@ -335,9 +330,7 @@ class TrialExecutor(ABC):
         """Returns True if GPUs are detected on the cluster."""
         return None
 
-    def cleanup(self,
-                trials: Union[List[Trial], "ray.tune.trial_runner.TrialRunner"]
-                ) -> None:
+    def cleanup(self, trials: Union[List[Trial], "TrialRunner"]) -> None:
         """Ensures that trials are cleaned up after stopping.
 
         Args:

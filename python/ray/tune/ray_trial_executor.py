@@ -13,6 +13,7 @@ from typing import (
     Iterable,
     List,
     Optional,
+    TYPE_CHECKING,
     Union,
 )
 
@@ -33,6 +34,9 @@ from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
 from ray.util import log_once
+
+if TYPE_CHECKING:
+    from ray.tune.trial_runner import TrialRunner
 
 logger = logging.getLogger(__name__)
 
@@ -961,10 +965,7 @@ class RayTrialExecutor(TrialExecutor):
         else:
             return "? CPUs, ? GPUs"
 
-    def on_step_begin(
-            self,
-            trials: Union[List[Trial], "ray.tune.trial_runner.TrialRunner"]
-    ) -> None:
+    def on_step_begin(self, trials: Union[List[Trial], "TrialRunner"]) -> None:
         """Before step() is called, update the available resources."""
         # avoid circular dependency
         from ray.tune.trial_runner import TrialRunner
@@ -977,10 +978,7 @@ class RayTrialExecutor(TrialExecutor):
         self._trial_just_finished_before = self._trial_just_finished
         self._trial_just_finished = False
 
-    def on_step_end(
-            self,
-            trials: Union[List[Trial], "ray.tune.trial_runner.TrialRunner"]
-    ) -> None:
+    def on_step_end(self, trials: Union[List[Trial], "TrialRunner"]) -> None:
         # avoid circular dependency
         from ray.tune.trial_runner import TrialRunner
         if isinstance(trials, TrialRunner):
@@ -1103,9 +1101,7 @@ class RayTrialExecutor(TrialExecutor):
             self._update_avail_resources()
             return self._avail_resources.gpu > 0
 
-    def cleanup(self,
-                trials: Union[List[Trial], "ray.tune.trial_runner.TrialRunner"]
-                ) -> None:
+    def cleanup(self, trials: Union[List[Trial], "TrialRunner"]) -> None:
         # avoid circular dependency
         from ray.tune.trial_runner import TrialRunner
         if isinstance(trials, TrialRunner):
