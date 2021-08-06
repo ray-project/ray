@@ -132,10 +132,14 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     if (!global_worker_id_.IsNil()) {
       app_name << "-" << global_worker_id_;
     }
-    RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, options_.log_dir);
+    // Without this, driver doesn't emit FATAL logs to its console
+    // because they are looged to files directly.
+    // bool emit_console_log_on_fatal = options.worker_type == WorkerType::DRIVER;
+    RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, options_.log_dir, false);
     if (options_.install_failure_signal_handler) {
       RayLog::InstallFailureSignalHandler();
     }
+    RAY_LOG(FATAL) << "CDE";
   } else {
     RAY_CHECK(options_.log_dir.empty())
         << "log_dir must be empty because ray log is disabled.";

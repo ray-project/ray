@@ -100,7 +100,8 @@ int main(int argc, char **argv) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+                                         /*log_dir=*/"",
+                                         /*emit_console_log_on_fatal*/false);
   ray::RayLog::InstallFailureSignalHandler();
   ::testing::InitGoogleTest(&argc, argv);
   int failed = RUN_ALL_TESTS();

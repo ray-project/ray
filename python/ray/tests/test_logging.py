@@ -1,11 +1,15 @@
 import os
+import subprocess
+import re
+
 from collections import defaultdict, Counter
 from pathlib import Path
-import re
 
 import ray
 from ray import ray_constants
-from ray.test_utils import wait_for_condition
+from ray.test_utils import (
+    wait_for_condition,
+    run_string_as_driver)
 
 
 def set_logging_config(max_bytes, backup_count):
@@ -179,6 +183,25 @@ def test_worker_id_names(shutdown_only):
         # There should be a "python-core-.*.log", "worker-.*.out",
         # and "worker-.*.err"
         assert count == 3
+
+
+def test_driver_fatal_log_printed(shutdown_only):
+    driver_script = """
+import ray
+import signal
+import os
+
+ray.init()
+os.kill(os.getpid(), signal.SIGSEGV)
+"""
+    exception_raised = False
+    try:
+        out = run_string_as_driver(driver_script)
+    except subprocess.CalledProcessError as e:
+        exception_raised = True
+        print(e.output)
+
+    assert exception_raised
 
 
 if __name__ == "__main__":

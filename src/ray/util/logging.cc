@@ -41,6 +41,7 @@
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
 #include "ray/util/filesystem.h"
+#include "ray/util/macros.h"
 
 namespace ray {
 
@@ -122,6 +123,13 @@ class SpdLogMessage final {
                 str_.str());
     logger->flush();
     if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
+      auto console_logger = spdlog::get("_console");
+      if (console_logger) {
+        /// If _console logger exists, that means we print fata logs to stdout/stderr.
+        console_logger->log(static_cast<spdlog::level::level_enum>(loglevel_), /*fmt*/ "{}",
+                    str_.str());
+        // console_logger->flush();
+      }
       std::_Exit(EXIT_FAILURE);
     }
   }
@@ -163,7 +171,7 @@ static int GetMappedSeverity(RayLogLevel severity) {
 }
 
 void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_threshold,
-                         const std::string &log_dir) {
+                         const std::string &log_dir, bool emit_console_log_on_fatal) {
   const char *var_value = getenv("RAY_BACKEND_LOG_LEVEL");
   if (var_value != nullptr) {
     std::string data = var_value;
@@ -242,7 +250,19 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         dir_ends_with_slash + app_name_without_path + "_" + std::to_string(pid) + ".log",
         log_rotation_max_size_, log_rotation_file_num_);
     spdlog::set_default_logger(file_logger);
+    if (emit_console_log_on_fatal) {
+      // Create a special named logger to emit logs to stderr when emit_console_log_on_fatal is required.
+      auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+      err_sink->set_pattern(log_format_pattern_);
+      err_sink->set_level(spdlog::level::err);
+
+      auto stderr_logger = std::shared_ptr<spdlog::logger>(
+          new spdlog::logger("_console", {err_sink}));
+      stderr_logger->set_level(spdlog::level::err);
+      spdlog::register_logger(stderr_logger);
+    }
   } else {
+    RAY_CHECK(!emit_console_log_on_fatal) << "emit_console_log_on_fatal is only available when log_dir is specified.";
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_pattern(log_format_pattern_);
     auto level = static_cast<spdlog::level::level_enum>(severity_threshold_);
