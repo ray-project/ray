@@ -23,9 +23,9 @@
 #include "ray/util/util.h"
 #include "ray/stats/metric.h"
 
-DEFINE_stats(grpc_server_req_latency_us, "Request latency in grpc server", {"Method"}, {}, ray::stats::GAUGE);
-DEFINE_stats(grpc_server_req_new, "New request number in grpc server", {"Method"}, {}, ray::stats::COUNT);
-DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server", {"Method"}, {}, ray::stats::COUNT);
+DEFINE_stats(grpc_server_req_latency_us, "Request latency in grpc server", ("Method"), (), ray::stats::GAUGE);
+DEFINE_stats(grpc_server_req_new, "New request number in grpc server", ("Method"), (), ray::stats::COUNT);
+DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server", ("Method"), (), ray::stats::COUNT);
 
 
 namespace ray {

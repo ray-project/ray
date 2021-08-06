@@ -284,7 +284,8 @@ class Stats {
 
  public:
   Stats(const std::string &measure, const std::string &description,
-        const std::vector<std::string> tag_keys, const std::vector<double> buckets,
+        std::vector<std::string> tag_keys,
+        std::vector<double> buckets,
         std::function<void(const std::string &, const std::string,
                            const std::vector<opencensus::tags::TagKey>,
                            const std::vector<double> &buckets)>
@@ -332,14 +333,23 @@ class Stats {
   std::vector<std::string> tag_keys_;
 };
 
+
 }  // namespace details
 
 }  // namespace stats
 
 }  // namespace ray
 
-#define DEFINE_stats(name, description, tags, buckets, types...)             \
-  ray::stats::details::Stats STATS_##name(#name, description, tags, buckets, \
-                                          ray::stats::details::RegisterViewList<types>)
+#define STATS_DEPAREN(X) STATS_ESC(STATS_ISH X)
+#define STATS_ISH(...) ISH __VA_ARGS__
+#define STATS_ESC(...) STATS_ESC_(__VA_ARGS__)
+#define STATS_ESC_(...) STATS_VAN ## __VA_ARGS__
+#define STATS_VANISH
+
+#define DEFINE_stats(name, description, tags, buckets, types...)        \
+  ray::stats::details::Stats STATS_##name(                              \
+      #name, description,                                               \
+      {STATS_DEPAREN(tags)}, {STATS_DEPAREN(buckets)},                  \
+      ray::stats::details::RegisterViewList<types>)
 
 #define DECLARE_stats(name) extern ray::stats::details::Stats STATS_##name

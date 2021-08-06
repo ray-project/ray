@@ -20,12 +20,12 @@
 #include <utility>
 #include "ray/stats/metric.h"
 
-DEFINE_stats(async_pool_req_num, "Async pool request num", {"Method"}, {}, ray::stats::GAUGE);
-DEFINE_stats(async_pool_req_execution_time_us, "Async pool execution time", {"Method"}, {},
+DEFINE_stats(async_pool_req_num, "Async pool request num", ("Method"), (), ray::stats::GAUGE);
+DEFINE_stats(async_pool_req_execution_time_us, "Async pool execution time", ("Method"), (),
              ray::stats::GAUGE);
-DEFINE_stats(async_pool_req_queue_time_us, "Async pool queue time", {"Method"}, {},
+DEFINE_stats(async_pool_req_queue_time_us, "Async pool queue time", ("Method"), (),
              ray::stats::GAUGE);
-DEFINE_stats(async_pool_req_activate_num, "Async pool request activate num", {"Method"}, {},
+DEFINE_stats(async_pool_req_activate_num, "Async pool request activate num", ("Method"), (),
              ray::stats::GAUGE);
 namespace {
 
