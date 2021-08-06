@@ -18,6 +18,56 @@ from ray.cluster_utils import Cluster
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
+class TrialExecutorInsufficientResourceTest(unittest.TestCase):
+    def setUp(self):
+        os.environ["TUNE_INSUFFICENT_RESOURCE_WARN_THRESHOLD_S"] = "1"
+        self.cluster = Cluster(
+            initialize_head=True,
+            connect=True,
+            head_node_args={
+                "num_cpus": 4,
+                "num_gpus": 2,
+                "_system_config": {
+                    "num_heartbeats_timeout": 10
+                }
+            })
+
+    def tearDown(self):
+        ray.shutdown()
+        self.cluster.shutdown()
+
+    @freeze_time("2021-08-03", auto_tick_seconds=15)
+    def testOutputWarningMessage(self):
+        def train(config):
+            pass
+
+        with self.assertLogs(logger="ray.tune.trial_executor") as ctx:
+            out = tune.run(
+                train, resources_per_trial={
+                    "cpu": 1,
+                    "gpu": 1,
+                })
+            msg = ("Autoscaler is disabled. Resource is not ready after "
+                   "extended amount of time without any trials running - "
+                   "please consider if the allocated resource is not enough.")
+            assert ctx.records[0].msg == msg
+
+    @freeze_time("2021-08-03")
+    def testNotOutputWarningMessage(self):
+        def train(config):
+            pass
+
+        # apparently there is no assertNoLogs yet...
+        with patch.object(ray.tune.trial_executor.logger,
+                          "warning") as warning_method:
+            out = tune.run(
+                train, resources_per_trial={
+                    "cpu": 1,
+                    "gpu": 1,
+                })
+            warning_method.assert_not_called()
+
+
 class RayTrialExecutorTest(unittest.TestCase):
     def setUp(self):
         # Wait up to five seconds for placement groups when starting a trial
@@ -280,59 +330,6 @@ class RayExecutorQueueTest(unittest.TestCase):
         cpu_only_trial3 = create_trial(1, 0)
         self.assertFalse(
             self.trial_executor.has_resources_for_trial(cpu_only_trial3))
-
-
-class TrialExecutorInsufficientResourceTest(unittest.TestCase):
-    def setUp(self):
-        os.environ["TUNE_INSUFFICENT_RESOURCE_WARN_THRESHOLD_S"] = "1"
-        self.cluster = Cluster(
-            initialize_head=True,
-            connect=True,
-            head_node_args={
-                "num_cpus": 4,
-                "num_gpus": 2,
-                "_system_config": {
-                    "num_heartbeats_timeout": 10
-                }
-            })
-        # Pytest doesn't play nicely with imports
-        _register_all()
-
-    def tearDown(self):
-        ray.shutdown()
-        self.cluster.shutdown()
-        _register_all()  # re-register the evicted objects
-
-    @freeze_time("2021-08-03", auto_tick_seconds=15)
-    def testOutputWarningMessage(self):
-        def train(config):
-            pass
-
-        with self.assertLogs(logger="ray.tune.trial_executor") as ctx:
-            out = tune.run(
-                train, resources_per_trial={
-                    "cpu": 1,
-                    "gpu": 1,
-                })
-            msg = ("Autoscaler is disabled. Resource is not ready after "
-                   "extended amount of time without any trials running - "
-                   "please consider if the allocated resource is not enough.")
-            assert ctx.records[0].msg == msg
-
-    @freeze_time("2021-08-03")
-    def testNotOutputWarningMessage(self):
-        def train(config):
-            pass
-
-        # apparently there is no assertNoLogs yet...
-        with patch.object(ray.tune.trial_executor.logger,
-                          "warning") as warning_method:
-            out = tune.run(
-                train, resources_per_trial={
-                    "cpu": 1,
-                    "gpu": 1,
-                })
-            warning_method.assert_not_called()
 
 
 class RayExecutorPlacementGroupTest(unittest.TestCase):

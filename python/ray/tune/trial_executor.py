@@ -203,7 +203,7 @@ class TrialExecutor:
                 warn_prefix = ("If autoscaler is still scaling up, ignore "
                                "this message." if autoscaler_enabled else
                                "Autoscaler is disabled.")
-                logger.warn(
+                logger.warning(
                     f"{warn_prefix} "
                     f"Resource is not ready after extended amount of time "
                     f"without any trials running - please consider if the "
