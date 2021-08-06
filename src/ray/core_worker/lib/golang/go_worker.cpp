@@ -235,7 +235,7 @@ __attribute__((visibility("default"))) int go_worker_SubmitActorTask(void *actor
 
   int object_id_size = ObjectID::Size();
   for (size_t i = 0; i < obj_ids.size(); i++) {
-    void *result = (char *)malloc(object_id_size);
+    void *result = malloc(object_id_size);
     memcpy(result, (char *)obj_ids[i].Data(), object_id_size);
     RAY_LOG(WARNING) << "return object id:" << result;
     object_ids[i] = result;
@@ -245,14 +245,17 @@ __attribute__((visibility("default"))) int go_worker_SubmitActorTask(void *actor
 
 DataBuffer *RayObjectToDataBuffer(std::shared_ptr<ray::Buffer> buffer) {
   DataBuffer *data_db = new DataBuffer();
-  data_db->p = buffer->Data();
+  void *result = malloc(buffer->Size());
+  memcpy(result, (char *)buffer->Data(), buffer->Size());
+  data_db->p = result;
   data_db->size = buffer->Size();
   return data_db;
 }
 
-__attribute__((visibility("default"))) GoSlice go_worker_Get(void **object_ids,
+__attribute__((visibility("default"))) int go_worker_Get(void **object_ids,
                                                              int object_ids_size,
-                                                             int timeout) {
+                                                             int timeout,
+                                                             void **objects) {
   std::vector<ray::ObjectID> object_ids_data;
   char **object_id_arr = (char **)object_ids;
   for (int i = 0; i < object_ids_size; i++) {
@@ -264,21 +267,16 @@ __attribute__((visibility("default"))) GoSlice go_worker_Get(void **object_ids,
   std::vector<std::shared_ptr<ray::RayObject>> results;
   auto status =
       ray::CoreWorkerProcess::GetCoreWorker().Get(object_ids_data, timeout, &results);
-  GoSlice return_value_list_go;
   // todo throw error, not exit now
   if (!status.ok()) {
     RAY_LOG(FATAL) << "Failed to get object";
-    return return_value_list_go;
+    return 1;
   }
-  std::vector<std::shared_ptr<ReturnValue>> return_value_list;
   for (size_t i = 0; i < results.size(); i++) {
-    std::shared_ptr<ReturnValue> rv = make_shared<ReturnValue>();
+    ReturnValue *rv = new ReturnValue();
     rv->data = RayObjectToDataBuffer(results[i]->GetData());
     rv->meta = RayObjectToDataBuffer(results[i]->GetMetadata());
-    return_value_list.emplace_back(rv);
+    objects[i] = rv;
   }
-  return_value_list_go.data = &return_value_list[0];
-  return_value_list_go.cap = results.size();
-  return_value_list_go.len = results.size();
-  return return_value_list_go;
+  return 0;
 }

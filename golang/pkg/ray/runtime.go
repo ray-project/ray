@@ -179,8 +179,8 @@ type ID unsafe.Pointer
 func (atc *ActorTaskCaller) Remote() *ObjectRef {
     returnNum := atc.invokeMethod.NumOut()
     returObjectIds := make([]unsafe.Pointer, returnNum, returnNum)
-    success := C.go_worker_SubmitActorTask(unsafe.Pointer(atc.actorHandle.actorId), C.CString(atc.invokeMethodName), C.int(returnNum), (*unsafe.Pointer)(unsafe.Pointer(&returObjectIds[0])))
-    if success != 0  {
+    success := C.go_worker_SubmitActorTask(unsafe.Pointer(atc.actorHandle.actorId), C.CString(atc.invokeMethodName), C.int(returnNum), &returObjectIds[0])
+    if success != 0 {
         panic("failed to submit task")
     }
     util.Logger.Debugf("objectIds:%v", returObjectIds)
@@ -209,10 +209,14 @@ type ObjectId []byte
 func (or *ObjectRef) Get() []interface{} {
     //returnObjectIdsSize := len(or.returnObjectIds)
     util.Logger.Debugf("get :%v", or.returnObjectIds)
-    returnValues := C.go_worker_Get((*unsafe.Pointer)(or.returnObjectIds), C.int(or.returnObjectNum), C.int(-1))
-    values := (*[1 << 28]*C.struct_ReturnValue)(returnValues.data)[:or.returnObjectNum:or.returnObjectNum]
-    for _, returnValue := range values {
-        dataBytes := C.GoBytes(unsafe.Pointer(returnValue.data.p), returnValue.data.size)
+    returnValues := make([]unsafe.Pointer, or.returnObjectNum, or.returnObjectNum)
+    success := C.go_worker_Get((*unsafe.Pointer)(or.returnObjectIds), C.int(or.returnObjectNum), C.int(-1), &returnValues[0])
+    if success != 0 {
+        panic("failed to submit task")
+    }
+    for _, returnValue := range returnValues {
+        rv := (*C.struct_ReturnValue)(returnValue)
+        dataBytes := C.GoBytes(unsafe.Pointer(rv.data.p), rv.data.size)
         return []interface{}{dataBytes[0]}
     }
     return nil
