@@ -114,6 +114,9 @@ def test_reconstruction_cached_dependency(ray_start_cluster,
                 raise e.as_instanceof_cause()
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Very flaky on Windows due to memory usage.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
     config = {
