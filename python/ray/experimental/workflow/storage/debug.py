@@ -109,7 +109,7 @@ class DebugStorage(Storage):
         return DEBUG_PREFIX + self._wrapped_storage.storage_url
 
     def __reduce__(self):
-        return DebugStorage, (self._wrapped_storage,)
+        return DebugStorage, (self._wrapped_storage, )
 
     async def replay(self, index: int) -> None:
         """Replay the a record to the storage.

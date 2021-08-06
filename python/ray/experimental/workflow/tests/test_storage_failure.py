@@ -74,3 +74,5 @@ def test_linear_workflow_failure(workflow_start_regular):
     index = _locate_initial_commit(debug_store)
     replays = [debug_store.replay(i) for i in range(index)]
     asyncio_run(asyncio.gather(*replays))
+    resumed_result = ray.get(workflow.resume(workflow_id="linear_workflow"))
+    assert resumed_result == resumed_result
