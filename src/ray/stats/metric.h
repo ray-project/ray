@@ -250,7 +250,7 @@ void RegisterView(const std::string &name, const std::string &description,
                   const std::vector<double> &buckets) {
   using I = StatsTypeMap<T>;
   auto view_descriptor = opencensus::stats::ViewDescriptor()
-                             .set_name(name)
+                             .set_name(name + I::val)
                              .set_description(description)
                              .set_measure(name)
                              .set_aggregation(I::Aggregation(buckets));
