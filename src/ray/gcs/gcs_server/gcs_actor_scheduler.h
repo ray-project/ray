@@ -276,7 +276,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       const rpc::Address &raylet_address);
 
   /// Kill the actor on a node
-  bool KillActorOnWorker(const rpc::Address& worker_address, ActorID actor_id);
+  bool KillActorOnWorker(const rpc::Address &worker_address, ActorID actor_id);
 
  protected:
   /// The io loop that is used to delay execution of tasks (e.g.,

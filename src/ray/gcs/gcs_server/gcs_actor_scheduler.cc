@@ -366,9 +366,7 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
           RAY_LOG(DEBUG) << "Actor " << actor->GetActorID()
                          << " has been removed from creating map. Actor status "
                          << actor->GetState();
-          auto actor_id = status.ok() ?
-                          actor->GetActorID() :
-                          ActorID::Nil();
+          auto actor_id = status.ok() ? actor->GetActorID() : ActorID::Nil();
           KillActorOnWorker(worker->GetAddress(), actor_id);
         }
       });
@@ -376,7 +374,8 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
 
 void GcsActorScheduler::RetryCreatingActorOnWorker(
     std::shared_ptr<GcsActor> actor, std::shared_ptr<GcsLeasedWorker> worker) {
-  RAY_LOG(DEBUG) << "Retry creating actor " << actor->GetActorID() << " on worker " << worker->GetWorkerID();
+  RAY_LOG(DEBUG) << "Retry creating actor " << actor->GetActorID() << " on worker "
+                 << worker->GetWorkerID();
   RAY_UNUSED(execute_after(
       io_context_, [this, actor, worker] { DoRetryCreatingActorOnWorker(actor, worker); },
       RayConfig::instance().gcs_create_actor_retry_interval_ms()));
@@ -404,9 +403,9 @@ std::shared_ptr<WorkerLeaseInterface> GcsActorScheduler::GetOrConnectLeaseClient
   return raylet_client_pool_->GetOrConnectByAddress(raylet_address);
 }
 
-bool GcsActorScheduler::KillActorOnWorker(
-    const rpc::Address& worker_address, ActorID actor_id) {
-  if(worker_address.raylet_id().empty()) {
+bool GcsActorScheduler::KillActorOnWorker(const rpc::Address &worker_address,
+                                          ActorID actor_id) {
+  if (worker_address.raylet_id().empty()) {
     RAY_LOG(DEBUG) << "Invalid worker address, skip the killing of actor " << actor_id;
     return false;
   }

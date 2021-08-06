@@ -564,9 +564,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   const auto actor = std::move(it->second);
 
   registered_actors_.erase(it);
-  RAY_LOG(DEBUG) << "Try to kill actor " << actor->GetActorID()
-                 << ", with status " << actor->GetState()
-                 << ", name " << actor->GetName();
+  RAY_LOG(DEBUG) << "Try to kill actor " << actor->GetActorID() << ", with status "
+                 << actor->GetState() << ", name " << actor->GetName();
   // Clean up the client to the actor's owner, if necessary.
   if (!actor->IsDetached()) {
     RemoveActorFromOwner(actor);
@@ -1112,9 +1111,8 @@ void GcsActorManager::NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor
   request.set_force_kill(force_kill);
   request.set_no_restart(no_restart);
   auto actor_client = worker_client_factory_(actor->GetAddress());
-  RAY_LOG(DEBUG) << "Send request to kill actor " << actor->GetActorID()
-                 << " to worker " << actor->GetWorkerID()
-                 << " at node " << actor->GetNodeID();
+  RAY_LOG(DEBUG) << "Send request to kill actor " << actor->GetActorID() << " to worker "
+                 << actor->GetWorkerID() << " at node " << actor->GetNodeID();
   actor_client->KillActor(request, [](auto &status, auto &) {
     RAY_LOG(DEBUG) << "Killing status: " << status.ToString();
   });
