@@ -1,7 +1,6 @@
 import asyncio
 import os
 from hashlib import sha1
-import random
 
 import pytest
 import ray
@@ -32,18 +31,26 @@ def pass_3(x: str, y: str):
     return pass_2.step(x, y)
 
 
-def construct_linear_workflow(input: str, length: int):
-    random.seed(41)
-    x = pass_1.step(input, "0")
-    for i in range(1, length):
-        rnd = random.randint(1, 3)
-        if rnd == 1:
-            x = pass_1.step(x, str(i))
-        elif rnd == 2:
-            x = pass_2.step(x, str(i))
-        else:
-            x = pass_3.step(x, str(i))
-    return x
+@workflow.step
+def merge(x0: str, x1: str, x2: str) -> str:
+    return sha1((x0 + x1 + x2).encode()).hexdigest()
+
+
+@workflow.step
+def scan(x0: str, x1: str, x2: str):
+    x0 = sha1((x0 + x2).encode()).hexdigest()
+    x1 = sha1((x1 + x2).encode()).hexdigest()
+    x2 = sha1((x0 + x1 + x2).encode()).hexdigest()
+    y0, y1, y2 = pass_1.step(x0, x1), pass_2.step(x1, x2), pass_3.step(x2, x0)
+    return merge.step(y0, y1, y2)
+
+
+def construct_workflow(length: int):
+    results = ["a", "b"]
+    for i in range(length):
+        x0, x1, x2 = results[-2], results[-1], str(i)
+        results.append(scan.step(x0, x1, x2))
+    return results[-1]
 
 
 def _alter_storage(new_storage):
@@ -68,15 +75,15 @@ def _locate_initial_commit(debug_store: DebugStorage) -> int:
         "num_cpus": 4,  # increase CPUs to add pressure
     }],
     indirect=True)
-def test_linear_workflow_failure(workflow_start_regular):
+def test_failure_with_storage(workflow_start_regular):
     debug_store = DebugStorage(get_global_storage())
     _alter_storage(debug_store)
 
-    wf = construct_linear_workflow("start", 20)
-    result = wf.run(workflow_id="linear_workflow")
+    wf = construct_workflow(10)
+    result = wf.run(workflow_id="complex_workflow")
 
     index = _locate_initial_commit(debug_store)
     replays = [debug_store.replay(i) for i in range(index)]
     asyncio_run(asyncio.gather(*replays))
-    resumed_result = ray.get(workflow.resume(workflow_id="linear_workflow"))
+    resumed_result = ray.get(workflow.resume(workflow_id="complex_workflow"))
     assert resumed_result == result
