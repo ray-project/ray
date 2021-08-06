@@ -228,14 +228,17 @@ __attribute__((visibility("default"))) GoSlice go_worker_SubmitActorTask(
   ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id_obj, ray_function, {},
                                                           task_options, &obj_ids);
 
-  std::vector<uint8_t *> return_object_ids;
+  std::vector<void *> return_object_ids;
+  int object_id_size = ObjectID::Size();
   for (auto &it : obj_ids) {
-    RAY_LOG(WARNING) << "return object id:" << it << " p:"<< static_cast<const void*>(it.Data());
-    return_object_ids.push_back(const_cast<uint8_t *>(it.Data()));
+    void *result = (char *)malloc(object_id_size);
+    memcpy(result, (char *)it.Data(), object_id_size);
+    RAY_LOG(WARNING) << "return object id:" << it << " p:" << result;
+    return_object_ids.push_back(result);
   }
   GoSlice result;
   result.data = &return_object_ids[0];
-  RAY_LOG(WARNING) << "return object p:"<< static_cast<void*>(result.data);
+  RAY_LOG(WARNING) << "return object p:" << static_cast<void *>(result.data);
   result.len = return_object_ids.size();
   result.cap = return_object_ids.size();
   return result;
@@ -254,8 +257,9 @@ __attribute__((visibility("default"))) GoSlice go_worker_Get(void ***object_ids,
   std::vector<ray::ObjectID> object_ids_data;
   char ***object_id_arr = (char ***)object_ids;
   for (int i = 0; i < object_ids_size; i++) {
-    RAY_LOG(WARNING) << "try to get objectid:" << static_cast<void*>(object_id_arr[i]);
-    auto object_id_obj = ByteArrayToId<ray::ObjectID>(*(static_cast<char**>(object_id_arr[i])));
+    RAY_LOG(WARNING) << "try to get objectid:" << static_cast<void *>(object_id_arr[i]);
+    auto object_id_obj =
+        ByteArrayToId<ray::ObjectID>(*(static_cast<char **>(object_id_arr[i])));
     RAY_LOG(WARNING) << "try to get object:" << object_id_obj;
     object_ids_data.emplace_back(object_id_obj);
   }
