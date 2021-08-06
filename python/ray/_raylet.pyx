@@ -398,6 +398,7 @@ cdef execute_task(
 
     worker = ray.worker.global_worker
     manager = worker.function_actor_manager
+    actor = None
 
     cdef:
         dict execution_infos = manager.execution_infos
@@ -576,13 +577,19 @@ cdef execute_task(
 
             backtrace = ray._private.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
+
+            # Generate the actor repr from the actor class.
+            actor_repr = repr(actor) if actor else None
+
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error.cause, proctitle=title)
+                                              error.cause, proctitle=title,
+                                              actor_repr=actor_repr)
             else:
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error, proctitle=title)
+                                              error, proctitle=title,
+                                              actor_repr=actor_repr)
             errors = []
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)
