@@ -20,12 +20,13 @@
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/gcs/gcs_client/global_state_accessor.h"
 
 Status PutSerializedObject(JNIEnv *env, jobject obj, ObjectID object_id,
-                           ObjectID *out_object_id, bool pin_object = true) {
+                           ObjectID *out_object_id, bool pin_object = true,
+                           const std::unique_ptr<rpc::Address> &owner_address = nullptr) {
   auto native_ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
   RAY_CHECK(native_ray_object != nullptr);
-
   size_t data_size = 0;
   if (native_ray_object->HasData()) {
     data_size = native_ray_object->GetData()->Size();
@@ -35,7 +36,8 @@ Status PutSerializedObject(JNIEnv *env, jobject obj, ObjectID object_id,
   if (object_id.IsNil()) {
     status = CoreWorkerProcess::GetCoreWorker().CreateOwned(
         native_ray_object->GetMetadata(), data_size, native_ray_object->GetNestedIds(),
-        out_object_id, &data, /*created_by_worker=*/true);
+        out_object_id, &data, /*created_by_worker=*/true,
+        /*owner_address=*/owner_address);
   } else {
     status = CoreWorkerProcess::GetCoreWorker().CreateExisting(
         native_ray_object->GetMetadata(), data_size, object_id,
@@ -46,7 +48,6 @@ Status PutSerializedObject(JNIEnv *env, jobject obj, ObjectID object_id,
   if (!status.ok()) {
     return status;
   }
-
   // If data is nullptr, that means the ObjectID already existed, which we ignore.
   // TODO(edoakes): this is hacky, we should return the error instead and deal with it
   // here.
@@ -55,11 +56,11 @@ Status PutSerializedObject(JNIEnv *env, jobject obj, ObjectID object_id,
       memcpy(data->Data(), native_ray_object->GetData()->Data(), data->Size());
     }
     if (object_id.IsNil()) {
-      RAY_CHECK_OK(
-          CoreWorkerProcess::GetCoreWorker().SealOwned(*out_object_id, pin_object));
+      RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealOwned(
+          *out_object_id, pin_object, owner_address));
     } else {
       RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealExisting(
-          *out_object_id, /* pin_object = */ false));
+          *out_object_id, /* pin_object = */ false, owner_address));
     }
   }
   return Status::OK();
@@ -70,11 +71,36 @@ extern "C" {
 #endif
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2(
-    JNIEnv *env, jclass, jobject obj) {
+Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2_3B(
+    JNIEnv *env, jclass, jobject obj, jbyteArray owner_actor_id_bytes) {
   ObjectID object_id;
+  std::unique_ptr<rpc::Address> owner_address = nullptr;
+  if (owner_actor_id_bytes) {
+    rpc::ActorTableData actor_table_data;
+    {
+      /// Get actor info from GCS synchronously.
+      std::unique_ptr<std::string> serialized_actor_table_data;
+      std::promise<bool> promise;
+      auto gcs_client = CoreWorkerProcess::GetCoreWorker().GetGcsClient();
+      RAY_CHECK_OK(gcs_client->Actors().AsyncGet(
+          ActorID::FromBinary(JavaByteArrayToNativeString(env, owner_actor_id_bytes)),
+          [&serialized_actor_table_data, &promise](
+              const Status &status, const boost::optional<rpc::ActorTableData> &result) {
+            RAY_CHECK_OK(status);
+            if (result) {
+              serialized_actor_table_data.reset(
+                  new std::string(result->SerializeAsString()));
+            }
+            promise.set_value(true);
+          }));
+      promise.get_future().get();
+      actor_table_data.ParseFromString(*serialized_actor_table_data);
+    }
+    owner_address = std::make_unique<rpc::Address>(actor_table_data.address());
+  }
   auto status = PutSerializedObject(env, obj, /*object_id=*/ObjectID::Nil(),
-                                    /*out_object_id=*/&object_id, /*pin_object=*/true);
+                                    /*out_object_id=*/&object_id, /*pin_object=*/true,
+                                    /*owner_address=*/owner_address);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return IdToJavaByteArray<ObjectID>(env, object_id);
 }

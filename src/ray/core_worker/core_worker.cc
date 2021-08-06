@@ -1127,7 +1127,7 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                const std::vector<ObjectID> &contained_object_ids,
                                ObjectID *object_id, std::shared_ptr<Buffer> *data,
                                bool created_by_worker,
-                               const std::unique_ptr<rpc::Address> owner_address) {
+                               const std::unique_ptr<rpc::Address> &owner_address) {
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
                                    worker_context_.GetNextPutIndex());
   rpc::Address real_owner_address =
