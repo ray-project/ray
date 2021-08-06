@@ -43,7 +43,9 @@ def load_dataset(client, data_dir, s3_bucket, nbytes, npartitions):
     x = []
     for i in range(npartitions):
         x.append(generate_s3_file(i, data_dir, s3_bucket))
-    dask.compute(x)
+    from ray.util.dask import ProgressBarCallback
+    with ProgressBarCallback():
+        dask.compute(x, _ray_enable_progress_bar=True)
 
     filenames = [
         f"s3://{s3_bucket}/df-{num_bytes_per_partition}-{i}.parquet.gzip"
@@ -81,7 +83,9 @@ def load_dataset_files(client, data_dir, file_path, nbytes, npartitions):
     x = []
     for i in range(npartitions):
         x.append(generate_file(i, data_dir, file_path))
-    dask.compute(x)
+    from ray.util.dask import ProgressBarCallback
+    with ProgressBarCallback():
+        dask.compute(x, _ray_enable_progress_bar=True)
 
     filenames = [
         f"{file_path}/df-{num_bytes_per_partition}-{i}.parquet.gzip"
@@ -97,7 +101,8 @@ def trial(client,
           n_partitions,
           generate_only,
           s3_bucket=None,
-          file_path=None):
+          file_path=None,
+          trials=10):
     if s3_bucket:
         df = load_dataset(client, data_dir, s3_bucket, nbytes, n_partitions)
     elif file_path:
@@ -109,13 +114,16 @@ def trial(client,
 
     times = []
     start = time.time()
-    for i in range(10):
+    for i in range(trials):
         print("Trial {} start".format(i))
         trial_start = time.time()
 
-        print(
-            df.set_index("a", shuffle="tasks", max_branch=float("inf")).head(
-                10, npartitions=-1))
+        from ray.util.dask import ProgressBarCallback
+        with ProgressBarCallback():
+            print(
+                df.set_index("a", shuffle="tasks",
+                             max_branch=float("inf")).compute(
+                                 _ray_enable_progress_bar=True).head(10))
 
         trial_end = time.time()
         duration = trial_end - trial_start
@@ -143,6 +151,7 @@ if __name__ == "__main__":
     parser.add_argument("--data-dir", default="/home/ubuntu/dask-benchmarks")
     parser.add_argument("--s3-bucket")
     parser.add_argument("--file-path")
+    parser.add_argument("--trial")
 
     parser.add_argument("--dask-nprocs", type=int, default=0)
     parser.add_argument("--dask-nthreads", type=int, default=0)
@@ -169,6 +178,7 @@ if __name__ == "__main__":
             print("Using disk-based Dask shuffle")
 
         client = Client("localhost:8786")
+    trials = int(args.trial)
 
     print(
         trial(
@@ -186,6 +196,7 @@ if __name__ == "__main__":
         npartitions = args.nbytes // args.max_partition_size
 
     duration = []
+    print(f"Start the main trials {trials} times")
     output = trial(
         client,
         args.data_dir,
@@ -193,7 +204,8 @@ if __name__ == "__main__":
         npartitions,
         args.generate_only,
         s3_bucket=args.s3_bucket,
-        file_path=args.file_path)
+        file_path=args.file_path,
+        trials=trials)
     print("mean over {} trials: {} +- {}".format(
         len(output), np.mean(output), np.std(output)))
 

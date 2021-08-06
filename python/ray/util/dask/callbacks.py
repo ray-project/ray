@@ -233,8 +233,16 @@ class ProgressBarCallback(RayDaskCallback):
             def ready(self):
                 pass
 
-        self.pb = ProgressBarActor.options(name="_dask_on_ray_pb").remote()
-        ray.get(self.pb.ready.remote())
+            def reset(self):
+                self.submitted = 0
+                self.finished = 0
+
+        try:
+            self.pb = ray.get_actor("_dask_on_ray_pb")
+            ray.get(self.pb.reset.remote())
+        except ValueError:
+            self.pb = ProgressBarActor.options(name="_dask_on_ray_pb").remote()
+            ray.get(self.pb.ready.remote())
 
     def _ray_postsubmit(self, task, key, deps, object_ref):
         # Indicate the dask task is submitted.

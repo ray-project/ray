@@ -313,4 +313,4 @@
 
   run:
     timeout: 14400
-    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions 500 --num-nodes 5 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions 500 --num-nodes 5 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test --trial 3
