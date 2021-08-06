@@ -14,10 +14,10 @@ def get_warn_threshold(autoscaler_enabled: bool) -> float:
     if autoscaler_enabled:
         return float(
             os.environ.get(
-                "TUNE_INSUFFICENT_RESOURCE_WARN_THRESHOLD_S_AUTOSCALER", "60"))
+                "TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER", "60"))
     else:
         return float(
-            os.environ.get("TUNE_INSUFFICENT_RESOURCE_WARN_THRESHOLD_S", "5"))
+            os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "5"))
 
 
 class TrialExecutor:
@@ -201,8 +201,8 @@ class TrialExecutor:
             ) - self._no_running_trials_since > get_warn_threshold(
                     autoscaler_enabled):
                 warn_prefix = ("If autoscaler is still scaling up, ignore "
-                              "this message." if autoscaler_enabled
-                               else "Autoscaler is disabled.")
+                               "this message." if autoscaler_enabled else
+                               "Autoscaler is disabled.")
                 logger.warn(
                     f"{warn_prefix} "
                     f"Resource is not ready after extended amount of time "

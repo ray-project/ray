@@ -7,6 +7,7 @@ dask[complete]==2021.03.0; python_version < '3.7'
 dask[complete]==2021.06.1; python_version >= '3.7'
 dragonfly-opt==0.1.6
 flaml==0.5.2
+freezegun==1.1.0
 gluoncv==0.10.1.post0
 gpy==1.10.0
 gym[atari]==0.18.3
@@ -28,6 +29,7 @@ optuna==2.8.0
 pytest-remotedata==0.3.2
 pytorch-lightning-bolts==0.2.5
 pytorch-lightning==1.0.3
+mock==4.0.3
 scikit-learn==0.24.2
 scikit-optimize==0.8.1
 sigopt==7.4.0

@@ -315,8 +315,8 @@ class TrialExecutorInsufficientResourceTest(unittest.TestCase):
                     "gpu": 1,
                 })
             msg = ("Autoscaler is disabled. Resource is not ready after "
-                  "extended amount of time without any trials running - "
-                  "please consider if the allocated resource is not enough.")
+                   "extended amount of time without any trials running - "
+                   "please consider if the allocated resource is not enough.")
             assert ctx.records[0].msg == msg
 
     @freeze_time("2021-08-03")

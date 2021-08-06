@@ -846,6 +846,13 @@ These are the environment variables Ray Tune currently considers:
   trial startups. After the grace period, Tune will block until a result from a running trial is received. Can
   be disabled by setting this to lower or equal to 0.
 * **TUNE_WARN_THRESHOLD_S**: Threshold for logging if an Tune event loop operation takes too long. Defaults to 0.5 (seconds).
+* **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S**: Threshold for warning user if no active trials are in RUNNING state
+  for this amount of time. If Tune job is stuck in this state(most likely due to insufficient resource),
+  the warning message is printed repeatedly every this amount of time. Defaults to 1 (seconds).
+* **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER**: Threshold for warning user, when autoscaler is enabled,
+  if no active trials are in RUNNING state for this amount of time.
+  If Tune job is stuck in this state(most likely due to insufficient resource), the warning message is printed
+  repeatedly every this amount of time. Defaults to 60 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
 
 
