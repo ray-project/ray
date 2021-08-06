@@ -206,6 +206,39 @@ def test_mismatch_report(ray_start_2_cpus):
             trainer.run(train)
 
 
+def test_checkpoint(ray_start_2_cpus):
+    config = TestConfig()
+
+    def train_func():
+        assert sgd.load_checkpoint() is None
+        for i in range(3):
+            sgd.save_checkpoint(epoch=i)
+        return 1
+
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+    trainer.run(train_func)
+    checkpoint = trainer.get_latest_checkpoint()
+
+    assert checkpoint is not None
+    assert checkpoint["epoch"] == 2
+
+    def train_func_checkpoint():
+        checkpoint = sgd.load_checkpoint()
+        assert checkpoint is not None
+        assert checkpoint["epoch"] == 2
+
+        for i in range(checkpoint["epoch"], 5):
+            sgd.save_checkpoint(epoch=i)
+        return 1
+
+    trainer.run(train_func_checkpoint, checkpoint=checkpoint)
+    checkpoint = trainer.get_latest_checkpoint()
+
+    assert checkpoint is not None
+    assert checkpoint["epoch"] == 4
+
+
 def test_world_rank(ray_start_2_cpus):
     config = TestConfig()
 

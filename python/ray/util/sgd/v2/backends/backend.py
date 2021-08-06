@@ -3,6 +3,7 @@ from typing import Callable, TypeVar, List, Optional, Dict
 
 import ray
 from ray.exceptions import RayActorError
+from ray.util.sgd.v2.utils import PropagatingThread
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
 
@@ -50,6 +51,7 @@ class BackendExecutor:
         self._num_gpus_per_worker = num_gpus_per_worker
 
         self.worker_group = InactiveWorkerGroup()
+        self.latest_checkpoint = None
 
     def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the worker group."""
@@ -60,19 +62,27 @@ class BackendExecutor:
             self.worker_group.execute(initialization_hook)
         self._backend.on_start(self.worker_group, self._backend_config)
 
-    def start_training(self, train_func: Callable[[], T]) -> None:
+    def start_training(self,
+                       train_func: Callable[[], T],
+                       checkpoint: Optional[Dict] = None) -> None:
         """Executes a training function on all workers in a separate thread.
 
         ``finish_training`` should be called after this.
 
         Args:
             train_func (Callable): The training function to run on each worker.
+            checkpoint (Optional[Dict]): The checkpoint data that should be
+                loaded onto each worker and accessed by the training function
+                via ``sgd.load_checkpoint()``.
         """
 
         # First initialize the session.
-        def initialize_session(world_rank, train_func):
+        def initialize_session(world_rank, train_func, checkpoint):
             try:
-                init_session(training_func=train_func, world_rank=world_rank)
+                init_session(
+                    training_func=train_func,
+                    world_rank=world_rank,
+                    checkpoint=checkpoint)
             except ValueError:
                 raise SGDBackendError(
                     "Attempting to start training but a "
@@ -87,7 +97,8 @@ class BackendExecutor:
                     world_rank,
                     initialize_session,
                     world_rank=world_rank,
-                    train_func=train_func))
+                    train_func=train_func,
+                    checkpoint=checkpoint))
 
         ray.get(futures)
 
@@ -96,7 +107,26 @@ class BackendExecutor:
             session = get_session()
             session.start()
 
-        self.worker_group.execute_async(train_async)
+        futures = self.worker_group.execute_async(train_async)
+        # Make sure worker 0 is started before processing checkpoints.
+        ray.get(futures[0])
+        self._start_processing_checkpoints()
+
+    def _start_processing_checkpoints(self):
+        def process_checkpoint():
+            def get_checkpoint():
+                session = get_session()
+                session.get_next_checkpoint()
+
+            while True:
+                checkpoint = self.worker_group.execute_single(
+                    0, get_checkpoint)
+                if checkpoint is not None:
+                    self.latest_checkpoint = checkpoint
+
+        self.checkpoint_thread = PropagatingThread(
+            target=process_checkpoint, daemon=True)
+        self.checkpoint_thread.start()
 
     def fetch_next_result(self) -> Optional[List[Dict]]:
         """Fetch next results produced by ``sgd.report()`` from each worker.
@@ -213,6 +243,9 @@ class BackendExecutor:
         self.shutdown()
         raise RuntimeError("Worker crashed during training. "
                            "Training unsuccessful.")
+
+    def get_latest_checkpoint(self) -> Optional[Dict]:
+        return self.latest_checkpoint
 
     def shutdown(self):
         """Shuts down the workers in the worker group."""

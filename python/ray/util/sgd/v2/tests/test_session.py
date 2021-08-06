@@ -2,7 +2,7 @@ import time
 import pytest
 
 from ray.util.sgd.v2.session import init_session, shutdown_session, \
-    get_session, world_rank, report
+    get_session, world_rank, report, save_checkpoint
 
 
 @pytest.fixture(scope="function")
@@ -81,6 +81,24 @@ def test_report_after_finish(session):
 def test_no_start(session):
     with pytest.raises(RuntimeError):
         session.get_next()
+
+
+def test_checkpoint():
+    def train():
+        for i in range(2):
+            save_checkpoint(epoch=i)
+
+    init_session(training_func=train, world_rank=0)
+    session = get_session()
+    session.start()
+    time.sleep(1)
+    assert session.get_next_checkpoint()["epoch"] == 0
+    time.sleep(1)
+    assert session.get_next_checkpoint()["epoch"] == 1
+    shutdown_session()
+
+    with pytest.raises(ValueError):
+        save_checkpoint(epoch=2)
 
 
 def test_locking():

@@ -1,7 +1,7 @@
 import queue
 import time
 import threading
-from typing import Callable
+from typing import Callable, Optional, Dict
 
 from ray.util.sgd.v2.constants import TIME_THIS_ITER_S, RESULT_FETCH_TIMEOUT
 from ray.util.sgd.v2.utils import PropagatingThread
@@ -10,11 +10,15 @@ from ray.util.sgd.v2.utils import PropagatingThread
 class Session:
     """Holds information for training on each worker."""
 
-    def __init__(self, training_func: Callable, world_rank: int):
+    def __init__(self,
+                 training_func: Callable,
+                 world_rank: int,
+                 checkpoint: Optional[Dict] = None):
         # The Thread object that is running the training function.
         self.training_thread = PropagatingThread(
             target=training_func, daemon=True)
         self.world_rank = world_rank
+        self.loaded_checkpoint = checkpoint
 
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
@@ -25,6 +29,10 @@ class Session:
         self.last_report_time = time.time()
 
         self.ignore_report = False
+
+        # Queue for sending checkpoints across threads.
+        self.checkpoint_queue = queue.Queue(1)
+        self.checkpoint_lock = threading.Semaphore(0)
         self.training_started = False
 
     def start(self):
@@ -99,6 +107,38 @@ class Session:
         # Acquire lock to stop the training thread until main thread
         # triggers resume.
         self.continue_lock.acquire()
+
+    def get_next_checkpoint(self):
+        """Gets next checkpoint from the queue."""
+        if not self.training_started:
+            raise RuntimeError("Please call start before calling "
+                               "get_next_checkpoint.")
+        checkpoint = None
+
+        try:
+            checkpoint = self.checkpoint_queue.get(block=False)
+            # Release the lock to trigger training to continue.
+            # TODO move this to BackendExecutor to release after processing.
+            self.checkpoint_lock.release()
+        except queue.Empty:
+            pass
+
+        # Return None if there is no checkpoint.
+        return checkpoint
+
+    def checkpoint(self, **kwargs):
+        """Adds kwargs to the queue to be consumed by main thread."""
+
+        # Only store checkpoints on worker with rank 0.
+        if self.world_rank != 0:
+            return
+
+        # Add result to a thread-safe queue.
+        self.checkpoint_queue.put(kwargs.copy())
+
+        # Acquire lock to stop the training thread until
+        # checkpoint has been processed.
+        self.checkpoint_lock.acquire()
 
 
 _session = None
@@ -177,3 +217,54 @@ def world_rank() -> int:
     """
     session = get_session()
     return session.world_rank
+
+
+def load_checkpoint() -> Optional[Dict]:
+    """Loads checkpoint data onto the worker.
+
+    .. code-block:: python
+
+        from ray.util import sgd
+
+        def train_func():
+            checkpoint = sgd.load_checkpoint()
+            for iter in range(checkpoint["epoch"], 5):
+                print(iter)
+
+        trainer = Trainer(backend="torch")
+        trainer.start()
+        trainer.run(train_func, checkpoint={"epoch": 3})
+        # 3
+        # 4
+        trainer.shutdown()
+
+    Args:
+        **kwargs: Any key value pair to be checkpointed by SGD.
+    """
+    session = get_session()
+    return session.loaded_checkpoint
+
+
+def save_checkpoint(**kwargs) -> None:
+    """Checkpoints all keyword arguments to SGD as restorable state.
+
+    .. code-block:: python
+
+        import time
+        from ray.util import sgd
+
+        def train_func():
+            for iter in range(100):
+                time.sleep(1)
+                sgd.checkpoint(epoch=iter)
+
+        trainer = Trainer(backend="torch")
+        trainer.start()
+        trainer.run(train_func)
+        trainer.shutdown()
+
+    Args:
+        **kwargs: Any key value pair to be checkpointed by SGD.
+    """
+    session = get_session()
+    session.checkpoint(**kwargs)

@@ -145,6 +145,23 @@ def test_no_exhaust(ray_start_2_cpus):
     assert output == [2, 2]
 
 
+def test_checkpoint():
+    def train():
+        for i in range(2):
+            sgd.save_checkpoint(epoch=i)
+
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=2)
+    e.start()
+
+    e.start_training(train)
+    e.finish_training()
+
+    latest_checkpoint = e.get_latest_checkpoint()
+    assert latest_checkpoint is not None
+    assert latest_checkpoint["epoch"] == 1
+
+
 def test_tensorflow_start(ray_start_2_cpus):
     num_workers = 2
     tensorflow_config = TensorflowConfig()
