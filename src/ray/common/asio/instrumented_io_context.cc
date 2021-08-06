@@ -20,13 +20,14 @@
 #include <utility>
 #include "ray/stats/metric.h"
 
-DEFINE_stats(async_pool_req_num, "Async pool request num", ("Method"), (), ray::stats::GAUGE);
-DEFINE_stats(async_pool_req_execution_time_us, "Async pool execution time", ("Method"), (),
+DEFINE_stats(async_pool_req_num, "Async pool request num", ("Method"), (),
              ray::stats::GAUGE);
+DEFINE_stats(async_pool_req_execution_time_us, "Async pool execution time", ("Method"),
+             (), ray::stats::GAUGE);
 DEFINE_stats(async_pool_req_queue_time_us, "Async pool queue time", ("Method"), (),
              ray::stats::GAUGE);
-DEFINE_stats(async_pool_req_activate_num, "Async pool request activate num", ("Method"), (),
-             ray::stats::GAUGE);
+DEFINE_stats(async_pool_req_activate_num, "Async pool request activate num", ("Method"),
+             (), ray::stats::GAUGE);
 namespace {
 
 /// A helper for creating a snapshot view of the global stats.
@@ -120,7 +121,7 @@ void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
   const auto execution_time_ns = end_execution - start_execution;
   // Update handler-specific stats.
   STATS_async_pool_req_execution_time_us.Record(execution_time_ns / 1000,
-                                             handle->handler_name);
+                                                handle->handler_name);
   {
     auto &stats = handle->handler_stats;
     absl::MutexLock lock(&(stats->mutex));
@@ -128,7 +129,8 @@ void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
     stats->stats.cum_execution_time += execution_time_ns;
     // Handler-specific current count.
     stats->stats.curr_count--;
-    STATS_async_pool_req_activate_num.Record(stats->stats.curr_count, handle->handler_name);
+    STATS_async_pool_req_activate_num.Record(stats->stats.curr_count,
+                                             handle->handler_name);
   }
   // Update global stats.
   const auto queue_time_ns = start_execution - handle->start_time;

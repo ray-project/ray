@@ -204,7 +204,8 @@ TEST_F(StatsTest, TestShutdownTakesLongTime) {
   ray::stats::Shutdown();
 }
 
-DEFINE_stats(test_2, "TestStats", ("method", "method2"), (1.0), ray::stats::COUNT, ray::stats::SUM);
+DEFINE_stats(test_2, "TestStats", ("method", "method2"), (1.0), ray::stats::COUNT,
+             ray::stats::SUM);
 DEFINE_stats(test, "TestStats", ("method"), (1.0), ray::stats::COUNT, ray::stats::SUM);
 DEFINE_stats(test_declare, "TestStats2", ("tag1"), (1.0), ray::stats::COUNT,
              ray::stats::SUM);

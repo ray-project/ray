@@ -154,7 +154,8 @@ class ServerCallImpl : public ServerCall {
   ~ServerCallImpl() override {
     STATS_grpc_server_req_finished.Record(1.0, call_name_);
     auto end_time = absl::GetCurrentTimeNanos();
-    STATS_grpc_server_req_latency_us.Record((end_time - start_time_) / 1000.0, call_name_);
+    STATS_grpc_server_req_latency_us.Record((end_time - start_time_) / 1000.0,
+                                            call_name_);
   }
 
   ServerCallState GetState() const override { return state_; }
