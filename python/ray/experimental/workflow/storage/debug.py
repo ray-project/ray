@@ -6,6 +6,8 @@ from filelock import FileLock
 from ray.experimental.workflow.storage import DEBUG_PREFIX
 from ray.experimental.workflow.storage.base import Storage
 from ray.experimental.workflow.storage.filesystem import FilesystemStorageImpl
+import ray.cloudpickle
+from ray.experimental.workflow import serialization_context
 
 
 class LoggedStorage(FilesystemStorageImpl):
@@ -53,9 +55,19 @@ class LoggedStorage(FilesystemStorageImpl):
             with open(self._count, "w") as f:
                 f.write(str(count + 1))
 
-    def read_metadata(self, index: int) -> Any:
+    def get_metadata(self, index: int) -> Any:
         with open(self._log_dir / f"{index}.metadata.json") as f:
             return json.load(f)
+
+    def get_value(self, index: int, is_json: bool) -> Any:
+        path = self._log_dir / f"{index}.value"
+        if is_json:
+            with open(path) as f:
+                return json.load(f)
+        else:
+            with open(path, "rb") as f:
+                with serialization_context.workflow_args_keeping_context():
+                    return ray.cloudpickle.load(f)
 
     def __len__(self):
         with open(self._count, "r") as f:
@@ -97,12 +109,30 @@ class DebugStorage(Storage):
         return DEBUG_PREFIX + self._wrapped_storage.storage_url
 
     def __reduce__(self):
-        return DebugStorage, (self._wrapped_storage, )
+        return DebugStorage, (self._wrapped_storage,)
 
-    def get_logs(self) -> List:
-        return [
-            self._logged_storage.read_metadata(i) for i in range(len(self))
-        ]
+    async def replay(self, index: int) -> None:
+        """Replay the a record to the storage.
+
+        Args:
+            index: The index of the recorded log to replay.
+        """
+        log = self.get_log(index)
+        op = log["operation"]
+        if op == "put":
+            is_json = log["is_json"]
+            data = self.get_value(index, is_json)
+            await self._wrapped_storage.put(log["key"], data, is_json)
+        elif op == "delete":
+            await self._wrapped_storage.delete(log["key"])
+        else:
+            raise ValueError(f"Unknown operation '{op}'.")
+
+    def get_log(self, index: int) -> Any:
+        return self._logged_storage.get_metadata(index)
+
+    def get_value(self, index: int, is_json: bool) -> Any:
+        return self._logged_storage.get_value(index, is_json)
 
     def __len__(self):
         return len(self._logged_storage)
