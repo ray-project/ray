@@ -142,8 +142,8 @@ class ServeController:
             # Or refactor the route_prefix logic in the Deployment class now.
             deployment_info["http_route"] = route_prefix or f"/{name}"
             deployment_info["status"] = "RUNNING"
-            deployment_info["start_time"] = "TODO"
-            deployment_info["end_time"] = ""
+            deployment_info["start_time"] = 0
+            deployment_info["end_time"] = 0
             val.append(deployment_info)
         self.kv_store.put(SNAPSHOT_KEY, json.dumps(val))
 
