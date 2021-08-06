@@ -1,13 +1,13 @@
 # Autofilled sgd.report() metrics. Keys should be consistent with Tune.
-TIMESTAMP = "timestamp"
-TIME_THIS_ITER_S = "time_this_iter_s"
-TRAINING_ITERATION = "training_iteration"
+TIMESTAMP = "_timestamp"
+TIME_THIS_ITER_S = "_time_this_iter_s"
+TRAINING_ITERATION = "_training_iteration"
 
-DATE = "date"
-HOSTNAME = "hostname"
-NODE_IP = "node_ip"
-PID = "pid"
-TIME_TOTAL_S = "time_total_s"
+DATE = "_date"
+HOSTNAME = "_hostname"
+NODE_IP = "_node_ip"
+PID = "_pid"
+TIME_TOTAL_S = "_time_total_s"
 
 # Will not be reported unless SGD_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS
 # env var is not 0
