@@ -19,7 +19,7 @@ import os
 import urllib
 
 sys.path.insert(0, os.path.abspath('.'))
-from custom_directives import CustomGalleryItemDirective
+from custom_directives import CustomGalleryItemDirective, fix_xgb_lgbm_docs
 from datetime import datetime
 
 # These lines added to enable Sphinx to work without installing Ray.
@@ -37,6 +37,7 @@ MOCK_MODULES = [
     "ax.service.ax_client",
     "blist",
     "ConfigSpace",
+    "dask.distributed",
     "gym",
     "gym.spaces",
     "horovod",
@@ -46,6 +47,10 @@ MOCK_MODULES = [
     "modin",
     "mxnet",
     "mxnet.model",
+    "optuna",
+    "optuna.distributions",
+    "optuna.samplers",
+    "optuna.trial",
     "psutil",
     "pytorch_lightning.core.step_result",
     "pytorch_lightning.overrides.data_parallel",
@@ -97,10 +102,9 @@ for mod_name in MOCK_MODULES:
 sys.modules["tensorflow"].VERSION = "9.9.9"
 sys.modules["tensorflow.keras.callbacks"] = ChildClassMock()
 sys.modules["pytorch_lightning"] = ChildClassMock()
-sys.modules["xgboost"] = ChildClassMock()
-sys.modules["xgboost.core"] = ChildClassMock()
-sys.modules["xgboost.callback"] = ChildClassMock()
-sys.modules["xgboost_ray"] = ChildClassMock()
+
+assert "ray" not in sys.modules, (
+    "If ray is already imported, we will not render documentation correctly!")
 
 
 class SimpleClass(object):
@@ -158,8 +162,7 @@ extensions = [
 versionwarning_admonition_type = "note"
 versionwarning_banner_title = "[Ray Summit 2021 | June 22-24 | Virtual & Free]"
 
-SUMMIT_LINK = ("https://www.anyscale.com/ray-summit-2021"
-               "?utm_source=anyscale&utm_medium=docs&utm_campaign=raysummit")
+FORUM_LINK = ("https://discuss.ray.io")
 
 versionwarning_messages = {
     # Re-enable this after Ray Summit.
@@ -167,10 +170,11 @@ versionwarning_messages = {
     #     "This document is for the latest pip release. "
     #     'Visit the <a href="/en/master/">master branch documentation here</a>.'
     # ),
-    "master": (f'<a href="{SUMMIT_LINK}">Join the global Ray '
-               "community at Ray Summit 2021</a> "
-               "to learn about new Ray features and hear how "
-               "users are scaling machine learning applications with Ray!"),
+    "master": (
+        "<b>Got questions?</b> Join "
+        f'<a href="{FORUM_LINK}">the Ray Community forum</a> '
+        "for Q&A on all things Ray, as well as to share and learn use cases "
+        "and best practices with the Ray community."),
 }
 
 versionwarning_body_selector = "#main-content"
@@ -297,6 +301,7 @@ html_theme_options = {
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
     "home_page_in_toc": True,
+    "show_navbar_depth": 0,
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -497,3 +502,5 @@ def setup(app):
     app.add_css_file('css/custom.css')
     # Custom directives
     app.add_directive('customgalleryitem', CustomGalleryItemDirective)
+    # Custom connects
+    app.connect('autodoc-process-docstring', fix_xgb_lgbm_docs)

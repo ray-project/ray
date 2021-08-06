@@ -198,6 +198,7 @@ class Analysis:
             A dictionary containing "trial dir" to Dataframe.
         """
         fail_count = 0
+        force_dtype = {"trial_id": str}  # Never convert trial_id to float.
         for path in self._get_trial_paths():
             try:
                 if self._file_type == "json":
@@ -205,7 +206,9 @@ class Analysis:
                         json_list = [json.loads(line) for line in f if line]
                     df = pd.json_normalize(json_list, sep="/")
                 elif self._file_type == "csv":
-                    df = pd.read_csv(os.path.join(path, EXPR_PROGRESS_FILE))
+                    df = pd.read_csv(
+                        os.path.join(path, EXPR_PROGRESS_FILE),
+                        dtype=force_dtype)
                 self.trial_dataframes[path] = df
             except Exception:
                 fail_count += 1

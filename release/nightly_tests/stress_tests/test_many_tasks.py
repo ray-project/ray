@@ -179,65 +179,62 @@ if __name__ == "__main__":
     is_smoke_test = args.smoke_test
 
     result = {"success": 0}
-    try:
-        # Wait until the expected number of nodes have joined the cluster.
-        while True:
-            num_nodes = len(ray.nodes())
-            logger.info("Waiting for nodes {}/{}".format(
-                num_nodes, num_remote_nodes + 1))
-            if num_nodes >= num_remote_nodes + 1:
-                break
-            time.sleep(5)
-        logger.info("Nodes have all joined. There are %s resources.",
-                    ray.cluster_resources())
+    # Wait until the expected number of nodes have joined the cluster.
+    while True:
+        num_nodes = len(ray.nodes())
+        logger.info("Waiting for nodes {}/{}".format(num_nodes,
+                                                     num_remote_nodes + 1))
+        if num_nodes >= num_remote_nodes + 1:
+            break
+        time.sleep(5)
+    logger.info("Nodes have all joined. There are %s resources.",
+                ray.cluster_resources())
 
-        stage_0_time = stage0(smoke=is_smoke_test)
-        logger.info("Finished stage 0 after %s seconds.", stage_0_time)
-        result["stage_0_time"] = stage_0_time
+    stage_0_time = stage0(smoke=is_smoke_test)
+    logger.info("Finished stage 0 after %s seconds.", stage_0_time)
+    result["stage_0_time"] = stage_0_time
 
-        stage_1_time, stage_1_iterations = stage1(smoke=is_smoke_test)
-        logger.info("Finished stage 1 after %s seconds.", stage_1_time)
-        result["stage_1_time"] = stage_1_time
-        result["stage_1_avg_iteration_time"] = sum(stage_1_iterations) / len(
-            stage_1_iterations)
-        result["stage_1_max_iteration_time"] = max(stage_1_iterations)
-        result["stage_1_min_iteration_time"] = min(stage_1_iterations)
+    stage_1_time, stage_1_iterations = stage1(smoke=is_smoke_test)
+    logger.info("Finished stage 1 after %s seconds.", stage_1_time)
+    result["stage_1_time"] = stage_1_time
+    result["stage_1_avg_iteration_time"] = sum(stage_1_iterations) / len(
+        stage_1_iterations)
+    result["stage_1_max_iteration_time"] = max(stage_1_iterations)
+    result["stage_1_min_iteration_time"] = min(stage_1_iterations)
 
-        stage_2_time, stage_2_iterations = stage2(smoke=is_smoke_test)
-        logger.info("Finished stage 2 after %s seconds.", stage_2_time)
-        result["stage_2_time"] = stage_2_time
-        result["stage_2_avg_iteration_time"] = sum(stage_2_iterations) / len(
-            stage_2_iterations)
-        result["stage_2_max_iteration_time"] = max(stage_2_iterations)
-        result["stage_2_min_iteration_time"] = min(stage_2_iterations)
+    stage_2_time, stage_2_iterations = stage2(smoke=is_smoke_test)
+    logger.info("Finished stage 2 after %s seconds.", stage_2_time)
+    result["stage_2_time"] = stage_2_time
+    result["stage_2_avg_iteration_time"] = sum(stage_2_iterations) / len(
+        stage_2_iterations)
+    result["stage_2_max_iteration_time"] = max(stage_2_iterations)
+    result["stage_2_min_iteration_time"] = min(stage_2_iterations)
 
-        stage_3_time, stage_3_creation_time = stage3(
-            total_num_remote_cpus, smoke=is_smoke_test)
-        logger.info("Finished stage 3 in %s seconds.", stage_3_time)
-        result["stage_3_creation_time"] = stage_3_creation_time
-        result["stage_3_time"] = stage_3_time
+    stage_3_time, stage_3_creation_time = stage3(
+        total_num_remote_cpus, smoke=is_smoke_test)
+    logger.info("Finished stage 3 in %s seconds.", stage_3_time)
+    result["stage_3_creation_time"] = stage_3_creation_time
+    result["stage_3_time"] = stage_3_time
 
-        stage_4_spread = stage4()
-        # avg_spread ~ 115 with Ray 1.0 scheduler. ~695 with (buggy) 0.8.7
-        # scheduler.
-        result["stage_4_spread"] = stage_4_spread
-        result["success"] = 1
-        print("PASSED.")
+    stage_4_spread = stage4()
+    # avg_spread ~ 115 with Ray 1.0 scheduler. ~695 with (buggy) 0.8.7
+    # scheduler.
+    result["stage_4_spread"] = stage_4_spread
+    result["success"] = 1
+    print("PASSED.")
 
-        # TODO(rkn): The test below is commented out because it currently
-        # does not pass.
-        # # Submit a bunch of actor tasks with all-to-all communication.
-        # start_time = time.time()
-        # logger.info("Submitting actor tasks with all-to-all communication.")
-        # x_ids = []
-        # for _ in range(50):
-        #     for size_exponent in [0, 1, 2, 3, 4, 5, 6]:
-        #         x_ids = [a.method.remote(10**size_exponent, *x_ids) for a
-        #                  in actors]
-        # ray.get(x_ids)
-        # logger.info("Finished after %s seconds.", time.time() - start_time)
-    except Exception as e:
-        logging.exception(e)
-        print("FAILED.")
+    # TODO(rkn): The test below is commented out because it currently
+    # does not pass.
+    # # Submit a bunch of actor tasks with all-to-all communication.
+    # start_time = time.time()
+    # logger.info("Submitting actor tasks with all-to-all communication.")
+    # x_ids = []
+    # for _ in range(50):
+    #     for size_exponent in [0, 1, 2, 3, 4, 5, 6]:
+    #         x_ids = [a.method.remote(10**size_exponent, *x_ids) for a
+    #                  in actors]
+    # ray.get(x_ids)
+    # logger.info("Finished after %s seconds.", time.time() - start_time)
+
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_put:
         out_put.write(json.dumps(result))

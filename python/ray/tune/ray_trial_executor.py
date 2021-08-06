@@ -451,6 +451,7 @@ class RayTrialExecutor(TrialExecutor):
             if not runner:
                 return False
         trial.set_runner(runner)
+        self._notify_trainable_of_new_resources_if_needed(trial)
         self.restore(trial, checkpoint)
         self.set_status(trial, Trial.RUNNING)
 
@@ -466,15 +467,36 @@ class RayTrialExecutor(TrialExecutor):
             self._train(trial)
         return True
 
-    def _stop_trial(self, trial, error=False, error_msg=None):
+    def _notify_trainable_of_new_resources_if_needed(self, trial: Trial):
+        if trial.has_new_resources:
+            trainable = trial.runner
+            trial.has_new_resources = False
+            with self._change_working_directory(trial):
+                with warn_if_slow("update_resources"):
+                    try:
+                        ray.get(
+                            trainable._update_resources.remote(
+                                trial.placement_group_factory if trial.
+                                uses_placement_groups else trial.resources),
+                            timeout=DEFAULT_GET_TIMEOUT)
+                    except GetTimeoutError:
+                        logger.exception(
+                            "Trial %s: updating resources timed out.", trial)
+
+    def _stop_trial(self,
+                    trial,
+                    error=False,
+                    error_msg=None,
+                    destroy_pg_if_cannot_replace=True):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
         trial fails, the run will be marked as terminated in error, but no
         exception will be thrown.
 
-        If the trial should be paused (``pause=True``), we do not remove
-        its placement group (or a surrogate placement group).
+        If the placement group will be used right away
+        (destroy_pg_if_cannot_replace=False), we do not remove its placement
+        group (or a surrogate placement group).
 
         Args:
             error (bool): Whether to mark this trial as terminated in error.
@@ -513,7 +535,8 @@ class RayTrialExecutor(TrialExecutor):
                     logger.debug("Trial %s: Destroying actor.", trial)
 
                     # Try to return the placement group for other trials to use
-                    self._pg_manager.return_pg(trial)
+                    self._pg_manager.return_pg(trial,
+                                               destroy_pg_if_cannot_replace)
 
                     with self._change_working_directory(trial):
                         self._trial_cleanup.add(trial, actor=trial.runner)
@@ -567,10 +590,21 @@ class RayTrialExecutor(TrialExecutor):
         out = [rid for rid, t in dictionary.items() if t is item]
         return out
 
-    def stop_trial(self, trial, error=False, error_msg=None):
-        """Only returns resources if resources allocated."""
+    def stop_trial(self,
+                   trial,
+                   error=False,
+                   error_msg=None,
+                   destroy_pg_if_cannot_replace=True):
+        """Only returns resources if resources allocated.
+
+        If destroy_pg_if_cannot_replace is False, the Trial placement group
+        will not be removed if it can't replace any staging ones."""
         prior_status = trial.status
-        self._stop_trial(trial, error=error, error_msg=error_msg)
+        self._stop_trial(
+            trial,
+            error=error,
+            error_msg=error_msg,
+            destroy_pg_if_cannot_replace=destroy_pg_if_cannot_replace)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             if not trial.uses_placement_groups:
@@ -887,7 +921,8 @@ class RayTrialExecutor(TrialExecutor):
                     total_resources.get(name, 0.),
                     self._avail_resources.get_res_total(name), name)
                 for name in self._avail_resources.custom_resources
-                if not name.startswith(ray.resource_spec.NODE_ID_PREFIX)
+                if not name.startswith(ray.resource_spec.NODE_ID_PREFIX) and (
+                    total_resources.get(name, 0.) > 0 or "_group_" not in name)
             ])
             if customs:
                 status += " ({})".format(customs)
@@ -931,6 +966,9 @@ class RayTrialExecutor(TrialExecutor):
             self.last_pg_recon = time.time()
 
         self._pg_manager.cleanup()
+
+    def force_reconcilation_on_next_step_end(self):
+        self.last_pg_recon = -float("inf")
 
     def save(self, trial, storage=Checkpoint.PERSISTENT, result=None):
         """Saves the trial's state to a checkpoint asynchronously.

@@ -90,6 +90,8 @@ class RayParams:
             external machines.
         dashboard_port: The port to bind the dashboard server to.
             Defaults to 8265.
+        dashboard_agent_listen_port: The port for dashboard agents to listen on
+            for HTTP requests.
         logging_level: Logging level, default will be logging.INFO.
         logging_format: Logging format, default contains a timestamp,
             filename, line number, and message. See ray_constants.py.
@@ -115,6 +117,9 @@ class RayParams:
             failure.
         start_initial_python_workers_for_first_job (bool): If true, start
             initial Python workers for the first job on the node.
+        ray_debugger_external (bool): If true, make the Ray debugger for a
+            worker available externally to the node it is running on. This will
+            bind on 0.0.0.0 instead of localhost.
     """
 
     def __init__(self,
@@ -154,6 +159,7 @@ class RayParams:
                  include_dashboard=None,
                  dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
                  dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
+                 dashboard_agent_listen_port=0,
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
                  plasma_store_socket_name=None,
@@ -162,6 +168,7 @@ class RayParams:
                  include_log_monitor=None,
                  autoscaling_config=None,
                  start_initial_python_workers_for_first_job=False,
+                 ray_debugger_external=False,
                  _system_config=None,
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
@@ -204,6 +211,7 @@ class RayParams:
         self.include_dashboard = include_dashboard
         self.dashboard_host = dashboard_host
         self.dashboard_port = dashboard_port
+        self.dashboard_agent_listen_port = dashboard_agent_listen_port
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
@@ -215,6 +223,7 @@ class RayParams:
         self.no_monitor = no_monitor
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)
+        self.ray_debugger_external = ray_debugger_external
         self._system_config = _system_config or {}
         self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()

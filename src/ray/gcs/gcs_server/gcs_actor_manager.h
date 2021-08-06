@@ -212,6 +212,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                                rpc::GetNamedActorInfoReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleListNamedActors(const rpc::ListNamedActorsRequest &request,
+                             rpc::ListNamedActorsReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
                              rpc::GetAllActorInfoReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
@@ -248,6 +252,14 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \returns ActorID The ID of the actor. Nil if the actor was not found.
   ActorID GetActorIDByName(const std::string &name,
                            const std::string &ray_namespace) const;
+
+  /// Get names of named actors.
+  //
+  /// \param[in] all_namespaces Whether to include actors from all Ray namespaces.
+  /// \param[in] namespace The namespace to filter to if all_namespaces is false.
+  /// \returns List of <namespace, name> pairs.
+  std::vector<std::pair<std::string, std::string>> ListNamedActors(
+      bool all_namespaces, const std::string &ray_namespace) const;
 
   /// Schedule actors in the `pending_actors_` queue.
   /// This method should be called when new nodes are registered or resources
@@ -488,7 +500,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     GET_NAMED_ACTOR_INFO_REQUEST = 3,
     GET_ALL_ACTOR_INFO_REQUEST = 4,
     KILL_ACTOR_REQUEST = 5,
-    CountType_MAX = 6,
+    LIST_NAMED_ACTORS_REQUEST = 6,
+    CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };

@@ -25,7 +25,9 @@
 #include <vector>
 
 #include "ray/object_manager/plasma/common.h"
+#include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
+#include "ray/object_manager/plasma/plasma_allocator.h"
 
 namespace plasma {
 
@@ -36,8 +38,6 @@ class Client;
 // This file contains declaration for all functions and data structures that
 // need to be provided if you want to implement a new eviction algorithm for the
 // Plasma store.
-//
-// It does not implement memory quotas; see quota_aware_policy for that.
 
 class LRUCache {
  public:
@@ -96,10 +96,9 @@ class EvictionPolicy {
  public:
   /// Construct an eviction policy.
   ///
-  /// \param store_info Information about the Plasma store that is exposed
-  ///        to the eviction policy.
-  /// \param max_size Max size in bytes total of objects to store.
-  explicit EvictionPolicy(PlasmaStoreInfo *store_info, int64_t max_size);
+  /// \param object_store Reference to the object_store
+  /// \param allocator Reference to the allocator
+  EvictionPolicy(const ObjectStore &object_store, const IAllocator &allocator);
 
   /// Destroy an eviction policy.
   virtual ~EvictionPolicy() {}
@@ -110,38 +109,8 @@ class EvictionPolicy {
   /// cache.
   ///
   /// \param object_id The object ID of the object that was created.
-  /// \param client The pointer to the client.
   /// \param is_create Whether we are creating a new object (vs reading an object).
-  virtual void ObjectCreated(const ObjectID &object_id, Client *client, bool is_create);
-
-  /// Set quota for a client.
-  ///
-  /// \param client The pointer to the client.
-  /// \param output_memory_quota Set the quota for this client. This can only be
-  ///        called once per client. This is effectively the equivalent of giving
-  ///        the client its own LRU cache instance. The memory for this is taken
-  ///        out of the capacity of the global LRU cache for the client lifetime.
-  ///
-  /// \return True if enough space can be reserved for the given client quota.
-  virtual bool SetClientQuota(Client *client, int64_t output_memory_quota);
-
-  /// Determine what objects need to be evicted to enforce the given client's quota.
-  ///
-  /// \param client The pointer to the client creating the object.
-  /// \param size The size of the object to create.
-  /// \param is_create Whether we are creating a new object (vs reading an object).
-  /// \param objects_to_evict The object IDs that were chosen for eviction will
-  ///        be stored into this vector.
-  ///
-  /// \return True if enough space could be freed and false otherwise.
-  virtual bool EnforcePerClientQuota(Client *client, int64_t size, bool is_create,
-                                     std::vector<ObjectID> *objects_to_evict);
-
-  /// Called to clean up any resources allocated by this client. This merges any
-  /// per-client LRU queue created by SetClientQuota into the global LRU queue.
-  ///
-  /// \param client The pointer to the client.
-  virtual void ClientDisconnected(Client *client);
+  virtual void ObjectCreated(const ObjectID &object_id, bool is_create);
 
   /// This method will be called when the Plasma store needs more space, perhaps
   /// to create a new object. When this method is called, the eviction
@@ -203,10 +172,12 @@ class EvictionPolicy {
   /// The number of bytes pinned by applications.
   int64_t pinned_memory_bytes_;
 
-  /// Pointer to the plasma store info.
-  PlasmaStoreInfo *store_info_;
   /// Datastructure for the LRU cache.
   LRUCache cache_;
+
+  const ObjectStore &object_store_;
+
+  const IAllocator &allocator_;
 };
 
 }  // namespace plasma

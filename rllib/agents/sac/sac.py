@@ -102,10 +102,21 @@ DEFAULT_CONFIG = with_common_config({
     "final_prioritized_replay_beta": 0.4,
     # Whether to LZ4 compress observations
     "compress_observations": False,
-    # If set, this will fix the ratio of replayed from a buffer and learned on
-    # timesteps to sampled from an environment and stored in the replay buffer
-    # timesteps. Otherwise, the replay will proceed at the native ratio
-    # determined by (train_batch_size / rollout_fragment_length).
+
+    # The intensity with which to update the model (vs collecting samples from
+    # the env). If None, uses the "natural" value of:
+    # `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
+    # `num_envs_per_worker`).
+    # If provided, will make sure that the ratio between ts inserted into and
+    # sampled from the buffer matches the given value.
+    # Example:
+    #   training_intensity=1000.0
+    #   train_batch_size=250 rollout_fragment_length=1
+    #   num_workers=1 (or 0) num_envs_per_worker=1
+    #   -> natural value = 250 / 1 = 250.0
+    #   -> will make sure that replay+train op will be executed 4x as
+    #      often as rollout+insert op (4 * 250 = 1000).
+    # See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
     "training_intensity": None,
 
     # === Optimization ===
@@ -163,9 +174,6 @@ def validate_config(config: TrainerConfigDict) -> None:
     Raises:
         ValueError: In case something is wrong with the config.
     """
-    if config["num_gpus"] > 1 and config["framework"] != "torch":
-        raise ValueError("`num_gpus` > 1 not yet supported for tf-SAC!")
-
     if config["use_state_preprocessor"] != DEPRECATED_VALUE:
         deprecation_warning(
             old="config['use_state_preprocessor']", error=False)
@@ -173,11 +181,6 @@ def validate_config(config: TrainerConfigDict) -> None:
 
     if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
         raise ValueError("`grad_clip` value must be > 0.0!")
-
-    if config["simple_optimizer"] != DEPRECATED_VALUE or \
-            config["simple_optimizer"] is False:
-        logger.warning("`simple_optimizer` must be True (or unset) for SAC!")
-        config["simple_optimizer"] = True
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
@@ -204,4 +207,5 @@ SACTrainer = GenericOffPolicyTrainer.with_updates(
     validate_config=validate_config,
     default_policy=SACTFPolicy,
     get_policy_class=get_policy_class,
+    allow_unknown_subkeys=["Q_model", "policy_model"],
 )

@@ -3,9 +3,7 @@ import atexit
 import collections
 import inspect
 import logging
-import os
 import re
-import sys
 import time
 from dataclasses import dataclass
 from functools import wraps
@@ -20,11 +18,12 @@ from uvicorn.config import Config
 
 from ray import cloudpickle
 from ray.actor import ActorHandle
+from ray.util.annotations import Deprecated, PublicAPI
 from ray.serve.common import BackendInfo, GoalId
 from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
-from ray.serve.controller import BackendTag, ReplicaTag, ServeController
+from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view)
@@ -59,21 +58,21 @@ def _set_global_client(client):
 @dataclass
 class ReplicaContext:
     """Stores data for Serve API calls from within the user's backend code."""
-    backend_tag: BackendTag
+    deployment: str
     replica_tag: ReplicaTag
     _internal_controller_name: str
     servable_object: Callable
 
 
 def _set_internal_replica_context(
-        backend_tag: BackendTag,
+        deployment: str,
         replica_tag: ReplicaTag,
         controller_name: str,
         servable_object: Callable,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        backend_tag, replica_tag, controller_name, servable_object)
+        deployment, replica_tag, controller_name, servable_object)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -329,21 +328,6 @@ class Client:
         if ray_actor_options is None:
             ray_actor_options = {}
 
-        # If conda is activated and a conda env is not specified in runtime_env
-        # in ray_actor_options, default to conda env of this process (client).
-        # Without this code, the backend would run in the controller's conda
-        # env, which is likely different from that of the client.
-        # If using Ray client, skip this convenience feature because the local
-        # client env doesn't create the Ray cluster (so the client env is
-        # likely not present on the cluster.)
-        if not ray.util.client.ray.is_connected() and sys.platform != "win32":
-            if ray_actor_options.get("runtime_env") is None:
-                ray_actor_options["runtime_env"] = {}
-            if ray_actor_options["runtime_env"].get("conda") is None:
-                current_env = os.environ.get("CONDA_DEFAULT_ENV")
-                if current_env is not None and current_env != "":
-                    ray_actor_options["runtime_env"]["conda"] = current_env
-
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
 
@@ -375,20 +359,15 @@ class Client:
         if ray_actor_options is None:
             ray_actor_options = {}
 
-        # If conda is activated and a conda env is not specified in runtime_env
-        # in ray_actor_options, default to conda env of this process (client).
-        # Without this code, the backend would run in the controller's conda
-        # env, which is likely different from that of the client.
-        # If using Ray client, skip this convenience feature because the local
-        # client env doesn't create the Ray cluster (so the client env is
-        # likely not present on the cluster.)
-        if not ray.util.client.ray.is_connected() and sys.platform != "win32":
-            if ray_actor_options.get("runtime_env") is None:
-                ray_actor_options["runtime_env"] = {}
-            if ray_actor_options["runtime_env"].get("conda") is None:
-                current_env = os.environ.get("CONDA_DEFAULT_ENV")
-                if current_env is not None and current_env != "":
-                    ray_actor_options["runtime_env"]["conda"] = current_env
+        curr_job_env = ray.get_runtime_context().runtime_env
+        if "runtime_env" in ray_actor_options:
+            ray_actor_options["runtime_env"].setdefault(
+                "uris", curr_job_env.get("uris"))
+        else:
+            ray_actor_options[
+                "runtime_env"] = ray.get_runtime_context().runtime_env
+            if "working_dir" in ray_actor_options["runtime_env"]:
+                del ray_actor_options["runtime_env"]["working_dir"]
 
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
@@ -583,6 +562,7 @@ class Client:
         return handle
 
 
+@PublicAPI
 def start(
         detached: bool = False,
         http_host: Optional[str] = DEFAULT_HTTP_HOST,
@@ -597,7 +577,7 @@ def start(
     Client object (or when the script exits). If detached is set to True, the
     instance will instead persist until serve.shutdown() is called. This is
     only relevant if connecting to a long-running Ray cluster (e.g., with
-    ray.init(address="auto") or ray.util.connect("<remote_addr>")).
+    ray.init(address="auto") or ray.init("ray://<remote_addr>")).
 
     Args:
         detached (bool): Whether not the instance should be detached from this
@@ -718,10 +698,9 @@ def start(
     return client
 
 
+@Deprecated
 def connect() -> Client:
     """Connect to an existing Serve instance on this Ray cluster.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     If calling from the driver program, the Serve instance on this Ray cluster
     must first have been initialized using `serve.start(detached=True)`.
@@ -756,6 +735,7 @@ def connect() -> Client:
     return client
 
 
+@PublicAPI
 def shutdown() -> None:
     """Completely shut down the connected Serve instance.
 
@@ -769,14 +749,13 @@ def shutdown() -> None:
     _set_global_client(None)
 
 
+@Deprecated
 def create_endpoint(endpoint_name: str,
                     *,
                     backend: str = None,
                     route: Optional[str] = None,
                     methods: List[str] = ["GET"]) -> None:
     """Create a service endpoint given route_expression.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Args:
         endpoint_name (str): A name to associate to with the endpoint.
@@ -796,20 +775,18 @@ def create_endpoint(endpoint_name: str,
         _internal=True)
 
 
+@Deprecated
 def delete_endpoint(endpoint: str) -> None:
     """Delete the given endpoint.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Does not delete any associated backends.
     """
     return _get_global_client().delete_endpoint(endpoint, _internal=True)
 
 
+@Deprecated
 def list_endpoints() -> Dict[str, Dict[str, Any]]:
     """Returns a dictionary of all registered endpoints.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     The dictionary keys are endpoint names and values are dictionaries
     of the form: {"methods": List[str], "traffic": Dict[str, float]}.
@@ -817,12 +794,11 @@ def list_endpoints() -> Dict[str, Dict[str, Any]]:
     return _get_global_client().list_endpoints(_internal=True)
 
 
+@Deprecated
 def update_backend_config(
         backend_tag: str,
         config_options: Union[BackendConfig, Dict[str, Any]]) -> None:
     """Update a backend configuration for a backend tag.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Keys not specified in the passed will be left unchanged.
 
@@ -844,10 +820,9 @@ def update_backend_config(
         backend_tag, config_options, _internal=True)
 
 
+@Deprecated
 def get_backend_config(backend_tag: str) -> BackendConfig:
     """Get the backend configuration for a backend tag.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Args:
         backend_tag(str): A registered backend.
@@ -855,6 +830,7 @@ def get_backend_config(backend_tag: str) -> BackendConfig:
     return _get_global_client().get_backend_config(backend_tag, _internal=True)
 
 
+@Deprecated
 def create_backend(
         backend_tag: str,
         backend_def: Union[Callable, Type[Callable], str],
@@ -862,8 +838,6 @@ def create_backend(
         ray_actor_options: Optional[Dict] = None,
         config: Optional[Union[BackendConfig, Dict[str, Any]]] = None) -> None:
     """Create a backend with the provided tag.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Args:
         backend_tag (str): a unique tag assign to identify this backend.
@@ -898,20 +872,18 @@ def create_backend(
         _internal=True)
 
 
+@Deprecated
 def list_backends() -> Dict[str, BackendConfig]:
     """Returns a dictionary of all registered backends.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Dictionary maps backend tags to backend config objects.
     """
     return _get_global_client().list_backends(_internal=True)
 
 
+@Deprecated
 def delete_backend(backend_tag: str, force: bool = False) -> None:
     """Delete the given backend.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     The backend must not currently be used by any endpoints.
 
@@ -924,11 +896,10 @@ def delete_backend(backend_tag: str, force: bool = False) -> None:
         backend_tag, force=force, _internal=True)
 
 
+@Deprecated
 def set_traffic(endpoint_name: str,
                 traffic_policy_dictionary: Dict[str, float]) -> None:
     """Associate a service endpoint with traffic policy.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Example:
 
@@ -946,11 +917,10 @@ def set_traffic(endpoint_name: str,
         endpoint_name, traffic_policy_dictionary, _internal=True)
 
 
+@Deprecated
 def shadow_traffic(endpoint_name: str, backend_tag: str,
                    proportion: float) -> None:
     """Shadow traffic from an endpoint to a backend.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     The specified proportion of requests will be duplicated and sent to the
     backend. Responses of the duplicated traffic will be ignored.
@@ -968,6 +938,7 @@ def shadow_traffic(endpoint_name: str, backend_tag: str,
         endpoint_name, backend_tag, proportion, _internal=True)
 
 
+@Deprecated
 def get_handle(
         endpoint_name: str,
         missing_ok: bool = False,
@@ -976,8 +947,6 @@ def get_handle(
         _internal_pickled_http_request: bool = False,
 ) -> Union[RayServeHandle, RayServeSyncHandle]:
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
-
-    DEPRECATED. Will be removed in Ray 1.5. See docs for details.
 
     Args:
         endpoint_name (str): A registered service endpoint.
@@ -999,20 +968,19 @@ def get_handle(
         _internal=True)
 
 
+@PublicAPI
 def get_replica_context() -> ReplicaContext:
-    """When called from a backend, returns the backend tag and replica tag.
-
-    When not called from a backend, returns None.
+    """If called from a deployment, returns the deployment and replica tag.
 
     A replica tag uniquely identifies a single replica for a Ray Serve
-    backend at runtime.  Replica tags are of the form
-    `<backend tag>#<random letters>`.
+    deployment at runtime.  Replica tags are of the form
+    `<deployment_name>#<random letters>`.
 
     Raises:
-        RayServeException: if not called from within a Ray Serve backend
+        RayServeException: if not called from within a Ray Serve deployment.
     Example:
-        >>> serve.get_replica_context().backend_tag # my_backend
-        >>> serve.get_replica_context().replica_tag # my_backend#krcwoa
+        >>> serve.get_replica_context().deployment # deployment_name
+        >>> serve.get_replica_context().replica_tag # deployment_name#krcwoa
     """
     if _INTERNAL_REPLICA_CONTEXT is None:
         raise RayServeException("`serve.get_replica_context()` "
@@ -1021,6 +989,7 @@ def get_replica_context() -> ReplicaContext:
     return _INTERNAL_REPLICA_CONTEXT
 
 
+@PublicAPI(stability="beta")
 def ingress(app: Union["FastAPI", "APIRouter"]):
     """Mark a FastAPI application ingress for Serve.
 
@@ -1057,26 +1026,26 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
 
         class FastAPIWrapper(cls):
             async def __init__(self, *args, **kwargs):
-                self.app = frozen_app
+                super().__init__(*args, **kwargs)
+
+                self._serve_app = frozen_app
 
                 # Use uvicorn's lifespan handling code to properly deal with
                 # startup and shutdown event.
-                self.lifespan = LifespanOn(Config(self.app, lifespan="on"))
+                self._serve_asgi_lifespan = LifespanOn(
+                    Config(self._serve_app, lifespan="on"))
                 # Replace uvicorn logger with our own.
-                self.lifespan.logger = logger
+                self._serve_asgi_lifespan.logger = logger
                 # LifespanOn's logger logs in INFO level thus becomes spammy
                 # Within this block we temporarily uplevel for cleaner logging
                 with LoggingContext(
-                        self.lifespan.logger, level=logging.WARNING):
-                    await self.lifespan.startup()
-
-                # TODO(edoakes): should the startup_hook run before or after
-                # the constructor?
-                super().__init__(*args, **kwargs)
+                        self._serve_asgi_lifespan.logger,
+                        level=logging.WARNING):
+                    await self._serve_asgi_lifespan.startup()
 
             async def __call__(self, request: Request):
                 sender = ASGIHTTPSender()
-                await self.app(
+                await self._serve_app(
                     request.scope,
                     request._receive,
                     sender,
@@ -1087,9 +1056,10 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
                 # LifespanOn's logger logs in INFO level thus becomes spammy
                 # Within this block we temporarily uplevel for cleaner logging
                 with LoggingContext(
-                        self.lifespan.logger, level=logging.WARNING):
+                        self._serve_asgi_lifespan.logger,
+                        level=logging.WARNING):
                     asyncio.get_event_loop().run_until_complete(
-                        self.lifespan.shutdown())
+                        self._serve_asgi_lifespan.shutdown())
 
         FastAPIWrapper.__name__ = cls.__name__
         return FastAPIWrapper
@@ -1097,6 +1067,7 @@ def ingress(app: Union["FastAPI", "APIRouter"]):
     return decorator
 
 
+@PublicAPI
 class Deployment:
     def __init__(self,
                  func_or_class: Callable,
@@ -1217,11 +1188,12 @@ class Deployment:
         raise RuntimeError("Deployments cannot be constructed directly. "
                            "Use `deployment.deploy() instead.`")
 
+    @PublicAPI
     def deploy(self, *init_args, _blocking=True):
         """Deploy or update this deployment.
 
         Args:
-            *init_args (optional): args to pass to the class __init__
+            init_args (optional): args to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
         """
         if len(init_args) == 0 and self._init_args is not None:
@@ -1239,11 +1211,13 @@ class Deployment:
             _blocking=_blocking,
             _internal=True)
 
+    @PublicAPI
     def delete(self):
         """Delete this deployment."""
         return _get_global_client().delete_deployment(
             self._name, _internal=True)
 
+    @PublicAPI
     def get_handle(self, sync: Optional[bool] = True
                    ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Get a ServeHandle to this deployment to invoke it from Python.
@@ -1264,6 +1238,7 @@ class Deployment:
             _internal_use_serve_request=False,
             _internal=True)
 
+    @PublicAPI
     def options(
             self,
             func_or_class: Optional[Callable] = None,
@@ -1364,6 +1339,7 @@ def deployment(name: Optional[str] = None,
     pass
 
 
+@PublicAPI
 def deployment(
         _func_or_class: Optional[Callable] = None,
         name: Optional[str] = None,
@@ -1457,6 +1433,7 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
+@PublicAPI
 def get_deployment(name: str) -> Deployment:
     """Dynamically fetch a handle to a Deployment object.
 
@@ -1493,6 +1470,7 @@ def get_deployment(name: str) -> Deployment:
     )
 
 
+@PublicAPI
 def list_deployments() -> Dict[str, Deployment]:
     """Returns a dictionary of all active deployments.
 

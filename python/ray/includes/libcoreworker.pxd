@@ -136,6 +136,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const size_t &data_size,
             const shared_ptr[CBuffer] &metadata,
             const c_vector[CObjectID] &contained_object_id,
+            int64_t &task_output_inlined_bytes,
             shared_ptr[CRayObject] *return_object)
         CRayStatus SealReturnObject(
             const CObjectID& return_id,
@@ -161,7 +162,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                         CObjectID *c_actor_handle_id)
         ActorHandleSharedPtr GetActorHandle(const CActorID &actor_id) const
         pair[ActorHandleSharedPtr, CRayStatus] GetNamedActorHandle(
-            const c_string &name)
+            const c_string &name, const c_string &ray_namespace)
+        pair[c_vector[c_pair[c_string, c_string]], CRayStatus] ListNamedActors(
+            c_bool all_namespaces)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
         void PutObjectIntoPlasma(const CRayObject &object,
@@ -178,7 +181,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 const CAddress &owner_address,
                 const c_string &object_status)
 
-        CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object,
                        const c_vector[CObjectID] &contained_object_ids,
                        CObjectID *object_id)
@@ -189,18 +191,20 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const size_t data_size,
                                const c_vector[CObjectID] &contained_object_ids,
                                CObjectID *object_id, shared_ptr[CBuffer] *data,
-                               c_bool created_by_worker)
+                               c_bool created_by_worker,
+                               const unique_ptr[CAddress] &owner_address)
         CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
                                   const size_t data_size,
                                   const CObjectID &object_id,
                                   const CAddress &owner_address,
                                   shared_ptr[CBuffer] *data,
                                   c_bool created_by_worker)
-        CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object)
-        CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object)
+        CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
+                             const unique_ptr[CAddress] &owner_address)
+        CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
+                                const unique_ptr[CAddress] &owner_address)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
-                       c_vector[shared_ptr[CRayObject]] *results,
-                       c_bool plasma_objects_only)
+                       c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus GetIfLocal(
             const c_vector[CObjectID] &ids,
             c_vector[shared_ptr[CRayObject]] *results)
@@ -239,6 +243,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         shared_ptr[CGcsClient] GetGcsClient() const
 
         c_bool IsExiting() const
+
+        int64_t GetNumTasksSubmitted() const
+
+        int64_t GetNumLeasesRequested() const
 
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
         CWorkerType worker_type

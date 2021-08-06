@@ -143,10 +143,14 @@ class RayAPIStub:
         return self.api.remote(*args, **kwargs)
 
     def __getattr__(self, key: str):
-        if not self.is_connected():
+        if self.is_connected():
+            return getattr(self.api, key)
+        elif key in ["is_initialized", "_internal_kv_initialized"]:
+            # Client is not connected, thus Ray is not considered initialized.
+            return lambda: False
+        else:
             raise Exception("Ray Client is not connected. "
                             "Please connect by calling `ray.connect`.")
-        return getattr(self.api, key)
 
     def is_connected(self) -> bool:
         if self.client_worker is None:

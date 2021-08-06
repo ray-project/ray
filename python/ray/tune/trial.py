@@ -57,6 +57,7 @@ class ExportFormat:
     """
     CHECKPOINT = "checkpoint"
     MODEL = "model"
+    ONNX = "onnx"
     H5 = "h5"
 
     @staticmethod
@@ -70,7 +71,7 @@ class ExportFormat:
             formats[i] = formats[i].strip().lower()
             if formats[i] not in [
                     ExportFormat.CHECKPOINT, ExportFormat.MODEL,
-                    ExportFormat.H5
+                    ExportFormat.ONNX, ExportFormat.H5
             ]:
                 raise TuneError("Unsupported import/export format: " +
                                 formats[i])
@@ -112,11 +113,17 @@ class TrialInfo:
     Attributes:
         trial_name (str): String name of the current trial.
         trial_id (str): trial_id of the trial
+        trial_resources (Resources|PlacementGroupFactory): resources used
+            by trial.
     """
 
-    def __init__(self, trial):
+    def __init__(self, trial: "Trial"):
         self._trial_name = str(trial)
         self._trial_id = trial.trial_id
+        if trial.uses_placement_groups:
+            self._trial_resources = trial.placement_group_factory
+        else:
+            self._trial_resources = trial.resources
 
     @property
     def trial_name(self):
@@ -125,6 +132,15 @@ class TrialInfo:
     @property
     def trial_id(self):
         return self._trial_id
+
+    @property
+    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+        return self._trial_resources
+
+    @trial_resources.setter
+    def trial_resources(
+            self, new_resources: Union[Resources, PlacementGroupFactory]):
+        self._trial_resources = new_resources
 
 
 def create_logdir(dirname, local_dir):
@@ -298,6 +314,7 @@ class Trial:
         self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
+        self.has_new_resources = False
 
         # AutoML fields
         self.results = None
@@ -436,6 +453,8 @@ class Trial:
         self._setup_resources()
 
         self.invalidate_json_state()
+
+        self.has_new_resources = True
 
     def set_runner(self, runner):
         self.runner = runner

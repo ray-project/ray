@@ -9,7 +9,7 @@ import json
 routes = dashboard_utils.ClassMethodRouteTable
 
 
-class LogicalViewHead(dashboard_utils.DashboardHeadModule):
+class SnapshotHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._gcs_job_info_stub = None

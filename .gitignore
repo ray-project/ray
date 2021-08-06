@@ -6,6 +6,7 @@
 /python/ray/thirdparty_files/
 /python/ray/pyarrow_files/
 /python/ray/jars/
+/python/ray/cpp/
 /python/build
 /python/dist
 /python/python-driver-*
@@ -18,9 +19,12 @@
 /src/ray/object_manager/format/*_generated.h
 /src/ray/raylet/format/*_generated.h
 /java/runtime/src/main/java/io/ray/runtime/generated/*
+/java/serve/src/main/java/io/ray/serve/generated/*
 
 # Files genrated by c++ worker should be ignored.
-cpp/example/thirdparty/
+/cpp/example/thirdparty/
+/cpp/example/bazel-*
+/python/ray/cpp
 
 # Redis temporary files
 *dump.rdb
@@ -155,6 +159,9 @@ java/**/.settings
 java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
+
+# Cpp
+cpp/example/thirdparty/
 
 # streaming/python
 streaming/python/generated/

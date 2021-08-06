@@ -125,14 +125,13 @@ class GaussianNoise(Exploration):
         )
 
         # Chose by `explore` (main exploration switch).
-        batch_size = tf.shape(deterministic_actions)[0]
         action = tf.cond(
             pred=tf.constant(explore, dtype=tf.bool)
             if isinstance(explore, bool) else explore,
             true_fn=lambda: stochastic_actions,
             false_fn=lambda: deterministic_actions)
         # Logp=always zero.
-        logp = tf.zeros(shape=(batch_size, ), dtype=tf.float32)
+        logp = tf.zeros_like(deterministic_actions, dtype=tf.float32)[:, 0]
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
         if self.framework in ["tf2", "tfe"]:

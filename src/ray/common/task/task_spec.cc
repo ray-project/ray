@@ -1,8 +1,23 @@
+// Copyright 2019-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/common/task/task_spec.h"
 
+#include <boost/functional/hash.hpp>
 #include <sstream>
 
-#include <boost/functional/hash.hpp>
+#include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -92,6 +107,11 @@ TaskID TaskSpecification::TaskId() const {
   return TaskID::FromBinary(message_->task_id());
 }
 
+const std::string TaskSpecification::GetSerializedActorHandle() const {
+  RAY_CHECK(IsActorCreationTask());
+  return message_->actor_creation_task_spec().serialized_actor_handle();
+}
+
 JobID TaskSpecification::JobId() const {
   if (message_->job_id().empty() /* e.g., empty proto default */) {
     return JobID::Nil();
@@ -121,7 +141,12 @@ bool TaskSpecification::HasRuntimeEnv() const {
 }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
-  WorkerCacheKey env = {OverrideEnvironmentVariables(), SerializedRuntimeEnv()};
+  std::unordered_map<std::string, double> required_resource{};
+  if (RayConfig::instance().worker_resource_limits_enabled()) {
+    required_resource = GetRequiredResources().GetResourceMap();
+  }
+  WorkerCacheKey env = {OverrideEnvironmentVariables(), SerializedRuntimeEnv(),
+                        required_resource};
   return env.IntHash();
 }
 
@@ -367,17 +392,21 @@ std::string TaskSpecification::CallSiteString() const {
 
 WorkerCacheKey::WorkerCacheKey(
     const std::unordered_map<std::string, std::string> override_environment_variables,
-    const std::string serialized_runtime_env)
+    const std::string serialized_runtime_env,
+    const std::unordered_map<std::string, double> required_resources)
     : override_environment_variables(override_environment_variables),
-      serialized_runtime_env(serialized_runtime_env) {}
+      serialized_runtime_env(serialized_runtime_env),
+      required_resources(std::move(required_resources)) {}
 
 bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
+  // FIXME we should compare fields
   return Hash() == k.Hash();
 }
 
 bool WorkerCacheKey::EnvIsEmpty() const {
   return override_environment_variables.size() == 0 &&
-         (serialized_runtime_env == "" || serialized_runtime_env == "{}");
+         (serialized_runtime_env == "" || serialized_runtime_env == "{}") &&
+         required_resources.empty();
 }
 
 std::size_t WorkerCacheKey::Hash() const {
@@ -402,6 +431,15 @@ std::size_t WorkerCacheKey::Hash() const {
       }
 
       boost::hash_combine(hash_, serialized_runtime_env);
+
+      std::vector<std::pair<std::string, double>> resource_vars(
+          required_resources.begin(), required_resources.end());
+      // Sort the variables so different permutations yield the same hash.
+      std::sort(resource_vars.begin(), resource_vars.end());
+      for (auto &pair : resource_vars) {
+        boost::hash_combine(hash_, pair.first);
+        boost::hash_combine(hash_, pair.second);
+      }
     }
   }
   return hash_;

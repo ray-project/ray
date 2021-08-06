@@ -145,6 +145,11 @@ cc_proto_library(
     deps = [":event_proto"],
 )
 
+python_grpc_compile(
+    name = "event_py_proto",
+    deps = [":event_proto"],
+)
+
 # Job agent.
 proto_library(
     name = "job_agent_proto",
@@ -220,4 +225,10 @@ python_grpc_compile(
 cc_proto_library(
     name = "runtime_env_agent_cc_proto",
     deps = [":runtime_env_agent_proto"],
+)
+
+proto_library(
+    name = "serve_proto",
+    srcs = ["serve.proto"],
+    visibility = ["//java:__subpackages__"],
 )

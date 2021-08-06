@@ -24,9 +24,7 @@ def auto_http_archive(*, name=None, url=None, urls=True,
                       build_file=None, build_file_content=None,
                       strip_prefix=True, **kwargs):
     """ Intelligently choose mirrors based on the given URL for the download.
-
     Either url or urls is required.
-
     If name         == None , it is auto-deduced, but this is NOT recommended.
     If urls         == True , mirrors are automatically chosen.
     If build_file   == True , it is auto-deduced.
@@ -182,18 +180,6 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
-        name = "com_github_google_glog",
-        url = "https://github.com/google/glog/archive/925858d9969d8ee22aabc3635af00a37891f4e25.tar.gz",
-        sha256 = "fb86eca661497ac6f9ce2a106782a30215801bb8a7c8724c6ec38af05a90acf3",
-        patches = [
-            "//thirdparty/patches:glog-log-pid-tid.patch",
-            "//thirdparty/patches:glog-stack-trace.patch",
-            "//thirdparty/patches:glog-suffix-log.patch",
-            "//thirdparty/patches:glog-dump-stacktrack.patch",
-        ],
-    )
-
-    auto_http_archive(
         name = "cython",
         build_file = True,
         url = "https://github.com/cython/cython/archive/26cb654dcf4ed1b1858daf16b39fd13406b1ac64.tar.gz",
@@ -214,8 +200,8 @@ def ray_deps_setup():
     # This is how diamond dependencies are prevented.
     auto_http_archive(
         name = "com_google_absl",
-        url = "https://github.com/abseil/abseil-cpp/archive/aa844899c937bde5d2b24f276b59997e5b668bde.tar.gz",
-        sha256 = "327a3883d24cf5d81954b8b8713867ecf2289092c7a39a9dc25a9947cf5b8b78",
+        url = "https://github.com/abseil/abseil-cpp/archive/278e0a071885a22dcd2fd1b5576cc44757299343.tar.gz",
+        sha256 = "1764491a199eb9325b177126547f03d244f86b4ff28f16f206c7b3e7e4f777ec",
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp

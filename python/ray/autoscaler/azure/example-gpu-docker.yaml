@@ -31,6 +31,9 @@ idle_timeout_minutes: 5
 provider:
     type: azure
     location: westus2
+    resource_group: ray-cluster
+    # set subscription id otherwise the default from az cli will be used
+    # subscription_id: 00000000-0000-0000-0000-000000000000
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -57,7 +60,12 @@ available_node_types:
         # Provider-specific config, e.g. instance type.
         node_config:
             azure_arm_parameters:
-                vmSize: Standard_NC6_v3
+                vmSize: Standard_NC6s_v3
+                # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
+                imagePublisher: microsoft-dsvm
+                imageOffer: ubuntu-1804
+                imageSku: 1804-gen2
+                imageVersion: 21.01.21
 
     ray.worker.gpu:
         # The minimum number of nodes of this type to launch.
@@ -71,7 +79,17 @@ available_node_types:
         # Provider-specific config, e.g. instance type.
         node_config:
             azure_arm_parameters:
-                vmSize: Standard_NC6_v3
+                vmSize: Standard_NC6s_v3
+                # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
+                imagePublisher: microsoft-dsvm
+                imageOffer: ubuntu-1804
+                imageSku: 1804-gen2
+                imageVersion: 21.01.21
+                # optionally set priority to use Spot instances
+                priority: Spot
+                # set a maximum price for spot instances if desired
+                # billingProfile:
+                #     maxPrice: -1
 
 # Specify the node type of the head node (as configured above).
 head_node_type: ray.head.gpu
@@ -88,8 +106,10 @@ file_mounts: {
 # enabled, these commands will run outside the container and before docker
 # is setup.
 initialization_commands:
-    # get rid of annoying Ubuntu message
+    # enable docker setup
     - sudo usermod -aG docker $USER || true
+    - sleep 10  # delay to avoid docker permission denied errors
+    # get rid of annoying Ubuntu message
     - touch ~/.sudo_as_admin_successful
 
 # List of shell commands to run to set up nodes.
@@ -98,8 +118,9 @@ setup_commands: []
 #     - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands:
-    - pip install azure-cli-core==2.22.0 azure-mgmt-compute==14.0.0 azure-mgmt-msi==1.0.0 azure-mgmt-network==10.2.0
+# NOTE: rayproject/ray-ml:latest has azure packages bundled
+head_setup_commands: []
+    # - pip install -U azure-cli-core==2.22.0 azure-mgmt-compute==14.0.0 azure-mgmt-msi==1.0.0 azure-mgmt-network==10.2.0 azure-mgmt-resource==13.0.0
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []

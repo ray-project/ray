@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 from click.exceptions import ClickException
 
-from ray.autoscaler._private.azure.config import (_configure_key_pair as
-                                                  _azure_configure_key_pair)
+from ray.autoscaler._private._azure.config import (_configure_key_pair as
+                                                   _azure_configure_key_pair)
 from ray.autoscaler._private.gcp import config as gcp_config
 from ray.autoscaler._private.util import prepare_config, validate_config,\
     _get_default_config, merge_setup_commands
@@ -197,15 +197,14 @@ class AutoscalingConfigTest(unittest.TestCase):
                 }
             }]
         }
-        boto3_mock = Mock()
         describe_instance_types_mock = Mock()
         describe_instance_types_mock.describe_instance_types = MagicMock(
             return_value=boto3_dict)
-        boto3_mock.client = MagicMock(
+        client_cache_mock = MagicMock(
             return_value=describe_instance_types_mock)
         with patch.multiple(
                 "ray.autoscaler._private.aws.node_provider",
-                boto3=boto3_mock,
+                client_cache=client_cache_mock,
         ):
             new_config = prepare_config(new_config)
             importer = _NODE_PROVIDERS.get(new_config["provider"]["type"])

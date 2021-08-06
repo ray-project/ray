@@ -49,6 +49,8 @@ REQUIRE_SHM_SIZE_THRESHOLD = 10**10
 DEFAULT_PORT = 6379
 
 RAY_ADDRESS_ENVIRONMENT_VARIABLE = "RAY_ADDRESS"
+RAY_NAMESPACE_ENVIRONMENT_VARIABLE = "RAY_NAMESPACE"
+RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
@@ -67,7 +69,9 @@ DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
-PICKLE_OBJECT_WARNING_SIZE = 10**7
+FUNCTION_SIZE_WARN_THRESHOLD = 10**7
+FUNCTION_SIZE_ERROR_THRESHOLD = env_integer("FUNCTION_SIZE_ERROR_THRESHOLD",
+                                            (10**8))
 
 # If remote functions with the same source are imported this many times, then
 # print a warning.
@@ -140,6 +144,7 @@ DASHBOARD_AGENT_DIED_ERROR = "dashboard_agent_died"
 DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
+EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
 
 # Used in gpu detection
 RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"

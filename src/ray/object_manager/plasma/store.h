@@ -31,10 +31,11 @@
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/create_request_queue.h"
+#include "ray/object_manager/plasma/eviction_policy.h"
+#include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
-#include "ray/object_manager/plasma/quota_aware_policy.h"
 
 namespace plasma {
 
@@ -51,8 +52,7 @@ struct GetRequest;
 class PlasmaStore {
  public:
   // TODO: PascalCase PlasmaStore methods.
-  PlasmaStore(instrumented_io_context &main_service, std::string directory,
-              std::string fallback_directory, bool hugepages_enabled,
+  PlasmaStore(instrumented_io_context &main_service, IAllocator &allocator,
               const std::string &socket_name, uint32_t delay_on_oom_ms,
               float object_spilling_threshold,
               ray::SpillObjectsCallback spill_objects_callback,
@@ -68,24 +68,10 @@ class PlasmaStore {
   /// Stop this store.
   void Stop();
 
-  /// Get a const pointer to the internal PlasmaStoreInfo object.
-  const PlasmaStoreInfo *GetPlasmaStoreInfo();
-
   /// Create a new object. The client must do a call to release_object to tell
   /// the store when it is done with the object.
   ///
-  /// \param object_id Object ID of the object to be created.
-  /// \param owner_raylet_id Raylet ID of the object's owner.
-  /// \param owner_ip_address IP address of the object's owner.
-  /// \param owner_port Port of the object's owner.
-  /// \param owner_worker_id Worker ID of the object's owner.
-  /// \param data_size Size in bytes of the object to be created.
-  /// \param metadata_size Size in bytes of the object metadata.
-  /// \param device_num The number of the device where the object is being
-  ///        created.
-  ///        device_num = 0 corresponds to the host,
-  ///        device_num = 1 corresponds to GPU0,
-  ///        device_num = 2 corresponds to GPU1, etc.
+  /// \param object_info Ray object info.
   /// \param client The client that created the object.
   /// \param fallback_allocator Whether to allow falling back to the fs allocator
   /// \param result The object that has been created.
@@ -97,12 +83,10 @@ class PlasmaStore {
   ///  - PlasmaError::OutOfMemory, if the store is out of memory and
   ///    cannot create the object. In this case, the client should not call
   ///    plasma_release.
-  PlasmaError CreateObject(const ObjectID &object_id, const NodeID &owner_raylet_id,
-                           const std::string &owner_ip_address, int owner_port,
-                           const WorkerID &owner_worker_id, int64_t data_size,
-                           int64_t metadata_size, plasma::flatbuf::ObjectSource source,
-                           int device_num, const std::shared_ptr<Client> &client,
-                           bool fallback_allocator, PlasmaObject *result);
+  PlasmaError CreateObject(const ray::ObjectInfo &object_info,
+                           plasma::flatbuf::ObjectSource source,
+                           const std::shared_ptr<Client> &client, bool fallback_allocator,
+                           PlasmaObject *result);
 
   /// Abort a created but unsealed object. If the client is not the
   /// creator, then the abort will fail.
@@ -192,21 +176,23 @@ class PlasmaStore {
   /// Get the available memory for new objects to be created. This includes
   /// memory that is currently being used for created but unsealed objects.
   void GetAvailableMemory(std::function<void(size_t)> callback) const {
-    RAY_CHECK((num_bytes_unsealed_ > 0 && num_objects_unsealed_ > 0) ||
-              (num_bytes_unsealed_ == 0 && num_objects_unsealed_ == 0))
+    RAY_CHECK((object_store_.GetNumBytesUnsealed() > 0 &&
+               object_store_.GetNumObjectsUnsealed() > 0) ||
+              (object_store_.GetNumBytesUnsealed() == 0 &&
+               object_store_.GetNumObjectsUnsealed() == 0))
         << "Tracking for available memory in the plasma store has gone out of sync. "
            "Please file a GitHub issue.";
-    RAY_CHECK(num_bytes_in_use_ >= num_bytes_unsealed_);
+    RAY_CHECK(num_bytes_in_use_ >= object_store_.GetNumBytesUnsealed());
     // We do not count unsealed objects as in use because these may have been
     // created by the object manager.
     int64_t num_bytes_in_use =
-        static_cast<int64_t>(num_bytes_in_use_ - num_bytes_unsealed_);
+        static_cast<int64_t>(num_bytes_in_use_ - object_store_.GetNumBytesUnsealed());
     if (!RayConfig::instance().plasma_unlimited()) {
-      RAY_CHECK(PlasmaAllocator::GetFootprintLimit() >= num_bytes_in_use);
+      RAY_CHECK(allocator_.GetFootprintLimit() >= num_bytes_in_use);
     }
     size_t available = 0;
-    if (num_bytes_in_use < PlasmaAllocator::GetFootprintLimit()) {
-      available = PlasmaAllocator::GetFootprintLimit() - num_bytes_in_use;
+    if (num_bytes_in_use < allocator_.GetFootprintLimit()) {
+      available = allocator_.GetFootprintLimit() - num_bytes_in_use;
     }
     callback(available);
   }
@@ -226,7 +212,7 @@ class PlasmaStore {
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
                            const ObjectID &object_id, uint64_t req_id);
 
-  void AddToClientObjectIds(const ObjectID &object_id, ObjectTableEntry *entry,
+  void AddToClientObjectIds(const ObjectID &object_id, const LocalObject *entry,
                             const std::shared_ptr<Client> &client);
 
   /// Remove a GetRequest and clean up the relevant data structures.
@@ -243,14 +229,14 @@ class PlasmaStore {
 
   void UpdateObjectGetRequests(const ObjectID &object_id);
 
-  int RemoveFromClientObjectIds(const ObjectID &object_id, ObjectTableEntry *entry,
+  int RemoveFromClientObjectIds(const ObjectID &object_id, const LocalObject *entry,
                                 const std::shared_ptr<Client> &client);
 
   void EraseFromObjectTable(const ObjectID &object_id);
 
-  uint8_t *AllocateMemory(size_t size, MEMFD_TYPE *fd, int64_t *map_size,
-                          ptrdiff_t *offset, const std::shared_ptr<Client> &client,
-                          bool is_create, bool fallback_allocator, PlasmaError *error);
+  const LocalObject *CreateObjectInternal(const ray::ObjectInfo &object_info,
+                                          plasma::flatbuf::ObjectSource source,
+                                          bool allow_fallback_allocation);
 
   // Start listening for clients.
   void DoAccept();
@@ -263,12 +249,12 @@ class PlasmaStore {
   boost::asio::basic_socket_acceptor<ray::local_stream_protocol> acceptor_;
   /// The socket to listen on for new clients.
   ray::local_stream_socket socket_;
-
-  /// The plasma store information, including the object tables, that is exposed
-  /// to the eviction policy.
-  PlasmaStoreInfo store_info_;
+  /// The allocator that allocates mmaped memory.
+  IAllocator &allocator_;
+  /// The object store stores created objects.
+  ObjectStore object_store_;
   /// The state that is managed by the eviction policy.
-  QuotaAwarePolicy eviction_policy_;
+  EvictionPolicy eviction_policy_;
   /// A hash table mapping object IDs to a vector of the get requests that are
   /// waiting for the object to arrive.
   std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
@@ -328,14 +314,7 @@ class PlasmaStore {
   /// Total number of bytes allocated to objects that are in use by any client.
   /// This includes objects that are being created and objects that a client
   /// called get on.
-  size_t num_bytes_in_use_ = 0;
-
-  /// Total number of bytes allocated to objects that are created but not yet
-  /// sealed.
-  size_t num_bytes_unsealed_ = 0;
-
-  /// Number of objects that are created but not sealed.
-  size_t num_objects_unsealed_ = 0;
+  int64_t num_bytes_in_use_ = 0;
 
   /// Total plasma object bytes that are consumed by core workers.
   int64_t total_consumed_bytes_ = 0;
@@ -343,9 +322,6 @@ class PlasmaStore {
   /// Whether we have dumped debug information on OOM yet. This limits dump
   /// (which can be expensive) to once per OOM event.
   bool dumped_on_oom_ = false;
-
-  /// A running total of the objects that have ever been created on this node.
-  size_t num_bytes_created_total_ = 0;
 };
 
 }  // namespace plasma

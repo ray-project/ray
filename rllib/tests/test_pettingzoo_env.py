@@ -24,16 +24,12 @@ class TestPettingZooEnv(unittest.TestCase):
 
         config = deepcopy(agent_class._default_config)
 
-        test_env = PettingZooEnv(simple_spread_v2.env())
-        obs_space = test_env.observation_space
-        act_space = test_env.action_space
-        test_env.close()
-
         config["multiagent"] = {
-            "policies": {
-                # the first tuple value is None -> uses default policy
-                "av": (None, obs_space, act_space, {}),
-            },
+            # Set of policy IDs (by default, will use Trainer's
+            # default policy class, the env's obs/act spaces and config={}).
+            "policies": {"av"},
+            # Mapping function that always returns "av" as policy ID to use
+            # (for any agent).
             "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av"
         }
 

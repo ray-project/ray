@@ -307,18 +307,26 @@ def _bootstrap_config(config: Dict[str, Any],
                 f"Failed to autodetect node resources: {str(exc)}. "
                 "You can see full stack trace with higher verbosity.")
 
-    # NOTE: if `resources` field is missing, validate_config for providers
-    # other than AWS and Kubernetes will fail (the schema error will ask the
-    # user to manually fill the resources) as we currently support autofilling
-    # resources for AWS and Kubernetes only.
-    validate_config(config)
+    try:
+        # NOTE: if `resources` field is missing, validate_config for providers
+        # other than AWS and Kubernetes will fail (the schema error will ask
+        # the user to manually fill the resources) as we currently support
+        # autofilling resources for AWS and Kubernetes only.
+        validate_config(config)
+    except (ModuleNotFoundError, ImportError):
+        cli_logger.abort(
+            "Not all Ray autoscaler dependencies were found. "
+            "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
+            "only be usable via `pip install 'ray[default]'`. Please "
+            "update your install command.")
     resolved_config = provider_cls.bootstrap_config(config)
 
     if not no_config_cache:
         with open(cache_key, "w") as f:
             config_cache = {
                 "_version": CONFIG_CACHE_VERSION,
-                "provider_log_info": try_get_log_state(config["provider"]),
+                "provider_log_info": try_get_log_state(
+                    resolved_config["provider"]),
                 "config": resolved_config
             }
             f.write(json.dumps(config_cache))
@@ -965,8 +973,8 @@ def exec_cluster(config_file: str,
         docker_config=config.get("docker"))
     shutdown_after_run = False
     if cmd and stop:
-        cmd += "; ".join([
-            "ray stop",
+        cmd = "; ".join([
+            cmd, "ray stop",
             "ray teardown ~/ray_bootstrap_config.yaml --yes --workers-only"
         ])
         shutdown_after_run = True

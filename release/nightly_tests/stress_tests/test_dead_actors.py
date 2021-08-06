@@ -73,53 +73,50 @@ if __name__ == "__main__":
     num_children = args.num_children
     death_probability = args.death_probability
 
-    try:
-        # Wait until the expected number of nodes have joined the cluster.
-        while True:
-            num_nodes = len(ray.nodes())
-            logger.info("Waiting for nodes {}/{}".format(
-                num_nodes, num_remote_nodes + 1))
-            if num_nodes >= num_remote_nodes + 1:
-                break
-            time.sleep(5)
-        logger.info("Nodes have all joined. There are %s resources.",
-                    ray.cluster_resources())
+    # Wait until the expected number of nodes have joined the cluster.
+    while True:
+        num_nodes = len(ray.nodes())
+        logger.info("Waiting for nodes {}/{}".format(num_nodes,
+                                                     num_remote_nodes + 1))
+        if num_nodes >= num_remote_nodes + 1:
+            break
+        time.sleep(5)
+    logger.info("Nodes have all joined. There are %s resources.",
+                ray.cluster_resources())
 
-        parents = [
-            Parent.remote(num_children, death_probability)
-            for _ in range(num_parents)
-        ]
+    parents = [
+        Parent.remote(num_children, death_probability)
+        for _ in range(num_parents)
+    ]
 
-        start = time.time()
-        loop_times = []
-        for i in range(100):
-            loop_start = time.time()
-            ray.get([parent.ping.remote(10) for parent in parents])
+    start = time.time()
+    loop_times = []
+    for i in range(100):
+        loop_start = time.time()
+        ray.get([parent.ping.remote(10) for parent in parents])
 
-            # Kill a parent actor with some probability.
-            exit_chance = np.random.rand()
-            if exit_chance > death_probability:
-                parent_index = np.random.randint(len(parents))
-                parents[parent_index].kill.remote()
-                parents[parent_index] = Parent.remote(num_children,
-                                                      death_probability)
+        # Kill a parent actor with some probability.
+        exit_chance = np.random.rand()
+        if exit_chance > death_probability:
+            parent_index = np.random.randint(len(parents))
+            parents[parent_index].kill.remote()
+            parents[parent_index] = Parent.remote(num_children,
+                                                  death_probability)
 
-            logger.info("Finished trial %s", i)
-            loop_times.append(time.time() - loop_start)
+        logger.info("Finished trial %s", i)
+        loop_times.append(time.time() - loop_start)
 
-        print("Finished in: {}s".format(time.time() - start))
-        print("Average iteration time: {}s".format(
-            sum(loop_times) / len(loop_times)))
-        print("Max iteration time: {}s".format(max(loop_times)))
-        print("Min iteration time: {}s".format(min(loop_times)))
-        result["total_time"] = time.time() - start
-        result["avg_iteration_time"] = sum(loop_times) / len(loop_times)
-        result["max_iteration_time"] = max(loop_times)
-        result["min_iteration_time"] = min(loop_times)
-        result["success"] = 1
-        print("PASSED.")
-    except Exception as e:
-        logging.exception(e)
-        print("FAILED.")
+    print("Finished in: {}s".format(time.time() - start))
+    print("Average iteration time: {}s".format(
+        sum(loop_times) / len(loop_times)))
+    print("Max iteration time: {}s".format(max(loop_times)))
+    print("Min iteration time: {}s".format(min(loop_times)))
+    result["total_time"] = time.time() - start
+    result["avg_iteration_time"] = sum(loop_times) / len(loop_times)
+    result["max_iteration_time"] = max(loop_times)
+    result["min_iteration_time"] = min(loop_times)
+    result["success"] = 1
+    print("PASSED.")
+
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(json.dumps(result))

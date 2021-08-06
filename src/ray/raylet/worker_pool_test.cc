@@ -92,13 +92,37 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
   };
 };
 
+class MockAgentManager : public AgentManager {
+ public:
+  MockAgentManager(AgentManager::Options options, DelayExecutorFn delay_executor,
+                   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory,
+                   bool start_agent = true)
+      : AgentManager(options, delay_executor, runtime_env_agent_client_factory,
+                     start_agent){};
+  void CreateRuntimeEnv(const JobID &job_id, const std::string &serialized_runtime_env,
+                        CreateRuntimeEnvCallback callback) override {
+    queued_callbacks.push(callback);
+  };
+
+  void PopAndInvokeCallback() {
+    if (queued_callbacks.size() > 0) {
+      CreateRuntimeEnvCallback callback = queued_callbacks.front();
+      queued_callbacks.pop();
+      callback(/*success=*/true, /*serialized_runtime_env_context=*/"");
+    }
+  }
+
+  std::queue<CreateRuntimeEnvCallback> queued_callbacks;
+};
+
 class WorkerPoolMock : public WorkerPool {
  public:
   explicit WorkerPoolMock(instrumented_io_context &io_service,
                           const WorkerCommandMap &worker_commands)
       : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
                    MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
-                   []() {}, [this]() { return current_time_ms_; }),
+                   []() {}, [](const TaskID &) {}, 0,
+                   [this]() { return current_time_ms_; }),
         last_worker_process_() {
     SetNodeManagerPort(1);
   }
@@ -1001,7 +1025,6 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
 
   // Start two IO workers. These don't count towards the limit.
   {
-    RAY_LOG(INFO) << "XXX";
     Process proc = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::SPILL_WORKER, job_id);
     auto worker = CreateSpillWorker(Process());
@@ -1012,7 +1035,6 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
     worker_pool_->PushSpillWorker(worker);
   }
   {
-    RAY_LOG(INFO) << "YYY";
     Process proc = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, job_id);
     auto worker = CreateRestoreWorker(Process());
@@ -1161,8 +1183,8 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
                       /*dynamic_options=*/{}, TaskID::Nil(), "mock_runtime_env_2");
 
-  const WorkerCacheKey env1 = {/*override_environment_variables=*/{},
-                               "mock_runtime_env_1"};
+  const WorkerCacheKey env1 = {
+      /*override_environment_variables=*/{}, "mock_runtime_env_1", {}};
   const int runtime_env_hash_1 = env1.IntHash();
 
   // Try to pop worker for task with runtime env 1.
@@ -1212,6 +1234,88 @@ TEST_F(WorkerPoolTest, StartWorkWithDifferentShimPid) {
   // After worker finished starting, starting_worker_processes will erase this process.
   worker_pool_->OnWorkerStarted(worker);
   ASSERT_EQ(0, worker_pool_->NumWorkerProcessesStarting());
+
+  // test dedicated workers with different shim pid
+  std::vector<std::string> actor_jvm_options;
+  actor_jvm_options.insert(
+      actor_jvm_options.end(),
+      {"-Dmy-actor.hello=foo", "-Dmy-actor.world=bar", "-Xmx2g", "-Xms1g"});
+  auto task_id = TaskID::ForDriverTask(JOB_ID);
+  auto actor_id = ActorID::Of(JOB_ID, task_id, 1);
+  TaskSpecification java_task_spec = ExampleTaskSpec(
+      ActorID::Nil(), Language::JAVA, JOB_ID, actor_id, actor_jvm_options, task_id);
+  ASSERT_EQ(worker_pool_->PopWorker(java_task_spec), nullptr);
+  last_process = worker_pool_->LastStartedWorkerProcess();
+  pid_t java_shim_pid = last_process.GetId();
+  pid_t java_pid = java_shim_pid + 1000;
+  auto java_worker = CreateWorker(Process(), Language::JAVA);
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(java_worker, java_pid, java_shim_pid,
+                                            [](Status, int) {}));
+  // Add the workers to the pool.
+  worker_pool_->PushWorker(java_worker);
+  ASSERT_TRUE(worker_pool_->PopWorker(java_task_spec) != nullptr);
+}
+
+TEST_F(WorkerPoolTest, NoSpuriousWorkerStartupDuringEnvInstall) {
+  std::vector<std::string> agent_commands = {};
+  const NodeID node_id = NodeID::FromRandom();
+  auto options = AgentManager::Options({node_id, agent_commands});
+  auto agent_manager = std::make_shared<MockAgentManager>(
+      std::move(options),
+      /*delay_executor=*/
+      [this](std::function<void()> task, uint32_t delay_ms) {
+        return execute_after(io_service_, task, delay_ms);
+      },
+      /*runtime_env_agent_factory=*/
+      [](const std::string &ip_address, int port) {
+        return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
+            new MockRuntimeEnvAgentClient());
+      },
+      false);
+  worker_pool_->SetAgentManager(agent_manager);
+
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
+  const auto normal_task_spec =
+      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
+                      /*dynamic_options=*/{}, TaskID::Nil(), "mock_runtime_env_1");
+
+  // Pop worker for a task with runtime env.
+  auto popped_worker = worker_pool_->PopWorker(normal_task_spec);
+
+  // No idle workers.
+  ASSERT_EQ(popped_worker, nullptr);
+
+  // Worker does not start because CreateRuntimeEnvCallback has not yet been invoked.
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
+
+  // Simulate the following situation: before runtime env is done installing,
+  // PopWorker is called several more times for the same task.
+  for (int i = 0; i < 10; i++) {
+    worker_pool_->PopWorker(normal_task_spec);
+  }
+
+  // Still, no workers should have started.
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
+
+  // AgentManager::CreateRuntimeEnv() should have only been called once.
+  ASSERT_EQ(agent_manager->queued_callbacks.size(), 1);
+
+  // Finish installing runtime env, call CreateRuntimeEnvCallback.
+  agent_manager->PopAndInvokeCallback();
+
+  // Only one worker process is started.
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+
+  // Now that the env has been created, we should be able to start workers for this env
+  // in parallel.  The soft limit of the number of workers is 5, so just add 4 more.
+  for (int i = 0; i < 4; i++) {
+    worker_pool_->PopWorker(normal_task_spec);
+  }
+  ASSERT_EQ(agent_manager->queued_callbacks.size(), 4);
+  for (int i = 0; i < 4; i++) {
+    agent_manager->PopAndInvokeCallback();
+  }
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 5);
 }
 
 }  // namespace raylet

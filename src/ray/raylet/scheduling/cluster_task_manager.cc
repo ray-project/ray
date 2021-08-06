@@ -1,8 +1,24 @@
-#include <google/protobuf/map.h>
-
-#include <boost/range/join.hpp>
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "ray/raylet/scheduling/cluster_task_manager.h"
+
+#include <google/protobuf/map.h>
+
+#include <boost/functional/hash.hpp>
+#include <boost/range/join.hpp>
+
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
 
@@ -65,7 +81,9 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // This argument is used to set violation, which is an unsupported feature now.
       int64_t _unused;
       std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-          placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
+          placement_resources,
+          /*requires_object_store_memory=*/false,
+          task.GetTaskSpecification().IsActorCreationTask(),
           /*force_spillback=*/false, &_unused, &is_infeasible);
 
       // There is no node that has available resources to run the request.
@@ -140,6 +158,13 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
 void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     WorkerPoolInterface &worker_pool,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
+  using job_id_runtime_env_hash_pair = std::pair<size_t, int>;
+  // TODO(simon): blocked_runtime_env_to_skip is added as a hack to make sure tasks
+  // requiring different runtime env doesn't block each other. We need to find a
+  // long term solution for this, see #17154.
+  std::unordered_set<job_id_runtime_env_hash_pair,
+                     boost::hash<job_id_runtime_env_hash_pair>>
+      blocked_runtime_env_to_skip;
   // Check every task in task_to_dispatch queue to see
   // whether it can be dispatched and ran. This avoids head-of-line
   // blocking where a task which cannot be dispatched because
@@ -154,6 +179,15 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       const auto &task = std::get<0>(work);
       const auto &spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
+      const auto runtime_env_worker_key =
+          std::make_pair(spec.JobId().Hash(), spec.GetRuntimeEnvHash());
+
+      // Current task and runtime env combination doesn't have an available worker,
+      // therefore skipping the task.
+      if (blocked_runtime_env_to_skip.count(runtime_env_worker_key) > 0) {
+        work_it++;
+        continue;
+      }
 
       bool args_missing = false;
       bool success = PinTaskArgsIfMemoryAvailable(spec, &args_missing);
@@ -172,11 +206,11 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // The task's args cannot be pinned due to lack of memory. We should
           // retry dispatching the task once another task finishes and releases
           // its arguments.
-          RAY_LOG(INFO) << "Dispatching task " << task_id
-                        << " would put this node over the max memory allowed for "
-                           "arguments of executing tasks ("
-                        << max_pinned_task_arguments_bytes_
-                        << "). Waiting to dispatch task until other tasks complete";
+          RAY_LOG(DEBUG) << "Dispatching task " << task_id
+                         << " would put this node over the max memory allowed for "
+                            "arguments of executing tasks ("
+                         << max_pinned_task_arguments_bytes_
+                         << "). Waiting to dispatch task until other tasks complete";
           RAY_CHECK(!executing_task_args_.empty() && !pinned_task_arguments_.empty())
               << "Cannot dispatch task " << task_id
               << " until another task finishes and releases its arguments, but no other "
@@ -204,8 +238,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
       // Check if the node is still schedulable. It may not be if dependency resolution
       // took a long time.
-      std::shared_ptr<TaskResourceInstances> allocated_instances(
-          new TaskResourceInstances());
+      auto allocated_instances = std::make_shared<TaskResourceInstances>();
       bool schedulable = cluster_resource_scheduler_->AllocateLocalTaskResources(
           spec.GetRequiredResources().GetResourceMap(), allocated_instances);
 
@@ -223,7 +256,14 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       } else {
         // The local node has the available resources to run the task, so we should run
         // it.
-        std::shared_ptr<WorkerInterface> worker = worker_pool_.PopWorker(spec);
+        std::string allocated_instances_serialized_json = "{}";
+        if (RayConfig::instance().worker_resource_limits_enabled()) {
+          allocated_instances_serialized_json =
+              cluster_resource_scheduler_->SerializedTaskResourceInstances(
+                  allocated_instances);
+        }
+        std::shared_ptr<WorkerInterface> worker =
+            worker_pool_.PopWorker(spec, allocated_instances_serialized_json);
         if (!worker) {
           RAY_LOG(DEBUG) << "This node has available resources, but no worker processes "
                             "to grant the lease.";
@@ -236,6 +276,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           // correct job ID.  However, another task with a different env or job ID
           // might have a worker available, so continue iterating through the queue.
           work_it++;
+          // Keep track of runtime env that doesn't have workers available so we
+          // won't call PopWorker for subsequent tasks requiring the same runtime env.
+          blocked_runtime_env_to_skip.insert(runtime_env_worker_key);
           continue;
         }
 
@@ -268,8 +311,9 @@ bool ClusterTaskManager::TrySpillback(const Work &work, bool &is_infeasible) {
   int64_t _unused;
   auto placement_resources = spec.GetRequiredPlacementResources().GetResourceMap();
   std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-      placement_resources, spec.IsActorCreationTask(), /*force_spillback=*/false,
-      &_unused, &is_infeasible);
+      placement_resources,
+      /*requires_object_store_memory=*/false, spec.IsActorCreationTask(),
+      /*force_spillback=*/false, &_unused, &is_infeasible);
 
   if (is_infeasible || node_id_string == self_node_id_.Binary() ||
       node_id_string.empty()) {
@@ -349,7 +393,7 @@ bool ClusterTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &s
         // This can happen if the task's arguments were all local at some
         // point, but then at least one was evicted before the task could
         // be dispatched to a worker.
-        RAY_LOG(INFO)
+        RAY_LOG(DEBUG)
             << "Task " << spec.TaskId() << " argument " << deps[i]
             << " was evicted before the task could be dispatched. This can happen "
                "when there are many objects needed on this node. The task will be "
@@ -409,8 +453,8 @@ void ClusterTaskManager::PinTaskArgs(const TaskSpecification &spec,
       it->second.second++;
     }
   } else {
-    RAY_LOG(INFO) << "Scheduler received duplicate task " << spec.TaskId()
-                  << ", most likely because the first execution failed";
+    RAY_LOG(DEBUG) << "Scheduler received duplicate task " << spec.TaskId()
+                   << ", most likely because the first execution failed";
   }
 }
 
@@ -441,14 +485,16 @@ void ClusterTaskManager::ReturnWorkerResources(std::shared_ptr<WorkerInterface> 
   ReleaseWorkerResources(worker);
 }
 
-void ReplyCancelled(Work &work) {
+void ReplyCancelled(Work &work, bool runtime_env_setup_failed) {
   auto reply = std::get<1>(work);
   auto callback = std::get<2>(work);
   reply->set_canceled(true);
+  reply->set_runtime_env_setup_failed(runtime_env_setup_failed);
   callback();
 }
 
-bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
+bool ClusterTaskManager::CancelTask(const TaskID &task_id,
+                                    bool runtime_env_setup_failed) {
   // TODO(sang): There are lots of repetitive code around task backlogs. We should
   // refactor them.
   for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
@@ -459,7 +505,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RemoveFromBacklogTracker(task);
         RAY_LOG(DEBUG) << "Canceling task " << task_id;
-        ReplyCancelled(*work_it);
+        ReplyCancelled(*work_it, runtime_env_setup_failed);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_schedule_.erase(shapes_it);
@@ -475,7 +521,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       const auto &task = std::get<0>(*work_it);
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RemoveFromBacklogTracker(task);
-        ReplyCancelled(*work_it);
+        ReplyCancelled(*work_it, runtime_env_setup_failed);
         if (!task.GetTaskSpecification().GetDependencies().empty()) {
           task_dependency_manager_.RemoveTaskDependencies(
               task.GetTaskSpecification().TaskId());
@@ -496,7 +542,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       const auto &task = std::get<0>(*work_it);
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RemoveFromBacklogTracker(task);
-        ReplyCancelled(*work_it);
+        ReplyCancelled(*work_it, runtime_env_setup_failed);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           infeasible_tasks_.erase(shapes_it);
@@ -510,7 +556,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
   if (iter != waiting_tasks_index_.end()) {
     const auto &task = std::get<0>(*iter->second);
     RemoveFromBacklogTracker(task);
-    ReplyCancelled(*iter->second);
+    ReplyCancelled(*iter->second, runtime_env_setup_failed);
     if (!task.GetTaskSpecification().GetDependencies().empty()) {
       task_dependency_manager_.RemoveTaskDependencies(
           task.GetTaskSpecification().TaskId());
@@ -824,7 +870,9 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
     int64_t _unused;
     bool is_infeasible;
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
+        placement_resources,
+        /*requires_object_store_memory=*/false,
+        task.GetTaskSpecification().IsActorCreationTask(),
         /*force_spillback=*/false, &_unused, &is_infeasible);
 
     // There is no node that has available resources to run the request.
@@ -931,8 +979,8 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to, const Work &work)
 
   if (!cluster_resource_scheduler_->AllocateRemoteTaskResources(
           spillback_to.Binary(), task_spec.GetRequiredResources().GetResourceMap())) {
-    RAY_LOG(INFO) << "Tried to allocate resources for request " << task_spec.TaskId()
-                  << " on a remote node that are no longer available";
+    RAY_LOG(DEBUG) << "Tried to allocate resources for request " << task_spec.TaskId()
+                   << " on a remote node that are no longer available";
   }
 
   auto node_info_opt = get_node_info_(spillback_to);
@@ -1047,6 +1095,8 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 }
 
 void ClusterTaskManager::SpillWaitingTasks() {
+  RAY_LOG(DEBUG) << "Attempting to spill back from waiting task queue, num waiting: "
+                 << waiting_task_queue_.size();
   // Try to spill waiting tasks to a remote node, prioritizing those at the end
   // of the queue. Waiting tasks are spilled if there are enough remote
   // resources AND (we have no resources available locally OR their
@@ -1062,6 +1112,7 @@ void ClusterTaskManager::SpillWaitingTasks() {
     it--;
     const auto &task = std::get<0>(*it);
     const auto &task_id = task.GetTaskSpecification().TaskId();
+
     // Check whether this task's dependencies are blocked (not being actively
     // pulled).  If this is true, then we should force the task onto a remote
     // feasible node, even if we have enough resources available locally for
@@ -1073,11 +1124,13 @@ void ClusterTaskManager::SpillWaitingTasks() {
         task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
     int64_t _unused;
     bool is_infeasible;
-    // TODO(swang): The policy currently does not account for object store
-    // memory availability. Ideally, we should pick the node with the most
-    // memory availability.
+    // TODO(swang): The policy currently does not account for the amount of
+    // object store memory availability. Ideally, we should pick the node with
+    // the most memory availability.
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
+        placement_resources,
+        /*requires_object_store_memory=*/true,
+        task.GetTaskSpecification().IsActorCreationTask(),
         /*force_spillback=*/force_spillback, &_unused, &is_infeasible);
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);

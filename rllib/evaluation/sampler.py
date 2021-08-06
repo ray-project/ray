@@ -30,7 +30,6 @@ from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import clip_action, \
     unsquash_action, unbatch
-from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import SampleBatchType, AgentID, PolicyID, \
     EnvObsType, EnvInfoDict, EnvID, MultiEnvDict, EnvActionType, \
     TensorStructType
@@ -137,7 +136,6 @@ class SyncSampler(SamplerInput):
             callbacks: "DefaultCallbacks",
             horizon: int = None,
             multiple_episodes_in_batch: bool = False,
-            tf_sess=None,
             normalize_actions: bool = True,
             clip_actions: bool = False,
             soft_horizon: bool = False,
@@ -150,6 +148,7 @@ class SyncSampler(SamplerInput):
             policy_mapping_fn=None,
             preprocessors=None,
             obs_filters=None,
+            tf_sess=None,
     ):
         """Initializes a SyncSampler object.
 
@@ -168,8 +167,6 @@ class SyncSampler(SamplerInput):
             multiple_episodes_in_batch (bool): Whether to pack multiple
                 episodes into each batch. This guarantees batches will be
                 exactly `rollout_fragment_length` in size.
-            tf_sess (Optional[tf.Session]): A tf.Session object to use (only if
-                framework=tf).
             normalize_actions (bool): Whether to normalize actions to the
                 action space's bounds.
             clip_actions (bool): Whether to clip actions according to the
@@ -199,6 +196,8 @@ class SyncSampler(SamplerInput):
                 deprecation_warning(old="preprocessors")
             if obs_filters is not None:
                 deprecation_warning(old="obs_filters")
+            if tf_sess is not None:
+                deprecation_warning(old="tf_sess")
 
         self.base_env = BaseEnv.to_base_env(env)
         self.rollout_fragment_length = rollout_fragment_length
@@ -221,7 +220,7 @@ class SyncSampler(SamplerInput):
             worker, self.base_env, self.extra_batches.put,
             self.rollout_fragment_length, self.horizon, clip_rewards,
             normalize_actions, clip_actions, multiple_episodes_in_batch,
-            callbacks, tf_sess, self.perf_stats, soft_horizon, no_done_at_end,
+            callbacks, self.perf_stats, soft_horizon, no_done_at_end,
             observation_fn, self.sample_collector, self.render)
         self.metrics_queue = queue.Queue()
 
@@ -275,7 +274,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
             callbacks: "DefaultCallbacks",
             horizon: int = None,
             multiple_episodes_in_batch: bool = False,
-            tf_sess=None,
             normalize_actions: bool = True,
             clip_actions: bool = False,
             blackhole_outputs: bool = False,
@@ -289,6 +287,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             policy_mapping_fn=None,
             preprocessors=None,
             obs_filters=None,
+            tf_sess=None,
     ):
         """Initializes a AsyncSampler object.
 
@@ -309,8 +308,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
             multiple_episodes_in_batch (bool): Whether to pack multiple
                 episodes into each batch. This guarantees batches will be
                 exactly `rollout_fragment_length` in size.
-            tf_sess (Optional[tf.Session]): A tf.Session object to use (only if
-                framework=tf).
             normalize_actions (bool): Whether to normalize actions to the
                 action space's bounds.
             clip_actions (bool): Whether to clip actions according to the
@@ -342,6 +339,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
                 deprecation_warning(old="preprocessors")
             if obs_filters is not None:
                 deprecation_warning(old="obs_filters")
+            if tf_sess is not None:
+                deprecation_warning(old="tf_sess")
 
         self.worker = worker
 
@@ -359,7 +358,6 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.clip_rewards = clip_rewards
         self.daemon = True
         self.multiple_episodes_in_batch = multiple_episodes_in_batch
-        self.tf_sess = tf_sess
         self.callbacks = callbacks
         self.normalize_actions = normalize_actions
         self.clip_actions = clip_actions
@@ -400,9 +398,9 @@ class AsyncSampler(threading.Thread, SamplerInput):
             self.worker, self.base_env, extra_batches_putter,
             self.rollout_fragment_length, self.horizon, self.clip_rewards,
             self.normalize_actions, self.clip_actions,
-            self.multiple_episodes_in_batch, self.callbacks, self.tf_sess,
-            self.perf_stats, self.soft_horizon, self.no_done_at_end,
-            self.observation_fn, self.sample_collector, self.render)
+            self.multiple_episodes_in_batch, self.callbacks, self.perf_stats,
+            self.soft_horizon, self.no_done_at_end, self.observation_fn,
+            self.sample_collector, self.render)
         while not self.shutdown:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -458,7 +456,6 @@ def _env_runner(
         clip_actions: bool,
         multiple_episodes_in_batch: bool,
         callbacks: "DefaultCallbacks",
-        tf_sess: Optional["tf.Session"],
         perf_stats: _PerfStats,
         soft_horizon: bool,
         no_done_at_end: bool,
@@ -484,8 +481,6 @@ def _env_runner(
             space's bounds.
         clip_actions (bool): Whether to clip actions to the space range.
         callbacks (DefaultCallbacks): User callbacks to run on episode events.
-        tf_sess (Session|None): Optional tensorflow session to use for batching
-            TF policy evaluations.
         perf_stats (_PerfStats): Record perf stats into this object.
         soft_horizon (bool): Calculate rewards but don't reset the
             environment when the horizon is hit.
@@ -559,14 +554,18 @@ def _env_runner(
             extra_batch_callback,
             env_id=env_id)
         # Call each policy's Exploration.on_episode_start method.
-        # types: Policy
-        for p in worker.policy_map.values():
+        # Note: This may break the exploration (e.g. ParameterNoise) of
+        # policies in the `policy_map` that have not been recently used
+        # (and are therefore stashed to disk). However, we certainly do not
+        # want to loop through all (even stashed) policies here as that
+        # would counter the purpose of the LRU policy caching.
+        for p in worker.policy_map.cache.values():
             if getattr(p, "exploration", None) is not None:
                 p.exploration.on_episode_start(
                     policy=p,
                     environment=base_env,
                     episode=episode,
-                    tf_sess=getattr(p, "_sess", None))
+                    tf_sess=p.get_session())
         callbacks.on_episode_start(
             worker=worker,
             base_env=base_env,
@@ -627,7 +626,6 @@ def _env_runner(
             policy_mapping_fn=worker.policy_mapping_fn,
             sample_collector=sample_collector,
             active_episodes=active_episodes,
-            tf_sess=tf_sess,
         )
         perf_stats.inference_time += time.time() - t2
 
@@ -908,14 +906,20 @@ def _process_observations(
             if ma_sample_batch:
                 outputs.append(ma_sample_batch)
 
-            # Call each policy's Exploration.on_episode_end method.
-            for p in worker.policy_map.values():
+            # Call each (in-memory) policy's Exploration.on_episode_end
+            # method.
+            # Note: This may break the exploration (e.g. ParameterNoise) of
+            # policies in the `policy_map` that have not been recently used
+            # (and are therefore stashed to disk). However, we certainly do not
+            # want to loop through all (even stashed) policies here as that
+            # would counter the purpose of the LRU policy caching.
+            for p in worker.policy_map.cache.values():
                 if getattr(p, "exploration", None) is not None:
                     p.exploration.on_episode_end(
                         policy=p,
                         environment=base_env,
                         episode=episode,
-                        tf_sess=getattr(p, "_sess", None))
+                        tf_sess=p.get_session())
             # Call custom on_episode_end callback.
             callbacks.on_episode_end(
                 worker=worker,
@@ -986,7 +990,6 @@ def _do_policy_eval(
         policy_mapping_fn: Callable[[AgentID, "MultiAgentEpisode"], PolicyID],
         sample_collector,
         active_episodes: Dict[str, MultiAgentEpisode],
-        tf_sess: Optional["tf.Session"] = None,
 ) -> Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]:
     """Call compute_actions on collected episode/model data to get next action.
 
@@ -997,20 +1000,12 @@ def _do_policy_eval(
         policies (Dict[PolicyID, Policy]): Mapping from policy ID to Policy
             obj.
         sample_collector (SampleCollector): The SampleCollector object to use.
-        tf_sess (Optional[tf.Session]): Optional tensorflow session to use for
-            batching TF policy evaluations.
 
     Returns:
         eval_results: dict of policy to compute_action() outputs.
     """
 
     eval_results: Dict[PolicyID, TensorStructType] = {}
-
-    if tf_sess:
-        builder = TFRunBuilder(tf_sess, "policy_eval")
-        pending_fetches: Dict[PolicyID, Any] = {}
-    else:
-        builder = None
 
     if log_once("compute_actions_input"):
         logger.info("Inputs to compute_actions():\n\n{}\n".format(
@@ -1032,11 +1027,6 @@ def _do_policy_eval(
                 input_dict,
                 timestep=policy.global_timestep,
                 episodes=[active_episodes[t.env_id] for t in eval_data])
-
-    if builder:
-        # types: PolicyID, Tuple[TensorStructType, StateBatch, dict]
-        for pid, v in pending_fetches.items():
-            eval_results[pid] = builder.get(v)
 
     if log_once("compute_actions_result"):
         logger.info("Outputs of compute_actions():\n\n{}\n".format(

@@ -14,7 +14,9 @@ from pydantic import BaseModel, Field
 
 import ray
 from ray import serve
+from ray.exceptions import GetTimeoutError
 from ray.serve.http_util import make_fastapi_class_based_view
+from ray.test_utils import SignalActor
 
 
 def test_fastapi_function(serve_instance):
@@ -483,11 +485,54 @@ def test_fastapi_nested_field_in_response_model(serve_instance):
     @serve.deployment(route_prefix="/")
     @serve.ingress(app)
     class TestDeployment:
-        pass
+        # https://github.com/ray-project/ray/issues/17363
+        @app.get("/inner", response_model=TestModel)
+        def test_endpoint_2(self):
+            test_model = TestModel(a="a", b=["b"])
+            return test_model
+
+    TestDeployment.deploy()
+
+    resp = requests.get("http://localhost:8000/")
+    assert resp.json() == {"a": "a", "b": ["b"]}
+
+    resp = requests.get("http://localhost:8000/inner")
+    assert resp.json() == {"a": "a", "b": ["b"]}
+
+
+def test_fastapiwrapper_constructor_before_startup_hooks(serve_instance):
+    """
+    Tests that the class constructor is called before the startup hooks
+    are run in FastAPIWrapper. SignalActor event is set from a startup hook
+    and is awaited in the class constructor. If the class constructor is run
+    before the startup hooks, the SignalActor event will time out while waiting
+    and the test will pass.
+    """
+    app = FastAPI()
+    signal = SignalActor.remote()
+
+    @app.on_event("startup")
+    def startup_event():
+        ray.get(signal.send.remote())
+
+    @serve.deployment(route_prefix="/")
+    @serve.ingress(app)
+    class TestDeployment:
+        def __init__(self):
+            self.test_passed = False
+            try:
+                ray.get(signal.wait.remote(), timeout=.1)
+                self.test_passed = False
+            except GetTimeoutError:
+                self.test_passed = True
+
+        @app.get("/")
+        def root(self):
+            return self.test_passed
 
     TestDeployment.deploy()
     resp = requests.get("http://localhost:8000/")
-    assert resp.json() == {"a": "a", "b": ["b"]}
+    assert resp.json()
 
 
 if __name__ == "__main__":

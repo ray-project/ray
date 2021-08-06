@@ -13,7 +13,8 @@
     compute_template: compute_tpl.yaml
 
   run:
-    timeout: 900
+    use_connect: True
+    timeout: 1800
     script: python workloads/modin_xgboost_test.py
 
 - name: torch_tune_serve_test
@@ -26,6 +27,7 @@
     compute_template: gpu_tpl.yaml
 
   run:
-    timeout: 1800
+    use_connect: True
+    timeout: 2700
     script: python workloads/torch_tune_serve_test.py
 
