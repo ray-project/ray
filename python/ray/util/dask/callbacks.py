@@ -209,3 +209,37 @@ def local_ray_callbacks(callbacks=None):
     finally:
         if global_callbacks:
             RayDaskCallback.ray_active = callbacks
+
+
+class ProgressBarCallback(RayDaskCallback):
+    def __init__(self):
+        import ray
+
+        @ray.remote
+        class ProgressBarActor:
+            def __init__(self):
+                self.submitted = 0
+                self.finished = 0
+
+            def submit(self):
+                self.submitted += 1
+
+            def finish(self):
+                self.finished += 1
+
+            def result(self):
+                return self.submitted, self.finished
+
+            def ready(self):
+                pass
+
+        self.pb = ProgressBarActor.options(name="_dask_on_ray_pb").remote()
+        ray.get(self.pb.ready.remote())
+
+    def _ray_postsubmit(self, task, key, deps, object_ref):
+        # Indicate the dask task is submitted.
+        self.pb.submit.remote()
+
+    def _ray_posttask(self, key, result, pre_state):
+        # Indicate the dask task is finished.
+        self.pb.finish.remote()

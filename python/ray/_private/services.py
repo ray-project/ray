@@ -16,10 +16,12 @@ import subprocess
 import sys
 import time
 from typing import Optional
+import warnings
 
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
+from ray.util.debug import log_once
 import redis
 
 # Import psutil and colorama after ray so the packaged version is used.
@@ -415,7 +417,7 @@ def create_redis_client(redis_address, password=None):
             except Exception:
                 create_redis_client.instances.pop(redis_address)
 
-    redis_ip_address, redis_port = redis_address.split(":")
+    _, redis_ip_address, redis_port = validate_redis_address(redis_address)
     # For this command to work, some other client (on the same machine
     # as Redis) must have run "CONFIG SET protected-mode no".
     create_redis_client.instances[redis_address] = redis.StrictRedis(
@@ -1184,10 +1186,18 @@ def start_dashboard(require_dashboard,
         except ImportError:
             warning_message = (
                 "Not all Ray Dashboard dependencies were found. "
-                "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
-                "only be usable via `pip install 'ray[default]'`. Please "
-                "update your install command.")
-            raise ImportError(warning_message)
+                "To use the dashboard please install Ray like so: `pip "
+                "install ray[default]`.")
+            if require_dashboard:
+                raise ImportError(warning_message)
+            else:
+                if log_once("dashboard_failed_import") and not os.getenv(
+                        "RAY_DISABLE_IMPORT_WARNING") == "1":
+                    warning_message += " To disable this message, set " \
+                                       "RAY_DISABLE_IMPORT_WARNING " \
+                                       "env var to '1'."
+                    warnings.warn(warning_message)
+                return None, None
 
         # Start the dashboard process.
         dashboard_dir = "new_dashboard"
@@ -1338,6 +1348,7 @@ def start_raylet(redis_address,
                  redis_password=None,
                  metrics_agent_port=None,
                  metrics_export_port=None,
+                 dashboard_agent_listen_port=None,
                  use_valgrind=False,
                  use_profiler=False,
                  stdout_file=None,
@@ -1503,6 +1514,7 @@ def start_raylet(redis_address,
         f"--redis-address={redis_address}",
         f"--metrics-export-port={metrics_export_port}",
         f"--dashboard-agent-port={metrics_agent_port}",
+        f"--listen-port={dashboard_agent_listen_port}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",

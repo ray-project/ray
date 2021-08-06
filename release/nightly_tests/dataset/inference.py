@@ -78,7 +78,7 @@ ray.init()
 start_time = time.time()
 
 print("Downloading...")
-ds = ray.experimental.data.read_binary_files(
+ds = ray.data.read_binary_files(
     "s3://anyscale-data/small-images/",
     parallelism=1000,
     ray_remote_args={"num_cpus": 0.5})
@@ -90,7 +90,7 @@ print("Preprocessing...")
 ds = ds.map(preprocess)
 end_preprocess_time = time.time()
 print("Inferring...")
-ds = ds.map_batches(infer, num_gpus=0.25)
+ds = ds.map_batches(infer, num_gpus=0.25, batch_format="pandas")
 
 end_time = time.time()
 

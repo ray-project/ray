@@ -130,7 +130,7 @@ class TestExplorations(unittest.TestCase):
         do_test_explorations(
             impala.ImpalaTrainer,
             "CartPole-v0",
-            impala.DEFAULT_CONFIG,
+            dict(impala.DEFAULT_CONFIG.copy(), num_gpus=0),
             np.array([0.0, 0.1, 0.0, 0.0]),
             prev_a=np.array(0))
 
