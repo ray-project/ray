@@ -17,7 +17,6 @@ import ray
 from ray import profiling
 from ray import ray_constants
 from ray import cloudpickle as pickle
-from ray import actor
 from ray._raylet import PythonFunctionDescriptor
 from ray._private.utils import (
     check_oversized_function,
@@ -55,7 +54,6 @@ class FunctionActorManager:
         imported_actor_classes: The set of actor classes keys (format:
             ActorClass:function_id) that are already in GCS.
     """
-
     def __init__(self, worker):
         self._worker = worker
         self._functions_to_export = []
@@ -113,13 +111,14 @@ class FunctionActorManager:
             dis.dis(function_or_class, file=string_file, depth=2)
         else:
             dis.dis(function_or_class, file=string_file)
-        collision_identifier = (
-            function_or_class.__name__ + ":" + string_file.getvalue())
+        collision_identifier = (function_or_class.__name__ + ":" +
+                                string_file.getvalue())
 
         # Return a hash of the identifier in case it is too large.
         return hashlib.sha1(collision_identifier.encode("utf-8")).digest()
 
-    def load_function_or_class_from_local(self, module_name, function_or_class_name):
+    def load_function_or_class_from_local(self, module_name,
+                                          function_or_class_name):
         """Try to load a function or class in the module from local."""
         module = importlib.import_module(module_name)
         parts = [part for part in function_or_class_name.split(".") if part]
@@ -128,9 +127,9 @@ class FunctionActorManager:
             for part in parts:
                 object = getattr(object, part)
             return object
-        except:
-            return
-        
+        except Exception:
+            return None
+
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
 
@@ -139,23 +138,25 @@ class FunctionActorManager:
         """
 
         function_descriptor = remote_function._function_descriptor
-        #If the function is an actor method, no need to export it to GCS#
+        # If the function is an actor method, no need to export it to GCS
         if function_descriptor.is_actor_method():
             return
         module_name, function_name = (
             function_descriptor.module_name,
             function_descriptor.function_name,
         )
-        #If the function is local, no need to export it to GCS#
-        if self.load_function_or_class_from_local(module_name,function_name):
+        # If the function is local, no need to export it to GCS
+        if self.load_function_or_class_from_local(module_name,
+                                                  function_name) is not None:
             return
         function = remote_function._function
         pickled_function = pickle.dumps(function)
         check_oversized_function(pickled_function,
                                  remote_function._function_name,
                                  "remote function", self._worker)
-        key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
-               + remote_function._function_descriptor.function_id.binary())
+        key = (b"RemoteFunction:" + self._worker.current_job_id.binary() +
+               b":" +
+               remote_function._function_descriptor.function_id.binary())
         self._worker.redis_client.hset(
             key,
             mapping={
@@ -174,11 +175,11 @@ class FunctionActorManager:
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
         (job_id_str, function_id_str, function_name, serialized_function,
-         module, max_calls) = self._worker.redis_client.hmget(
-             key, [
-                 "job_id", "function_id", "function_name", "function",
-                 "module", "max_calls"
-             ])
+         module,
+         max_calls) = self._worker.redis_client.hmget(key, [
+             "job_id", "function_id", "function_name", "function", "module",
+             "max_calls"
+         ])
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
         function_name = decode(function_name)
@@ -201,10 +202,9 @@ class FunctionActorManager:
 
                 # Use a placeholder method when function pickled failed
                 self._function_execution_info[function_id] = (
-                    FunctionExecutionInfo(
-                        function=f,
-                        function_name=function_name,
-                        max_calls=max_calls))
+                    FunctionExecutionInfo(function=f,
+                                          function_name=function_name,
+                                          max_calls=max_calls))
                 # If an exception was thrown when the remote function was
                 # imported, we record the traceback and notify the scheduler
                 # of the failure.
@@ -223,10 +223,9 @@ class FunctionActorManager:
                 # different module, which is `default_worker.py`
                 function.__module__ = module
                 self._function_execution_info[function_id] = (
-                    FunctionExecutionInfo(
-                        function=function,
-                        function_name=function_name,
-                        max_calls=max_calls))
+                    FunctionExecutionInfo(function=function,
+                                          function_name=function_name,
+                                          max_calls=max_calls))
                 # Add the function to the function table.
                 self._worker.redis_client.rpush(
                     b"FunctionTable:" + function_id.binary(),
@@ -242,21 +241,22 @@ class FunctionActorManager:
         Returns:
             A FunctionExecutionInfo object.
         """
-        
-        
+
         function_id = function_descriptor.function_id
         # If the function has been loaded, no need to load again.
-        if not function_id in self._function_execution_info:
-        # Try to load function from local code first.
-            if (not function_descriptor.is_actor_method()) or (not self._load_function_from_local(function_descriptor)):
-                # If the function is an actor method or doesn't exist in local code , try loading it from GCS.
-                # Wait until the function to be executed has actually been
-                # registered on this worker. We will push warnings to the user if
-                # we spend too long in this loop.
-                # The driver function may not be found in sys.path. Try to load
-                # the function from GCS.
-                with profiling.profile("wait_for_function"):
-                    self._wait_for_function(function_descriptor,job_id)
+        if function_id not in self._function_execution_info:
+            # Try to load function from local code first.
+            if not function_descriptor.is_actor_method():
+                if not self._load_function_from_local(function_descriptor):
+                    # If the function is an actor method or doesn't exist in
+                    # local code,try loading it from GCS.
+                    # Wait until the function to be executed has actually been
+                    # registered on this worker. We will push warnings to
+                    # the user if we spend too long in this loop.
+                    # The driver function may not be found in sys.path. Try to
+                    # load the function from GCS.
+                    with profiling.profile("wait_for_function"):
+                        self._wait_for_function(function_descriptor, job_id)
 
         try:
             function_id = function_descriptor.function_id
@@ -275,7 +275,8 @@ class FunctionActorManager:
             function_descriptor.module_name,
             function_descriptor.function_name,
         )
-        object = self.load_function_or_class_from_local(module_name,function_name)
+        object = self.load_function_or_class_from_local(
+            module_name, function_name)
         if object:
             function = object._function
             self._function_execution_info[function_id] = (
@@ -311,8 +312,8 @@ class FunctionActorManager:
         while True:
             with self.lock:
                 if (self._worker.actor_id.is_nil()
-                        and (function_descriptor.function_id in
-                             self._function_execution_info)):
+                        and (function_descriptor.function_id
+                             in self._function_execution_info)):
                     break
                 elif not self._worker.actor_id.is_nil() and (
                         self._worker.actor_id in self._worker.actors):
@@ -349,11 +350,11 @@ class FunctionActorManager:
 
     def export_actor_class(self, Class, actor_creation_function_descriptor,
                            actor_method_names):
-        
+
         module_name, class_name = (
             actor_creation_function_descriptor.module_name,
             actor_creation_function_descriptor.class_name)
-        if self.load_function_or_class_from_local(module_name,class_name):
+        if self.load_function_or_class_from_local(module_name, class_name):
             return
         # `current_job_id` shouldn't be NIL, unless:
         # 1) This worker isn't an actor;
@@ -404,9 +405,9 @@ class FunctionActorManager:
             # Load actor class.
             # Try to load actor class from local code first.
             actor_class = self._load_actor_class_from_local(
-                    job_id, actor_creation_function_descriptor)
+                job_id, actor_creation_function_descriptor)
             if actor_class is None:
-                # Load actor class from GCS if it fails.
+                # Load actor class from GCS if loading from local code fails.
                 actor_class = self._load_actor_class_from_gcs(
                     job_id, actor_creation_function_descriptor)
             # Save the loaded actor class in cache.
@@ -414,8 +415,8 @@ class FunctionActorManager:
             # Generate execution info for the methods of this actor class.
             module_name = actor_creation_function_descriptor.module_name
             actor_class_name = actor_creation_function_descriptor.class_name
-            actor_methods = inspect.getmembers(
-                actor_class, predicate=is_function_or_method)
+            actor_methods = inspect.getmembers(actor_class,
+                                               predicate=is_function_or_method)
             for actor_method_name, actor_method in actor_methods:
                 # Actor creation function descriptor use a unique function
                 # hash to solve actor name conflict. When constructing an
@@ -451,8 +452,9 @@ class FunctionActorManager:
         module_name, class_name = (
             actor_creation_function_descriptor.module_name,
             actor_creation_function_descriptor.class_name)
-        object = self.load_function_or_class_from_local(module_name,class_name)
-        if object: 
+        object = self.load_function_or_class_from_local(
+            module_name, class_name)
+        if object:
             if isinstance(object, ray.actor.ActorClass):
                 return object.__ray_metadata__.modified_class
             else:
@@ -552,7 +554,6 @@ class FunctionActorManager:
                 stored instance of the actor. The function also updates the
                 worker's internal state to record the executed method.
         """
-
         def actor_method_executor(__ray_actor, *args, **kwargs):
             # Execute the assigned method.
             is_bound = (is_class_method(method)
