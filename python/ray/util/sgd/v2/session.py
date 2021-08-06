@@ -1,10 +1,11 @@
 import queue
 import time
 import threading
+import warnings
 from typing import Callable, TYPE_CHECKING, Union, Optional
 
 if TYPE_CHECKING:
-    import ray.data
+    from ray.data import Dataset, DatasetPipeline
 
 from ray.util.sgd.v2.constants import TIME_THIS_ITER_S, RESULT_FETCH_TIMEOUT
 from ray.util.sgd.v2.utils import PropagatingThread
@@ -13,7 +14,12 @@ from ray.util.sgd.v2.utils import PropagatingThread
 class Session:
     """Holds information for training on each worker."""
 
-    def __init__(self, training_func: Callable, world_rank: int):
+    def __init__(self, training_func: Callable, world_rank: int,
+                 dataset_shard: Optional[Union["Dataset", "DatasetPipeline"]] =
+                 None):
+
+        self.dataset_shard = dataset_shard
+
         # The Thread object that is running the training function.
         self.training_thread = PropagatingThread(
             target=training_func, daemon=True)
@@ -131,15 +137,45 @@ def shutdown_session():
     _session = None
 
 
-def get_dataset_shard() -> Optional[Union[ray.data.Dataset,
-                                    ray.data.DatasetPipeline]]:
+def get_dataset_shard() -> Optional[Union["Dataset", "DatasetPipeline"]]:
     """Returns the Ray Dataset or DatasetPipeline shard for this worker.
 
+    You should call ``to_torch()`` or ``to_tf()`` on this shard to convert
+    it to the appropriate framework-specific Dataset.
+
+    .. code-block:: python
+
+        import ray
+        from ray.util import sgd
+
+        def train_func():
+            model = Net()
+            for iter in range(100):
+                data_shard = sgd.get_dataset_shard().to_torch()
+                model.train(data_shard)
+            return model
+
+        dataset = ray.data.read_csv("train.csv")
+        dataset.filter(...).repeat().random_shuffle()
+
+        trainer = Trainer(backend="torch")
+        trainer.start()
+        # Trainer will automatically handle sharding and locality hints.
+        train_model = trainer.run(train_func, dataset=dataset)
+        trainer.shutdown()
 
 
-
-    :return:
+    Returns:
+        The ``Dataset`` or ``DatasetPipeline`` shard to use for this worker.
+        If no dataset is passed into Trainer, then return None.
     """
+    session = get_session()
+    shard = session.dataset_shard
+    if shard is None:
+        warnings.warn("No dataset passed in. Returning None. Make sure to "
+                      "pass in a Ray Dataset to Trainer.run to use this "
+                      "function.")
+    return shard
 
 
 def report(**kwargs) -> None:

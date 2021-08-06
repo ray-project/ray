@@ -1,8 +1,9 @@
 import time
 import pytest
 
+import ray
 from ray.util.sgd.v2.session import init_session, shutdown_session, \
-    get_session, world_rank, report
+    get_session, world_rank, report, get_dataset_shard
 
 
 @pytest.fixture(scope="function")
@@ -37,6 +38,12 @@ def test_train(session):
     session.start()
     output = session.finish()
     assert output == 1
+
+def test_get_dataset_shard():
+    dataset = ray.data.from_items([1, 2, 3])
+    init_session(training_func=lambda: 1, world_rank=0, dataset_shard=dataset)
+    assert get_dataset_shard() == dataset
+    shutdown_session()
 
 
 def test_report():
