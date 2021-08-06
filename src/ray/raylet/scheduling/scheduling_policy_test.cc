@@ -38,8 +38,8 @@ class SchedulingPolicyTest : public ::testing::Test {};
 TEST_F(SchedulingPolicyTest, FeasibleDefinitionTest) {
   StringIdMap map;
   auto task_req1 =
-      ResourceMapToResourceRequest(map, {{"CPU", 1}, {"object_store_memory", 1}});
-  auto task_req2 = ResourceMapToResourceRequest(map, {{"CPU", 1}});
+      ResourceMapToResourceRequest(map, {{"CPU", 1}, {"object_store_memory", 1}}, false);
+  auto task_req2 = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
   {
     // Don't break with a non-resized predefined resources array.
     NodeResources resources;
@@ -61,8 +61,8 @@ TEST_F(SchedulingPolicyTest, FeasibleDefinitionTest) {
 TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
   StringIdMap map;
   auto task_req1 =
-      ResourceMapToResourceRequest(map, {{"CPU", 1}, {"object_store_memory", 1}});
-  auto task_req2 = ResourceMapToResourceRequest(map, {{"CPU", 1}});
+      ResourceMapToResourceRequest(map, {{"CPU", 1}, {"object_store_memory", 1}}, false);
+  auto task_req2 = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
   {
     // Don't break with a non-resized predefined resources array.
     NodeResources resources;
@@ -125,7 +125,7 @@ TEST_F(SchedulingPolicyTest, AvailableTruncationTest) {
   // has a lower critical resource utilization, but they're both truncated to 0, so we
   // should still pick the local node (due to traversal order).
   StringIdMap map;
-  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}});
+  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
   int64_t local_node = 0;
   int64_t remote_node = 1;
 
@@ -142,7 +142,7 @@ TEST_F(SchedulingPolicyTest, AvailableTieBreakTest) {
   // In this test, the local node and a remote node are both available. The remote node
   // has a lower critical resource utilization so we schedule on it.
   StringIdMap map;
-  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}});
+  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}}, false);
   int64_t local_node = 0;
   int64_t remote_node = 1;
 
@@ -160,7 +160,8 @@ TEST_F(SchedulingPolicyTest, AvailableOverFeasibleTest) {
   // utilization, but the remote node can run the task immediately, so we pick the remote
   // node.
   StringIdMap map;
-  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}});
+  ResourceRequest req =
+      ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}}, false);
   int64_t local_node = 0;
   int64_t remote_node = 1;
 
@@ -176,7 +177,8 @@ TEST_F(SchedulingPolicyTest, AvailableOverFeasibleTest) {
 TEST_F(SchedulingPolicyTest, InfeasibleTest) {
   // All the nodes are infeasible, so we return -1.
   StringIdMap map;
-  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}});
+  ResourceRequest req =
+      ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}}, false);
   int64_t local_node = 0;
   int64_t remote_node = 1;
 
@@ -193,7 +195,8 @@ TEST_F(SchedulingPolicyTest, BarelyFeasibleTest) {
   // Test the edge case where a task requires all of a node's resources, and the node is
   // fully utilized.
   StringIdMap map;
-  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}});
+  ResourceRequest req =
+      ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}}, false);
   int64_t local_node = 0;
 
   absl::flat_hash_map<int64_t, Node> nodes;
@@ -208,7 +211,8 @@ TEST_F(SchedulingPolicyTest, TruncationAcrossFeasibleNodesTest) {
   // Same as AvailableTruncationTest except now none of the nodes are available, but the
   // tie break logic should apply to feasible nodes too.
   StringIdMap map;
-  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}});
+  ResourceRequest req =
+      ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}}, false);
   int64_t local_node = 0;
   int64_t remote_node = 1;
 
@@ -225,7 +229,8 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackIfAvailableTest) {
   // The local node is better, but we force spillback, so we'll schedule on a non-local
   // node anyways.
   StringIdMap map;
-  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}});
+  ResourceRequest req =
+      ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}}, false);
   int64_t local_node = 0;
   int64_t remote_node = 1;
 
@@ -241,7 +246,8 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackIfAvailableTest) {
 TEST_F(SchedulingPolicyTest, ForceSpillbackTest) {
   // The local node is available but disqualified.
   StringIdMap map;
-  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}});
+  ResourceRequest req =
+      ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}}, false);
   int64_t local_node = 0;
   int64_t remote_node = 1;
 
@@ -258,7 +264,8 @@ TEST_F(SchedulingPolicyTest, ForceSpillbackOnlyFeasibleLocallyTest) {
   // The local node is better, but we force spillback, so we'll schedule on a non-local
   // node anyways.
   StringIdMap map;
-  ResourceRequest req = ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}});
+  ResourceRequest req =
+      ResourceMapToResourceRequest(map, {{"CPU", 1}, {"GPU", 1}}, false);
   int64_t local_node = 0;
   int64_t remote_node = 1;
 
