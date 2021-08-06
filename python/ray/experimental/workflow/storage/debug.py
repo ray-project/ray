@@ -42,16 +42,17 @@ class LoggedStorage(FilesystemStorageImpl):
             with open(self._count, "w") as f:
                 f.write(str(count + 1))
 
-    async def delete(self, key: str) -> None:
+    async def delete_prefix(self, key: str) -> None:
         with FileLock(str(self._workflow_root_dir / ".lock")):
             with open(self._count, "r") as f:
                 count = int(f.read())
             k1 = self._log_dir / f"{count}.metadata.json"
             await super().put(
                 str(k1), {
-                    "operation": "delete",
+                    "operation": "delete_prefix",
                     "key": key
-                }, is_json=True)
+                },
+                is_json=True)
             with open(self._count, "w") as f:
                 f.write(str(count + 1))
 
@@ -97,9 +98,9 @@ class DebugStorage(Storage):
         await self._logged_storage.put(key, data, is_json)
         await self._wrapped_storage.put(key, data, is_json)
 
-    async def delete(self, key: str) -> None:
-        await self._logged_storage.delete(key)
-        await self._wrapped_storage.delete(key)
+    async def delete_prefix(self, prefix: str) -> None:
+        await self._logged_storage.delete_prefix(prefix)
+        await self._wrapped_storage.delete_prefix(prefix)
 
     async def scan_prefix(self, key_prefix: str) -> List[str]:
         return await self._wrapped_storage.scan_prefix(key_prefix)
@@ -110,6 +111,11 @@ class DebugStorage(Storage):
 
     def __reduce__(self):
         return DebugStorage, (self._wrapped_storage, )
+
+    @property
+    def wrapped_storage(self) -> "Storage":
+        """Get wrapped storage."""
+        return self._wrapped_storage
 
     async def replay(self, index: int) -> None:
         """Replay the a record to the storage.

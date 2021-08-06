@@ -75,8 +75,10 @@ class S3StorageImpl(Storage):
             else:
                 raise
 
-    async def delete(self, key: str) -> None:
-        raise NotImplementedError
+    async def delete_prefix(self, key_prefix: str) -> None:
+        async with self._client() as s3:
+            bucket = s3.Bucket(self._bucket)
+            await bucket.objects.filter(Prefix=key_prefix).delete()
 
     async def scan_prefix(self, key_prefix: str) -> List[str]:
         keys = []

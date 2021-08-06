@@ -1,6 +1,7 @@
 import contextlib
 import itertools
 import json
+import shutil
 import pathlib
 from typing import Any, List
 import uuid
@@ -148,8 +149,12 @@ class FilesystemStorageImpl(Storage):
             with _open_atomic(pathlib.Path(key), "rb") as f:
                 return ray.cloudpickle.load(f)
 
-    async def delete(self, key: str) -> None:
-        pathlib.Path(key).unlink()
+    async def delete_prefix(self, key_prefix: str) -> None:
+        path = pathlib.Path(key_prefix)
+        if path.is_dir():
+            shutil.rmtree(str(path))
+        else:
+            path.unlink()
 
     async def scan_prefix(self, key_prefix: str) -> List[str]:
         try:
