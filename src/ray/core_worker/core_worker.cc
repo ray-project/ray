@@ -609,12 +609,25 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         new raylet::RayletClient(std::move(grpc_client)));
   };
 
+  auto on_excess_queueing = [this](const ActorID &actor_id, int64_t num_queued) {
+    auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+                         std::chrono::system_clock::now().time_since_epoch())
+                         .count();
+    std::ostringstream stream;
+    stream << "Warning: More than " << num_queued
+           << " tasks are pending submission to actor " << actor_id
+           << ". To reduce memory usage, wait for these tasks to finish before sending "
+              "more.";
+    RAY_CHECK_OK(
+        PushError(options_.job_id, "excess_queueing_warning", stream.str(), timestamp));
+  };
+
   std::shared_ptr<ActorCreatorInterface> actor_creator =
       std::make_shared<DefaultActorCreator>(gcs_client_);
 
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(core_worker_client_pool_, memory_store_,
-                                             task_manager_));
+                                             task_manager_, on_excess_queueing));
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;
@@ -2165,6 +2178,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                         const size_t &data_size,
                                         const std::shared_ptr<Buffer> &metadata,
                                         const std::vector<ObjectID> &contained_object_id,
+                                        int64_t &task_output_inlined_bytes,
                                         std::shared_ptr<RayObject> *return_object) {
   rpc::Address owner_address(options_.is_local_mode
                                  ? rpc::Address()
@@ -2183,8 +2197,12 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
 
     // Allocate a buffer for the return object.
     if (options_.is_local_mode ||
-        static_cast<int64_t>(data_size) < max_direct_call_object_size_) {
+        (static_cast<int64_t>(data_size) < max_direct_call_object_size_ &&
+         // ensure we don't exceed the limit if we allocate this object inline.
+         (task_output_inlined_bytes + static_cast<int64_t>(data_size) <=
+          RayConfig::instance().task_output_inlined_bytes_limit()))) {
       data_buffer = std::make_shared<LocalMemoryBuffer>(data_size);
+      task_output_inlined_bytes += static_cast<int64_t>(data_size);
     } else {
       RAY_RETURN_NOT_OK(CreateExisting(metadata, data_size, object_id, owner_address,
                                        &data_buffer,
