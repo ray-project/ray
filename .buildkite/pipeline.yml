@@ -241,7 +241,7 @@
       --build_tests_only
       --test_tag_filters=learning_tests_torch,-flaky
       rllib/...
-- label: ":brain: RLlib: Quick Agent train.py runs"
+- label: ":brain: RLlib: Quick Agent train.py runs (TODO: obsolete)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -252,7 +252,19 @@
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
-- label: ":brain: RLlib: everything else"
+- label: ":brain: RLlib: Trainer Tests"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    # Test all tests in the `agents` (soon to be "trainers") dir:
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=trainers_dir,-flaky
+      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      rllib/...
+
+- label: ":brain: RLlib: Everything else (env-, evaluation-, ... dirs)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -261,7 +273,7 @@
     # "learning_tests|quick_train|examples|tests_dir".
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=-learning_tests_tf,-learning_tests_torch,-quick_train,-examples,-tests_dir,-flaky
+      --test_tag_filters=-learning_tests_tf,-learning_tests_torch,-quick_train,-examples,-tests_dir,-trainers_dir,-flaky
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
