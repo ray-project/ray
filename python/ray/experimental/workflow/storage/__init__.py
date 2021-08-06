@@ -6,6 +6,8 @@ from ray.experimental.workflow.storage.base import (
 
 logger = logging.getLogger(__name__)
 
+DEBUG_PREFIX = "debug-"
+
 
 def create_storage(storage_url: str) -> Storage:
     """A factory function that creates different type of storage according
@@ -30,12 +32,15 @@ def create_storage(storage_url: str) -> Storage:
         A storage instance.
     """
     parsed_url = parse.urlparse(storage_url)
+    if parsed_url.scheme.startswith(DEBUG_PREFIX):
+        from ray.experimental.workflow.storage.debug import DebugStorage
+        return DebugStorage(create_storage(storage_url[len(DEBUG_PREFIX):]))
     if parsed_url.scheme == "file" or parsed_url.scheme == "":
         from ray.experimental.workflow.storage.filesystem import (
             FilesystemStorageImpl)
         return FilesystemStorageImpl(parsed_url.path)
     elif parsed_url.scheme == "s3":
-        from ray.experimental.workflow.storage.s3 import (S3StorageImpl)
+        from ray.experimental.workflow.storage.s3 import S3StorageImpl
         bucket = parsed_url.netloc
         s3_path = parsed_url.path
         if not s3_path:

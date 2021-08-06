@@ -160,7 +160,7 @@ class FilesystemStorageImpl(Storage):
 
     @property
     def storage_url(self) -> str:
-        return str(self._workflow_root_dir)
+        return "file://" + str(self._workflow_root_dir.absolute())
 
     def __reduce__(self):
         return FilesystemStorageImpl, (self._workflow_root_dir, )
