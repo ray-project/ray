@@ -31,7 +31,7 @@ if __name__ == "__main__":
         print("->", yaml_file)
 
     # How many times should we repeat a failed experiment?
-    max_num_repeats = 2
+    max_num_repeats = 1  # Attn: >1 is not supported at the moment!
 
     # All trials we'll ever run in this test script.
     all_trials = []
@@ -121,7 +121,6 @@ if __name__ == "__main__":
                     checks[experiment]["failures"] += 1
                 else:
                     checks[experiment]["passed"] = True
-                    del experiments_to_run[experiment]
 
     ray.shutdown()
 
