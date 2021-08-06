@@ -104,7 +104,7 @@
     compute_template: shuffle/shuffle_compute_autoscaling.yaml
 
   run:
-    timeout: 3000
+    timeout: 4000
     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9 --no-streaming
 
 # Test multi nodes 1TB streaming shuffle with a large number of partitions.

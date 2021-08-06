@@ -82,13 +82,13 @@ class ReplicaSet:
         self.config_updated_event = asyncio.Event(loop=event_loop)
         self.num_queued_queries = 0
         self.num_queued_queries_gauge = metrics.Gauge(
-            "serve_backend_queued_queries",
+            "serve_deployment_queued_queries",
             description=(
-                "The current number of queries to this backend waiting"
+                "The current number of queries to this deployment waiting"
                 " to be assigned to a replica."),
-            tag_keys=("backend", "endpoint"))
+            tag_keys=("deployment", "endpoint"))
         self.num_queued_queries_gauge.set_default_tags({
-            "backend": self.backend_tag
+            "deployment": self.backend_tag
         })
 
         self.long_poll_client = LongPollClient(

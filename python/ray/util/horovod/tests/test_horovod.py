@@ -12,7 +12,7 @@ except ImportError:
     pass  # This shouldn't be reached - the test should be skipped.
 
 
-# For each test, run it once with ray.init() and again with ray.util.connect().
+# For each test, run it once with ray.init() and again with ray client.
 @pytest.fixture(params=[False, True])
 def ray_start_4_cpus(request):
     if request.param:

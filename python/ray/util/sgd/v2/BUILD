@@ -12,7 +12,7 @@ py_test(
     deps = [":sgd_v2_lib"],
     args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
     "--max_length=32", "--per_device_train_batch_size=64",
-    "--num_train_epochs=1", "--start_local", "--num_workers=2"]
+    "--max_train_steps=2", "--start_local", "--num_workers=2"]
 )
 
 # --------------------------------------------------------------------
@@ -24,6 +24,14 @@ py_test(
     name = "test_backend",
     size = "medium",
     srcs = ["tests/test_backend.py"],
+    tags = ["exclusive"],
+    deps = [":sgd_v2_lib"]
+)
+
+py_test(
+    name = "test_session",
+    size = "small",
+    srcs = ["tests/test_session.py"],
     tags = ["exclusive"],
     deps = [":sgd_v2_lib"]
 )

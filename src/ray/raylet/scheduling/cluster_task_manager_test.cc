@@ -113,6 +113,8 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
     return blocked_tasks.count(task_id);
   }
 
+  bool CheckObjectLocal(const ObjectID &object_id) const { return true; }
+
   std::unordered_set<ObjectID> &missing_objects_;
   std::unordered_set<TaskID> subscribed_tasks;
   std::unordered_set<TaskID> blocked_tasks;

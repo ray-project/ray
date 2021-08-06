@@ -3,9 +3,7 @@ import atexit
 import collections
 import inspect
 import logging
-import os
 import re
-import sys
 import time
 from dataclasses import dataclass
 from functools import wraps
@@ -25,7 +23,7 @@ from ray.serve.common import BackendInfo, GoalId
 from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
-from ray.serve.controller import BackendTag, ReplicaTag, ServeController
+from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view)
@@ -60,21 +58,21 @@ def _set_global_client(client):
 @dataclass
 class ReplicaContext:
     """Stores data for Serve API calls from within the user's backend code."""
-    backend_tag: BackendTag
+    deployment: str
     replica_tag: ReplicaTag
     _internal_controller_name: str
     servable_object: Callable
 
 
 def _set_internal_replica_context(
-        backend_tag: BackendTag,
+        deployment: str,
         replica_tag: ReplicaTag,
         controller_name: str,
         servable_object: Callable,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        backend_tag, replica_tag, controller_name, servable_object)
+        deployment, replica_tag, controller_name, servable_object)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -330,21 +328,6 @@ class Client:
         if ray_actor_options is None:
             ray_actor_options = {}
 
-        # If conda is activated and a conda env is not specified in runtime_env
-        # in ray_actor_options, default to conda env of this process (client).
-        # Without this code, the backend would run in the controller's conda
-        # env, which is likely different from that of the client.
-        # If using Ray client, skip this convenience feature because the local
-        # client env doesn't create the Ray cluster (so the client env is
-        # likely not present on the cluster.)
-        if not ray.util.client.ray.is_connected() and sys.platform != "win32":
-            if ray_actor_options.get("runtime_env") is None:
-                ray_actor_options["runtime_env"] = {}
-            if ray_actor_options["runtime_env"].get("conda") is None:
-                current_env = os.environ.get("CONDA_DEFAULT_ENV")
-                if current_env is not None and current_env != "":
-                    ray_actor_options["runtime_env"]["conda"] = current_env
-
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
 
@@ -594,7 +577,7 @@ def start(
     Client object (or when the script exits). If detached is set to True, the
     instance will instead persist until serve.shutdown() is called. This is
     only relevant if connecting to a long-running Ray cluster (e.g., with
-    ray.init(address="auto") or ray.util.connect("<remote_addr>")).
+    ray.init(address="auto") or ray.init("ray://<remote_addr>")).
 
     Args:
         detached (bool): Whether not the instance should be detached from this
@@ -987,19 +970,17 @@ def get_handle(
 
 @PublicAPI
 def get_replica_context() -> ReplicaContext:
-    """When called from a backend, returns the backend tag and replica tag.
-
-    When not called from a backend, returns None.
+    """If called from a deployment, returns the deployment and replica tag.
 
     A replica tag uniquely identifies a single replica for a Ray Serve
-    backend at runtime.  Replica tags are of the form
-    `<backend tag>#<random letters>`.
+    deployment at runtime.  Replica tags are of the form
+    `<deployment_name>#<random letters>`.
 
     Raises:
-        RayServeException: if not called from within a Ray Serve backend
+        RayServeException: if not called from within a Ray Serve deployment.
     Example:
-        >>> serve.get_replica_context().backend_tag # my_backend
-        >>> serve.get_replica_context().replica_tag # my_backend#krcwoa
+        >>> serve.get_replica_context().deployment # deployment_name
+        >>> serve.get_replica_context().replica_tag # deployment_name#krcwoa
     """
     if _INTERNAL_REPLICA_CONTEXT is None:
         raise RayServeException("`serve.get_replica_context()` "

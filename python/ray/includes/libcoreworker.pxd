@@ -136,6 +136,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const size_t &data_size,
             const shared_ptr[CBuffer] &metadata,
             const c_vector[CObjectID] &contained_object_id,
+            int64_t &task_output_inlined_bytes,
             shared_ptr[CRayObject] *return_object)
         CRayStatus SealReturnObject(
             const CObjectID& return_id,
@@ -242,6 +243,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         shared_ptr[CGcsClient] GetGcsClient() const
 
         c_bool IsExiting() const
+
+        int64_t GetNumTasksSubmitted() const
+
+        int64_t GetNumLeasesRequested() const
 
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
         CWorkerType worker_type
