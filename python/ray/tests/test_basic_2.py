@@ -721,6 +721,9 @@ if __name__ == "__main__":
 
 
 def test_use_dynamic_function_and_class(ray_start_regular_shared):
+    """Test use dynamically defined functions and classes for remote tasks and actors.
+         See https://github.com/ray-project/ray/issues/12834.
+    """
     current_path = os.path.dirname(__file__)
     job_config = ray.job_config.JobConfig(code_search_path=[current_path])
     ray.init({}, job_config=job_config)
