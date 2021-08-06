@@ -10,7 +10,7 @@ from ray.tune.cluster_info import is_ray_cluster
 logger = logging.getLogger(__name__)
 
 
-def get_warn_threshold(autoscaler_enabled: bool) -> float:
+def _get_warn_threshold(autoscaler_enabled: bool) -> float:
     if autoscaler_enabled:
         return float(
             os.environ.get(
@@ -198,7 +198,7 @@ class TrialExecutor:
             if self._no_running_trials_since == -1:
                 self._no_running_trials_since = time.monotonic()
             elif time.monotonic(
-            ) - self._no_running_trials_since > get_warn_threshold(
+            ) - self._no_running_trials_since > _get_warn_threshold(
                     autoscaler_enabled):
                 warn_prefix = ("If autoscaler is still scaling up, ignore "
                                "this message." if autoscaler_enabled else
