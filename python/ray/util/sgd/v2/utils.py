@@ -1,9 +1,15 @@
 from contextlib import closing
 import socket
 from threading import Thread
-from typing import Tuple
+from typing import Tuple, TYPE_CHECKING, Union
 
 import ray
+
+if TYPE_CHECKING:
+    from ray.data import Dataset
+    from ray.data.dataset_pipeline import DatasetPipeline
+
+RayDataset = Union["Dataset", "DatasetPipeline"]
 
 
 def get_address_and_port() -> Tuple[str, int]:

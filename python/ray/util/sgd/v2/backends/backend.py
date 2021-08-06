@@ -5,6 +5,7 @@ import ray
 from ray.exceptions import RayActorError
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
+from ray.util.sgd.v2.utils import RayDataset
 
 T = TypeVar("T")
 
@@ -60,19 +61,28 @@ class BackendExecutor:
             self.worker_group.execute(initialization_hook)
         self._backend.on_start(self.worker_group, self._backend_config)
 
-    def start_training(self, train_func: Callable[[], T]) -> None:
+    def start_training(self,
+                       train_func: Callable[[], T],
+                       dataset: Optional[RayDataset] = None) -> None:
         """Executes a training function on all workers in a separate thread.
 
         ``finish_training`` should be called after this.
 
         Args:
             train_func (Callable): The training function to run on each worker.
+            dataset (Optional[Union[Dataset, DatasetPipeline]]):
+                Distributed Ray Dataset or DatasetPipeline to pass into
+                worker. Sharding and locality hints will automatically be
+                handled.
         """
 
         # First initialize the session.
-        def initialize_session(world_rank, train_func):
+        def initialize_session(world_rank, train_func, dataset_shard=None):
             try:
-                init_session(training_func=train_func, world_rank=world_rank)
+                init_session(
+                    training_func=train_func,
+                    world_rank=world_rank,
+                    dataset_shard=dataset_shard)
             except ValueError:
                 raise SGDBackendError(
                     "Attempting to start training but a "
@@ -80,14 +90,22 @@ class BackendExecutor:
                     "You must call `finish_training` before "
                     "calling `start_training` again.")
 
+        if dataset is not None:
+            datasets = dataset.split(
+                len(self.worker_group),
+                locality_hints=self.worker_group.workers)
+        else:
+            datasets = [None] * len(self.worker_group)
+
         futures = []
-        for world_rank in range(len(self.worker_group)):
+        for index in range(len(self.worker_group)):
             futures.append(
                 self.worker_group.execute_single_async(
-                    world_rank,
+                    index,
                     initialize_session,
-                    world_rank=world_rank,
-                    train_func=train_func))
+                    world_rank=index,
+                    train_func=train_func,
+                    dataset_shard=datasets[index]))
 
         ray.get(futures)
 

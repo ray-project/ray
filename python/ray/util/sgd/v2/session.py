@@ -2,21 +2,19 @@ import queue
 import time
 import threading
 import warnings
-from typing import Callable, TYPE_CHECKING, Union, Optional
-
-if TYPE_CHECKING:
-    from ray.data import Dataset, DatasetPipeline
+from typing import Callable, Optional
 
 from ray.util.sgd.v2.constants import TIME_THIS_ITER_S, RESULT_FETCH_TIMEOUT
-from ray.util.sgd.v2.utils import PropagatingThread
+from ray.util.sgd.v2.utils import PropagatingThread, RayDataset
 
 
 class Session:
     """Holds information for training on each worker."""
 
-    def __init__(self, training_func: Callable, world_rank: int,
-                 dataset_shard: Optional[Union["Dataset", "DatasetPipeline"]] =
-                 None):
+    def __init__(self,
+                 training_func: Callable,
+                 world_rank: int,
+                 dataset_shard: Optional[RayDataset] = None):
 
         self.dataset_shard = dataset_shard
 
@@ -137,7 +135,7 @@ def shutdown_session():
     _session = None
 
 
-def get_dataset_shard() -> Optional[Union["Dataset", "DatasetPipeline"]]:
+def get_dataset_shard() -> Optional[RayDataset]:
     """Returns the Ray Dataset or DatasetPipeline shard for this worker.
 
     You should call ``to_torch()`` or ``to_tf()`` on this shard to convert

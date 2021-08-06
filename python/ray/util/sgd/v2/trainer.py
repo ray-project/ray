@@ -8,6 +8,7 @@ from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.backends.torch import TorchConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
+from ray.util.sgd.v2.utils import RayDataset
 
 T = TypeVar("T")
 S = TypeVar("S")
@@ -111,6 +112,7 @@ class Trainer:
     def run(self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
+            dataset: Optional[RayDataset] = None,
             callbacks: Optional[List[SGDCallback]] = None) -> List[T]:
         """Runs a training function in a distributed manner.
 
@@ -119,6 +121,10 @@ class Trainer:
                 This can either take in no arguments or a ``config`` dict.
             config (Optional[Dict]): Configurations to pass into
                 ``train_func``. If None then an empty Dict will be created.
+            dataset (Optional[Union[Dataset, DatasetPipeline]]):
+                Distributed Ray Dataset or DatasetPipeline to pass into
+                worker. Sharding and locality hints will automatically be
+                handled by the Trainer.
             callbacks (Optional[List[SGDCallback]]): A list of Callbacks which
                 will be executed during training. If this is not set,
                 currently there are NO default Callbacks.
@@ -133,7 +139,7 @@ class Trainer:
         callbacks = [] if callbacks is None else callbacks
 
         try:
-            self._executor.start_training(train_func)
+            self._executor.start_training(train_func, dataset=dataset)
             while True:
                 intermediate_results = self._executor.fetch_next_result()
                 if intermediate_results is None:
