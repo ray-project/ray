@@ -11,7 +11,8 @@ docker:
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
     pull_before_run: True
-    run_options: []  # Extra options to pass into "docker run"
+    run_options:   # Extra options to pass into "docker run"
+        - --ulimit nofile=65536:65536
 
 provider:
     type: local

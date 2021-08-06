@@ -106,7 +106,12 @@ class ActorMethod(ActorMethodBase):
              **options) -> "ObjectRef":
         actor = self._actor_ref()
         if actor is None:
-            raise RuntimeError("Lost reference to actor")
+            raise RuntimeError("Lost reference to actor. One common cause is "
+                               "doing 'workflow.get_actor(id).method.run()', "
+                               "in this case the actor instance is released "
+                               "by Python before calling the method. Try "
+                               "'actor = workflow.get_actor(id); "
+                               "actor.method.run()' instead.")
         try:
             return actor._actor_method_call(
                 self._method_name, args=args, kwargs=kwargs)
@@ -282,9 +287,9 @@ class VirtualActorClass(VirtualActorClassBase):
         class ActorOptionWrapper(VirtualActorClassBase):
             def get_or_create(self, actor_id: str, *args, **kwargs):
                 return actor_cls._get_or_create(
+                    actor_id,
                     args=args,
                     kwargs=kwargs,
-                    actor_id=actor_id,
                     storage=get_global_storage())
 
         return ActorOptionWrapper()
@@ -302,6 +307,9 @@ class VirtualActorClass(VirtualActorClassBase):
     def _construct(self, actor_id: str, storage: Storage) -> "VirtualActor":
         """Construct a blank virtual actor."""
         return VirtualActor(self._metadata, actor_id, storage)
+
+    def __reduce__(self):
+        return decorate_actor, (self._metadata.cls, )
 
 
 def _wrap_readonly_actor_method(actor_id: str, cls: type, method_name: str):

@@ -544,7 +544,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::vector<ObjectID> &contained_object_ids,
                      ObjectID *object_id, std::shared_ptr<Buffer> *data,
                      bool created_by_worker,
-                     const std::unique_ptr<rpc::Address> owner_address = nullptr);
+                     const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -838,6 +838,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
 
+  int64_t GetNumTasksSubmitted() const {
+    return direct_task_submitter_->GetNumTasksSubmitted();
+  }
+
+  int64_t GetNumLeasesRequested() const {
+    return direct_task_submitter_->GetNumLeasesRequested();
+  }
+
  public:
   /// Allocate the return object for an executing task. The caller should write into the
   /// data buffer of the allocated buffer, then call SealReturnObject() to seal it.
@@ -847,11 +855,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] data_size Size of the return value.
   /// \param[in] metadata Metadata buffer of the return value.
   /// \param[in] contained_object_id ID serialized within each return object.
+  /// \param[in][out] task_output_inlined_bytes Store the total size of all inlined
+  /// objects of a task. It is used to decide if the current object should be inlined. If
+  /// the current object is inlined, the task_output_inlined_bytes will be updated.
   /// \param[out] return_object RayObject containing buffers to write results into.
   /// \return Status.
   Status AllocateReturnObject(const ObjectID &object_id, const size_t &data_size,
                               const std::shared_ptr<Buffer> &metadata,
                               const std::vector<ObjectID> &contained_object_id,
+                              int64_t &task_output_inlined_bytes,
                               std::shared_ptr<RayObject> *return_object);
 
   /// Seal a return object for an executing task. The caller should already have

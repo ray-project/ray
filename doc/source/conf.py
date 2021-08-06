@@ -47,6 +47,10 @@ MOCK_MODULES = [
     "modin",
     "mxnet",
     "mxnet.model",
+    "optuna",
+    "optuna.distributions",
+    "optuna.samplers",
+    "optuna.trial",
     "psutil",
     "pytorch_lightning.core.step_result",
     "pytorch_lightning.overrides.data_parallel",
@@ -297,6 +301,7 @@ html_theme_options = {
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
     "home_page_in_toc": True,
+    "show_navbar_depth": 0,
 }
 
 # Add any paths that contain custom themes here, relative to this directory.

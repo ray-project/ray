@@ -97,11 +97,13 @@ class ActorManager {
   /// \param[in] outer_object_id The object ID that contained the serialized
   /// actor handle, if any.
   /// \param[in] call_site The caller's site.
+  /// \param[in] is_self Whether this handle is current actor's handle. If true, actor
+  /// manager won't subscribe actor info from GCS.
   /// \return The ActorID of the deserialized handle.
   ActorID RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                               const ObjectID &outer_object_id,
                               const std::string &call_site,
-                              const rpc::Address &caller_address);
+                              const rpc::Address &caller_address, bool is_self = false);
 
   /// Get a handle to an actor.
   ///
@@ -185,12 +187,16 @@ class ActorManager {
   /// \param[in] call_site The caller's site.
   /// \param[in] actor_id The id of an actor
   /// \param[in] actor_creation_return_id object id of this actor creation
+  /// \param[in] is_self Whether this handle is current actor's handle. If true, actor
+  /// to the same actor.
+  /// manager won't subscribe actor info from GCS.
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                       const std::string &cached_actor_name, bool is_owner_handle,
                       const std::string &call_site, const rpc::Address &caller_address,
-                      const ActorID &actor_id, const ObjectID &actor_creation_return_id);
+                      const ActorID &actor_id, const ObjectID &actor_creation_return_id,
+                      bool is_self = false);
 
   /// Handle actor state notification published from GCS.
   ///
