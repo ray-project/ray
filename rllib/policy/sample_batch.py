@@ -263,10 +263,12 @@ class SampleBatch(dict):
         # Do we add seq_lens=[1] to each row?
         seq_lens = None if self.get("seq_lens") is None else np.array([1])
 
+        self_as_dict = {k: v for k, v in self.items()}
+
         for i in range(self.count):
             yield tree.map_structure_with_path(
                 lambda p, v: v[i] if p[0] != "seq_lens" else seq_lens,
-                self,
+                self_as_dict,
             )
 
     @PublicAPI
