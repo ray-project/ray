@@ -99,7 +99,7 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         # ones have name = SERVE_CONTROLLER_NAME + random letters.
         key = format_key(SERVE_CONTROLLER_NAME, SERVE_SNAPSHOT_KEY)
 
-        return json.loads(_internal_kv_get(key, client) or "[]")
+        return json.loads(_internal_kv_get(key, client) or "{}")
 
     async def get_session_name(self):
         encoded_name = await self._dashboard_head.aioredis_client.get(
