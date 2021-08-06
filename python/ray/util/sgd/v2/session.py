@@ -128,6 +128,9 @@ def shutdown_session():
     _session = None
 
 
+def get_dataset() -> ray.data.
+
+
 def report(**kwargs) -> None:
     """Reports all keyword arguments to SGD as intermediate results.
 
