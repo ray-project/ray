@@ -290,7 +290,7 @@ class RayletClient : public RayletClientInterface {
   ///
   /// \param release_resources: true if the dirct call blocking needs to release
   /// resources. \return ray::Status.
-  ray::Status NotifyDirectCallTaskBlocked(bool release_resources);
+  void NotifyDirectCallTaskBlocked(bool release_resources);
 
   /// Notify the raylet that this client is unblocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Block calls is important.

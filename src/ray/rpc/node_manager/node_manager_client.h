@@ -115,6 +115,9 @@ class NodeManagerWorkerClient
   /// Get gcs server address.
   VOID_RPC_CLIENT_METHOD(NodeManagerService, GetGcsServerAddress, grpc_client_, )
 
+  /// A worker is blocked.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, DirectCallTaskBlocked, grpc_client_, )
+
  private:
   /// Constructor.
   ///

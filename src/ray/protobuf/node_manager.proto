@@ -237,6 +237,14 @@ message GetGcsServerAddressReply {
   int32 port = 2;
 }
 
+message DirectCallTaskBlockedRequest {
+  bytes worker_id = 1;
+  bool release_resources = 2;
+}
+
+message DirectCallTaskBlockedReply {
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Update the node's view of the cluster resource usage
@@ -290,4 +298,6 @@ service NodeManagerService {
   rpc GetSystemConfig(GetSystemConfigRequest) returns (GetSystemConfigReply);
   // Get gcs server address.
   rpc GetGcsServerAddress(GetGcsServerAddressRequest) returns (GetGcsServerAddressReply);
+  // A worker is blocked.
+  rpc DirectCallTaskBlocked(DirectCallTaskBlockedRequest) returns (DirectCallTaskBlockedReply);
 }

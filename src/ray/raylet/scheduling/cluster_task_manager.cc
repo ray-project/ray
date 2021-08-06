@@ -321,6 +321,7 @@ void ClusterTaskManager::QueueAndScheduleTask(
     infeasible_tasks_[scheduling_class].push_back(work);
   } else {
     tasks_to_schedule_.Push(work);
+    RAY_LOG(ERROR) << "Queuing task of class: " << scheduling_class;
   }
   AddToBacklogTracker(task);
   ScheduleAndDispatchTasks();
@@ -1034,6 +1035,9 @@ bool ClusterTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
       for (unsigned int i = 0; i < overflow_cpu_instances.size(); i++) {
         RAY_CHECK(overflow_cpu_instances[i] == 0) << "Should not be overflow";
       }
+      // RAY_LOG(ERROR) << "Worker blocked. Queue: \n" <<
+      // tasks_to_schedule_.DebugString();
+      RAY_LOG(ERROR) << "Worker blocked.";
       worker->MarkBlocked();
       return true;
     }

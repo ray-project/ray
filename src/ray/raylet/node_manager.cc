@@ -1025,9 +1025,6 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::FetchOrReconstruct: {
     ProcessFetchOrReconstructMessage(client, message_data);
   } break;
-  case protocol::MessageType::NotifyDirectCallTaskBlocked: {
-    ProcessDirectCallTaskBlocked(client, message_data);
-  } break;
   case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
     std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
     HandleDirectCallTaskUnblocked(worker);
@@ -1425,15 +1422,6 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     AsyncResolveObjects(client, refs, task_id, /*ray_get=*/true,
                         /*mark_worker_blocked*/ message->mark_worker_blocked());
   }
-}
-
-void NodeManager::ProcessDirectCallTaskBlocked(
-    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  auto message =
-      flatbuffers::GetRoot<protocol::NotifyDirectCallTaskBlocked>(message_data);
-  bool release_resources = message->release_resources();
-  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-  HandleDirectCallTaskBlocked(worker, release_resources);
 }
 
 void NodeManager::ProcessWaitRequestMessage(
@@ -2228,6 +2216,18 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
           }
         });
   }
+}
+
+void NodeManager::HandleDirectCallTaskBlocked(
+    const rpc::DirectCallTaskBlockedRequest &request,
+    rpc::DirectCallTaskBlockedReply *reply, rpc::SendReplyCallback callback) {
+  const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
+
+  auto it = leased_workers_.find(worker_id);
+  RAY_CHECK(it != leased_workers_.end());
+
+  HandleDirectCallTaskBlocked(it->second, request.release_resources());
+  callback(Status::OK(), nullptr, nullptr);
 }
 
 rpc::ObjectStoreStats AccumulateStoreStats(

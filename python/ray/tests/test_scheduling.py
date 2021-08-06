@@ -486,7 +486,7 @@ def test_nested_task(ray_start_regular_shared):
         # from a dedicated thread. If the worker is blocked before the inner
         # task is submitted, the raylet will schedule another instance of
         # `outer` since there are no `inner`'s queued.
-        time.sleep(0.01)
+        # time.sleep(0.01)
         return ray.get(ref)
 
     @ray.remote

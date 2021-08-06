@@ -49,8 +49,6 @@ enum MessageType:int {
   NotifyUnblocked,
   // Notify the current worker is blocked. This is only used by direct task calls;
   // otherwise the block command is piggybacked on other messages.
-  NotifyDirectCallTaskBlocked,
-  // Notify the current worker is unblocked. This is only used by direct task calls.
   NotifyDirectCallTaskUnblocked,
   // Wait for objects to be ready either from local or remote Plasma stores.
   WaitRequest,

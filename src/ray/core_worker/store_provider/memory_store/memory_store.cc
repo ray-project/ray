@@ -128,12 +128,14 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     std::shared_ptr<ReferenceCounter> counter,
     std::shared_ptr<raylet::RayletClient> raylet_client,
     std::function<Status()> check_signals,
-    std::function<void(const RayObject &)> unhandled_exception_handler)
+    std::function<void(const RayObject &)> unhandled_exception_handler,
+    std::function<void(void)> release_resources)
     : store_in_plasma_(store_in_plasma),
       ref_counter_(counter),
       raylet_client_(raylet_client),
       check_signals_(check_signals),
-      unhandled_exception_handler_(unhandled_exception_handler) {}
+      unhandled_exception_handler_(unhandled_exception_handler),
+      release_resources_(release_resources) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -340,7 +342,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
   // Wait for remaining objects (or timeout).
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources=*/true));
+    release_resources_();
   }
 
   bool done = false;

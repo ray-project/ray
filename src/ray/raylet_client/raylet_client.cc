@@ -202,11 +202,13 @@ Status raylet::RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
 }
 
-Status raylet::RayletClient::NotifyDirectCallTaskBlocked(bool release_resources) {
+void raylet::RayletClient::NotifyDirectCallTaskBlocked(bool release_resources) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb, release_resources);
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
+  rpc::DirectCallTaskBlockedRequest request;
+  request.set_worker_id(worker_id_.Binary());
+  request.set_release_resources(release_resources);
+  grpc_client_->DirectCallTaskBlocked(
+                                      request, [](const Status &status, const rpc::DirectCallTaskBlockedReply &reply) {});
 }
 
 Status raylet::RayletClient::NotifyDirectCallTaskUnblocked() {

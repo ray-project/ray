@@ -38,7 +38,8 @@ class CoreWorkerMemoryStore {
       std::shared_ptr<ReferenceCounter> counter = nullptr,
       std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
       std::function<Status()> check_signals = nullptr,
-      std::function<void(const RayObject &)> unhandled_exception_handler = nullptr);
+      std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
+      std::function<void(void)> release_resources = nullptr);
   ~CoreWorkerMemoryStore(){};
 
   /// Put an object with specified ID into object store.
@@ -207,6 +208,9 @@ class CoreWorkerMemoryStore {
 
   /// Function called to report unhandled exceptions.
   std::function<void(const RayObject &)> unhandled_exception_handler_;
+
+  /// Function to call to release resources when blocking on a get/wait.
+  std::function<void(void)> release_resources_;
 
   ///
   /// Below information is stats.
