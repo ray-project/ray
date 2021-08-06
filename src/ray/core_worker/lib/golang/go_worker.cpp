@@ -237,7 +237,7 @@ __attribute__((visibility("default"))) int go_worker_SubmitActorTask(void *actor
   for (size_t i = 0; i < obj_ids.size(); i++) {
     void *result = (char *)malloc(object_id_size);
     memcpy(result, (char *)obj_ids[i].Data(), object_id_size);
-    RAY_LOG(WARNING) << "return object id:" << it << " p:" << result;
+    RAY_LOG(WARNING) << "return object id:" << result;
     object_ids[i] = result;
   }
   return 0;
