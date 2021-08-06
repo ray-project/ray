@@ -52,7 +52,7 @@ class FairSchedulingQueue {
   ///
   /// \param scheduling_class The scheduling class of the queue.
   /// \param work All the work for the scheduling class.
-  void PushAll(const SchedulingClass scheduling_class, const std::deque<Work> work_queue);
+  void PushAll(const SchedulingClass scheduling_class, std::deque<Work> work_queue);
 
   /// Mark a task as running, which may or may not influence the next element
   /// to be pushed/popped. This may invalidate existing iterators.

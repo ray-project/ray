@@ -68,19 +68,22 @@ TEST_F(FairSchedulingQueueTest, TestPushAll) {
     to_add.push_back(TaskToWork(task));
   }
 
-  // queue_.PushAll(task.GetTaskSpecification().GetSchedulingClass(), to_add);
+  queue_.PushAll(task.GetTaskSpecification().GetSchedulingClass(), to_add);
 
-  // auto deque = queue_.begin()->second;
+  auto deque = queue_.begin()->second;
 
-  // auto it1 = to_add.begin();
-  // auto it2 = deque.begin();
+  auto it1 = to_add.begin();
+  auto it2 = deque.begin();
 
-  // while (it1 != to_add.end() && it2 != deque.end()) {
-  //   ASSERT_EQ(*it1++, *it2++);
-  // }
+  while (it1 != to_add.end() && it2 != deque.end()) {
+    Task expected = std::get<0>(*it1++);
+    Task actual = std::get<0>(*it2++);
+    ASSERT_EQ(expected.GetTaskSpecification().TaskId(),
+              actual.GetTaskSpecification().TaskId());
+  }
 
-  // ASSERT_EQ(it1, to_add.end());
-  // ASSERT_EQ(it2, deque.end());
+  ASSERT_EQ(it1, to_add.end());
+  ASSERT_EQ(it2, deque.end());
 }
 
 TEST_F(FairSchedulingQueueTest, TestFreeAfterErase) {
