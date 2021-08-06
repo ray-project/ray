@@ -47,56 +47,56 @@ steps:
     - pip install -q docker aws_requests_auth boto3
     # Upload to branch directory.
     - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
-    - python .buildkite/copy_files.py --destination branch_jars --path ./.jar/linux
+    - python .buildkite/copy_files.py --destination branch_jars --path ./.jar/darwin
     # Upload to latest directory.
     - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
-    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/linux; fi
+    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
 
 
-# - label: ":mac: :apple: Ray C++ and Libraries"
-#   <<: *common
-#   commands:
-#     - *prelude_commands
-#     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
-#     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-flaky-mac --
-#       //:all python/ray/serve/... python/ray/new_dashboard/... -rllib/... -core_worker_test
+- label: ":mac: :apple: Ray C++ and Libraries"
+  <<: *common
+  commands:
+    - *prelude_commands
+    - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-flaky-mac --
+      //:all python/ray/serve/... python/ray/new_dashboard/... -rllib/... -core_worker_test
 
-# - label: ":mac: :apple: Small and Large"
-#   <<: *common
-#   commands:
-#     - *prelude_commands
-#     - bazel test $(./scripts/bazel_export_options) --config=ci
-#       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX
-#       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER
-#       --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky,-flaky-mac
-#       python/ray/tests/...
+- label: ":mac: :apple: Small and Large"
+  <<: *common
+  commands:
+    - *prelude_commands
+    - bazel test $(./scripts/bazel_export_options) --config=ci
+      --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX
+      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER
+      --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky,-flaky-mac
+      python/ray/tests/...
 
-# - label: ":mac: :apple: Medium A-J"
-#   <<: *common
-#   commands:
-#     - *prelude_commands
-#     - bazel test --config=ci $(./scripts/bazel_export_options)
-#       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j,-flaky,-flaky-mac
-#       python/ray/tests/...
+- label: ":mac: :apple: Medium A-J"
+  <<: *common
+  commands:
+    - *prelude_commands
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j,-flaky,-flaky-mac
+      python/ray/tests/...
 
-# - label: ":mac: :apple: Medium K-Z"
-#   <<: *common
-#   commands:
-#     - *prelude_commands
-#     - bazel test --config=ci $(./scripts/bazel_export_options)
-#       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky,-flaky-mac
-#       python/ray/tests/...
+- label: ":mac: :apple: Medium K-Z"
+  <<: *common
+  commands:
+    - *prelude_commands
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky,-flaky-mac
+      python/ray/tests/...
 
-# - label: ":mac: :apple: :snowflake: Flaky"
-#   <<: *common
-#   commands:
-#     - *prelude_commands
-#     - ./ci/travis/install-dependencies.sh
-#     - bazel test --config=ci $(./scripts/bazel_export_options)
-#       --test_tag_filters=-kubernetes,-jenkins_only,flaky,flaky-mac
-#       --test_env=CONDA_EXE
-#       --test_env=CONDA_PYTHON_EXE
-#       --test_env=CONDA_SHLVL
-#       --test_env=CONDA_PREFIX
-#       --test_env=CONDA_DEFAULT_ENV
-#       python/ray/tests/... python/ray/serve/...
+- label: ":mac: :apple: :snowflake: Flaky"
+  <<: *common
+  commands:
+    - *prelude_commands
+    - ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,flaky,flaky-mac
+      --test_env=CONDA_EXE
+      --test_env=CONDA_PYTHON_EXE
+      --test_env=CONDA_SHLVL
+      --test_env=CONDA_PREFIX
+      --test_env=CONDA_DEFAULT_ENV
+      python/ray/tests/... python/ray/serve/...
