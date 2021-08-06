@@ -28,8 +28,6 @@ namespace ray {
 
 namespace internal {
 
-using ray::core::RayFunction;
-
 /// Execute remote functions by networking stream.
 msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
                                       const std::vector<msgpack::sbuffer> &args_buffer,
@@ -46,6 +44,8 @@ BOOST_DLL_ALIAS(internal::GetRemoteFunctions, GetRemoteFunctions);
 }  // namespace internal
 
 namespace api {
+
+using ray::core::RayFunction;
 
 class AbstractRayRuntime;
 
@@ -73,7 +73,7 @@ class TaskExecutor {
 
   static Status ExecuteTask(
       ray::TaskType task_type, const std::string task_name,
-      const RayFunction &ray_function,
+      RayFunction &ray_function,
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<ray::RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
