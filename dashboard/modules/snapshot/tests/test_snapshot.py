@@ -101,10 +101,13 @@ my_func.deploy()
     jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
 
     assert len(data["data"]["snapshot"]["deployments"]) == 1
-    for deployment in data["data"]["snapshot"]["deployments"]:
-        assert deployment["name"] == "my_func"
-        assert deployment["version"] == "v1"
-        assert deployment["httpRoute"] == "/my_func"
-        assert deployment["className"] == "my_func"
-        assert deployment["status"] == "RUNNING"
-        assert deployment["rayJobId"] is not None
+    for deployment_name, entry in data["data"]["snapshot"][
+            "deployments"].items():
+        assert entry["name"] == "my_func"
+        assert entry["version"] == "v1"
+        assert entry["httpRoute"] == "/my_func"
+        assert entry["className"] == "my_func"
+        assert entry["status"] == "RUNNING"
+        assert entry["rayJobId"] is not None
+        assert entry["startTime"] == 0
+        assert entry["endTime"] == 0

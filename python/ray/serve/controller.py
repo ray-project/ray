@@ -125,26 +125,26 @@ class ServeController:
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
     def _put_serve_snapshot(self) -> None:
-        val = []
-        for name, (backend_info,
-                   route_prefix) in self.list_deployments().items():
-            deployment_info = {}
-            deployment_info["name"] = name
-            deployment_info["namespace"] = ray.get_runtime_context().namespace
-            deployment_info["ray_job_id"] = (
-                "None" if backend_info.deployer_job_id is None else
-                backend_info.deployer_job_id.hex())
-            deployment_info[
+        val = dict()
+        for deployment_name, (backend_info,
+                              route_prefix) in self.list_deployments().items():
+            entry = dict()
+            entry["name"] = deployment_name
+            entry["namespace"] = ray.get_runtime_context().namespace
+            entry["ray_job_id"] = ("None"
+                                   if backend_info.deployer_job_id is None else
+                                   backend_info.deployer_job_id.hex())
+            entry[
                 "class_name"] = backend_info.replica_config.func_or_class_name
-            deployment_info["version"] = backend_info.version or "Unversioned"
+            entry["version"] = backend_info.version or "Unversioned"
             # TODO(architkulkarni): When we add the feature to allow
             # deployments with no HTTP route, update the below line.
             # Or refactor the route_prefix logic in the Deployment class now.
-            deployment_info["http_route"] = route_prefix or f"/{name}"
-            deployment_info["status"] = "RUNNING"
-            deployment_info["start_time"] = 0
-            deployment_info["end_time"] = 0
-            val.append(deployment_info)
+            entry["http_route"] = route_prefix or f"/{deployment_name}"
+            entry["status"] = "RUNNING"
+            entry["start_time"] = 0
+            entry["end_time"] = 0
+            val[deployment_name] = entry
         self.kv_store.put(SNAPSHOT_KEY, json.dumps(val))
 
     def _all_replica_handles(
