@@ -544,7 +544,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::vector<ObjectID> &contained_object_ids,
                      ObjectID *object_id, std::shared_ptr<Buffer> *data,
                      bool created_by_worker,
-                     const std::unique_ptr<rpc::Address> owner_address = nullptr);
+                     const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
