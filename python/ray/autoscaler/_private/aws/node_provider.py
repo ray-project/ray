@@ -457,6 +457,10 @@ class AWSNodeProvider(NodeProvider):
         pass
 
     def terminate_nodes(self, node_ids):
+        # AWS only allows 1000 nodes to be shutdown in a single terminate
+        # request.
+        max_terminate_nodes = 1000
+
         if not node_ids:
             return
         if self.cache_stopped_nodes:
@@ -478,16 +482,24 @@ class AWSNodeProvider(NodeProvider):
                         "under `provider` in the cluster configuration)"),
                     cli_logger.render_list(on_demand_ids))
 
-                self.ec2.meta.client.stop_instances(InstanceIds=on_demand_ids)
+                for start in range(0, len(on_demand_ids), max_terminate_nodes):
+                    self.ec2.meta.client.stop_instances(
+                        InstanceIds=on_demand_ids[start:start +
+                                                  max_terminate_nodes])
             if spot_ids:
                 cli_logger.print(
                     "Terminating instances {} " +
                     cf.dimmed("(cannot stop spot instances, only terminate)"),
                     cli_logger.render_list(spot_ids))
 
-                self.ec2.meta.client.terminate_instances(InstanceIds=spot_ids)
+                for start in range(0, len(spot_ids), max_terminate_nodes):
+                    self.ec2.meta.client.terminate_instances(
+                        InstanceIds=spot_ids[start:start +
+                                             max_terminate_nodes])
         else:
-            self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
+            for start in range(0, len(node_ids), max_terminate_nodes):
+                self.ec2.meta.client.terminate_instances(
+                    InstanceIds=node_ids[start:start + max_terminate_nodes])
 
     def _get_node(self, node_id):
         """Refresh and get info for this node, updating the cache."""
