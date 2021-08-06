@@ -2223,10 +2223,8 @@ void NodeManager::HandleDirectCallTaskBlocked(
     rpc::DirectCallTaskBlockedReply *reply, rpc::SendReplyCallback callback) {
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
 
-  auto it = leased_workers_.find(worker_id);
-  RAY_CHECK(it != leased_workers_.end());
-
-  HandleDirectCallTaskBlocked(it->second, request.release_resources());
+  auto worker = worker_pool_.GetRegisteredWorker(worker_id);
+  HandleDirectCallTaskBlocked(worker, request.release_resources());
   callback(Status::OK(), nullptr, nullptr);
 }
 

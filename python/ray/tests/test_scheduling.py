@@ -496,7 +496,7 @@ def test_fair_queueing(shutdown_only):
     # This will never finish without fair queueing of {f, g, h}:
     # https://github.com/ray-project/ray/issues/3644
     ready, _ = ray.wait(
-        [f.remote() for _ in range(10000)], timeout=60.0, num_returns=10000)
+        [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
     assert len(ready) == 1000, len(ready)
 
 
