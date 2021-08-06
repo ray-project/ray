@@ -50,7 +50,7 @@ int go_worker_CreateActor(char *type_name, char **result);
 // todo calloptions
 GoSlice go_worker_SubmitActorTask(void *actor_id, char *method_name, int num_returns);
 
-GoSlice go_worker_Get(void ***object_ids, int object_ids_size, int timeout);
+GoSlice go_worker_Get(void **object_ids, int object_ids_size, int timeout);
 
 extern void go_worker_execute(GoInt task_type, GoSlice ray_function_info, GoSlice args,
                               GoSlice return_values);

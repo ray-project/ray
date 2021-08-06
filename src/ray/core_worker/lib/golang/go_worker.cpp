@@ -172,7 +172,8 @@ __attribute__((visibility("default"))) int go_worker_GetNodeToConnectForDriver(
     return 0;
   }
   RAY_LOG(WARNING) << "got nodeinfo:" << node_to_connect;
-  int result_length = strlen(node_to_connect.c_str());
+  int result_length = node_to_connect.length();
+  RAY_LOG(WARNING) << "got nodeinfo len:" << result_length;
   *result = (char *)malloc(result_length + 1);
   memcpy(*result, node_to_connect.c_str(), result_length);
   return result_length;
@@ -253,15 +254,15 @@ DataBuffer *RayObjectToDataBuffer(std::shared_ptr<ray::Buffer> buffer) {
   return data_db;
 }
 
-__attribute__((visibility("default"))) GoSlice go_worker_Get(void ***object_ids,
+__attribute__((visibility("default"))) GoSlice go_worker_Get(void **object_ids,
                                                              int object_ids_size,
                                                              int timeout) {
   std::vector<ray::ObjectID> object_ids_data;
-  char ***object_id_arr = (char ***)object_ids;
+  char **object_id_arr = (char **)object_ids;
   for (int i = 0; i < object_ids_size; i++) {
     RAY_LOG(WARNING) << "try to get objectid:" << static_cast<void *>(object_id_arr[i]);
     auto object_id_obj =
-        ByteArrayToId<ray::ObjectID>(*(static_cast<char **>(object_id_arr[i])));
+        ByteArrayToId<ray::ObjectID>(object_id_arr[i]);
     RAY_LOG(WARNING) << "try to get object:" << object_id_obj;
     object_ids_data.emplace_back(object_id_obj);
   }
