@@ -145,13 +145,13 @@ def test_no_exhaust(ray_start_2_cpus):
     assert output == [2, 2]
 
 
-def test_checkpoint():
+def test_checkpoint(ray_start_2_cpus):
     def train():
         for i in range(2):
             sgd.save_checkpoint(epoch=i)
 
     config = TestConfig()
-    e = BackendExecutor(config, num_workers=2)
+    e = BackendExecutor(config, num_workers=1)
     e.start()
 
     e.start_training(train)

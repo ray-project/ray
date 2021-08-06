@@ -2,7 +2,7 @@ import time
 import pytest
 
 from ray.util.sgd.v2.session import init_session, shutdown_session, \
-    get_session, world_rank, report, save_checkpoint
+    get_session, world_rank, report, save_checkpoint, TrainingResultType
 
 
 @pytest.fixture(scope="function")
@@ -47,8 +47,8 @@ def test_report():
     init_session(training_func=train, world_rank=0)
     session = get_session()
     session.start()
-    assert session.get_next()["loss"] == 0
-    assert session.get_next()["loss"] == 1
+    assert session.get_next().data["loss"] == 0
+    assert session.get_next().data["loss"] == 1
     shutdown_session()
 
     with pytest.raises(ValueError):
@@ -72,6 +72,7 @@ def test_report_fail():
 
 def test_report_after_finish(session):
     session.start()
+    session.pause_reporting()
     session.finish()
     for _ in range(2):
         report(loss=1)
@@ -88,13 +89,30 @@ def test_checkpoint():
         for i in range(2):
             save_checkpoint(epoch=i)
 
+    def validate_zero(expected):
+        next = session.get_next()
+        assert next is not None
+        assert next.type == TrainingResultType.CHECKPOINT
+        assert next.data["epoch"] == expected
+
     init_session(training_func=train, world_rank=0)
     session = get_session()
     session.start()
-    time.sleep(1)
-    assert session.get_next_checkpoint()["epoch"] == 0
-    time.sleep(1)
-    assert session.get_next_checkpoint()["epoch"] == 1
+    validate_zero(0)
+    validate_zero(1)
+    shutdown_session()
+
+    def validate_nonzero():
+        next = session.get_next()
+        assert next is not None
+        assert next.type == TrainingResultType.CHECKPOINT
+        assert next.data == {}
+
+    init_session(training_func=train, world_rank=1)
+    session = get_session()
+    session.start()
+    validate_nonzero()
+    validate_nonzero()
     shutdown_session()
 
     with pytest.raises(ValueError):
@@ -123,6 +141,9 @@ def test_locking():
     session = get_session()
     session.start()
     time.sleep(3)
+
+    session.pause_reporting()
+    session.get_next()
 
     with pytest.raises(KeyboardInterrupt):
         session.finish()

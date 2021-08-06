@@ -73,11 +73,11 @@ def gen_new_backend_executor(special_f):
     """Returns a BackendExecutor that runs special_f on worker 0."""
 
     class TestBackendExecutor(BackendExecutor):
-        def start_training(self, train_func):
+        def start_training(self, train_func, checkpoint):
             special_execute = gen_execute_single_async_special(special_f)
             with patch.object(WorkerGroup, "execute_single_async",
                               special_execute):
-                super().start_training(train_func)
+                super().start_training(train_func, checkpoint)
 
     return TestBackendExecutor
 
@@ -237,6 +237,29 @@ def test_checkpoint(ray_start_2_cpus):
 
     assert checkpoint is not None
     assert checkpoint["epoch"] == 4
+
+
+def test_load_checkpoint(ray_start_2_cpus):
+    config = TestConfig()
+
+    def train_func_checkpoint():
+        checkpoint = sgd.load_checkpoint()
+        assert checkpoint is not None
+        assert checkpoint["epoch"] == 3
+
+        result = []
+        for i in range(checkpoint["epoch"], 5):
+            result.append(i)
+        return result
+
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+    result = trainer.run(train_func_checkpoint, checkpoint={"epoch": 3})
+
+    assert result is not None
+    assert len(result) == 2
+    assert result[0] == [3, 4]
+    assert result[1] == [3, 4]
 
 
 def test_world_rank(ray_start_2_cpus):

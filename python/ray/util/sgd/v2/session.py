@@ -1,10 +1,22 @@
 import queue
 import time
 import threading
+from enum import Enum, auto
 from typing import Callable, Optional, Dict
 
 from ray.util.sgd.v2.constants import TIME_THIS_ITER_S, RESULT_FETCH_TIMEOUT
 from ray.util.sgd.v2.utils import PropagatingThread
+
+
+class TrainingResultType(Enum):
+    REPORT = auto()
+    CHECKPOINT = auto()
+
+
+class TrainingResult():
+    def __init__(self, type: TrainingResultType, data: Dict):
+        self.type = type
+        self.data = data
 
 
 class Session:
@@ -29,10 +41,6 @@ class Session:
         self.last_report_time = time.time()
 
         self.ignore_report = False
-
-        # Queue for sending checkpoints across threads.
-        self.checkpoint_queue = queue.Queue(1)
-        self.checkpoint_lock = threading.Semaphore(0)
         self.training_started = False
 
     def start(self):
@@ -40,19 +48,16 @@ class Session:
         self.training_started = True
         self.training_thread.start()
 
+    def pause_reporting(self):
+        """Ignore all future ``sgd.report()`` calls."""
+        self.ignore_report = True
+
     def finish(self):
         """Finishes the training thread.
 
         Either returns the output from training or raises any Exception from
         training.
-
         """
-        # Ignore all future sgd.report calls.
-        self.ignore_report = True
-
-        # Release lock so that training will continue even if
-        # fetch_next_result is not exhausted.
-        self.continue_lock.release()
 
         # Wait for training to finish.
         # This will raise any errors that occur during training, including
@@ -61,7 +66,7 @@ class Session:
         # If training finished successfully, then return results.
         return func_output
 
-    def get_next(self):
+    def get_next(self) -> Optional[TrainingResult]:
         """Gets next result from the queue."""
         if not self.training_started:
             raise RuntimeError("Please call start before calling get_next.")
@@ -101,44 +106,30 @@ class Session:
             kwargs[TIME_THIS_ITER_S] = time_this_iter
         self.last_report_time = current_time
 
+        result = TrainingResult(TrainingResultType.REPORT, kwargs.copy())
+
         # Add result to a thread-safe queue.
-        self.result_queue.put(kwargs.copy(), block=True)
+        self.result_queue.put(result, block=True)
 
         # Acquire lock to stop the training thread until main thread
         # triggers resume.
         self.continue_lock.acquire()
-
-    def get_next_checkpoint(self):
-        """Gets next checkpoint from the queue."""
-        if not self.training_started:
-            raise RuntimeError("Please call start before calling "
-                               "get_next_checkpoint.")
-        checkpoint = None
-
-        try:
-            checkpoint = self.checkpoint_queue.get(block=False)
-            # Release the lock to trigger training to continue.
-            # TODO move this to BackendExecutor to release after processing.
-            self.checkpoint_lock.release()
-        except queue.Empty:
-            pass
-
-        # Return None if there is no checkpoint.
-        return checkpoint
 
     def checkpoint(self, **kwargs):
         """Adds kwargs to the queue to be consumed by main thread."""
 
         # Only store checkpoints on worker with rank 0.
         if self.world_rank != 0:
-            return
+            kwargs = {}
+
+        result = TrainingResult(TrainingResultType.CHECKPOINT, kwargs.copy())
 
         # Add result to a thread-safe queue.
-        self.checkpoint_queue.put(kwargs.copy())
+        self.result_queue.put(result, block=True)
 
         # Acquire lock to stop the training thread until
         # checkpoint has been processed.
-        self.checkpoint_lock.acquire()
+        self.continue_lock.acquire()
 
 
 _session = None
