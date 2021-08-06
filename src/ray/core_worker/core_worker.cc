@@ -1769,11 +1769,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
-  // Note we need set `cached_actor_name` to empty string as we only cache named actors
-  // when getting them from GCS.
-  RAY_CHECK(actor_manager_->AddNewActorHandle(
-      std::move(actor_handle), /*cached_actor_name=*/"", GetCallerId(), CurrentCallSite(),
-      rpc_address_, actor_creation_options.is_detached))
+  RAY_CHECK(actor_manager_->AddNewActorHandle(std::move(actor_handle), CurrentCallSite(),
+                                              rpc_address_,
+                                              actor_creation_options.is_detached))
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
@@ -2016,8 +2014,7 @@ ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &seriali
                                                       const ObjectID &outer_object_id) {
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
   return actor_manager_->RegisterActorHandle(std::move(actor_handle), outer_object_id,
-                                             GetCallerId(), CurrentCallSite(),
-                                             rpc_address_);
+                                             CurrentCallSite(), rpc_address_);
 }
 
 Status CoreWorker::SerializeActorHandle(const ActorID &actor_id, std::string *output,
@@ -2040,61 +2037,9 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
     return GetNamedActorHandleLocalMode(name);
   }
 
-  std::string namespace_to_use =
-      ray_namespace.empty() ? job_config_->ray_namespace() : ray_namespace;
-  ActorID actor_id =
-      actor_manager_->GetCachedNamedActorID(ToCachedActorName(namespace_to_use, name));
-  if (actor_id.IsNil()) {
-    // This call needs to be blocking because we can't return until the actor
-    // handle is created, which requires the response from the RPC. This is
-    // implemented using a promise that's captured in the RPC callback.
-    // There should be no risk of deadlock because we don't hold any
-    // locks during the call and the RPCs run on a separate thread.
-    std::shared_ptr<std::promise<void>> ready_promise =
-        std::make_shared<std::promise<void>>(std::promise<void>());
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
-        name, namespace_to_use,
-        [this, &actor_id, name, ready_promise](
-            Status status, const boost::optional<rpc::ActorTableData> &result) {
-          if (status.ok() && result) {
-            auto actor_handle = std::make_unique<ActorHandle>(*result);
-            actor_id = actor_handle->GetActorID();
-            actor_manager_->AddNewActorHandle(
-                std::move(actor_handle),
-                ToCachedActorName(result.get().ray_namespace(), result.get().name()),
-                GetCallerId(), CurrentCallSite(), rpc_address_,
-                /*is_detached*/ true);
-          } else {
-            // Use a NIL actor ID to signal that the actor wasn't found.
-            RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;
-            actor_id = ActorID::Nil();
-          }
-          ready_promise->set_value();
-        }));
-    // Block until the RPC completes. Set a timeout to avoid hangs if the
-    // GCS service crashes.
-    if (ready_promise->get_future().wait_for(std::chrono::seconds(
-            RayConfig::instance().gcs_server_request_timeout_seconds())) !=
-        std::future_status::ready) {
-      std::ostringstream stream;
-      stream << "There was timeout in getting the actor handle, "
-                "probably because the GCS server is dead or under high load .";
-      return std::make_pair(nullptr, Status::TimedOut(stream.str()));
-    }
-  }
-
-  if (actor_id.IsNil()) {
-    std::ostringstream stream;
-    stream << "Failed to look up actor with name '" << name << "'. This could "
-           << "because 1. You are trying to look up a named actor you "
-           << "didn't create. 2. The named actor died. 3. The actor hasn't "
-           << "been created because named actor creation is asynchronous. "
-           << "4. You did not use a namespace matching the namespace of the "
-           << "actor.";
-    return std::make_pair(nullptr, Status::NotFound(stream.str()));
-  }
-
-  return std::make_pair(GetActorHandle(actor_id), Status::OK());
+  return actor_manager_->GetNamedActorHandle(
+      name, ray_namespace.empty() ? job_config_->ray_namespace() : ray_namespace,
+      CurrentCallSite(), rpc_address_);
 }
 
 std::pair<std::vector<std::pair<std::string, std::string>>, Status>
@@ -2259,7 +2204,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
           new ActorHandle(task_spec.GetSerializedActorHandle()));
       // Register the handle to the current actor itself.
       actor_manager_->RegisterActorHandle(std::move(self_actor_handle), ObjectID::Nil(),
-                                          GetCallerId(), CurrentCallSite(), rpc_address_);
+                                          CurrentCallSite(), rpc_address_);
     }
     RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {

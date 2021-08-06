@@ -866,6 +866,24 @@ def test_get_non_existing_named_actor(ray_start_regular_shared):
         _ = ray.get_actor("non_existing_actor")
 
 
+def test_named_actor_cache(ray_start_regular):
+    """Verify that named actor cache works well."""
+
+    @ray.remote(max_restarts=-1)
+    class A:
+        def __init__(self):
+            pass
+
+    a = A.options(name="hi").remote()
+    first_get = ray.get_actor("hi")
+    second_get = ray.get_actor("hi")
+    assert first_get == second_get
+    ray.kill(a, no_restart=True)
+    b = A.options(name="hi").remote()
+    b_get = ray.get_actor("hi")
+    assert first_get != b_get
+
+
 def test_wrapped_actor_handle(ray_start_regular_shared):
     @ray.remote
     class B:

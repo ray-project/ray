@@ -96,11 +96,10 @@ class ActorManager {
   /// \param[in] actor_handle The actor handle.
   /// \param[in] outer_object_id The object ID that contained the serialized
   /// actor handle, if any.
-  /// \param[in] caller_id The caller's task ID
   /// \param[in] call_site The caller's site.
   /// \return The ActorID of the deserialized handle.
   ActorID RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                              const ObjectID &outer_object_id, const TaskID &caller_id,
+                              const ObjectID &outer_object_id,
                               const std::string &call_site,
                               const rpc::Address &caller_address);
 
@@ -110,6 +109,19 @@ class ActorManager {
   /// \return reference to the actor_handle's pointer.
   /// NOTE: Returned actorHandle should not be stored anywhere.
   std::shared_ptr<ActorHandle> GetActorHandle(const ActorID &actor_id);
+
+  /// Get actor handle by name.
+  /// We cache <name, id> pair after getting the named actor from GCS, so that it can use
+  /// local cache in next call.
+  ///
+  /// \param[in] name The actor name.
+  /// \param[in] ray_namespace Namespace that actor belongs to.
+  /// \param[in] call_site The caller's site.
+  /// \param[in] caller_address The rpc address of the calling task.
+  /// \return KV pair of actor handle pointer and status.
+  std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandle(
+      const std::string &name, const std::string &ray_namespace,
+      const std::string &call_site, const rpc::Address &caller_address);
 
   /// Check if an actor handle that corresponds to an actor_id exists.
   /// \param[in] actor_id The actor id of a handle.
@@ -127,14 +139,11 @@ class ActorManager {
   /// actor handle.
   ///
   /// \param actor_handle The handle to the actor.
-  /// \param cached_actor_name Actor name used to cache named actor.
-  /// \param[in] caller_id The caller's task ID
   /// \param[in] call_site The caller's site.
   /// \param[in] is_detached Whether or not the actor of a handle is detached (named)
   /// actor. \return True if the handle was added and False if we already had a handle to
   /// the same actor.
   bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
-                         const std::string &cached_actor_name, const TaskID &caller_id,
                          const std::string &call_site, const rpc::Address &caller_address,
                          bool is_detached);
 
@@ -156,6 +165,11 @@ class ActorManager {
   ActorID GetCachedNamedActorID(const std::string &actor_name);
 
  private:
+  bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
+                         const std::string &cached_actor_name,
+                         const std::string &call_site, const rpc::Address &caller_address,
+                         bool is_detached);
+
   /// Give this worker a handle to an actor.
   ///
   /// This handle will remain as long as the current actor or task is
@@ -168,7 +182,6 @@ class ActorManager {
   /// \param is_owner_handle Whether this is the owner's handle to the actor.
   /// The owner is the creator of the actor and is responsible for telling the
   /// actor to disconnect once all handles are out of scope.
-  /// \param[in] caller_id The caller's task ID
   /// \param[in] call_site The caller's site.
   /// \param[in] actor_id The id of an actor
   /// \param[in] actor_creation_return_id object id of this actor creation
@@ -176,9 +189,8 @@ class ActorManager {
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                       const std::string &cached_actor_name, bool is_owner_handle,
-                      const TaskID &caller_id, const std::string &call_site,
-                      const rpc::Address &caller_address, const ActorID &actor_id,
-                      const ObjectID &actor_creation_return_id);
+                      const std::string &call_site, const rpc::Address &caller_address,
+                      const ActorID &actor_id, const ObjectID &actor_creation_return_id);
 
   /// Handle actor state notification published from GCS.
   ///
@@ -209,7 +221,8 @@ class ActorManager {
 
   /// The map to cache name and id of the named actors in this worker locally, to avoid
   /// getting them from GCS frequently.
-  absl::flat_hash_map<std::string, ActorID> cached_actor_name_to_ids_;
+  absl::flat_hash_map<std::string, ActorID> cached_actor_name_to_ids_
+      GUARDED_BY(cache_mutex_);
 };
 
 }  // namespace ray
