@@ -1,6 +1,5 @@
 import asyncio
 import time
-from typing import Optional
 import os
 
 import requests
@@ -242,25 +241,6 @@ def test_start_idempotent(serve_instance):
     serve.start(detached=True)
     serve.start()
     assert "start" in serve.list_backends()
-
-
-@pytest.mark.parametrize("namespace", [None, "test_namespace"])
-@pytest.mark.parametrize("detached", [True, False])
-def test_namespace_start(namespace: Optional[str], detached: bool):
-    """
-    Tests the serve controller is started in the "serve" namespace
-    even if serve is started in a different namespace. Also tests that
-    we can access the serve controller from a namespace that is not "serve".
-    """
-    ray.shutdown()
-    serve.shutdown()
-
-    ray.init(namespace=namespace)
-    serve.start(detached=detached)
-    client = serve.api._global_client
-    assert ray.get_runtime_context().namespace != "serve"
-    assert client._controller_name.startswith("serve/")
-    assert ray.get_actor(client._controller_name)
 
 
 if __name__ == "__main__":

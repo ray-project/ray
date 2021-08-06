@@ -2,6 +2,7 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
+from typing import Optional
 import sys
 import socket
 
@@ -363,18 +364,6 @@ def test_serve_shutdown(ray_shutdown):
     assert len(serve.list_deployments()) == 1
 
 
-def test_detached_namespace_warning(ray_shutdown):
-    ray.init()
-
-    # Can't start detached instance in anonymous namespace.
-    with pytest.raises(RuntimeError, match="anonymous Ray namespace"):
-        serve.start(detached=True)
-
-    # Can start non-detached instance in anonymous namespace.
-    serve.start()
-    ray.shutdown()
-
-
 def test_detached_namespace_default_ray_init(ray_shutdown):
     # Can start detached instance when ray is not initialized.
     serve.start(detached=True)
@@ -384,6 +373,24 @@ def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
     # Can start detached instance in non-anonymous namespace.
     ray.init(namespace="foo")
     serve.start(detached=True)
+
+
+@pytest.mark.parametrize("namespace", [None, "test_namespace"])
+@pytest.mark.parametrize("detached", [True, False])
+def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
+                                    detached: bool):
+    """
+    Tests the serve controller is started in the "serve" namespace
+    even if serve is started in a different namespace. Also tests that
+    we can access the serve controller from a namespace that is not "serve".
+    """
+
+    ray.init(namespace=namespace)
+    serve.start(detached=detached)
+    client = serve.api._global_client
+    assert ray.get_runtime_context().namespace != "serve"
+    assert client._controller_name.startswith("serve/")
+    assert ray.get_actor(client._controller_name)
 
 
 if __name__ == "__main__":

@@ -724,7 +724,7 @@ def connect() -> Client:
     # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
     if _INTERNAL_REPLICA_CONTEXT is None:
-        controller_name = SERVE_CONTROLLER_NAME
+        controller_name = f"serve/{SERVE_CONTROLLER_NAME}"
     else:
         controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
 
