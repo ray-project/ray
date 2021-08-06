@@ -23,6 +23,9 @@
 namespace ray {
 namespace api {
 
+using ray::core::CoreWorkerProcess;
+using ray::core::WorkerType;
+
 /// IP address by which the local node can be reached *from* the `address`.
 ///
 /// The behavior should be the same as `node_ip_address_from_perspective` from Ray Python
@@ -77,7 +80,7 @@ void ProcessHelper::StopRayNode() {
 
 void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) {
   std::string redis_ip = ConfigInternal::Instance().redis_ip;
-  if (ConfigInternal::Instance().worker_type == ray::WorkerType::DRIVER &&
+  if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER &&
       redis_ip.empty()) {
     redis_ip = "127.0.0.1";
     StartRayNode(ConfigInternal::Instance().redis_port,
@@ -99,7 +102,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   }
 
   std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor = nullptr;
-  if (ConfigInternal::Instance().worker_type == ray::WorkerType::DRIVER) {
+  if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
     global_state_accessor.reset(new ray::gcs::GlobalStateAccessor(
         redis_address, ConfigInternal::Instance().redis_password));
     RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
