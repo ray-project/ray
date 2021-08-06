@@ -567,11 +567,10 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
     }
   }
 
-  std::function<bool(const Work &)> fn = [&num_reported, reply](const Work &work) {
+  auto fn = [&num_reported, reply](const Work &work) {
     Task task = std::get<0>(work);
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       if (num_reported++ > kMaxPendingActorsToReport) {
-        // return;  // Protect the raylet from reporting too much data.
         return false;
       }
       auto ready_task = reply->add_infeasible_tasks();
@@ -772,7 +771,7 @@ bool ClusterTaskManager::AnyPendingTasks(Task *exemplar, bool *any_pending,
   // We are guaranteed that these tasks are blocked waiting for resources after a
   // call to ScheduleAndDispatchTasks(). They may be waiting for workers as well, but
   // this should be a transient condition only.
-  std::function<bool(const Work &)> fn = [exemplar, any_pending,
+  auto fn = [exemplar, any_pending,
                                           num_pending_actor_creation,
                                           num_pending_tasks](const Work &work) {
     const auto &task = std::get<0>(work);
@@ -1169,7 +1168,7 @@ ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
   return total_normal_task_resources;
 }
 
-void ClusterTaskManager::ForAllQueues(std::function<bool(const Work &)> &fn) const {
+void ClusterTaskManager::ForAllQueues(std::function<bool(const Work &)> fn) const {
   for (const auto &class_deque_pair : tasks_to_schedule_) {
     const auto &deque = class_deque_pair.second;
     for (const auto &work : deque) {

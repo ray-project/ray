@@ -329,7 +329,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///
   /// \param fn a function called on each work. If `fn` returns false,
   ///        shortcircuits.
-  void ForAllQueues(std::function<bool(const Work &)> &fn) const;
+  void ForAllQueues(std::function<bool(const Work &)> fn) const;
 
   friend class ClusterTaskManagerTest;
   FRIEND_TEST(ClusterTaskManagerTest, FeasibleToNonFeasible);
