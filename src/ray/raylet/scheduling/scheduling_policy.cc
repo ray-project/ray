@@ -58,7 +58,18 @@ int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t loca
       continue;
     }
 
-    bool is_available = node.GetLocalView().IsAvailable(resource_request);
+    bool ignore_pull_manager_at_capacity = false;
+    if (node_id == local_node_id) {
+      // It's okay if the local node's pull manager is at
+      // capacity because we will eventually spill the task
+      // back from the waiting queue if its args cannot be
+      // pulled.
+      ignore_pull_manager_at_capacity = true;
+    }
+    bool is_available = node.GetLocalView().IsAvailable(resource_request,
+                                                        ignore_pull_manager_at_capacity);
+    RAY_LOG(DEBUG) << "Node " << node_id << " is "
+                   << (is_available ? "available" : "not available");
     float critical_resource_utilization =
         node.GetLocalView().CalculateCriticalResourceUtilization();
     if (critical_resource_utilization < spread_threshold) {

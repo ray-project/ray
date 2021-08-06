@@ -1896,6 +1896,19 @@ cdef class CoreWorker:
         # so all the serialization and validation is done in one place
         return json.dumps(result_dict, sort_keys=True)
 
+    def get_task_submission_stats(self):
+        cdef:
+            int64_t num_tasks_submitted
+            int64_t num_leases_requested
+
+        with nogil:
+            num_tasks_submitted = (
+                    CCoreWorkerProcess.GetCoreWorker().GetNumTasksSubmitted())
+            num_leases_requested = (
+                    CCoreWorkerProcess.GetCoreWorker().GetNumLeasesRequested())
+
+        return (num_tasks_submitted, num_leases_requested)
+
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,
                          void *user_callback) with gil:
