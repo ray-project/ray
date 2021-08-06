@@ -31,6 +31,7 @@ int MAXIMUM_STARTUP_CONCURRENCY = 5;
 int MAX_IO_WORKER_SIZE = 2;
 int POOL_SIZE_SOFT_LIMIT = 5;
 JobID JOB_ID = JobID::FromInt(1);
+std::string BAD_RUNTIME_ENV = "bad runtime env";
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
@@ -80,7 +81,11 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
   void CreateRuntimeEnv(const rpc::CreateRuntimeEnvRequest &request,
                         const rpc::ClientCallback<rpc::CreateRuntimeEnvReply> &callback) {
     rpc::CreateRuntimeEnvReply reply;
-    reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+    if (request.serialized_runtime_env() == BAD_RUNTIME_ENV) {
+      reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
+    } else {
+      reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+    }
     callback(Status::OK(), reply);
   };
 
@@ -274,18 +279,22 @@ class WorkerPoolMock : public WorkerPool {
   // worker synchronously.
   // \param[in] push_workers If true, tries to push the workers from the started
   // processes.
-  std::shared_ptr<WorkerInterface> PopWorkerSync(const TaskSpecification &task_spec,
-                                                 bool push_workers = true) {
+  std::shared_ptr<WorkerInterface> PopWorkerSync(
+      const TaskSpecification &task_spec, bool push_workers = true,
+      PopWorkerStatus *worker_status = nullptr) {
     std::shared_ptr<WorkerInterface> popped_worker = nullptr;
     std::promise<bool> promise;
-    this->PopWorker(
-        task_spec,
-        [&popped_worker, &promise](const std::shared_ptr<WorkerInterface> worker,
-                                   PopWorkerStatus status) -> bool {
-          popped_worker = worker;
-          promise.set_value(true);
-          return true;
-        });
+    this->PopWorker(task_spec,
+                    [&popped_worker, worker_status, &promise](
+                        const std::shared_ptr<WorkerInterface> worker,
+                        PopWorkerStatus status) -> bool {
+                      popped_worker = worker;
+                      if (worker_status != nullptr) {
+                        *worker_status = status;
+                      }
+                      promise.set_value(true);
+                      return true;
+                    });
     if (push_workers) {
       PushWorkers();
     }
@@ -313,7 +322,7 @@ class WorkerPoolTest : public ::testing::Test {
  public:
   WorkerPoolTest() {
     RayConfig::instance().initialize(
-        R"({"object_spilling_config": "dummy", "max_io_workers": )" +
+        R"({"worker_register_timeout_seconds": 3, "object_spilling_config": "dummy", "max_io_workers": )" +
         std::to_string(MAX_IO_WORKER_SIZE) + "}");
     SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                        {Language::JAVA,
@@ -1349,6 +1358,79 @@ TEST_F(WorkerPoolTest, WorkerNoLeaks) {
   // The worker is popped and dispatched.
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+  worker_pool_->ClearProcesses();
+}
+
+TEST_F(WorkerPoolTest, PopWorkerStatus) {
+  std::shared_ptr<WorkerInterface> popped_worker;
+  PopWorkerStatus status;
+
+  /* Test PopWorkerStatus TooManyStartingWorkerProcesses */
+  // Startup worker processes to maximum.
+  for (int i = 0; i < MAXIMUM_STARTUP_CONCURRENCY; i++) {
+    auto task_spec = ExampleTaskSpec();
+    worker_pool_->PopWorker(task_spec,
+                            [](const std::shared_ptr<WorkerInterface> worker,
+                               PopWorkerStatus status) -> bool { return true; });
+  }
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
+
+  // PopWorker failed and the status is `TooManyStartingWorkerProcesses`.
+  auto task_spec = ExampleTaskSpec();
+  popped_worker = worker_pool_->PopWorkerSync(task_spec, false, &status);
+  ASSERT_EQ(popped_worker, nullptr);
+  ASSERT_EQ(status, PopWorkerStatus::TooManyStartingWorkerProcesses);
+
+  // PopWorker success after push workers and reduce the starting processes.
+  worker_pool_->PushWorkers();
+  ASSERT_EQ(0, worker_pool_->NumWorkerProcessesStarting());
+  popped_worker = worker_pool_->PopWorkerSync(task_spec, true, &status);
+  ASSERT_NE(popped_worker, nullptr);
+  ASSERT_EQ(status, PopWorkerStatus::OK);
+
+  /* Test PopWorkerStatus JobConfigMissing */
+  // Create a task by unregistered job id.
+  auto job_id = JobID::FromInt(123);
+  task_spec = ExampleTaskSpec(ActorID::Nil(), Language::JAVA, job_id);
+  popped_worker = worker_pool_->PopWorkerSync(task_spec, true, &status);
+  // PopWorker failed and the status is `JobConfigMissing`.
+  ASSERT_EQ(popped_worker, nullptr);
+  ASSERT_EQ(status, PopWorkerStatus::JobConfigMissing);
+
+  // Register driver fot the job.
+  RegisterDriver(Language::PYTHON, job_id);
+  popped_worker = worker_pool_->PopWorkerSync(task_spec, true, &status);
+  // PopWorker success.
+  ASSERT_NE(popped_worker, nullptr);
+  ASSERT_EQ(status, PopWorkerStatus::OK);
+
+  /* Test PopWorkerStatus RuntimeEnvCreationFailed */
+  // Create a task with bad runtime env.
+  const auto task_spec_with_bad_runtime_env =
+      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id, ActorID::Nil(),
+                      {"XXX=YYY"}, TaskID::ForFakeTask(), BAD_RUNTIME_ENV);
+  popped_worker =
+      worker_pool_->PopWorkerSync(task_spec_with_bad_runtime_env, true, &status);
+  // PopWorker failed and the status is `RuntimeEnvCreationFailed`.
+  ASSERT_EQ(popped_worker, nullptr);
+  ASSERT_EQ(status, PopWorkerStatus::RuntimeEnvCreationFailed);
+
+  // Create a task with available runtime env.
+  const auto task_spec_with_runtime_env =
+      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id, ActorID::Nil(),
+                      {"XXX=YYY"}, TaskID::ForFakeTask(), "{\"uris\": \"XXX\"}");
+  popped_worker = worker_pool_->PopWorkerSync(task_spec_with_runtime_env, true, &status);
+  // PopWorker success.
+  ASSERT_NE(popped_worker, nullptr);
+  ASSERT_EQ(status, PopWorkerStatus::OK);
+
+  /* Test PopWorkerStatus RuntimeEnvCreationFailed */
+  // Create a task without push worker.
+  popped_worker = worker_pool_->PopWorkerSync(task_spec, false, &status);
+  ASSERT_EQ(popped_worker, nullptr);
+  // PopWorker failed while the timer was triggered and the status is
+  // `RuntimeEnvCreationFailed`.
+  ASSERT_EQ(status, PopWorkerStatus::WorkerPendingRegistration);
   worker_pool_->ClearProcesses();
 }
 
