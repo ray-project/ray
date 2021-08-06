@@ -114,8 +114,8 @@ void JavaStringListToNativeStringVector(JNIEnv *env, jobject java_list,
       });
 }
 
-std::shared_ptr<RayFunction> FunctionDescriptorToRayFunction(
-    JNIEnv *env, jobject functionDescriptor) {
+std::shared_ptr<RayFunction> FunctionDescriptorToRayFunction(JNIEnv *env,
+                                                             jobject functionDescriptor) {
   jclass java_language_class = LoadClass(env, "io/ray/runtime/generated/Common$Language");
   jclass java_function_descriptor_class =
       LoadClass(env, "io/ray/runtime/functionmanager/FunctionDescriptor");

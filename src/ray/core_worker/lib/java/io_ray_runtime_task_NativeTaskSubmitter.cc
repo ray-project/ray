@@ -26,7 +26,7 @@ thread_local std::unordered_map<jint, std::vector<std::pair<jobject, RayFunction
     submitter_function_descriptor_cache;
 
 inline const RayFunction &ToRayFunction(JNIEnv *env, jobject functionDescriptor,
-                                             jint hash) {
+                                        jint hash) {
   auto &fd_vector = submitter_function_descriptor_cache[hash];
   for (auto &pair : fd_vector) {
     if (env->CallBooleanMethod(pair.first, java_object_equals, functionDescriptor)) {
@@ -65,11 +65,9 @@ inline std::vector<std::unique_ptr<TaskArg>> ToTaskArgs(JNIEnv *env, jobject arg
           auto java_owner_address =
               env->GetObjectField(arg, java_function_arg_owner_address);
           RAY_CHECK(java_owner_address);
-          auto owner_address =
-              JavaProtobufObjectToNativeProtobufObject<rpc::Address>(
-                  env, java_owner_address);
-          return std::unique_ptr<TaskArg>(
-              new TaskArgByReference(id, owner_address));
+          auto owner_address = JavaProtobufObjectToNativeProtobufObject<rpc::Address>(
+              env, java_owner_address);
+          return std::unique_ptr<TaskArg>(new TaskArgByReference(id, owner_address));
         }
         auto java_value =
             static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));
@@ -94,8 +92,8 @@ inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
       });
 }
 
-inline std::pair<PlacementGroupID, int64_t> ToPlacementGroupOptions(
-    JNIEnv *env, jobject callOptions) {
+inline std::pair<PlacementGroupID, int64_t> ToPlacementGroupOptions(JNIEnv *env,
+                                                                    jobject callOptions) {
   auto placement_group_options = std::make_pair(PlacementGroupID::Nil(), -1);
   auto group = env->GetObjectField(callOptions, java_task_creation_options_group);
   if (group) {
@@ -128,7 +126,7 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
 }
 
 inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
-                                                        jobject actorCreationOptions) {
+                                                   jobject actorCreationOptions) {
   bool global = false;
   std::string name = "";
   int64_t max_restarts = 0;
@@ -235,9 +233,8 @@ inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
             });
       });
   auto full_name = GetFullName(global, name);
-  return PlacementGroupCreationOptions(full_name, ConvertStrategy(java_strategy),
-                                            bundles,
-                                            /*is_detached=*/false);
+  return PlacementGroupCreationOptions(full_name, ConvertStrategy(java_strategy), bundles,
+                                       /*is_detached=*/false);
 }
 
 #ifdef __cplusplus
@@ -299,8 +296,8 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
   std::vector<ObjectID> return_ids;
-  CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
-      actor_id, ray_function, task_args, task_options, &return_ids);
+  CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, ray_function, task_args,
+                                                     task_options, &return_ids);
 
   // This is to avoid creating an empty java list and boost performance.
   if (return_ids.empty()) {

@@ -102,8 +102,8 @@ jint throwRuntimeException(JNIEnv *env, const char *message);
 jint throwChannelInitException(JNIEnv *env, const char *message,
                                const std::vector<ray::ObjectID> &abnormal_queues);
 jint throwChannelInterruptException(JNIEnv *env, const char *message);
-std::shared_ptr<RayFunction> FunctionDescriptorToRayFunction(
-    JNIEnv *env, jobject functionDescriptor);
+std::shared_ptr<RayFunction> FunctionDescriptorToRayFunction(JNIEnv *env,
+                                                             jobject functionDescriptor);
 void ParseChannelInitParameters(
     JNIEnv *env, jobject param_obj,
     std::vector<ray::streaming::ChannelCreationParameter> &parameter_vec);

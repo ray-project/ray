@@ -42,9 +42,7 @@ class RayFunction {
 
   Language GetLanguage() const { return language_; }
 
-  const FunctionDescriptor &GetFunctionDescriptor() const {
-    return function_descriptor_;
-  }
+  const FunctionDescriptor &GetFunctionDescriptor() const { return function_descriptor_; }
 
  private:
   Language language_;

@@ -61,9 +61,8 @@ Java_io_ray_runtime_actor_NativeActorHandle_nativeDeserialize(JNIEnv *env, jclas
   auto buffer = JavaByteArrayToNativeBuffer(env, data);
   RAY_CHECK(buffer->Size() > 0);
   auto binary = std::string(reinterpret_cast<char *>(buffer->Data()), buffer->Size());
-  auto actor_id =
-      CoreWorkerProcess::GetCoreWorker().DeserializeAndRegisterActorHandle(
-          binary, /*outer_object_id=*/ObjectID::Nil());
+  auto actor_id = CoreWorkerProcess::GetCoreWorker().DeserializeAndRegisterActorHandle(
+      binary, /*outer_object_id=*/ObjectID::Nil());
 
   return IdToJavaByteArray<ActorID>(env, actor_id);
 }

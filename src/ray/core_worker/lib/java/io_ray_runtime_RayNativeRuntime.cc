@@ -32,8 +32,7 @@ thread_local std::unordered_map<size_t,
                                 std::vector<std::pair<FunctionDescriptor, jobject>>>
     executor_function_descriptor_cache;
 
-inline gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env,
-                                                     jobject gcs_client_options) {
+inline gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env, jobject gcs_client_options) {
   std::string ip = JavaStringToNativeString(
       env, (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_ip));
   int port = env->GetIntField(gcs_client_options, java_gcs_client_options_port);
@@ -95,8 +94,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
     jobject gcsClientOptions, jint numWorkersPerProcess, jstring logDir,
     jbyteArray jobConfig) {
   auto task_execution_callback =
-      [](TaskType task_type, const std::string task_name,
-         const RayFunction &ray_function,
+      [](TaskType task_type, const std::string task_name, const RayFunction &ray_function,
          const std::unordered_map<std::string, double> &required_resources,
          const std::vector<std::shared_ptr<RayObject>> &args,
          const std::vector<ObjectID> &arg_reference_ids,
@@ -185,8 +183,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
               }
             }
 
-            RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
-                result_id, result));
+            RAY_CHECK_OK(
+                CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result));
           }
         }
 

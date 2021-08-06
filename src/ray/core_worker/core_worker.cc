@@ -35,8 +35,7 @@ const uint64_t kInternalHeartbeatMillis = 1000;
 void BuildCommonTaskSpec(
     TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
     const std::string name, const TaskID &current_task_id, const uint64_t task_index,
-    const TaskID &caller_id, const rpc::Address &address,
-    const RayFunction &function,
+    const TaskID &caller_id, const rpc::Address &address, const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
@@ -175,7 +174,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   RAY_LOG(DEBUG) << "Stats setup in core worker.";
   // Initialize stats in core worker global tags.
   const stats::TagsType global_tags = {{stats::ComponentKey, "core_worker"},
-                                            {stats::VersionKey, "2.0.0.dev0"}};
+                                       {stats::VersionKey, "2.0.0.dev0"}};
 
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize

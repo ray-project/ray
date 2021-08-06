@@ -204,8 +204,7 @@ std::string GetFullName(bool global, const std::string &name) {
     return "";
   }
   return global ? name
-                : CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() +
-                      "-" + name;
+                : CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" + name;
 }
 
 /// TODO(qicosmos): Now only support global name, will support the name of a current job.

@@ -120,16 +120,14 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerHistogra
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_metric_NativeMetric_unregisterMetricNative(
     JNIEnv *env, jclass obj, jlong metric_native_pointer) {
-  stats::Metric *metric =
-      reinterpret_cast<stats::Metric *>(metric_native_pointer);
+  stats::Metric *metric = reinterpret_cast<stats::Metric *>(metric_native_pointer);
   delete metric;
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_metric_NativeMetric_recordNative(
     JNIEnv *env, jclass obj, jlong metric_native_pointer, jdouble value,
     jobject tag_key_list, jobject tag_value_list) {
-  stats::Metric *metric =
-      reinterpret_cast<stats::Metric *>(metric_native_pointer);
+  stats::Metric *metric = reinterpret_cast<stats::Metric *>(metric_native_pointer);
   std::vector<std::string> tag_key_str_list;
   std::vector<std::string> tag_value_str_list;
   JavaStringListToNativeStringVector(env, tag_key_list, &tag_key_str_list);

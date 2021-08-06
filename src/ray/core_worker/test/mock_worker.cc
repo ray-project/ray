@@ -66,8 +66,7 @@ class MockWorker {
                      const std::string &debugger_breakpoint,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
-    const FunctionDescriptor function_descriptor =
-        ray_function.GetFunctionDescriptor();
+    const FunctionDescriptor function_descriptor = ray_function.GetFunctionDescriptor();
     RAY_CHECK(function_descriptor->Type() ==
               FunctionDescriptorType::kPythonFunctionDescriptor);
     auto typed_descriptor = function_descriptor->As<PythonFunctionDescriptor>();
@@ -153,7 +152,8 @@ int main(int argc, char **argv) {
   auto node_manager_port = std::stoi(std::string(argv[3]));
 
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
-  ray::core::MockWorker worker(store_socket, raylet_socket, node_manager_port, gcs_options);
+  ray::core::MockWorker worker(store_socket, raylet_socket, node_manager_port,
+                               gcs_options);
   worker.RunTaskExecutionLoop();
   return 0;
 }

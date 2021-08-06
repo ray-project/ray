@@ -28,8 +28,7 @@ extern "C" {
 JNIEXPORT jint JNICALL
 Java_io_ray_runtime_context_NativeWorkerContext_nativeGetCurrentTaskType(JNIEnv *env,
                                                                          jclass) {
-  auto task_spec =
-      CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentTask();
+  auto task_spec = CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentTask();
   RAY_CHECK(task_spec) << "Current task is not set.";
   return static_cast<int>(task_spec->GetMessage().type());
 }

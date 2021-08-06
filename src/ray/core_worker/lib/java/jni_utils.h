@@ -527,8 +527,7 @@ inline std::shared_ptr<RayObject> JavaNativeRayObjectToNativeRayObject(
         return JavaByteArrayToId<ObjectID>(env, static_cast<jbyteArray>(id));
       });
   env->DeleteLocalRef(java_contained_ids);
-  return std::make_shared<RayObject>(data_buffer, metadata_buffer,
-                                          contained_object_ids);
+  return std::make_shared<RayObject>(data_buffer, metadata_buffer, contained_object_ids);
 }
 
 /// Convert a C++ RayObject to a Java NativeRayObject.
@@ -550,8 +549,7 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
 // TODO(po): Convert C++ FunctionDescriptor to Java FunctionDescriptor
 inline jobject NativeRayFunctionDescriptorToJavaStringList(
     JNIEnv *env, const FunctionDescriptor &function_descriptor) {
-  if (function_descriptor->Type() ==
-      FunctionDescriptorType::kJavaFunctionDescriptor) {
+  if (function_descriptor->Type() == FunctionDescriptorType::kJavaFunctionDescriptor) {
     auto typed_descriptor = function_descriptor->As<JavaFunctionDescriptor>();
     std::vector<std::string> function_descriptor_list = {typed_descriptor->ClassName(),
                                                          typed_descriptor->FunctionName(),
@@ -596,9 +594,9 @@ inline std::string GetFullName(bool global, std::string name) {
   if (name.empty()) {
     return "";
   }
-  return global ? name
-                : ::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() +
-                      "-" + name;
+  return global
+             ? name
+             : ::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" + name;
 }
 
 inline std::shared_ptr<LocalMemoryBuffer> SerializeActorCreationException(

@@ -80,8 +80,7 @@ void ProcessHelper::StopRayNode() {
 
 void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) {
   std::string redis_ip = ConfigInternal::Instance().redis_ip;
-  if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER &&
-      redis_ip.empty()) {
+  if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER && redis_ip.empty()) {
     redis_ip = "127.0.0.1";
     StartRayNode(ConfigInternal::Instance().redis_port,
                  ConfigInternal::Instance().redis_password);
