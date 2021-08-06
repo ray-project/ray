@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Callable, TypeVar, List, Optional, Dict
 
 import ray
@@ -69,10 +70,19 @@ class BackendExecutor:
             train_func (Callable): The training function to run on each worker.
         """
 
+        use_detailed_autofilled_metrics = bool(
+            int(
+                os.environ.get("SGD_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS",
+                               0)))
+
         # First initialize the session.
         def initialize_session(world_rank, train_func):
             try:
-                init_session(training_func=train_func, world_rank=world_rank)
+                init_session(
+                    training_func=train_func,
+                    world_rank=world_rank,
+                    detailed_autofilled_metrics=use_detailed_autofilled_metrics
+                )
             except ValueError:
                 raise SGDBackendError(
                     "Attempting to start training but a "

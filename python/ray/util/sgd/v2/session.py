@@ -16,7 +16,10 @@ from ray.util.sgd.v2.utils import PropagatingThread
 class Session:
     """Holds information for training on each worker."""
 
-    def __init__(self, training_func: Callable, world_rank: int):
+    def __init__(self,
+                 training_func: Callable,
+                 world_rank: int,
+                 detailed_autofilled_metrics: bool = False):
         # The Thread object that is running the training function.
         self.training_thread = PropagatingThread(
             target=training_func, daemon=True)
@@ -29,10 +32,7 @@ class Session:
         self.result_queue = queue.Queue(1)
 
         # Autofilled metrics attributes.
-        self.detailed_autofilled_metrics = bool(
-            int(
-                os.environ.get("SGD_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS",
-                               0)))
+        self.detailed_autofilled_metrics = detailed_autofilled_metrics
         self.last_report_time = time.time()
         self.iteration = 0
         self.time_total = 0.0
