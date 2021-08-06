@@ -766,7 +766,7 @@ void CoreWorker::Exit(
                 << ", exit_type=" << rpc::WorkerExitType_Name(exit_type);
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
-      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true);
+  local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true);
 
   // Callback to shutdown.
   auto shutdown = [this, exit_type, creation_task_exception_pb_bytes]() {

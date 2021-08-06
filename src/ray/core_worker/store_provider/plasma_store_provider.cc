@@ -233,7 +233,8 @@ Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
     // get subscriptions, even if the worker isn't blocked.
     if (ctx.ShouldReleaseResourcesOnBlockingCalls() || ctx.CurrentActorIsDirectCall()) {
       return client->NotifyDirectCallTaskUnblocked();
-    }     return Status::OK();
+    }
+    return Status::OK();
   } else {
     return client->NotifyUnblocked(ctx.GetCurrentTaskID());
   }
@@ -362,9 +363,9 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
           /*release_resources_during_plasma_fetch=*/false);
     }
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
-        raylet_client_->Wait(id_vector, owner_addresses, num_objects, call_timeout,
-                             /*mark_worker_blocked*/ !ctx.CurrentTaskIsDirectCall(),
-                             ctx.GetCurrentTaskID(), &result_pair);
+    raylet_client_->Wait(id_vector, owner_addresses, num_objects, call_timeout,
+                         /*mark_worker_blocked*/ !ctx.CurrentTaskIsDirectCall(),
+                         ctx.GetCurrentTaskID(), &result_pair);
 
     if (result_pair.first.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;

@@ -208,7 +208,7 @@ void raylet::RayletClient::NotifyDirectCallTaskBlocked(bool release_resources) {
   request.set_worker_id(worker_id_.Binary());
   request.set_release_resources(release_resources);
   grpc_client_->DirectCallTaskBlocked(
-                                      request, [](const Status &status, const rpc::DirectCallTaskBlockedReply &reply) {});
+      request, [](const Status &status, const rpc::DirectCallTaskBlockedReply &reply) {});
 }
 
 Status raylet::RayletClient::NotifyDirectCallTaskUnblocked() {
