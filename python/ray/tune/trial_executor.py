@@ -5,6 +5,7 @@ import logging
 import os
 import time
 from typing import Dict, List, Optional
+import warnings
 
 import ray
 from ray.tune.resources import Resources
@@ -92,8 +93,24 @@ def _get_insufficient_resources_error_msg(trial: Trial) -> str:
         f"and/or add more resources to your Ray runtime.")
 
 
+# Signals when a class is directly inherited from TrialExecutor.
+# A warning is printed to inform users of TrialExecutor deprecation.
+class _WarnOnDirectInheritanceMeta(type):
+    def __new__(mcls, name, bases, module, **kwargs):
+        if name not in ("RayTrialExecutor", "_MockTrialExecutor",
+                        "TrialExecutor") and "TrialExecutor" in tuple(
+                            base.__name__ for base in bases):
+            deprecation_msg = (
+                f"{name} inherits from TrialExecutor, which is being "
+                "deprecated. "
+                "RFC: https://github.com/ray-project/ray/issues/17593. "
+                "Please reach out on the Ray Github if you have any concerns.")
+            warnings.warn(deprecation_msg, DeprecationWarning)
+        cls = super().__new__(mcls, name, bases, module, **kwargs)
+        return cls
+
 @DeveloperAPI
-class TrialExecutor(metaclass=ABCMeta):
+class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
     """Module for interacting with remote trainables.
 
     Manages platform-specific details such as resource handling
