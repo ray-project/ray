@@ -121,6 +121,8 @@ if __name__ == "__main__":
                     checks[experiment]["failures"] += 1
                 else:
                     checks[experiment]["passed"] = True
+                    # Attn: Does not work (key error, missing framework)
+                    # del experiments_to_run[experiment]
 
     ray.shutdown()
 
