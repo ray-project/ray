@@ -3,6 +3,8 @@ TIMESTAMP = "_timestamp"
 TIME_THIS_ITER_S = "_time_this_iter_s"
 TRAINING_ITERATION = "_training_iteration"
 
+BASIC_AUTOFILLED_KEYS = {TIMESTAMP, TIME_THIS_ITER_S, TRAINING_ITERATION}
+
 DATE = "_date"
 HOSTNAME = "_hostname"
 NODE_IP = "_node_ip"
