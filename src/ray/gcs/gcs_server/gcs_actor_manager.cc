@@ -564,7 +564,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   const auto actor = std::move(it->second);
 
   registered_actors_.erase(it);
-
+  RAY_LOG(DEBUG) << "Try to kill actor " << actor->GetActorID()
+                 << ", with status " << actor->GetState()
+                 << ", name " << actor->GetName();
   // Clean up the client to the actor's owner, if necessary.
   if (!actor->IsDetached()) {
     RemoveActorFromOwner(actor);
@@ -588,6 +590,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   }
   // The actor is already dead, most likely due to process or node failure.
   if (actor->GetState() == rpc::ActorTableData::DEAD) {
+    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << "has been dead,"
+                   << "skip sending killing request";
     return;
   }
   if (actor->GetState() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
@@ -1103,12 +1107,17 @@ void GcsActorManager::RemoveActorFromOwner(const std::shared_ptr<GcsActor> &acto
 
 void GcsActorManager::NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
                                                   bool force_kill, bool no_restart) {
-  auto actor_client = worker_client_factory_(actor->GetAddress());
   rpc::KillActorRequest request;
   request.set_intended_actor_id(actor->GetActorID().Binary());
   request.set_force_kill(force_kill);
   request.set_no_restart(no_restart);
-  RAY_UNUSED(actor_client->KillActor(request, nullptr));
+  auto actor_client = worker_client_factory_(actor->GetAddress());
+  RAY_LOG(DEBUG) << "Send request to kill actor " << actor->GetActorID()
+                 << " to worker " << actor->GetWorkerID()
+                 << " at node " << actor->GetNodeID();
+  actor_client->KillActor(request, [](auto &status, auto &) {
+    RAY_LOG(DEBUG) << "Killing status: " << status.ToString();
+  });
 }
 
 void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill,
@@ -1137,6 +1146,8 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill,
     NotifyCoreWorkerToKillActor(actor, force_kill, no_restart);
   } else {
     const auto &task_id = actor->GetCreationTaskSpecification().TaskId();
+    RAY_LOG(DEBUG) << "The actor " << actor->GetActorID()
+                   << " hasn't been created yet, cancel scheduling " << task_id;
     CancelActorInScheduling(actor, task_id);
     ReconstructActor(actor_id, /*need_reschedule=*/true);
   }
@@ -1159,6 +1170,8 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
 
 void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor,
                                               const TaskID &task_id) {
+  RAY_LOG(DEBUG) << "Cancel actor in scheduling: actor_id " << actor->GetActorID()
+                 << ", task_id " << task_id;
   const auto &actor_id = actor->GetActorID();
   const auto &node_id = actor->GetNodeID();
   // The actor has not been created yet. It is either being scheduled or is
