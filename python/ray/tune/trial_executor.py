@@ -328,7 +328,7 @@ class TrialExecutor(ABC):
 
     def has_gpus(self) -> bool:
         """Returns True if GPUs are detected on the cluster."""
-        return None
+        return False
 
     def cleanup(self, trials: Union[List[Trial], "TrialRunner"]) -> None:
         """Ensures that trials are cleaned up after stopping.
