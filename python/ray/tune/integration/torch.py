@@ -66,7 +66,7 @@ class _TorchTrainable(DistributedTrainable):
 
     @classmethod
     def default_process_group_parameters(cls) -> Dict:
-        return dict(timeout=timedelta(NCCL_TIMEOUT_S), backend="gloo")
+        return dict(timeout=timedelta(seconds=NCCL_TIMEOUT_S), backend="gloo")
 
     def setup(self, config: Dict):
         self._finished = False
@@ -171,7 +171,7 @@ def DistributedTrainableCreator(func: Callable,
         backend (str): One of "gloo", "nccl".
         timeout_s (float): Seconds before the torch process group
             times out. Useful when machines are unreliable. Defaults
-            to 60 seconds. This value is also reused for triggering
+            to 1800 seconds. This value is also reused for triggering
             placement timeouts if forcing colocation.
 
     Returns:
@@ -206,7 +206,7 @@ def DistributedTrainableCreator(func: Callable,
 
         @classmethod
         def default_process_group_parameters(self) -> Dict:
-            return dict(timeout=timedelta(timeout_s), backend=backend)
+            return dict(timeout=timedelta(seconds=timeout_s), backend=backend)
 
         @classmethod
         def default_resource_request(cls, config: Dict) -> Resources:

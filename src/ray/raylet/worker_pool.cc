@@ -57,15 +57,15 @@ namespace ray {
 
 namespace raylet {
 
-WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id,
-                       const std::string node_address, int num_workers_soft_limit,
-                       int num_initial_python_workers_for_first_job,
-                       int maximum_startup_concurrency, int min_worker_port,
-                       int max_worker_port, const std::vector<int> &worker_ports,
-                       std::shared_ptr<gcs::GcsClient> gcs_client,
-                       const WorkerCommandMap &worker_commands,
-                       std::function<void()> starting_worker_timeout_callback,
-                       const std::function<double()> get_time)
+WorkerPool::WorkerPool(
+    instrumented_io_context &io_service, const NodeID node_id,
+    const std::string node_address, int num_workers_soft_limit,
+    int num_initial_python_workers_for_first_job, int maximum_startup_concurrency,
+    int min_worker_port, int max_worker_port, const std::vector<int> &worker_ports,
+    std::shared_ptr<gcs::GcsClient> gcs_client, const WorkerCommandMap &worker_commands,
+    std::function<void()> starting_worker_timeout_callback,
+    std::function<void(const TaskID &)> runtime_env_setup_failed_callback,
+    int ray_debugger_external, const std::function<double()> get_time)
     : io_service_(&io_service),
       node_id_(node_id),
       node_address_(node_address),
@@ -73,6 +73,8 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
       starting_worker_timeout_callback_(starting_worker_timeout_callback),
+      runtime_env_setup_failed_callback_(runtime_env_setup_failed_callback),
+      ray_debugger_external(ray_debugger_external),
       first_job_registered_python_worker_count_(0),
       first_job_driver_wait_num_python_workers_(std::min(
           num_initial_python_workers_for_first_job, maximum_startup_concurrency)),
@@ -156,7 +158,8 @@ Process WorkerPool::StartWorkerProcess(
     const std::vector<std::string> &dynamic_options, const int runtime_env_hash,
     const std::string &serialized_runtime_env,
     std::unordered_map<std::string, std::string> override_environment_variables,
-    const std::string &serialized_runtime_env_context) {
+    const std::string &serialized_runtime_env_context,
+    const std::string &allocated_instances_serialized_json) {
   rpc::JobConfig *job_config = nullptr;
   if (!IsIOWorkerType(worker_type)) {
     RAY_CHECK(!job_id.IsNil());
@@ -300,6 +303,9 @@ Process WorkerPool::StartWorkerProcess(
   if (language == Language::PYTHON) {
     if (serialized_runtime_env != "{}" && serialized_runtime_env != "") {
       worker_command_args.push_back("--serialized-runtime-env=" + serialized_runtime_env);
+      // Allocated_resource_json is only used in "shim process".
+      worker_command_args.push_back("--allocated-instances-serialized-json=" +
+                                    allocated_instances_serialized_json);
     } else {
       // The "shim process" setup worker is not needed, so do not run it.
       // Check that the arg really is the path to the setup worker before erasing it, to
@@ -317,6 +323,10 @@ Process WorkerPool::StartWorkerProcess(
     if (serialized_runtime_env_context != "{}" && serialized_runtime_env_context != "") {
       worker_command_args.push_back("--serialized-runtime-env-context=" +
                                     serialized_runtime_env_context);
+    }
+
+    if (ray_debugger_external) {
+      worker_command_args.push_back("--ray-debugger-external");
     }
   }
 
@@ -857,26 +867,35 @@ void WorkerPool::TryKillingIdleWorkers() {
 }
 
 int GetRuntimeEnvHash(const TaskSpecification &task_spec) {
+  // We add required_resource instead of allocated_instances because allocated_instances
+  // may contains resource ID.
+  std::unordered_map<std::string, double> required_resource{};
+  if (RayConfig::instance().worker_resource_limits_enabled()) {
+    required_resource = task_spec.GetRequiredResources().GetResourceMap();
+  }
   const WorkerCacheKey env = {task_spec.OverrideEnvironmentVariables(),
-                              task_spec.SerializedRuntimeEnv()};
+                              task_spec.SerializedRuntimeEnv(), required_resource};
   return env.IntHash();
 }
 
 std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
-    const TaskSpecification &task_spec) {
+    const TaskSpecification &task_spec,
+    const std::string &allocated_instances_serialized_json) {
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
   Process proc;
   auto start_worker_process_fn =
-      [this](const TaskSpecification &task_spec, State &state,
-             std::vector<std::string> dynamic_options, bool dedicated,
-             const int runtime_env_hash, const std::string &serialized_runtime_env,
-             const std::string &serialized_runtime_env_context) -> Process {
+      [this, allocated_instances_serialized_json](
+          const TaskSpecification &task_spec, State &state,
+          std::vector<std::string> dynamic_options, bool dedicated,
+          const int runtime_env_hash, const std::string &serialized_runtime_env,
+          const std::string &serialized_runtime_env_context) -> Process {
     Process proc = StartWorkerProcess(
         task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(),
         dynamic_options, runtime_env_hash, serialized_runtime_env,
-        task_spec.OverrideEnvironmentVariables(), serialized_runtime_env_context);
+        task_spec.OverrideEnvironmentVariables(), serialized_runtime_env_context,
+        allocated_instances_serialized_json);
     if (proc.IsValid()) {
       WarnAboutSize();
       if (dedicated) {
@@ -890,8 +909,8 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   if (task_spec.IsActorTask()) {
     // Code path of actor task.
     RAY_CHECK(false) << "Direct call shouldn't reach here.";
-  } else if ((task_spec.IsActorCreationTask() &&
-              !task_spec.DynamicWorkerOptions().empty())) {
+  } else if (task_spec.IsActorCreationTask() &&
+             !task_spec.DynamicWorkerOptions().empty()) {
     // Code path of task that needs a dedicated worker: an actor creation task with
     // dynamic worker options.
     // Try to pop it from idle dedicated pool.
@@ -916,20 +935,20 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.HasRuntimeEnv()) {
         state.tasks_with_pending_runtime_envs.emplace(task_spec.TaskId());
         agent_manager_->CreateRuntimeEnv(
-            task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, &state, task_spec, dynamic_options](
-                bool done, const std::string &serialized_runtime_env_context) {
+            task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
+            [this, start_worker_process_fn, &state, task_spec, dynamic_options,
+             allocated_instances_serialized_json](
+                bool success, const std::string &serialized_runtime_env_context) {
               state.tasks_with_pending_runtime_envs.erase(task_spec.TaskId());
-              if (!done) {
-                // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
-                // failed.
-                RAY_LOG(ERROR) << "Create runtime env(for dedicated actor) rpc failed. "
-                                  "Wait for next time to retry or reschedule.";
-                return;
+              if (success) {
+                start_worker_process_fn(
+                    task_spec, state, dynamic_options, true, GetRuntimeEnvHash(task_spec),
+                    task_spec.SerializedRuntimeEnv(), serialized_runtime_env_context);
+              } else {
+                RAY_LOG(ERROR) << "Creating runtime environment failed. The "
+                                  "corresponding task will be failed.";
+                runtime_env_setup_failed_callback_(task_spec.TaskId());
               }
-              start_worker_process_fn(
-                  task_spec, state, dynamic_options, true, GetRuntimeEnvHash(task_spec),
-                  task_spec.SerializedRuntimeEnv(), serialized_runtime_env_context);
             });
       } else {
         proc =
@@ -975,17 +994,18 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
       if (task_spec.HasRuntimeEnv()) {
         // create runtime env.
         agent_manager_->CreateRuntimeEnv(
-            task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, &state, task_spec, runtime_env_hash](
+            task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
+            [this, start_worker_process_fn, &state, task_spec, runtime_env_hash](
                 bool successful, const std::string &serialized_runtime_env_context) {
-              if (!successful) {
-                // TODO(guyang.sgy): Reschedule to other nodes when create runtime env
-                // failed.
-                return;
+              if (successful) {
+                start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash,
+                                        task_spec.SerializedRuntimeEnv(),
+                                        serialized_runtime_env_context);
+              } else {
+                RAY_LOG(ERROR) << "Creating runtime environment failed. The "
+                                  "corresponding task will be failed.";
+                runtime_env_setup_failed_callback_(task_spec.TaskId());
               }
-              start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash,
-                                      task_spec.SerializedRuntimeEnv(),
-                                      serialized_runtime_env_context);
             });
       } else {
         proc = start_worker_process_fn(task_spec, state, {}, false, runtime_env_hash, "",
@@ -1160,22 +1180,23 @@ void WorkerPool::WarnAboutSize() {
     for (const auto &starting_process : state.starting_worker_processes) {
       num_workers_started_or_registered += starting_process.second.num_starting_workers;
     }
+    // Don't count IO workers towards the warning message threshold.
+    num_workers_started_or_registered -= RayConfig::instance().max_io_workers() * 2;
     int64_t multiple = num_workers_started_or_registered / state.multiple_for_warning;
     std::stringstream warning_message;
-    if (multiple >= 3 && multiple > state.last_warning_multiple) {
+    if (multiple >= 4 && multiple > state.last_warning_multiple) {
       // Push an error message to the user if the worker pool tells us that it is
       // getting too big.
       state.last_warning_multiple = multiple;
-      warning_message << "WARNING: " << num_workers_started_or_registered << " "
-                      << Language_Name(entry.first)
-                      << " workers have been started on a node of the id: " << node_id_
-                      << " "
-                      << "and address: " << node_address_ << ". "
-                      << "This could be a result of using "
-                      << "a large number of actors, or it could be a consequence of "
-                      << "using nested tasks "
-                      << "(see https://github.com/ray-project/ray/issues/3644) for "
-                      << "some a discussion of workarounds.";
+      warning_message
+          << "WARNING: " << num_workers_started_or_registered << " "
+          << Language_Name(entry.first)
+          << " worker processes have been started on node: " << node_id_
+          << " with address: " << node_address_ << ". "
+          << "This could be a result of using "
+          << "a large number of actors, or due to tasks blocked in ray.get() calls "
+          << "(see https://github.com/ray-project/ray/issues/3644 for "
+          << "some discussion of workarounds).";
       std::string warning_message_str = warning_message.str();
       RAY_LOG(WARNING) << warning_message_str;
       auto error_data_ptr = gcs::CreateErrorTableData("worker_pool_large",

@@ -10,7 +10,7 @@
 /src/ray/protobuf/common.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz
 /src/ray/protobuf/gcs.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz
 /src/ray/protobuf/gcs_service.proto @wuisawesome @ericl @ameerhajali @robertnishihara @pcmoritz
-#/dashboard/modules/snapshot @wuisawesome
+/dashboard/modules/snapshot @wuisawesome @ijrsvt @joeybai @alanwguo
 
 # All C++ code.
 # /src/ray @ray-project/ray-core-cpp
@@ -22,6 +22,9 @@
 
 # Java worker.
 #/java/ @ray-project/ray-core-java
+
+# Ray Client
+/src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali
 
 # ==== Libraries and frameworks ====
 
@@ -41,4 +44,3 @@
 # CI scripts.
 #/.travis.yml @ray-project/ray-core
 #/ci/travis/ @ray-project/ray-core
-

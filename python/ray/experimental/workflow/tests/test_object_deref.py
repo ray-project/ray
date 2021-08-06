@@ -70,39 +70,23 @@ def receive_data(data: np.ndarray):
 
 
 # TODO(suquark): Support ObjectRef checkpointing.
-@pytest.mark.parametrize(
-    "ray_start_regular_shared", [{
-        "namespace": "workflow"
-    }], indirect=True)
-def test_objectref_inputs_exception(ray_start_regular_shared):
+def test_objectref_inputs_exception(workflow_start_regular_shared):
     with pytest.raises(ValueError):
-        output = workflow.run(receive_data.step(ray.put([42])))
-        assert ray.get(output)
+        assert receive_data.step(ray.put([42])).run()
 
 
 @pytest.mark.skip(reason="no support for ObjectRef checkpointing yet")
-@pytest.mark.parametrize(
-    "ray_start_regular_shared", [{
-        "namespace": "workflow"
-    }], indirect=True)
-def test_objectref_inputs(ray_start_regular_shared):
-    output = workflow.run(
-        deref_check.step(
-            ray.put(42), nested_ref.remote(), [nested_ref.remote()],
-            nested_workflow.step(10), [nested_workflow.step(9)], [{
-                "output": nested_workflow.step(7)
-            }]))
-    assert ray.get(output)
+def test_objectref_inputs(workflow_start_regular_shared):
+    assert deref_check.step(
+        ray.put(42), nested_ref.remote(), [nested_ref.remote()],
+        nested_workflow.step(10), [nested_workflow.step(9)], [{
+            "output": nested_workflow.step(7)
+        }]).run()
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular_shared", [{
-        "namespace": "workflow"
-    }], indirect=True)
-def test_object_deref(ray_start_regular_shared):
+def test_object_deref(workflow_start_regular_shared):
     x = empty_list.step()
-    output = workflow.run(deref_shared.step(x, x))
-    assert ray.get(output)
+    assert deref_shared.step(x, x).run()
 
     # test we are forbidden from directly passing workflow to Ray.
     x = empty_list.step()
@@ -115,5 +99,10 @@ def test_object_deref(ray_start_regular_shared):
 
     # test return object ref
     obj = return_data.step()
-    arr: np.ndarray = ray.get(workflow.run(receive_data.step(obj)))
+    arr: np.ndarray = receive_data.step(obj).run()
     assert np.array_equal(arr, np.ones(4096))
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

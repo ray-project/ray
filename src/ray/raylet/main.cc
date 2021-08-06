@@ -51,6 +51,7 @@ DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
+DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 #ifdef __linux__
@@ -95,6 +96,7 @@ int main(int argc, char *argv[]) {
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
   const std::string resource_dir = FLAGS_resource_dir;
+  const int ray_debugger_external = FLAGS_ray_debugger_external;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
@@ -203,6 +205,7 @@ int main(int argc, char *argv[]) {
         node_manager_config.temp_dir = temp_dir;
         node_manager_config.session_dir = session_dir;
         node_manager_config.resource_dir = resource_dir;
+        node_manager_config.ray_debugger_external = ray_debugger_external;
         node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
         node_manager_config.min_spilling_size = RayConfig::instance().min_spilling_size();
 

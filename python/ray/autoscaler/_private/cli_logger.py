@@ -18,6 +18,8 @@ from typing import Any, Dict, Tuple, Optional, List
 import click
 import warnings
 
+# Import ray first to use the bundled colorama
+import ray  # noqa: F401
 import colorama
 
 

@@ -16,7 +16,7 @@ Ray Datasets are the standard way to load and exchange data in Ray libraries and
 
 Concepts
 --------
-Ray Datasets implement `"Distributed Arrow" <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__ format or in a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data.
+Ray Datasets implement `"Distributed Arrow" <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__, `Arrow tensor <https://arrow.apache.org/docs/python/generated/pyarrow.Tensor.html>`__, or a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data.
 
 The following figure visualizes a Dataset that has three Arrow table blocks, each block holding 1000 rows each:
 
@@ -47,6 +47,12 @@ Datasource Compatibility Matrices
      - ✅
    * - Parquet File Format
      - ``ray.data.read_parquet()``
+     - ✅
+   * - Numpy File Format
+     - ``ray.data.read_numpy()``
+     - ✅
+   * - Text Files
+     - ``ray.data.read_text()``
      - ✅
    * - Binary Files
      - ``ray.data.read_binary_files()``
@@ -88,6 +94,9 @@ Datasource Compatibility Matrices
      - ✅
    * - Parquet File Format
      - ``ds.write_parquet()``
+     - ✅
+   * - Numpy File Format
+     - ``ds.write_numpy()``
      - ✅
    * - Spark Dataframe
      - ``ds.to_spark()``
@@ -131,9 +140,11 @@ Get started by creating Datasets from synthetic data using ``ray.data.range()`` 
 
 .. code-block:: python
 
+    import ray
+    
     # Create a Dataset of Python objects.
     ds = ray.data.range(10000)
-    # -> Dataset(num_rows=10000, num_blocks=200, schema=<class 'int'>)
+    # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
 
     ds.take(5)
     # -> [0, 1, 2, 3, 4]
@@ -143,7 +154,7 @@ Get started by creating Datasets from synthetic data using ``ray.data.range()`` 
 
     # Create a Dataset of Arrow records.
     ds = ray.data.from_items([{"col1": i, "col2": str(i)} for i in range(10000)])
-    # -> Dataset(num_rows=10000, num_blocks=200, schema={col1: int64, col2: string})
+    # -> Dataset(num_blocks=200, num_rows=10000, schema={col1: int64, col2: string})
 
     ds.show(5)
     # -> ArrowRow({'col1': 0, 'col2': '0'})
@@ -172,6 +183,9 @@ Datasets can be created from files on local disk or remote datasources such as S
 Finally, you can create a Dataset from existing data in the Ray object store or Ray compatible distributed DataFrames:
 
 .. code-block:: python
+
+    import pandas as pd
+    import dask.dataframe as dd
 
     # Create a Dataset from a list of Pandas DataFrame objects.
     pdf = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -206,7 +220,7 @@ Datasets can be transformed in parallel using ``.map()``. Transformations are ex
     ds = ray.data.range(10000)
     ds = ds.map(lambda x: x * 2)
     # -> Map Progress: 100%|█████████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
-    # -> Dataset(num_rows=10000, num_blocks=200, schema=<class 'int'>)
+    # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
     ds.take(5)
     # -> [0, 2, 4, 6, 8]
 
@@ -239,7 +253,7 @@ By default, transformations are executed using Ray tasks. For transformations th
     class BatchInferModel:
         def __init__(self):
             self.model = ImageNetModel()
-        def __call__(self, batch: pandas.DataFrame) -> pandas.DataFrame:
+        def __call__(self, batch: pd.DataFrame) -> pd.DataFrame:
             return self.model(batch)
 
     ds = ray.data.read_binary_files("s3://bucket/image-dir")
@@ -283,7 +297,7 @@ Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is
         def __init__(self, rank: int):
             pass
 
-        def train(self, shard: Dataset[int]) -> int:
+        def train(self, shard: ray.data.Dataset[int]) -> int:
             for batch in shard.iter_batches(batch_size=256):
                 pass
             return shard.count()
@@ -292,14 +306,54 @@ Datasets can be split up into disjoint sub-datasets. Locality-aware splitting is
     # -> [Actor(Worker, ...), Actor(Worker, ...), ...]
 
     ds = ray.data.range(10000)
-    # -> Dataset(num_rows=10000, num_blocks=200, schema=<class 'int'>)
+    # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
 
     shards = ds.split(n=16, locality_hints=workers)
-    # -> [Dataset(num_rows=650, num_blocks=13, schema=<class 'int'>),
-    #     Dataset(num_rows=650, num_blocks=13, schema=<class 'int'>), ...]
+    # -> [Dataset(num_blocks=13, num_rows=650, schema=<class 'int'>),
+    #     Dataset(num_blocks=13, num_rows=650, schema=<class 'int'>), ...]
 
     ray.get([w.train.remote(s) for s in shards])
     # -> [650, 650, ...]
+
+Tensor-typed values
+-------------------
+
+Datasets support tensor-typed values, which are represented in-memory as Arrow tensors (i.e., np.ndarray format). Tensor datasets can be read from and written to ``.npy`` files. Here are some examples:
+
+.. code-block:: python
+
+    # Create a Dataset of tensor-typed values.
+    ds = ray.data.range_tensor(10000, shape=(3, 5))
+    # -> Dataset(num_blocks=200, num_rows=10000, schema=<Tensor: shape=(None, 3, 5), dtype=int64>)
+
+    ds.map_batches(lambda t: t + 2).show(2)
+    # -> [[2 2 2 2 2]
+    #     [2 2 2 2 2]
+    #     [2 2 2 2 2]]
+    #    [[3 3 3 3 3]
+    #     [3 3 3 3 3]
+    #     [3 3 3 3 3]]
+
+    # Save to storage.
+    ds.write_numpy("/tmp/tensor_out")
+
+    # Read from storage.
+    ray.data.read_numpy("/tmp/tensor_out")
+    # -> Dataset(num_blocks=200, num_rows=?, schema=<Tensor: shape=(None, 3, 5), dtype=int64>)
+
+Tensor datasets are also created whenever an array type is returned from a map function:
+
+.. code-block:: python
+
+    # Create a dataset of Python integers.
+    ds = ray.data.range(10)
+    # -> Dataset(num_blocks=10, num_rows=10, schema=<class 'int'>)
+
+    # It is now converted into a Tensor dataset.
+    ds = ds.map_batches(lambda x: np.array(x))
+    # -> Dataset(num_blocks=10, num_rows=10, schema=<Tensor: shape=(None,), dtype=int64>)
+
+Limitations: currently tensor-typed values cannot be nested in tabular records (e.g., as in TFRecord / Petastorm format). This is planned for development.
 
 Custom datasources
 ------------------
@@ -314,24 +368,12 @@ Datasets can read and write in parallel to `custom datasources <package-ref.html
     # Write to a custom datasource.
     ds.write_datasource(YourCustomDatasource(), **write_args)
 
-Tensor-typed values
--------------------
-
-Currently Datasets does not have native support for tensor-typed values in records (e.g., TFRecord / Petastorm format / multi-dimensional arrays). This is planned for development.
-
-Pipelining data processing and ML computations
-----------------------------------------------
-
-This feature is planned for development. Please provide your input on this `GitHub RFC <https://github.com/ray-project/ray/issues/16852>`__.
-
 Contributing
 ------------
 
-Contributions to Datasets are welcome! There are many potential improvements, including:
+Contributions to Datasets are `welcome <https://docs.ray.io/en/master/development.html#python-develop>`__! There are many potential improvements, including:
 
 - Supporting more datasources and transforms.
 - Integration with more ecosystem libraries.
 - Adding features that require partitioning such as groupby() and join().
 - Performance optimizations.
-
-Get started with Ray Python development `here <https://docs.ray.io/en/master/development.html#python-develop>`__.

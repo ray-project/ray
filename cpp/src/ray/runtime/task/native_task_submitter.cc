@@ -36,6 +36,7 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
 
   std::unordered_map<std::string, double> resources;
   std::string name = "";
+  std::string ray_namespace = "";
   ActorCreationOptions actor_options{0,
                                      0,
                                      1,
@@ -44,6 +45,7 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
                                      {},
                                      /*is_detached=*/false,
                                      name,
+                                     ray_namespace,
                                      /*is_asyncio=*/false};
   ActorID actor_id;
   auto status = core_worker.CreateActor(BuildRayFunction(invocation), invocation.args,

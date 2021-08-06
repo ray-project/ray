@@ -56,7 +56,7 @@ def get_function_descriptor_for_actor_method(
                                   f"not support language {language}")
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 def java_function(class_name, function_name):
     """Define a Java function.
 
@@ -81,7 +81,7 @@ def java_function(class_name, function_name):
         None)  # runtime_env
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 def java_actor_class(class_name):
     """Define a Java actor class.
 

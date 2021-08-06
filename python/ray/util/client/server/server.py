@@ -695,7 +695,7 @@ def main():
         type=int,
         default=0,
         help="The PID of the process for setup worker runtime env.")
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
     logging.basicConfig(level="INFO")
 
     # This redis client is used for health checking. We can't use `internal_kv`

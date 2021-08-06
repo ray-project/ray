@@ -1212,6 +1212,49 @@ TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
   ASSERT_FALSE(success) << resource_scheduler.DebugString();
 }
 
+TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) {
+  ClusterResourceScheduler resource_scheduler("local",
+                                              {{"CPU", 4}, {"memory", 4}, {"GPU", 2}});
+  std::shared_ptr<TaskResourceInstances> cluster_resources =
+      std::make_shared<TaskResourceInstances>();
+  addTaskResourceInstances(true, {2.}, 0, cluster_resources.get());
+  addTaskResourceInstances(true, {4.}, 1, cluster_resources.get());
+  addTaskResourceInstances(true, {1., 1.}, 2, cluster_resources.get());
+  std::string serialized_string =
+      resource_scheduler.SerializedTaskResourceInstances(cluster_resources);
+  std::string expected_serialized_string =
+      R"({"CPU":20000,"memory":40000,"GPU":[10000, 10000]})";
+  ASSERT_EQ(serialized_string == expected_serialized_string, true);
+
+  RayConfig::instance().initialize(
+      R"(
+{
+  "predefined_unit_instance_resources": "CPU,GPU"
+}
+  )");
+  std::shared_ptr<TaskResourceInstances> cluster_instance_resources =
+      std::make_shared<TaskResourceInstances>();
+  addTaskResourceInstances(true, {1., 1.}, 0, cluster_instance_resources.get());
+  addTaskResourceInstances(true, {4.}, 1, cluster_instance_resources.get());
+  addTaskResourceInstances(true, {1., 1.}, 2, cluster_instance_resources.get());
+  ClusterResourceScheduler resource_scheduler_cpu_instance(
+      "local", {{"CPU", 4}, {"memory", 4}, {"GPU", 2}});
+  std::string instance_serialized_string =
+      resource_scheduler_cpu_instance.SerializedTaskResourceInstances(
+          cluster_instance_resources);
+  std::string expected_instance_serialized_string =
+      R"({"CPU":[10000, 10000],"memory":40000,"GPU":[10000, 10000]})";
+  ASSERT_EQ(instance_serialized_string == expected_instance_serialized_string, true);
+
+  // reset global config
+  RayConfig::instance().initialize(
+      R"(
+{
+  "predefined_unit_instance_resources": "GPU"
+}
+  )");
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

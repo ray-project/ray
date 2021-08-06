@@ -157,20 +157,19 @@ py_test(
 )
 
 # CQL
-# Skipping due to high flakiness.
-#py_test(
-#    name = "run_regression_tests_pendulum_cql_tf",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["learning_tests_tf", "learning_tests_pendulum", "flaky"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    # Include the zipped json data file as well.
-#    data = [
-#        "tuned_examples/cql/pendulum-cql.yaml",
-#        "tests/data/pendulum/enormous.zip",
-#    ],
-#    args = ["--yaml-dir=tuned_examples/cql"]
-#)
+py_test(
+    name = "run_regression_tests_pendulum_cql_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_pendulum", "flaky"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tuned_examples/cql/pendulum-cql.yaml",
+        "tests/data/pendulum/enormous.zip",
+    ],
+    args = ["--yaml-dir=tuned_examples/cql"]
+)
 
 py_test(
     name = "run_regression_tests_pendulum_cql_torch",
@@ -505,16 +504,15 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac"]
 )
 
-# Skipping due to high flakiness.
-#py_test(
-#    name = "run_regression_tests_pendulum_sac_torch",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["learning_tests_torch", "learning_tests_pendulum", "flaky"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/sac/pendulum-sac.yaml"],
-#    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
-#)
+py_test(
+    name = "run_regression_tests_pendulum_sac_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_pendulum", "flaky"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/pendulum-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
+)
 
 py_test(
     name = "run_regression_tests_transformed_actions_pendulum_sac_tf",
@@ -535,7 +533,6 @@ py_test(
     data = ["tuned_examples/sac/pendulum-transformed-actions-sac.yaml"],
     args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
 )
-
 
 # TD3
 py_test(
@@ -990,7 +987,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_data_loader_buffers\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'",
+        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -1004,7 +1001,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_data_loader_buffers\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'",
+        "--config", "'{\"framework\": \"tf\", \"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_multi_gpu_tower_stacks\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -1379,13 +1376,12 @@ py_test(
 # Tag: utils
 # --------------------------------------------------------------------
 
-# Skipping due to high flakiness.
-#py_test(
-#    name = "test_curiosity",
-#    tags = ["utils", "flaky"],
-#    size = "large",
-#    srcs = ["utils/exploration/tests/test_curiosity.py"]
-#)
+py_test(
+    name = "test_curiosity",
+    tags = ["utils", "flaky"],
+    size = "large",
+    srcs = ["utils/exploration/tests/test_curiosity.py"]
+)
 
 py_test(
     name = "test_explorations",
@@ -1556,6 +1552,13 @@ py_test(
     tags = ["tests_dir", "tests_dir_F"],
     size = "small",
     srcs = ["tests/test_filters.py"]
+)
+
+py_test(
+    name = "tests/test_gpus",
+    tags = ["tests_dir", "tests_dir_G"],
+    size = "large",
+    srcs = ["tests/test_gpus.py"]
 )
 
 #py_test(
@@ -2220,6 +2223,24 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_vector_env_tf",
+    main = "examples/custom_vector_env.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_vector_env.py"],
+    args = ["--as-test", "--stop-reward=40.0"]
+)
+
+py_test(
+    name = "examples/custom_vector_env_torch",
+    main = "examples/custom_vector_env.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_vector_env.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=40.0"]
+)
+
+py_test(
     name = "examples/deterministic_training_tf",
     main = "examples/deterministic_training.py",
     tags = ["examples", "examples_D"],
@@ -2252,6 +2273,15 @@ py_test(
     size = "small",
     srcs = ["examples/eager_execution.py"],
     args = ["--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/fractional_gpus",
+    main = "examples/fractional_gpus.py",
+    tags = ["examples", "examples_F"],
+    size = "medium",
+    srcs = ["examples/fractional_gpus.py"],
+    args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
 )
 
 py_test(
@@ -2419,12 +2449,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/fractional_gpus",
-    main = "examples/fractional_gpus.py",
+    name = "examples/parametric_actions_cartpole_embeddings_learnt_by_model",
+    main = "examples/parametric_actions_cartpole_embeddings_learnt_by_model.py",
     tags = ["examples", "examples_P"],
     size = "medium",
-    srcs = ["examples/fractional_gpus.py"],
-    args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
+    srcs = ["examples/parametric_actions_cartpole_embeddings_learnt_by_model.py"],
+    args = ["--as-test", "--stop-reward=80.0"]
 )
 
 py_test(
@@ -2436,11 +2466,26 @@ py_test(
 )
 
 py_test(
+    name = "examples/remote_vector_env_with_custom_api",
+    tags = ["examples", "examples_R"],
+    size = "medium",
+    srcs = ["examples/remote_vector_env_with_custom_api.py"],
+    args = ["--stop-iters=3"]
+)
+
+py_test(
     name = "examples/restore_1_of_n_agents_from_checkpoint",
     tags = ["examples", "examples_R"],
     size = "medium",
     srcs = ["examples/restore_1_of_n_agents_from_checkpoint.py"],
     args = ["--pre-training-iters=1", "--stop-iters=1", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/rnnsac_stateless_cartpole",
+    tags = ["examples", "examples_R"],
+    size = "large",
+    srcs = ["examples/rnnsac_stateless_cartpole.py"]
 )
 
 py_test(
@@ -2472,21 +2517,39 @@ py_test(
 # Deactivated for now due to open-spiel's dependency on an outdated
 # tensorflow-probability version.
 # py_test(
-#    name = "examples/self_play_with_open_spiel_connect_4",
-#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    name = "examples/self_play_with_open_spiel_connect_4_tf",
+#    main = "examples/self_play_with_open_spiel.py",
 #    tags = ["examples", "examples_S"],
 #    size = "medium",
-#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
-#    args = ["--framework=tf", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+#    srcs = ["examples/self_play_with_open_spiel.py"],
+#    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
 # )
 
 # py_test(
 #    name = "examples/self_play_with_open_spiel_connect_4_torch",
-#    main = "examples/self_play_with_open_spiel_connect_4.py",
+#    main = "examples/self_play_with_open_spiel.py",
 #    tags = ["examples", "examples_S"],
 #    size = "medium",
-#    srcs = ["examples/self_play_with_open_spiel_connect_4.py"],
-#    args = ["--framework=torch", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+#    srcs = ["examples/self_play_with_open_spiel.py"],
+#    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
+# py_test(
+#    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_tf",
+#    main = "examples/self_play_league_based_with_open_spiel.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
+#    args = ["--framework=tf", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
+# )
+
+# py_test(
+#    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_torch",
+#    main = "examples/self_play_league_based_with_open_spiel.py",
+#    tags = ["examples", "examples_S"],
+#    size = "medium",
+#    srcs = ["examples/self_play_league_based_with_open_spiel_markov_soccer.py"],
+#    args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
 # )
 
 py_test(

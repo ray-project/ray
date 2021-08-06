@@ -12,7 +12,7 @@ kubernetes
 lxml
 networkx
 numba
-opencv-python-headless==4.3.0.36
+scikit-image
 openpyxl
 pandas==0.24.2
 Pillow

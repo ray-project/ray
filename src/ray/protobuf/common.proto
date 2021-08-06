@@ -115,8 +115,10 @@ enum ErrorType {
   OBJECT_IN_PLASMA = 4;
   // Indicates that an object has been cancelled.
   TASK_CANCELLED = 5;
-  // Inidicates that creating the GCS service failed to create the actor.
+  // Indicates that the GCS service failed to create the actor.
   ACTOR_CREATION_FAILED = 6;
+  // Indicates that the runtime_env failed to be created.
+  RUNTIME_ENV_SETUP_FAILED = 7;
 }
 
 /// The task exception encapsulates all information about task
@@ -299,12 +301,14 @@ message ActorCreationTaskSpec {
   bool is_detached = 7;
   // Globally-unique name of the actor. Should only be populated when is_detached is true.
   string name = 8;
+  // The namespace of the actor. Should only be populated when is_detached is true.
+  string ray_namespace = 9;
   // Whether the actor use async actor calls.
-  bool is_asyncio = 9;
+  bool is_asyncio = 10;
   // Field used for storing application-level extensions to the actor definition.
-  string extension_data = 10;
+  string extension_data = 11;
   // Serialized bytes of the Handle to the actor that will be created by this task.
-  bytes serialized_actor_handle = 11;
+  bytes serialized_actor_handle = 12;
 }
 
 // Task spec of an actor task.

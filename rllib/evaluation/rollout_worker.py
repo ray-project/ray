@@ -28,15 +28,17 @@ from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
 from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.utils import merge_dicts
+from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
+from ray.rllib.utils.tf_ops import get_gpu_devices as get_tf_gpu_devices
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
     ModelConfigDict, ModelGradients, ModelWeights, \
@@ -377,6 +379,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # Default policy mapping fn is to always return DEFAULT_POLICY_ID,
         # independent on the agent ID and the episode passed in.
         self.policy_mapping_fn = lambda aid, ep, **kwargs: DEFAULT_POLICY_ID
+        # If provided, set it here.
         self.set_policy_mapping_fn(policy_mapping_fn)
 
         self.env_creator: Callable[[EnvContext], EnvType] = env_creator
@@ -394,7 +397,7 @@ class RolloutWorker(ParallelIteratorWorker):
 
         # Create an env for this worker.
         if not (worker_index == 0 and num_workers > 0
-                and policy_config["create_env_on_driver"] is False):
+                and not policy_config.get("create_env_on_driver")):
             # Run the `env_creator` function passing the EnvContext.
             self.env = env_creator(env_context)
         if self.env is not None:
@@ -426,7 +429,7 @@ class RolloutWorker(ParallelIteratorWorker):
                     return env
 
             # We can't auto-wrap a BaseEnv.
-            elif isinstance(self.env, BaseEnv):
+            elif isinstance(self.env, (BaseEnv, ray.actor.ActorHandle)):
 
                 def wrap(env):
                     return env
@@ -488,17 +491,21 @@ class RolloutWorker(ParallelIteratorWorker):
                         remote=remote_worker_envs)))
 
         self.make_env_fn = make_env
+        self.spaces = spaces
 
-        self.tf_sess = None
         policy_dict = _determine_spaces_for_multi_agent_dict(
-            policy_spec, self.env, spaces=spaces, policy_config=policy_config)
+            policy_spec,
+            self.env,
+            spaces=self.spaces,
+            policy_config=policy_config)
+
         # List of IDs of those policies, which should be trained.
         # By default, these are all policies found in the policy_dict.
         self.policies_to_train: List[PolicyID] = policies_to_train or list(
             policy_dict.keys())
         self.set_policies_to_train(self.policies_to_train)
 
-        self.policy_map: Dict[PolicyID, Policy] = None
+        self.policy_map: PolicyMap = None
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
 
         # Set Python random, numpy, env, and torch/tf seeds.
@@ -541,26 +548,41 @@ class RolloutWorker(ParallelIteratorWorker):
             elif tf1 and policy_config.get("framework") == "tfe":
                 tf1.set_random_seed(seed)
 
-        if _has_tensorflow_graph(policy_dict) and not (
-                tf1 and tf1.executing_eagerly()):
-            if not tf1:
-                raise ImportError("Could not import tensorflow")
-            with tf1.Graph().as_default():
-                if tf_session_creator:
-                    self.tf_sess = tf_session_creator()
-                else:
-                    self.tf_sess = tf1.Session(
-                        config=tf1.ConfigProto(
-                            gpu_options=tf1.GPUOptions(allow_growth=True)))
-                with self.tf_sess.as_default():
-                    # set graph-level seed
-                    if seed is not None:
-                        tf1.set_random_seed(seed)
-                    self.policy_map, self.preprocessors = \
-                        self._build_policy_map(policy_dict, policy_config)
-        else:
-            self.policy_map, self.preprocessors = self._build_policy_map(
-                policy_dict, policy_config)
+        # Check available number of GPUs.
+        num_gpus = policy_config.get("num_gpus", 0) if \
+            self.worker_index == 0 else \
+            policy_config.get("num_gpus_per_worker", 0)
+        # Error if we don't find enough GPUs.
+        if ray.is_initialized() and \
+                ray.worker._mode() != ray.worker.LOCAL_MODE and \
+                not policy_config.get("_fake_gpus"):
+
+            if policy_config.get("framework") in ["tf2", "tf", "tfe"]:
+                if len(get_tf_gpu_devices()) < num_gpus:
+                    raise RuntimeError(
+                        f"Not enough GPUs found for num_gpus={num_gpus}! "
+                        f"Found only these IDs: {get_tf_gpu_devices()}.")
+            elif policy_config.get("framework") == "torch":
+                if torch.cuda.device_count() < num_gpus:
+                    raise RuntimeError(
+                        f"Not enough GPUs found ({torch.cuda.device_count()}) "
+                        f"for num_gpus={num_gpus}!")
+        # Warn, if running in local-mode and actual GPUs (not faked) are
+        # requested.
+        elif ray.is_initialized() and \
+                ray.worker._mode() == ray.worker.LOCAL_MODE and \
+                num_gpus > 0 and not policy_config.get("_fake_gpus"):
+            logger.warning(
+                "You are running ray with `local_mode=True`, but have "
+                f"configured {num_gpus} GPUs to be used! In local mode, "
+                f"Policies are placed on the CPU and the `num_gpus` setting "
+                f"is ignored.")
+
+        self._build_policy_map(
+            policy_dict,
+            policy_config,
+            session_creator=tf_session_creator,
+            seed=seed)
 
         # Update Policy's view requirements from Model, only if Policy directly
         # inherited from base `Policy` class. At this point here, the Policy
@@ -570,35 +592,16 @@ class RolloutWorker(ParallelIteratorWorker):
             if not pol._model_init_state_automatically_added:
                 pol._update_model_view_requirements_from_init_state()
 
-        if (ray.is_initialized()
-                and ray.worker._mode() != ray.worker.LOCAL_MODE):
-            # Check available number of GPUs
-            if not ray.get_gpu_ids():
-                logger.debug("Creating policy evaluation worker {}".format(
-                    worker_index) +
-                             " on CPU (please ignore any CUDA init errors)")
-            elif (policy_config["framework"] in ["tf2", "tf", "tfe"] and
-                  not tf.config.experimental.list_physical_devices("GPU")) or \
-                    (policy_config["framework"] == "torch" and
-                     not torch.cuda.is_available()):
-                raise RuntimeError(
-                    "GPUs were assigned to this worker by Ray, but "
-                    "your DL framework ({}) reports GPU acceleration is "
-                    "disabled. This could be due to a bad CUDA- or {} "
-                    "installation.".format(policy_config["framework"],
-                                           policy_config["framework"]))
-
         self.multiagent: bool = set(
             self.policy_map.keys()) != {DEFAULT_POLICY_ID}
         if self.multiagent and self.env is not None:
-            if not ((isinstance(self.env, MultiAgentEnv)
-                     or isinstance(self.env, ExternalMultiAgentEnv))
-                    or isinstance(self.env, BaseEnv)):
+            if not isinstance(self.env,
+                              (BaseEnv, ExternalMultiAgentEnv, MultiAgentEnv,
+                               ray.actor.ActorHandle)):
                 raise ValueError(
-                    "Have multiple policies {}, but the env ".format(
-                        self.policy_map) +
-                    "{} is not a subclass of BaseEnv, MultiAgentEnv or "
-                    "ExternalMultiAgentEnv?".format(self.env))
+                    f"Have multiple policies {self.policy_map}, but the "
+                    f"env {self.env} is not a subclass of BaseEnv, "
+                    f"MultiAgentEnv, ActorHandle, or ExternalMultiAgentEnv!")
 
         self.filters: Dict[PolicyID, Filter] = {
             policy_id: get_filter(self.observation_filter,
@@ -678,7 +681,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
-                tf_sess=self.tf_sess,
                 normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
                 blackhole_outputs="simulation" in input_evaluation,
@@ -701,7 +703,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
-                tf_sess=self.tf_sess,
                 normalize_actions=normalize_actions,
                 clip_actions=clip_actions,
                 soft_horizon=soft_horizon,
@@ -798,19 +799,24 @@ class RolloutWorker(ParallelIteratorWorker):
         return batch, batch.count
 
     @DeveloperAPI
-    def get_weights(self,
-                    policies: List[PolicyID] = None) -> (ModelWeights, dict):
+    def get_weights(
+            self,
+            policies: Optional[List[PolicyID]] = None,
+    ) -> Dict[PolicyID, ModelWeights]:
         """Returns the model weights of this worker.
 
-        Returns:
-            object: weights that can be set on another worker.
-            info: dictionary of extra metadata.
+        Args:
+            policies (Optional[List[PolicyID]]): List of PolicyIDs to get
+                the weights from. Use None for all policies.
 
-        Examples:
-            >>> weights = worker.get_weights()
+        Returns:
+            Dict[PolicyID, ModelWeights]: Mapping from PolicyIDs to weights
+                dicts.
         """
         if policies is None:
-            policies = self.policy_map.keys()
+            policies = list(self.policy_map.keys())
+        policies = force_list(policies)
+
         return {
             pid: policy.get_weights()
             for pid, policy in self.policy_map.items() if pid in policies
@@ -923,23 +929,24 @@ class RolloutWorker(ParallelIteratorWorker):
                     summarize(samples)))
         if isinstance(samples, MultiAgentBatch):
             info_out = {}
+            builders = {}
             to_fetch = {}
-            if self.tf_sess is not None:
-                builder = TFRunBuilder(self.tf_sess, "learn_on_batch")
-            else:
-                builder = None
             for pid, batch in samples.policy_batches.items():
                 if pid not in self.policies_to_train:
                     continue
                 # Decompress SampleBatch, in case some columns are compressed.
                 batch.decompress_if_needed()
                 policy = self.policy_map[pid]
-                if builder and hasattr(policy, "_build_learn_on_batch"):
+                tf_session = policy.get_session()
+                if tf_session and hasattr(policy, "_build_learn_on_batch"):
+                    builders[pid] = TFRunBuilder(tf_session, "learn_on_batch")
                     to_fetch[pid] = policy._build_learn_on_batch(
-                        builder, batch)
+                        builders[pid], batch)
                 else:
                     info_out[pid] = policy.learn_on_batch(batch)
-            info_out.update({k: builder.get(v) for k, v in to_fetch.items()})
+            info_out.update(
+                {pid: builders[pid].get(v)
+                 for pid, v in to_fetch.items()})
         else:
             info_out = {
                 DEFAULT_POLICY_ID: self.policy_map[DEFAULT_POLICY_ID]
@@ -1000,8 +1007,11 @@ class RolloutWorker(ParallelIteratorWorker):
             return []
 
         envs = self.async_env.get_unwrapped()
+        # Empty list (not implemented): Call function directly on the
+        # BaseEnv.
         if not envs:
             return [func(self.async_env)]
+        # Call function on all underlying (vectorized) envs.
         else:
             return [func(e) for e in envs]
 
@@ -1014,8 +1024,11 @@ class RolloutWorker(ParallelIteratorWorker):
             return []
 
         envs = self.async_env.get_unwrapped()
+        # Empty list (not implemented): Call function directly on the
+        # BaseEnv.
         if not envs:
             return [func(self.async_env, self.env_context)]
+        # Call function on all underlying (vectorized) envs.
         else:
             ret = []
             for i, e in enumerate(envs):
@@ -1024,12 +1037,15 @@ class RolloutWorker(ParallelIteratorWorker):
             return ret
 
     @DeveloperAPI
-    def get_policy(
-            self, policy_id: Optional[PolicyID] = DEFAULT_POLICY_ID) -> Policy:
+    def get_policy(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> Policy:
         """Return policy for the specified id, or None.
 
         Args:
-            policy_id (str): id of policy to return.
+            policy_id (PolicyID): ID of the policy to return.
+
+        Returns:
+            Optional[Policy]: The policy under the given ID (or None if not
+                found).
         """
 
         return self.policy_map.get(policy_id)
@@ -1043,6 +1059,7 @@ class RolloutWorker(ParallelIteratorWorker):
             observation_space: Optional[gym.spaces.Space] = None,
             action_space: Optional[gym.spaces.Space] = None,
             config: Optional[PartialTrainerConfigDict] = None,
+            policy_config: Optional[TrainerConfigDict] = None,
             policy_mapping_fn: Optional[Callable[
                 [AgentID, "MultiAgentEpisode"], PolicyID]] = None,
             policies_to_train: Optional[List[PolicyID]] = None,
@@ -1057,8 +1074,10 @@ class RolloutWorker(ParallelIteratorWorker):
                 space of the policy to add.
             action_space (Optional[gym.spaces.Space]): The action space
                 of the policy to add.
-            config (Optional[PartialTrainerConfigDict]): The config overrides
-                for the policy to add.
+            config (Optional[PartialTrainerConfigDict]): The config
+                overrides for the policy to add.
+            policy_config (Optional[TrainerConfigDict]): The base config of the
+                Trainer object owning this RolloutWorker.
             policy_mapping_fn (Optional[Callable[[AgentID, MultiAgentEpisode],
                 PolicyID]]): An optional (updated) policy mapping function to
                 use from here on. Note that already ongoing episodes will not
@@ -1075,21 +1094,19 @@ class RolloutWorker(ParallelIteratorWorker):
         """
         if policy_id in self.policy_map:
             raise ValueError(f"Policy ID '{policy_id}' already in policy map!")
-        policy_dict = {
-            policy_id: (policy_cls, observation_space, action_space, config)
-        }
-        if self.tf_sess is not None:
-            with self.tf_sess.graph.as_default():
-                with self.tf_sess.as_default():
-                    add_map, add_prep = self._build_policy_map(
-                        policy_dict, self.policy_config)
-        else:
-            add_map, add_prep = self._build_policy_map(policy_dict,
-                                                       self.policy_config)
-        new_policy = add_map[policy_id]
+        policy_dict = _determine_spaces_for_multi_agent_dict(
+            {
+                policy_id: PolicySpec(policy_cls, observation_space,
+                                      action_space, config)
+            },
+            self.env,
+            spaces=self.spaces,
+            policy_config=policy_config)
 
-        self.policy_map.update(add_map)
-        self.preprocessors.update(add_prep)
+        self._build_policy_map(
+            policy_dict, policy_config, seed=policy_config.get("seed"))
+        new_policy = self.policy_map[policy_id]
+
         self.filters[policy_id] = get_filter(
             self.observation_filter, new_policy.observation_space.shape)
 
@@ -1301,12 +1318,27 @@ class RolloutWorker(ParallelIteratorWorker):
         return func(self, *args)
 
     def _build_policy_map(
-            self, policy_dict: MultiAgentPolicyConfigDict,
-            policy_config: TrainerConfigDict
+            self,
+            policy_dict: MultiAgentPolicyConfigDict,
+            policy_config: TrainerConfigDict,
+            session_creator: Optional[Callable[[], "tf1.Session"]] = None,
+            seed: Optional[int] = None,
     ) -> Tuple[Dict[PolicyID, Policy], Dict[PolicyID, Preprocessor]]:
-        policy_map = {}
-        preprocessors = {}
-        for name, (cls, obs_space, act_space,
+
+        ma_config = policy_config.get("multiagent", {})
+
+        self.policy_map = self.policy_map or PolicyMap(
+            worker_index=self.worker_index,
+            num_workers=self.num_workers,
+            capacity=ma_config.get("policy_map_capacity"),
+            path=ma_config.get("policy_map_cache"),
+            policy_config=policy_config,
+            session_creator=session_creator,
+            seed=seed,
+        )
+        self.preprocessors = self.preprocessors or {}
+
+        for name, (orig_cls, obs_space, act_space,
                    conf) in sorted(policy_dict.items()):
             logger.debug("Creating policy for {}".format(name))
             merged_conf = merge_dicts(policy_config, conf or {})
@@ -1315,43 +1347,23 @@ class RolloutWorker(ParallelIteratorWorker):
             if self.preprocessing_enabled:
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space, merged_conf.get("model"))
-                preprocessors[name] = preprocessor
+                self.preprocessors[name] = preprocessor
                 obs_space = preprocessor.observation_space
             else:
-                preprocessors[name] = NoPreprocessor(obs_space)
+                self.preprocessors[name] = NoPreprocessor(obs_space)
 
             if isinstance(obs_space, (gym.spaces.Dict, gym.spaces.Tuple)):
                 raise ValueError(
                     "Found raw Tuple|Dict space as input to policy. "
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
-            # Tf.
-            framework = policy_config.get("framework", "tf")
-            if framework in ["tf2", "tf", "tfe"]:
-                assert tf1
-                if framework in ["tf2", "tfe"]:
-                    assert tf1.executing_eagerly()
-                    if hasattr(cls, "as_eager"):
-                        cls = cls.as_eager()
-                        if policy_config.get("eager_tracing"):
-                            cls = cls.with_tracing()
-                    elif not issubclass(cls, TFPolicy):
-                        pass  # could be some other type of policy
-                    else:
-                        raise ValueError("This policy does not support eager "
-                                         "execution: {}".format(cls))
-                scope = name + (("_wk" + str(self.worker_index))
-                                if self.worker_index else "")
-                with tf1.variable_scope(scope):
-                    policy_map[name] = cls(obs_space, act_space, merged_conf)
-            # non-tf.
-            else:
-                policy_map[name] = cls(obs_space, act_space, merged_conf)
+
+            self.policy_map.create_policy(name, orig_cls, obs_space, act_space,
+                                          conf, merged_conf)
 
         if self.worker_index == 0:
-            logger.info("Built policy map: {}".format(policy_map))
-            logger.info("Built preprocessor map: {}".format(preprocessors))
-        return policy_map, preprocessors
+            logger.info(f"Built policy map: {self.policy_map}")
+            logger.info(f"Built preprocessor map: {self.preprocessors}")
 
     def setup_torch_data_parallel(self, url: str, world_rank: int,
                                   world_size: int, backend: str) -> None:
@@ -1394,23 +1406,39 @@ def _determine_spaces_for_multi_agent_dict(
         policy_config: Optional[PartialTrainerConfigDict] = None,
 ) -> MultiAgentPolicyConfigDict:
 
-    # Try extracting spaces from env.
+    # Try extracting spaces from env or from given spaces dict.
     env_obs_space = None
     env_act_space = None
-    if env is not None and hasattr(env, "observation_space") and isinstance(
-            env.observation_space, gym.Space):
-        env_obs_space = env.observation_space
-    if env is not None and hasattr(env, "action_space") and isinstance(
-            env.action_space, gym.Space):
-        env_act_space = env.action_space
+
+    # Env is a ray.remote: Get spaces via its (automatically added)
+    # `_get_spaces()` method.
+    if isinstance(env, ray.actor.ActorHandle):
+        env_obs_space, env_act_space = ray.get(env._get_spaces.remote())
+    # Normal env (gym.Env or MultiAgentEnv): These should have the
+    # `observation_space` and `action_space` properties.
+    elif env is not None:
+        if hasattr(env, "observation_space") and isinstance(
+                env.observation_space, gym.Space):
+            env_obs_space = env.observation_space
+
+        if hasattr(env, "action_space") and isinstance(env.action_space,
+                                                       gym.Space):
+            env_act_space = env.action_space
+    # Last resort: Try getting the env's spaces from the spaces
+    # dict's special __env__ key.
+    if spaces is not None:
+        if env_obs_space is None:
+            env_obs_space = spaces.get("__env__", [None])[0]
+        if env_act_space is None:
+            env_act_space = spaces.get("__env__", [None, None])[1]
 
     for pid, policy_spec in multi_agent_dict.copy().items():
         if policy_spec.observation_space is None:
-            if spaces is not None:
+            if spaces is not None and pid in spaces:
                 obs_space = spaces[pid][0]
             elif env_obs_space is not None:
                 obs_space = env_obs_space
-            elif "observation_space" in policy_config:
+            elif policy_config and policy_config.get("observation_space"):
                 obs_space = policy_config["observation_space"]
             else:
                 raise ValueError(
@@ -1422,11 +1450,11 @@ def _determine_spaces_for_multi_agent_dict(
                 observation_space=obs_space)
 
         if policy_spec.action_space is None:
-            if spaces is not None:
+            if spaces is not None and pid in spaces:
                 act_space = spaces[pid][1]
             elif env_act_space is not None:
                 act_space = env_act_space
-            elif "action_space" in policy_config:
+            elif policy_config and policy_config.get("action_space"):
                 act_space = policy_config["action_space"]
             else:
                 raise ValueError(
@@ -1444,7 +1472,10 @@ def _validate_env(env: Any) -> EnvType:
     if hasattr(env, "observation_space") and hasattr(env, "action_space"):
         return env
 
-    allowed_types = [gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv]
+    allowed_types = [
+        gym.Env, MultiAgentEnv, ExternalEnv, VectorEnv, BaseEnv,
+        ray.actor.ActorHandle
+    ]
     if not any(isinstance(env, tpe) for tpe in allowed_types):
         raise ValueError(
             "Returned env should be an instance of gym.Env, MultiAgentEnv, "

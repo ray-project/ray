@@ -115,7 +115,9 @@ RAY_CONFIG(bool, pull_manager_pin_active_objects, true)
 RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
 RAY_CONFIG(float, scheduler_spread_threshold,
-           env_float("RAY_SCHEDULER_SPREAD_THRESHOLD", 0.5))
+           getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
+               ? std::stof(getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
+               : 0.5)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -153,6 +155,9 @@ RAY_CONFIG(uint64_t, raylet_death_check_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, get_timeout_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_get_request_size, 10000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
+/// How long to wait for a fetch to complete during ray.get before warning the
+/// user.
+RAY_CONFIG(int64_t, fetch_warn_timeout_milliseconds, 60000)
 
 /// Temporary workaround for https://github.com/ray-project/ray/pull/16402.
 RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
@@ -215,9 +220,6 @@ RAY_CONFIG(uint32_t, maximum_gcs_storage_operation_batch_size, 1000)
 
 /// Maximum number of rows in GCS profile table.
 RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
-
-/// When getting objects from object store, print a warning every this number of attempts.
-RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
 
 /// When getting objects from object store, max number of ids to print in the warning
 /// message.
@@ -350,13 +352,13 @@ RAY_CONFIG(bool, enable_timeline, true)
 
 /// The maximum number of pending placement group entries that are reported to monitor to
 /// autoscale the cluster.
-RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
+RAY_CONFIG(int64_t, max_placement_group_load_report_size, 1000)
 
 /* Configuration parameters for object spilling. */
 /// JSON configuration that describes the external storage. This is passed to
 /// Python IO workers to determine how to store/restore an object to/from
 /// external storage.
-RAY_CONFIG(string_type, object_spilling_config, "")
+RAY_CONFIG(std::string, object_spilling_config, "")
 
 /// Whether to enable automatic object spilling. If enabled, then
 /// Ray will choose objects to spill when the object store is out of
@@ -445,12 +447,16 @@ RAY_CONFIG(uint32_t, raylet_start_wait_time_s,
 /// The scheduler will treat these predefined resource types as unit_instance.
 /// Default predefined_unit_instance_resources is "GPU".
 /// When set it to "CPU,GPU", we will also treat CPU as unit_instance.
-RAY_CONFIG(string_type, predefined_unit_instance_resources, "GPU")
+RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 
 /// The scheduler will treat these custom resource types as unit_instance.
 /// Default custom_unit_instance_resources is empty.
 /// When set it to "FPGA", we will treat FPGA as unit_instance.
-RAY_CONFIG(string_type, custom_unit_instance_resources, "")
+RAY_CONFIG(std::string, custom_unit_instance_resources, "")
 
-// Maximum size of the batch size when broadcasting resources to raylet.
-RAY_CONFIG(uint64_t, resource_broadcast_batch_size_bytes, 1024 * 1024 * 5);
+// Maximum size of the batches when broadcasting resources to raylet.
+RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
+
+// If enabled and worker stated in container, the container will add
+// resource limit.
+RAY_CONFIG(bool, worker_resource_limits_enabled, false)

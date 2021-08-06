@@ -277,9 +277,10 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray Data Processing
+   :caption: Ray Data
 
    data/dataset.rst
+   data/dataset-pipeline.rst
    data/package-ref.rst
    data/dask-on-ray.rst
    data/mars-on-ray.rst
@@ -337,6 +338,7 @@ Papers
    multiprocessing.rst
    joblib.rst
    xgboost-ray.rst
+   lightgbm-ray.rst
    ray-collective.rst
 
 .. toctree::

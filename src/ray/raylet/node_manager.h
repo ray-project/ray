@@ -93,6 +93,8 @@ struct NodeManagerConfig {
   std::string session_dir;
   /// The path of this ray resource dir.
   std::string resource_dir;
+  /// If true make Ray debugger available externally.
+  int ray_debugger_external;
   /// The raylet config list of this node.
   std::string raylet_config;
   // The time between record metrics in milliseconds, or 0 to disable.

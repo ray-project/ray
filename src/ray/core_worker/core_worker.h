@@ -536,11 +536,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
+  /// \param[in] object create by worker or not.
+  /// \param[in] owner_address The address of object's owner. If not provided,
+  /// defaults to this worker.
   /// \return Status.
   Status CreateOwned(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                      const std::vector<ObjectID> &contained_object_ids,
                      ObjectID *object_id, std::shared_ptr<Buffer> *data,
-                     bool created_by_worker);
+                     bool created_by_worker,
+                     const std::unique_ptr<rpc::Address> owner_address = nullptr);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -563,8 +567,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id Object ID corresponding to the object.
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
+  /// \param[in] The address of object's owner. If not provided,
+  /// defaults to this worker.
   /// \return Status.
-  Status SealOwned(const ObjectID &object_id, bool pin_object);
+  Status SealOwned(const ObjectID &object_id, bool pin_object,
+                   const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateExisting()` call and then writing into the returned buffer.
@@ -575,7 +582,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the raylet if the object is pinned. If not provided, defaults to this worker.
   /// \return Status.
   Status SealExisting(const ObjectID &object_id, bool pin_object,
-                      const absl::optional<rpc::Address> &owner_address = absl::nullopt);
+                      const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -583,11 +590,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results Result list of objects data.
-  /// \param[in] plasma_objects_only Only get objects from Plasma Store.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results,
-             bool plasma_objects_only = false);
+             std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Get objects directly from the local plasma store, without waiting for the
   /// objects to be fetched from another node. This should only be used
@@ -873,11 +878,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// NOTE: The actor_handle obtained by this function should not be stored anywhere.
   ///
   /// \param[in] name The name of the actor whose handle to get.
+  /// \param[in] ray_namespace The namespace of the requested actor.
   /// \param[out] actor_handle A handle to the requested actor.
   /// \return The shared_ptr to the actor handle if found, nullptr otherwise.
   /// The second pair contains the status of getting a named actor handle.
   std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandle(
-      const std::string &name);
+      const std::string &name, const std::string &ray_namespace);
 
   /// Returns a list of the named actors currently in the system.
   ///
@@ -1003,6 +1009,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // This request fails if the core worker owns any object.
   void HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
+
+  // Set local worker as the owner of object.
+  // Request by borrower's worker, execute by owner's worker.
+  void HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,
+                               rpc::AssignObjectOwnerReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   ///
   /// Public methods related to async actor call. This should only be used when

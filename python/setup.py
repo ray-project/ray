@@ -40,7 +40,7 @@ exe_suffix = ".exe" if sys.platform == "win32" else ""
 pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
 pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
-               "c0c1a158f59366696161e0dffdd10cfe17601372.tar.gz")
+               "e6117502435aba2901585cc6c692fb9582545f08.tar.gz")
 
 
 def find_version(*filepath):
@@ -94,7 +94,6 @@ else:
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
-    "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
@@ -149,13 +148,20 @@ ray_files += [
 if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
         "default": [
+            "aiohttp",  # noqa
+            "aiohttp_cors",  # noqa
+            "aioredis < 2",  # noqa
             "colorful",  # noqa
             "py-spy >= 0.2.0",  # noqa
             "jsonschema",  # noqa
+            "requests",  # noqa
+            "gpustat",  # noqa
+            "opencensus",  # noqa
+            "prometheus_client >= 0.7.1",  # noqa
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
-        "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
-        "k8s": ["kubernetes"],
+        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
+        "k8s": ["kubernetes", "urllib3"],
         "observability": [
             "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
             "opentelemetry-exporter-otlp==1.1.0"
@@ -169,7 +175,7 @@ if setup_spec.type == SetupType.RAY:
         "dm_tree",
         "gym",
         "lz4",
-        "opencv-python-headless<=4.3.0.36",
+        "scikit-image",
         "pyyaml",
         "scipy",
     ]
@@ -182,28 +188,17 @@ if setup_spec.type == SetupType.RAY:
 # the change in the matching section of requirements/requirements.txt
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        # TODO(alex) Pin the version once this PR is
-        # included in the stable release.
-        # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
-        "aiohttp",
-        "aiohttp_cors",
-        "aioredis",
         "attrs",
         "click >= 7.0",
-        "colorama",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "gpustat",
         "grpcio >= 1.28.1",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
         "protobuf >= 3.15.3",
         "pyyaml",
-        "requests",
         "redis >= 3.5.0",
-        "opencensus",
-        "prometheus_client >= 0.7.1",
     ]
 
 
@@ -328,7 +323,7 @@ def build(build_python, build_java, build_cpp):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
-        pip_packages = ["psutil", "setproctitle==1.2.2"]
+        pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
         subprocess.check_call(
             [
                 sys.executable, "-m", "pip", "install", "-q",

@@ -9,6 +9,7 @@ import ray._private.services
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
+from ray.test_utils import run_string_as_driver
 
 
 @pytest.fixture
@@ -93,6 +94,18 @@ def test_shutdown_and_reset_global_worker(shutdown_only):
     ray.get(a.f.remote())
 
 
+def test_tmpdir_env_var(shutdown_only):
+    result = run_string_as_driver(
+        """
+import ray
+context = ray.init()
+assert context["session_dir"].startswith("/tmp/qqq/"), context
+print("passed")
+""",
+        env={"RAY_TMPDIR": "/tmp/qqq"})
+    assert "passed" in result, result
+
+
 def test_ports_assignment(ray_start_cluster):
     # Make sure value error is raised when there are the same ports.
 
@@ -147,16 +160,6 @@ def test_ray_init_from_workers(ray_start_cluster):
     assert node_info.node_manager_port == node2.node_manager_port
 
 
-def test_ray_init_local(shutdown_only):
-    with ray.init("local://", dashboard_port=22222) as context:
-        assert context.dashboard_url.split(":")[-1] == "22222"
-
-
-def test_ray_init_namespace(shutdown_only):
-    with ray.init("local://", namespace="abcdefg"):
-        assert ray.get_runtime_context().namespace == "abcdefg"
-
-
 def test_ray_init_invalid_keyword(shutdown_only):
     with pytest.raises(RuntimeError) as excinfo:
         ray.init("localhost", logginglevel="<- missing underscore")
@@ -175,29 +178,6 @@ def test_ray_init_valid_keyword_with_client(shutdown_only):
         # init(ray://)
         ray.init("ray://127.0.0.0", num_cpus=1)
     assert "num_cpus" in str(excinfo.value)
-
-
-def test_ray_init_local_with_unstable_parameter(shutdown_only):
-    with pytest.raises(RuntimeError) as excinfo:
-        # _redis_password is a valid init argument, but should be passed as
-        # internal_config={"_redis_password": "1234"} for local.
-        ray.init("local://", _redis_password="1234")
-    assert "_redis_password" in str(excinfo.value)
-
-    with pytest.raises(RuntimeError) as excinfo:
-        # Passing an invalid unstable parameter through internal_config
-        # should error
-        ray.init("local://", internal_config={"asdfasd": "1234"})
-    assert "asdfasd" in str(excinfo.value)
-
-    with pytest.raises(RuntimeError) as excinfo:
-        # Error if internal_config has valid parameter but with underscore
-        # still included
-        ray.init("local://", internal_config={"_node_ip_address": "0.0.0.0"})
-    assert "_node_ip_address" in str(excinfo.value)
-
-    # Make sure local:// works when unstables passed correctly
-    ray.init("local://", internal_config={"node_ip_address": "0.0.0.0"})
 
 
 def test_env_var_override():

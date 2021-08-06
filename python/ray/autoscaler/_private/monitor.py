@@ -13,7 +13,11 @@ from multiprocessing.synchronize import Event
 from typing import Optional
 
 import grpc
-import prometheus_client
+
+try:
+    import prometheus_client
+except ImportError:
+    prometheus_client = None
 
 import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
@@ -133,7 +137,7 @@ class Monitor:
         self.autoscaler = None
 
         self.prom_metrics = AutoscalerPrometheusMetrics()
-        if monitor_ip:
+        if monitor_ip and prometheus_client:
             # If monitor_ip wasn't passed in, then don't attempt to start the
             # metric server to keep behavior identical to before metrics were
             # introduced
@@ -147,6 +151,9 @@ class Monitor:
             except Exception:
                 logger.exception(
                     "An exception occurred while starting the metrics server.")
+        elif not prometheus_client:
+            logger.warning("`prometheus_client` not found, so metrics will "
+                           "not be exported.")
 
         logger.info("Monitor: Started")
 

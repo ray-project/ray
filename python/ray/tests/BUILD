@@ -63,6 +63,7 @@ py_test_module_list(
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
+    "test_object_assign_owner.py",
     "test_output.py",
     "test_ray_init.py",
     "test_reconstruction.py",
@@ -76,6 +77,7 @@ py_test_module_list(
     "test_stress_sharded.py",
     "test_tempfile.py",
     "test_tensorflow.py",
+    "test_ray_debugger.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -109,7 +111,7 @@ py_test_module_list(
     "test_node_manager.py",
     "test_numba.py",
     "test_queue.py",
-    "test_ray_debugger.py",
+    "test_ray_shutdown.py",
     "test_unhandled_error.py",
     "test_top_level_api.py",
     "test_list_actors.py",
@@ -240,6 +242,13 @@ py_test(
     name = "test_aws_batch_tag_update",
     size = "small",
     srcs = SRCS + ["aws/test_aws_batch_tag_update.py"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_gcp_node_provider",
+    size = "small",
+    srcs = SRCS + ["gcp/test_gcp_node_provider.py"],
     deps = ["//:ray_lib"],
 )
 

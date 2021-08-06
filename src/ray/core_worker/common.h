@@ -86,7 +86,7 @@ struct ActorCreationOptions {
       const std::unordered_map<std::string, double> &resources,
       const std::unordered_map<std::string, double> &placement_resources,
       const std::vector<std::string> &dynamic_worker_options, bool is_detached,
-      std::string &name, bool is_asyncio,
+      std::string &name, std::string &ray_namespace, bool is_asyncio,
       BundleID placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
       bool placement_group_capture_child_tasks = true,
       const std::string &serialized_runtime_env = "{}",
@@ -100,6 +100,7 @@ struct ActorCreationOptions {
         dynamic_worker_options(dynamic_worker_options),
         is_detached(is_detached),
         name(name),
+        ray_namespace(ray_namespace),
         is_asyncio(is_asyncio),
         placement_options(placement_options),
         placement_group_capture_child_tasks(placement_group_capture_child_tasks),
@@ -130,6 +131,10 @@ struct ActorCreationOptions {
   /// other drivers. This must be globally unique across the cluster.
   /// This should set if and only if is_detached is true.
   const std::string name;
+  /// The namespace to give this detached actor so that the actor is only visible
+  /// with the namespace.
+  /// This should set if and only if is_detached is true.
+  const std::string ray_namespace;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
   /// The placement_options include placement_group_id and bundle_index.

@@ -55,7 +55,18 @@ TEST(SpilledObjectReaderTest, ParseObjectURL) {
                        "file:///C:/Users/file.txt", 123, 456);
   assert_parse_success("/tmp/file.txt?offset=123&size=456", "/tmp/file.txt", 123, 456);
   assert_parse_success("C:\\file.txt?offset=123&size=456", "C:\\file.txt", 123, 456);
+  assert_parse_success(
+      "/tmp/ray/session_2021-07-19_09-50-58_115365_119/ray_spillled_objects/"
+      "2f81e7cfcc578f4effffffffffffffffffffffff0200000001000000-multi-1?offset=0&size="
+      "2199437144",
+      "/tmp/ray/session_2021-07-19_09-50-58_115365_119/ray_spillled_objects/"
+      "2f81e7cfcc578f4effffffffffffffffffffffff0200000001000000-multi-1",
+      0, 2199437144);
+  assert_parse_success("/tmp/123?offset=0&size=9223372036854775807", "/tmp/123", 0,
+                       9223372036854775807);
 
+  assert_parse_fail("/tmp/123?offset=-1&size=1");
+  assert_parse_fail("/tmp/123?offset=0&size=9223372036854775808");
   assert_parse_fail("file://path/to/file?offset=a&size=456");
   assert_parse_fail("file://path/to/file?offset=0&size=bb");
   assert_parse_fail("file://path/to/file?offset=123");

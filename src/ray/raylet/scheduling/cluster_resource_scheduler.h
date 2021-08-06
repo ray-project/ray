@@ -420,6 +420,13 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   void UpdateLastResourceUsage(
       const std::shared_ptr<SchedulingResources> gcs_resources) override;
 
+  /// Serialize task resource instances to json string.
+  ///
+  /// \param task_allocation Allocated resource instances for a task.
+  /// \return The task resource instances json string
+  std::string SerializedTaskResourceInstances(
+      std::shared_ptr<TaskResourceInstances> task_allocation) const;
+
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
 

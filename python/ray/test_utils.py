@@ -19,8 +19,15 @@ import ray._private.services
 import ray._private.utils
 from ray.util.queue import Queue, _QueueActor, Empty
 import requests
-from prometheus_client.parser import text_string_to_metric_families
 from ray.scripts.scripts import main as ray_main
+
+try:
+    from prometheus_client.parser import text_string_to_metric_families
+except (ImportError, ModuleNotFoundError):
+
+    def text_string_to_metric_families(*args, **kwargs):
+        raise ModuleNotFoundError("`prometheus_client` not found")
+
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 

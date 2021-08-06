@@ -36,10 +36,13 @@ class TestTrainer(unittest.TestCase):
                     "p0": (None, env.observation_space, env.action_space, {}),
                 },
                 "policy_mapping_fn": lambda aid, episode, **kwargs: "p0",
+                "policy_map_capacity": 2,
             },
         })
 
-        for _ in framework_iterator(config):
+        # TODO: (sven) this will work for tf, once we have the DynamicTFPolicy
+        #  refactor PR merged.
+        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
             trainer = pg.PGTrainer(config=config)
             r = trainer.train()
             self.assertTrue("p0" in r["policy_reward_min"])
@@ -62,8 +65,8 @@ class TestTrainer(unittest.TestCase):
                 )
                 pol_map = trainer.workers.local_worker().policy_map
                 self.assertTrue(new_pol is not trainer.get_policy("p0"))
-                self.assertTrue("p0" in pol_map)
-                self.assertTrue("p1" in pol_map)
+                for j in range(i):
+                    self.assertTrue(f"p{j}" in pol_map)
                 self.assertTrue(len(pol_map) == i + 1)
                 r = trainer.train()
                 self.assertTrue("p1" in r["policy_reward_min"])

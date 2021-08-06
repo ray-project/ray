@@ -143,6 +143,12 @@ XGBoost is a popular gradient boosting library for classification and regression
 
 [`Link to integration <https://github.com/ray-project/xgboost_ray>`__]
 
+LightGBM |lightgbm|
+-------------------
+LightGBM is a high-performance gradient boosting library for classification and regression. It is designed to be distributed and efficient.
+
+[`Link to integration <https://github.com/ray-project/lightgbm_ray>`__]
+
 
 .. |airflow| image:: images/airflow.png
     :class: inline-figure
@@ -209,6 +215,10 @@ XGBoost is a popular gradient boosting library for classification and regression
     :height: 30
 
 .. |xgboost| image:: images/xgboost_logo.png
+    :class: inline-figure
+    :height: 30
+
+.. |lightgbm| image:: images/lightgbm_logo.png
     :class: inline-figure
     :height: 30
 
