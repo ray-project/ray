@@ -14,19 +14,26 @@ class SGDLoggingCallback(SGDCallback, metaclass=abc.ABCMeta):
 
     Args:
         logdir (str): Path to directory where the results file should be.
-        filename (str): Filename in logdir to save results to.
+        filename (str|None): Filename in logdir to save results to.
         workers_to_log (int|List[int]|None): Worker indices to log.
             If None, will log all workers.
     """
 
+    # Defining it like this ensures it will be overwritten
+    # in a subclass - otherwise an exception will be raised
+    _default_filename: Union[str, Path]
+
     def __init__(self,
                  logdir: str,
-                 filename: str = RESULT_FILE_JSON,
+                 filename: Optional[str] = None,
                  workers_to_log: Optional[Union[int, List[int]]] = 0) -> None:
         logdir_path = Path(logdir)
 
         if not logdir_path.is_dir():
             raise ValueError(f"logdir '{logdir}' must be a directory.")
+
+        if filename is None:
+            filename = self._default_filename
 
         self._log_path = logdir_path.joinpath(Path(filename))
         if isinstance(workers_to_log, int):
@@ -53,7 +60,17 @@ class SGDLoggingCallback(SGDCallback, metaclass=abc.ABCMeta):
 
 
 class JsonLoggerCallback(SGDLoggingCallback):
-    """Logs SGD results in json format."""
+    """Logs SGD results in json format.
+
+    Args:
+        logdir (str): Path to directory where the results file should be.
+        filename (str|None): Filename in logdir to save results to.
+            Defaults to "results.json".
+        workers_to_log (int|List[int]|None): Worker indices to log.
+            If None, will log all workers.
+    """
+
+    _default_filename: Union[str, Path] = RESULT_FILE_JSON
 
     def handle_result(self, results: Optional[List[Dict]]):
         if self._workers_to_log is None or results is None:
