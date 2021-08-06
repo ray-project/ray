@@ -1,7 +1,10 @@
 import queue
 import time
 import threading
-from typing import Callable
+from typing import Callable, TYPE_CHECKING, Union, Optional
+
+if TYPE_CHECKING:
+    import ray.data
 
 from ray.util.sgd.v2.constants import TIME_THIS_ITER_S, RESULT_FETCH_TIMEOUT
 from ray.util.sgd.v2.utils import PropagatingThread
@@ -128,7 +131,15 @@ def shutdown_session():
     _session = None
 
 
-def get_dataset() -> ray.data.
+def get_dataset_shard() -> Optional[Union[ray.data.Dataset,
+                                    ray.data.DatasetPipeline]]:
+    """Returns the Ray Dataset or DatasetPipeline shard for this worker.
+
+
+
+
+    :return:
+    """
 
 
 def report(**kwargs) -> None:
