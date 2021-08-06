@@ -477,27 +477,27 @@ def test_many_args(ray_start_cluster):
     ray.get(tasks, timeout=30)
 
 
-def test_nested_task(ray_start_regular_shared):
-    @ray.remote
-    def outer():
-        ref = inner.remote()
-        # This sleep is necessary due to a race condition because workers are
-        # blocked/unblocked from the main thread, while tasks are submitted
-        # from a dedicated thread. If the worker is blocked before the inner
-        # task is submitted, the raylet will schedule another instance of
-        # `outer` since there are no `inner`'s queued.
-        # time.sleep(0.01)
-        return ray.get(ref)
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_fair_queueing(shutdown_only):
+    ray.init(num_cpus=1)
 
     @ray.remote
-    def inner():
+    def h():
         return 0
 
-    ray.get([outer.remote() for _ in range(1000)])
+    @ray.remote
+    def g():
+        return ray.get(h.remote())
 
-    # If we don't schedule the inner tasks before the outer ones, we will
-    # crash before this point.
-    assert True
+    @ray.remote
+    def f():
+        return ray.get(g.remote())
+
+    # This will never finish without fair queueing of {f, g, h}:
+    # https://github.com/ray-project/ray/issues/3644
+    ready, _ = ray.wait(
+        [f.remote() for _ in range(10000)], timeout=60.0, num_returns=10000)
+    assert len(ready) == 1000, len(ready)
 
 
 if __name__ == "__main__":

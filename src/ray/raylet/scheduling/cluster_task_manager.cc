@@ -3,6 +3,7 @@
 #include <google/protobuf/map.h>
 
 #include <boost/functional/hash.hpp>
+#include <boost/range/join.hpp>
 
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
@@ -552,7 +553,6 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id,
 }
 
 void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {
-  // Report infeasible actors.
   int num_reported = 0;
   for (const auto &shapes_it : infeasible_tasks_) {
     auto &work_queue = shapes_it.second;
@@ -568,15 +568,17 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
     }
   }
 
-  std::function<void(const Work &work)> fn = [&num_reported, reply](const Work &work) {
+  std::function<bool(const Work &)> fn = [&num_reported, reply](const Work &work) {
     Task task = std::get<0>(work);
     if (task.GetTaskSpecification().IsActorCreationTask()) {
       if (num_reported++ > kMaxPendingActorsToReport) {
-        return;  // Protect the raylet from reporting too much data.
+        // return;  // Protect the raylet from reporting too much data.
+        return false;
       }
       auto ready_task = reply->add_infeasible_tasks();
       ready_task->CopyFrom(task.GetTaskSpecification().GetMessage());
     }
+    return true;
   };
 
   ForAllQueues(fn);
@@ -771,7 +773,7 @@ bool ClusterTaskManager::AnyPendingTasks(Task *exemplar, bool *any_pending,
   // We are guaranteed that these tasks are blocked waiting for resources after a
   // call to ScheduleAndDispatchTasks(). They may be waiting for workers as well, but
   // this should be a transient condition only.
-  std::function<void(const Work &)> fn = [exemplar, any_pending,
+  std::function<bool(const Work &)> fn = [exemplar, any_pending,
                                           num_pending_actor_creation,
                                           num_pending_tasks](const Work &work) {
     const auto &task = std::get<0>(work);
@@ -785,6 +787,7 @@ bool ClusterTaskManager::AnyPendingTasks(Task *exemplar, bool *any_pending,
       *exemplar = task;
       *any_pending = true;
     }
+    return true;
   };
   ForAllQueues(fn);
   // If there's any pending task, at this point, there's no progress being made.
@@ -1170,17 +1173,27 @@ ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
   return total_normal_task_resources;
 }
 
-void ClusterTaskManager::ForAllQueues(std::function<void(const Work &)> &fn) const {
+void ClusterTaskManager::ForAllQueues(std::function<bool(const Work &)> &fn) const {
+  // for (const auto &shapes_it : boost::join(tasks_to_dispatch_, tasks_to_schedule_)) {
+  //   for (const auto &pair : shapes_it->second) {
+  //     fn(pair->second);
+  //   }
+  // }
+
   for (const auto &class_deque_pair : tasks_to_schedule_) {
     const auto &deque = class_deque_pair.second;
     for (const auto &work : deque) {
-      fn(work);
+      if (!fn(work)) {
+        return;
+      }
     }
   }
   for (const auto &class_deque_pair : tasks_to_dispatch_) {
     const auto &deque = class_deque_pair.second;
     for (const auto &work : deque) {
-      fn(work);
+      if (!fn(work)) {
+        return;
+      }
     }
   }
 }

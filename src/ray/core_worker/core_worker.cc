@@ -544,12 +544,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       },
       [this]() {
         io_service_.post(
-            [this]() { local_raylet_client_->NotifyDirectCallTaskBlocked(true); }
-
-        );
-      }
-
-      ));
+            [this]() { local_raylet_client_->NotifyDirectCallTaskBlocked(true); });
+      }));
 
   periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
                                        kInternalHeartbeatMillis);

@@ -30,11 +30,15 @@ using WorkQueueType =
     std::map<SchedulingClass, std::deque<Work>, internal::SchedulingPriorityComparator>;
 }  // namespace internal
 
-/* using WorkQueueIterator = std::iterator<std::forward_iterator_tag, const
- * std::pair<const SchedulingClass, std::deque<Work>>>; */
 using WorkQueueIterator = internal::WorkQueueType::iterator;
 using ConstWorkQueueIterator = internal::WorkQueueType::const_iterator;
 
+/// A fair scheduling queue. Fairness is defined in terms of the number of
+/// running tasks of a given scheduling class. For example, assume we push 3
+/// tasks with scheduling classes: {1, 2, 2}. Then we mark a task of class 1 as
+/// running, then to promote fairness, we should schedule task from class 2.
+/// Therfore *queue.begin() will return an std::pair<SchedulingClass,
+/// std::deque<Work>> of scheduling class 2 first.
 class FairSchedulingQueue {
  public:
   explicit FairSchedulingQueue();
@@ -79,6 +83,24 @@ class FairSchedulingQueue {
   size_t size() const;
 
  private:
+  /*
+  ****************** How the internals work **************************
+  Essentially, the behavior we want, is a priority queue, but with 2 caveats:
+    1. The priority of a scheduling class can change when a task is
+       started/finished in that class.
+    2. We want to be able iterate over all the priorities (not just peek/pop the
+       top element).
+
+  std::priority_queue doesn't meet requirement (2), so we use an _ordered_ map
+  instead. Since a comparator always needs to be consistent, and (1) means a
+  scheduling class's priority can change, whenever a task is started/finished we
+  need to make sure the map's internal datastructures are consistent so we:
+    1. Remove the scheduling class (the internals are naturally consistent here).
+    2. Change the priority (since we just removed the scheduling class, we know
+       it's not in the map, therefore the map is still consistent).
+    3. Reinsert scheduling class with a new priority.
+  */
+
   /// The number of active tasks for each scheduling class, which is opposite
   /// of the priority of the task (low active count means we should schedule
   /// more of these).

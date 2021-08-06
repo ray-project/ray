@@ -224,7 +224,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Queue of lease requests that are waiting for resources to become available.
   /// Tasks move from scheduled -> dispatch | waiting.
   FairSchedulingQueue tasks_to_schedule_;
-  /* std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_; */
 
   /// Queue of lease requests that should be scheduled onto workers.
   /// Tasks move from scheduled | waiting -> dispatch.
@@ -327,7 +326,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void ReleaseTaskArgs(const TaskID &task_id);
 
   /// A helper function to loop through both the scheduling and dispatch queues.
-  void ForAllQueues(std::function<void(const Work &)> &fn) const;
+  ///
+  /// \param fn a function called on each work. If `fn` returns false,
+  ///        shortcircuits.
+  void ForAllQueues(std::function<bool(const Work &)> &fn) const;
 
   friend class ClusterTaskManagerTest;
   FRIEND_TEST(ClusterTaskManagerTest, FeasibleToNonFeasible);

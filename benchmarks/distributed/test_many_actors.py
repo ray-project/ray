@@ -42,6 +42,7 @@ test_utils.wait_for_condition(no_resource_leaks)
 start_time = time.time()
 test_max_actors()
 end_time = time.time()
+print("Actors finsihed starting. Waiting for resources to be freed...")
 test_utils.wait_for_condition(no_resource_leaks)
 
 rate = MAX_ACTORS_IN_CLUSTER / (end_time - start_time)
