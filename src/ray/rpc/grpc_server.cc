@@ -23,7 +23,7 @@
 #include "ray/stats/metric.h"
 #include "ray/util/util.h"
 
-DEFINE_stats(grpc_server_req_latency_us, "Request latency in grpc server", ("Method"), (),
+DEFINE_stats(grpc_server_req_latency_ms, "Request latency in grpc server", ("Method"), (),
              ray::stats::GAUGE);
 DEFINE_stats(grpc_server_req_new, "New request number in grpc server", ("Method"), (),
              ray::stats::COUNT);

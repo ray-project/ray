@@ -22,9 +22,9 @@
 
 DEFINE_stats(async_pool_req_num, "Async pool request num", ("Method"), (),
              ray::stats::GAUGE);
-DEFINE_stats(async_pool_req_execution_time_us, "Async pool execution time", ("Method"),
+DEFINE_stats(async_pool_req_execution_time_ms, "Async pool execution time", ("Method"),
              (), ray::stats::GAUGE);
-DEFINE_stats(async_pool_req_queue_time_us, "Async pool queue time", ("Method"), (),
+DEFINE_stats(async_pool_req_queue_time_ms, "Async pool queue time", ("Method"), (),
              ray::stats::GAUGE);
 DEFINE_stats(async_pool_req_activate_num, "Async pool request activate num", ("Method"),
              (), ray::stats::GAUGE);
@@ -120,7 +120,7 @@ void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
   // Update execution time stats.
   const auto execution_time_ns = end_execution - start_execution;
   // Update handler-specific stats.
-  STATS_async_pool_req_execution_time_us.Record(execution_time_ns / 1000,
+  STATS_async_pool_req_execution_time_ms.Record(execution_time_ns / 1000000,
                                                 handle->handler_name);
   {
     auto &stats = handle->handler_stats;
@@ -134,7 +134,7 @@ void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
   }
   // Update global stats.
   const auto queue_time_ns = start_execution - handle->start_time;
-  STATS_async_pool_req_queue_time_us.Record(queue_time_ns / 1000, handle->handler_name);
+  STATS_async_pool_req_queue_time_ms.Record(queue_time_ns / 1000000, handle->handler_name);
   {
     auto global_stats = handle->global_stats;
     absl::MutexLock lock(&(global_stats->mutex));
