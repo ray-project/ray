@@ -657,7 +657,7 @@ int main(int argc, char **argv) {
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"",
-                                         /*emit_console_log_on_fatal*/false);
+                                         /*emit_console_log_on_fatal*/ false);
   ray::RayLog::InstallFailureSignalHandler();
   return RUN_ALL_TESTS();
 }

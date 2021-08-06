@@ -1,5 +1,5 @@
 import os
-import subprocess
+# import subprocess
 import re
 
 from collections import defaultdict, Counter
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import ray
 from ray import ray_constants
-from ray.test_utils import (wait_for_condition, run_string_as_driver)
+from ray.test_utils import wait_for_condition
 
 
 def set_logging_config(max_bytes, backup_count):

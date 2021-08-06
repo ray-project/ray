@@ -126,8 +126,8 @@ class SpdLogMessage final {
       auto console_logger = spdlog::get("_console");
       if (console_logger) {
         /// If _console logger exists, that means we print fata logs to stdout/stderr.
-        console_logger->log(static_cast<spdlog::level::level_enum>(loglevel_), /*fmt*/ "{}",
-                    str_.str());
+        console_logger->log(static_cast<spdlog::level::level_enum>(loglevel_),
+                            /*fmt*/ "{}", str_.str());
         // console_logger->flush();
       }
       std::_Exit(EXIT_FAILURE);
@@ -251,18 +251,20 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         log_rotation_max_size_, log_rotation_file_num_);
     spdlog::set_default_logger(file_logger);
     if (emit_console_log_on_fatal) {
-      // Create a special named logger to emit logs to stderr when emit_console_log_on_fatal is required.
+      // Create a special named logger to emit logs to stderr when
+      // emit_console_log_on_fatal is required.
       auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
       err_sink->set_pattern(log_format_pattern_);
       err_sink->set_level(spdlog::level::err);
 
-      auto stderr_logger = std::shared_ptr<spdlog::logger>(
-          new spdlog::logger("_console", {err_sink}));
+      auto stderr_logger =
+          std::shared_ptr<spdlog::logger>(new spdlog::logger("_console", {err_sink}));
       stderr_logger->set_level(spdlog::level::err);
       spdlog::register_logger(stderr_logger);
     }
   } else {
-    RAY_CHECK(!emit_console_log_on_fatal) << "emit_console_log_on_fatal is only available when log_dir is specified.";
+    RAY_CHECK(!emit_console_log_on_fatal)
+        << "emit_console_log_on_fatal is only available when log_dir is specified.";
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_pattern(log_format_pattern_);
     auto level = static_cast<spdlog::level::level_enum>(severity_threshold_);
