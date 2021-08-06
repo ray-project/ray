@@ -66,11 +66,9 @@ class TestApexDQN(unittest.TestCase):
     def test_apex_lr_schedule(self):
         config = apex.APEX_DEFAULT_CONFIG.copy()
         config["lr"] = 0.1
-        config["lr_schedule"] = [
-            [0, 1e-4],
-            [1000, 1e-9]
-        ]
+        config["lr_schedule"] = [[0, 1e-4], [1000, 1e-9]]
         config["num_workers"] = 2
+        config["num_gpus"] = 0
         config["train_batch_size"] = 10
         config["learning_starts"] = 10
         config["timesteps_per_iteration"] = 10
