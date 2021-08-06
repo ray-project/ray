@@ -32,7 +32,9 @@ class TestA3C(unittest.TestCase):
                 for i in range(num_iterations):
                     results = trainer.train()
                     print(results)
-                check_compute_single_action(trainer)
+                check_compute_single_action(
+                    trainer,
+                    include_state=config["model"]["use_lstm"])
                 trainer.stop()
 
 
