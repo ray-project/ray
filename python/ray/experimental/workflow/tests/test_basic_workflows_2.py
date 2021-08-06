@@ -32,7 +32,8 @@ def test_init_twice_2(call_ray_start, reset_workflow, tmp_path):
     }], indirect=True)
 def test_step_resources(workflow_start_regular, tmp_path):
     lock_path = str(tmp_path / "lock")
-    # We use signal actor here because we can't guarantee the order of tasks sent from worker to raylet.
+    # We use signal actor here because we can't guarantee the order of tasks
+    # sent from worker to raylet.
     signal_actor = ray.test_utils.SignalActor.remote()
 
     @workflow.step
