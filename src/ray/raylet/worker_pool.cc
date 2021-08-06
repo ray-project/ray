@@ -45,8 +45,8 @@ std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
 
 // A helper function to get a worker from a list by id.
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
-                                                        const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
-                                                        const WorkerID &worker_id) {
+    const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
+    const WorkerID &worker_id) {
   for (auto it = worker_pool.begin(); it != worker_pool.end(); it++) {
     if ((*it)->WorkerId() == worker_id) {
       return (*it);
@@ -602,7 +602,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
 }
 
 std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredWorker(
-                                                                  const WorkerID &worker_id) const {
+    const WorkerID &worker_id) const {
   for (const auto &entry : states_by_lang_) {
     auto worker = GetWorker(entry.second.registered_workers, worker_id);
     if (worker != nullptr) {
