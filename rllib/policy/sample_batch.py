@@ -195,7 +195,7 @@ class SampleBatch(dict):
                 else:
                     concatd_data[k] = tree.map_structure(
                         concat_key, *[c[k] for c in concat_samples])
-        except Exception as e:
+        except Exception:
             raise ValueError(f"Cannot concat data under key '{k}', b/c "
                              "sub-structures under that key don't match. "
                              f"`samples`={samples}")
