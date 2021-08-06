@@ -48,6 +48,7 @@ Each release test requires the following:
    `--smoke-test` argument.
    Usually the command should write its result metrics to a json file.
    The json filename is available in the TEST_OUTPUT_JSON env variable.
+5. Add your test in release/.buildkite/build_pipeline.py.
 
 The script will have access to these environment variables:
 
