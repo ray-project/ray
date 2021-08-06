@@ -61,18 +61,22 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR -e python/ray/new_dashboard/client -e dashboard/client
 
   # Install Python.
-  # INST_PATH=python_downloads/$PY_INST
-  # curl $MACPYTHON_URL/"$PY_VERSION"/"$PY_INST" > "$INST_PATH"
-  # sudo installer -pkg "$INST_PATH" -target /
-  # installer -pkg "$INST_PATH" -target /
-
+  # In Buildkite, the Python packages are installed on the machien before the build has ran.
   PYTHON_EXE=$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM
   PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
 
-  # pushd /tmp
-  #   # Install latest version of pip to avoid brownouts.
-  #   curl https://bootstrap.pypa.io/get-pip.py | $PYTHON_EXE
-  # popd
+  if [ -z "${BUILDKITE}" ]; then
+    INST_PATH=python_downloads/$PY_INST
+    curl $MACPYTHON_URL/"$PY_VERSION"/"$PY_INST" > "$INST_PATH"
+    sudo installer -pkg "$INST_PATH" -target /
+    installer -pkg "$INST_PATH" -target /
+
+    pushd /tmp
+      # Install latest version of pip to avoid brownouts.
+      curl https://bootstrap.pypa.io/get-pip.py | $PYTHON_EXE
+    popd
+  fi
+
   if [ ! -n "$TRAVIS_COMMIT" ]; then
     TRAVIS_COMMIT=${BUILDKITE_COMMIT}
   fi
