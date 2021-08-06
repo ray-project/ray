@@ -57,7 +57,7 @@ deploy:
     acl: public_read
     region: us-west-2
     local_dir: .whl
-    upload-dir: "$TRAVIS_BRANCH/$TRAVIS_COMMIT"
+    upload-dir: "$TRAVIS_BRANCH/$TRAVIS_COMMIT/travis_backup"
     skip_cleanup: true
     on:
       repo: ray-project/ray
@@ -73,7 +73,7 @@ deploy:
     acl: public_read
     region: us-west-2
     local_dir: .whl
-    upload-dir: latest
+    upload-dir: "latest/travis_backup"
     skip_cleanup: true
     on:
       branch: master
@@ -90,7 +90,7 @@ deploy:
     acl: public_read
     region: us-west-2
     local_dir: .jar
-    upload-dir: "jars/$TRAVIS_BRANCH/$TRAVIS_COMMIT"
+    upload-dir: "jars/$TRAVIS_BRANCH/$TRAVIS_COMMIT/travis_backup"
     skip_cleanup: true
     on:
       repo: ray-project/ray
@@ -106,7 +106,7 @@ deploy:
     acl: public_read
     region: us-west-2
     local_dir: .jar
-    upload-dir: "jars/latest"
+    upload-dir: "jars/latest/travis_backup"
     skip_cleanup: true
     on:
       repo: ray-project/ray
