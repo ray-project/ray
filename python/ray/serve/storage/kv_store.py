@@ -75,6 +75,7 @@ class RayLocalKVStore(KVStoreBase):
     Supports only string type for key and bytes type for value,
     caller must handle serialization.
     """
+
     def __init__(
             self,
             namepsace: str,
