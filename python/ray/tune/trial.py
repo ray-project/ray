@@ -113,11 +113,17 @@ class TrialInfo:
     Attributes:
         trial_name (str): String name of the current trial.
         trial_id (str): trial_id of the trial
+        trial_resources (Resources|PlacementGroupFactory): resources used
+            by trial.
     """
 
-    def __init__(self, trial):
+    def __init__(self, trial: "Trial"):
         self._trial_name = str(trial)
         self._trial_id = trial.trial_id
+        if trial.uses_placement_groups:
+            self._trial_resources = trial.placement_group_factory
+        else:
+            self._trial_resources = trial.resources
 
     @property
     def trial_name(self):
@@ -126,6 +132,15 @@ class TrialInfo:
     @property
     def trial_id(self):
         return self._trial_id
+
+    @property
+    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+        return self._trial_resources
+
+    @trial_resources.setter
+    def trial_resources(
+            self, new_resources: Union[Resources, PlacementGroupFactory]):
+        self._trial_resources = new_resources
 
 
 def create_logdir(dirname, local_dir):

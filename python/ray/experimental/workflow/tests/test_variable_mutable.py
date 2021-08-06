@@ -1,4 +1,6 @@
+from ray.tests.conftest import *  # noqa
 from ray.experimental import workflow
+import pytest
 
 
 @workflow.step
@@ -11,19 +13,14 @@ def projection(x, _):
     return x
 
 
-@workflow.step
-def variable_mutable():
+def test_variable_mutable(workflow_start_regular):
     x = []
     a = identity.step(x)
     x.append(1)
     b = identity.step(x)
-    return projection.step(a, b)
+    assert projection.step(a, b).run() == []
 
 
-def test_variable_mutable():
-    import ray
-    ray.init(namespace="workflow")
-
-    outputs = workflow.run(variable_mutable.step())
-    assert ray.get(outputs) == []
-    ray.shutdown()
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

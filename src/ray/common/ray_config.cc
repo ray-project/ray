@@ -18,7 +18,6 @@
 #include <typeinfo>
 
 #include "nlohmann/json.hpp"
-#include "ray/util/logging.h"
 
 using json = nlohmann::json;
 

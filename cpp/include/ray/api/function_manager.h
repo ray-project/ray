@@ -69,6 +69,14 @@ struct RemoveReference<std::tuple<T...>> {
 template <class Tuple>
 using RemoveReference_t = typename RemoveReference<Tuple>::type;
 
+using RemoteFunction =
+    std::function<msgpack::sbuffer(const std::vector<msgpack::sbuffer> &)>;
+using RemoteFunctionMap_t = std::unordered_map<std::string, RemoteFunction>;
+
+using RemoteMemberFunction = std::function<msgpack::sbuffer(
+    msgpack::sbuffer *, const std::vector<msgpack::sbuffer> &)>;
+using RemoteMemberFunctionMap_t = std::unordered_map<std::string, RemoteMemberFunction>;
+
 /// It's help to invoke functions and member functions, the class Invoker<Function> help
 /// do type erase.
 template <typename Function>
@@ -80,27 +88,18 @@ struct Invoker {
     using RetrunType = boost::callable_traits::return_type_t<Function>;
     using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<Function>>;
     if (std::tuple_size<ArgsTuple>::value != args_buffer.size()) {
-      return PackError("Arguments number not match");
+      throw std::invalid_argument("Arguments number not match");
     }
 
     msgpack::sbuffer result;
     ArgsTuple tp{};
-    try {
-      bool is_ok = GetArgsTuple(
-          tp, args_buffer, std::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
-      if (!is_ok) {
-        return PackError("arguments error");
-      }
-
-      result = Invoker<Function>::Call<RetrunType>(func, std::move(tp));
-    } catch (msgpack::type_error &e) {
-      result = PackError(std::string("invalid arguments: ") + e.what());
-    } catch (const std::exception &e) {
-      result = PackError(std::string("function execute exception: ") + e.what());
-    } catch (...) {
-      result = PackError("unknown exception");
+    bool is_ok = GetArgsTuple(
+        tp, args_buffer, std::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
+    if (!is_ok) {
+      throw std::invalid_argument("Arguments error");
     }
 
+    result = Invoker<Function>::Call<RetrunType>(func, std::move(tp));
     return result;
   }
 
@@ -111,30 +110,22 @@ struct Invoker {
     using ArgsTuple =
         RemoveReference_t<RemoveFirst_t<boost::callable_traits::args_t<Function>>>;
     if (std::tuple_size<ArgsTuple>::value != args_buffer.size()) {
-      return PackError("Arguments number not match");
+      throw std::invalid_argument("Arguments number not match");
     }
 
     msgpack::sbuffer result;
     ArgsTuple tp{};
-    try {
-      bool is_ok = GetArgsTuple(
-          tp, args_buffer, std::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
-      if (!is_ok) {
-        return PackError("arguments error");
-      }
-
-      uint64_t actor_ptr =
-          ray::api::Serializer::Deserialize<uint64_t>(ptr->data(), ptr->size());
-      using Self = boost::callable_traits::class_of_t<Function>;
-      Self *self = (Self *)actor_ptr;
-      result = Invoker<Function>::CallMember<RetrunType>(func, self, std::move(tp));
-    } catch (msgpack::type_error &e) {
-      result = PackError(std::string("invalid arguments: ") + e.what());
-    } catch (const std::exception &e) {
-      result = PackError(std::string("function execute exception: ") + e.what());
-    } catch (...) {
-      result = PackError("unknown exception");
+    bool is_ok = GetArgsTuple(
+        tp, args_buffer, std::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
+    if (!is_ok) {
+      throw std::invalid_argument("Arguments error");
     }
+
+    uint64_t actor_ptr =
+        ray::api::Serializer::Deserialize<uint64_t>(ptr->data(), ptr->size());
+    using Self = boost::callable_traits::class_of_t<Function>;
+    Self *self = (Self *)actor_ptr;
+    result = Invoker<Function>::CallMember<RetrunType>(func, self, std::move(tp));
 
     return result;
   }
@@ -223,19 +214,13 @@ class FunctionManager {
     return instance;
   }
 
-  std::vector<std::string> GetRemoteFunctionNames() {
-    std::vector<std::string> names;
-    for (const auto &pair : map_invokers_) {
-      names.push_back(pair.first);
-    }
-    for (const auto &pair : map_mem_func_invokers_) {
-      names.push_back(pair.first);
-    }
-    return names;
+  std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>
+  GetRemoteFunctions() {
+    return std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>(
+        map_invokers_, map_mem_func_invokers_);
   }
 
-  std::function<msgpack::sbuffer(const std::vector<msgpack::sbuffer> &)> *GetFunction(
-      const std::string &func_name) {
+  RemoteFunction *GetFunction(const std::string &func_name) {
     auto it = map_invokers_.find(func_name);
     if (it == map_invokers_.end()) {
       return nullptr;
@@ -302,9 +287,7 @@ class FunctionManager {
     return it->second;
   }
 
-  std::function<msgpack::sbuffer(msgpack::sbuffer *,
-                                 const std::vector<msgpack::sbuffer> &)>
-      *GetMemberFunction(const std::string &func_name) {
+  RemoteMemberFunction *GetMemberFunction(const std::string &func_name) {
     auto it = map_mem_func_invokers_.find(func_name);
     if (it == map_mem_func_invokers_.end()) {
       return nullptr;
@@ -351,13 +334,8 @@ class FunctionManager {
     return std::string(arr.data(), arr.size());
   }
 
-  std::unordered_map<
-      std::string, std::function<msgpack::sbuffer(const std::vector<msgpack::sbuffer> &)>>
-      map_invokers_;
-  std::unordered_map<std::string,
-                     std::function<msgpack::sbuffer(
-                         msgpack::sbuffer *, const std::vector<msgpack::sbuffer> &)>>
-      map_mem_func_invokers_;
+  RemoteFunctionMap_t map_invokers_;
+  RemoteMemberFunctionMap_t map_mem_func_invokers_;
   std::unordered_map<std::string, std::string> func_ptr_to_key_map_;
   std::map<std::pair<std::string, std::string>, std::string> mem_func_to_key_map_;
 };

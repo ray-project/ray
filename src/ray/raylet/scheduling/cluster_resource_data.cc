@@ -1,6 +1,22 @@
-#include "ray/raylet/scheduling/cluster_resource_data.h"
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
+#include "ray/raylet/scheduling/cluster_resource_data.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/task/scheduling_resources.h"
+
+namespace ray {
 
 const std::string resource_labels[] = {
     ray::kCPU_ResourceLabel, ray::kMemory_ResourceLabel, ray::kGPU_ResourceLabel,
@@ -73,9 +89,11 @@ std::vector<double> VectorFixedPointToVectorDouble(
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
     StringIdMap &string_to_int_map,
-    const std::unordered_map<std::string, double> &resource_map) {
+    const std::unordered_map<std::string, double> &resource_map,
+    bool requires_object_store_memory) {
   ResourceRequest resource_request;
 
+  resource_request.requires_object_store_memory = requires_object_store_memory;
   resource_request.predefined_resources.resize(PredefinedResources_MAX);
 
   for (auto const &resource : resource_map) {
@@ -198,7 +216,13 @@ float NodeResources::CalculateCriticalResourceUtilization() const {
   return highest;
 }
 
-bool NodeResources::IsAvailable(const ResourceRequest &resource_request) const {
+bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
+                                bool ignore_pull_manager_at_capacity) const {
+  if (!ignore_pull_manager_at_capacity && resource_request.requires_object_store_memory &&
+      object_pulls_queued) {
+    RAY_LOG(DEBUG) << "At pull manager capacity";
+    return false;
+  }
   // First, check predefined resources.
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (i >= this->predefined_resources.size()) {
@@ -212,6 +236,7 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request) const {
     const auto &demand = resource_request.predefined_resources[i];
 
     if (resource < demand) {
+      RAY_LOG(DEBUG) << "At resource capacity";
       return false;
     }
   }
@@ -225,6 +250,7 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request) const {
       return false;
     }
   }
+
   return true;
 }
 
@@ -322,13 +348,6 @@ std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
   }
   buffer << "}" << std::endl;
   return buffer.str();
-}
-
-const std::string format_resource(std::string resource_name, double quantity) {
-  if (resource_name == "object_store_memory" || resource_name == "memory") {
-    return std::to_string(quantity / (1024 * 1024 * 1024)) + " GiB";
-  }
-  return std::to_string(quantity);
 }
 
 std::string NodeResources::DictString(StringIdMap string_to_in_map) const {
@@ -462,7 +481,6 @@ TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
   for (const auto &it : this->custom_resources) {
     task_resources.custom_resources.emplace(it.first, it.second.available);
   }
-
   return task_resources;
 };
 
@@ -562,3 +580,5 @@ bool TaskResourceInstances::operator==(const TaskResourceInstances &other) {
   }
   return true;
 }
+
+}  // namespace ray

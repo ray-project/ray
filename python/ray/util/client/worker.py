@@ -242,7 +242,7 @@ class Worker:
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
-            except pickle.UnpicklingError:
+            except (pickle.UnpicklingError, TypeError):
                 logger.exception("Failed to deserialize {}".format(data.error))
                 raise
             raise err
@@ -278,7 +278,7 @@ class Worker:
         if not resp.valid:
             try:
                 raise cloudpickle.loads(resp.error)
-            except pickle.UnpicklingError:
+            except (pickle.UnpicklingError, TypeError):
                 logger.exception("Failed to deserialize {}".format(resp.error))
                 raise
         return ClientObjectRef(resp.id)
@@ -339,7 +339,7 @@ class Worker:
         if not ticket.valid:
             try:
                 raise cloudpickle.loads(ticket.error)
-            except pickle.UnpicklingError:
+            except (pickle.UnpicklingError, TypeError):
                 logger.exception("Failed to deserialize {}".format(
                     ticket.error))
                 raise

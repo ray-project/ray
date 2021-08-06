@@ -89,8 +89,6 @@ std::shared_ptr<RayObject> GenerateRandomObject(
 extern std::string TEST_REDIS_SERVER_EXEC_PATH;
 /// Path to redis client executable binary.
 extern std::string TEST_REDIS_CLIENT_EXEC_PATH;
-/// Path to redis module library.
-extern std::string TEST_REDIS_MODULE_LIBRARY_PATH;
 /// Ports of redis server.
 extern std::vector<int> TEST_REDIS_SERVER_PORTS;
 

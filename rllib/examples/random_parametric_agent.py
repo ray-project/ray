@@ -81,10 +81,15 @@ RandomParametricTrainer = build_trainer(
     default_policy=RandomParametriclPolicy,
     execution_plan=execution_plan)
 
-if __name__ == "__main__":
-    ray.init()
+
+def main():
     register_env("pa_cartpole", lambda _: ParametricActionsCartPole(10))
     trainer = RandomParametricTrainer(env="pa_cartpole")
     result = trainer.train()
     assert result["episode_reward_mean"] > 10, result
     print("Test: OK")
+
+
+if __name__ == "__main__":
+    ray.init()
+    main()

@@ -93,6 +93,8 @@ struct NodeManagerConfig {
   std::string session_dir;
   /// The path of this ray resource dir.
   std::string resource_dir;
+  /// If true make Ray debugger available externally.
+  int ray_debugger_external;
   /// The raylet config list of this node.
   std::string raylet_config;
   // The time between record metrics in milliseconds, or 0 to disable.
@@ -256,11 +258,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Flush objects that are out of scope in the application. This will attempt
   /// to eagerly evict all plasma copies of the object from the cluster.
   void FlushObjectsToFree();
-
-  /// Get profiling information from the object manager and push it to the GCS.
-  ///
-  /// \return Void.
-  void GetObjectManagerProfileInfo();
 
   /// Handler for a resource usage notification from the GCS.
   ///

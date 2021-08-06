@@ -1,4 +1,3 @@
-import gym
 from random import choice
 import unittest
 
@@ -20,8 +19,6 @@ class TestTrainer(unittest.TestCase):
         ray.shutdown()
 
     def test_add_delete_policy(self):
-        env = gym.make("CartPole-v0")
-
         config = pg.DEFAULT_CONFIG.copy()
         config.update({
             "env": MultiAgentCartPole,
@@ -30,12 +27,12 @@ class TestTrainer(unittest.TestCase):
                     "num_agents": 4,
                 },
             },
+            "num_workers": 2,  # Test on remote workers as well.
             "multiagent": {
                 # Start with a single policy.
-                "policies": {
-                    "p0": (None, env.observation_space, env.action_space, {}),
-                },
+                "policies": {"p0"},
                 "policy_mapping_fn": lambda aid, episode, **kwargs: "p0",
+                "policy_map_capacity": 2,
             },
         })
 
@@ -43,18 +40,17 @@ class TestTrainer(unittest.TestCase):
             trainer = pg.PGTrainer(config=config)
             r = trainer.train()
             self.assertTrue("p0" in r["policy_reward_min"])
-            for i in range(1, 4):
+            checkpoints = []
+            for i in range(1, 3):
 
                 def new_mapping_fn(agent_id, episode, **kwargs):
                     return f"p{choice([i, i - 1])}"
 
                 # Add a new policy.
+                pid = f"p{i}"
                 new_pol = trainer.add_policy(
-                    f"p{i}",
+                    pid,
                     trainer._policy_class,
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
-                    config={},
                     # Test changing the mapping fn.
                     policy_mapping_fn=new_mapping_fn,
                     # Change the list of policies to train.
@@ -62,14 +58,27 @@ class TestTrainer(unittest.TestCase):
                 )
                 pol_map = trainer.workers.local_worker().policy_map
                 self.assertTrue(new_pol is not trainer.get_policy("p0"))
-                self.assertTrue("p0" in pol_map)
-                self.assertTrue("p1" in pol_map)
+                for j in range(i):
+                    self.assertTrue(f"p{j}" in pol_map)
                 self.assertTrue(len(pol_map) == i + 1)
                 r = trainer.train()
                 self.assertTrue("p1" in r["policy_reward_min"])
+                checkpoints.append(trainer.save())
+
+                # Test restoring from the checkpoint (which has more policies
+                # than what's defined in the config dict).
+                test = pg.PGTrainer(config=config)
+                test.restore(checkpoints[-1])
+                test.train()
+                # Test creating an action with the added (and restored) policy.
+                a = test.compute_single_action(
+                    test.get_policy("p0").observation_space.sample(),
+                    policy_id=pid)
+                self.assertTrue(test.get_policy("p0").action_space.contains(a))
+                test.stop()
 
             # Delete all added policies again from trainer.
-            for i in range(3, 0, -1):
+            for i in range(2, 0, -1):
                 trainer.remove_policy(
                     f"p{i}",
                     policy_mapping_fn=lambda aid, eps, **kwargs: f"p{i - 1}",
@@ -127,7 +136,7 @@ class TestTrainer(unittest.TestCase):
 
             # Try again using `create_env_on_driver=True`.
             # This force-adds the env on the local-worker, so this Trainer
-            # can `evaluate` even though, it doesn't have an evaluation-worker
+            # can `evaluate` even though it doesn't have an evaluation-worker
             # set.
             config["create_env_on_driver"] = True
             trainer_w_env_on_driver = a3c.A3CTrainer(config=config)

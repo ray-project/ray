@@ -13,17 +13,77 @@ from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
 from ray.tune import Trainable
 from ray.tune.resources import Resources
 from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.tune.suggest.basic_variant import BasicVariantGenerator
 from ray.tune.trial import Trial
 from ray.tune import trial_runner
+from ray.tune.integration.xgboost import TuneReportCheckpointCallback
+
+CHECKPOINT_FILENAME = "model.xgb"
 
 
-# Dynamic resource allocation is currently only possible
-# with Trainable (class) API
+def get_best_model_checkpoint(analysis):
+    best_bst = xgb.Booster()
+    try:
+        with open(analysis.best_checkpoint, "rb") as inputFile:
+            _, _, raw_model = pickle.load(inputFile)
+        best_bst.load_model(bytearray(raw_model))
+    except IsADirectoryError:
+        best_bst.load_model(
+            os.path.join(analysis.best_checkpoint, CHECKPOINT_FILENAME))
+    accuracy = 1. - analysis.best_result["eval-logloss"]
+    print(f"Best model parameters: {analysis.best_config}")
+    print(f"Best model total accuracy: {accuracy:.4f}")
+    return best_bst
+
+
+# FUNCTION API EXAMPLE
+
+
+# our train function needs to be able to checkpoint
+# to work with ResourceChangingScheduler
+def train_breast_cancer(config: dict, checkpoint_dir=None):
+    # This is a simple training function to be passed into Tune
+    # Load dataset
+    data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
+    # Split into train and test set
+    train_x, test_x, train_y, test_y = train_test_split(
+        data, labels, test_size=0.25)
+    # Build input matrices for XGBoost
+    train_set = xgb.DMatrix(train_x, label=train_y)
+    test_set = xgb.DMatrix(test_x, label=test_y)
+
+    # Checkpointing needs to be set up in order for dynamic
+    # resource allocation to work as intended
+    xgb_model = None
+    if checkpoint_dir:
+        xgb_model = xgb.Booster()
+        xgb_model.load_model(os.path.join(checkpoint_dir, CHECKPOINT_FILENAME))
+
+    # we can obtain current trial resources through
+    # tune.get_trial_resources()
+    config["nthread"] = int(tune.get_trial_resources().head_cpus)
+    print(f"nthreads: {config['nthread']} xgb_model: {xgb_model}")
+    # Train the classifier, using the Tune callback
+    xgb.train(
+        config,
+        train_set,
+        evals=[(test_set, "eval")],
+        verbose_eval=False,
+        xgb_model=xgb_model,
+        callbacks=[
+            TuneReportCheckpointCallback(
+                filename=CHECKPOINT_FILENAME,
+                # checkpointing should happen every iteration
+                # with dynamic resource allocation
+                frequency=1)
+        ])
+
+
+# TRAINABLE (CLASS) API EXAMPLE
 class BreastCancerTrainable(Trainable):
     def setup(self, config):
         self.config = config
         self.nthread = config.pop("nthread", 1)
+        self.new_nthread = None
         self.model: xgb.Booster = None
         # Load dataset
         data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
@@ -35,6 +95,11 @@ class BreastCancerTrainable(Trainable):
         self.test_set = xgb.DMatrix(test_x, label=test_y)
 
     def step(self):
+        # you can also obtain current trial resources:
+        current_resources = self.trial_resources
+        # testing purposes only:
+        assert int(current_resources.head_cpus) == int(self.nthread)
+
         results = {}
         config = self.config.copy()
         config["nthread"] = int(self.nthread)
@@ -62,6 +127,9 @@ class BreastCancerTrainable(Trainable):
     def load_checkpoint(self, checkpoint_path):
         with open(checkpoint_path, "rb") as inputFile:
             self.config, self.nthread, raw_model = pickle.load(inputFile)
+        if self.new_nthread:
+            self.nthread = self.new_nthread
+            self.new_nthread = None
         self.model = Booster()
         self.model.load_model(bytearray(raw_model))
         data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
@@ -74,24 +142,14 @@ class BreastCancerTrainable(Trainable):
 
     def update_resources(
             self, new_resources: Union[PlacementGroupFactory, Resources]):
+        # this is called before `load_checkpoint`
         if isinstance(new_resources, PlacementGroupFactory):
-            self.nthread = new_resources.head_cpus
+            self.new_nthread = new_resources.head_cpus
         else:
-            self.nthread = new_resources.cpu
+            self.new_nthread = new_resources.cpu
 
 
-def get_best_model_checkpoint(analysis):
-    best_bst = xgb.Booster()
-    with open(analysis.best_checkpoint, "rb") as inputFile:
-        _, _, raw_model = pickle.load(inputFile)
-    best_bst.load_model(bytearray(raw_model))
-    accuracy = 1. - analysis.best_result["eval-logloss"]
-    print(f"Best model parameters: {analysis.best_config}")
-    print(f"Best model total accuracy: {accuracy:.4f}")
-    return best_bst
-
-
-def tune_xgboost():
+def tune_xgboost(use_class_trainable=True):
     search_space = {
         # You can mix constants with search space objects.
         "objective": "binary:logistic",
@@ -112,8 +170,7 @@ def tune_xgboost():
 
     def example_resources_allocation_function(
             trial_runner: "trial_runner.TrialRunner", trial: Trial,
-            result: Dict[str, Any],
-            base_trial_resource: Union[PlacementGroupFactory, Resources]
+            result: Dict[str, Any], scheduler: "ResourceChangingScheduler"
     ) -> Union[None, PlacementGroupFactory, Resources]:
         """This is a basic example of a resource allocating function.
 
@@ -133,10 +190,13 @@ def tune_xgboost():
                 Can be used to obtain information about other trials.
             trial (Trial): The trial to allocate new resources to.
             result (Dict[str, Any]): The latest results of trial.
-            base_trial_resource (Union[PlacementGroupFactory, Resources]):
-                Base trial resources as defined in
-                ``tune.run(resources_per_trial)``
+            scheduler (ResourceChangingScheduler): The scheduler calling
+                the function.
         """
+
+        # Get base trial resources as defined in
+        # ``tune.run(resources_per_trial)``
+        base_trial_resource = scheduler._base_trial_resources
 
         # Don't bother if this is just the first iteration
         if result["training_iteration"] < 1:
@@ -174,10 +234,13 @@ def tune_xgboost():
         # resources_allocation_function=evenly_distribute_cpus_gpus  # default
     )
 
-    search = BasicVariantGenerator()
+    if use_class_trainable:
+        fn = BreastCancerTrainable
+    else:
+        fn = train_breast_cancer
 
     analysis = tune.run(
-        BreastCancerTrainable,
+        fn,
         metric="eval-logloss",
         mode="min",
         resources_per_trial=PlacementGroupFactory([{
@@ -185,13 +248,12 @@ def tune_xgboost():
             "GPU": 0
         }]),
         config=search_space,
-        search_alg=search,
         num_samples=1,
-        checkpoint_at_end=True,
-        scheduler=scheduler)
+        scheduler=scheduler,
+        checkpoint_at_end=use_class_trainable)
 
-    assert analysis.results_df["training_iteration"].max() == 16
-    assert analysis.results_df["nthread"].max() > 1
+    if use_class_trainable:
+        assert analysis.results_df["nthread"].max() > 1
 
     return analysis
 
@@ -206,14 +268,28 @@ if __name__ == "__main__":
         required=False,
         help="The address of server to connect to if using "
         "Ray Client.")
+    parser.add_argument(
+        "--class-trainable",
+        action="store_true",
+        default=False,
+        help="set to use the Trainable (class) API instead of functional one")
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        default=False,
+        help="set to run both functional and Trainable APIs")
     args, _ = parser.parse_known_args()
 
     if args.server_address:
-        ray.util.connect(args.server_address)
+        ray.init(f"ray://{args.server_address}")
     else:
         ray.init(num_cpus=8)
 
-    analysis = tune_xgboost()
+    if args.test:
+        analysis = tune_xgboost(use_class_trainable=True)
+        best_bst = get_best_model_checkpoint(analysis)
+
+    analysis = tune_xgboost(use_class_trainable=args.class_trainable)
 
     # Load the best model checkpoint.
     if args.server_address:

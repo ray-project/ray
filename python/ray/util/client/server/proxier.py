@@ -5,7 +5,6 @@ import grpc
 import logging
 from itertools import chain
 import json
-import psutil
 import socket
 import sys
 from threading import Lock, Thread, RLock
@@ -23,6 +22,9 @@ from ray.util.client.common import (ClientServerHandle,
 from ray._private.parameter import RayParams
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -441,7 +443,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         f"using JobConfig: {job_config}!")
                     raise RuntimeError(
                         "Starting up Server Failed! Check "
-                        "`ray_client_server.err` on the cluster.")
+                        "`ray_client_server_[port].err` on the cluster.")
                 channel = self.proxy_manager.get_channel(client_id)
                 if channel is None:
                     logger.error(f"Channel not found for {client_id}")

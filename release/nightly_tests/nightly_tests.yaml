@@ -53,7 +53,6 @@
     timeout: 3000
     script: python shuffle/shuffle_test.py --num-partitions=500 --partition-size=100e6 --no-streaming
 
-# Test non streaming shuffle in a single node with a large number of partition.
 - name: dask_on_ray_10gb_sort
   cluster:
     app_config: dask_on_ray/dask_on_ray_app_config.yaml
@@ -63,7 +62,6 @@
     timeout: 7200
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 10_000_000_000 --npartitions 50 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
 
-# Test non streaming shuffle in a single node with a large number of partition.
 - name: dask_on_ray_100gb_sort
   cluster:
     app_config: dask_on_ray/dask_on_ray_app_config.yaml
@@ -106,7 +104,7 @@
     compute_template: shuffle/shuffle_compute_autoscaling.yaml
 
   run:
-    timeout: 3000
+    timeout: 4000
     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9 --no-streaming
 
 # Test multi nodes 1TB streaming shuffle with a large number of partitions.
@@ -138,7 +136,7 @@
     compute_template: shuffle/shuffle_compute_large_scale.yaml
 
   run:
-    timeout: 3000
+    timeout: 7200
     prepare: python wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6
 
@@ -149,7 +147,7 @@
     compute_template: shuffle/shuffle_compute_large_scale.yaml
 
   run:
-    timeout: 3000
+    timeout: 7200
     prepare: python wait_cluster.py 20 900
     script: python shuffle/shuffle_test.py --num-partitions=5000 --partition-size=200e6 --no-streaming
 
@@ -262,3 +260,57 @@
   run:
     timeout: 9600
     script: python decision_tree/cart_with_tree.py --concurrency=20
+
+# Stress test shuffle_data_loader.
+- name: shuffle_data_loader
+  cluster:
+    app_config: shuffle_data_loader/shuffle_data_loader_app_config.yaml
+    compute_template: shuffle_data_loader/shuffle_data_loader_compute.yaml
+
+  run:
+    timeout: 7200 
+    script: >
+      python shuffle_data_loader/benchmark.py
+      --num-rows 100_000_000
+      --num-files 50
+      --num-row-groups-per-file 5
+      --num-reducers 32 --num-trainers 16
+      --batch-size 250000
+      --cluster
+      --num-trials 1
+      --num-epochs 10
+      --max-concurrent-epochs 2
+      --data-dir s3://core-nightly-test/shuffle-data/
+      --no-stats
+
+# Stress test shuffle_data_loader.
+- name: shuffle_data_loader_4_nodes
+  cluster:
+    app_config: shuffle_data_loader/shuffle_data_loader_app_config.yaml
+    compute_template: shuffle_data_loader/shuffle_data_loader_compute_4_nodes.yaml
+
+  run:
+    timeout: 7200
+    prepare: python wait_cluster.py 4 600
+    script: >
+      python shuffle_data_loader/benchmark.py
+      --num-rows 400_000_000
+      --num-files 50
+      --num-row-groups-per-file 5
+      --num-reducers 32 --num-trainers 16
+      --batch-size 250000
+      --cluster
+      --num-trials 1
+      --num-epochs 10
+      --max-concurrent-epochs 2
+      --data-dir s3://core-nightly-test/shuffle-data/
+      --no-stats
+
+- name: dask_on_ray_1tb_sort
+  cluster:
+    app_config: dask_on_ray/dask_on_ray_app_config.yaml
+    compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+
+  run:
+    timeout: 14400
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions 500 --num-nodes 5 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test

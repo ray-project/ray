@@ -4,7 +4,6 @@ from datetime import datetime
 import logging
 import hashlib
 import json
-import jsonschema
 import os
 import threading
 from typing import Any, Dict, List
@@ -75,6 +74,13 @@ def validate_config(config: Dict[str, Any]) -> None:
 
     with open(RAY_SCHEMA_PATH) as f:
         schema = json.load(f)
+
+    try:
+        import jsonschema
+    except (ModuleNotFoundError, ImportError) as e:
+        # Don't log a warning message here. Logging be handled by upstream.
+        raise e from None
+
     try:
         jsonschema.validate(config, schema)
     except jsonschema.ValidationError as e:

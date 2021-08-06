@@ -183,6 +183,12 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                    config.worker_commands,
                    /*starting_worker_timeout_callback=*/
                    [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+                   /*runtime_env_setup_failed_callback=*/
+                   [this](const TaskID &task_id) {
+                     RAY_CHECK(cluster_task_manager_->CancelTask(
+                         task_id, /*runtime_env_setup_failed=*/true));
+                   },
+                   config.ray_debugger_external,
                    /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
@@ -287,7 +293,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   cluster_resource_scheduler_ =
       std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
           self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap(),
-          [this]() { return object_manager_.GetUsedMemory(); }));
+          [this]() { return object_manager_.GetUsedMemory(); },
+          [this]() { return object_manager_.PullManagerHasPullsQueued(); }));
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
@@ -467,12 +474,6 @@ ray::Status NodeManager::RegisterGcs() {
   periodical_runner_.RunFnPeriodically(
       [this] { ReportResourceUsage(); }, report_resources_period_ms_,
       "NodeManager.deadline_timer.report_resource_usage");
-  // Start the timer that gets object manager profiling information and sends it
-  // to the GCS.
-  periodical_runner_.RunFnPeriodically(
-      [this] { GetObjectManagerProfileInfo(); },
-      RayConfig::instance().raylet_heartbeat_period_milliseconds(),
-      "NodeManager.deadline_timer.object_manager_profiling");
 
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
@@ -538,21 +539,6 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
   RAY_CHECK(job_data.is_dead());
   worker_pool_.HandleJobFinished(job_id);
-
-  auto workers = worker_pool_.GetWorkersRunningTasksForJob(job_id);
-  // Kill all the workers. The actual cleanup for these workers is done
-  // later when we receive the DisconnectClient message from them.
-  for (const auto &worker : workers) {
-    if (!worker->IsDetachedActor()) {
-      // Clean up any open ray.wait calls that the worker made.
-      dependency_manager_.CancelWaitRequest(worker->WorkerId());
-      // Mark the worker as dead so further messages from it are ignored
-      // (except DisconnectClient).
-      worker->MarkDead();
-      // Then kill the worker process.
-      KillWorker(worker);
-    }
-  }
   runtime_env_manager_.RemoveURIReference(job_id.Hex());
 }
 
@@ -766,16 +752,18 @@ void NodeManager::WarnResourceDeadlock() {
     std::ostringstream error_message;
     error_message
         << "The actor or task with ID " << exemplar.GetTaskSpecification().TaskId()
-        << " cannot be scheduled right now. It requires "
+        << " cannot be scheduled right now. You can ignore this message if this "
+        << "Ray cluster is expected to auto-scale or if you specified a "
+        << "runtime_env for this actor or task, which may take time to install.  "
+        << "Otherwise, this is likely due to all cluster resources being claimed "
+        << "by actors. To resolve the issue, consider creating fewer actors or "
+        << "increasing the resources available to this Ray cluster.\n"
+        << "Required resources for this actor or task: "
         << exemplar.GetTaskSpecification().GetRequiredPlacementResources().ToString()
-        << " for placement, but this node only has remaining " << available_resources
-        << ". In total there are " << pending_tasks << " pending tasks and "
-        << pending_actor_creations << " pending actors on this node. "
-        << "This is likely due to all cluster resources being claimed by actors. "
-        << "To resolve the issue, consider creating fewer actors or increase the "
-        << "resources available to this Ray cluster. You can ignore this message "
-        << "if this Ray cluster is expected to auto-scale or if you specified a "
-        << "runtime_env for this task or actor because it takes time to install.";
+        << "\n"
+        << "Available resources on this node: " << available_resources
+        << "In total there are " << pending_tasks << " pending tasks and "
+        << pending_actor_creations << " pending actors on this node.";
 
     std::string error_message_str = error_message.str();
     RAY_LOG(WARNING) << error_message_str;
@@ -787,21 +775,6 @@ void NodeManager::WarnResourceDeadlock() {
   // Try scheduling tasks. Without this, if there's no more tasks coming in, deadlocked
   // tasks are never be scheduled.
   cluster_task_manager_->ScheduleAndDispatchTasks();
-}
-
-void NodeManager::GetObjectManagerProfileInfo() {
-  int64_t start_time_ms = current_time_ms();
-
-  auto profile_info = object_manager_.GetAndResetProfilingInfo();
-
-  if (profile_info->profile_events_size() > 0) {
-    RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(profile_info, nullptr));
-  }
-
-  int64_t interval = current_time_ms() - start_time_ms;
-  if (interval > RayConfig::instance().handler_warning_timeout_ms()) {
-    RAY_LOG(WARNING) << "GetObjectManagerProfileInfo handler took " << interval << " ms.";
-  }
 }
 
 void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
@@ -1243,19 +1216,9 @@ void NodeManager::DisconnectClient(
     }
   }
   RAY_CHECK(!(is_worker && is_driver));
-  // If the client has any blocked tasks, mark them as unblocked. In
-  // particular, we are no longer waiting for their dependencies.
-  if (is_worker && worker->IsDead()) {
-    // If the worker was killed by us because the driver exited,
-    // treat it as intentionally disconnected.
-    // Don't need to unblock the client if it's a worker and is already dead.
-    // Because in this case, its task is already cleaned up.
-    RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
-  } else {
-    // Clean up any open ray.wait calls that the worker made.
-    dependency_manager_.CancelGetRequest(worker->WorkerId());
-    dependency_manager_.CancelWaitRequest(worker->WorkerId());
-  }
+  // Clean up any open ray.get or ray.wait calls that the worker made.
+  dependency_manager_.CancelGetRequest(worker->WorkerId());
+  dependency_manager_.CancelWaitRequest(worker->WorkerId());
 
   // Erase any lease metadata.
   leased_workers_.erase(worker->WorkerId());
@@ -2282,6 +2245,9 @@ rpc::ObjectStoreStats AccumulateStoreStats(
                                       cur_store.num_local_objects());
     store_stats.set_consumed_bytes(store_stats.consumed_bytes() +
                                    cur_store.consumed_bytes());
+    if (cur_store.object_pulls_queued()) {
+      store_stats.set_object_pulls_queued(true);
+    }
   }
   return store_stats;
 }

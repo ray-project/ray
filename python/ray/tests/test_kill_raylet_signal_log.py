@@ -1,8 +1,12 @@
-import psutil
 import signal
 import sys
 import pytest
 import ray
+
+# Import psutil after ray so the packaged version is used.
+import psutil
+
+from ray.test_utils import wait_for_condition
 
 
 def get_pid(name):
@@ -23,9 +27,13 @@ def check_result(filename, num_signal, check_key):
     p = psutil.Process(pid)
     p.send_signal(num_signal)
     p.wait(timeout=15)
-    with open(raylet_out_path) as f:
-        s = f.read()
-        assert check_key in s
+
+    def check_file():
+        with open(raylet_out_path) as f:
+            s = f.read()
+            return check_key in s
+
+    wait_for_condition(check_file)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not support on Windows.")

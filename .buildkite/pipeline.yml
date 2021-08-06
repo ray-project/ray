@@ -36,6 +36,25 @@
       --test_env=RAY_CI_POST_WHEEL_TESTS=True
       python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/... doc/...
 
+- label: ":ferris_wheel: Debug Wheels"
+  conditions:
+    [
+        "RAY_CI_LINUX_WHEELS_AFFECTED",
+        "RAY_CI_JAVA_AFFECTED",
+        "RAY_CI_STREAMING_JAVA_AFFECTED",
+    ]
+  commands:
+    # Build the debug wheels
+    - RAY_DEBUG_BUILD=1 LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    # Upload the wheels.
+    # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
+    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    - pip install -q docker aws_requests_auth boto3
+    # Upload to branch directory.
+    - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
+    # Upload to latest directory.
+    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
+
 - label: ":docker: Build Images: py36"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
@@ -59,6 +78,14 @@
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/travis/build-docker-images.py --py-versions PY38 --build-type BUILDKITE --build-base
+
+- label: ":docker: Build Images: py39"
+  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  commands:
+    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - pip install -q docker aws_requests_auth boto3
+    - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
+    - python ./ci/travis/build-docker-images.py --py-versions PY39 --build-type BUILDKITE --build-base
 
 - label: ":book: Lint"
   commands:
@@ -164,6 +191,14 @@
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky
       python/ray/tests/...
+- label: ":core: Debug Test"
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - pip uninstall -y ray
+    - RAY_DEBUG_BUILD=1 ./ci/travis/ci.sh build
+    - bazel test --config=ci-debug $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-jenkins_only,debug_tests,-flaky
+      python/ray/tests/...
 - label: ":python: (Worker In Container)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -230,17 +265,23 @@
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
-- label: ":brain: RLlib: rllib/examples/ {1/2}"
+- label: ":brain: RLlib: Examples {A/B}"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_A,examples_B,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+
+- label: ":brain: RLlib: Examples {C/D}"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_C,examples_D,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
-- label: ":brain: RLlib: rllib/examples/ {2/2}"
+- label: ":brain: RLlib: Examples {E/P}"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -248,10 +289,17 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_E,examples_F,examples_G,examples_H,examples_I,examples_J,examples_K,examples_L,examples_M,examples_N,examples_O,examples_P,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
+
+- label: ":brain: RLlib: Examples {Q/Z}"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=examples_Q,examples_R,examples_S,examples_T,examples_U,examples_V,examples_W,examples_X,examples_Y,examples_Z,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
-- label: ":brain: RLlib: rllib/tests/ (A-L)"
+
+- label: ":brain: RLlib: tests/ dir (A-L)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -259,7 +307,7 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
       --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I,tests_dir_J,tests_dir_K,tests_dir_L,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
-- label: ":brain: RLlib: rllib/tests/ (M-Z)"
+- label: ":brain: RLlib: tests/ dir (M-Z)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -300,6 +348,7 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-flaky,-client python/ray/util/sgd/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-flaky,-client python/ray/util/sgd/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=client_unit_tests --test_env=RAY_CLIENT_MODE=1 python/ray/util/sgd/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/sgd/v2/...
 
 - label: ":octopus: Tune/SGD/Modin/Dask tests and examples. Python 3.7"
   conditions: ["RAY_CI_TUNE_AFFECTED", "RAY_CI_SGD_AFFECTED"]
@@ -331,7 +380,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/experimental/workflow/... python/ray/experimental/data/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/experimental/workflow/... python/ray/data/...
 
 - label: ":book: Doc tests and examples"
   conditions:

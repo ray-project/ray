@@ -87,6 +87,17 @@ the other break point and hit ``c`` again to continue the execution.
 The Ray program ``debugging.py`` now finished and should have printed ``[0, 1]``. Congratulations, you
 have finished your first Ray debugging session!
 
+Running on a Cluster
+--------------------
+
+The Ray debugger supports setting breakpoints inside of tasks and actors that are running across your
+Ray cluster. In order to attach to these from the head node of the cluster using ``ray debug``, you'll
+need to make sure to pass in the ``--ray-debugger-external`` flag to ``ray start`` when starting the
+cluster (likely in your ``cluster.yaml`` file or k8s Ray cluster spec).
+
+Note that this flag will cause the workers to listen for PDB commands on an external-facing IP address,
+so this should *only* be used if your cluster is behind a firewall.
+
 Debugger Commands
 -----------------
 
@@ -114,9 +125,13 @@ following recursive function as an example:
             n_ref = fact.remote(n - 1)
             return n * ray.get(n_ref)
 
-    breakpoint()
-    result_ref = fact.remote(5)
-    result = ray.get(result_ref)
+    @ray.remote
+    def compute():
+        breakpoint()
+        result_ref = fact.remote(5)
+        result = ray.get(result_ref)
+
+    ray.get(compute.remote())
 
 
 After running the program by executing the Python file and calling
@@ -126,7 +141,7 @@ enter. This will result in the following output:
 .. code-block:: python
 
     Enter breakpoint index or press enter to refresh: 0
-    > /home/ubuntu/tmp/stepping.py(14)<module>()
+    > /home/ubuntu/tmp/stepping.py(16)<module>()
     -> result_ref = fact.remote(5)
     (Pdb)
 

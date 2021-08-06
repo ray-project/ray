@@ -23,10 +23,11 @@ from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils import FilterManager, deep_update, merge_dicts
-from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
+from ray.rllib.utils import deep_update, FilterManager, merge_dicts
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, \
+    PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.from_config import from_config
@@ -40,7 +41,6 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
 from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -432,6 +432,13 @@ COMMON_CONFIG: TrainerConfigDict = {
         # of (policy_cls, obs_space, act_space, config). This defines the
         # observation and action spaces of the policies and any extra config.
         "policies": {},
+        # Keep this many policies in the "policy_map" (before writing
+        # least-recently used ones to disk/S3).
+        "policy_map_capacity": 100,
+        # Where to store overflowing (least-recently used) policies?
+        # Could be a directory (str) or an S3 location. None for using
+        # the default output dir.
+        "policy_map_cache": None,
         # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,
         # Optional list of policies to train, or None for all policies.
@@ -544,7 +551,8 @@ class Trainer(Trainable):
         config = config or {}
 
         # Trainers allow env ids to be passed directly to the constructor.
-        self._env_id = self._register_if_needed(env or config.get("env"))
+        self._env_id = self._register_if_needed(
+            env or config.get("env"), config)
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -689,8 +697,8 @@ class Trainer(Trainable):
         # Merge the supplied config with the class default, but store the
         # user-provided one.
         self.raw_user_config = config
-        self.config = Trainer.merge_trainer_configs(self._default_config,
-                                                    config)
+        self.config = self.merge_trainer_configs(self._default_config, config,
+                                                 self._allow_unknown_configs)
 
         # Check and resolve DL framework settings.
         # Enable eager/tracing support.
@@ -824,11 +832,8 @@ class Trainer(Trainable):
         """Subclasses should override this for custom initialization."""
         raise NotImplementedError
 
-    # TODO: (sven) Deprecate in favor of Trainer.evaluate().
-    @DeveloperAPI
+    @Deprecated(new="Trainer.evaluate", error=False)
     def _evaluate(self) -> dict:
-        deprecation_warning(
-            "Trainer._evaluate", "Trainer.evaluate", error=False)
         return self.evaluate()
 
     @PublicAPI
@@ -946,7 +951,7 @@ class Trainer(Trainable):
             unsquash_actions: Optional[bool] = None,
             clip_actions: Optional[bool] = None,
     ) -> TensorStructType:
-        """Computes an action for the specified policy on the local Worker.
+        """Computes an action for the specified policy on the local worker.
 
         Note that you can also access the policy object through
         self.get_policy(policy_id) and call compute_single_action() on it
@@ -977,17 +982,31 @@ class Trainer(Trainable):
             any: The computed action if full_fetch=False, or
             tuple: The full output of policy.compute_actions() if
                 full_fetch=True or we have an RNN-based Policy.
+
+        Raises:
+            KeyError: If the `policy_id` cannot be found in this Trainer's
+                local worker.
         """
+        policy = self.get_policy(policy_id)
+        if policy is None:
+            raise KeyError(
+                f"PolicyID '{policy_id}' not found in PolicyMap of the "
+                f"Trainer's local worker!")
+
+        local_worker = self.workers.local_worker()
+
         if state is None:
             state = []
+
         # Check the preprocessor and preprocess, if necessary.
-        pp = self.workers.local_worker().preprocessors[policy_id]
+        pp = local_worker.preprocessors[policy_id]
         if type(pp).__name__ != "NoPreprocessor":
             observation = pp.transform(observation)
-        filtered_observation = self.workers.local_worker().filters[policy_id](
+        filtered_observation = local_worker.filters[policy_id](
             observation, update=False)
 
-        result = self.get_policy(policy_id).compute_single_action(
+        # Compute the action.
+        result = policy.compute_single_action(
             filtered_observation,
             state,
             prev_action,
@@ -997,15 +1016,15 @@ class Trainer(Trainable):
             clip_actions=clip_actions,
             explore=explore)
 
+        # Return 3-Tuple: Action, states, and extra-action fetches.
         if state or full_fetch:
             return result
+        # Ensure backward compatibility.
         else:
-            return result[0]  # backwards compatibility
+            return result[0]
 
-    @PublicAPI
+    @Deprecated(new="compute_single_action", error=False)
     def compute_action(self, *args, **kwargs):
-        if log_once("Trainer.compute_action"):
-            deprecation_warning("compute_action", "compute_single_action")
         return self.compute_single_action(*args, **kwargs)
 
     @PublicAPI
@@ -1181,7 +1200,7 @@ class Trainer(Trainable):
                 local worker).
         """
 
-        def fn(worker):
+        def fn(worker: RolloutWorker):
             # `foreach_worker` function: Adds the policy the the worker (and
             # maybe changes its policy_mapping_fn - if provided here).
             worker.add_policy(
@@ -1366,8 +1385,46 @@ class Trainer(Trainable):
         if simple_optim_setting != DEPRECATED_VALUE:
             deprecation_warning(old="simple_optimizer", error=False)
 
+        # Loop through all policy definitions in multi-agent policies.
+        multiagent_config = config["multiagent"]
+        policies = multiagent_config.get("policies")
+        if not policies:
+            policies = {DEFAULT_POLICY_ID}
+        if isinstance(policies, set):
+            policies = multiagent_config["policies"] = {
+                pid: PolicySpec()
+                for pid in policies
+            }
+        is_multiagent = len(policies) > 1 or DEFAULT_POLICY_ID not in policies
+
+        for pid, policy_spec in policies.copy().items():
+            # Policy IDs must be strings.
+            if not isinstance(pid, str):
+                raise ValueError("Policy keys must be strs, got {}".format(
+                    type(pid)))
+
+            # Convert to PolicySpec if plain list/tuple.
+            if not isinstance(policy_spec, PolicySpec):
+                # Values must be lists/tuples of len 4.
+                if not isinstance(policy_spec, (list, tuple)) or \
+                        len(policy_spec) != 4:
+                    raise ValueError(
+                        "Policy specs must be tuples/lists of "
+                        "(cls or None, obs_space, action_space, config), "
+                        f"got {policy_spec}")
+                policies[pid] = PolicySpec(*policy_spec)
+
+            # Config is None -> Set to {}.
+            if policies[pid].config is None:
+                policies[pid] = policies[pid]._replace(config={})
+            # Config not a dict.
+            elif not isinstance(policies[pid].config, dict):
+                raise ValueError(
+                    f"Multiagent policy config for {pid} must be a dict, "
+                    f"but got {type(policies[pid].config)}!")
+
         framework = config.get("framework")
-        # Multi-GPU setting: Must use TFMultiGPU if tf.
+        # Multi-GPU setting: Must use MultiGPUTrainOneStep.
         if config.get("num_gpus", 0) > 1:
             if framework in ["tfe", "tf2"]:
                 raise ValueError("`num_gpus` > 1 not supported yet for "
@@ -1375,22 +1432,25 @@ class Trainer(Trainable):
             elif simple_optim_setting is True:
                 raise ValueError(
                     "Cannot use `simple_optimizer` if `num_gpus` > 1! "
-                    "Consider `simple_optimizer=False`.")
-            config["simple_optimizer"] = framework == "torch"
-        # Auto-setting: Use simple-optimizer for torch/tfe or multiagent,
-        # otherwise: TFMultiGPU (if supported by the algo's execution plan).
+                    "Consider not setting `simple_optimizer` in your config.")
+            config["simple_optimizer"] = False
+        # Auto-setting: Use simple-optimizer for tf-eager or multiagent,
+        # otherwise: MultiGPUTrainOneStep (if supported by the algo's execution
+        # plan).
         elif simple_optim_setting == DEPRECATED_VALUE:
-            # Non-TF: Must use simple optimizer.
-            if framework != "tf":
+            # tf-eager: Must use simple optimizer.
+            if framework not in ["tf", "torch"]:
                 config["simple_optimizer"] = True
-            # TF + Multi-agent case: Try using MultiGPU optimizer (only
-            # if all policies used are DynamicTFPolicies).
-            elif len(config["multiagent"]["policies"]) > 0:
+            # Multi-agent case: Try using MultiGPU optimizer (only
+            # if all policies used are DynamicTFPolicies or TorchPolicies).
+            elif is_multiagent:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
+                from ray.rllib.policy.torch_policy import TorchPolicy
                 default_policy_cls = None if trainer_obj_or_none is None else \
                     getattr(trainer_obj_or_none, "_policy_class", None)
-                if any((p[0] or default_policy_cls) is None or not issubclass(
-                        p[0] or default_policy_cls, DynamicTFPolicy)
+                if any((p[0] or default_policy_cls) is None
+                       or not issubclass(p[0] or default_policy_cls,
+                                         (DynamicTFPolicy, TorchPolicy))
                        for p in config["multiagent"]["policies"].values()):
                     config["simple_optimizer"] = True
                 else:
@@ -1398,9 +1458,9 @@ class Trainer(Trainable):
             else:
                 config["simple_optimizer"] = False
 
-        # User manually set simple-optimizer to False -> Error if not tf.
+        # User manually set simple-optimizer to False -> Error if tf-eager.
         elif simple_optim_setting is False:
-            if framework in ["tfe", "tf2", "torch"]:
+            if framework in ["tfe", "tf2"]:
                 raise ValueError("`simple_optimizer=False` not supported for "
                                  "framework={}!".format(framework))
 
@@ -1565,12 +1625,26 @@ class Trainer(Trainable):
             "that were generated via the `ray.rllib.agents.trainer_template."
             "build_trainer()` function!")
 
-    def _register_if_needed(self, env_object: Union[str, EnvType, None]):
+    def _register_if_needed(self, env_object: Union[str, EnvType, None],
+                            config):
         if isinstance(env_object, str):
             return env_object
         elif isinstance(env_object, type):
             name = env_object.__name__
-            register_env(name, lambda config: env_object(config))
+
+            # Add convenience `_get_spaces` method.
+
+            def _get_spaces(s):
+                return s.observation_space, s.action_space
+
+            env_object._get_spaces = _get_spaces
+
+            if config.get("remote_worker_envs"):
+                register_env(
+                    name,
+                    lambda cfg: ray.remote(num_cpus=0)(env_object).remote(cfg))
+            else:
+                register_env(name, lambda config: env_object(config))
             return name
         elif env_object is None:
             return None

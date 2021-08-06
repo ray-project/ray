@@ -144,16 +144,17 @@ cc_test(
 
 cc_test(
     name = "cluster_mode_test",
-    testonly = 0,
     srcs = glob([
         "src/ray/test/cluster/*.cc",
+        "src/ray/test/cluster/*.h",
     ]),
     args = [
-        "--ray-dynamic-library-path=$(location cluster_mode_test.so)",
+        "--ray-code-search-path=$(location plus.so):$(location counter.so)",
     ],
     copts = COPTS,
     data = [
-        "cluster_mode_test.so",
+        "counter.so",
+        "plus.so",
         "ray_cpp_pkg",
     ],
     linkstatic = True,
@@ -165,16 +166,31 @@ cc_test(
 )
 
 cc_binary(
-    name = "cluster_mode_test.so",
-    srcs = glob([
-        "src/ray/test/cluster/*.cc",
-    ]),
+    name = "plus.so",
+    testonly = True,
+    srcs = [
+        "src/ray/test/cluster/plus.cc",
+        "src/ray/test/cluster/plus.h",
+    ],
     copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
         "ray_api",
-        "@com_github_gflags_gflags//:gflags",
-        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "counter.so",
+    testonly = True,
+    srcs = [
+        "src/ray/test/cluster/counter.cc",
+        "src/ray/test/cluster/counter.h",
+    ],
+    copts = COPTS,
+    linkopts = ["-shared"],
+    linkstatic = True,
+    deps = [
+        "ray_api",
     ],
 )

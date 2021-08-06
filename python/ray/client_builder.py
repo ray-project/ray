@@ -1,12 +1,15 @@
 import os
 import importlib
+import json
 import logging
 from dataclasses import dataclass
 import sys
 
 from typing import Any, Dict, Optional, Tuple
 
-from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
+from ray.ray_constants import (RAY_ADDRESS_ENVIRONMENT_VARIABLE,
+                               RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
+                               RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
 from ray.job_config import JobConfig
 import ray.util.client_connect
 
@@ -63,6 +66,7 @@ class ClientBuilder:
     def __init__(self, address: Optional[str]) -> None:
         self.address = address
         self._job_config = JobConfig()
+        self._fill_defaults_from_env()
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -105,11 +109,42 @@ class ClientBuilder:
             protocol_version=client_info_dict["protocol_version"],
             _num_clients=client_info_dict["num_clients"])
 
+    def _fill_defaults_from_env(self):
+        # Check environment variables for default values
+        namespace_env_var = os.environ.get(RAY_NAMESPACE_ENVIRONMENT_VARIABLE)
+        if namespace_env_var and self._job_config.ray_namespace is None:
+            self.namespace(namespace_env_var)
+
+        runtime_env_var = os.environ.get(RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
+        if runtime_env_var and self._job_config.runtime_env is None:
+            self.env(json.loads(runtime_env_var))
+
+    def _init_args(self, **kwargs) -> "ClientBuilder":
+        """
+        When a client builder is constructed through ray.init, for example
+        `ray.init(ray://..., namespace=...)`, all of the
+        arguments passed into ray.init are passed again into this method.
+        Custom client builders can override this method to do their own
+        handling/validation of arguments.
+        """
+        # Use namespace and runtime_env from ray.init call
+        if kwargs.get("namespace") is not None:
+            self.namespace(kwargs["namespace"])
+            del kwargs["namespace"]
+        if kwargs.get("runtime_env") is not None:
+            self.env(kwargs["runtime_env"])
+            del kwargs["runtime_env"]
+        if not kwargs:
+            return self
+        unknown = ", ".join(kwargs)
+        raise RuntimeError(
+            f"Unexpected keyword argument(s) for Ray Client: {unknown}")
+
 
 class _LocalClientBuilder(ClientBuilder):
     def connect(self) -> ClientContext:
         """
-        Begin a connection to the address passed in via ray.client(...).
+        Begin a connection to the address passed in via ray.client(...)
         """
         connection_dict = ray.init(
             address=self.address, job_config=self._job_config)

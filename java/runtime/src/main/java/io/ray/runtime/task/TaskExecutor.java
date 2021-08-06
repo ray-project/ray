@@ -16,8 +16,10 @@ import io.ray.runtime.object.ObjectSerializer;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -129,7 +131,20 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
           result = rayFunction.getConstructor().newInstance(args);
         }
       } catch (InvocationTargetException e) {
-        LOGGER.error("Execute rayFunction {} failed. actor {}, args {}", rayFunction, actor, args);
+        final boolean isIntentionalSystemExit =
+            e.getCause() != null && e.getCause() instanceof RayIntentionalSystemExitException;
+        if (!isIntentionalSystemExit) {
+          final List<Class<?>> argTypes =
+              Arrays.stream(args)
+                  .map(arg -> arg == null ? null : arg.getClass())
+                  .collect(Collectors.toList());
+          LOGGER.error(
+              "Execute rayFunction {} failed. actor {}, argument types {}",
+              rayFunction,
+              actor,
+              argTypes);
+        }
+
         if (e.getCause() != null) {
           throw e.getCause();
         } else {

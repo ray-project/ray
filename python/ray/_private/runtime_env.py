@@ -194,9 +194,11 @@ class RuntimeEnvDict:
         # Used for testing wheels that have not yet been merged into master.
         # If this is set to True, then we do not inject Ray into the conda
         # or pip dependencies.
-        if "_skip_inject_ray" in runtime_env_json:
-            self._dict["_skip_inject_ray"] = runtime_env_json[
-                "_skip_inject_ray"]
+        if os.environ.get("RAY_RUNTIME_ENV_LOCAL_DEV_MODE"):
+            runtime_env_json["_inject_current_ray"] = True
+        if "_inject_current_ray" in runtime_env_json:
+            self._dict["_inject_current_ray"] = runtime_env_json[
+                "_inject_current_ray"]
 
         # TODO(ekl) we should have better schema validation here.
         # TODO(ekl) support py_modules
