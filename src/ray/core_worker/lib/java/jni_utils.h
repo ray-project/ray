@@ -594,9 +594,8 @@ inline std::string GetFullName(bool global, std::string name) {
   if (name.empty()) {
     return "";
   }
-  return global
-             ? name
-             : ::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" + name;
+  return global ? name
+                : CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" + name;
 }
 
 inline std::shared_ptr<LocalMemoryBuffer> SerializeActorCreationException(

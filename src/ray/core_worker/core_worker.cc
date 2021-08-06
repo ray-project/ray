@@ -27,7 +27,6 @@
 
 namespace ray {
 namespace core {
-namespace {
 
 // Duration between internal book-keeping heartbeats.
 const uint64_t kInternalHeartbeatMillis = 1000;
