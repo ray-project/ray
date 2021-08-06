@@ -77,7 +77,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     popd
   fi
 
-  if [ ! -n "$TRAVIS_COMMIT" ]; then
+  if [ -z "${TRAVIS_COMMIT}" ]; then
     TRAVIS_COMMIT=${BUILDKITE_COMMIT}
   fi
 
