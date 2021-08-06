@@ -152,8 +152,8 @@ int main(int argc, char **argv) {
   auto raylet_socket = std::string(argv[2]);
   auto node_manager_port = std::stoi(std::string(argv[3]));
 
-  gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
-  MockWorker worker(store_socket, raylet_socket, node_manager_port, gcs_options);
+  ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
+  ray::core::MockWorker worker(store_socket, raylet_socket, node_manager_port, gcs_options);
   worker.RunTaskExecutionLoop();
   return 0;
 }
