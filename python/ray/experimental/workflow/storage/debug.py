@@ -17,8 +17,11 @@ class LoggedStorage(FilesystemStorageImpl):
         self._count = self._workflow_root_dir / "count.log"
         if not self._log_dir.exists():
             self._log_dir.mkdir()
-        with open(self._count, "w") as f:
-            f.write("0")
+        # only one process initializes the count
+        with FileLock(str(self._workflow_root_dir / ".lock")):
+            if not self._count.exists():
+                with open(self._count, "x") as f:
+                    f.write("0")
 
     async def put(self, key: str, data: Any, is_json: bool = False) -> None:
         with FileLock(str(self._workflow_root_dir / ".lock")):
@@ -94,7 +97,7 @@ class DebugStorage(Storage):
         return DEBUG_PREFIX + self._wrapped_storage.storage_url
 
     def __reduce__(self):
-        return DebugStorage, (self._logged_storage, )
+        return DebugStorage, (self._wrapped_storage, )
 
     def get_logs(self) -> List:
         return [
