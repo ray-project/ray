@@ -123,7 +123,7 @@ install_requires = [
     # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
     "aiohttp",
     "aiohttp_cors",
-    "aioredis",
+    "aioredis < 2",
     "click >= 7.0",
     "colorama",
     "dataclasses; python_version < '3.7'",
