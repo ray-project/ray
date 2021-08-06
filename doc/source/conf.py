@@ -19,7 +19,7 @@ import os
 import urllib
 
 sys.path.insert(0, os.path.abspath('.'))
-from custom_directives import CustomGalleryItemDirective
+from custom_directives import CustomGalleryItemDirective, fix_xgb_lgbm_docs
 from datetime import datetime
 
 # These lines added to enable Sphinx to work without installing Ray.
@@ -47,6 +47,10 @@ MOCK_MODULES = [
     "modin",
     "mxnet",
     "mxnet.model",
+    "optuna",
+    "optuna.distributions",
+    "optuna.samplers",
+    "optuna.trial",
     "psutil",
     "pytorch_lightning.core.step_result",
     "pytorch_lightning.overrides.data_parallel",
@@ -297,6 +301,7 @@ html_theme_options = {
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
     "home_page_in_toc": True,
+    "show_navbar_depth": 0,
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -497,3 +502,5 @@ def setup(app):
     app.add_css_file('css/custom.css')
     # Custom directives
     app.add_directive('customgalleryitem', CustomGalleryItemDirective)
+    # Custom connects
+    app.connect('autodoc-process-docstring', fix_xgb_lgbm_docs)

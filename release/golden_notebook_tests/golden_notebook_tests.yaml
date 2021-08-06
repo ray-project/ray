@@ -28,6 +28,6 @@
 
   run:
     use_connect: True
-    timeout: 1800
+    timeout: 2700
     script: python workloads/torch_tune_serve_test.py
 
