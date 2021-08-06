@@ -153,11 +153,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # take much time to step / reset (e.g., for StarCraft).
     # Use this cautiously; Overheads are significant.
     "remote_worker_envs": False,
-    # In case remote_worker_envs=True, whether each sub-env gets dedicated
-    # hardware resources. This is experimental and set to False by default.
-    # Set this to True if you would like to avoid sub-envs sharing the
-    # same CPU (which counters the idea of stepping through these in parallel).
-    "remote_worker_envs_have_dedicated_resources": False,
     # Timeout that remote workers are waiting when polling environments.
     # 0 (continue when at least one env is ready) is a reasonable default,
     # but optimal value could be obtained by measuring your environment
