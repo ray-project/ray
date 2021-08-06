@@ -31,11 +31,12 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
  public:
   LocalModeTaskSubmitter(LocalModeRayRuntime &local_mode_ray_tuntime);
 
-  ObjectID SubmitTask(InvocationSpec &invocation);
+  ObjectID SubmitTask(InvocationSpec &invocation, const CallOptions &call_options);
 
-  ActorID CreateActor(InvocationSpec &invocation);
+  ActorID CreateActor(InvocationSpec &invocation,
+                      const ActorCreationOptions &create_options);
 
-  ObjectID SubmitActorTask(InvocationSpec &invocation);
+  ObjectID SubmitActorTask(InvocationSpec &invocation, const CallOptions &call_options);
 
  private:
   std::unordered_map<ActorID, std::unique_ptr<ActorContext>> actor_contexts_;
@@ -46,7 +47,7 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
 
   LocalModeRayRuntime &local_mode_ray_tuntime_;
 
-  ObjectID Submit(InvocationSpec &invocation);
+  ObjectID Submit(InvocationSpec &invocation, const ActorCreationOptions &options);
 };
 }  // namespace api
 }  // namespace ray
