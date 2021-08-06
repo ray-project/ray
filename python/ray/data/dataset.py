@@ -1119,6 +1119,7 @@ class Dataset(Generic[T]):
               label_column: str,
               output_signature: List["tf.TypeSpec"],
               feature_columns: Optional[List[str]] = None,
+              enable_autoshard: bool = False,
               prefetch_blocks: int = 0,
               batch_size: int = 1) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
@@ -1131,8 +1132,9 @@ class Dataset(Generic[T]):
 
         Requires all datasets to have the same columns.
 
-        Note that you probably want to call ``.split()`` on this dataset if
+        It is recommended to call ``.split()`` on this dataset if
         there are to be multiple TensorFlow workers consuming the data.
+        Tensorflow auto-sharding will be turned off by default.
 
         The elements generated must be compatible with the given
         ``output_signature`` argument (same as in
@@ -1147,6 +1149,11 @@ class Dataset(Generic[T]):
                 of `tf.TypeSpec` objects corresponding to (features, label).
             feature_columns (Optional[List[str]]): List of columns in datasets
                 to use. If None, all columns will be used.
+            enable_autoshard (bool): Enables tensorflow built-in autosharding
+                (https://www.tensorflow.org/tutorials/distribute/input) for the
+                resulting TF Dataset. Defaults to False. It is recommended
+                to use ``split()`` to shard the Dataset instead of
+                auto-sharding.
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: Record batch size. Defaults to 1.
@@ -1172,8 +1179,16 @@ class Dataset(Generic[T]):
                     batch = batch[feature_columns]
                 yield batch.values, target_col.values
 
-        return tf.data.Dataset.from_generator(
+        dataset = tf.data.Dataset.from_generator(
             make_generator, output_signature=output_signature)
+
+        if not enable_autoshard:
+            options = tf.data.Options()
+            options.experimental_distribute.auto_shard_policy = \
+                tf.data.experimental.AutoShardPolicy.OFF
+            dataset = dataset.with_options(options)
+
+        return dataset
 
     def to_dask(self) -> "dask.DataFrame":
         """Convert this dataset into a Dask DataFrame.
