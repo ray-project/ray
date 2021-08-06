@@ -144,7 +144,7 @@ class RayServeReplica:
             "serve_deployment_request_counter",
             description=("The number of queries that have been "
                          "processed in this replica."),
-            tag_keys=("backend", "replica"))
+            tag_keys=("deployment", "replica"))
         self.request_counter.set_default_tags({
             "deployment": self.backend_tag,
             "replica": self.replica_tag
