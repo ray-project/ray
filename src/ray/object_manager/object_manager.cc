@@ -300,36 +300,9 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id, const NodeID &
                  << ", status: " << status.ToString();
   if (!status.ok()) {
     // TODO(rkn): What do we want to do if the send failed?
+    RAY_LOG(DEBUG) << "Failed to send a push request for an object " << object_id
+                   << " to " << node_id << ". Chunk index: " << chunk_index;
   }
-
-  rpc::ProfileTableData::ProfileEvent profile_event;
-  profile_event.set_event_type("transfer_send");
-  profile_event.set_start_time(start_time);
-  profile_event.set_end_time(end_time);
-  // Encode the object ID, node ID, chunk index, and status as a json list,
-  // which will be parsed by the reader of the profile table.
-  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + node_id.Hex() + "\"," +
-                               std::to_string(chunk_index) + ",\"" + status.ToString() +
-                               "\"]");
-
-  std::lock_guard<std::mutex> lock(profile_mutex_);
-  profile_events_.push_back(profile_event);
-}
-
-void ObjectManager::HandleReceiveFinished(const ObjectID &object_id,
-                                          const NodeID &node_id, uint64_t chunk_index,
-                                          double start_time, double end_time) {
-  rpc::ProfileTableData::ProfileEvent profile_event;
-  profile_event.set_event_type("transfer_receive");
-  profile_event.set_start_time(start_time);
-  profile_event.set_end_time(end_time);
-  // Encode the object ID, node ID, chunk index as a json list,
-  // which will be parsed by the reader of the profile table.
-  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + node_id.Hex() + "\"," +
-                               std::to_string(chunk_index) + "]");
-
-  std::lock_guard<std::mutex> lock(profile_mutex_);
-  profile_events_.push_back(profile_event);
 }
 
 void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
@@ -741,7 +714,6 @@ void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *
   const rpc::Address &owner_address = request.owner_address();
   const std::string &data = request.data();
 
-  double start_time = absl::GetCurrentTimeNanos() / 1e9;
   bool success = ReceiveObjectChunk(node_id, object_id, owner_address, data_size,
                                     metadata_size, chunk_index, data);
   num_chunks_received_total_++;
@@ -752,9 +724,7 @@ void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *
                   << num_chunks_received_total_failed_ << "/"
                   << num_chunks_received_total_ << " failed";
   }
-  double end_time = absl::GetCurrentTimeNanos() / 1e9;
 
-  HandleReceiveFinished(object_id, node_id, chunk_index, start_time, end_time);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -801,16 +771,6 @@ void ObjectManager::HandlePull(const rpc::PullRequest &request, rpc::PullReply *
   NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Received pull request from node " << node_id << " for object ["
                  << object_id << "].";
-
-  rpc::ProfileTableData::ProfileEvent profile_event;
-  profile_event.set_event_type("receive_pull_request");
-  profile_event.set_start_time(absl::GetCurrentTimeNanos() / 1e9);
-  profile_event.set_end_time(profile_event.start_time());
-  profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + node_id.Hex() + "\"]");
-  {
-    std::lock_guard<std::mutex> lock(profile_mutex_);
-    profile_events_.emplace_back(profile_event);
-  }
 
   main_service_->post([this, object_id, node_id]() { Push(object_id, node_id); },
                       "ObjectManager.HandlePull");
@@ -889,22 +849,6 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
   return it->second;
 }
 
-std::shared_ptr<rpc::ProfileTableData> ObjectManager::GetAndResetProfilingInfo() {
-  auto profile_info = std::make_shared<rpc::ProfileTableData>();
-  profile_info->set_component_type("object_manager");
-  profile_info->set_component_id(self_node_id_.Binary());
-
-  {
-    std::lock_guard<std::mutex> lock(profile_mutex_);
-    for (auto const &profile_event : profile_events_) {
-      profile_info->add_profile_events()->CopyFrom(profile_event);
-    }
-    profile_events_.clear();
-  }
-
-  return profile_info;
-}
-
 std::string ObjectManager::DebugString() const {
   std::stringstream result;
   result << "ObjectManager:";
@@ -912,7 +856,6 @@ std::string ObjectManager::DebugString() const {
   result << "\n- num active wait requests: " << active_wait_requests_.size();
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
   result << "\n- num pull requests: " << pull_manager_->NumActiveRequests();
-  result << "\n- num buffered profile events: " << profile_events_.size();
   result << "\n- num chunks received total: " << num_chunks_received_total_;
   result << "\n- num chunks received failed (all): " << num_chunks_received_total_failed_;
   result << "\n- num chunks received failed / cancelled: "

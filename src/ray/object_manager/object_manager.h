@@ -269,12 +269,6 @@ class ObjectManager : public ObjectManagerInterface,
   ///                   or send it to all the object stores.
   void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only);
 
-  /// Return profiling information and reset the profiling information.
-  ///
-  /// \return All profiling information that has accumulated since the last call
-  /// to this method.
-  std::shared_ptr<rpc::ProfileTableData> GetAndResetProfilingInfo();
-
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -424,21 +418,6 @@ class ObjectManager : public ObjectManagerInterface,
                           uint64_t chunk_index, double start_time_us, double end_time_us,
                           ray::Status status);
 
-  /// This is used to notify the main thread that the receiving of a chunk has
-  /// completed.
-  ///
-  /// \param object_id The ID of the object that was received.
-  /// \param node_id The ID of the node that the chunk was received from.
-  /// \param chunk_index The index of the chunk.
-  /// \param start_time_us The time when the object manager began receiving the
-  /// chunk.
-  /// \param end_time_us The time when the object manager finished receiving the
-  /// chunk.
-  /// \return Void.
-  void HandleReceiveFinished(const ObjectID &object_id, const NodeID &node_id,
-                             uint64_t chunk_index, double start_time_us,
-                             double end_time_us);
-
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const NodeID &node_id);
 
@@ -483,14 +462,6 @@ class ObjectManager : public ObjectManagerInterface,
   std::unordered_map<
       ObjectID, std::unordered_map<NodeID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
-
-  /// Profiling events that are to be batched together and added to the profile
-  /// table in the GCS.
-  std::vector<rpc::ProfileTableData::ProfileEvent> profile_events_;
-
-  /// mutex lock used to protect profile_events_, profile_events_ is used in main thread
-  /// and rpc thread.
-  std::mutex profile_mutex_;
 
   /// The gPRC server.
   rpc::GrpcServer object_manager_server_;
