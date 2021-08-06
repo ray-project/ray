@@ -15,8 +15,9 @@
 #include <gtest/gtest.h>
 #include <ray/api.h>
 #include "../../util/process_helper.h"
+#include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
 #include "counter.h"
-#include "gflags/gflags.h"
 #include "plus.h"
 
 using namespace ::ray::api;
@@ -24,16 +25,19 @@ using namespace ::ray::api;
 int *cmd_argc = nullptr;
 char ***cmd_argv = nullptr;
 
-DEFINE_bool(external_cluster, false, "");
-DEFINE_string(redis_password, "12345678", "");
-DEFINE_int32(redis_port, 6379, "");
+ABSL_FLAG(bool, external_cluster, false, "");
+ABSL_FLAG(std::string, redis_password, "12345678", "");
+ABSL_FLAG(int32_t, redis_port, 6379, "");
 
 TEST(RayClusterModeTest, FullTest) {
   ray::api::RayConfig config;
-  if (FLAGS_external_cluster) {
-    ProcessHelper::GetInstance().StartRayNode(FLAGS_redis_port, FLAGS_redis_password);
-    config.address = "127.0.0.1:" + std::to_string(FLAGS_redis_port);
-    config.redis_password_ = FLAGS_redis_password;
+  bool is_extern_cluster = absl::GetFlag<bool>(FLAGS_external_cluster);
+  if (is_extern_cluster) {
+    auto port = absl::GetFlag<int32_t>(FLAGS_redis_port);
+    std::string password = absl::GetFlag<std::string>(FLAGS_redis_password);
+    ProcessHelper::GetInstance().StartRayNode(port, password);
+    config.address = "127.0.0.1:" + std::to_string(port);
+    config.redis_password_ = password;
   }
   Ray::Init(config, cmd_argc, cmd_argv);
   /// put and get object
@@ -148,13 +152,13 @@ TEST(RayClusterModeTest, FullTest) {
 
   Ray::Shutdown();
 
-  if (FLAGS_external_cluster) {
+  if (is_extern_cluster) {
     ProcessHelper::GetInstance().StopRayNode();
   }
 }
 
 int main(int argc, char **argv) {
-  gflags::ParseCommandLineFlags(&argc, &argv, false);
+  absl::ParseCommandLine(argc, argv);
   cmd_argc = &argc;
   cmd_argv = &argv;
   ::testing::InitGoogleTest(&argc, argv);
