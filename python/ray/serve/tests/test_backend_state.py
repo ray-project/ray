@@ -231,7 +231,7 @@ def mock_backend_state() -> Tuple[BackendState, Mock, Mock]:
             "ray.serve.backend_state.ActorReplicaWrapper",
             new=MockReplicaActorWrapper), patch(
                 "time.time",
-                new=timer.time), patch("ray.serve.kv_store.RayInternalKVStore"
+                new=timer.time), patch("ray.serve.storage.kv_store.RayInternalKVStore"
                                        ) as mock_kv_store, patch(
                                            "ray.serve.long_poll.LongPollHost"
                                        ) as mock_long_poll, patch.object(

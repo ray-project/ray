@@ -14,7 +14,7 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
 
 
 @pytest.fixture(scope="session")
-def _shared_serve_instance():
+def shared_serve_instance():
     # Note(simon):
     # This line should be not turned on on master because it leads to very
     # spammy and not useful log in case of a failure in CI.
@@ -35,8 +35,8 @@ def _shared_serve_instance():
 
 
 @pytest.fixture
-def serve_instance(_shared_serve_instance):
-    yield _shared_serve_instance
+def serve_instance(shared_serve_instance):
+    yield shared_serve_instance
     controller = serve.api._global_client._controller
     # Clear all state between tests to avoid naming collisions.
     for endpoint in ray.get(controller.get_all_endpoints.remote()):

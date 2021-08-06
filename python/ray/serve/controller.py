@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import ray
+from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.backend_state import BackendState
@@ -25,7 +26,7 @@ from ray.serve.constants import (
 )
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
-from ray.serve.kv_store import RayInternalKVStore
+from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
 from ray.serve.utils import logger
 
@@ -145,7 +146,7 @@ class ServeController:
             entry["start_time"] = 0
             entry["end_time"] = 0
             val[deployment_name] = entry
-        self.kv_store.put(SNAPSHOT_KEY, json.dumps(val))
+        self.kv_store.put(SNAPSHOT_KEY, cloudpickle.dumps(val))
 
     def _all_replica_handles(
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:

@@ -1,3 +1,4 @@
+from ray import cloudpickle
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_pb2
 from ray.core.generated import gcs_service_pb2_grpc
@@ -93,7 +94,7 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         try:
             from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
             from ray.serve.constants import SERVE_CONTROLLER_NAME
-            from ray.serve.kv_store import format_key
+            from ray.serve.storage.kv_store import get_storage_key
         except Exception:
             return "{}"
 
@@ -103,9 +104,9 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         # TODO(architkulkarni): Use _internal_kv_list to get all Serve
         # controllers.  Currently we only get the detached one.  Non-detached
         # ones have name = SERVE_CONTROLLER_NAME + random letters.
-        key = format_key(SERVE_CONTROLLER_NAME, SERVE_SNAPSHOT_KEY)
+        key = get_storage_key(SERVE_CONTROLLER_NAME, SERVE_SNAPSHOT_KEY)
 
-        return json.loads(_internal_kv_get(key, client) or "{}")
+        return cloudpickle.loads(_internal_kv_get(key, client) or "[]")
 
     async def get_session_name(self):
         encoded_name = await self._dashboard_head.aioredis_client.get(
