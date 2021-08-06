@@ -90,7 +90,6 @@ ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &rep
                         object_info.spilled_url(),
                         NodeID::FromBinary(object_info.spilled_node_id()));
 }
-}  // namespace
 
 /// The global instance of `CoreWorkerProcess`.
 std::unique_ptr<CoreWorkerProcess> core_worker_process;
