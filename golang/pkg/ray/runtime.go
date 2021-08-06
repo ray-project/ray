@@ -52,7 +52,7 @@ func innerInit(address, _redis_password string, workerType ray_rpc.WorkerType) {
         nodeInfoData := gsa.GetNodeToConnectForDriver(localIp)
         err = proto.Unmarshal(nodeInfoData, gcsNodeInfo)
         if err != nil {
-            panic(err)
+            panic(fmt.Errorf("get node info failed: %s %v",nodeInfoData, err))
         }
         SetNodeManagerPort(gcsNodeInfo.GetNodeManagerPort())
         SetNodeManagerAddress(gcsNodeInfo.GetNodeManagerAddress())
@@ -205,7 +205,7 @@ type ObjectId []byte
 func (or *ObjectRef) Get() []interface{} {
     //returnObjectIdsSize := len(or.returnObjectIds)
     util.Logger.Debugf("get :%v", or.returnObjectIds)
-    returnValues := C.go_worker_Get((*unsafe.Pointer)(or.returnObjectIds), C.int(or.returnObjectNum), C.int(-1))
+    returnValues := C.go_worker_Get((**unsafe.Pointer)(or.returnObjectIds), C.int(or.returnObjectNum), C.int(-1))
     values := (*[1 << 28]*C.struct_ReturnValue)(returnValues.data)[:or.returnObjectNum:or.returnObjectNum]
     for _, returnValue := range values {
         dataBytes := C.GoBytes(unsafe.Pointer(returnValue.data.p), returnValue.data.size)

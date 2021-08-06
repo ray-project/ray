@@ -162,6 +162,7 @@ __attribute__((visibility("default"))) char *go_worker_GlobalStateAccessorGetInt
 
 __attribute__((visibility("default"))) int go_worker_GetNodeToConnectForDriver(
     void *p, char *node_ip_address, char **result) {
+  RAY_LOG(WARNING) << "Get nodeinfo:" << node_ip_address;
   auto *gcs_accessor = static_cast<ray::gcs::GlobalStateAccessor *>(p);
   std::string node_to_connect;
   auto status =
@@ -170,6 +171,7 @@ __attribute__((visibility("default"))) int go_worker_GetNodeToConnectForDriver(
     RAY_LOG(FATAL) << "Failed to get node to connect for driver:" << status.message();
     return 0;
   }
+  RAY_LOG(WARNING) << "got nodeinfo:" << node_to_connect;
   int result_length = strlen(node_to_connect.c_str());
   *result = (char *)malloc(result_length + 1);
   memcpy(*result, node_to_connect.c_str(), result_length);
