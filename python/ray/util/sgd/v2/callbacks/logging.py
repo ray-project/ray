@@ -32,13 +32,20 @@ class SGDLoggingCallback(SGDCallback, metaclass=abc.ABCMeta):
         if isinstance(workers_to_log, int):
             workers_to_log = [workers_to_log]
 
-        if not isinstance(workers_to_log, Iterable):
-            raise TypeError("workers_to_log must be an Iterable, got "
-                            f"{type(workers_to_log)}.")
-        if not all(isinstance(worker, int) for worker in workers_to_log):
-            raise TypeError("All elements of workers_to_log must be integers.")
+        if workers_to_log is not None:
+            if not isinstance(workers_to_log, Iterable):
+                raise TypeError("workers_to_log must be an Iterable, got "
+                                f"{type(workers_to_log)}.")
+            if not all(isinstance(worker, int) for worker in workers_to_log):
+                raise TypeError(
+                    "All elements of workers_to_log must be integers.")
 
         self._workers_to_log = workers_to_log
+
+    @property
+    def log_path(self) -> Path:
+        """Path to the log file."""
+        return self._log_path
 
     def start_training(self):
         with open(self._log_path, "w") as f:
