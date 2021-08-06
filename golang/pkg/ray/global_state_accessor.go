@@ -10,6 +10,8 @@ import "C"
 import (
     "fmt"
     "unsafe"
+
+    "github.com/ray-project/ray-go-worker/pkg/util"
 )
 
 type globalStateAccessor struct {
@@ -48,6 +50,7 @@ func (g *globalStateAccessor) GetInternalKV(key string) string {
 func (g *globalStateAccessor) GetNodeToConnectForDriver(nodeIpAddress string) []byte {
     var res *C.char
     dataLen := C.go_worker_GetNodeToConnectForDriver(g.p, C.CString(nodeIpAddress), &res)
+    util.Logger.Debugf("GetNodeToConnectForDriver datalen:%d", dataLen)
     if dataLen > 0 {
         defer C.free(unsafe.Pointer(res))
         return C.GoBytes(unsafe.Pointer(res), dataLen)
