@@ -52,7 +52,7 @@ func innerInit(address, _redis_password string, workerType ray_rpc.WorkerType) {
         nodeInfoData := gsa.GetNodeToConnectForDriver(localIp)
         err = proto.Unmarshal(nodeInfoData, gcsNodeInfo)
         if err != nil {
-            panic(fmt.Errorf("get node info failed: %s %v",nodeInfoData, err))
+            panic(fmt.Errorf("get node info failed: %s %v", nodeInfoData, err))
         }
         SetNodeManagerPort(gcsNodeInfo.GetNodeManagerPort())
         SetNodeManagerAddress(gcsNodeInfo.GetNodeManagerAddress())
@@ -178,8 +178,12 @@ type ID unsafe.Pointer
 // 发出调用
 func (atc *ActorTaskCaller) Remote() *ObjectRef {
     returnNum := atc.invokeMethod.NumOut()
-    objectIds := C.go_worker_SubmitActorTask(unsafe.Pointer(atc.actorHandle.actorId), C.CString(atc.invokeMethodName), C.int(returnNum))
-    util.Logger.Debugf("objectIds:%v", objectIds)
+    returObjectIds := make([]unsafe.Pointer, returnNum, returnNum)
+    success := C.go_worker_SubmitActorTask(unsafe.Pointer(atc.actorHandle.actorId), C.CString(atc.invokeMethodName), C.int(returnNum), unsafe.Pointer(&returObjectIds[0]))
+    if !success {
+        panic("failed to submit task")
+    }
+    util.Logger.Debugf("objectIds:%v", returObjectIds)
     //resultIds := make([]ID, 0, objectIds.len)
     //v := (*[1 << 28]*unsafe.Pointer)(objectIds.data)[:objectIds.len:objectIds.len]
     //util.Logger.Debugf("v:%v", v)
@@ -188,8 +192,8 @@ func (atc *ActorTaskCaller) Remote() *ObjectRef {
     //    resultIds = append(resultIds, ID(objectId))
     //}
     return &ObjectRef{
-        returnObjectIds: objectIds.data,
-        returnObjectNum: int(objectIds.len),
+        returnObjectIds: unsafe.Pointer(&returObjectIds[0]),
+        returnObjectNum: returnNum,
         returnTypes:     atc.invokeMethodReturnTypes,
     }
 }
