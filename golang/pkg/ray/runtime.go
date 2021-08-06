@@ -180,30 +180,33 @@ func (atc *ActorTaskCaller) Remote() *ObjectRef {
     returnNum := atc.invokeMethod.NumOut()
     objectIds := C.go_worker_SubmitActorTask(unsafe.Pointer(atc.actorHandle.actorId), C.CString(atc.invokeMethodName), C.int(returnNum))
     util.Logger.Debugf("objectIds:%v", objectIds)
-    resultIds := make([]ID, 0, objectIds.len)
-    v := (*[1 << 28]unsafe.Pointer)(objectIds.data)[:objectIds.len:objectIds.len]
-    util.Logger.Debugf("v:%v", v)
-    for _, objectId := range v {
-        util.Logger.Debugf("objectId:%v", objectId)
-        resultIds = append(resultIds, ID(objectId))
-    }
+    //resultIds := make([]ID, 0, objectIds.len)
+    //v := (*[1 << 28]*unsafe.Pointer)(objectIds.data)[:objectIds.len:objectIds.len]
+    //util.Logger.Debugf("v:%v", v)
+    //for _, objectId := range v {
+    //    util.Logger.Debugf("objectId:%v", objectId)
+    //    resultIds = append(resultIds, ID(objectId))
+    //}
     return &ObjectRef{
-        returnObjectIds: resultIds,
+        returnObjectIds: objectIds.data,
+        returnObjectNum: int(objectIds.len),
         returnTypes:     atc.invokeMethodReturnTypes,
     }
 }
 
 type ObjectRef struct {
-    returnObjectIds []ID
+    returnObjectIds unsafe.Pointer
+    returnObjectNum int
     returnTypes     []reflect.Type
 }
 
 type ObjectId []byte
 
 func (or *ObjectRef) Get() []interface{} {
-    returnObjectIdsSize := len(or.returnObjectIds)
-    returnValues := C.go_worker_Get((*unsafe.Pointer)(&or.returnObjectIds[0]), C.int(returnObjectIdsSize), C.int(-1))
-    values := (*[1 << 28]*C.struct_ReturnValue)(returnValues.data)[:returnObjectIdsSize:returnObjectIdsSize]
+    //returnObjectIdsSize := len(or.returnObjectIds)
+    util.Logger.Debugf("get :%v", or.returnObjectIds)
+    returnValues := C.go_worker_Get((*unsafe.Pointer)(or.returnObjectIds), C.int(or.returnObjectNum), C.int(-1))
+    values := (*[1 << 28]*C.struct_ReturnValue)(returnValues.data)[:or.returnObjectNum:or.returnObjectNum]
     for _, returnValue := range values {
         dataBytes := C.GoBytes(unsafe.Pointer(returnValue.data.p), returnValue.data.size)
         return []interface{}{dataBytes[0]}
