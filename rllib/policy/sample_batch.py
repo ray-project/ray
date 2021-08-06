@@ -596,7 +596,8 @@ class SampleBatch(dict):
                     curr[p] = f_pad
                 curr = curr[p]
 
-        tree.map_structure_with_path(_zero_pad_in_place, self)
+        self_as_dict = {k: v for k, v in self.items()}
+        tree.map_structure_with_path(_zero_pad_in_place, self_as_dict)
 
         # Set flags to indicate, we are now zero-padded (and to what extend).
         self.zero_padded = True
