@@ -1,7 +1,9 @@
 import time
 
+from filelock import FileLock
 import pytest
 import ray
+from pathlib import Path
 
 from ray.tests.conftest import *  # noqa
 from ray.experimental import workflow
@@ -22,6 +24,10 @@ class Counter:
         self.x += 1
         return self.x
 
+    def add(self, y):
+        self.x += y
+        return self.x
+
     @workflow.virtual_actor.readonly
     def readonly_workload(self):
         # simulate a workload
@@ -40,13 +46,12 @@ def init_virtual_actor(x):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular",
+    "workflow_start_regular",
     [{
-        "namespace": "workflow",
-        "num_cpus": 4  # We need more CPUs for concurrency
+        "num_cpus": 4  # We need more CPUs, otherwise 'create()' blocks 'get()'
     }],
     indirect=True)
-def test_readonly_actor(ray_start_regular):
+def test_readonly_actor(workflow_start_regular):
     actor = Counter.get_or_create("Counter", 42)
     ray.get(actor.ready())
     assert actor.readonly_get.run() == 42
@@ -89,15 +94,153 @@ class SlowInit:
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular",
+    "workflow_start_regular",
     [{
-        "namespace": "workflow",
         "num_cpus": 4  # We need more CPUs, otherwise 'create()' blocks 'get()'
     }],
     indirect=True)
-def test_actor_ready(ray_start_regular):
+def test_actor_ready(workflow_start_regular):
     actor = SlowInit.get_or_create("SlowInit", 42)
     with pytest.raises(virtual_actor_class.VirtualActorNotInitializedError):
         actor.readonly_get.run()
     ray.get(actor.ready())
     assert actor.readonly_get.run() == 42
+
+
+@pytest.mark.parametrize(
+    "workflow_start_regular",
+    [{
+        "num_cpus": 4
+        # We need more CPUs, otherwise 'create()' blocks 'get()'
+    }],
+    indirect=True)
+def test_actor_writer_1(workflow_start_regular):
+    actor = Counter.get_or_create("Counter", 0)
+    ray.get(actor.ready())
+    assert actor.readonly_get.run() == 0
+    array = []
+    s = 0
+    for i in range(1, 10):
+        s += i
+        array.append(s)
+    assert [actor.add.run(i) for i in range(1, 10)] == array
+    assert actor.readonly_get.run() == 45
+
+    array = []
+    for i in range(10, 20):
+        s += i
+        array.append(s)
+    assert ray.get([actor.add.run_async(i) for i in range(10, 20)]) == array
+
+
+@pytest.mark.parametrize(
+    "workflow_start_regular",
+    [{
+        "num_cpus": 4  # We need more CPUs, otherwise 'create()' blocks 'get()'
+    }],
+    indirect=True)
+def test_actor_writer_2(workflow_start_regular, tmp_path):
+    g_lock = str(Path(tmp_path / "g.lock"))
+    incr_lock = str(Path(tmp_path / "incr.lock"))
+    val_lock = str(Path(tmp_path / "val.lock"))
+
+    val_err = str(Path(tmp_path / "val.err"))
+    incr_err = str(Path(tmp_path / "incr.err"))
+
+    @workflow.virtual_actor
+    class SyncCounter:
+        def __init__(self, val_lock: str, incr_lock: str, g_lock: str,
+                     val_err: str, incr_err: str):
+            self.val_lock = val_lock
+            self.incr_lock = incr_lock
+            self.g_lock = g_lock
+
+            self.val_err = val_err
+            self.incr_err = incr_err
+            self.v = 0
+            if Path(self.val_err).exists():
+                raise ValueError()
+
+        @workflow.virtual_actor.readonly
+        def val(self):
+            with FileLock(self.val_lock), FileLock(self.g_lock):
+                if Path(self.val_err).exists():
+                    raise ValueError()
+                return self.v
+
+        def incr(self, create_incr_err=False):
+            with FileLock(self.incr_lock), FileLock(self.g_lock):
+                if Path(self.incr_err).exists():
+                    raise ValueError()
+                if create_incr_err:
+                    Path(incr_err).touch()
+                self.v += 1
+                return self.v
+
+        def __getstate__(self):
+            return (self.v, self.val_lock, self.incr_lock, self.g_lock,
+                    self.val_err, self.incr_err)
+
+        def __setstate__(self, state):
+            (self.v, self.val_lock, self.incr_lock, self.g_lock, self.val_err,
+             self.incr_err) = state
+
+    # trigger error in init
+    Path(val_err).touch()
+    actor = SyncCounter.get_or_create("sync_counter", val_lock, incr_lock,
+                                      g_lock, val_err, incr_err)
+    with pytest.raises(Exception):
+        actor.incr.run()
+    Path(val_err).unlink()
+
+    assert ray.get([actor.incr.run_async() for _ in range(9)]) == list(
+        range(2, 11))
+
+    incr_lock = FileLock(incr_lock)
+    incr_lock.acquire()
+
+    objs = [actor.incr.run_async() for _ in range(10)]
+    assert 10 == actor.val.run()
+    Path(val_err).touch()
+    with pytest.raises(Exception):
+        actor.val.run()
+    Path(val_err).unlink()
+    incr_lock.release()
+    assert ray.get(objs) == list(range(11, 21))
+
+    # test error cases
+    actor.incr.run_async()  # 21
+    actor.incr.run_async()  # 22
+    actor.incr.run_async(create_incr_err=True)  # 23
+    actor.incr.run_async()  # 24
+    s5 = actor.incr.run_async()  # 25
+    with pytest.raises(Exception):
+        ray.get(s5)
+
+    assert 23 == actor.val.run()
+    Path(incr_err).unlink()
+    obj = workflow.resume("sync_counter")
+    assert 25 == ray.get(obj)[0]
+    assert 25 == actor.val.run()
+
+
+@pytest.mark.parametrize(
+    "workflow_start_regular",
+    [{
+        "num_cpus": 8,  # increase CPUs to add pressure
+    }],
+    indirect=True)
+def test_writer_actor_pressure_test(workflow_start_regular):
+    actor = Counter.get_or_create("Counter", 0)
+    array = []
+    length = 50
+    s = 0
+    for i in range(1, length):
+        s += i
+        array.append(s)
+    assert ray.get([actor.add.run_async(i) for i in range(1, length)]) == array
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

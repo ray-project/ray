@@ -599,29 +599,40 @@ def get_shared_memory_bytes():
     return shm_avail
 
 
-def check_oversized_pickle(pickled, name, obj_type, worker):
-    """Send a warning message if the pickled object is too large.
+def check_oversized_function(pickled, name, obj_type, worker):
+    """Send a warning message if the pickled function is too large.
 
     Args:
-        pickled: the pickled object.
+        pickled: the pickled function.
         name: name of the pickled object.
         obj_type: type of the pickled object, can be 'function',
-            'remote function', 'actor', or 'object'.
+            'remote function', or 'actor'.
         worker: the worker used to send warning message.
     """
     length = len(pickled)
-    if length <= ray_constants.PICKLE_OBJECT_WARNING_SIZE:
+    if length <= ray_constants.FUNCTION_SIZE_WARN_THRESHOLD:
         return
-    warning_message = (
-        "Warning: The {} {} has size {} when pickled. "
-        "It will be stored in Redis, which could cause memory issues. "
-        "This may mean that its definition uses a large array or other object."
-    ).format(obj_type, name, length)
-    push_error_to_driver(
-        worker,
-        ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
-        warning_message,
-        job_id=worker.current_job_id)
+    elif length < ray_constants.FUNCTION_SIZE_ERROR_THRESHOLD:
+        warning_message = (
+            "The {} {} is very large ({} MiB). "
+            "Check that its definition is not implicitly capturing a large "
+            "array or other object in scope. Tip: use ray.put() to put large "
+            "objects in the Ray object store.").format(obj_type, name,
+                                                       length // (1024 * 1024))
+        push_error_to_driver(
+            worker,
+            ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
+            "Warning: " + warning_message,
+            job_id=worker.current_job_id)
+    else:
+        error = (
+            "The {} {} is too large ({} MiB > FUNCTION_SIZE_ERROR_THRESHOLD={}"
+            " MiB). Check that its definition is not implicitly capturing a "
+            "large array or other object in scope. Tip: use ray.put() to "
+            "put large objects in the Ray object store.").format(
+                obj_type, name, length // (1024 * 1024),
+                ray_constants.FUNCTION_SIZE_ERROR_THRESHOLD // (1024 * 1024))
+        raise ValueError(error)
 
 
 def is_main_thread():

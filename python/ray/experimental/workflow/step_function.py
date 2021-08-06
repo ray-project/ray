@@ -1,69 +1,74 @@
 import functools
-import inspect
-from typing import List, Tuple, Callable, Optional
+from typing import Callable
 
-import ray
-
-from ray import ObjectRef
+from ray._private import signature
 from ray.experimental.workflow import serialization_context
-from ray.experimental.workflow.common import (
-    Workflow, StepID, WorkflowOutputType, WorkflowInputTuple)
-from ray.experimental.workflow.step_executor import execute_workflow_step
-
-StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
+from ray.experimental.workflow.common import Workflow, WorkflowData, StepType
 
 
 class WorkflowStepFunction:
     """This class represents a workflow step."""
 
-    def __init__(self, func: Callable):
+    def __init__(self,
+                 func: Callable,
+                 max_retries=1,
+                 catch_exceptions=False,
+                 ray_options=None):
+        if not isinstance(max_retries, int) or max_retries < 1:
+            raise ValueError("max_retries should be greater or equal to 1.")
+        if ray_options is not None and not isinstance(ray_options, dict):
+            raise ValueError("ray_options must be a dict.")
+
         self._func = func
-        self._func_signature = list(
-            inspect.signature(func).parameters.values())
+        self._max_retries = max_retries
+        self._catch_exceptions = catch_exceptions
+        self._ray_options = ray_options or {}
+        self._func_signature = signature.extract_signature(func)
 
         # Override signature and docstring
         @functools.wraps(func)
         def _build_workflow(*args, **kwargs) -> Workflow:
-            # validate if the input arguments match the signature of the
-            # original function.
-            reconstructed_signature = inspect.Signature(
-                parameters=self._func_signature)
-            try:
-                reconstructed_signature.bind(*args, **kwargs)
-            except TypeError as exc:  # capture a friendlier stacktrace
-                raise TypeError(str(exc)) from None
-            workflows: List[Workflow] = []
-            object_refs: List[ObjectRef] = []
-            with serialization_context.workflow_args_serialization_context(
-                    workflows, object_refs):
-                # NOTE: When calling 'ray.put', we trigger python object
-                # serialization. Under our serialization context,
-                # Workflows and ObjectRefs are separated from the arguments,
-                # leaving a placeholder object with all other python objects.
-                # Then we put the placeholder object to object store,
-                # so it won't be mutated later. This guarantees correct
-                # semantics. See "tests/test_variable_mutable.py" as
-                # an example.
-                input_placeholder: ObjectRef = ray.put((args, kwargs))
-                if object_refs:
-                    raise ValueError(
-                        "There are ObjectRefs in workflow inputs. However "
-                        "workflow currently does not support checkpointing "
-                        "ObjectRefs.")
-            return Workflow(self._func, self._run_step, input_placeholder,
-                            workflows, object_refs)
+            flattened_args = signature.flatten_args(self._func_signature, args,
+                                                    kwargs)
+            workflow_inputs = serialization_context.make_workflow_inputs(
+                flattened_args)
+            workflow_data = WorkflowData(
+                func_body=self._func,
+                step_type=StepType.FUNCTION,
+                inputs=workflow_inputs,
+                max_retries=self._max_retries,
+                catch_exceptions=self._catch_exceptions,
+                ray_options=self._ray_options,
+            )
+            return Workflow(workflow_data)
 
         self.step = _build_workflow
-
-    def _run_step(
-            self,
-            step_id: StepID,
-            step_inputs: WorkflowInputTuple,
-            outer_most_step_id: Optional[StepID] = None) -> WorkflowOutputType:
-        return execute_workflow_step(self._func, step_id, step_inputs,
-                                     outer_most_step_id)
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Workflow steps cannot be called directly. Instead "
                         f"of running '{self.step.__name__}()', "
                         f"try '{self.step.__name__}.step()'.")
+
+    def options(self,
+                *,
+                max_retries: int = 1,
+                catch_exceptions: bool = False,
+                **ray_options) -> "WorkflowStepFunction":
+        """This function set how the step function is going to be executed.
+
+        Args:
+            max_retries(int): num of retries the step for an application
+                level error.
+            catch_exceptions(bool): Whether the user want to take care of the
+                failure mannually.
+                If it's set to be true, (Optional[R], Optional[E]) will be
+                returned.
+                If it's false, the normal result will be returned.
+            **ray_options(dict): All parameters in this fields will be passed
+                to ray remote function options.
+
+        Returns:
+            The step function itself.
+        """
+        return WorkflowStepFunction(self._func, max_retries, catch_exceptions,
+                                    ray_options)

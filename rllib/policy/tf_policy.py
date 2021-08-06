@@ -1,6 +1,7 @@
 import errno
 import gym
 import logging
+import math
 import numpy as np
 import os
 from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
@@ -14,10 +15,11 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
+from ray.rllib.utils.tf_ops import get_gpu_devices
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
@@ -132,28 +134,64 @@ class TFPolicy(Policy):
             batch_divisibility_req (int): pad all agent experiences batches to
                 multiples of this value. This only has an effect if not using
                 a LSTM model.
-            update_ops (List[TensorType]): override the batchnorm update ops to
-                run when applying gradients. Otherwise we run all update ops
-                found in the current variable scope.
-            explore (Optional[TensorType]): Placeholder for `explore` parameter
-                into call to Exploration.get_exploration_action.
+            update_ops (List[TensorType]): override the batchnorm update ops
+                to run when applying gradients. Otherwise we run all update
+                ops found in the current variable scope.
+            explore (Optional[Union[TensorType, bool]]): Placeholder for
+                `explore` parameter into call to
+                Exploration.get_exploration_action. Explicitly set this to
+                False for not creating any Exploration component.
             timestep (Optional[TensorType]): Placeholder for the global
                 sampling timestep.
         """
         self.framework = "tf"
         super().__init__(observation_space, action_space, config)
 
-        # Log device and worker index.
-        if tfv == 2:
-            from ray.rllib.evaluation.rollout_worker import get_global_worker
-            worker = get_global_worker()
-            worker_idx = worker.worker_index if worker else 0
-            if tf.config.list_physical_devices("GPU"):
-                logger.info("TFPolicy (worker={}) running on GPU.".format(
-                    worker_idx if worker_idx > 0 else "local"))
-            else:
-                logger.info("TFPolicy (worker={}) running on CPU.".format(
-                    worker_idx if worker_idx > 0 else "local"))
+        # Get devices to build the graph on.
+        worker_idx = self.config.get("worker_index", 0)
+        if not config["_fake_gpus"] and \
+                ray.worker._mode() == ray.worker.LOCAL_MODE:
+            num_gpus = 0
+        elif worker_idx == 0:
+            num_gpus = config["num_gpus"]
+        else:
+            num_gpus = config["num_gpus_per_worker"]
+        gpu_ids = get_gpu_devices()
+
+        # Place on one or more CPU(s) when either:
+        # - Fake GPU mode.
+        # - num_gpus=0 (either set by user or we are in local_mode=True).
+        # - no GPUs available.
+        if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
+            logger.info("TFPolicy (worker={}) running on {}.".format(
+                worker_idx
+                if worker_idx > 0 else "local", f"{num_gpus} fake-GPUs"
+                if config["_fake_gpus"] else "CPU"))
+            self.devices = [
+                "/cpu:0" for _ in range(int(math.ceil(num_gpus)) or 1)
+            ]
+        # Place on one or more actual GPU(s), when:
+        # - num_gpus > 0 (set by user) AND
+        # - local_mode=False AND
+        # - actual GPUs available AND
+        # - non-fake GPU mode.
+        else:
+            logger.info("TFPolicy (worker={}) running on {} GPU(s).".format(
+                worker_idx if worker_idx > 0 else "local", num_gpus))
+
+            # We are a remote worker (WORKER_MODE=1):
+            # GPUs should be assigned to us by ray.
+            if ray.worker._mode() == ray.worker.WORKER_MODE:
+                gpu_ids = ray.get_gpu_ids()
+
+            if len(gpu_ids) < num_gpus:
+                raise ValueError(
+                    "TFPolicy was not able to find enough GPU IDs! Found "
+                    f"{gpu_ids}, but num_gpus={num_gpus}.")
+
+            self.devices = [
+                f"/gpu:{i}" for i, _ in enumerate(gpu_ids) if i < num_gpus
+            ]
 
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
@@ -169,7 +207,11 @@ class TFPolicy(Policy):
         if self.model is not None:
             self._update_model_view_requirements_from_init_state()
 
-        self.exploration = self._create_exploration()
+        # If `explore` is explicitly set to False, don't create an exploration
+        # component.
+        self.exploration = self._create_exploration() if explore is not False \
+            else None
+
         self._sess = sess
         self._obs_input = obs_input
         self._prev_action_input = prev_action_input
@@ -190,10 +232,7 @@ class TFPolicy(Policy):
         self._state_outputs = state_outputs or []
         self._seq_lens = seq_lens
         self._max_seq_len = max_seq_len
-        if len(self._state_inputs) != len(self._state_outputs):
-            raise ValueError(
-                "Number of state input and output tensors must match, got: "
-                "{} vs {}".format(self._state_inputs, self._state_outputs))
+
         if self._state_inputs and self._seq_lens is None:
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
@@ -489,9 +528,8 @@ class TFPolicy(Policy):
     def get_exploration_state(self) -> Dict[str, TensorType]:
         return self.exploration.get_state(sess=self.get_session())
 
-    # TODO: (sven) Deprecate this method.
+    @Deprecated(new="get_exploration_state", error=False)
     def get_exploration_info(self) -> Dict[str, TensorType]:
-        deprecation_warning("get_exploration_info", "get_exploration_state")
         return self.get_exploration_state()
 
     @override(Policy)
@@ -587,14 +625,12 @@ class TFPolicy(Policy):
                         graph=self.get_session().graph))
                 builder.save()
 
-    # TODO: (sven) Deprecate this in favor of `save()`.
     @override(Policy)
     @DeveloperAPI
     def export_checkpoint(self,
                           export_dir: str,
                           filename_prefix: str = "model") -> None:
         """Export tensorflow checkpoint to export_dir."""
-        deprecation_warning("export_checkpoint", "save")
         try:
             os.makedirs(export_dir)
         except OSError as e:

@@ -178,6 +178,7 @@ test_python() {
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
+      -python/ray/tests:test_runtime_env_complicated # conda install slow leading to timeout
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_k8s_operator_unit_tests
@@ -294,7 +295,13 @@ _bazel_build_before_install() {
     target="//:ray_pkg"
   fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-  bazel build "${target}"
+
+  # Build in debug mode if RAY_DEBUG_BUILD=1
+  if [ -z "${RAY_DEBUG_BUILD-}" ] || [ "${RAY_DEBUG_BUILD}" -ne "1" ]; then
+    bazel build "${target}"
+  else
+    bazel build --config debug "${target}"
+  fi
 }
 
 
@@ -329,6 +336,7 @@ build_wheels() {
         -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
         -e "BUILDKITE=${BUILDKITE:-}"
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
+        -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
       )
 
 
@@ -408,6 +416,12 @@ lint_web() {
   )
 }
 
+lint_copyright() {
+  (
+    "${ROOT_DIR}"/copyright-format.sh -c
+  )
+}
+
 _lint() {
   local platform=""
   case "${OSTYPE}" in
@@ -432,6 +446,9 @@ _lint() {
 
     # Run TypeScript and HTML linting.
     lint_web
+
+    # lint copyright
+    lint_copyright
   fi
 }
 

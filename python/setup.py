@@ -58,12 +58,22 @@ class SetupType(Enum):
     RAY_CPP = 2
 
 
+class BuildType(Enum):
+    DEFAULT = 1
+    DEBUG = 2
+
+
 class SetupSpec:
-    def __init__(self, type: SetupType, name: str, description: str):
+    def __init__(self, type: SetupType, name: str, description: str,
+                 build_type: BuildType):
         self.type: SetupType = type
         self.name: str = name
-        self.version: str = find_version("ray", "__init__.py")
+        version = find_version("ray", "__init__.py")
+        # add .dbg suffix if debug mode is on.
+        self.version: str = f"{version}+dbg" \
+            if build_type == BuildType.DEBUG else version
         self.description: str = description
+        self.build_type: BuildType = build_type
         self.files_to_include: list = []
         self.install_requires: list = []
         self.extras: dict = {}
@@ -75,15 +85,19 @@ class SetupSpec:
             return []
 
 
+BUILD_TYPE = BuildType.DEBUG if os.getenv(
+    "RAY_DEBUG_BUILD") == "1" else BuildType.DEFAULT
+
 if os.getenv("RAY_INSTALL_CPP") == "1":
     # "ray-cpp" wheel package.
     setup_spec = SetupSpec(SetupType.RAY_CPP, "ray-cpp",
-                           "A subpackage of Ray which provide Ray C++ API.")
+                           "A subpackage of Ray which provide Ray C++ API.",
+                           BUILD_TYPE)
 else:
     # "ray" primary wheel package.
     setup_spec = SetupSpec(
         SetupType.RAY, "ray", "Ray provides a simple, "
-        "universal API for building distributed applications.")
+        "universal API for building distributed applications.", BUILD_TYPE)
 
 # Ideally, we could include these files by putting them in a
 # MANIFEST.in or using the package_data argument to setup, but the
@@ -94,7 +108,6 @@ else:
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
-    "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
@@ -149,14 +162,20 @@ ray_files += [
 if setup_spec.type == SetupType.RAY:
     setup_spec.extras = {
         "default": [
+            "aiohttp",  # noqa
+            "aiohttp_cors",  # noqa
+            "aioredis < 2",  # noqa
             "colorful",  # noqa
             "py-spy >= 0.2.0",  # noqa
             "jsonschema",  # noqa
-            "gpustat"  # noqa
+            "requests",  # noqa
+            "gpustat",  # noqa
+            "opencensus",  # noqa
+            "prometheus_client >= 0.7.1",  # noqa
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
-        "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
-        "k8s": ["kubernetes"],
+        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
+        "k8s": ["kubernetes", "urllib3"],
         "observability": [
             "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
             "opentelemetry-exporter-otlp==1.1.0"
@@ -170,7 +189,7 @@ if setup_spec.type == SetupType.RAY:
         "dm_tree",
         "gym",
         "lz4",
-        "opencv-python-headless<=4.3.0.36",
+        "scikit-image",
         "pyyaml",
         "scipy",
     ]
@@ -183,15 +202,8 @@ if setup_spec.type == SetupType.RAY:
 # the change in the matching section of requirements/requirements.txt
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        # TODO(alex) Pin the version once this PR is
-        # included in the stable release.
-        # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
-        "aiohttp",
-        "aiohttp_cors",
-        "aioredis",
         "attrs",
         "click >= 7.0",
-        "colorama",
         "dataclasses; python_version < '3.7'",
         "filelock",
         "grpcio >= 1.28.1",
@@ -200,10 +212,7 @@ if setup_spec.type == SetupType.RAY:
         "numpy >= 1.19.3; python_version >= '3.9'",
         "protobuf >= 3.15.3",
         "pyyaml",
-        "requests",
         "redis >= 3.5.0",
-        "opencensus",
-        "prometheus_client >= 0.7.1",
     ]
 
 
@@ -328,7 +337,7 @@ def build(build_python, build_java, build_cpp):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
-        pip_packages = ["psutil", "setproctitle==1.2.2"]
+        pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
         subprocess.check_call(
             [
                 sys.executable, "-m", "pip", "install", "-q",
@@ -351,9 +360,14 @@ def build(build_python, build_java, build_cpp):
     bazel_targets += ["//:ray_pkg"] if build_python else []
     bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
+
+    bazel_flags = ["--verbose_failures"]
+    if setup_spec.build_type == BuildType.DEBUG:
+        bazel_flags.extend(["--config", "debug"])
+
     return bazel_invoke(
         subprocess.check_call,
-        ["build", "--verbose_failures", "--"] + bazel_targets,
+        ["build"] + bazel_flags + ["--"] + bazel_targets,
         env=bazel_env)
 
 

@@ -87,9 +87,18 @@ SpilledObjectReader::SpilledObjectReader(std::string file_path, uint64_t object_
   }
   file_path = match_groups[1].str();
   try {
-    object_offset = std::stoi(match_groups[2].str());
-    object_size = std::stoi(match_groups[3].str());
+    auto offset = std::stoll(match_groups[2].str());
+    auto size = std::stoll(match_groups[3].str());
+    if (offset < 0 || size < 0) {
+      RAY_LOG(ERROR) << "Offset and size can't be negative. offset: " << offset
+                     << ", size: " << size;
+      return false;
+    }
+    object_offset = offset;
+    object_size = size;
   } catch (...) {
+    RAY_LOG(ERROR) << "Failed to parse offset: " << match_groups[2].str()
+                   << " and size: " << match_groups[3].str();
     return false;
   }
   return true;

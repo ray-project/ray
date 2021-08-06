@@ -31,7 +31,7 @@ steps:
   commands:
     - *prelude_commands
     - TORCH_VERSION=1.6 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-flaky-mac --
+    - bazel test --config=ci --test_env=CI $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-flaky-mac --
       //:all python/ray/serve/... python/ray/new_dashboard/... -rllib/... -core_worker_test
     - *epilogue_commands
 
@@ -41,7 +41,7 @@ steps:
     - *prelude_commands
     - bazel test $(./scripts/bazel_export_options) --config=ci
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX
-      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER
+      --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
       --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky,-flaky-mac
       python/ray/tests/...
     - *epilogue_commands
@@ -50,7 +50,7 @@ steps:
   <<: *common
   commands:
     - *prelude_commands
-    - bazel test --config=ci $(./scripts/bazel_export_options)
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j,-flaky,-flaky-mac
       python/ray/tests/...
     - *epilogue_commands
@@ -59,7 +59,7 @@ steps:
   <<: *common
   commands:
     - *prelude_commands
-    - bazel test --config=ci $(./scripts/bazel_export_options)
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
       --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky,-flaky-mac
       python/ray/tests/...
     - *epilogue_commands
@@ -76,6 +76,7 @@ steps:
       --test_env=CONDA_SHLVL
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
+      --test_env=CI
       python/ray/tests/... python/ray/serve/...
     - *epilogue_commands
 

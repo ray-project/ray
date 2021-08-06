@@ -3,10 +3,10 @@ import time
 
 from ray.tests.conftest import *  # noqa
 import pytest
-
+from filelock import FileLock
 import ray
 from ray.test_utils import run_string_as_driver_nonblocking
-from ray.exceptions import RaySystemError, RayTaskError
+from ray.exceptions import RaySystemError
 from ray.experimental import workflow
 from ray.experimental.workflow.tests import utils
 from ray.experimental.workflow import workflow_storage
@@ -59,11 +59,7 @@ def simple(x):
     return z
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "namespace": "workflow"
-    }], indirect=True)
-def test_recovery_simple(ray_start_regular):
+def test_recovery_simple(workflow_start_regular):
     utils.unset_global_mark()
     workflow_id = "test_recovery_simple"
     with pytest.raises(RaySystemError):
@@ -78,11 +74,7 @@ def test_recovery_simple(ray_start_regular):
     assert ray.get(output) == "foo(x[append1])[append2]"
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "namespace": "workflow"
-    }], indirect=True)
-def test_recovery_complex(ray_start_regular):
+def test_recovery_complex(workflow_start_regular):
     utils.unset_global_mark()
     workflow_id = "test_recovery_complex"
     with pytest.raises(RaySystemError):
@@ -99,18 +91,13 @@ def test_recovery_complex(ray_start_regular):
     assert ray.get(output) == r
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "namespace": "workflow"
-    }], indirect=True)
-def test_recovery_non_exists_workflow(ray_start_regular):
-    with pytest.raises(RayTaskError):
+def test_recovery_non_exists_workflow(workflow_start_regular):
+    with pytest.raises(ValueError):
         ray.get(workflow.resume("this_workflow_id_does_not_exist"))
 
 
 driver_script = """
 import time
-import ray
 from ray.experimental import workflow
 
 
@@ -125,21 +112,61 @@ def foo(x):
 
 
 if __name__ == "__main__":
-    ray.init(address="auto", namespace="workflow")
+    workflow.init("{tmp_path}")
     assert foo.step(0).run(workflow_id="cluster_failure") == 20
 """
 
 
-def test_recovery_cluster_failure():
-    subprocess.run(["ray start --head"], shell=True)
+def test_recovery_cluster_failure(reset_workflow, tmp_path):
+    subprocess.check_call(["ray", "start", "--head"])
     time.sleep(1)
-    proc = run_string_as_driver_nonblocking(driver_script)
+    proc = run_string_as_driver_nonblocking(
+        driver_script.format(tmp_path=str(tmp_path)))
     time.sleep(10)
-    subprocess.run(["ray stop"], shell=True)
+    subprocess.check_call(["ray", "stop"])
     proc.kill()
     time.sleep(1)
-    ray.init(namespace="workflow")
+    workflow.init(str(tmp_path))
     assert ray.get(workflow.resume("cluster_failure")) == 20
+    workflow.storage.set_global_storage(None)
+    ray.shutdown()
+
+
+def test_recovery_cluster_failure_resume_all(reset_workflow, tmp_path):
+    tmp_path = tmp_path
+    subprocess.check_call(["ray", "start", "--head"])
+    time.sleep(1)
+    workflow_dir = tmp_path / "workflow"
+    lock_file = tmp_path / "lock_file"
+    driver_script = f"""
+import time
+from ray.experimental import workflow
+from filelock import FileLock
+@workflow.step
+def foo(x):
+    with FileLock("{str(lock_file)}"):
+        return 20
+
+if __name__ == "__main__":
+    workflow.init("{str(workflow_dir)}")
+    assert foo.step(0).run(workflow_id="cluster_failure") == 20
+"""
+    lock = FileLock(lock_file)
+    lock.acquire()
+
+    proc = run_string_as_driver_nonblocking(driver_script)
+    time.sleep(10)
+    subprocess.check_call(["ray", "stop"])
+    proc.kill()
+    time.sleep(1)
+    lock.release()
+    workflow.init(str(workflow_dir))
+    resumed = workflow.resume_all()
+    assert len(resumed) == 1
+    (wid, obj_ref) = resumed[0]
+    assert wid == "cluster_failure"
+    assert ray.get(obj_ref) == 20
+    workflow.storage.set_global_storage(None)
     ray.shutdown()
 
 
@@ -151,13 +178,27 @@ def recursive_chain(x):
         return 100
 
 
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "namespace": "workflow"
-    }], indirect=True)
-def test_shortcut(ray_start_regular):
+def test_shortcut(workflow_start_regular):
     assert recursive_chain.step(0).run(workflow_id="shortcut") == 100
     # the shortcut points to the step with output checkpoint
-    store = workflow_storage.WorkflowStorage("shortcut")
+    store = workflow_storage.get_workflow_storage("shortcut")
     step_id = store.get_entrypoint_step_id()
-    assert store.inspect_step(step_id).output_object_valid
+    output_step_id = store.inspect_step(step_id).output_step_id
+    assert store.inspect_step(output_step_id).output_object_valid
+
+
+@workflow.step
+def constant():
+    return 31416
+
+
+def test_resume_different_storage(ray_start_regular, tmp_path, reset_workflow):
+    workflow.init(storage=str(tmp_path))
+    constant.step().run(workflow_id="const")
+    assert ray.get(workflow.resume(workflow_id="const")) == 31416
+    workflow.storage.set_global_storage(None)
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

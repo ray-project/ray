@@ -9,8 +9,7 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
@@ -54,8 +53,9 @@ PolicySpec = namedtuple(
         # Overrides defined keys in the main Trainer config.
         # If None, use {}.
         "config",
-    ])
-# From 3.7 on, we could pass `defaults` into the above constructor.
+    ])  # defaults=(None, None, None, None)
+# TODO: From 3.7 on, we could pass `defaults` into the above constructor.
+#  We still support py3.6.
 PolicySpec.__new__.__defaults__ = (None, None, None, None)
 
 
@@ -170,7 +170,7 @@ class Policy(metaclass=ABCMeta):
                 actions (TensorType): Batch of output actions, with shape like
                     [BATCH_SIZE, ACTION_SHAPE].
                 state_outs (List[TensorType]): List of RNN state output
-                    batches, if any, with shape like [STATE_SIZE, BATCH_SIZE].
+                    batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
                 info (List[dict]): Dictionary of extra feature batches, if any,
                     with shape like
                     {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
@@ -317,7 +317,7 @@ class Policy(metaclass=ABCMeta):
                 actions (TensorType): Batch of output actions, with shape
                     like [BATCH_SIZE, ACTION_SHAPE].
                 state_outs (List[TensorType]): List of RNN state output
-                    batches, if any, with shape like [STATE_SIZE, BATCH_SIZE].
+                    batches, if any, each with shape [BATCH_SIZE, STATE_SIZE].
                 info (dict): Dictionary of extra feature batches, if any, with
                     shape like
                     {"f1": [BATCH_SIZE, ...], "f2": [BATCH_SIZE, ...]}.
@@ -490,9 +490,8 @@ class Policy(metaclass=ABCMeta):
         """
         return self.exploration.get_state()
 
-    # TODO: (sven) Deprecate this method.
+    @Deprecated(new="get_exploration_state", error=False)
     def get_exploration_info(self) -> Dict[str, TensorType]:
-        deprecation_warning("get_exploration_info", "get_exploration_state")
         return self.get_exploration_state()
 
     @DeveloperAPI
@@ -521,6 +520,61 @@ class Policy(metaclass=ABCMeta):
             List[TensorType]: Initial RNN state for the current policy.
         """
         return []
+
+    @DeveloperAPI
+    def load_batch_into_buffer(self, batch: SampleBatch,
+                               buffer_index: int = 0) -> int:
+        """Bulk-loads the given SampleBatch into the devices' memories.
+
+        The data is split equally across all the devices. If the data is not
+        evenly divisible by the batch size, excess data should be discarded.
+
+        Args:
+            batch (SampleBatch): The SampleBatch to load.
+            buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
+                to use on the devices.
+
+        Returns:
+            int: The number of tuples loaded per device.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
+        """Returns the number of currently loaded samples in the given buffer.
+
+        Args:
+            batch (SampleBatch): The SampleBatch to load.
+            buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
+                to use on the devices.
+
+        Returns:
+            int: The number of tuples loaded per device.
+        """
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
+        """Runs a single step of SGD on already loaded data in a buffer.
+
+        Runs an SGD step over a slice of the pre-loaded batch, offset by
+        the `offset` argument (useful for performing n minibatch SGD
+        updates repeatedly on the same, already pre-loaded data).
+
+        Updates shared model weights based on the averaged per-device
+        gradients.
+
+        Args:
+            offset (int): Offset into the preloaded data. Used for pre-loading
+                a train-batch once to a device, then iterating over
+                (subsampling through) this batch n times doing minibatch SGD.
+            buffer_index (int): The index of the buffer (a MultiGPUTowerStack)
+                to take the already pre-loaded data from.
+
+        Returns:
+            The outputs of extra_ops evaluated over the batch.
+        """
+        raise NotImplementedError
 
     @DeveloperAPI
     def get_state(self) -> Union[Dict[str, TensorType], List[TensorType]]:
@@ -639,13 +693,13 @@ class Policy(metaclass=ABCMeta):
         # Default view requirements (equal to those that we would use before
         # the trajectory view API was introduced).
         return {
-            SampleBatch.OBS: ViewRequirement(
-                space=self.observation_space, used_for_compute_actions=True),
+            SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.NEXT_OBS: ViewRequirement(
                 data_col=SampleBatch.OBS,
                 shift=1,
                 space=self.observation_space),
-            SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
+            SampleBatch.ACTIONS: ViewRequirement(
+                space=self.action_space, used_for_compute_actions=False),
             # For backward compatibility with custom Models that don't specify
             # these explicitly (will be removed by Policy if not used).
             SampleBatch.PREV_ACTIONS: ViewRequirement(
@@ -864,6 +918,11 @@ class Policy(metaclass=ABCMeta):
                 if "state_in_0" in view_reqs:
                     self.is_recurrent = lambda: True
 
+        # Make sure auto-generated init-state view requirements get added
+        # to both Policy and Model, no matter what.
+        view_reqs = [view_reqs] + ([self.view_requirements] if hasattr(
+            self, "view_requirements") else [])
+
         for i, state in enumerate(init_state):
             # Allow `state` to be either a Space (use zeros as initial values)
             # or any value (e.g. a dict or a non-zero tensor).
@@ -874,22 +933,22 @@ class Policy(metaclass=ABCMeta):
                     fw.all(state == 0.0) else state
             else:
                 space = state
-            view_reqs["state_in_{}".format(i)] = ViewRequirement(
-                "state_out_{}".format(i),
-                shift=-1,
-                used_for_compute_actions=True,
-                batch_repeat_value=self.config.get("model", {}).get(
-                    "max_seq_len", 1),
-                space=space)
-            view_reqs["state_out_{}".format(i)] = ViewRequirement(
-                space=space, used_for_training=True)
+            for vr in view_reqs:
+                vr["state_in_{}".format(i)] = ViewRequirement(
+                    "state_out_{}".format(i),
+                    shift=-1,
+                    used_for_compute_actions=True,
+                    batch_repeat_value=self.config.get("model", {}).get(
+                        "max_seq_len", 1),
+                    space=space)
+                vr["state_out_{}".format(i)] = ViewRequirement(
+                    space=space, used_for_training=True)
 
-    # TODO: (sven) Deprecate this in favor of `save()`.
+    @Deprecated(new="save", error=False)
     def export_checkpoint(self, export_dir: str) -> None:
         """Export Policy checkpoint to local directory.
 
         Args:
             export_dir (str): Local writable directory.
         """
-        deprecation_warning("export_checkpoint", "save")
         raise NotImplementedError

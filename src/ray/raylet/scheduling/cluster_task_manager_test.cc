@@ -45,14 +45,27 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec) {
+  std::shared_ptr<WorkerInterface> PopWorker(
+      const TaskSpecification &task_spec,
+      const std::string &allocated_instances_serialized_json) {
     num_pops++;
-    if (workers.empty()) {
-      return nullptr;
+    const WorkerCacheKey env = {
+        task_spec.OverrideEnvironmentVariables(), task_spec.SerializedRuntimeEnv(), {}};
+    const int runtime_env_hash = env.IntHash();
+    std::shared_ptr<WorkerInterface> worker = nullptr;
+
+    for (auto it = workers.begin(); it != workers.end(); it++) {
+      // Skip if the runtime env doesn't match.
+      if (runtime_env_hash != (*it)->GetRuntimeEnvHash()) {
+        continue;
+      }
+
+      worker = std::move(*it);
+      workers.erase(it);
+      break;
     }
-    auto worker_ptr = workers.front();
-    workers.pop_front();
-    return worker_ptr;
+
+    return worker;
   }
 
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
@@ -77,16 +90,17 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
 }
 
 Task CreateTask(const std::unordered_map<std::string, double> &required_resources,
-                int num_args = 0, std::vector<ObjectID> args = {}) {
+                int num_args = 0, std::vector<ObjectID> args = {},
+                std::string serialized_runtime_env = "{}") {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
   rpc::Address address;
-  spec_builder.SetCommonTaskSpec(id, "dummy_task", Language::PYTHON,
-                                 FunctionDescriptorBuilder::BuildPython("", "", "", ""),
-                                 job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
-                                 required_resources, {},
-                                 std::make_pair(PlacementGroupID::Nil(), -1), true, "");
+  spec_builder.SetCommonTaskSpec(
+      id, "dummy_task", Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("", "", "", ""), job_id, TaskID::Nil(), 0,
+      TaskID::Nil(), address, 0, required_resources, {},
+      std::make_pair(PlacementGroupID::Nil(), -1), true, "", serialized_runtime_env);
 
   if (!args.empty()) {
     for (auto &arg : args) {
@@ -127,6 +141,8 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
   bool TaskDependenciesBlocked(const TaskID &task_id) const {
     return blocked_tasks.count(task_id);
   }
+
+  bool CheckObjectLocal(const ObjectID &object_id) const { return true; }
 
   std::unordered_set<ObjectID> &missing_objects_;
   std::unordered_set<TaskID> subscribed_tasks;
@@ -268,6 +284,70 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
             task.GetTaskSpecification().TaskId());
 
   AssertNoLeaks();
+}
+
+TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
+  /*
+    Test that if no worker is available for the first task in a dispatch
+    queue (because the runtime env in the task spec doesn't match any
+    available worker), other tasks in the dispatch queue can still be scheduled.
+    https://github.com/ray-project/ray/issues/16226
+   */
+
+  // Use the same required_resources for all tasks so they end up in the same queue.
+  const std::unordered_map<std::string, double> required_resources = {
+      {ray::kCPU_ResourceLabel, 4}};
+
+  std::string serialized_runtime_env_A = "mock_env_A";
+  Task task_A = CreateTask(required_resources, /*num_args=*/0, /*args=*/{},
+                           serialized_runtime_env_A);
+  rpc::RequestWorkerLeaseReply reply_A;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
+                                          std::function<void()>) {
+    *callback_occurred_ptr = true;
+  };
+
+  std::string serialized_runtime_env_B = "mock_env_B";
+  Task task_B_1 = CreateTask(required_resources, /*num_args=*/0, /*args=*/{},
+                             serialized_runtime_env_B);
+  Task task_B_2 = CreateTask(required_resources, /*num_args=*/0, /*args=*/{},
+                             serialized_runtime_env_B);
+  rpc::RequestWorkerLeaseReply reply_B_1;
+  rpc::RequestWorkerLeaseReply reply_B_2;
+  auto empty_callback = [](Status, std::function<void()>, std::function<void()>) {};
+
+  // Ensure task_A is not at the front of the queue.
+  task_manager_.QueueAndScheduleTask(task_B_1, &reply_B_1, empty_callback);
+  task_manager_.QueueAndScheduleTask(task_A, &reply_A, callback);
+  task_manager_.QueueAndScheduleTask(task_B_2, &reply_B_2, empty_callback);
+
+  // Push a worker that can only run task A.
+  const WorkerCacheKey env_A = {
+      /*override_environment_variables=*/{}, serialized_runtime_env_A, {}};
+  const int runtime_env_hash_A = env_A.IntHash();
+  std::shared_ptr<MockWorker> worker_A =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash_A);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker_A));
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  // Check we can schedule task A, even though task B is at the front of the queue
+  // and no workers are available for task B.
+  task_manager_.ScheduleAndDispatchTasks();
+
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(node_info_calls_, 0);
+
+  Task finished_task;
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
+            task_A.GetTaskSpecification().TaskId());
+
+  // task_B_1 and task_B_2 remain in the dispatch queue, so don't call AssertNoLeaks().
+  // AssertNoLeaks();
 }
 
 TEST_F(ClusterTaskManagerTest, BlockedWorkerDiesTest) {

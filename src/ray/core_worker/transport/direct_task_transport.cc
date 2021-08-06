@@ -20,6 +20,7 @@ namespace ray {
 
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
+  num_tasks_submitted_++;
 
   if (task_spec.IsActorCreationTask()) {
     // Synchronously register the actor to GCS server.
@@ -475,6 +476,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
   // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
   // same TaskID to request a worker
+  num_leases_requested_++;
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
   resource_spec_msg.set_task_id(TaskID::ForFakeTask().Binary());
   TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
@@ -505,7 +507,23 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
         pending_lease_request = std::make_pair(nullptr, TaskID::Nil());
 
         if (status.ok()) {
-          if (reply.canceled()) {
+          if (reply.runtime_env_setup_failed()) {
+            // If the runtime_env failed to be set up, we fail all of the pending
+            // tasks in the queue. This makes an implicit assumption that runtime_env
+            // failures are not transient -- we may consider adding some retries
+            // in the future.
+            auto &task_queue = scheduling_key_entry.task_queue;
+            while (!task_queue.empty()) {
+              auto &task_spec = task_queue.front();
+              RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
+                  task_spec.TaskId(), task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED,
+                  nullptr));
+              task_queue.pop_front();
+            }
+            if (scheduling_key_entry.CanDelete()) {
+              scheduling_key_entries_.erase(scheduling_key);
+            }
+          } else if (reply.canceled()) {
             RAY_LOG(DEBUG) << "Lease canceled " << task_id;
             RequestNewWorkerIfNeeded(scheduling_key);
           } else if (!reply.worker_address().raylet_id().empty()) {
@@ -603,6 +621,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
             // need to do anything here.
             return;
           } else if (!status.ok() || !is_actor_creation) {
+            RAY_LOG(DEBUG) << "Task failed with error: " << status;
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr, scheduling_key,
                          /*error=*/!status.ok(), assigned_resources);

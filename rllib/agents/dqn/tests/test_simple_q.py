@@ -52,20 +52,20 @@ class TestSimpleQ(unittest.TestCase):
         # Fake GPU setup.
         config["num_gpus"] = 2
         config["_fake_gpus"] = True
-        config["framework"] = "tf"
 
-        trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
-        num_iterations = 200
-        learnt = False
-        for i in range(num_iterations):
-            results = trainer.train()
-            print("reward={}".format(results["episode_reward_mean"]))
-            if results["episode_reward_mean"] > 75.0:
-                learnt = True
-                break
-        assert learnt, "SimpleQ multi-GPU (with fake-GPUs) did not " \
-                       "learn CartPole!"
-        trainer.stop()
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+            trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
+            num_iterations = 200
+            learnt = False
+            for i in range(num_iterations):
+                results = trainer.train()
+                print("reward={}".format(results["episode_reward_mean"]))
+                if results["episode_reward_mean"] > 75.0:
+                    learnt = True
+                    break
+            assert learnt, "SimpleQ multi-GPU (with fake-GPUs) did not " \
+                           "learn CartPole!"
+            trainer.stop()
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""

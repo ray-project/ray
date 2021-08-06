@@ -42,7 +42,7 @@ if __name__ == "__main__":
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 2,
         "num_envs_per_worker": 10,
-        "num_data_loader_buffers": 1,
+        "num_multi_gpu_tower_stacks": 1,
         "num_aggregation_workers": 1,
         "broadcast_interval": 50,
         "rollout_fragment_length": 100,

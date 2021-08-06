@@ -1,3 +1,17 @@
+// Copyright 2019-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
 
 #include <cstddef>
@@ -247,10 +261,11 @@ class WorkerCacheKey {
   ///
   /// \param override_environment_variables The environment variable overrides set in this
   /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
-  /// worker.
+  /// worker. \param required_resources The required resouce.
   WorkerCacheKey(
       const std::unordered_map<std::string, std::string> override_environment_variables,
-      const std::string serialized_runtime_env);
+      const std::string serialized_runtime_env,
+      const std::unordered_map<std::string, double> required_resources);
 
   bool operator==(const WorkerCacheKey &k) const;
 
@@ -277,6 +292,8 @@ class WorkerCacheKey {
   const std::unordered_map<std::string, std::string> override_environment_variables;
   /// The JSON-serialized runtime env for this worker.
   const std::string serialized_runtime_env;
+  /// The required resources for this worker.
+  const std::unordered_map<std::string, double> required_resources;
   /// The cached hash of the worker's environment.  This is set to 0
   /// for unspecified or empty environments.
   mutable std::size_t hash_ = 0;

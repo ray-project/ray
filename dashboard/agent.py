@@ -10,10 +10,21 @@ import json
 import time
 import traceback
 
-import aiohttp
-import aiohttp.web
-import aiohttp_cors
-from aiohttp import hdrs
+try:
+    import aiohttp
+    import aiohttp.web
+    import aiohttp_cors
+    from aiohttp import hdrs
+
+    import aioredis  # noqa: F401
+except ImportError:
+    print("Not all Ray Dashboard dependencies were found. "
+          "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
+          "only be usable via `pip install 'ray[default]'`. Please "
+          "update your install command.")
+    # Set an exit code different from throwing an exception.
+    sys.exit(2)
+
 from grpc.experimental import aio as aiogrpc
 
 import ray
@@ -53,8 +64,10 @@ class DashboardAgent(object):
                  log_dir=None,
                  metrics_export_port=None,
                  node_manager_port=None,
+                 listen_port=0,
                  object_store_name=None,
-                 raylet_name=None):
+                 raylet_name=None,
+                 logging_params=None):
         """Initialize the DashboardAgent object."""
         # Public attributes are accessible for all agent modules.
         self.ip = node_ip_address
@@ -68,8 +81,10 @@ class DashboardAgent(object):
         self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
         self.node_manager_port = node_manager_port
+        self.listen_port = listen_port
         self.object_store_name = object_store_name
         self.raylet_name = raylet_name
+        self.logging_params = logging_params
         self.node_id = os.environ["RAY_NODE_ID"]
         # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
         # only used for fate-sharing with the raylet and we need a different
@@ -165,7 +180,7 @@ class DashboardAgent(object):
 
         runner = aiohttp.web.AppRunner(app)
         await runner.setup()
-        site = aiohttp.web.TCPSite(runner, self.ip, 0)
+        site = aiohttp.web.TCPSite(runner, "0.0.0.0", self.listen_port)
         await site.start()
         http_host, http_port, *_ = site._server.sockets[0].getsockname()
         logger.info("Dashboard agent http address: %s:%s", http_host,
@@ -237,6 +252,12 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="The socket name of the plasma store")
+    parser.add_argument(
+        "--listen-port",
+        required=False,
+        type=int,
+        default=0,
+        help="Port for HTTP server to listen on")
     parser.add_argument(
         "--raylet-name",
         required=True,
@@ -319,13 +340,14 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     try:
-        setup_component_logger(
+        logging_params = dict(
             logging_level=args.logging_level,
             logging_format=args.logging_format,
             log_dir=args.log_dir,
             filename=args.logging_filename,
             max_bytes=args.logging_rotate_bytes,
             backup_count=args.logging_rotate_backup_count)
+        setup_component_logger(**logging_params)
 
         # The dashboard is currently broken on Windows.
         # https://github.com/ray-project/ray/issues/14026.
@@ -349,8 +371,10 @@ if __name__ == "__main__":
             log_dir=args.log_dir,
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,
+            listen_port=args.listen_port,
             object_store_name=args.object_store_name,
-            raylet_name=args.raylet_name)
+            raylet_name=args.raylet_name,
+            logging_params=logging_params)
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())

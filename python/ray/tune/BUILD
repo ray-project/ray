@@ -621,6 +621,15 @@ py_test(
 )
 
 py_test(
+    name = "optuna_define_by_run_example",
+    size = "small",
+    srcs = ["examples/optuna_define_by_run_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "optuna_example",
     size = "small",
     srcs = ["examples/optuna_example.py"],
@@ -827,10 +836,11 @@ py_test(
 
 py_test(
     name = "xgboost_dynamic_resources_example",
-    size = "medium",
+    size = "large",
     srcs = ["examples/xgboost_dynamic_resources_example.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"]
+    tags = ["exclusive", "example"],
+    args = ["--test"]
 )
 
 py_test(

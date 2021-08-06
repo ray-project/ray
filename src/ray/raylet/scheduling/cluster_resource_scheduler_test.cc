@@ -898,21 +898,21 @@ TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
   // No feasible nodes.
   int64_t total_violations;
   bool is_infeasible;
-  ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false, false,
+  ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false, false, false,
                                                       &total_violations, &is_infeasible),
             "");
 
   // Feasible remote node, but doesn't currently have resources available. We
   // should spill there.
   resource_scheduler.AddOrUpdateNode("remote_feasible", resource_spec, {{"CPU", 0.}});
-  ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false, false,
+  ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false, false, false,
                                                       &total_violations, &is_infeasible),
             "remote_feasible");
 
   // Feasible remote node, and it currently has resources available. We should
   // prefer to spill there.
   resource_scheduler.AddOrUpdateNode("remote_available", resource_spec, resource_spec);
-  ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false, false,
+  ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false, false, false,
                                                       &total_violations, &is_infeasible),
             "remote_available");
 }
@@ -1079,16 +1079,16 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
       // Resource usage report tick should reset the remote node's resources.
       resource_scheduler.FillResourceUsage(data);
       for (int j = 0; j < num_slots_available; j++) {
-        ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(task_spec, false, false, &t,
-                                                            &is_infeasible),
+        ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(task_spec, false, false,
+                                                            false, &t, &is_infeasible),
                   "remote");
         // Allocate remote resources.
         ASSERT_TRUE(resource_scheduler.AllocateRemoteTaskResources("remote", task_spec));
       }
       // Our local view says there are not enough resources on the remote node to
       // schedule another task.
-      ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(task_spec, false, false, &t,
-                                                          &is_infeasible),
+      ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(task_spec, false, false, false,
+                                                          &t, &is_infeasible),
                 "");
       ASSERT_FALSE(
           resource_scheduler.AllocateLocalTaskResources(task_spec, task_allocation));
@@ -1106,28 +1106,28 @@ TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
   bool is_infeasible;
 
   std::string result = resource_scheduler.GetBestSchedulableNode(
-      resource_request, false, false, &t, &is_infeasible);
+      resource_request, false, false, false, &t, &is_infeasible);
   ASSERT_TRUE(result.empty());
 
   resource_scheduler.AddLocalResourceInstances("custom123", {0., 1.0, 1.0});
 
-  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false, &t,
-                                                     &is_infeasible);
+  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false,
+                                                     false, &t, &is_infeasible);
   ASSERT_FALSE(result.empty()) << resource_scheduler.DebugString();
 
   resource_request["custom123"] = 3;
-  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false, &t,
-                                                     &is_infeasible);
+  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false,
+                                                     false, &t, &is_infeasible);
   ASSERT_TRUE(result.empty());
 
   resource_scheduler.AddLocalResourceInstances("custom123", {1.0});
-  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false, &t,
-                                                     &is_infeasible);
+  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false,
+                                                     false, &t, &is_infeasible);
   ASSERT_FALSE(result.empty());
 
   resource_scheduler.DeleteLocalResource("custom123");
-  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false, &t,
-                                                     &is_infeasible);
+  result = resource_scheduler.GetBestSchedulableNode(resource_request, false, false,
+                                                     false, &t, &is_infeasible);
   ASSERT_TRUE(result.empty());
 }
 
@@ -1153,24 +1153,24 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
   int64_t total_violations;
   bool is_infeasible;
   // Normally we prefer local.
-  ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false,
+  ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false, false,
                                                       /*force_spillback=*/false,
                                                       &total_violations, &is_infeasible),
             "local");
   // If spillback is forced, we try to spill to remote, but only if there is a
   // schedulable node.
-  ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false,
+  ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false, false,
                                                       /*force_spillback=*/true,
                                                       &total_violations, &is_infeasible),
             "");
   // Choose a remote node that has the resources available.
   resource_scheduler.AddOrUpdateNode(std::to_string(50), resource_spec, {});
-  ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false,
+  ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false, false,
                                                       /*force_spillback=*/true,
                                                       &total_violations, &is_infeasible),
             "");
   resource_scheduler.AddOrUpdateNode(std::to_string(51), resource_spec, resource_spec);
-  ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false,
+  ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(resource_spec, false, false,
                                                       /*force_spillback=*/true,
                                                       &total_violations, &is_infeasible),
             "51");
@@ -1210,6 +1210,49 @@ TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
   success = resource_scheduler.AllocateTaskResourceInstances(fail_resource_request,
                                                              task_allocation);
   ASSERT_FALSE(success) << resource_scheduler.DebugString();
+}
+
+TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) {
+  ClusterResourceScheduler resource_scheduler("local",
+                                              {{"CPU", 4}, {"memory", 4}, {"GPU", 2}});
+  std::shared_ptr<TaskResourceInstances> cluster_resources =
+      std::make_shared<TaskResourceInstances>();
+  addTaskResourceInstances(true, {2.}, 0, cluster_resources.get());
+  addTaskResourceInstances(true, {4.}, 1, cluster_resources.get());
+  addTaskResourceInstances(true, {1., 1.}, 2, cluster_resources.get());
+  std::string serialized_string =
+      resource_scheduler.SerializedTaskResourceInstances(cluster_resources);
+  std::string expected_serialized_string =
+      R"({"CPU":20000,"memory":40000,"GPU":[10000, 10000]})";
+  ASSERT_EQ(serialized_string == expected_serialized_string, true);
+
+  RayConfig::instance().initialize(
+      R"(
+{
+  "predefined_unit_instance_resources": "CPU,GPU"
+}
+  )");
+  std::shared_ptr<TaskResourceInstances> cluster_instance_resources =
+      std::make_shared<TaskResourceInstances>();
+  addTaskResourceInstances(true, {1., 1.}, 0, cluster_instance_resources.get());
+  addTaskResourceInstances(true, {4.}, 1, cluster_instance_resources.get());
+  addTaskResourceInstances(true, {1., 1.}, 2, cluster_instance_resources.get());
+  ClusterResourceScheduler resource_scheduler_cpu_instance(
+      "local", {{"CPU", 4}, {"memory", 4}, {"GPU", 2}});
+  std::string instance_serialized_string =
+      resource_scheduler_cpu_instance.SerializedTaskResourceInstances(
+          cluster_instance_resources);
+  std::string expected_instance_serialized_string =
+      R"({"CPU":[10000, 10000],"memory":40000,"GPU":[10000, 10000]})";
+  ASSERT_EQ(instance_serialized_string == expected_instance_serialized_string, true);
+
+  // reset global config
+  RayConfig::instance().initialize(
+      R"(
+{
+  "predefined_unit_instance_resources": "GPU"
+}
+  )");
 }
 
 }  // namespace ray

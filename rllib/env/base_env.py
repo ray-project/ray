@@ -125,7 +125,9 @@ class BaseEnv:
                         make_env,
                         num_envs,
                         multiagent=False,
-                        remote_env_batch_wait_ms=remote_env_batch_wait_ms)
+                        remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+                        existing_envs=[env],
+                    )
                 else:
                     env = VectorEnv.wrap(
                         make_env=make_env,

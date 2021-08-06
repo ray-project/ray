@@ -100,9 +100,8 @@ class TestSAC(unittest.TestCase):
                 print("Env={}".format(env))
                 if env == RandomEnv:
                     config["env_config"] = {
-                        "observation_space": Tuple(
-                            [simple_space,
-                             Discrete(2), image_space]),
+                        "observation_space": Tuple((simple_space, Discrete(2),
+                                                    image_space)),
                         "action_space": Box(-1.0, 1.0, shape=(1, )),
                     }
                 else:
@@ -127,10 +126,11 @@ class TestSAC(unittest.TestCase):
         config["_fake_gpus"] = True
         config["clip_actions"] = False
         config["initial_alpha"] = 0.001
+        config["prioritized_replay"] = True
         env = "ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv"
         config["env_config"] = {"config": {"repeat_delay": 0}}
 
-        for _ in framework_iterator(config, frameworks="torch"):
+        for _ in framework_iterator(config, frameworks=("tf", "torch")):
             trainer = sac.SACTrainer(config=config, env=env)
             num_iterations = 50
             learnt = False
@@ -254,6 +254,9 @@ class TestSAC(unittest.TestCase):
                 assert fw == "torch"  # Then transfer that to torch Model.
                 model_dict = self._translate_weights_to_torch(
                     weights_dict, map_)
+                # Have to add this here (not a parameter in tf, but must be
+                # one in torch, so it gets properly copied to the GPU(s)).
+                model_dict["target_entropy"] = policy.model.target_entropy
                 policy.model.load_state_dict(model_dict)
                 policy.target_model.load_state_dict(model_dict)
 
@@ -428,9 +431,9 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.1)
+                                atol=0.003)
                         else:
-                            check(tf_var, torch_var, rtol=0.1)
+                            check(tf_var, torch_var, atol=0.003)
                     # And alpha.
                     check(policy.model.log_alpha,
                           tf_weights["default_policy/log_alpha"])
@@ -445,9 +448,10 @@ class TestSAC(unittest.TestCase):
                             check(
                                 tf_var,
                                 np.transpose(torch_var.detach().cpu()),
-                                rtol=0.1)
+                                atol=0.003)
                         else:
-                            check(tf_var, torch_var, rtol=0.1)
+                            check(tf_var, torch_var, atol=0.003)
+            trainer.stop()
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return SampleBatch({

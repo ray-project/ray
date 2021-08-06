@@ -610,8 +610,17 @@ class ActorClass:
                     f"name must be None or a string, got: '{type(name)}'.")
             elif name == "":
                 raise ValueError("Actor name cannot be an empty string.")
-            elif "/" in name:
+            split_names = name.split("/", maxsplit=1)
+            if len(split_names) <= 1:
+                name = split_names[0]
+                namespace = ""
+            else:
+                # must be length 2
+                namespace, name = split_names
+            if "/" in name:
                 raise ValueError("Actor name may not contain '/'.")
+        else:
+            namespace = ""
 
         # Check whether the name is already taken.
         # TODO(edoakes): this check has a race condition because two drivers
@@ -716,6 +725,11 @@ class ActorClass:
         if runtime_env is None:
             runtime_env = meta.runtime_env
         if runtime_env:
+            if runtime_env.get("working_dir"):
+                raise NotImplementedError(
+                    "Overriding working_dir for actors is not supported. "
+                    "Please use ray.init(runtime_env={'working_dir': ...}) "
+                    "to configure per-job environment instead.")
             runtime_env_dict = runtime_support.RuntimeEnvDict(
                 runtime_env).get_parsed_dict()
         else:
@@ -738,6 +752,7 @@ class ActorClass:
             max_concurrency,
             detached,
             name if name is not None else "",
+            namespace,
             is_asyncio,
             placement_group.id,
             placement_group_bundle_index,
@@ -934,9 +949,9 @@ class ActorHandle:
         return self._ray_method_signatures.keys()
 
     def __repr__(self):
-        return (f"Actor("
-                f"{self._ray_actor_creation_function_descriptor.class_name},"
-                f"{self._actor_id.hex()})")
+        return ("Actor("
+                f"{self._ray_actor_creation_function_descriptor.class_name}, "
+                f"{self._actor_id.hex()}")
 
     @property
     def _actor_id(self):
