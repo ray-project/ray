@@ -580,6 +580,10 @@ class TorchPolicy(Policy):
                 "Must call Policy.load_batch_into_buffer() before "
                 "Policy.learn_on_loaded_batch()!")
 
+        # Set Model to train mode.
+        if self.model:
+            self.model.train()
+
         # Get the correct slice of the already loaded batch to use,
         # based on offset and batch size.
         device_batch_size = \
