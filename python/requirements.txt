@@ -88,3 +88,5 @@ async-generator
 colorful
 # Needs gcc
 py-spy
+# We need this to launch ray-operator
+kopf
