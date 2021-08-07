@@ -515,6 +515,12 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         }
       }
       if (task_spec.IsActorCreationTask()) {
+        /// The default max concurrency for creating PoolManager should
+        /// be 0 if this is an asyncio actor.
+        const int default_max_concurrency =
+            task_spec.IsAsyncioActor() ? 0 : task_spec.MaxActorConcurrency();
+        pool_manager_ = std::make_shared<PoolManager>(task_spec.ConcurrencyGroups(),
+                                                      default_max_concurrency);
         RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
                       << ", actor_id: " << task_spec.ActorCreationId();
         // Tell raylet that an actor creation task has finished execution, so that
@@ -559,22 +565,24 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     if (it == actor_scheduling_queues_.end()) {
       auto result = actor_scheduling_queues_.emplace(
           task_spec.CallerWorkerId(),
-          std::unique_ptr<SchedulingQueue>(new ActorSchedulingQueue(
-              task_main_io_service_, *waiter_, pool_, is_asyncio_, max_concurrency_)));
+          std::unique_ptr<SchedulingQueue>(
+              new ActorSchedulingQueue(task_main_io_service_, *waiter_, pool_manager_,
+                                       is_asyncio_, fiber_max_concurrency_)));
       it = result.first;
     }
 
     it->second->Add(request.sequence_number(), request.client_processed_up_to(),
                     std::move(accept_callback), std::move(reject_callback),
-                    std::move(send_reply_callback), nullptr, task_spec.TaskId(),
+                    std::move(send_reply_callback), task_spec.ConcurrencyGroupName(),
+                    task_spec.FunctionDescriptor(), nullptr, task_spec.TaskId(),
                     dependencies);
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
     normal_scheduling_queue_->Add(
         request.sequence_number(), request.client_processed_up_to(),
         std::move(accept_callback), std::move(reject_callback),
-        std::move(send_reply_callback), std::move(steal_callback), task_spec.TaskId(),
-        dependencies);
+        std::move(send_reply_callback), "", task_spec.FunctionDescriptor(),
+        std::move(steal_callback), task_spec.TaskId(), dependencies);
   }
 }
 
@@ -604,18 +612,13 @@ bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
   return normal_scheduling_queue_->CancelTaskIfFound(task_id);
 }
 
+/// Note that this method is only used for asyncio actor.
 void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(bool is_asyncio,
-                                                          int max_concurrency) {
-  RAY_CHECK(max_concurrency_ == 0)
+                                                          int fiber_max_concurrency) {
+  RAY_CHECK(fiber_max_concurrency_ == 0)
       << "SetMaxActorConcurrency should only be called at most once.";
-  RAY_CHECK(pool_ == nullptr);
-  RAY_CHECK(max_concurrency >= 1);
-  max_concurrency_ = max_concurrency;
   is_asyncio_ = is_asyncio;
-  if (!is_asyncio_ && max_concurrency_ > 1) {
-    RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency_;
-    pool_.reset(new BoundedExecutor(max_concurrency_));
-  }
+  fiber_max_concurrency_ = fiber_max_concurrency;
 }
 
 }  // namespace ray
