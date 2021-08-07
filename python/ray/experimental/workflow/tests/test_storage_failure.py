@@ -10,6 +10,7 @@ from ray.experimental.workflow.storage import (get_global_storage,
 from ray.experimental.workflow.storage.debug import DebugStorage
 from ray.experimental.workflow.workflow_storage import STEP_OUTPUTS_METADATA
 from ray.experimental.workflow.workflow_storage import asyncio_run
+from ray.experimental.workflow.storage.filesystem import FilesystemStorageImpl
 
 
 @workflow.step
@@ -81,14 +82,23 @@ def test_failure_with_storage(workflow_start_regular):
 
     wf = construct_workflow(5)
     result = wf.run(workflow_id="complex_workflow")
-    key = debug_store.wrapped_storage.make_key("complex_workflow")
     index = _locate_initial_commit(debug_store) + 1
 
-    step_len = max((len(debug_store) - index) // 5, 1)
-    for j in range(index, len(debug_store), step_len):
+    def resume(num_records_replayed):
+        key = debug_store.wrapped_storage.make_key("complex_workflow")
         asyncio_run(debug_store.wrapped_storage.delete_prefix(key))
-        replays = [debug_store.replay(i) for i in range(j)]
+        replays = [debug_store.replay(i) for i in range(num_records_replayed)]
         asyncio_run(asyncio.gather(*replays))
-        resumed_result = ray.get(
-            workflow.resume(workflow_id="complex_workflow"))
-        assert resumed_result == result
+        return ray.get(workflow.resume(workflow_id="complex_workflow"))
+
+    with pytest.raises(ValueError):
+        # in cases, the replayed records are too few to resume the workflow.
+        resume(index - 1)
+
+    if isinstance(debug_store.wrapped_storage, FilesystemStorageImpl):
+        # filesystem is faster, so we can cover all cases
+        step_len = 1
+    else:
+        step_len = max((len(debug_store) - index) // 5, 1)
+    for j in range(index, len(debug_store), step_len):
+        assert resume(j) == result
