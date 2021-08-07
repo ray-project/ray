@@ -261,7 +261,7 @@ if __name__ == "__main__":
     else:
         if args.server_address:
             # Connect to a remote server through Ray Client.
-            ray.util.connect(args.server_address)
+            ray.init(f"ray://{args.server_address}")
         elif args.ray_address:
             # Run directly on the Ray cluster.
             ray.init(args.ray_address)

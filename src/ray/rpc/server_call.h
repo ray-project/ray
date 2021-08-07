@@ -84,6 +84,8 @@ class ServerCall {
   // Invoked when sending reply fails.
   virtual void OnReplyFailed() = 0;
 
+  virtual const ServerCallFactory &GetServerCallFactory() = 0;
+
   /// Virtual destruct function to make sure subclass would destruct properly.
   virtual ~ServerCall() = default;
 };
@@ -94,6 +96,9 @@ class ServerCallFactory {
   /// Create a new `ServerCall` and request gRPC runtime to start accepting the
   /// corresponding type of requests.
   virtual void CreateCall() const = 0;
+
+  /// Get the maximum request number to handle at the same time. -1 means no limit.
+  virtual int64_t GetMaxActiveRPCs() const = 0;
 
   virtual ~ServerCallFactory() = default;
 };
@@ -155,10 +160,13 @@ class ServerCallImpl : public ServerCall {
     // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
     // a different thread, and will cause `this` to be deleted.
     const auto &factory = factory_;
-    // Create a new `ServerCall` to accept the next incoming request.
-    // We create this before handling the request so that the it can be populated by
-    // the completion queue in the background if a new request comes in.
-    factory.CreateCall();
+    if (factory.GetMaxActiveRPCs() == -1) {
+      // Create a new `ServerCall` to accept the next incoming request.
+      // We create this before handling the request only when no back pressure limit is
+      // set. So that the it can be populated by the completion queue in the background if
+      // a new request comes in.
+      factory.CreateCall();
+    }
     (service_handler_.*handle_request_function_)(
         request_, &reply_,
         [this](Status status, std::function<void()> success,
@@ -188,6 +196,8 @@ class ServerCallImpl : public ServerCall {
       io_service_.post([callback]() { callback(); }, call_name_ + ".failure_callback");
     }
   }
+
+  const ServerCallFactory &GetServerCallFactory() override { return factory_; }
 
  private:
   /// Tell gRPC to finish this request and send reply asynchronously.
@@ -267,20 +277,23 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   /// \param[in] handle_request_function Pointer to the service handler function.
   /// \param[in] cq The `CompletionQueue`.
   /// \param[in] io_service The event loop.
+  /// \param[in] max_active_rpcs Maximum request number to handle at the same time. -1
+  /// means no limit.
   ServerCallFactoryImpl(
       AsyncService &service,
       RequestCallFunction<GrpcService, Request, Reply> request_call_function,
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      instrumented_io_context &io_service, std::string call_name)
+      instrumented_io_context &io_service, std::string call_name, int64_t max_active_rpcs)
       : service_(service),
         request_call_function_(request_call_function),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
         cq_(cq),
         io_service_(io_service),
-        call_name_(std::move(call_name)) {}
+        call_name_(std::move(call_name)),
+        max_active_rpcs_(max_active_rpcs) {}
 
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
@@ -293,6 +306,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
                                        &call->response_writer_, cq_.get(), cq_.get(),
                                        call);
   }
+
+  int64_t GetMaxActiveRPCs() const override { return max_active_rpcs_; }
 
  private:
   /// The gRPC-generated `AsyncService`.
@@ -315,6 +330,10 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 
   /// Human-readable name for this RPC call.
   std::string call_name_;
+
+  /// Maximum request number to handle at the same time.
+  /// -1 means no limit.
+  uint64_t max_active_rpcs_;
 };
 
 }  // namespace rpc

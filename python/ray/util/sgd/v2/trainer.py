@@ -2,17 +2,25 @@ import inspect
 import logging
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, Type
 
-from ray.tune import Trainable, PlacementGroupFactory
+from ray.tune import PlacementGroupFactory
+from ray.tune import Trainable
 from ray.tune.result import RESULT_DUPLICATE
 from ray.tune.trainable import DistributedTrainable
-from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
+from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
+    InactiveWorkerGroupError, SGDBackendError
+from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
+from ray.util.sgd.v2.backends.torch import TorchConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
-from ray.util.sgd.v2.constants import BACKEND_NAME_TO_CONFIG_CLS
 
 T = TypeVar("T")
 S = TypeVar("S")
 
 logger = logging.getLogger(__name__)
+
+BACKEND_NAME_TO_CONFIG_CLS = {
+    "tensorflow": TensorflowConfig,
+    "torch": TorchConfig
+}
 
 
 class Trainer:
@@ -131,7 +139,27 @@ class Trainer:
         train_func = self._get_train_func(train_func, config)
         # TODO(matt): Set default callbacks.
         callbacks = [] if callbacks is None else callbacks
-        return self._executor.run(train_func)
+
+        try:
+            self._executor.start_training(train_func)
+            while True:
+                intermediate_results = self._executor.fetch_next_result()
+                if intermediate_results is None:
+                    break
+                else:
+                    for callback in callbacks:
+                        callback.handle_result(intermediate_results)
+            return self._executor.finish_training()
+        except InactiveWorkerGroupError:
+            raise RuntimeError(
+                "This Trainer is not active. It is either shutdown already or "
+                "never started in the first place. Either create a new "
+                "Trainer or start this one.") from None
+        except SGDBackendError:
+            raise RuntimeError("Training failed. You should not be seeing "
+                               "this error and this is a bug. Please create "
+                               "a new issue at "
+                               "https://github.com/ray-project/ray.") from None
 
     def _get_train_func(
             self,
