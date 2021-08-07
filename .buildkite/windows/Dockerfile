@@ -1,12 +1,10 @@
 FROM mcr.microsoft.com/windows/servercore:ltsc2019
 
 SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
-#SHELL ["powershell", "-Command"]
 COPY install C:/Install/
 WORKDIR C:/Install
 
 RUN ./main.ps1
-RUN ./python.ps1
 RUN ./java.ps1
 RUN ./miniconda.ps1
 RUN ./git.ps1

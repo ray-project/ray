@@ -1,4 +1,4 @@
-$env:MINICONDA_URL="https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe"
+$env:MINICONDA_URL="https://repo.anaconda.com/miniconda/Miniconda3-py38_4.10.3-Windows-x86_64.exe"
 Write-Host ('Downloading {0} ...' -f $env:MINICONDA_URL);
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
 Invoke-WebRequest -Uri $env:MINICONDA_URL -OutFile 'Miniconda3-latest.exe';

@@ -60,3 +60,6 @@ mypy
 tqdm
 azure
 pytest_timeout
+dm_tree
+lz4
+kubernetes
