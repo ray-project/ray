@@ -2,10 +2,11 @@
 # re-run if any of these files changes.
 py_library(
     name = "serve_lib",
-    srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
+    srcs = glob(["**/*.py"], exclude=["tests/*.py", "**/tests/*.py"]),
 )
 
 serve_tests_srcs = glob(["tests/*.py"])
+serve_storage_tests_srcs = glob(["storage/tests/*.py"])
 
 py_test(
     name = "test_api",
@@ -150,7 +151,7 @@ py_test(
 py_test(
     name = "test_kv_store",
     size = "small",
-    srcs = serve_tests_srcs,
+    srcs = serve_storage_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
 )
@@ -331,4 +332,3 @@ py_test(
     #tags = ["exclusive"],
     #deps = [":serve_lib"]
 # )
-
