@@ -612,8 +612,12 @@ bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
   return normal_scheduling_queue_->CancelTaskIfFound(task_id);
 }
 
+/// Note that this method is only used for asyncio actor.
 void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(bool is_asyncio,
                                                           int fiber_max_concurrency) {
+  RAY_CHECK(fiber_max_concurrency_ == 0)
+      << "SetMaxActorConcurrency should only be called at most once.";
+  is_asyncio_ = is_asyncio;
   fiber_max_concurrency_ = fiber_max_concurrency;
 }
 
