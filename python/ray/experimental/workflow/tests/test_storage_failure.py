@@ -107,3 +107,8 @@ def test_failure_with_storage(workflow_start_regular):
             step_len = max((len(debug_store) - index) // 5, 1)
         for j in range(index, len(debug_store), step_len):
             assert resume(j) == result
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
