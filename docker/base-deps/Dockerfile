@@ -11,7 +11,7 @@ ENV TZ=America/Los_Angeles
 # TODO(ilr) $HOME seems to point to result in "" instead of "/home/ray"
 ENV PATH "/home/ray/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
-ARG PYTHON_VERSION=3.8.6
+ARG PYTHON_VERSION=3.9.6
 
 ARG RAY_UID=1000
 ARG RAY_GID=100
