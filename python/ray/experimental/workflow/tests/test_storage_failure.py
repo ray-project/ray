@@ -1,6 +1,7 @@
 import asyncio
 import os
 from hashlib import sha1
+import tempfile
 
 import pytest
 import ray
@@ -77,28 +78,32 @@ def _locate_initial_commit(debug_store: DebugStorage) -> int:
     }],
     indirect=True)
 def test_failure_with_storage(workflow_start_regular):
-    debug_store = DebugStorage(get_global_storage())
-    _alter_storage(debug_store)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        debug_store = DebugStorage(get_global_storage(), temp_dir)
+        _alter_storage(debug_store)
 
-    wf = construct_workflow(length=3)
-    result = wf.run(workflow_id="complex_workflow")
-    index = _locate_initial_commit(debug_store) + 1
+        wf = construct_workflow(length=3)
+        result = wf.run(workflow_id="complex_workflow")
+        index = _locate_initial_commit(debug_store) + 1
 
-    def resume(num_records_replayed):
-        key = debug_store.wrapped_storage.make_key("complex_workflow")
-        asyncio_run(debug_store.wrapped_storage.delete_prefix(key))
-        replays = [debug_store.replay(i) for i in range(num_records_replayed)]
-        asyncio_run(asyncio.gather(*replays))
-        return ray.get(workflow.resume(workflow_id="complex_workflow"))
+        def resume(num_records_replayed):
+            key = debug_store.wrapped_storage.make_key("complex_workflow")
+            asyncio_run(debug_store.wrapped_storage.delete_prefix(key))
+            replays = [
+                debug_store.replay(i) for i in range(num_records_replayed)
+            ]
+            asyncio_run(asyncio.gather(*replays))
+            return ray.get(workflow.resume(workflow_id="complex_workflow"))
 
-    with pytest.raises(ValueError):
-        # in cases, the replayed records are too few to resume the workflow.
-        resume(index - 1)
+        with pytest.raises(ValueError):
+            # in cases, the replayed records are too few to resume the
+            # workflow.
+            resume(index - 1)
 
-    if isinstance(debug_store.wrapped_storage, FilesystemStorageImpl):
-        # filesystem is faster, so we can cover all cases
-        step_len = 1
-    else:
-        step_len = max((len(debug_store) - index) // 5, 1)
-    for j in range(index, len(debug_store), step_len):
-        assert resume(j) == result
+        if isinstance(debug_store.wrapped_storage, FilesystemStorageImpl):
+            # filesystem is faster, so we can cover all cases
+            step_len = 1
+        else:
+            step_len = max((len(debug_store) - index) // 5, 1)
+        for j in range(index, len(debug_store), step_len):
+            assert resume(j) == result

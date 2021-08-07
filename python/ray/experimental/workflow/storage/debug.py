@@ -1,6 +1,6 @@
 import json
 from typing import Any, List
-from urllib.parse import urlparse
+from urllib import parse
 import pathlib
 from filelock import FileLock
 from ray.experimental.workflow.storage import DEBUG_PREFIX
@@ -78,10 +78,11 @@ class LoggedStorage(FilesystemStorageImpl):
 class DebugStorage(Storage):
     """A storage for debugging purpose."""
 
-    def __init__(self, wrapped_storage: "Storage"):
+    def __init__(self, wrapped_storage: "Storage", path: str):
+        self._path = path
         self._wrapped_storage = wrapped_storage
-        log_path = pathlib.Path("/tmp/ray/workflow_logs")
-        parsed = urlparse(wrapped_storage.storage_url)
+        log_path = pathlib.Path(path)
+        parsed = parse.urlparse(wrapped_storage.storage_url)
         log_path = (log_path / parsed.scheme.strip("/") /
                     parsed.netloc.strip("/") / parsed.path.strip("/"))
         if not log_path.exists():
@@ -107,10 +108,18 @@ class DebugStorage(Storage):
 
     @property
     def storage_url(self) -> str:
-        return DEBUG_PREFIX + self._wrapped_storage.storage_url
+        store_url = parse.quote_plus(self._wrapped_storage.storage_url)
+        parsed_url = parse.ParseResult(
+            scheme=DEBUG_PREFIX,
+            path=str(pathlib.Path(self._path).absolute()),
+            netloc="",
+            params="",
+            query=f"storage={store_url}",
+            fragment="")
+        return parse.urlunparse(parsed_url)
 
     def __reduce__(self):
-        return DebugStorage, (self._wrapped_storage, )
+        return DebugStorage, (self._wrapped_storage, self._path)
 
     @property
     def wrapped_storage(self) -> "Storage":
@@ -129,8 +138,8 @@ class DebugStorage(Storage):
             is_json = log["is_json"]
             data = self.get_value(index, is_json)
             await self._wrapped_storage.put(log["key"], data, is_json)
-        elif op == "delete":
-            await self._wrapped_storage.delete(log["key"])
+        elif op == "delete_prefix":
+            await self._wrapped_storage.delete_prefix(log["key"])
         else:
             raise ValueError(f"Unknown operation '{op}'.")
 

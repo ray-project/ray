@@ -6,7 +6,7 @@ from ray.experimental.workflow.storage.base import (
 
 logger = logging.getLogger(__name__)
 
-DEBUG_PREFIX = "debug-"
+DEBUG_PREFIX = "debug"
 
 
 def create_storage(storage_url: str) -> Storage:
@@ -32,9 +32,6 @@ def create_storage(storage_url: str) -> Storage:
         A storage instance.
     """
     parsed_url = parse.urlparse(storage_url)
-    if parsed_url.scheme.startswith(DEBUG_PREFIX):
-        from ray.experimental.workflow.storage.debug import DebugStorage
-        return DebugStorage(create_storage(storage_url[len(DEBUG_PREFIX):]))
     if parsed_url.scheme == "file" or parsed_url.scheme == "":
         from ray.experimental.workflow.storage.filesystem import (
             FilesystemStorageImpl)
@@ -47,6 +44,11 @@ def create_storage(storage_url: str) -> Storage:
             raise ValueError(f"Invalid s3 path: {s3_path}")
         params = dict(parse.parse_qsl(parsed_url.query))
         return S3StorageImpl(bucket, s3_path, **params)
+    elif parsed_url.scheme == DEBUG_PREFIX:
+        from ray.experimental.workflow.storage.debug import DebugStorage
+        params = dict(parse.parse_qsl(parsed_url.query))
+        return DebugStorage(
+            create_storage(params["storage"]), path=parsed_url.path)
     else:
         raise ValueError(f"Invalid url: {storage_url}")
 
