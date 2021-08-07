@@ -80,7 +80,7 @@ def test_failure_with_storage(workflow_start_regular):
     debug_store = DebugStorage(get_global_storage())
     _alter_storage(debug_store)
 
-    wf = construct_workflow(5)
+    wf = construct_workflow(length=3)
     result = wf.run(workflow_id="complex_workflow")
     index = _locate_initial_commit(debug_store) + 1
 
