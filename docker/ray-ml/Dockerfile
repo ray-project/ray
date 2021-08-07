@@ -2,7 +2,6 @@ ARG GPU
 ARG DOCKER_PREFIX
 
 FROM "$DOCKER_PREFIX"ray:nightly"$GPU"
-ARG PYTHON_MINOR_VERSION=7
 
 # We have to uninstall wrapt this way for Tensorflow compatibility
 COPY requirements.txt ./
