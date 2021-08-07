@@ -6,8 +6,6 @@ from ray.experimental.workflow.storage.base import (
 
 logger = logging.getLogger(__name__)
 
-DEBUG_PREFIX = "debug"
-
 
 def create_storage(storage_url: str) -> Storage:
     """A factory function that creates different type of storage according
@@ -44,7 +42,7 @@ def create_storage(storage_url: str) -> Storage:
             raise ValueError(f"Invalid s3 path: {s3_path}")
         params = dict(parse.parse_qsl(parsed_url.query))
         return S3StorageImpl(bucket, s3_path, **params)
-    elif parsed_url.scheme == DEBUG_PREFIX:
+    elif parsed_url.scheme == "debug":
         from ray.experimental.workflow.storage.debug import DebugStorage
         params = dict(parse.parse_qsl(parsed_url.query))
         return DebugStorage(

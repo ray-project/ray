@@ -3,7 +3,6 @@ from typing import Any, List
 from urllib import parse
 import pathlib
 from filelock import FileLock
-from ray.experimental.workflow.storage import DEBUG_PREFIX
 from ray.experimental.workflow.storage.base import Storage
 from ray.experimental.workflow.storage.filesystem import FilesystemStorageImpl
 import ray.cloudpickle
@@ -15,8 +14,8 @@ class LoggedStorage(FilesystemStorageImpl):
 
     def __init__(self, workflow_root_dir: str):
         super().__init__(workflow_root_dir)
-        self._log_dir = self._workflow_root_dir / "log"
-        self._count = self._workflow_root_dir / "count.log"
+        self._log_dir = self._workflow_root_dir
+        self._count = self._log_dir / "count.log"
         if not self._log_dir.exists():
             self._log_dir.mkdir()
         # only one process initializes the count
@@ -26,7 +25,7 @@ class LoggedStorage(FilesystemStorageImpl):
                     f.write("0")
 
     async def put(self, key: str, data: Any, is_json: bool = False) -> None:
-        with FileLock(str(self._workflow_root_dir / ".lock")):
+        with FileLock(str(self._log_dir / ".lock")):
             with open(self._count, "r") as f:
                 count = int(f.read())
             k1 = self._log_dir / f"{count}.metadata.json"
@@ -43,7 +42,7 @@ class LoggedStorage(FilesystemStorageImpl):
                 f.write(str(count + 1))
 
     async def delete_prefix(self, key: str) -> None:
-        with FileLock(str(self._workflow_root_dir / ".lock")):
+        with FileLock(str(self._log_dir / ".lock")):
             with open(self._count, "r") as f:
                 count = int(f.read())
             k1 = self._log_dir / f"{count}.metadata.json"
@@ -110,7 +109,7 @@ class DebugStorage(Storage):
     def storage_url(self) -> str:
         store_url = parse.quote_plus(self._wrapped_storage.storage_url)
         parsed_url = parse.ParseResult(
-            scheme=DEBUG_PREFIX,
+            scheme="debug",
             path=str(pathlib.Path(self._path).absolute()),
             netloc="",
             params="",
