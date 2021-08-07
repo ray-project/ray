@@ -1,3 +1,5 @@
+import sqlite3
+
 import boto3
 import ray.experimental.internal_kv as ray_kv
 from botocore.exceptions import ClientError
@@ -70,7 +72,7 @@ class RayInternalKVStore(KVStoreBase):
 
 class RayLocalKVStore(KVStoreBase):
     """Persistent version of KVStoreBase for cluster fault
-    tolerance. Writes to local disk with provided path.
+    tolerance. Writes to local disk by sqlite3 with given db_path.
 
     Supports only string type for key and bytes type for value,
     caller must handle serialization.
@@ -79,9 +81,15 @@ class RayLocalKVStore(KVStoreBase):
     def __init__(
             self,
             namepsace: str,
+            db_path: str,
     ):
         self._namespace = namepsace
-        self._tombstone = b"\##DELETED\##"
+        self._conn = sqlite3.connect(db_path)
+
+        cursor = self._conn.cursor()
+        cursor.execute(f"CREATE TABLE IF NOT EXISTS {self._namespace} "
+                       "(key TEXT UNIQUE, value BLOB)")
+        self._conn.commit()
 
     def get_storage_key(self, key):
         return "{ns}-{key}".format(ns=self._namespace, key=key)
@@ -94,18 +102,15 @@ class RayLocalKVStore(KVStoreBase):
             val (bytes)
         """
         if not isinstance(key, str):
-            raise TypeError("key must be a string, got: {}.".format(type(key)))
+            raise TypeError(f"key must be a string, got: {type(key)}.")
         if not isinstance(val, bytes):
-            raise TypeError("val must be bytes, got: {}.".format(type(val)))
+            raise TypeError(f"val must be bytes, got: {type(val)}.")
 
-        # For each {key, val} pair to put, we append a new line in each of
-        # ray_serve_checkpoint_key.txt and ray_serve_checkpoint_val.txt,
-        # with key string and btyes value appended respectively.
-        with open("/tmp/ray_serve_checkpoint_key.txt", "a+") as key_file, open(
-                "/tmp/ray_serve_checkpoint_val.txt", "ab+") as val_file:
-            key_file.write(self.get_storage_key(key) + "\n")
-            val_file.write(val)
-            val_file.write(b"\n")
+        cursor = self._conn.cursor()
+        cursor.execute(
+            f"INSERT OR REPLACE INTO {self._namespace} "
+            "(key, value) VALUES (?,?)", (self.get_storage_key(key), val))
+        self._conn.commit()
 
     def get(self, key):
         """Get the value associated with the given key from the store.
@@ -117,23 +122,19 @@ class RayLocalKVStore(KVStoreBase):
             The bytes value. If the key wasn't found, returns None.
         """
         if not isinstance(key, str):
-            raise TypeError("key must be a string, got: {}.".format(type(key)))
+            raise TypeError(f"key must be a string, got: {type(key)}.")
 
-        # Reversely traverse all previous put / delete action appended lines,
-        # first line matching given key will be the final val of given key.
-        # If tombstone is found, return None since it's marked deleted.
-        with open("/tmp/ray_serve_checkpoint_key.txt", "r") as key_file, open(
-                "/tmp/ray_serve_checkpoint_val.txt", "rb") as val_file:
-            for key_line, val_line in zip(
-                    reversed(key_file.readlines()),
-                    reversed(val_file.readlines())):
-                if key_line.strip() == self.get_storage_key(key):
-                    if val_line.strip() == self._tombstone:
-                        # Key deleted
-                        return None
-                    else:
-                        return val_line.strip()
-        return None
+        cursor = self._conn.cursor()
+        result = list(
+            cursor.execute(
+                f"SELECT value FROM {self._namespace} WHERE key = (?)",
+                (self.get_storage_key(key), )))
+        if len(result) == 0:
+            return None
+        else:
+            # Due to UNIQUE constraint, there can only be one value.
+            value, *_ = result[0]
+            return value
 
     def delete(self, key):
         """Delete the value associated with the given key from the store.
@@ -145,14 +146,10 @@ class RayLocalKVStore(KVStoreBase):
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
-        # Similar to put(), but instead of appending byte value, add tombstone
-        # btyes to mark a key's deletion. Subsequent get() calls will traverse
-        # in reverse order and return None if tombstone is reached first.
-        with open("/tmp/ray_serve_checkpoint_key.txt", "a+") as key_file, open(
-                "/tmp/ray_serve_checkpoint_val.txt", "ab+") as val_file:
-            key_file.write(self.get_storage_key(key) + "\n")
-            val_file.write(self._tombstone)
-            val_file.write(b"\n")
+        cursor = self._conn.cursor()
+        cursor.execute(f"DELETE FROM {self._namespace} "
+                       "WHERE key = (?)", (self.get_storage_key(key), ))
+        self._conn.commit()
 
 
 class RayS3KVStore(KVStoreBase):

@@ -70,7 +70,7 @@ def _test_operations(kv_store):
 
 
 def test_ray_serve_external_kv_local_disk():
-    kv_store = RayLocalKVStore("namespace")
+    kv_store = RayLocalKVStore("namespace", "test_kv_store.db")
 
     _test_operations(kv_store)
 
