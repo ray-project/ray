@@ -670,7 +670,7 @@ class ModelCatalog:
                                                        options)
 
     @staticmethod
-    @Deprecated
+    @Deprecated(error=False)
     def get_preprocessor_for_space(observation_space: gym.Space,
                                    options: dict = None) -> Preprocessor:
         """Returns a suitable preprocessor for the given observation space.
@@ -709,7 +709,7 @@ class ModelCatalog:
         return prep
 
     @staticmethod
-    @Deprecated
+    @Deprecated(error=False)
     def register_custom_preprocessor(preprocessor_name: str,
                                      preprocessor_class: type) -> None:
         """Register a custom preprocessor class by name.
@@ -816,10 +816,10 @@ class ModelCatalog:
         # processes image components with default CNN stacks).
         space_to_check = input_space if not hasattr(
             input_space, "original_space") else input_space.original_space
-        if isinstance(input_space,
-                      (Dict, Tuple)) or (isinstance(space_to_check, (Dict, Tuple)) and any(
-                          isinstance(s, Box) and len(s.shape) >= 2
-                          for s in tree.flatten(space_to_check.spaces))):
+        if isinstance(input_space, (Dict, Tuple)) or (isinstance(
+                space_to_check, (Dict, Tuple)) and any(
+                    isinstance(s, Box) and len(s.shape) >= 2
+                    for s in tree.flatten(space_to_check.spaces))):
             return ComplexNet
 
         # Single, flattenable/one-hot-able space -> Simple FCNet.

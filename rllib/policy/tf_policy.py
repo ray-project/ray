@@ -1029,8 +1029,12 @@ class TFPolicy(Policy):
 
         # Build the feed dict from the batch.
         feed_dict = {}
-        for key, placeholder in self._loss_input_dict.items():
-            feed_dict[placeholder] = train_batch[key]
+        for key, placeholders in self._loss_input_dict.items():
+            tree.map_structure(
+                lambda ph, v: feed_dict.__setitem__(ph, v),
+                placeholders,
+                train_batch[key],
+            )
 
         state_keys = [
             "state_in_{}".format(i) for i in range(len(self._state_inputs))

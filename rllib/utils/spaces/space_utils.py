@@ -65,12 +65,13 @@ def get_base_struct_from_space(space):
     return _helper_struct(space)
 
 
-def get_dummy_batch_for_space(space: gym.Space,
-                              batch_size: int = 32,
-                              fill_value: Union[float, int, str] = 0.0,
-                              time_size: Optional[int] = None,
-                              time_major: bool = False,
-                              ) -> np.ndarray:
+def get_dummy_batch_for_space(
+        space: gym.Space,
+        batch_size: int = 32,
+        fill_value: Union[float, int, str] = 0.0,
+        time_size: Optional[int] = None,
+        time_major: bool = False,
+) -> np.ndarray:
     """Returns batched dummy data (using `batch_size`) for the given `space`.
 
     Note: The returned batch will not pass a `space.contains(batch)` test
@@ -104,18 +105,19 @@ def get_dummy_batch_for_space(space: gym.Space,
         if time_size is not None:
             assert batch_size > 0 and time_size > 0
             if time_major:
-                return np.array([
-                    [space.sample() for _ in range(batch_size)]
-                    for t in range(time_size)
-                ], dtype=space.dtype)
+                return np.array(
+                    [[space.sample() for _ in range(batch_size)]
+                     for t in range(time_size)],
+                    dtype=space.dtype)
             else:
-                return np.array([
-                    [space.sample() for t in range(time_size)]
-                    for _ in range(batch_size)
-                ], dtype=space.dtype)
+                return np.array(
+                    [[space.sample() for t in range(time_size)]
+                     for _ in range(batch_size)],
+                    dtype=space.dtype)
         else:
             return np.array(
-                [space.sample() for _ in range(batch_size)] if batch_size > 0 else space.sample(),
+                [space.sample() for _ in range(batch_size)]
+                if batch_size > 0 else space.sample(),
                 dtype=space.dtype)
     # Fill value given: Use np.full.
     else:
@@ -127,7 +129,10 @@ def get_dummy_batch_for_space(space: gym.Space,
                 shape = [batch_size, time_size]
         else:
             shape = [batch_size] if batch_size > 0 else []
-        return np.full(shape + list(space.shape), fill_value=fill_value, dtype=space.dtype)
+        return np.full(
+            shape + list(space.shape),
+            fill_value=fill_value,
+            dtype=space.dtype)
 
 
 def flatten_to_single_ndarray(input_):

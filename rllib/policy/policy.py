@@ -860,10 +860,16 @@ class Policy(metaclass=ABCMeta):
             else:
                 # Range of indices on time-axis, e.g. "-50:-1".
                 if view_req.shift_from is not None:
-                    ret[view_col] = get_dummy_batch_for_space(view_req.space, batch_size, time_size=view_req.shift_to - view_req.shift_from + 1)
+                    ret[view_col] = get_dummy_batch_for_space(
+                        view_req.space,
+                        batch_size,
+                        time_size=view_req.shift_to - view_req.shift_from + 1)
                 # Sequence of (probably non-consecutive) indices.
                 elif isinstance(view_req.shift, (list, tuple)):
-                    ret[view_col] = get_dummy_batch_for_space(view_req.space, batch_size, time_size=len(view_req.shift))
+                    ret[view_col] = get_dummy_batch_for_space(
+                        view_req.space,
+                        batch_size,
+                        time_size=len(view_req.shift))
                 # Single shift int value.
                 else:
                     if isinstance(view_req.space, gym.spaces.Space):

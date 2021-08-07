@@ -84,7 +84,8 @@ if __name__ == "__main__":
                     "a": Discrete(2),
                     "b": Dict({
                         "ba": Discrete(3),
-                        "bb": Box(-1.0, 1.0, (2, 3), dtype=np.float32)}),
+                        "bb": Box(-1.0, 1.0, (2, 3), dtype=np.float32)
+                    }),
                     "c": Tuple((MultiDiscrete([2, 3]), Discrete(2))),
                     "d": Box(-1.0, 1.0, (2, ), dtype=np.int32),
                 }),

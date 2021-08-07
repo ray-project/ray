@@ -137,8 +137,6 @@ if __name__ == "__main__":
     }
 
     results = tune.run(
-        args.run,
-        config=config,
-        stop={"training_iteration": args.stop_iters})
+        args.run, config=config, stop={"training_iteration": args.stop_iters})
 
     ray.shutdown()

@@ -177,7 +177,7 @@ class OneHotPreprocessor(Preprocessor):
         array[offset:offset + self.size] = self.transform(observation)
 
 
-@Deprecated
+@Deprecated(error=False)
 class NoPreprocessor(Preprocessor):
     @override(Preprocessor)
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:

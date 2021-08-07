@@ -56,7 +56,12 @@ def get_gpu_devices():
     return [d.name for d in devices if "GPU" in d.device_type]
 
 
-def get_placeholder(*, space=None, value=None, name=None, time_axis=False, flatten=True):
+def get_placeholder(*,
+                    space=None,
+                    value=None,
+                    name=None,
+                    time_axis=False,
+                    flatten=True):
     from ray.rllib.models.catalog import ModelCatalog
 
     if space is not None:
@@ -122,7 +127,10 @@ def one_hot(x, space):
         return tf.one_hot(x, space.n, dtype=tf.float32)
     elif isinstance(space, MultiDiscrete):
         return tf.concat(
-            [tf.one_hot(x[:, i], n, dtype=tf.float32) for i, n in enumerate(space.nvec)],
+            [
+                tf.one_hot(x[:, i], n, dtype=tf.float32)
+                for i, n in enumerate(space.nvec)
+            ],
             axis=-1)
     else:
         raise ValueError("Unsupported space for `one_hot`: {}".format(space))
@@ -186,6 +194,7 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
         if session_or_none is not None:
             args_placeholders = []
             kwargs_placeholders = {}
+
             symbolic_out = [None]
 
             def call(*args, **kwargs):
@@ -217,44 +226,21 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                                 name=".".join([str(p) for p in path]),
                             )
 
-                        args_placeholders = tree.map_structure_with_path(
+                        placeholders = tree.map_structure_with_path(
                             _create_placeholders, args)
-                        #for i, v in enumerate(args):
-                        #    if dynamic_shape:
-                        #        if len(v.shape) > 0:
-                        #            shape = (None, ) + v.shape[1:]
-                        #        else:
-                        #            shape = ()
-                        #    else:
-                        #        shape = v.shape
-                        #    args_placeholders.append(
-                        #        tf1.placeholder(
-                        #            dtype=v.dtype,
-                        #            shape=shape,
-                        #            name="arg_{}".format(i)))
+                        for ph in tree.flatten(placeholders):
+                            args_placeholders.append(ph)
 
-                        kwargs_placeholders = tree.map_structure_with_path(
+                        placeholders = tree.map_structure_with_path(
                             _create_placeholders, kwargs)
+                        for k, ph in placeholders.items():
+                            kwargs_placeholders[k] = ph
 
-                        #for k, v in kwargs.items():
-                        #    if dynamic_shape:
-                        #        if len(v.shape) > 0:
-                        #            shape = (None, ) + v.shape[1:]
-                        #        else:
-                        #            shape = ()
-                        #    else:
-                        #        shape = v.shape
-                        #    kwargs_placeholders[k] = \
-                        #        tf1.placeholder(
-                        #            dtype=v.dtype,
-                        #            shape=shape,
-                        #            name="kwarg_{}".format(k))
-                        symbolic_out[0] = fn(
-                            *args_placeholders, **kwargs_placeholders)
-                feed_dict = dict(zip(args_placeholders, args))
-                tree.map_structure(lambda ph, v: feed_dict.__setitem__(ph, v), kwargs_placeholders, kwargs)
-                    #{kwargs_placeholders[k]: kwargs[k]
-                    # for k in kwargs.keys()})
+                        symbolic_out[0] = fn(*args_placeholders,
+                                             **kwargs_placeholders)
+                feed_dict = dict(zip(args_placeholders, tree.flatten(args)))
+                tree.map_structure(lambda ph, v: feed_dict.__setitem__(ph, v),
+                                   kwargs_placeholders, kwargs)
                 ret = session_or_none.run(symbolic_out[0], feed_dict)
                 return ret
 

@@ -820,7 +820,8 @@ def _process_observations(
             if preprocessor is not None:
                 prep_obs = preprocessor.transform(raw_obs)
                 if log_once("prep_obs"):
-                    logger.info("Preprocessed obs: {}".format(summarize(prep_obs)))
+                    logger.info("Preprocessed obs: {}".format(
+                        summarize(prep_obs)))
             filtered_obs: EnvObsType = _get_or_raise(worker.filters,
                                                      policy_id)(prep_obs)
             if log_once("filtered_obs"):
@@ -958,8 +959,8 @@ def _process_observations(
                 # types: AgentID, EnvObsType
                 for agent_id, raw_obs in resetted_obs.items():
                     policy_id: PolicyID = new_episode.policy_for(agent_id)
-                    preproccessor = _get_or_raise(
-                        worker.preprocessors, policy_id)
+                    preproccessor = _get_or_raise(worker.preprocessors,
+                                                  policy_id)
 
                     prep_obs: EnvObsType = raw_obs
                     if preproccessor is not None:

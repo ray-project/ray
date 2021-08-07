@@ -134,15 +134,15 @@ class ComplexInputNetwork(TFModelV2):
                 outs.append(cnn_out)
             elif i in self.one_hot:
                 #if component.dtype in [tf.int32, tf.int64, tf.uint8]:
-                outs.append(
-                    one_hot(component, self.flattened_input_space[i]))
+                outs.append(one_hot(component, self.flattened_input_space[i]))
                 #else:
                 #    outs.append(tf.cast(component, tf.float32))
             else:
-                outs.append(tf.cast(
-                    tf.reshape(component, [-1, self.flatten[i]]),
-                    dtype=tf.float32,
-                ))
+                outs.append(
+                    tf.cast(
+                        tf.reshape(component, [-1, self.flatten[i]]),
+                        dtype=tf.float32,
+                    ))
         # Concat all outputs and the non-image inputs.
         out = tf.concat(outs, axis=1)
         # Push through (optional) FC-stack (this may be an empty stack).
