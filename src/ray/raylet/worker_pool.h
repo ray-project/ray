@@ -51,7 +51,8 @@ enum PopWorkerStatus {
   // Worker process startup rate is limited.
   // A nullptr worker will be returned with callback.
   TooManyStartingWorkerProcesses = 2,
-  // Worker process has been started, but the worker did not register at the raylet within the timeout.
+  // Worker process has been started, but the worker did not register at the raylet within
+  // the timeout.
   // A nullptr worker will be returned with callback.
   WorkerPendingRegistration = 3,
   // Any fails of runtime env creation.
