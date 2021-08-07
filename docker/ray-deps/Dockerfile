@@ -6,7 +6,6 @@ ARG AUTOSCALER="autoscaler"
 # For Click
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
-COPY requirements.txt .
 # Use multiple cores to compile the C code :)
 ENV MAKEFLAGS -j 4
 
@@ -16,7 +15,7 @@ RUN if [ "$AUTOSCALER" == "autoscaler" ]; then \
     fi \
     && $HOME/anaconda3/bin/mamba install --yes scipy pandas numba scikit-learn numpy
 # Install the generic requirements.
-RUN  $HOME/anaconda3/bin/mamba install --yes pyarrow
+RUN  $HOME/anaconda3/bin/mamba install --yes pyarrow==4.0.1
 # Install bazelisk, this is needed for dm_tree on ARM since there is no wheel.
 RUN arch=$(uname -m); \
     echo "Arch is $arch"; \
@@ -31,4 +30,5 @@ RUN arch=$(uname -m); \
     export PATH=$PATH:/usr/bin;
 # Install the opencv as a seperate step for caching happiness
 RUN $HOME/anaconda3/bin/pip install opencv-python-headless
+COPY requirements.txt .
 RUN $HOME/anaconda3/bin/pip install -r requirements.txt
