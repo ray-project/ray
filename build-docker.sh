@@ -36,9 +36,9 @@ case $key in
     exit 1
     ;;
     --python-version)
-    # Python version to install. e.g. 3.7.7.
+    # Python version to install. e.g. 3.9.6
     # Changing python versions may require a different wheel.
-    # If not provided defaults to 3.7.7
+    # If not provided defaults to 3.9.6
     shift
     PYTHON_VERSION=$1
     ;;
