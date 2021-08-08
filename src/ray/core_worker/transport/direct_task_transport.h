@@ -32,6 +32,7 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
+namespace core {
 
 typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address,
                                                             int port)>
@@ -359,4 +360,5 @@ class CoreWorkerDirectTaskSubmitter {
   int64_t num_leases_requested_ GUARDED_BY(mu_) = 0;
 };
 
-};  // namespace ray
+}  // namespace core
+}  // namespace ray
