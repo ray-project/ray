@@ -139,7 +139,6 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     if (options_.install_failure_signal_handler) {
       RayLog::InstallFailureSignalHandler();
     }
-    RAY_LOG(FATAL) << "CDE";
   } else {
     RAY_CHECK(options_.log_dir.empty())
         << "log_dir must be empty because ray log is disabled.";
