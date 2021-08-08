@@ -1,5 +1,6 @@
 import contextlib
-from collections import namedtuple
+from collections import namedtuple, defaultdict
+from datetime import datetime
 
 from dask.callbacks import Callback
 
@@ -218,24 +219,41 @@ class ProgressBarCallback(RayDaskCallback):
         @ray.remote
         class ProgressBarActor:
             def __init__(self):
-                self.submitted = 0
-                self.finished = 0
+                self._init()
 
-            def submit(self):
+            def submit(self, key, now):
                 self.submitted += 1
+                self.keys[key]["submitted"] = now
+            
+            def task_scheduled(self, key, now):
+                self.scheduled += 1
+                self.keys[key]["scheduled"] = now
 
-            def finish(self):
+            def finish(self, key, now):
                 self.finished += 1
+                self.keys[key]["finished"] = now
 
             def result(self):
                 return self.submitted, self.finished
+
+            def report(self):
+                result = defaultdict(dict)
+                for key, info in self.keys.items():
+                    result[key]["execution_time"] = (info["finished"] - info["scheduled"]).total_seconds()
+                    result[key]["scheduling_time"] = (info["scheduled"] - info["submitted"]).total_seconds()
+                return result
 
             def ready(self):
                 pass
 
             def reset(self):
+                self._init()
+
+            def _init(self):
                 self.submitted = 0
+                self.scheduled = 0
                 self.finished = 0
+                self.keys = defaultdict(dict)
 
         try:
             self.pb = ray.get_actor("_dask_on_ray_pb")
@@ -246,8 +264,14 @@ class ProgressBarCallback(RayDaskCallback):
 
     def _ray_postsubmit(self, task, key, deps, object_ref):
         # Indicate the dask task is submitted.
-        self.pb.submit.remote()
+        self.pb.submit.remote(key, datetime.now())
+    
+    def _ray_pretask(self, key, object_refs):
+        self.pb.task_scheduled.remote(key, datetime.now())
 
     def _ray_posttask(self, key, result, pre_state):
         # Indicate the dask task is finished.
-        self.pb.finish.remote()
+        self.pb.finish.remote(key, datetime.now())
+
+    def _ray_finish(self, result):
+        print("All tasks are completed.")

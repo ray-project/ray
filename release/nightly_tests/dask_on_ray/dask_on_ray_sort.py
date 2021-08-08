@@ -101,8 +101,7 @@ def trial(client,
           n_partitions,
           generate_only,
           s3_bucket=None,
-          file_path=None,
-          trials=10):
+          file_path=None):
     if s3_bucket:
         df = load_dataset(client, data_dir, s3_bucket, nbytes, n_partitions)
     elif file_path:
@@ -114,7 +113,7 @@ def trial(client,
 
     times = []
     start = time.time()
-    for i in range(trials):
+    for i in range(10):
         print("Trial {} start".format(i))
         trial_start = time.time()
 
@@ -151,7 +150,6 @@ if __name__ == "__main__":
     parser.add_argument("--data-dir", default="/home/ubuntu/dask-benchmarks")
     parser.add_argument("--s3-bucket")
     parser.add_argument("--file-path")
-    parser.add_argument("--trial")
 
     parser.add_argument("--dask-nprocs", type=int, default=0)
     parser.add_argument("--dask-nthreads", type=int, default=0)
@@ -178,25 +176,24 @@ if __name__ == "__main__":
             print("Using disk-based Dask shuffle")
 
         client = Client("localhost:8786")
-    trials = int(args.trial)
 
-    print(
-        trial(
-            client,
-            args.data_dir,
-            1000,
-            10,
-            args.generate_only,
-            s3_bucket=args.s3_bucket,
-            file_path=args.file_path))
-    print("WARMUP DONE")
+    # print(
+    #     trial(
+    #         client,
+    #         args.data_dir,
+    #         1000,
+    #         10,
+    #         args.generate_only,
+    #         s3_bucket=args.s3_bucket,
+    #         file_path=args.file_path))
+    # print("WARMUP DONE")
 
     npartitions = args.npartitions
     if args.nbytes // npartitions > args.max_partition_size:
         npartitions = args.nbytes // args.max_partition_size
 
     duration = []
-    print(f"Start the main trials {trials} times")
+    print(f"Start the main trial")
     output = trial(
         client,
         args.data_dir,
@@ -204,8 +201,7 @@ if __name__ == "__main__":
         npartitions,
         args.generate_only,
         s3_bucket=args.s3_bucket,
-        file_path=args.file_path,
-        trials=trials)
+        file_path=args.file_path)
     print("mean over {} trials: {} +- {}".format(
         len(output), np.mean(output), np.std(output)))
 
