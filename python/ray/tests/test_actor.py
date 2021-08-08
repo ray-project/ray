@@ -879,7 +879,7 @@ def test_named_actor_cache(ray_start_regular):
     second_get = ray.get_actor("hi")
     assert first_get == second_get
     ray.kill(a, no_restart=True)
-    b = A.options(name="hi").remote() # noqa: F841
+    b = A.options(name="hi").remote()  # noqa: F841
     b_get = ray.get_actor("hi")
     assert first_get != b_get
 
