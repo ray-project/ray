@@ -9,8 +9,6 @@ common: &common
     RAY_DEFAULT_BUILD: "1"
     LC_ALL: en_US.UTF-8
     LANG: en_US.UTF-8
-    # TODO(simon): Can't figure out how get the JDK working yet.
-    # RAY_INSTALL_JAVA: "1"
 
 prelude_commands: &prelude_commands |-
   ./ci/travis/upload_build_info.sh
@@ -26,6 +24,41 @@ epilogue_commands: &epilogue_commands |-
   bazel clean
 
 steps:
+- label: ":mac: :apple: Wheels and Jars"
+  <<: *common
+  commands:
+    # Cleanup environments
+    - ./ci/travis/upload_build_info.sh
+    - (which bazel && bazel clean) || true
+    # TODO(simon): make sure to change both PR and wheel builds
+    # Special setup for jar builds (will be installed to the machine instead)
+    # - brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
+    # - brew install --cask adoptopenjdk/openjdk/adoptopenjdk8
+    - diskutil list external physical
+    - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
+    - java -version
+    # Build wheels
+    - export MAC_WHEELS=1
+    - export MAC_JARS=1
+    - export RAY_INSTALL_JAVA=1
+    - . ./ci/travis/ci.sh init && source ~/.zshrc
+    - . ./ci/travis/ci.sh build
+    # Test wheels
+    - . ./ci/travis/ci.sh test_wheels
+    # Build jars
+    - bash ./java/build-jar-multiplatform.sh darwin
+    # Upload the wheels and jars
+    # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
+    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    - pip install -q docker aws_requests_auth boto3
+    # Upload to branch directory.
+    - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
+    - python .buildkite/copy_files.py --destination branch_jars --path ./.jar/darwin
+    # Upload to latest directory.
+    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
+    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
+
+
 - label: ":mac: :apple: Ray C++ and Libraries"
   <<: *common
   commands:
@@ -79,15 +112,3 @@ steps:
       --test_env=CI
       python/ray/tests/... python/ray/serve/...
     - *epilogue_commands
-
-    # The follow is running in Travis for now.
-    # - bazel test --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky python/ray/tests/...
-    # - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky python/ray/tests/...
-    # - bazel test --config=ci $(./scripts/bazel_export_options)
-    #       --test_tag_filters=-kubernetes,-jenkins_only,flaky
-    #       --test_env=CONDA_EXE
-    #       --test_env=CONDA_PYTHON_EXE
-    #       --test_env=CONDA_SHLVL
-    #       --test_env=CONDA_PREFIX
-    #       --test_env=CONDA_DEFAULT_ENV
-    #       python/ray/tests/... python/ray/serve/... python/ray/tune/... rllib/...

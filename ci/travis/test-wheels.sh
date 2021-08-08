@@ -20,6 +20,9 @@ BUILD_DIR="${TRAVIS_BUILD_DIR-}"
 if [ -z "${BUILD_DIR}" ]; then
   BUILD_DIR="${GITHUB_WORKSPACE}"
 fi
+if [ -n "${BUILDKITE-}" ]; then
+  BUILD_DIR="${ROOT_DIR}/../.."
+fi
 TEST_DIR="${BUILD_DIR}/python/ray/tests"
 TEST_SCRIPTS=("$TEST_DIR/test_microbenchmarks.py" "$TEST_DIR/test_basic.py")
 DASHBOARD_TEST_SCRIPT="${BUILD_DIR}/python/ray/tests/test_dashboard.py"
