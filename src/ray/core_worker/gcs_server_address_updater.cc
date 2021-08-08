@@ -15,6 +15,7 @@
 #include "ray/core_worker/gcs_server_address_updater.h"
 
 namespace ray {
+namespace core {
 
 GcsServerAddressUpdater::GcsServerAddressUpdater(
     const std::string raylet_ip_address, const int port,
@@ -67,4 +68,5 @@ void GcsServerAddressUpdater::UpdateGcsServerAddress() {
   });
 }
 
+}  // namespace core
 }  // namespace ray

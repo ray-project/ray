@@ -21,6 +21,7 @@
 using ray::rpc::ActorTableData;
 
 namespace ray {
+namespace core {
 
 void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
     const ActorID &actor_id) {
@@ -121,7 +122,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
   queue.rpc_client = nullptr;
-  core_worker_client_pool_->Disconnect(ray::WorkerID::FromBinary(queue.worker_id));
+  core_worker_client_pool_->Disconnect(WorkerID::FromBinary(queue.worker_id));
   queue.worker_id.clear();
   queue.pending_force_kill.reset();
 }
@@ -621,4 +622,5 @@ void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(bool is_asyncio,
   fiber_max_concurrency_ = fiber_max_concurrency;
 }
 
+}  // namespace core
 }  // namespace ray

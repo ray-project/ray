@@ -30,6 +30,8 @@
 namespace ray {
 namespace api {
 
+using ray::core::WorkerContext;
+
 class RayIntentionalSystemExitException : public RayException {
  public:
   RayIntentionalSystemExitException(const std::string &msg) : RayException(msg){};
