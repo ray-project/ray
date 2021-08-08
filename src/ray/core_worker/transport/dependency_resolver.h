@@ -22,6 +22,7 @@
 #include "ray/core_worker/task_manager.h"
 
 namespace ray {
+namespace core {
 
 // This class is thread-safe.
 class LocalDependencyResolver {
@@ -58,4 +59,5 @@ class LocalDependencyResolver {
   absl::Mutex mu_;
 };
 
+}  // namespace core
 }  // namespace ray

@@ -19,6 +19,7 @@
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
+namespace core {
 
 class GcsServerAddressUpdater {
  public:
@@ -46,4 +47,5 @@ class GcsServerAddressUpdater {
   int32_t failed_ping_count_ = 0;
 };
 
+}  // namespace core
 }  // namespace ray

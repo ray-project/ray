@@ -17,6 +17,7 @@
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
+namespace core {
 
 ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                           const ObjectID &outer_object_id,
@@ -270,4 +271,5 @@ ActorID ActorManager::GetCachedNamedActorID(const std::string &actor_name) {
   return ActorID::Nil();
 }
 
+}  // namespace core
 }  // namespace ray

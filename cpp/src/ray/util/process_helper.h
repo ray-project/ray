@@ -21,6 +21,8 @@
 namespace ray {
 namespace api {
 
+using ray::core::CoreWorkerOptions;
+
 class ProcessHelper {
  public:
   void RayStart(CoreWorkerOptions::TaskExecutionCallback callback);

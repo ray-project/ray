@@ -23,6 +23,7 @@
 #include "ray/util/util.h"
 
 namespace ray {
+namespace core {
 
 using WorkerType = rpc::WorkerType;
 
@@ -40,18 +41,16 @@ std::string GenerateCachedActorName(const std::string &ns, const std::string &ac
 class RayFunction {
  public:
   RayFunction() {}
-  RayFunction(Language language, const ray::FunctionDescriptor &function_descriptor)
+  RayFunction(Language language, const FunctionDescriptor &function_descriptor)
       : language_(language), function_descriptor_(function_descriptor) {}
 
   Language GetLanguage() const { return language_; }
 
-  const ray::FunctionDescriptor &GetFunctionDescriptor() const {
-    return function_descriptor_;
-  }
+  const FunctionDescriptor &GetFunctionDescriptor() const { return function_descriptor_; }
 
  private:
   Language language_;
-  ray::FunctionDescriptor function_descriptor_;
+  FunctionDescriptor function_descriptor_;
 };
 
 /// Options for all tasks (actor and non-actor) except for actor creation.
@@ -227,4 +226,5 @@ class ObjectLocation {
   const NodeID spilled_node_id_;
 };
 
+}  // namespace core
 }  // namespace ray
