@@ -54,12 +54,14 @@ struct TaskOptions {
   TaskOptions() {}
   TaskOptions(std::string name, int num_returns,
               std::unordered_map<std::string, double> &resources,
+              const std::string &concurrency_group_name = "",
               const std::string &serialized_runtime_env = "{}",
               const std::unordered_map<std::string, std::string>
                   &override_environment_variables = {})
       : name(name),
         num_returns(num_returns),
         resources(resources),
+        concurrency_group_name(concurrency_group_name),
         serialized_runtime_env(serialized_runtime_env),
         override_environment_variables(override_environment_variables) {}
 
@@ -69,6 +71,8 @@ struct TaskOptions {
   int num_returns = 1;
   /// Resources required by this task.
   std::unordered_map<std::string, double> resources;
+  /// The name of the concurrency group in which this task will be executed.
+  std::string concurrency_group_name;
   // Runtime Env used by this task.  Propagated to child actors and tasks.
   std::string serialized_runtime_env;
   /// Environment variables to update for this task.  Maps a variable name to its
@@ -90,7 +94,8 @@ struct ActorCreationOptions {
       bool placement_group_capture_child_tasks = true,
       const std::string &serialized_runtime_env = "{}",
       const std::unordered_map<std::string, std::string> &override_environment_variables =
-          {})
+          {},
+      const std::vector<ConcurrencyGroup> &concurrency_groups = {})
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -104,7 +109,8 @@ struct ActorCreationOptions {
         placement_options(placement_options),
         placement_group_capture_child_tasks(placement_group_capture_child_tasks),
         serialized_runtime_env(serialized_runtime_env),
-        override_environment_variables(override_environment_variables){};
+        override_environment_variables(override_environment_variables),
+        concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
@@ -149,6 +155,9 @@ struct ActorCreationOptions {
   /// value.  Can override existing environment variables and introduce new ones.
   /// Propagated to child actors and/or tasks.
   const std::unordered_map<std::string, std::string> override_environment_variables;
+  /// The actor concurrency groups to indicate how this actor perform its
+  /// methods concurrently.
+  const std::vector<ConcurrencyGroup> concurrency_groups;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

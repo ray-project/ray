@@ -41,6 +41,8 @@ extern jmethodID java_double_double_value;
 extern jclass java_object_class;
 /// equals method of Object class
 extern jmethodID java_object_equals;
+/// hashCode method of Object class
+extern jmethodID java_object_hash_code;
 
 /// List class
 extern jclass java_list_class;
@@ -155,6 +157,8 @@ extern jfieldID java_call_options_name;
 extern jfieldID java_task_creation_options_group;
 /// bundleIndex field of CallOptions class
 extern jfieldID java_task_creation_options_bundle_index;
+/// concurrencyGroupName field of CallOptions class
+extern jfieldID java_call_options_concurrency_group_name;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
@@ -172,6 +176,17 @@ extern jfieldID java_actor_creation_options_max_concurrency;
 extern jfieldID java_actor_creation_options_group;
 /// bundleIndex field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_bundle_index;
+/// concurrencyGroups field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_concurrency_groups;
+
+/// ConcurrencyGroupImpl class
+extern jclass java_concurrency_group_impl_class;
+/// getFunctionDescriptors method of ConcurrencyGroupImpl class
+extern jmethodID java_concurrency_group_impl_get_function_descriptors;
+/// name field of ConcurrencyGroupImpl class
+extern jfieldID java_concurrency_group_impl_name;
+/// maxConcurrency field of ConcurrencyGroupImpl class
+extern jfieldID java_concurrency_group_impl_max_concurrency;
 
 /// PlacementGroupCreationOptions class
 extern jclass java_placement_group_creation_options_class;

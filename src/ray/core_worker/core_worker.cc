@@ -41,13 +41,15 @@ void BuildCommonTaskSpec(
     std::vector<ObjectID> *return_ids, const BundleID &bundle_id,
     bool placement_group_capture_child_tasks, const std::string debugger_breakpoint,
     const std::string &serialized_runtime_env,
-    const std::unordered_map<std::string, std::string> &override_environment_variables) {
+    const std::unordered_map<std::string, std::string> &override_environment_variables,
+    const std::string &concurrency_group_name = "") {
   // Build common task spec.
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint, serialized_runtime_env, override_environment_variables);
+      debugger_breakpoint, serialized_runtime_env, override_environment_variables,
+      concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1776,7 +1778,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.dynamic_worker_options,
       actor_creation_options.max_concurrency, actor_creation_options.is_detached,
       actor_name, actor_creation_options.ray_namespace, actor_creation_options.is_asyncio,
-      extension_data);
+      actor_creation_options.concurrency_groups, extension_data);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
@@ -1915,15 +1917,15 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
   const std::unordered_map<std::string, std::string> override_environment_variables = {};
-  BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      rpc_address_, function, args, num_returns, task_options.resources,
-                      required_resources, return_ids,
-                      std::make_pair(PlacementGroupID::Nil(), -1),
-                      true, /* placement_group_capture_child_tasks */
-                      "",   /* debugger_breakpoint */
-                      "{}", /* serialized_runtime_env */
-                      override_environment_variables);
+  BuildCommonTaskSpec(
+      builder, actor_handle->CreationJobID(), actor_task_id, task_name,
+      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
+      function, args, num_returns, task_options.resources, required_resources, return_ids,
+      std::make_pair(PlacementGroupID::Nil(), -1),
+      true, /* placement_group_capture_child_tasks */
+      "",   /* debugger_breakpoint */
+      "{}", /* serialized_runtime_env */
+      override_environment_variables, task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
