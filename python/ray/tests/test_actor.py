@@ -870,18 +870,22 @@ def test_named_actor_cache(ray_start_regular):
     """Verify that named actor cache works well."""
 
     @ray.remote(max_restarts=-1)
-    class A:
+    class Counter:
         def __init__(self):
-            pass
+            self.count = 0
 
-    a = A.options(name="hi").remote()
+        def inc_and_get(self):
+            self.count += 1
+            return self.count
+
+    a = Counter.options(name="hi").remote()
     first_get = ray.get_actor("hi")
+    assert ray.get(first_get.inc_and_get.remote()) == 1
     second_get = ray.get_actor("hi")
-    assert first_get == second_get
+    assert ray.get(second_get.inc_and_get.remote()) == 2
     ray.kill(a, no_restart=True)
-    b = A.options(name="hi").remote()  # noqa: F841
-    b_get = ray.get_actor("hi")
-    assert first_get != b_get
+    get_after_restart = Counter.options(name="hi").remote()
+    assert ray.get(get_after_restart.inc_and_get.remote()) == 1
 
 
 def test_wrapped_actor_handle(ray_start_regular_shared):
