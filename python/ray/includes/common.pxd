@@ -253,6 +253,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      unordered_map[c_string, double] &resources)
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
+                     c_string concurrency_group_name,
                      c_string serialized_runtime_env,
                      const unordered_map[c_string, c_string]
                      &override_environment_variables)
