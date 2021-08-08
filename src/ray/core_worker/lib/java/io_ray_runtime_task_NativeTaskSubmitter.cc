@@ -137,6 +137,7 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
   }
 
   TaskOptions task_options{name, numReturns, resources, concurrency_group_name};
+  return task_options;
 }
 
 inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
