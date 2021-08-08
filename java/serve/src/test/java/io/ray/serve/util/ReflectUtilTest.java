@@ -27,7 +27,7 @@ public class ReflectUtilTest {
     Constructor<ReflectExample> constructor = ReflectUtil.getConstructor(ReflectExample.class);
     Assert.assertNotNull(constructor);
 
-    constructor = ReflectUtil.getConstructor(ReflectExample.class, null);
+    constructor = ReflectUtil.getConstructor(ReflectExample.class);
     Assert.assertNotNull(constructor);
 
     constructor = ReflectUtil.getConstructor(ReflectExample.class, 2);

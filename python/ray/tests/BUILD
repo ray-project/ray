@@ -313,3 +313,17 @@ py_test_module_list(
   # Now we run this test in a container which has installed ray
   deps = [],
 )
+
+py_test_module_list(
+  files = [
+    "test_object_spilling.py",
+    "test_object_spilling_2.py",
+    "test_scheduling.py",
+    "test_array.py"
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  name_suffix = "_debug_mode",
+  tags = ["exclusive", "debug_tests"],
+  deps = ["//:ray_lib"],
+)

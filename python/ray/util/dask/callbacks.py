@@ -1,4 +1,5 @@
 import contextlib
+
 from collections import namedtuple, defaultdict
 from datetime import datetime
 
@@ -221,26 +222,33 @@ class ProgressBarCallback(RayDaskCallback):
             def __init__(self):
                 self._init()
 
-            def submit(self, key, now):
-                self.submitted += 1
-                self.keys[key]["submitted"] = now
-            
+            def submit(self, key, deps, now):
+                for dep in deps.keys():
+                    self.deps[key].add(dep)
+                self.submitted[key]= now
+                self.submission_queue.append((key, now))
+
             def task_scheduled(self, key, now):
-                self.scheduled += 1
-                self.keys[key]["scheduled"] = now
+                self.scheduled[key] = now
 
             def finish(self, key, now):
-                self.finished += 1
-                self.keys[key]["finished"] = now
+                self.finished[key] = now
 
             def result(self):
-                return self.submitted, self.finished
+                return len(self.submitted), len(self.finished)
 
             def report(self):
                 result = defaultdict(dict)
-                for key, info in self.keys.items():
-                    result[key]["execution_time"] = (info["finished"] - info["scheduled"]).total_seconds()
-                    result[key]["scheduling_time"] = (info["scheduled"] - info["submitted"]).total_seconds()
+                for key, finished in self.finished.items():
+                    submitted = self.submitted[key]
+                    scheduled = self.scheduled[key]
+                    deps = self.deps[key]
+                    result[key]["execution_time"] = (finished - scheduled).total_seconds()
+                    # Calculate the scheduling time.
+                    # This is inaccurate. We should subtract scheduled - the time that the last dependency of this task is finished.
+                    # But currently it is not easy because of how getitem is implemented in sort.
+                    result[key]["scheduling_time"] = (scheduled - submitted).total_seconds()
+                result["submission_order"] = self.submission_queue
                 return result
 
             def ready(self):
@@ -250,10 +258,11 @@ class ProgressBarCallback(RayDaskCallback):
                 self._init()
 
             def _init(self):
-                self.submitted = 0
-                self.scheduled = 0
-                self.finished = 0
-                self.keys = defaultdict(dict)
+                self.submission_queue = []
+                self.submitted = defaultdict(None)
+                self.scheduled = defaultdict(None)
+                self.finished = defaultdict(None)
+                self.deps = defaultdict(set)
 
         try:
             self.pb = ray.get_actor("_dask_on_ray_pb")
@@ -264,7 +273,7 @@ class ProgressBarCallback(RayDaskCallback):
 
     def _ray_postsubmit(self, task, key, deps, object_ref):
         # Indicate the dask task is submitted.
-        self.pb.submit.remote(key, datetime.now())
+        self.pb.submit.remote(key, deps, datetime.now())
     
     def _ray_pretask(self, key, object_refs):
         self.pb.task_scheduled.remote(key, datetime.now())

@@ -373,11 +373,13 @@ def render_progress_bar(tracker, object_refs):
         reported_finished_so_far = finished
         ready_refs, _ = ray.wait(object_refs, timeout=0, num_returns=len(object_refs), fetch_local=False)
         if (len(ready_refs) == len(object_refs)):
-            print("Completed. There was state inconsistency.")
             break
         import time
         time.sleep(0.1)
     pb_bar.close()
+    submitted, finished = ray.get(tracker.result.remote())
+    if submitted != finished:
+        print("Completed. There was state inconsistency.")
     from pprint import pprint
     pprint(ray.get(tracker.report.remote()))
 

@@ -177,16 +177,16 @@ if __name__ == "__main__":
 
         client = Client("localhost:8786")
 
-    # print(
-    #     trial(
-    #         client,
-    #         args.data_dir,
-    #         1000,
-    #         10,
-    #         args.generate_only,
-    #         s3_bucket=args.s3_bucket,
-    #         file_path=args.file_path))
-    # print("WARMUP DONE")
+    print(
+        trial(
+            client,
+            args.data_dir,
+            1000,
+            10,
+            args.generate_only,
+            s3_bucket=args.s3_bucket,
+            file_path=args.file_path))
+    print("WARMUP DONE")
 
     npartitions = args.npartitions
     if args.nbytes // npartitions > args.max_partition_size:

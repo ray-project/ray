@@ -79,6 +79,18 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
+  public <T> ObjectRef<T> put(T obj, BaseActorHandle ownerActor) {
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug(
+          "Putting an object in task {} with {} as the owner.",
+          workerContext.getCurrentTaskId(),
+          ownerActor.getId());
+    }
+    ObjectId objectId = objectStore.put(obj, ownerActor.getId());
+    return new ObjectRefImpl<T>(objectId, (Class<T>) (obj == null ? Object.class : obj.getClass()));
+  }
+
+  @Override
   public <T> T get(ObjectRef<T> objectRef) throws RuntimeException {
     List<T> ret = get(ImmutableList.of(objectRef));
     return ret.get(0);
