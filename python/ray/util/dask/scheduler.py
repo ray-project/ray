@@ -371,7 +371,11 @@ def render_progress_bar(tracker, object_refs):
         submitted, finished = ray.get(tracker.result.remote())
         pb_bar.update(finished - reported_finished_so_far)
         reported_finished_so_far = finished
-        ready_refs, _ = ray.wait(object_refs, timeout=0, num_returns=len(object_refs), fetch_local=False)
+        ready_refs, _ = ray.wait(
+            object_refs,
+            timeout=0,
+            num_returns=len(object_refs),
+            fetch_local=False)
         if (len(ready_refs) == len(object_refs)):
             break
         import time

@@ -225,7 +225,7 @@ class ProgressBarCallback(RayDaskCallback):
             def submit(self, key, deps, now):
                 for dep in deps.keys():
                     self.deps[key].add(dep)
-                self.submitted[key]= now
+                self.submitted[key] = now
                 self.submission_queue.append((key, now))
 
             def task_scheduled(self, key, now):
@@ -242,12 +242,16 @@ class ProgressBarCallback(RayDaskCallback):
                 for key, finished in self.finished.items():
                     submitted = self.submitted[key]
                     scheduled = self.scheduled[key]
-                    deps = self.deps[key]
-                    result[key]["execution_time"] = (finished - scheduled).total_seconds()
+                    # deps = self.deps[key]
+                    result[key]["execution_time"] = (
+                        finished - scheduled).total_seconds()
                     # Calculate the scheduling time.
-                    # This is inaccurate. We should subtract scheduled - the time that the last dependency of this task is finished.
-                    # But currently it is not easy because of how getitem is implemented in sort.
-                    result[key]["scheduling_time"] = (scheduled - submitted).total_seconds()
+                    # This is inaccurate.
+                    # We should subtract scheduled - (last dep completed).
+                    # But currently it is not easy because
+                    # of how getitem is implemented in dask on ray sort.
+                    result[key]["scheduling_time"] = (
+                        scheduled - submitted).total_seconds()
                 result["submission_order"] = self.submission_queue
                 return result
 
@@ -274,7 +278,7 @@ class ProgressBarCallback(RayDaskCallback):
     def _ray_postsubmit(self, task, key, deps, object_ref):
         # Indicate the dask task is submitted.
         self.pb.submit.remote(key, deps, datetime.now())
-    
+
     def _ray_pretask(self, key, object_refs):
         self.pb.task_scheduled.remote(key, datetime.now())
 
