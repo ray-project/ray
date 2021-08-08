@@ -1,20 +1,17 @@
 # coding: utf-8
-from abc import ABC, abstractmethod
+from abc import ABCMeta, abstractmethod
 import logging
-from typing import Dict, List, Optional, TYPE_CHECKING, Union
+from typing import Dict, List, Optional
 
 from ray.tune.resources import Resources
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.error import TuneError
 from ray.tune.cluster_info import is_ray_cluster
 
-if TYPE_CHECKING:
-    from ray.tune.trial_runner import TrialRunner
-
 logger = logging.getLogger(__name__)
 
 
-class TrialExecutor(ABC):
+class TrialExecutor(metaclass=ABCMeta):
     """Module for interacting with remote trainables.
 
     Manages platform-specific details such as resource handling
@@ -174,7 +171,7 @@ class TrialExecutor(ABC):
         """Returns all running trials."""
         pass
 
-    def on_step_begin(self, trials: Union[List[Trial], "TrialRunner"]) -> None:
+    def on_step_begin(self, trials: List[Trial]) -> None:
         """A hook called before running one step of the trial event loop.
 
         Args:
@@ -183,7 +180,7 @@ class TrialExecutor(ABC):
         """
         pass
 
-    def on_step_end(self, trials: Union[List[Trial], "TrialRunner"]) -> None:
+    def on_step_end(self, trials: List[Trial]) -> None:
         """A hook called after running one step of the trial event loop.
 
         Args:
@@ -195,18 +192,13 @@ class TrialExecutor(ABC):
     def force_reconcilation_on_next_step_end(self) -> None:
         pass
 
-    def on_no_available_trials(
-            self, trials: Union[List[Trial], "TrialRunner"]) -> None:
+    def on_no_available_trials(self, trials: List[Trial]) -> None:
         """
         Args:
             trials (List[Trial]): The list of trials. Note, refrain from
                 providing TrialRunner directly here.
         """
 
-        # avoid circular dependency
-        from ray.tune.trial_runner import TrialRunner
-        if isinstance(trials, TrialRunner):
-            trials = trials.get_running_trials()
         if self._queue_trials:
             return
         for trial in trials:
@@ -330,7 +322,7 @@ class TrialExecutor(ABC):
         """Returns True if GPUs are detected on the cluster."""
         return False
 
-    def cleanup(self, trials: Union[List[Trial], "TrialRunner"]) -> None:
+    def cleanup(self, trials: List[Trial]) -> None:
         """Ensures that trials are cleaned up after stopping.
 
         Args:

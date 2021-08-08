@@ -13,8 +13,6 @@ from typing import (
     Iterable,
     List,
     Optional,
-    TYPE_CHECKING,
-    Union,
 )
 
 import ray
@@ -34,9 +32,6 @@ from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
 from ray.util import log_once
-
-if TYPE_CHECKING:
-    from ray.tune.trial_runner import TrialRunner
 
 logger = logging.getLogger(__name__)
 
@@ -965,27 +960,13 @@ class RayTrialExecutor(TrialExecutor):
         else:
             return "? CPUs, ? GPUs"
 
-    def on_step_begin(self, trials: Union[List[Trial], "TrialRunner"]) -> None:
+    def on_step_begin(self, trials: List[Trial]) -> None:
         """Before step() is called, update the available resources."""
-        # avoid circular dependency
-        from ray.tune.trial_runner import TrialRunner
-        if isinstance(trials, TrialRunner):
-            logger.warning(
-                "TrialExecutor should not depend on TrialRunner interface. "
-                "Provide List[Trial] directly.")
-            trials = trials.get_running_trials()
         self._update_avail_resources()
         self._trial_just_finished_before = self._trial_just_finished
         self._trial_just_finished = False
 
-    def on_step_end(self, trials: Union[List[Trial], "TrialRunner"]) -> None:
-        # avoid circular dependency
-        from ray.tune.trial_runner import TrialRunner
-        if isinstance(trials, TrialRunner):
-            logger.warning(
-                "TrialExecutor should not depend on TrialRunner interface. "
-                "Provide List[Trial] directly.")
-            trials = trials.get_running_trials()
+    def on_step_end(self, trials: List[Trial]) -> None:
         self._just_staged_trials.clear()
 
         if time.time() > self.last_pg_recon + self.pg_recon_interval:
@@ -1101,14 +1082,7 @@ class RayTrialExecutor(TrialExecutor):
             self._update_avail_resources()
             return self._avail_resources.gpu > 0
 
-    def cleanup(self, trials: Union[List[Trial], "TrialRunner"]) -> None:
-        # avoid circular dependency
-        from ray.tune.trial_runner import TrialRunner
-        if isinstance(trials, TrialRunner):
-            logger.warning(
-                "TrialExecutor should not depend on TrialRunner interface. "
-                "Provide List[Trial] directly.")
-            trials = trials.get_running_trials()
+    def cleanup(self, trials: List[Trial]) -> None:
         self._trial_cleanup.cleanup(partial=False)
         self._pg_manager.reconcile_placement_groups(trials)
         self._pg_manager.cleanup(force=True)
