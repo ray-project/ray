@@ -15,6 +15,7 @@
 #pragma once
 
 #include <ray/api/function_manager.h>
+#include <ray/api/task_options.h>
 
 #include <cstdint>
 #include <memory>
@@ -53,14 +54,20 @@ class RayRuntime {
                                  int timeout_ms) = 0;
 
   virtual std::string Call(const RemoteFunctionHolder &remote_function_holder,
-                           std::vector<ray::api::TaskArg> &args) = 0;
+                           std::vector<ray::api::TaskArg> &args,
+                           const CallOptions &task_options) = 0;
   virtual std::string CreateActor(const RemoteFunctionHolder &remote_function_holder,
-                                  std::vector<ray::api::TaskArg> &args) = 0;
+                                  std::vector<ray::api::TaskArg> &args,
+                                  const ActorCreationOptions &create_options) = 0;
   virtual std::string CallActor(const RemoteFunctionHolder &remote_function_holder,
                                 const std::string &actor,
-                                std::vector<ray::api::TaskArg> &args) = 0;
+                                std::vector<ray::api::TaskArg> &args,
+                                const CallOptions &call_options) = 0;
   virtual void AddLocalReference(const std::string &id) = 0;
   virtual void RemoveLocalReference(const std::string &id) = 0;
+  virtual std::string GetActorId(bool global, const std::string &actor_name) = 0;
+  virtual void KillActor(const std::string &str_actor_id, bool no_restart) = 0;
+  virtual void ExitActor() = 0;
 };
 }  // namespace api
 }  // namespace ray

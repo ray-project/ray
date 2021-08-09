@@ -463,6 +463,10 @@ message ResourcesData {
   // Indicates whether resource normal task is changed. Only used when
   // light heartbeat enabled.
   bool resources_normal_task_changed = 11;
+  // Whether this node has object pulls queued. This can happen if
+  // the node has more pull requests than available object store
+  // memory. This is a proxy for available object store memory.
+  bool object_pulls_queued = 12;
 }
 
 message ResourceUsageBatchData {

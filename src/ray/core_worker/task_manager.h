@@ -24,6 +24,7 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+namespace core {
 
 class TaskFinisherInterface {
  public:
@@ -289,4 +290,5 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;
 };
 
+}  // namespace core
 }  // namespace ray
