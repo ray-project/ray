@@ -3,7 +3,7 @@ import sqlite3
 import boto3
 import ray.experimental.internal_kv as ray_kv
 from botocore.exceptions import ClientError
-from ray.serve.storage.kv_storage_base import KVStoreBase
+from ray.serve.storage.kv_store_base import KVStoreBase
 from ray.serve.utils import logger
 
 

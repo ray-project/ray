@@ -69,22 +69,18 @@ def _test_operations(kv_store):
     kv_store.delete("3")
 
 
-def test_ray_serve_external_kv_local_disk():
+def test_external_kv_local_disk():
     kv_store = RayLocalKVStore("namespace", "test_kv_store.db")
 
     _test_operations(kv_store)
 
-    if os.path.exists("/tmp/ray_serve_checkpoint_key.txt"):
-        os.remove("/tmp/ray_serve_checkpoint_key.txt")
-    if os.path.exists("/tmp/ray_serve_checkpoint_val.txt"):
-        os.remove("/tmp/ray_serve_checkpoint_val.txt")
 
-
-def test_ray_serve_external_kv_aws_s3():
+@pytest.mark.skip(reason="Need to figure out credentials for testing")
+def test_external_kv_aws_s3():
     kv_store = RayS3KVStore(
         "namespace",
         bucket="jiao-test",
-        s3_path="/ray_serve_checkpoint",
+        s3_path="/checkpoint",
         aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", None),
         aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", None),
         aws_session_token=os.environ.get("AWS_SESSION_TOKEN", None),

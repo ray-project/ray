@@ -41,7 +41,7 @@ class KVStoreBase(metaclass=abc.ABCMeta):
         Returns:
             val (bytes): Byte value of object from storage.
         """
-        raise NotImplementedError("Get() has to be implemented")
+        raise NotImplementedError("get() has to be implemented")
 
     @abstractmethod
     def delete(self, key: str) -> None:

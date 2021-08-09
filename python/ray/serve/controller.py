@@ -1,9 +1,9 @@
 import asyncio
+import json
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import ray
-from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.backend_state import BackendState
@@ -145,7 +145,7 @@ class ServeController:
             entry["start_time"] = 0
             entry["end_time"] = 0
             val[deployment_name] = entry
-        self.kv_store.put(SNAPSHOT_KEY, cloudpickle.dumps(val))
+        self.kv_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
     def _all_replica_handles(
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
