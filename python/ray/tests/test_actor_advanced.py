@@ -1313,6 +1313,12 @@ def test_get_actor_after_killed(shutdown_only):
     ray.kill(actor, no_restart=False)
     assert ray.get(ray.get_actor("namespace/actor_2").ready.remote())
 
+    # TODO(sang): This currently doesn't pass without time.sleep.
+    # ray.kill(actor, no_restart=False)
+    # # Now the actor is killed.
+    # with pytest.raises(ValueError):
+    #     ray.get_actor("namespace/actor_2")
+
 
 if __name__ == "__main__":
     import pytest
