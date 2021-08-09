@@ -279,10 +279,20 @@ inline std::vector<opencensus::tags::TagKey> convertTags(
   return ret;
 }
 
+
+/*
+  This is a helper class to define a metrics. With this class
+  we'll be able to define a multi-view-single-measure metric for
+  efficiency (TODO Fix the bug in backend to make it work).
+*/
 class Stats {
   using Measure = opencensus::stats::Measure<double>;
 
  public:
+  /// Define a metric.
+  /// \param measure The name for the metric
+  /// \description The description for the metric
+  /// \register_func The function to register the metric
   Stats(const std::string &measure, const std::string &description,
         std::vector<std::string> tag_keys, std::vector<double> buckets,
         std::function<void(const std::string &, const std::string,
@@ -290,26 +300,35 @@ class Stats {
                            const std::vector<double> &buckets)>
             register_func)
       : tag_keys_(tag_keys) {
-    auto f = [register_func, measure, description, buckets, this]() {
+    auto stats_init = [register_func, measure, description, buckets, this]() {
       measure_ = std::make_unique<Measure>(Measure::Register(measure, description, ""));
       register_func(measure, description, convertTags(tag_keys_), buckets);
     };
 
     if (StatsConfig::instance().IsInitialized()) {
-      f();
+      stats_init();
     } else {
-      StatsConfig::instance().AddInitializer(f);
+      StatsConfig::instance().AddInitializer(stats_init);
     }
   }
 
+  /// Record a value
+  /// \param val The value to record
   void Record(double val) { Record(val, std::unordered_map<std::string, std::string>()); }
 
+  /// Record a value
+  /// \param val The value to record
+  /// \param tag_val The tag value. This method will assume we only have one tag for
+  /// this metric.
   void Record(double val, std::string tag_val) {
     RAY_CHECK(tag_keys_.size() == 1);
     std::unordered_map<std::string, std::string> tags{{tag_keys_[0], std::move(tag_val)}};
     Record(val, std::move(tags));
   }
 
+  /// Record a value
+  /// \param val The value to record
+  /// \param tags The tags for this value
   void Record(double val, std::unordered_map<std::string, std::string> tags) {
     if (StatsConfig::instance().IsStatsDisabled() || !measure_) {
       return;
