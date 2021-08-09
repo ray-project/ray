@@ -3,8 +3,8 @@ import os
 import pytest
 from ray.serve.storage.kv_store import (RayInternalKVStore, RayLocalKVStore,
                                         RayS3KVStore)
-from ray.serve.tests.conftest import (  # noqa: F401 imported but unused
-    serve_instance, shared_serve_instance)
+from ray.serve.storage.tests.conftest import (  # noqa: F401 unused import
+    serve_instance)
 
 
 def test_ray_internal_kv(serve_instance):  # noqa: F811
