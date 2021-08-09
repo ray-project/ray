@@ -470,3 +470,6 @@ RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 
 /// ServerCall instance number of each RPC service handler
 RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
+
+/// Whether to use log reporter in event framework
+RAY_CONFIG(bool, event_log_reporter_enabled, true)

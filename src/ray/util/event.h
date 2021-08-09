@@ -52,7 +52,7 @@ class BaseEventReporter {
 // responsible for writing event to specific file
 class LogEventReporter : public BaseEventReporter {
  public:
-  LogEventReporter(rpc::Event_SourceType source_type, std::string &log_dir,
+  LogEventReporter(rpc::Event_SourceType source_type, const std::string &log_dir,
                    bool force_flush = true, int rotate_max_file_size = 100,
                    int rotate_max_file_num = 20);
 
@@ -201,5 +201,9 @@ class RayEvent {
   json custom_fields_;
   std::ostringstream osstream_;
 };
+
+void RayEventInit(rpc::Event_SourceType source_type,
+                  const std::unordered_map<std::string, std::string> &custom_fields,
+                  const std::string &log_dir);
 
 }  // namespace ray
