@@ -5,6 +5,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
+import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
@@ -147,7 +148,7 @@ public interface RayRuntime {
    * @param args The arguments of the remote function.
    * @return The result object.
    */
-  ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args);
+  ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args, CallOptions options);
 
   /**
    * Invoke a remote Python function on an actor.
@@ -253,4 +254,7 @@ public interface RayRuntime {
    * @return True if the placement group is created. False otherwise.
    */
   boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs);
+
+  /** Create concurrency group instance at runtime. */
+  ConcurrencyGroup createConcurrencyGroup(String name, int maxConcurrency, List<RayFunc> funcs);
 }

@@ -66,6 +66,8 @@ GetRemoteFunctions() {
 
 namespace api {
 
+using ray::core::CoreWorkerProcess;
+
 std::shared_ptr<msgpack::sbuffer> TaskExecutor::current_actor_ = nullptr;
 
 TaskExecutor::TaskExecutor(AbstractRayRuntime &abstract_ray_tuntime_)
@@ -174,7 +176,7 @@ Status TaskExecutor::ExecuteTask(
     auto &result_id = return_ids[0];
     auto result_ptr = &(*results)[0];
     int64_t task_output_inlined_bytes = 0;
-    RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
+    RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
         result_id, data_size, meta_buffer, std::vector<ray::ObjectID>(),
         task_output_inlined_bytes, result_ptr));
 
@@ -185,8 +187,7 @@ Status TaskExecutor::ExecuteTask(
       }
     }
 
-    RAY_CHECK_OK(
-        ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result));
+    RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result));
   }
   return ray::Status::OK();
 }
