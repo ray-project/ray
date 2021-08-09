@@ -279,7 +279,6 @@ inline std::vector<opencensus::tags::TagKey> convertTags(
   return ret;
 }
 
-
 /*
   This is a helper class to define a metrics. With this class
   we'll be able to define a multi-view-single-measure metric for
