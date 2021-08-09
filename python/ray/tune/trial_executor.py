@@ -14,9 +14,6 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 class TrialExecutor(metaclass=ABCMeta):
-  
-  
-  
     """Module for interacting with remote trainables.
 
     Manages platform-specific details such as resource handling
