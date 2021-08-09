@@ -242,10 +242,7 @@ class InactiveWorkerGroupError(Exception):
 class InactiveWorkerGroup():
     # TODO: fix inheritence. perhaps create WorkerGroupInterface.
     def __getattr__(self, name):
-        try:
-            getattr(self, name)
-        except AttributeError:
-            raise InactiveWorkerGroupError()
+        raise InactiveWorkerGroupError()
 
     def __len__(self):
         raise InactiveWorkerGroupError()

@@ -37,8 +37,8 @@ def ray_start_2_cpus_2_gpus():
 
 
 @pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
+def ray_start_8_cpus():
+    address_info = ray.init(num_cpus=8)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -509,14 +509,14 @@ def test_run_after_user_error(ray_start_2_cpus):
     assert output == [1, 1]
 
 
-def test_tune_train(ray_start_4_cpus):
+def test_tune_torch_fashion_mnist(ray_start_8_cpus):
     num_workers = 2
-    epochs = 3
+    epochs = 2
 
     trainer = Trainer("torch", num_workers=num_workers)
     MnistTrainable = trainer.to_tune_trainable(fashion_mnist_train_func)
 
-    tune.run(
+    analysis = tune.run(
         MnistTrainable,
         num_samples=2,
         config={
@@ -525,7 +525,9 @@ def test_tune_train(ray_start_4_cpus):
             "epochs": epochs
         })
 
-    assert True  # change this
+    # Check that loss decreases in each trial.
+    for path, df in analysis.trial_dataframes.items():
+        assert df.loc[1, "loss"] < df.loc[0, "loss"]
 
 
 if __name__ == "__main__":

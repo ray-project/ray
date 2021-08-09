@@ -245,14 +245,14 @@ class _TuneTrainer(Trainer):
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None) -> None:
 
-        # from ray.util import inspect_serializability
-        # inspect_serializability(train_func, name="train_func_2")
-
         train_func = self._get_train_func(train_func, config)
         self._executor.start_training(train_func)
 
     def fetch_next_report(self) -> Optional[List[Dict]]:
         return self._executor.fetch_next_result()
+
+    def finish_training(self) -> List[T]:
+        return self._executor.finish_training()
 
 
 class _SgdTrainable(DistributedTrainable):
@@ -277,11 +277,15 @@ class _SgdTrainable(DistributedTrainable):
         if self._finished:
             raise RuntimeError("Training has already finished.")
         if not self._started:
-            self._trainer.start_training(self._function, self._config)
+            # Explicitly use __class__ attribute to avoid recursive
+            # serialization issues.
+            self._trainer.start_training(self.__class__._function,
+                                         self._config)
             self._started = True
 
         report = self._trainer.fetch_next_report()
         if report is None:
+            self._trainer.finish_training()
             self._finished = True
             return {RESULT_DUPLICATE: True}
         # Currently return the value from first worker.
