@@ -142,17 +142,14 @@ void GcsBasedActorScheduler::WarnResourceAllocationFailure(
   const std::string &scheduling_resource_str =
       scheduling_resource ? scheduling_resource->DebugString() : "None";
   // Return nullptr if the cluster resources are not enough.
-  std::ostringstream ostr;
-  ostr << "No enough resources for creating actor " << task_spec.ActorCreationId()
-       << "\nActor class: " << task_spec.FunctionDescriptor()->ToString()
-       << "\nRequired resources: " << required_resources.ToString()
-       << "\nThe node with the most resources is:"
-       << "\n   Node id: " << scheduling_node_id
-       << "\n   Node resources: " << scheduling_resource_str;
+  RAY_LOG(WARNING) << "No enough resources for creating actor "
+                   << task_spec.ActorCreationId()
+                   << "\nActor class: " << task_spec.FunctionDescriptor()->ToString()
+                   << "\nRequired resources: " << required_resources.ToString()
+                   << "\nThe node with the most resources is:"
+                   << "\n   Node id: " << scheduling_node_id
+                   << "\n   Node resources: " << scheduling_resource_str;
 
-  std::string message = ostr.str();
-
-  RAY_LOG(WARNING) << message;
   RAY_LOG(DEBUG) << "Cluster resources: " << gcs_resource_manager_->ToString();
 }
 

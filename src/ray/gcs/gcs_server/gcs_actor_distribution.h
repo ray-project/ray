@@ -53,11 +53,11 @@ class GcsActorWorkerAssignment
 
  private:
   /// ID of node on which this actor worker assignment is allocated.
-  NodeID node_id_;
+  const NodeID node_id_;
   /// Resources owned by this actor worker assignment.
-  ResourceSet acquired_resources_;
+  const ResourceSet acquired_resources_;
   /// A flag to represent that whether the worker process can be shared.
-  bool is_shared_;
+  const bool is_shared_;
 };
 
 /// GcsBasedActorScheduler inherits from GcsActorScheduler. Its scheduling strategy is

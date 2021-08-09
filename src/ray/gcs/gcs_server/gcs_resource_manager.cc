@@ -346,7 +346,13 @@ void GcsResourceManager::DeleteResources(
 void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   auto node_id = NodeID::FromBinary(node.node_id());
   if (!cluster_scheduling_resources_.contains(node_id)) {
-    cluster_scheduling_resources_.emplace(node_id, SchedulingResources());
+    std::unordered_map<std::string, double> resource_mapping;
+    for (auto &entry : node.resources_total()) {
+      resource_mapping.emplace(entry.first, entry.second);
+    }
+    // Update the cluster scheduling resources as new node is added.
+    ResourceSet node_resources(resource_mapping);
+    cluster_scheduling_resources_.emplace(node_id, SchedulingResources(node_resources));
   }
 }
 
