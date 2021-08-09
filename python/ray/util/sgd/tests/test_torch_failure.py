@@ -101,6 +101,7 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
                 return 1
 
         dummy_handler = DummyActor.remote()
+        time.sleep(1)
         trainer1.train(max_retries=1)
         assert trainer1.worker_group.num_workers == 1
         assert trainer1._num_failures == 1
