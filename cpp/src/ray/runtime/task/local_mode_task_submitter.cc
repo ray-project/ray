@@ -64,7 +64,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
     builder.SetActorTaskSpec(invocation.actor_id, actor_creation_dummy_object_id,
                              ObjectID(), invocation.actor_counter);
   } else {
-    throw ray::internal::RayException("unknown task type");
+    throw RayException("unknown task type");
   }
   for (size_t i = 0; i < invocation.args.size(); i++) {
     builder.AddArg(*invocation.args[i]);

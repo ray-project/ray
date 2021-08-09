@@ -58,7 +58,7 @@ inline static int RegisterRemoteFunctions(const T &t, U... u) {
   int index = 0;
   const auto func_names = GetFunctionNames(t);
   (void)std::initializer_list<int>{
-      (ray::internal::FunctionManager::Instance().RegisterRemoteFunction(
+      (FunctionManager::Instance().RegisterRemoteFunction(
            std::string(func_names[index].data(), func_names[index].length()), u),
        index++, 0)...};
   return 0;

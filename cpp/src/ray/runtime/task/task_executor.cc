@@ -98,9 +98,9 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
     RAY_LOG(DEBUG) << "Execute function " << func_name << " ok.";
     return std::make_pair(ray::Status::OK(),
                           std::make_shared<msgpack::sbuffer>(std::move(result)));
-  } catch (ray::internal::RayIntentionalSystemExitException &e) {
+  } catch (RayIntentionalSystemExitException &e) {
     return std::make_pair(ray::Status::IntentionalSystemExit(), nullptr);
-  } catch (ray::internal::RayException &e) {
+  } catch (RayException &e) {
     return std::make_pair(ray::Status::NotFound(e.what()), nullptr);
   } catch (msgpack::type_error &e) {
     return std::make_pair(
@@ -215,13 +215,13 @@ void TaskExecutor::Invoke(
   std::shared_ptr<msgpack::sbuffer> data;
   try {
     if (actor) {
-      auto result = internal::TaskExecutionHandler(typed_descriptor->FunctionName(),
-                                                   args_buffer, actor.get());
+      auto result = TaskExecutionHandler(typed_descriptor->FunctionName(), args_buffer,
+                                         actor.get());
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
       runtime->Put(std::move(data), task_spec.ReturnId(0));
     } else {
-      auto result = internal::TaskExecutionHandler(typed_descriptor->FunctionName(),
-                                                   args_buffer, nullptr);
+      auto result =
+          TaskExecutionHandler(typed_descriptor->FunctionName(), args_buffer, nullptr);
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
       if (task_spec.IsActorCreationTask()) {
         std::unique_ptr<ActorContext> actorContext(new ActorContext());
@@ -233,7 +233,7 @@ void TaskExecutor::Invoke(
       }
     }
   } catch (std::exception &e) {
-    auto result = ray::internal::PackError(e.what());
+    auto result = PackError(e.what());
     auto data = std::make_shared<msgpack::sbuffer>(std::move(result));
     runtime->Put(std::move(data), task_spec.ReturnId(0));
   }

@@ -36,7 +36,7 @@ void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
   auto status = core_worker.Put(
       ::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()), {}, object_id);
   if (!status.ok()) {
-    throw ray::internal::RayException("Put object error");
+    throw RayException("Put object error");
   }
   return;
 }
@@ -49,7 +49,7 @@ void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
   auto status = core_worker.Put(
       ::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()), {}, object_id);
   if (!status.ok()) {
-    throw ray::internal::RayException("Put object error");
+    throw RayException("Put object error");
   }
   return;
 }
@@ -82,7 +82,7 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> NativeObjectStore::GetRaw(
   std::vector<std::shared_ptr<::ray::RayObject>> results;
   ::ray::Status status = core_worker.Get(ids, timeout_ms, &results);
   if (!status.ok()) {
-    throw ray::internal::RayException("Get object error: " + status.ToString());
+    throw RayException("Get object error: " + status.ToString());
   }
   RAY_CHECK(results.size() == ids.size());
   std::vector<std::shared_ptr<msgpack::sbuffer>> result_sbuffers;
@@ -111,7 +111,7 @@ std::vector<bool> NativeObjectStore::Wait(const std::vector<ObjectID> &ids,
   // Simply set `fetch_local` to be true.
   ::ray::Status status = core_worker.Wait(ids, num_objects, timeout_ms, &results, true);
   if (!status.ok()) {
-    throw ray::internal::RayException("Wait object error: " + status.ToString());
+    throw RayException("Wait object error: " + status.ToString());
   }
   return results;
 }

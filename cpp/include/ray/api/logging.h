@@ -46,7 +46,7 @@ namespace ray {
 
 enum class RayLoggerLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3 };
 
-#define RAYLOG_INTERNAL(level) *CreateRayLog(__FILE__, __LINE__, level)
+#define RAYLOG_INTERNAL(level) *CreateRayLogger(__FILE__, __LINE__, level)
 #define RAYLOG(level) \
   if (IsLevelEnabled(RayLoggerLevel::level)) RAYLOG_INTERNAL(RayLoggerLevel::level)
 
@@ -74,8 +74,8 @@ class RayLogger {
   virtual std::ostream &Stream() = 0;
 };
 
-std::unique_ptr<RayLogger> CreateRayLog(const char *file_name, int line_number,
-                                        RayLoggerLevel severity);
+std::unique_ptr<RayLogger> CreateRayLogger(const char *file_name, int line_number,
+                                           RayLoggerLevel severity);
 bool IsLevelEnabled(RayLoggerLevel log_level);
 
 }  // namespace ray

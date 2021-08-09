@@ -28,8 +28,7 @@ class ActorCreator {
  public:
   ActorCreator() {}
 
-  ActorCreator(ray::internal::RayRuntime *runtime,
-               ray::internal::RemoteFunctionHolder remote_function_holder)
+  ActorCreator(RayRuntime *runtime, RemoteFunctionHolder remote_function_holder)
       : runtime_(runtime), remote_function_holder_(std::move(remote_function_holder)) {}
 
   template <typename... Args>
@@ -63,7 +62,7 @@ class ActorCreator {
  private:
   RayRuntime *runtime_;
   RemoteFunctionHolder remote_function_holder_;
-  std::vector<ray::internal::TaskArg> args_;
+  std::vector<TaskArg> args_;
   ActorCreationOptions create_options_{};
 };
 

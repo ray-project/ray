@@ -17,18 +17,18 @@
 
 namespace ray {
 
-class RayLogImpl : public RayLogger, public ray::RayLog {
+class RayLoggerImpl : public RayLogger, public ray::RayLog {
  public:
-  RayLogImpl(const char *file_name, int line_number, RayLoggerLevel severity)
+  RayLoggerImpl(const char *file_name, int line_number, RayLoggerLevel severity)
       : ray::RayLog(file_name, line_number, (ray::RayLogLevel)severity) {}
   bool IsEnabled() const override { return ray::RayLog::IsEnabled(); }
 
   std::ostream &Stream() override { return ray::RayLog::Stream(); }
 };
 
-std::unique_ptr<RayLogger> CreateRayLog(const char *file_name, int line_number,
-                                        RayLoggerLevel severity) {
-  return std::make_unique<RayLogImpl>(file_name, line_number, severity);
+std::unique_ptr<RayLogger> CreateRayLogger(const char *file_name, int line_number,
+                                           RayLoggerLevel severity) {
+  return std::make_unique<RayLoggerImpl>(file_name, line_number, severity);
 }
 
 bool IsLevelEnabled(RayLoggerLevel log_level) {
