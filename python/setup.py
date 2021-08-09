@@ -86,7 +86,7 @@ class SetupSpec:
 
 
 BUILD_TYPE = BuildType.DEBUG if os.getenv(
-    "RAY_DEBUG_BUILD") == "1" else BuildType.DEFAULT
+    "RAY_DEBUG_BUILD") == "debug" else BuildType.DEFAULT
 
 if os.getenv("RAY_INSTALL_CPP") == "1":
     # "ray-cpp" wheel package.

@@ -45,7 +45,7 @@
     ]
   commands:
     # Build the debug wheels
-    - RAY_DEBUG_BUILD=1 LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - RAY_DEBUG_BUILD=debug LINUX_WHEELS=1 ./ci/travis/ci.sh build
     # Upload the wheels.
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
@@ -195,7 +195,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - pip uninstall -y ray
-    - RAY_DEBUG_BUILD=1 ./ci/travis/ci.sh build
+    - RAY_DEBUG_BUILD=debug ./ci/travis/ci.sh build
     - bazel test --config=ci-debug $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,debug_tests,-flaky
       python/ray/tests/...

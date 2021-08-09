@@ -297,10 +297,15 @@ _bazel_build_before_install() {
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
 
   # Build in debug mode if RAY_DEBUG_BUILD=1
-  if [ -z "${RAY_DEBUG_BUILD-}" ] || [ "${RAY_DEBUG_BUILD}" -ne "1" ]; then
+  if [ -z "${RAY_DEBUG_BUILD-}" ]; then
     bazel build "${target}"
-  else
+  # elif [ "${RAY_DEBUG_BUILD}" = "asan" ] then
+  #   bazel build 
+  elif [ "${RAY_DEBUG_BUILD}" = "debug" ] then
     bazel build --config debug "${target}"
+  else
+    echo "Invalid config given"
+    exit 1
   fi
 }
 
