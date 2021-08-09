@@ -23,6 +23,8 @@
 namespace ray {
 namespace api {
 
+using ray::core::CoreWorkerMemoryStore;
+
 class LocalModeObjectStore : public ObjectStore {
  public:
   LocalModeObjectStore(LocalModeRayRuntime &local_mode_ray_tuntime);
@@ -44,7 +46,7 @@ class LocalModeObjectStore : public ObjectStore {
   std::vector<std::shared_ptr<msgpack::sbuffer>> GetRaw(const std::vector<ObjectID> &ids,
                                                         int timeout_ms);
 
-  std::unique_ptr<::ray::CoreWorkerMemoryStore> memory_store_;
+  std::unique_ptr<CoreWorkerMemoryStore> memory_store_;
 
   LocalModeRayRuntime &local_mode_ray_tuntime_;
 };

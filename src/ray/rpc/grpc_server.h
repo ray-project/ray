@@ -38,10 +38,10 @@ namespace rpc {
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
 
 // Define a void RPC client method.
-#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
-  virtual void Handle##METHOD(const rpc::METHOD##Request &request, \
-                              rpc::METHOD##Reply *reply,           \
-                              rpc::SendReplyCallback send_reply_callback) = 0;
+#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)                   \
+  virtual void Handle##METHOD(const ::ray::rpc::METHOD##Request &request, \
+                              ::ray::rpc::METHOD##Reply *reply,           \
+                              ::ray::rpc::SendReplyCallback send_reply_callback) = 0;
 
 class GrpcService;
 

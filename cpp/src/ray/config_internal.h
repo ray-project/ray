@@ -21,6 +21,8 @@
 namespace ray {
 namespace api {
 
+using ray::core::WorkerType;
+
 enum class RunMode { SINGLE_PROCESS, CLUSTER };
 
 class ConfigInternal {

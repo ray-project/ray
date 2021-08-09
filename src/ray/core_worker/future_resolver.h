@@ -24,6 +24,7 @@
 #include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
+namespace core {
 
 using ReportLocalityDataCallback =
     std::function<void(const ObjectID &, const absl::flat_hash_set<NodeID> &, uint64_t)>;
@@ -76,4 +77,5 @@ class FutureResolver {
   const rpc::Address rpc_address_;
 };
 
+}  // namespace core
 }  // namespace ray

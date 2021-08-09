@@ -21,6 +21,7 @@
 #include "ray/gcs/gcs_client.h"
 
 namespace ray {
+namespace core {
 
 class ActorCreatorInterface {
  public:
@@ -202,4 +203,5 @@ class ActorManager {
       GUARDED_BY(mutex_);
 };
 
+}  // namespace core
 }  // namespace ray

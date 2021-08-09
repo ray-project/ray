@@ -26,6 +26,8 @@
 namespace ray {
 namespace api {
 
+using ray::core::CoreWorkerProcess;
+
 void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
                                ObjectID *object_id) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();

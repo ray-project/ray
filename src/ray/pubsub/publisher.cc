@@ -95,7 +95,9 @@ bool SubscriptionIndex<KeyIdType>::EraseEntry(const std::string &key_id_binary,
   auto object_it = objects.find(key_id);
   if (object_it == objects.end()) {
     auto it = key_id_to_subscribers_.find(key_id);
-    RAY_CHECK(it->second.count(subscriber_id) == 0);
+    if (it != key_id_to_subscribers_.end()) {
+      RAY_CHECK(it->second.count(subscriber_id) == 0);
+    }
     return false;
   }
   objects.erase(object_it);
