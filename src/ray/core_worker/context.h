@@ -20,6 +20,7 @@
 #include "ray/core_worker/common.h"
 
 namespace ray {
+namespace core {
 
 struct WorkerThreadContext;
 
@@ -111,4 +112,5 @@ class WorkerContext {
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
 };
 
+}  // namespace core
 }  // namespace ray

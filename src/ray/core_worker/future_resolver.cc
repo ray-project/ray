@@ -15,6 +15,7 @@
 #include "ray/core_worker/future_resolver.h"
 
 namespace ray {
+namespace core {
 
 void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
                                         const rpc::Address &owner_address) {
@@ -94,4 +95,5 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
   }
 }
 
+}  // namespace core
 }  // namespace ray

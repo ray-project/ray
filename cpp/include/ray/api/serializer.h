@@ -43,8 +43,8 @@ class Serializer {
   }
 
   template <typename T>
-  static T Deserialize(const char *data, size_t size, size_t &off) {
-    msgpack::unpacked unpacked = msgpack::unpack(data, size, off);
+  static T Deserialize(const char *data, size_t size, size_t *off) {
+    msgpack::unpacked unpacked = msgpack::unpack(data, size, *off);
     return unpacked.get().as<T>();
   }
 

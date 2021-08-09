@@ -22,6 +22,8 @@
 namespace ray {
 namespace streaming {
 
+using ray::core::RayFunction;
+
 /// Send buffer internal
 /// \param[in] buffer buffer to be sent.
 /// \param[in] function the function descriptor of peer's function.

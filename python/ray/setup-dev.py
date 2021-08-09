@@ -77,6 +77,7 @@ if __name__ == "__main__":
     do_link("autoscaler", force=args.yes)
     do_link("ray_operator", force=args.yes)
     do_link("cloudpickle", force=args.yes)
+    do_link("data", force=args.yes)
     do_link("scripts", force=args.yes)
     do_link("internal", force=args.yes)
     do_link("tests", force=args.yes)

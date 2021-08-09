@@ -1,5 +1,6 @@
 from contextlib import closing
 import socket
+from threading import Thread
 from typing import Tuple
 
 import ray
@@ -15,3 +16,20 @@ def get_address_and_port() -> Tuple[str, int]:
         port = s.getsockname()[1]
 
     return addr, port
+
+
+class PropagatingThread(Thread):
+    """A Thread subclass that stores exceptions and results."""
+
+    def run(self):
+        self.exc = None
+        try:
+            self.ret = self._target(*self._args, **self._kwargs)
+        except BaseException as e:
+            self.exc = e
+
+    def join(self, timeout=None):
+        super(PropagatingThread, self).join(timeout)
+        if self.exc:
+            raise self.exc
+        return self.ret

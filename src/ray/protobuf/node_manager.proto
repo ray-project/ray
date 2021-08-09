@@ -152,6 +152,10 @@ message ObjectStoreStats {
   int64 num_local_objects = 11;
   // The number of plasma object bytes that are consumed by core workers.
   int64 consumed_bytes = 12;
+  // Whether this node has object pulls queued. This can happen if
+  // the node has more pull requests than available object store
+  // memory.
+  bool object_pulls_queued = 13;
 }
 
 message GetNodeStatsReply {
