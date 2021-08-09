@@ -188,9 +188,10 @@ class Monitor:
             pending_placement_groups = list(
                 resources_batch_data.placement_group_load.placement_group_data)
 
-            use_node_id_as_ip = self.autoscaler.config['provider'].get('use_node_id_as_ip', False)
+            use_node_id_as_ip = self.autoscaler.config["provider"].get(
+                "use_node_id_as_ip", False)
             if use_node_id_as_ip:
-                ip = str(int(total_resources.get('NODE_ID_AS_RESOURCE', 0)))
+                ip = str(int(total_resources.get("NODE_ID_AS_RESOURCE", 0)))
             else:
                 ip = resource_message.node_manager_address
             self.load_metrics.update(
