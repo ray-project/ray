@@ -1,3 +1,16 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #pragma once
 
@@ -70,7 +83,7 @@ WaitResult<T> Wait(const std::vector<ray::ObjectRef<T>> &objects, int num_object
                    int timeout_ms);
 
 /// Create a `TaskCaller` for calling remote function.
-/// It is used for normal task, such as Ray::Task(Plus1, 1), Ray::Task(Plus, 1, 2).
+/// It is used for normal task, such as ray::Task(Plus1, 1), ray::Task(Plus, 1, 2).
 /// \param[in] func The function to be remote executed.
 /// \param[in] args The function arguments passed by a value or ObjectRef.
 /// \return TaskCaller.
@@ -79,9 +92,25 @@ ray::internal::TaskCaller<F> Task(F func);
 
 /// Generic version of creating an actor
 /// It is used for creating an actor, such as: ActorCreator<Counter> creator =
-/// Ray::Actor(Counter::FactoryCreate<int>).Remote(1);
+/// ray::Actor(Counter::FactoryCreate<int>).Remote(1);
 template <typename F>
 ray::internal::ActorCreator<F> Actor(F create_func);
+
+/// Get a handle to a global named actor.
+/// Gets a handle to a global named actor with the given name. The actor must have been
+/// created with global name specified.
+///
+/// \param[in] name The global name of the named actor.
+/// \return An ActorHandle to the actor if the actor of specified name exists or an
+/// empty optional object.
+template <typename T>
+boost::optional<ActorHandle<T>> GetGlobalActor(const std::string &actor_name);
+
+/// Intentionally exit the current actor.
+/// It is used to disconnect an actor and exit the worker.
+/// \Throws RayException if the current process is a driver or the current worker is not
+/// an actor.
+inline void ExitActor() { ray::internal::GetRayRuntime()->ExitActor(); }
 
 static std::once_flag is_inited_;
 
@@ -93,6 +122,10 @@ ray::internal::TaskCaller<FuncType> TaskInternal(FuncType &func);
 
 template <typename FuncType>
 ray::internal::ActorCreator<FuncType> CreateActorInternal(FuncType &func);
+
+template <typename T>
+inline static boost::optional<ActorHandle<T>> GetActorInternal(
+    bool global, const std::string &actor_name);
 
 // --------- inline implementation ------------
 
@@ -180,6 +213,26 @@ ray::internal::TaskCaller<F> Task(F func) {
 template <typename F>
 ray::internal::ActorCreator<F> Actor(F create_func) {
   return CreateActorInternal<F>(create_func);
+}
+
+template <typename T>
+inline boost::optional<ActorHandle<T>> GetActorInternal(bool global,
+                                                        const std::string &actor_name) {
+  if (actor_name.empty()) {
+    return {};
+  }
+
+  auto actor_id = ray::internal::GetRayRuntime()->GetActorId(global, actor_name);
+  if (actor_id.empty()) {
+    return {};
+  }
+
+  return ActorHandle<T>(actor_id);
+}
+
+template <typename T>
+boost::optional<ActorHandle<T>> GetGlobalActor(const std::string &actor_name) {
+  return GetActorInternal<T>(true, actor_name);
 }
 
 }  // namespace ray

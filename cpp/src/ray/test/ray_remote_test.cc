@@ -221,5 +221,5 @@ TEST(RayApiTest, NotExistFunction) {
 TEST(RayApiTest, ExceptionTask) {
   /// Normal task Exception.
   auto r4 = ray::Task(ExceptionFunc).Remote(2);
-  EXPECT_THROW(r4.Get(), ray::internal::RayException);
+  EXPECT_THROW(r4.Get(), RayTaskException);
 }

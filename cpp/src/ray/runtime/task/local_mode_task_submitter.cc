@@ -1,3 +1,16 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "local_mode_task_submitter.h"
 
@@ -17,7 +30,8 @@ LocalModeTaskSubmitter::LocalModeTaskSubmitter(
   thread_pool_.reset(new boost::asio::thread_pool(10));
 }
 
-ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
+ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
+                                        const ActorCreationOptions &options) {
   /// TODO(Guyang Song): Make the infomation of TaskSpecification more reasonable
   /// We just reuse the TaskSpecification class and make the single process mode work.
   /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
@@ -39,7 +53,9 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {
     invocation.actor_id = local_mode_ray_tuntime_.GetNextActorID();
-    builder.SetActorCreationTaskSpec(invocation.actor_id, "");
+    builder.SetActorCreationTaskSpec(invocation.actor_id, /*serialized_actor_handle=*/"",
+                                     options.max_restarts, /*max_task_retries=*/0, {},
+                                     options.max_concurrency);
   } else if (invocation.task_type == TaskType::ACTOR_TASK) {
     const TaskID actor_creation_task_id =
         TaskID::ForActorCreationTask(invocation.actor_id);
@@ -87,17 +103,20 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation) {
   return return_object_id;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation) {
-  return Submit(invocation);
+ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation,
+                                            const CallOptions &call_options) {
+  return Submit(invocation, {});
 }
 
-ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation) {
-  Submit(invocation);
+ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation,
+                                            const ActorCreationOptions &create_options) {
+  Submit(invocation, create_options);
   return invocation.actor_id;
 }
 
-ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation) {
-  return Submit(invocation);
+ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
+                                                 const CallOptions &call_options) {
+  return Submit(invocation, {});
 }
 
 }  // namespace internal

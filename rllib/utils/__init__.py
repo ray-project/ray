@@ -3,8 +3,7 @@ from functools import partial
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp, \
     try_import_torch
-from ray.rllib.utils.deprecation import deprecation_warning, renamed_agent, \
-    renamed_class, renamed_function
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import sigmoid, softmax, relu, one_hot, fc, lstm, \
@@ -83,9 +82,6 @@ __all__ = [
     "one_hot",
     "override",
     "relu",
-    "renamed_function",
-    "renamed_agent",
-    "renamed_class",
     "sigmoid",
     "softmax",
     "try_import_tf",

@@ -43,17 +43,17 @@ if __name__ == "__main__":
     # Loop through all collected files and gather experiments.
     # Augment all by `torch` framework.
     for yaml_file in yaml_files:
-        experiments = yaml.load(open(yaml_file).read())
+        experiment_configs = yaml.load(open(yaml_file).read())
 
         # Add torch version of all experiments to the list.
-        for k, e in experiments.items():
-            checks[k] = {
-                "min_reward": e["stop"]["episode_reward_mean"],
-                "time_total_s": e["stop"]["time_total_s"],
-                "timesteps_total": e["stop"]["timesteps_total"],
-                "failures": 0,
-                "passed": False,
-            }
+        # for k, e in experiment.items():
+        #     checks[k] = {
+        #         "time_total_s": e["stop"]["time_total_s"],
+        #         "timesteps_total": e["stop"]["timesteps_total"],
+        #         "failures": 0,
+        #         "passed": False,
+        #     }
+        experiments.update(experiment_configs)
 
     # Print out the actual config.
     print("== Test config ==")
@@ -81,11 +81,19 @@ if __name__ == "__main__":
         # Criteria is to a) reach reward AND b) to have reached the throughput
         # defined by `timesteps_total` / `time_total_s`.
         for t in trials:
-            experiment = t.trainable_name.lower() + "-" + \
-                t.config["framework"] + "-" + t.config["env"].lower()
+            exp_key = t.trainable_name.lower() + "-" + \
+                      t.config["framework"] + "-" + t.config["env"].lower()
+
+            if exp_key not in checks:
+                checks[exp_key] = {
+                    "time_total_s": t.last_result["time_total_s"],
+                    "timesteps_total": t.last_result["timesteps_total"],
+                    "failures": 0,
+                    "passed": False,
+                }
 
             if t.status == "ERROR":
-                checks[experiment]["failures"] += 1
+                checks[exp_key]["failures"] += 1
             else:
                 desired_reward = t.stopping_criterion.get(
                     "episode_reward_mean")
@@ -102,10 +110,12 @@ if __name__ == "__main__":
                 if (desired_reward and t.last_result["episode_reward_mean"] <
                         desired_reward) or (desired_throughput and
                                             throughput < desired_throughput):
-                    checks[experiment]["failures"] += 1
+                    checks[exp_key]["failures"] += 1
                 else:
-                    checks[experiment]["passed"] = True
-                    del experiments_to_run[experiment]
+                    checks[exp_key]["passed"] = True
+                    # Todo: Delete from `experiments_to_run`
+                    # Disabled here because we only try once at the moment
+                    # del experiments_to_run[FIX]
 
     ray.shutdown()
 
