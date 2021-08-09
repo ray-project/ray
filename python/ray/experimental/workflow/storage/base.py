@@ -48,11 +48,11 @@ class Storage(metaclass=abc.ABCMeta):
         """
 
     @abstractmethod
-    async def delete(self, key: str) -> None:
-        """Delete an object.
+    async def delete_prefix(self, key_prefix: str) -> None:
+        """Delete an object with prefix.
 
         Args:
-            key: The key of the object.
+            key_prefix: The prefix to delete.
         """
 
     @abstractmethod
