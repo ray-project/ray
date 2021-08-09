@@ -234,65 +234,87 @@ class Trainer:
         Returns:
             A Trainable that can directly be passed into ``tune.run()``.
         """
+        return _create_tune_trainable(train_func, self._backend,
+                                      self._num_workers, self._use_gpu,
+                                      self._resources_per_worker)
 
-        class _TuneTrainer(Trainer):
-            def start_training(
-                    self,
-                    train_func: Union[Callable[[], T], Callable[
-                        [Dict[str, Any]], T]],
-                    config: Optional[Dict[str, Any]] = None) -> None:
-                pass
 
-            def fetch_next_report(self) -> Optional[List[Dict]]:
-                pass
+class _TuneTrainer(Trainer):
+    def start_training(
+            self,
+            train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
+            config: Optional[Dict[str, Any]] = None) -> None:
+        train_func = self._get_train_func(train_func, config)
+        self._executor.start_training(train_func)
 
-        class _SgdTrainable(DistributedTrainable):
-            _function = train_func
-            _started = False
-            _finished = False
+    def fetch_next_report(self) -> Optional[List[Dict]]:
+        return self._executor.fetch_next_result()
 
-            _backend = self._backend
-            _num_workers = self._num_workers
-            _use_gpu = self._use_gpu
-            _resources_per_worker = self._resources_per_worker
 
-            @classmethod
-            def default_resource_request(
-                    cls, config: Dict) -> PlacementGroupFactory:
-                bundles = []
-                worker_resources = {"CPU": 1, "GPU": int(self._use_gpu)}
-                bundles += self._num_workers * [worker_resources]
-                return PlacementGroupFactory(bundles, strategy="PACK")
+class _SgdTrainable(DistributedTrainable):
+    _function = None
+    _backend = None
+    _num_workers = None
+    _use_gpu = None
+    _resources_per_worker = None
 
-            def setup(self, config: Dict):
-                # Create a new Trainer with the same configuration.
-                self._trainer = _TuneTrainer(self._backend, self._num_workers,
-                                             self._use_gpu,
-                                             self._resources_per_worker)
-                self._config = config
+    _started = False
+    _finished = False
 
-            def step(self) -> Dict:
-                if self._finished:
-                    raise RuntimeError("Training has already finished.")
-                if not self._started:
-                    self._trainer.start_training(self._function, self._config)
-                    self._started = True
+    def setup(self, config: Dict):
+        # Create a new Trainer with the same configuration.
+        self._trainer = _TuneTrainer(self._backend, self._num_workers,
+                                     self._use_gpu, self._resources_per_worker)
+        # TODO(matt): use placement group resource allocation
+        self._trainer.start()  # Move this to step?
+        self._config = config
 
-                report = self._trainer.fetch_next_report()
-                if report is None:
-                    self._finished = True
-                    return {RESULT_DUPLICATE: True}
-                # Currently return the value from first worker.
-                # TODO(matt): add support for aggregation function.
-                return report[0]
+    def step(self) -> Dict:
+        if self._finished:
+            raise RuntimeError("Training has already finished.")
+        if not self._started:
+            self._trainer.start_training(self._function, self._config)
+            self._started = True
 
-            def save_checkpoint(self, tmp_checkpoint_dir):
-                raise NotImplementedError
+        report = self._trainer.fetch_next_report()
+        if report is None:
+            self._finished = True
+            return {RESULT_DUPLICATE: True}
+        # Currently return the value from first worker.
+        # TODO(matt): add support for aggregation function.
+        return report[0]
 
-            def load_checkpoint(self, checkpoint):
-                raise NotImplementedError
+    def save_checkpoint(self, tmp_checkpoint_dir):
+        raise NotImplementedError
 
-            def cleanup(self):
-                self._trainer.shutdown()
+    def load_checkpoint(self, checkpoint):
+        raise NotImplementedError
 
-        return _SgdTrainable
+    def cleanup(self):
+        self._trainer.shutdown()
+
+
+def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
+                           resources_per_worker):
+    """Creates a Tune Trainable class for SGD training.
+
+    This function populates class attributes and methods.
+    """
+
+    class _WrappedSgdTrainable(_SgdTrainable):
+        """Wrapper around ``_SgdTrainable`` with class attributes."""
+        _function = train_func
+        _backend = backend
+        _num_workers = num_workers
+        _use_gpu = use_gpu
+        _resources_per_worker = resources_per_worker
+
+        @classmethod
+        def default_resource_request(cls,
+                                     config: Dict) -> PlacementGroupFactory:
+            bundles = []
+            worker_resources = {"CPU": 1, "GPU": int(use_gpu)}
+            bundles += num_workers * [worker_resources]
+            return PlacementGroupFactory(bundles, strategy="PACK")
+
+    return _WrappedSgdTrainable

@@ -2,6 +2,7 @@ import argparse
 from typing import Dict
 
 import torch
+import ray.util.sgd.v2 as sgd
 from ray.util.sgd.v2.trainer import Trainer
 from torch import nn
 from torch.nn.parallel import DistributedDataParallel
@@ -108,6 +109,7 @@ def train_func(config: Dict):
     for _ in range(epochs):
         train(train_dataloader, model, loss_fn, optimizer, device)
         loss = validate(test_dataloader, model, loss_fn, device)
+        sgd.report(loss=loss)
         loss_results.append(loss)
 
     return loss_results
@@ -115,9 +117,7 @@ def train_func(config: Dict):
 
 def train_fashion_mnist(num_workers=1, use_gpu=False):
     trainer = Trainer(
-        backend="torch",
-        num_workers=num_workers,
-        num_gpus_per_worker=int(use_gpu))
+        backend="torch", num_workers=num_workers, use_gpu=use_gpu)
     trainer.start()
     result = trainer.run(
         train_func=train_func,

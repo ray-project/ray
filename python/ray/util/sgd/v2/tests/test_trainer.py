@@ -1,22 +1,22 @@
 import time
-import pytest
 from unittest.mock import patch
 
-import tensorflow as tf
-import torch
-
+import pytest
 import ray
 import ray.util.sgd.v2 as sgd
+import tensorflow as tf
+import torch
+from ray import tune
 from ray.util.sgd.v2 import Trainer
-from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface, \
     BackendExecutor
+from ray.util.sgd.v2.callbacks.callback import SGDCallback
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
-from ray.util.sgd.v2.examples.train_linear import train_func as \
-    linear_train_func
 from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
     fashion_mnist_train_func
+from ray.util.sgd.v2.examples.train_linear import train_func as \
+    linear_train_func
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 
@@ -499,6 +499,26 @@ def test_run_after_user_error(ray_start_2_cpus):
 
     output = trainer.run(train)
     assert output == [1, 1]
+
+
+def test_tune_train(ray_start_2_cpus):
+    num_workers = 2
+    epochs = 3
+
+    trainer = Trainer("torch", num_workers=num_workers)
+    MnistTrainable = trainer.to_tune_trainable(fashion_mnist_train_func)
+
+    tune.run(
+        MnistTrainable,
+        num_samples=1,
+        stop={"training_iteration": 2},
+        config={
+            "lr": tune.loguniform(1e-4, 1e-1),
+            "batch_size": tune.choice([32, 64, 128]),
+            "epochs": epochs
+        })
+
+    assert True  # change this
 
 
 if __name__ == "__main__":
