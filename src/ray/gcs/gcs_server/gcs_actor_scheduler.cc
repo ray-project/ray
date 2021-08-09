@@ -343,7 +343,7 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
         if (iter != node_to_workers_when_creating_.end()) {
           auto worker_iter = iter->second.find(actor->GetWorkerID());
           if (worker_iter != iter->second.end()) {
-            RAY_LOG(DEBUG) << "Worker " << worker_iter->first << " is in creating map. ";
+            RAY_LOG(DEBUG) << "Worker " << worker_iter->first << " is in creating map.";
             // The worker is still in the creating map.
             if (status.ok()) {
               // Remove related core worker client.
@@ -412,7 +412,7 @@ bool GcsActorScheduler::KillActorOnWorker(const rpc::Address &worker_address,
 
   auto cli = core_worker_clients_.GetOrConnect(worker_address);
   rpc::KillActorRequest request;
-  // Set it to be Nil() since it hasn't been setup yet
+  // Set it to be Nil() since it hasn't been setup yet.
   request.set_intended_actor_id(actor_id.Binary());
   request.set_force_kill(true);
   request.set_no_restart(true);
@@ -482,7 +482,7 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
       if (actor->GetState() == rpc::ActorTableData::DEAD) {
         // If the actor has been killed, we need to kill the worker too
         // otherwise, the worker will be leaked.
-        RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker";
+        RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker.";
         KillActorOnWorker(reply.worker_address(), ActorID::Nil());
       }
       return;
@@ -515,7 +515,7 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
   } else if (actor->GetState() == rpc::ActorTableData::DEAD) {
     // If the actor has been killed, we need to kill the worker too
     // otherwise, the worker will be leaked.
-    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker";
+    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker.";
     KillActorOnWorker(reply.worker_address(), ActorID::Nil());
   }
 }
