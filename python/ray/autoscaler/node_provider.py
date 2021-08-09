@@ -139,6 +139,7 @@ class NodeProvider:
             logger.info("NodeProvider: "
                         "{}: Terminating node".format(node_id))
             self.terminate_node(node_id)
+        return None
 
     @staticmethod
     def bootstrap_config(cluster_config: Dict[str, Any]) -> Dict[str, Any]:
