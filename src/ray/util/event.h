@@ -106,7 +106,7 @@ class EventManager final {
   void ClearReporters();
 
  private:
-  EventManager() = default;
+  EventManager();
 
   EventManager(const EventManager &manager) = delete;
 

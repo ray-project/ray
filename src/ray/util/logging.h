@@ -51,7 +51,9 @@
 #include <gtest/gtest_prod.h>
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <iostream>
+#include <sstream>
 #include <string>
 
 #if defined(_WIN32)
@@ -182,17 +184,29 @@ class RayLogBase {
   // By default, this class is a null log because it return false here.
   virtual bool IsEnabled() const { return false; };
 
+  // This function to judge whether current log is fatal or not.
+  virtual bool IsExposed() const { return false; };
+
   template <typename T>
   RayLogBase &operator<<(const T &t) {
     if (IsEnabled()) {
       Stream() << t;
+    }
+    if (IsExposed()) {
+      ExposeStream() << t;
     }
     return *this;
   }
 
  protected:
   virtual std::ostream &Stream() { return std::cerr; };
+  virtual std::ostream &ExposeStream() { return std::cerr; };
 };
+
+/// Callback function which will be triggered to expose log.
+/// The first argument: a string representing log type or label.
+/// The second argument: log content.
+using ExposeLogCallback = std::function<void(const std::string &, const std::string &)>;
 
 class RayLog : public RayLogBase {
  public:
@@ -204,6 +218,8 @@ class RayLog : public RayLogBase {
   ///
   /// \return True if logging is enabled and false otherwise.
   virtual bool IsEnabled() const;
+
+  virtual bool IsExposed() const;
 
   /// The init function of ray log for a program which should be called only once.
   ///
@@ -239,6 +255,9 @@ class RayLog : public RayLogBase {
 
   static std::string GetLoggerName();
 
+  /// Set callback function which will be triggered to expose log.
+  static void SetExposeLogCallback(const ExposeLogCallback &expose_log_callback);
+
  private:
   FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
   FRIEND_TEST(PrintLogTest, TestRayLogEveryN);
@@ -247,6 +266,14 @@ class RayLog : public RayLogBase {
   void *logging_provider_;
   /// True if log messages should be logged and false if they should be ignored.
   bool is_enabled_;
+  /// log level.
+  RayLogLevel severity_;
+  /// Whether need to expose this log or not.
+  bool is_exposed_ = false;
+  /// String stream of exposed log content.
+  std::ostringstream *expose_osstream_ = nullptr;
+  /// Callback function which will be triggered to expose log.
+  static ExposeLogCallback expose_log_callback_;
   static RayLogLevel severity_threshold_;
   // In InitGoogleLogging, it simply keeps the pointer.
   // We need to make sure the app name passed to InitGoogleLogging exist.
@@ -268,6 +295,7 @@ class RayLog : public RayLogBase {
 
  protected:
   virtual std::ostream &Stream();
+  virtual std::ostream &ExposeStream();
 };
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
