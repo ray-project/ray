@@ -613,7 +613,8 @@ void ClusterTaskManager::FillResourceUsage(
 
   for (const auto &pair : tasks_to_schedule_) {
     const auto &scheduling_class = pair.first;
-    RAY_LOG(ERROR) << "[" << num_reported << "/" << max_resource_shapes_per_load_report_ << "] " << scheduling_class << " scheduling";
+    RAY_LOG(ERROR) << "[" << num_reported << "/" << max_resource_shapes_per_load_report_
+                   << "] " << scheduling_class << " scheduling";
     if (num_reported >= max_resource_shapes_per_load_report_ &&
         max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
@@ -653,7 +654,8 @@ void ClusterTaskManager::FillResourceUsage(
 
   for (const auto &pair : tasks_to_dispatch_) {
     const auto &scheduling_class = pair.first;
-    RAY_LOG(ERROR) << "[" << num_reported << "/" << max_resource_shapes_per_load_report_ << "] " << scheduling_class << " dispatch";
+    RAY_LOG(ERROR) << "[" << num_reported << "/" << max_resource_shapes_per_load_report_
+                   << "] " << scheduling_class << " dispatch";
     if (num_reported >= max_resource_shapes_per_load_report_ &&
         max_resource_shapes_per_load_report_ >= 0) {
       RAY_LOG(ERROR) << "Skipping rest of dispatch queue";
@@ -689,7 +691,8 @@ void ClusterTaskManager::FillResourceUsage(
 
   for (const auto &pair : infeasible_tasks_) {
     const auto &scheduling_class = pair.first;
-    RAY_LOG(ERROR) << "[" << num_reported << "/" << max_resource_shapes_per_load_report_ << "] " << scheduling_class << " infeasible";
+    RAY_LOG(ERROR) << "[" << num_reported << "/" << max_resource_shapes_per_load_report_
+                   << "] " << scheduling_class << " infeasible";
     if (num_reported >= max_resource_shapes_per_load_report_ &&
         max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
@@ -726,8 +729,8 @@ void ClusterTaskManager::FillResourceUsage(
     }
   }
 
-  RAY_LOG(ERROR) << "Resoruce report contains " << data.resource_load_by_shape().resource_demands().size() <<
-    "shapes";
+  RAY_LOG(ERROR) << "Resoruce report contains "
+                 << data.resource_load_by_shape().resource_demands().size() << "shapes";
 
   if (RayConfig::instance().enable_light_weight_resource_report()) {
     // Check whether resources have been changed.
