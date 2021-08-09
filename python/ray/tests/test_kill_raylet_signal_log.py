@@ -24,9 +24,12 @@ def check_result(filename, num_signal, check_key):
     raylet_out_path = filename.format(session_dir)
     pid = get_pid("raylet")
     assert pid > 0
+    print("abc")
     p = psutil.Process(pid)
     p.send_signal(num_signal)
+    print("bcd")
     p.wait(timeout=15)
+    print("efg")
 
     def check_file():
         with open(raylet_out_path) as f:
