@@ -34,7 +34,7 @@ def _shared_serve_instance():
     yield serve.start(detached=True)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def serve_instance(_shared_serve_instance):
     yield _shared_serve_instance
     controller = serve.api._global_client._controller

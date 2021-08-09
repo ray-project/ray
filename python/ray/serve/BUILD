@@ -5,8 +5,7 @@ py_library(
     srcs = glob(["**/*.py"], exclude=["tests/*.py", "**/tests/*.py"]),
 )
 
-serve_tests_srcs = glob(["tests/*.py"])
-serve_storage_tests_srcs = glob(["storage/tests/*.py"])
+serve_tests_srcs = glob(["tests/**/*.py"])
 
 py_test(
     name = "test_api",
@@ -151,7 +150,7 @@ py_test(
 py_test(
     name = "test_kv_store",
     size = "small",
-    srcs = serve_storage_tests_srcs,
+    srcs = serve_tests_srcs,
     tags = ["exclusive"],
     deps = [":serve_lib"],
 )
