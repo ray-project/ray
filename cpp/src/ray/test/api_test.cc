@@ -82,6 +82,23 @@ TEST(RayApiTest, LogTest) {
   boost::filesystem::remove_all(log_path);
 }
 
+TEST(RayApiTest, TaskOptionsCheckTest) {
+  std::unordered_map<std::string, double> map;
+  map.emplace("", 1);
+  EXPECT_THROW(CheckTaskOptions(map), RayException);
+  map.clear();
+  map.emplace("dummy", 0);
+  EXPECT_THROW(CheckTaskOptions(map), RayException);
+  map.clear();
+  map.emplace("dummy", 2.0);
+  CheckTaskOptions(map);
+  map.emplace("dummy1", 2.5);
+  EXPECT_THROW(CheckTaskOptions(map), RayException);
+  map.clear();
+  map.emplace("dummy", 0.5);
+  CheckTaskOptions(map);
+}
+
 TEST(RayApiTest, PutTest) {
   RayConfig config;
   config.local_mode = true;

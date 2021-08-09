@@ -301,6 +301,7 @@ html_theme_options = {
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
     "home_page_in_toc": True,
+    "show_navbar_depth": 0,
 }
 
 # Add any paths that contain custom themes here, relative to this directory.

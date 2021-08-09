@@ -18,6 +18,7 @@
 #include "ray/object_manager/plasma/malloc.h"
 
 #include <assert.h>
+#include <cerrno>
 
 #ifdef __linux__
 #ifndef _GNU_SOURCE
@@ -147,18 +148,21 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
   file_name.push_back('\0');
   *fd = mkstemp(&file_name[0]);
   if (*fd < 0) {
-    RAY_LOG(FATAL) << "create_buffer failed to open file " << &file_name[0];
+    RAY_LOG(FATAL) << "create_buffer failed to open file " << &file_name[0] << ", error"
+                   << std::strerror(errno);
   }
   // Immediately unlink the file so we do not leave traces in the system.
   if (unlink(&file_name[0]) != 0) {
-    RAY_LOG(FATAL) << "failed to unlink file " << &file_name[0];
+    RAY_LOG(FATAL) << "failed to unlink file " << &file_name[0] << ", error"
+                   << std::strerror(errno);
   }
   if (!dlmalloc_config.hugepages_enabled) {
     // Increase the size of the file to the desired size. This seems not to be
     // needed for files that are backed by the huge page fs, see also
     // http://www.mail-archive.com/kvm-devel@lists.sourceforge.net/msg14737.html
     if (ftruncate(*fd, (off_t)size) != 0) {
-      RAY_LOG(FATAL) << "failed to ftruncate file " << &file_name[0];
+      RAY_LOG(FATAL) << "failed to ftruncate file " << &file_name[0] << ", error"
+                     << std::strerror(errno);
     }
   }
 
@@ -181,7 +185,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
     RAY_LOG(DEBUG) << "Preallocating fallback allocation using fallocate";
     int ret = fallocate(*fd, /*mode*/ 0, /*offset*/ 0, size);
     if (ret != 0) {
-      if (ret == EOPNOTSUPP || ret == ENOSYS) {
+      if (errno == EOPNOTSUPP || errno == ENOSYS) {
         // in case that fallocate is not supported by current filesystem or kernel,
         // we continue to mmap
         RAY_LOG(DEBUG) << "fallocate is not supported: " << std::strerror(errno);

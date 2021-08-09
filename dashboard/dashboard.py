@@ -1,6 +1,9 @@
 import sys
 
 try:
+    import opencensus  # noqa: F401
+    import prometheus_client  # noqa: F401
+
     import aiohttp.web
     import aiohttp
     import aiohttp_cors  # noqa: F401

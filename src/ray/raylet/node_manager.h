@@ -259,11 +259,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// to eagerly evict all plasma copies of the object from the cluster.
   void FlushObjectsToFree();
 
-  /// Get profiling information from the object manager and push it to the GCS.
-  ///
-  /// \return Void.
-  void GetObjectManagerProfileInfo();
-
   /// Handler for a resource usage notification from the GCS.
   ///
   /// \param id The ID of the node manager that sent the resources data.

@@ -48,6 +48,7 @@ Each release test requires the following:
    `--smoke-test` argument.
    Usually the command should write its result metrics to a json file.
    The json filename is available in the TEST_OUTPUT_JSON env variable.
+5. Add your test in release/.buildkite/build_pipeline.py.
 
 The script will have access to these environment variables:
 
@@ -1265,6 +1266,8 @@ def run_test_config(
                 min_workers = 0
                 for node_type in compute_tpl["worker_node_types"]:
                     min_workers += node_type["min_workers"]
+                # Build completed, use job timeout
+                result_queue.put(State("CMD_RUN", time.time(), None))
                 returncode, logs = run_job(
                     cluster_name=test_name,
                     compute_tpl_name=compute_tpl_name,

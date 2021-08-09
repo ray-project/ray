@@ -34,6 +34,17 @@ namespace ray {
 typedef ResourceSet SchedulingClassDescriptor;
 typedef int SchedulingClass;
 
+/// ConcurrencyGroup is a group of actor methods that shares
+/// a executing thread pool.
+struct ConcurrencyGroup {
+  // Name of this group.
+  std::string name;
+  // Max concurrency of this group.
+  uint32_t max_concurrency;
+  // Function descriptors of the actor methods in this group.
+  std::vector<ray::FunctionDescriptor> function_descriptors;
+};
+
 static inline rpc::ObjectReference GetReferenceForActorDummyObject(
     const ObjectID &object_id) {
   rpc::ObjectReference ref;
@@ -227,6 +238,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   // Whether or not we should capture parent's placement group implicitly.
   bool PlacementGroupCaptureChildTasks() const;
+
+  // Concurrency groups of the actor.
+  std::vector<ConcurrencyGroup> ConcurrencyGroups() const;
+
+  std::string ConcurrencyGroupName() const;
 
  private:
   void ComputeResources();

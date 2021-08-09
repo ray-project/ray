@@ -32,7 +32,7 @@ GLOBAL_CONFIG["SLACK_WEBHOOK"] = os.environ.get("SLACK_WEBHOOK", "")
 GLOBAL_CONFIG["SLACK_CHANNEL"] = os.environ.get("SLACK_CHANNEL",
                                                 "#oss-test-cop")
 
-RESULTS_LIMIT = 200
+RESULTS_LIMIT = 120
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

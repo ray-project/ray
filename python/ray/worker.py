@@ -696,7 +696,9 @@ def init(
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
-        runtime_env (dict): The runtime environment to use for this job.
+        runtime_env (dict): The runtime environment to use for this job (see
+                :ref:`runtime-environments` for details).  This API is in beta
+                and may change before becoming stable.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -1329,10 +1331,14 @@ def connect(node,
     driver_name = ""
     log_stdout_file_path = ""
     log_stderr_file_path = ""
+    interactive_mode = False
     if mode == SCRIPT_MODE:
         import __main__ as main
-        driver_name = (main.__file__
-                       if hasattr(main, "__file__") else "INTERACTIVE MODE")
+        if hasattr(main, "__file__"):
+            driver_name = main.__file__
+        else:
+            interactive_mode = True
+            driver_name = "INTERACTIVE MODE"
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
@@ -1433,11 +1439,13 @@ def connect(node,
         # paths of the workers. Also add the current directory. Note that this
         # assumes that the directory structures on the machines in the clusters
         # are the same.
-        # In client mode, if we use runtime env, then it'll be taken care of
-        # automatically.
-        script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
-        worker.run_function_on_all_workers(
-            lambda worker_info: sys.path.insert(1, script_directory))
+        # When using an interactive shell, there is no script directory.
+        if not interactive_mode:
+            script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
+            worker.run_function_on_all_workers(
+                lambda worker_info: sys.path.insert(1, script_directory))
+        # In client mode, if we use runtime envs with "working_dir", then
+        # it'll be handled automatically.  Otherwise, add the current dir.
         if not job_config.client_job and len(
                 job_config.get_runtime_env_uris()) == 0:
             current_directory = os.path.abspath(os.path.curdir)
@@ -2061,7 +2069,8 @@ def remote(*args, **kwargs):
             infinite retries.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
-            :ref:`runtime-environments` for detailed documentation.
+            :ref:`runtime-environments` for detailed documentation. This API is
+            in beta and may change before becoming stable.
         override_environment_variables (Dict[str, str]): (Deprecated in Ray
             1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
             field of :ref:`runtime-environments` instead.) This specifies
