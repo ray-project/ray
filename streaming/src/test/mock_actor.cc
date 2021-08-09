@@ -611,8 +611,7 @@ class StreamingWorker {
     std::string actor_handle_serialized = message->ActorHandleSerialized();
     CoreWorkerProcess::GetCoreWorker().DeserializeAndRegisterActorHandle(
         actor_handle_serialized, ObjectID::Nil());
-    std::shared_ptr<ray::core::ActorHandle> actor_handle(
-        new ray::core::ActorHandle(actor_handle_serialized));
+    std::shared_ptr<ActorHandle> actor_handle(new ActorHandle(actor_handle_serialized));
     STREAMING_CHECK(actor_handle != nullptr);
     STREAMING_LOG(INFO) << "Actor id from handle: " << actor_handle->GetActorID();
 
@@ -633,7 +632,7 @@ class StreamingWorker {
   std::shared_ptr<WriterClient> writer_client_;
   std::shared_ptr<std::thread> test_thread_;
   std::shared_ptr<StreamingQueueTestSuite> test_suite_;
-  std::shared_ptr<ray::core::ActorHandle> peer_actor_handle_;
+  std::shared_ptr<ActorHandle> peer_actor_handle_;
 };
 
 }  // namespace streaming

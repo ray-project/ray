@@ -169,7 +169,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
   ActorID CreateActorHelper(const std::unordered_map<std::string, double> &resources,
                             bool is_direct_call, int64_t max_restarts) {
-    std::unique_ptr<ray::core::ActorHandle> actor_handle;
+    std::unique_ptr<ActorHandle> actor_handle;
 
     // Test creating actor.
     uint8_t array[] = {1, 2, 3};
