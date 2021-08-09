@@ -19,8 +19,6 @@
 #include "gflags/gflags.h"
 #include "plus.h"
 
-using namespace ray;
-
 int *cmd_argc = nullptr;
 char ***cmd_argv = nullptr;
 
@@ -56,10 +54,10 @@ TEST(RayClusterModeTest, FullTest) {
   task_result = *(ray::Get(task_obj));
   EXPECT_EQ(6, task_result);
 
-  ActorHandle<Counter> actor = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
-                                   .SetMaxRestarts(1)
-                                   .SetGlobalName("named_actor")
-                                   .Remote();
+  ray::ActorHandle<Counter> actor = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+                                        .SetMaxRestarts(1)
+                                        .SetGlobalName("named_actor")
+                                        .Remote();
   auto named_actor_obj = actor.Task(&Counter::Plus1)
                              .SetName("named_actor_task")
                              .SetResources({{"CPU", 1.0}})
@@ -86,21 +84,19 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_FALSE(ray::GetGlobalActor<Counter>("named_actor"));
 
   /// actor task without args
-  ActorHandle<Counter> actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
   auto actor_object1 = actor1.Task(&Counter::Plus1).Remote();
   int actor_task_result1 = *(ray::Get(actor_object1));
   EXPECT_EQ(1, actor_task_result1);
 
   /// actor task with args
-  ActorHandle<Counter> actor2 =
-      ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(1);
+  auto actor2 = ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(1);
   auto actor_object2 = actor2.Task(&Counter::Add).Remote(5);
   int actor_task_result2 = *(ray::Get(actor_object2));
   EXPECT_EQ(6, actor_task_result2);
 
   /// actor task with args which pass by reference
-  ActorHandle<Counter> actor3 =
-      ray::Actor(RAY_FUNC(Counter::FactoryCreate, int, int)).Remote(6, 0);
+  auto actor3 = ray::Actor(RAY_FUNC(Counter::FactoryCreate, int, int)).Remote(6, 0);
   auto actor_object3 = actor3.Task(&Counter::Add).Remote(actor_object2);
   int actor_task_result3 = *(ray::Get(actor_object3));
   EXPECT_EQ(12, actor_task_result3);
@@ -111,7 +107,7 @@ TEST(RayClusterModeTest, FullTest) {
   auto r2 = ray::Task(Plus).Remote(3, 22);
 
   std::vector<ray::ObjectRef<int>> objects = {r0, r1, r2};
-  WaitResult<int> result = ray::Wait(objects, 3, 1000);
+  auto result = ray::Wait(objects, 3, 1000);
   EXPECT_EQ(result.ready.size(), 3);
   EXPECT_EQ(result.unready.size(), 0);
 
@@ -139,8 +135,7 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result6, 12);
 
   /// create actor and actor function remote call with args passed by value
-  ActorHandle<Counter> actor4 =
-      ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(10);
+  auto actor4 = ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(10);
   auto r7 = actor4.Task(&Counter::Add).Remote(5);
   auto r8 = actor4.Task(&Counter::Add).Remote(1);
   auto r9 = actor4.Task(&Counter::Add).Remote(3);
@@ -156,8 +151,7 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result10, 27);
 
   /// create actor and task function remote call with args passed by reference
-  ActorHandle<Counter> actor5 =
-      ray::Actor(RAY_FUNC(Counter::FactoryCreate, int, int)).Remote(r10, 0);
+  auto actor5 = ray::Actor(RAY_FUNC(Counter::FactoryCreate, int, int)).Remote(r10, 0);
 
   auto r11 = actor5.Task(&Counter::Add).Remote(r0);
   auto r12 = actor5.Task(&Counter::Add).Remote(r11);
@@ -211,8 +205,8 @@ TEST(RayClusterModeTest, ResourcesManagementTest) {
                     .SetResources({{"CPU", 100.0}})
                     .Remote();
   auto r2 = actor2.Task(&Counter::Plus1).Remote();
-  std::vector<ObjectRef<int>> objects{r2};
-  WaitResult<int> result = ray::Wait(objects, 1, 1000);
+  std::vector<ray::ObjectRef<int>> objects{r2};
+  auto result = ray::Wait(objects, 1, 1000);
   EXPECT_EQ(result.ready.size(), 0);
   EXPECT_EQ(result.unready.size(), 1);
 
@@ -220,8 +214,8 @@ TEST(RayClusterModeTest, ResourcesManagementTest) {
   EXPECT_EQ(*r3.Get(), 1);
 
   auto r4 = ray::Task(Return1).SetResource("CPU", 100.0).Remote();
-  std::vector<ObjectRef<int>> objects1{r4};
-  WaitResult<int> result2 = ray::Wait(objects1, 1, 1000);
+  std::vector<ray::ObjectRef<int>> objects1{r4};
+  auto result2 = ray::Wait(objects1, 1, 1000);
   EXPECT_EQ(result2.ready.size(), 0);
   EXPECT_EQ(result2.unready.size(), 1);
 }

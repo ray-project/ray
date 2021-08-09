@@ -20,7 +20,7 @@
 #include "boost/filesystem.hpp"
 #include "ray/util/logging.h"
 
-using namespace ray;
+// using namespace ray;
 
 int Return1() { return 1; }
 int Plus1(int x) { return x + 1; }
@@ -132,7 +132,7 @@ TEST(RayApiTest, WaitTest) {
   auto r1 = ray::Task(Plus1).Remote(3);
   auto r2 = ray::Task(Plus).Remote(2, 3);
   std::vector<ray::ObjectRef<int>> objects = {r0, r1, r2};
-  WaitResult<int> result = ray::Wait(objects, 3, 1000);
+  auto result = ray::Wait(objects, 3, 1000);
   EXPECT_EQ(result.ready.size(), 3);
   EXPECT_EQ(result.unready.size(), 0);
   std::vector<std::shared_ptr<int>> getResult = ray::Get<int>(objects);
@@ -183,7 +183,7 @@ TEST(RayApiTest, ActorTest) {
   ray::RayConfig config;
   config.local_mode = true;
   ray::Init(config);
-  ActorHandle<Counter> actor = ray::Actor(Counter::FactoryCreate).Remote();
+  auto actor = ray::Actor(Counter::FactoryCreate).Remote();
   auto rt1 = actor.Task(&Counter::Add).Remote(1);
   auto rt2 = actor.Task(&Counter::Add).Remote(2);
   auto rt3 = actor.Task(&Counter::Add).Remote(3);

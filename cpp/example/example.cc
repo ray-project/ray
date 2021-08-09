@@ -17,9 +17,6 @@
 /// including the header
 #include <ray/api.h>
 
-/// using namespace
-using namespace ray;
-
 /// general function of user code
 int Return1() { return 1; }
 int Plus1(int x) { return x + 1; }
@@ -75,21 +72,20 @@ int main(int argc, char **argv) {
   std::cout << "task_result2 = " << task_result2 << std::endl;
 
   /// actor task without args
-  ActorHandle<Counter> actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  ray::ActorHandle<Counter> actor1 =
+      ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
   auto actor_object1 = actor1.Task(&Counter::Plus1).Remote();
   int actor_result1 = *(ray::Get(actor_object1));
   std::cout << "actor_result1 = " << actor_result1 << std::endl;
 
   /// actor task with args
-  ActorHandle<Counter> actor2 =
-      ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(1);
+  auto actor2 = ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(1);
   auto actor_object2 = actor2.Task(&Counter::Add).Remote(5);
   int actor_result2 = *(ray::Get(actor_object2));
   std::cout << "actor_result2 = " << actor_result2 << std::endl;
 
   /// actor task with args which pass by reference
-  ActorHandle<Counter> actor3 =
-      ray::Actor(RAY_FUNC(Counter::FactoryCreate, int, int)).Remote(6, 0);
+  auto actor3 = ray::Actor(RAY_FUNC(Counter::FactoryCreate, int, int)).Remote(6, 0);
   auto actor_object3 = actor3.Task(&Counter::Add).Remote(actor_object2);
   int actor_result3 = *(ray::Get(actor_object3));
   std::cout << "actor_result3 = " << actor_result3 << std::endl;
@@ -111,15 +107,13 @@ int main(int argc, char **argv) {
             << std::endl;
 
   /// create actor and actor function remote call with args passed by value
-  ActorHandle<Counter> actor4 =
-      ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(10);
+  auto actor4 = ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(10);
   auto r10 = actor4.Task(&Counter::Add).Remote(8);
   int actor_result4 = *(ray::Get(r10));
   std::cout << "actor_result4 = " << actor_result4 << std::endl;
 
   /// create actor and task function remote call with args passed by reference
-  ActorHandle<Counter> actor5 =
-      ray::Actor(RAY_FUNC(Counter::FactoryCreate, int, int)).Remote(r10, 0);
+  auto actor5 = ray::Actor(RAY_FUNC(Counter::FactoryCreate, int, int)).Remote(r10, 0);
   auto r11 = actor5.Task(&Counter::Add).Remote(r0);
   auto r12 = actor5.Task(&Counter::Add).Remote(r11);
   auto r13 = actor5.Task(&Counter::Add).Remote(r10);

@@ -19,9 +19,6 @@
 #include "cpp/src/ray/runtime/task/task_executor.h"
 #include "cpp/src/ray/util/function_helper.h"
 
-using namespace ray;
-using namespace ray::internal;
-
 int Return() { return 1; }
 int PlusOne(int x) { return x + 1; }
 int PlusTwo(int x, int y) { return x + y; }
@@ -153,17 +150,17 @@ TEST(RayApiTest, ReferenceArgs) {
   auto r3 = ray::Task(Concat3).Remote(str, str2);
   EXPECT_EQ(*(r2.Get()), *(r3.Get()));
 
-  ActorHandle<DummyObject> actor = ray::Actor(DummyObject::FactoryCreate).Remote(1);
+  ray::ActorHandle<DummyObject> actor = ray::Actor(DummyObject::FactoryCreate).Remote(1);
   auto r4 = actor.Task(&DummyObject::Concat1).Remote("a", "b");
   auto r5 = actor.Task(&DummyObject::Concat2).Remote(str, "b");
   EXPECT_EQ(*(r4.Get()), *(r5.Get()));
 }
 
 TEST(RayApiTest, VirtualFunctions) {
-  ActorHandle<Base> actor = ray::Actor(Base::FactoryCreate).Remote();
+  auto actor = ray::Actor(Base::FactoryCreate).Remote();
   auto r = actor.Task(&Base::Foo).Remote();
   auto r1 = actor.Task(&Base::Bar).Remote();
-  ActorHandle<Base1> actor1 = ray::Actor(Base1::FactoryCreate).Remote();
+  auto actor1 = ray::Actor(Base1::FactoryCreate).Remote();
   auto r2 = actor1.Task(&Base1::Foo).Remote();
   auto r3 = actor1.Task(&Base1::Bar).Remote();
   EXPECT_EQ(*(r.Get()), 1);
@@ -171,7 +168,7 @@ TEST(RayApiTest, VirtualFunctions) {
   EXPECT_EQ(*(r2.Get()), 3);
   EXPECT_EQ(*(r3.Get()), 4);
 
-  ActorHandle<Derived> derived = ray::Actor(Derived::FactoryCreate).Remote();
+  auto derived = ray::Actor(Derived::FactoryCreate).Remote();
   auto r4 = derived.Task(&Base::Foo).Remote();
   auto r5 = derived.Task(&Base::Bar).Remote();
   EXPECT_EQ(*(r4.Get()), 10);

@@ -47,8 +47,9 @@ namespace ray {
 enum class RayLoggerLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3 };
 
 #define RAYLOG_INTERNAL(level) *CreateRayLogger(__FILE__, __LINE__, level)
-#define RAYLOG(level) \
-  if (IsLevelEnabled(RayLoggerLevel::level)) RAYLOG_INTERNAL(RayLoggerLevel::level)
+#define RAYLOG(level)                             \
+  if (IsLevelEnabled(ray::RayLoggerLevel::level)) \
+  RAYLOG_INTERNAL(ray::RayLoggerLevel::level)
 
 // To make the logging lib pluggable with other logging libs and make
 // the implementation unaware by the user, RayLog is only a declaration
