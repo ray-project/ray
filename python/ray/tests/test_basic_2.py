@@ -26,12 +26,13 @@ else:
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.parametrize("shutdown_only", [{
-    "local_mode": True
-}, {
-    "local_mode": False
-}],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "shutdown_only", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_variable_number_of_args(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -77,12 +78,13 @@ def test_variable_number_of_args(shutdown_only):
         ray.get(no_op.remote())
 
 
-@pytest.mark.parametrize("shutdown_only", [{
-    "local_mode": True
-}, {
-    "local_mode": False
-}],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "shutdown_only", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_defining_remote_functions(shutdown_only):
     ray.init(num_cpus=3)
 
@@ -131,12 +133,13 @@ def test_defining_remote_functions(shutdown_only):
     assert ray.get(m.remote(1)) == 2
 
 
-@pytest.mark.parametrize("shutdown_only", [{
-    "local_mode": True
-}, {
-    "local_mode": False
-}],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "shutdown_only", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
 def test_redefining_remote_functions(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -224,10 +227,10 @@ def test_call_matrix(shutdown_only):
         return x
 
     def check(source_actor, dest_actor, is_large, out_of_band):
-        print("CHECKING", "actor" if source_actor else "task", "to",
-              "actor" if dest_actor else "task",
-              "large_object" if is_large else "small_object",
-              "out_of_band" if out_of_band else "in_band")
+        print("CHECKING", "actor" if source_actor else "task", "to", "actor"
+              if dest_actor else "task", "large_object"
+              if is_large else "small_object", "out_of_band"
+              if out_of_band else "in_band")
         if source_actor:
             a = Actor.remote()
             if is_large:
@@ -318,14 +321,15 @@ def test_actor_pass_by_ref_order_optimization(shutdown_only):
     assert delta < 10, "did not skip slow value"
 
 
-@pytest.mark.parametrize("ray_start_cluster", [{
-    "num_cpus": 1,
-    "num_nodes": 1,
-}, {
-    "num_cpus": 1,
-    "num_nodes": 2,
-}],
-                         indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 1,
+        "num_nodes": 1,
+    }, {
+        "num_cpus": 1,
+        "num_nodes": 2,
+    }],
+    indirect=True)
 def test_call_chain(ray_start_cluster):
     @ray.remote
     def g(x):
@@ -341,8 +345,8 @@ def test_call_chain(ray_start_cluster):
 def test_system_config_when_connecting(ray_start_cluster):
     config = {"object_timeout_milliseconds": 200}
     cluster = ray.cluster_utils.Cluster()
-    cluster.add_node(_system_config=config,
-                     object_store_memory=100 * 1024 * 1024)
+    cluster.add_node(
+        _system_config=config, object_store_memory=100 * 1024 * 1024)
     cluster.wait_for_nodes()
 
     # Specifying _system_config when connecting to a cluster is disallowed.
@@ -605,9 +609,8 @@ def test_wait(ray_start_regular_shared):
     assert remaining_ids == []
 
     object_refs = [f.remote(0), f.remote(5)]
-    ready_ids, remaining_ids = ray.wait(object_refs,
-                                        timeout=0.5,
-                                        num_returns=2)
+    ready_ids, remaining_ids = ray.wait(
+        object_refs, timeout=0.5, num_returns=2)
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 1
 
@@ -656,23 +659,15 @@ def test_duplicate_args(ray_start_regular_shared):
     arg1 = [1]
     arg2 = [2]
     ray.get(
-        f.remote(arg1,
-                 arg2,
-                 arg1,
-                 kwarg1=arg1,
-                 kwarg2=arg2,
-                 kwarg1_duplicate=arg1))
+        f.remote(
+            arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
 
     # Test by-reference arguments.
     arg1 = ray.put([1])
     arg2 = ray.put([2])
     ray.get(
-        f.remote(arg1,
-                 arg2,
-                 arg1,
-                 kwarg1=arg1,
-                 kwarg2=arg2,
-                 kwarg1_duplicate=arg1))
+        f.remote(
+            arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")

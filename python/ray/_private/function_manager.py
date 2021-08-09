@@ -54,6 +54,7 @@ class FunctionActorManager:
         imported_actor_classes: The set of actor classes keys (format:
             ActorClass:function_id) that are already in GCS.
     """
+
     def __init__(self, worker):
         self._worker = worker
         self._functions_to_export = []
@@ -111,8 +112,8 @@ class FunctionActorManager:
             dis.dis(function_or_class, file=string_file, depth=2)
         else:
             dis.dis(function_or_class, file=string_file)
-        collision_identifier = (function_or_class.__name__ + ":" +
-                                string_file.getvalue())
+        collision_identifier = (
+            function_or_class.__name__ + ":" + string_file.getvalue())
 
         # Return a hash of the identifier in case it is too large.
         return hashlib.sha1(collision_identifier.encode("utf-8")).digest()
@@ -154,9 +155,8 @@ class FunctionActorManager:
         check_oversized_function(pickled_function,
                                  remote_function._function_name,
                                  "remote function", self._worker)
-        key = (b"RemoteFunction:" + self._worker.current_job_id.binary() +
-               b":" +
-               remote_function._function_descriptor.function_id.binary())
+        key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
+               + remote_function._function_descriptor.function_id.binary())
         self._worker.redis_client.hset(
             key,
             mapping={
@@ -175,11 +175,11 @@ class FunctionActorManager:
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
         (job_id_str, function_id_str, function_name, serialized_function,
-         module,
-         max_calls) = self._worker.redis_client.hmget(key, [
-             "job_id", "function_id", "function_name", "function", "module",
-             "max_calls"
-         ])
+         module, max_calls) = self._worker.redis_client.hmget(
+             key, [
+                 "job_id", "function_id", "function_name", "function",
+                 "module", "max_calls"
+             ])
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
         function_name = decode(function_name)
@@ -202,9 +202,10 @@ class FunctionActorManager:
 
                 # Use a placeholder method when function pickled failed
                 self._function_execution_info[function_id] = (
-                    FunctionExecutionInfo(function=f,
-                                          function_name=function_name,
-                                          max_calls=max_calls))
+                    FunctionExecutionInfo(
+                        function=f,
+                        function_name=function_name,
+                        max_calls=max_calls))
                 # If an exception was thrown when the remote function was
                 # imported, we record the traceback and notify the scheduler
                 # of the failure.
@@ -223,9 +224,10 @@ class FunctionActorManager:
                 # different module, which is `default_worker.py`
                 function.__module__ = module
                 self._function_execution_info[function_id] = (
-                    FunctionExecutionInfo(function=function,
-                                          function_name=function_name,
-                                          max_calls=max_calls))
+                    FunctionExecutionInfo(
+                        function=function,
+                        function_name=function_name,
+                        max_calls=max_calls))
                 # Add the function to the function table.
                 self._worker.redis_client.rpush(
                     b"FunctionTable:" + function_id.binary(),
@@ -312,8 +314,8 @@ class FunctionActorManager:
         while True:
             with self.lock:
                 if (self._worker.actor_id.is_nil()
-                        and (function_descriptor.function_id
-                             in self._function_execution_info)):
+                        and (function_descriptor.function_id in
+                             self._function_execution_info)):
                     break
                 elif not self._worker.actor_id.is_nil() and (
                         self._worker.actor_id in self._worker.actors):
@@ -415,8 +417,8 @@ class FunctionActorManager:
             # Generate execution info for the methods of this actor class.
             module_name = actor_creation_function_descriptor.module_name
             actor_class_name = actor_creation_function_descriptor.class_name
-            actor_methods = inspect.getmembers(actor_class,
-                                               predicate=is_function_or_method)
+            actor_methods = inspect.getmembers(
+                actor_class, predicate=is_function_or_method)
             for actor_method_name, actor_method in actor_methods:
                 # Actor creation function descriptor use a unique function
                 # hash to solve actor name conflict. When constructing an
@@ -554,6 +556,7 @@ class FunctionActorManager:
                 stored instance of the actor. The function also updates the
                 worker's internal state to record the executed method.
         """
+
         def actor_method_executor(__ray_actor, *args, **kwargs):
             # Execute the assigned method.
             is_bound = (is_class_method(method)
