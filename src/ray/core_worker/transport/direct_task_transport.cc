@@ -17,9 +17,11 @@
 #include "ray/core_worker/transport/dependency_resolver.h"
 
 namespace ray {
+namespace core {
 
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
+  num_tasks_submitted_++;
 
   if (task_spec.IsActorCreationTask()) {
     // Synchronously register the actor to GCS server.
@@ -193,7 +195,7 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
         ((candidate_entry.tasks_in_flight > victim_entry.tasks_in_flight) &&
          candidate_addr.worker_id != thief_addr.worker_id)) {
       // We copy the candidate's rpc::Address (instead of its rpc::WorkerAddress) because
-      // objects of type 'ray::rpc::WorkerAddress' cannot be assigned as their copy
+      // objects of type 'rpc::WorkerAddress' cannot be assigned as their copy
       // assignment operator is implicitly deleted
       *victim_raw_addr = candidate_addr.ToProto();
     }
@@ -475,6 +477,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
   // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
   // same TaskID to request a worker
+  num_leases_requested_++;
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
   resource_spec_msg.set_task_id(TaskID::ForFakeTask().Binary());
   TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
@@ -619,6 +622,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
             // need to do anything here.
             return;
           } else if (!status.ok() || !is_actor_creation) {
+            RAY_LOG(DEBUG) << "Task failed with error: " << status;
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr, scheduling_key,
                          /*error=*/!status.ok(), assigned_resources);
@@ -746,4 +750,5 @@ Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id
   return Status::OK();
 }
 
-};  // namespace ray
+}  // namespace core
+}  // namespace ray

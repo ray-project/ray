@@ -1,3 +1,16 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #pragma once
 
@@ -17,6 +30,12 @@
 namespace ray {
 namespace api {
 
+using ray::core::WorkerContext;
+
+class RayIntentionalSystemExitException : public RayException {
+ public:
+  RayIntentionalSystemExitException(const std::string &msg) : RayException(msg){};
+};
 class AbstractRayRuntime : public RayRuntime {
  public:
   virtual ~AbstractRayRuntime(){};
@@ -24,6 +43,8 @@ class AbstractRayRuntime : public RayRuntime {
   void Put(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id);
 
   void Put(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &object_id);
+
+  void Put(ray::rpc::ErrorType type, const ObjectID &object_id);
 
   std::string Put(std::shared_ptr<msgpack::sbuffer> data);
 
@@ -35,17 +56,25 @@ class AbstractRayRuntime : public RayRuntime {
                          int timeout_ms);
 
   std::string Call(const RemoteFunctionHolder &remote_function_holder,
-                   std::vector<ray::api::TaskArg> &args);
+                   std::vector<ray::api::TaskArg> &args, const CallOptions &task_options);
 
   std::string CreateActor(const RemoteFunctionHolder &remote_function_holder,
-                          std::vector<ray::api::TaskArg> &args);
+                          std::vector<ray::api::TaskArg> &args,
+                          const ActorCreationOptions &create_options);
 
   std::string CallActor(const RemoteFunctionHolder &remote_function_holder,
-                        const std::string &actor, std::vector<ray::api::TaskArg> &args);
+                        const std::string &actor, std::vector<ray::api::TaskArg> &args,
+                        const CallOptions &call_options);
 
   void AddLocalReference(const std::string &id);
 
   void RemoveLocalReference(const std::string &id);
+
+  std::string GetActorId(bool global, const std::string &actor_name);
+
+  void KillActor(const std::string &str_actor_id, bool no_restart);
+
+  void ExitActor();
 
   const TaskID &GetCurrentTaskId();
 
