@@ -1299,12 +1299,19 @@ def test_get_actor_after_killed(shutdown_only):
 
     @ray.remote
     class A:
-        pass
+        def ready(self):
+            return True
 
     actor = A.options(name="namespace/actor", lifetime="detached").remote()
     ray.kill(actor)
     with pytest.raises(ValueError):
         ray.get_actor("namespace/actor")
+
+    actor = A.options(
+        name="namespace/actor_2", lifetime="detached",
+        max_restarts=1).remote()
+    ray.kill(actor, no_restart=False)
+    assert ray.get(ray.get_actor("namespace/actor_2").ready.remote())
 
 
 if __name__ == "__main__":
