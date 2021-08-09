@@ -44,11 +44,11 @@ enum { ERROR = 0 };
 
 namespace ray {
 
-enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3 };
+enum class RayLoggerLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3 };
 
 #define RAYLOG_INTERNAL(level) *CreateRayLog(__FILE__, __LINE__, level)
 #define RAYLOG(level) \
-  if (IsLevelEnabled(RayLogLevel::level)) RAYLOG_INTERNAL(RayLogLevel::level)
+  if (IsLevelEnabled(RayLoggerLevel::level)) RAYLOG_INTERNAL(RayLoggerLevel::level)
 
 // To make the logging lib pluggable with other logging libs and make
 // the implementation unaware by the user, RayLog is only a declaration
@@ -56,14 +56,14 @@ enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3
 // In logging.cc, we can choose different log libs using different macros.
 
 // This is a log interface which does not output anything.
-class RayLog {
+class RayLogger {
  public:
-  virtual ~RayLog(){};
+  virtual ~RayLogger(){};
 
   virtual bool IsEnabled() const = 0;
 
   template <typename T>
-  RayLog &operator<<(const T &t) {
+  RayLogger &operator<<(const T &t) {
     if (IsEnabled()) {
       Stream() << t;
     }
@@ -74,8 +74,8 @@ class RayLog {
   virtual std::ostream &Stream() = 0;
 };
 
-std::unique_ptr<RayLog> CreateRayLog(const char *file_name, int line_number,
-                                     RayLogLevel severity);
-bool IsLevelEnabled(RayLogLevel log_level);
+std::unique_ptr<RayLogger> CreateRayLog(const char *file_name, int line_number,
+                                        RayLoggerLevel severity);
+bool IsLevelEnabled(RayLoggerLevel log_level);
 
 }  // namespace ray

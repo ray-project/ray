@@ -61,7 +61,7 @@ RAY_REMOTE(Counter::FactoryCreate, &Counter::Plus1, &Counter::Plus, &Counter::Tr
 
 TEST(RayApiTest, LogTest) {
   auto log_path = boost::filesystem::current_path().string() + "/tmp/";
-  ray::core::RayLog::StartRayLog("cpp_worker", ray::core::RayLogLevel::DEBUG, log_path);
+  ray::RayLog::StartRayLog("cpp_worker", ray::RayLogLevel::DEBUG, log_path);
   std::array<std::string, 3> str_arr{"debug test", "info test", "warning test"};
   RAYLOG(DEBUG) << str_arr[0];
   RAYLOG(INFO) << str_arr[1];
@@ -85,18 +85,18 @@ TEST(RayApiTest, LogTest) {
 TEST(RayApiTest, TaskOptionsCheckTest) {
   std::unordered_map<std::string, double> map;
   map.emplace("", 1);
-  EXPECT_THROW(CheckTaskOptions(map), RayException);
+  EXPECT_THROW(ray::internal::CheckTaskOptions(map), ray::internal::RayException);
   map.clear();
   map.emplace("dummy", 0);
-  EXPECT_THROW(CheckTaskOptions(map), RayException);
+  EXPECT_THROW(ray::internal::CheckTaskOptions(map), ray::internal::RayException);
   map.clear();
   map.emplace("dummy", 2.0);
-  CheckTaskOptions(map);
+  ray::internal::CheckTaskOptions(map);
   map.emplace("dummy1", 2.5);
-  EXPECT_THROW(CheckTaskOptions(map), RayException);
+  EXPECT_THROW(ray::internal::CheckTaskOptions(map), ray::internal::RayException);
   map.clear();
   map.emplace("dummy", 0.5);
-  CheckTaskOptions(map);
+  ray::internal::CheckTaskOptions(map);
 }
 
 TEST(RayApiTest, PutTest) {

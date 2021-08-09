@@ -17,22 +17,22 @@
 
 namespace ray {
 
-class RayLogImpl : public RayLog, public ray::core::RayLog {
+class RayLogImpl : public RayLogger, public ray::RayLog {
  public:
-  RayLogImpl(const char *file_name, int line_number, RayLogLevel severity)
-      : ray::core::RayLog(file_name, line_number, (ray::core::RayLogLevel)severity) {}
-  bool IsEnabled() const override { return ray::core::RayLog::IsEnabled(); }
+  RayLogImpl(const char *file_name, int line_number, RayLoggerLevel severity)
+      : ray::RayLog(file_name, line_number, (ray::RayLogLevel)severity) {}
+  bool IsEnabled() const override { return ray::RayLog::IsEnabled(); }
 
-  std::ostream &Stream() override { return ray::core::RayLog::Stream(); }
+  std::ostream &Stream() override { return ray::RayLog::Stream(); }
 };
 
-std::unique_ptr<RayLog> CreateRayLog(const char *file_name, int line_number,
-                                     RayLogLevel severity) {
+std::unique_ptr<RayLogger> CreateRayLog(const char *file_name, int line_number,
+                                        RayLoggerLevel severity) {
   return std::make_unique<RayLogImpl>(file_name, line_number, severity);
 }
 
-bool IsLevelEnabled(RayLogLevel log_level) {
-  return ray::core::RayLog::IsLevelEnabled((ray::core::RayLogLevel)log_level);
+bool IsLevelEnabled(RayLoggerLevel log_level) {
+  return ray::RayLog::IsLevelEnabled((ray::RayLogLevel)log_level);
 }
 
 }  // namespace ray
