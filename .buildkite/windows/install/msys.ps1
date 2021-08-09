@@ -42,3 +42,4 @@ taskkill /f /fi "MODULES eq msys-2.0.dll"
 
 bash -c "pacman --noconfirm -Scc"
 bash -c "pacman -S --noconfirm unzip"
+bash -c "pacman -S --noconfirm p7zip"

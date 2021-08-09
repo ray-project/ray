@@ -1,4 +1,5 @@
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
+startup --output_user_root=C:/tmp
 build --enable_platform_specific_config
 ###############################################################################
 # On       Windows, provide: BAZEL_SH, and BAZEL_LLVM (if using clang-cl)

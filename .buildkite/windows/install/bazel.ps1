@@ -11,4 +11,3 @@ Remove-Item bazel.zip -Force;
 $systemPath = [Environment]::GetEnvironmentVariable('Path', [System.EnvironmentVariableTarget]::Machine)
 $systemPath += ';C:\bazel'
 [Environment]::SetEnvironmentVariable("PATH", $systemPath, [System.EnvironmentVariableTarget]::Machine)
-

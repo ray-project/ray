@@ -11,4 +11,3 @@ if ($exitCode -ne 0) {
     Get-ChildItem $env:TEMP | Sort-Object -Descending -Property LastWriteTime | Select-Object -First 1 | Get-Content; exit $exitCode; 
 }
 Write-Host 'Complete.'
-

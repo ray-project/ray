@@ -13,5 +13,3 @@ Remove-Item Miniconda3-latest.exe -Force;
 $systemPath = [Environment]::GetEnvironmentVariable('Path', [System.EnvironmentVariableTarget]::Machine)
 $systemPath += ';C:\Miniconda3;C:\Miniconda3\Scripts;C:\Miniconda3\Library\bin'
 [Environment]::SetEnvironmentVariable("PATH", $systemPath, [System.EnvironmentVariableTarget]::Machine)
-
-
