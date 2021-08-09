@@ -8,7 +8,8 @@ import ray
 import ray.util.sgd.v2 as sgd
 from ray.util.sgd.v2 import Trainer
 from ray.util.sgd.v2.constants import (
-    TRAINING_ITERATION, DETAILED_AUTOFILLED_KEYS, BASIC_AUTOFILLED_KEYS)
+    TRAINING_ITERATION, DETAILED_AUTOFILLED_KEYS, BASIC_AUTOFILLED_KEYS,
+    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV)
 from ray.util.sgd.v2.callbacks import JsonLoggerCallback
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
 from ray.util.sgd.v2.worker_group import WorkerGroup
@@ -52,9 +53,9 @@ class TestBackend(BackendInterface):
 def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
               filename):
     if detailed:
-        os.environ["SGD_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS"] = "1"
+        os.environ[ENABLE_DETAILED_AUTOFILLED_METRICS_ENV] = "1"
     else:
-        os.environ.pop("SGD_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS", 0)
+        os.environ.pop(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
 
     config = TestConfig()
 

@@ -6,6 +6,7 @@ import ray
 from ray.exceptions import RayActorError
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
+from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV
 
 T = TypeVar("T")
 
@@ -71,9 +72,7 @@ class BackendExecutor:
         """
 
         use_detailed_autofilled_metrics = bool(
-            int(
-                os.environ.get("SGD_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS",
-                               0)))
+            int(os.environ.get(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)))
 
         # First initialize the session.
         def initialize_session(world_rank, train_func):

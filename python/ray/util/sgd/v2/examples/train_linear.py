@@ -90,7 +90,7 @@ def train_linear(num_workers=1):
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
     trainer.start()
     results = trainer.run(
-        train_func, config, callbacks=[JsonLoggerCallback("/home/ubuntu/ray")])
+        train_func, config, callbacks=[JsonLoggerCallback("./sgd_results")])
     trainer.shutdown()
 
     print(results)

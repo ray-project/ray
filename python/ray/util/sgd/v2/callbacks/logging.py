@@ -55,6 +55,8 @@ class SGDLoggingCallback(SGDCallback, metaclass=abc.ABCMeta):
         return self._log_path
 
     def start_training(self):
+        # Create a JSON file with an empty list
+        # that will be latter appended to
         with open(self._log_path, "w") as f:
             json.dump([], f, cls=SafeFallbackEncoder)
 

@@ -2,7 +2,7 @@ import argparse
 from typing import Dict
 
 import torch
-from ray.util.sgd.v2 import report
+import ray.util.sgd.v2 as sgd
 from ray.util.sgd.v2.trainer import Trainer
 from ray.util.sgd.v2.callbacks import JsonLoggerCallback
 from torch import nn
@@ -110,7 +110,7 @@ def train_func(config: Dict):
     for _ in range(epochs):
         train(train_dataloader, model, loss_fn, optimizer, device)
         loss = validate(test_dataloader, model, loss_fn, device)
-        report(loss=loss)
+        sgd.report(loss=loss)
         loss_results.append(loss)
 
     return loss_results
@@ -126,7 +126,7 @@ def train_fashion_mnist(num_workers=1, use_gpu=False):
             "batch_size": 64,
             "epochs": 4
         },
-        callbacks=[JsonLoggerCallback("/home/ubuntu/ray")])
+        callbacks=[JsonLoggerCallback("./sgd_results")])
     trainer.shutdown()
     print(f"Loss results: {result}")
 
