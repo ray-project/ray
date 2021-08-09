@@ -338,15 +338,38 @@ class Stats {
 
 }  // namespace ray
 
+// STATS_DEPAREN will remove () for it's parameter
+// For example
+//   STATS_DEPAREN((a, b, c))
+// will result
+//   a, b, c
 #define STATS_DEPAREN(X) STATS_ESC(STATS_ISH X)
 #define STATS_ISH(...) ISH __VA_ARGS__
 #define STATS_ESC(...) STATS_ESC_(__VA_ARGS__)
 #define STATS_ESC_(...) STATS_VAN##__VA_ARGS__
 #define STATS_VANISH
 
-#define DEFINE_stats(name, description, tags, buckets, types...)                     \
-  ray::stats::internal::Stats STATS_##name(#name, description, {STATS_DEPAREN(tags)}, \
-                                          {STATS_DEPAREN(buckets)},                  \
-                                          ray::stats::internal::RegisterViewList<types>)
+/*
+  Syntax suguar to define a metrics:
+      DEFINE_stats(name,
+        desctiption,
+        (tag1, tag2, ...),
+        (bucket1, bucket2, ...),
+        type1,
+        type2)
+  Later, it can be used by STATS_name.record(val, tags).
+
+  Some examples:
+      DEFINE_stats(
+          async_pool_req_execution_time_ms,
+          "Async pool execution time",
+          ("Method"),
+          (), ray::stats::GAUGE);
+      STATS_async_pool_req_execution_time_ms.record(1, "method");
+*/
+#define DEFINE_stats(name, description, tags, buckets, types...)           \
+  ray::stats::internal::Stats STATS_##name(                                \
+      #name, description, {STATS_DEPAREN(tags)}, {STATS_DEPAREN(buckets)}, \
+      ray::stats::internal::RegisterViewList<types>)
 
 #define DECLARE_stats(name) extern ray::stats::internal::Stats STATS_##name
