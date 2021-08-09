@@ -1304,6 +1304,7 @@ def test_get_actor_after_killed(shutdown_only):
 
     actor = A.options(name="namespace/actor", lifetime="detached").remote()
     ray.kill(actor)
+    # This could be flaky due to our caching named actor mechanism.
     with pytest.raises(ValueError):
         ray.get_actor("namespace/actor")
 
