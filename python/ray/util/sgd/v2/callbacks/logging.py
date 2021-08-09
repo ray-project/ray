@@ -9,7 +9,7 @@ from ray.util.sgd.v2.callbacks import SGDCallback
 from ray.util.sgd.v2.constants import RESULT_FILE_JSON
 
 
-class SGDLoggingCallback(SGDCallback, metaclass=abc.ABCMeta):
+class SGDSingleFileLoggingCallback(SGDCallback, metaclass=abc.ABCMeta):
     """Abstract SGD logging callback class.
 
     Args:
@@ -61,7 +61,7 @@ class SGDLoggingCallback(SGDCallback, metaclass=abc.ABCMeta):
             json.dump([], f, cls=SafeFallbackEncoder)
 
 
-class JsonLoggerCallback(SGDLoggingCallback):
+class JsonLoggerCallback(SGDSingleFileLoggingCallback):
     """Logs SGD results in json format.
 
     Args:
