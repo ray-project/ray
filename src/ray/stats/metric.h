@@ -203,7 +203,7 @@ struct MetricPoint {
 
 enum StatsType : int { COUNT, SUM, GAUGE, HISTOGRAM };
 
-namespace details {
+namespace internal {
 void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
                     const std::vector<opencensus::tags::TagKey> &keys);
 template <StatsType T>
@@ -254,7 +254,7 @@ void RegisterView(const std::string &name, const std::string &description,
                              .set_description(description)
                              .set_measure(name)
                              .set_aggregation(I::Aggregation(buckets));
-  details::RegisterAsView(view_descriptor, tag_keys);
+  internal::RegisterAsView(view_descriptor, tag_keys);
 }
 
 template <typename T = void>
@@ -332,7 +332,7 @@ class Stats {
   std::vector<std::string> tag_keys_;
 };
 
-}  // namespace details
+}  // namespace internal
 
 }  // namespace stats
 
@@ -345,8 +345,8 @@ class Stats {
 #define STATS_VANISH
 
 #define DEFINE_stats(name, description, tags, buckets, types...)                     \
-  ray::stats::details::Stats STATS_##name(#name, description, {STATS_DEPAREN(tags)}, \
+  ray::stats::internal::Stats STATS_##name(#name, description, {STATS_DEPAREN(tags)}, \
                                           {STATS_DEPAREN(buckets)},                  \
-                                          ray::stats::details::RegisterViewList<types>)
+                                          ray::stats::internal::RegisterViewList<types>)
 
-#define DECLARE_stats(name) extern ray::stats::details::Stats STATS_##name
+#define DECLARE_stats(name) extern ray::stats::internal::Stats STATS_##name

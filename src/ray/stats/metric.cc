@@ -24,7 +24,7 @@ namespace stats {
 
 absl::Mutex Metric::registration_mutex_;
 
-namespace details {
+namespace internal {
 
 void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
                     const std::vector<opencensus::tags::TagKey> &keys) {
@@ -41,7 +41,7 @@ void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
   view_descriptor.RegisterForExport();
 }
 
-}  // namespace details
+}  // namespace internal
 ///
 /// Stats Config
 ///
@@ -136,7 +136,7 @@ void Gauge::RegisterView() {
           .set_description(description_)
           .set_measure(name_)
           .set_aggregation(opencensus::stats::Aggregation::LastValue());
-  details::RegisterAsView(view_descriptor, tag_keys_);
+  internal::RegisterAsView(view_descriptor, tag_keys_);
 }
 
 void Histogram::RegisterView() {
@@ -148,7 +148,7 @@ void Histogram::RegisterView() {
           .set_aggregation(opencensus::stats::Aggregation::Distribution(
               opencensus::stats::BucketBoundaries::Explicit(boundaries_)));
 
-  details::RegisterAsView(view_descriptor, tag_keys_);
+  internal::RegisterAsView(view_descriptor, tag_keys_);
 }
 
 void Count::RegisterView() {
@@ -159,7 +159,7 @@ void Count::RegisterView() {
           .set_measure(name_)
           .set_aggregation(opencensus::stats::Aggregation::Count());
 
-  details::RegisterAsView(view_descriptor, tag_keys_);
+  internal::RegisterAsView(view_descriptor, tag_keys_);
 }
 
 void Sum::RegisterView() {
@@ -170,7 +170,7 @@ void Sum::RegisterView() {
           .set_measure(name_)
           .set_aggregation(opencensus::stats::Aggregation::Sum());
 
-  details::RegisterAsView(view_descriptor, tag_keys_);
+  internal::RegisterAsView(view_descriptor, tag_keys_);
 }
 
 }  // namespace stats
