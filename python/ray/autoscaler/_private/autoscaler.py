@@ -762,7 +762,7 @@ class StandardAutoscaler:
                        "restarting Ray to recover...".format(node_id))
         self.event_summarizer.add(
             "Restarting {} nodes of type " + self._get_node_type(node_id) +
-            " (lost contact with raylet). last_heartbeat_time_by_ip is " + str(list(self.load_metrics.last_heartbeat_time_by_ip)),
+            " (lost contact with raylet).",
             quantity=1,
             aggregate=operator.add)
         updater = NodeUpdaterThread(
