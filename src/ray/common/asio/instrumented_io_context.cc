@@ -219,12 +219,12 @@ std::string instrumented_io_context::StatsString() const {
     cum_count += entry.second.cum_count;
     curr_count += entry.second.curr_count;
     cum_execution_time += entry.second.cum_execution_time;
-    handler_stats_stream << "\n\t";
+    handler_stats_stream << "\n\t" << entry.first << " - " << entry.second.cum_count
+                         << " total (" << entry.second.curr_count << " active";
     if (entry.second.running_count > 0) {
-      handler_stats_stream << "[" << entry.second.running_count << " RUNNING] ";
+      handler_stats_stream << ", " << entry.second.running_count << " running";
     }
-    handler_stats_stream << entry.first << " - " << entry.second.cum_count << " total ("
-                         << entry.second.curr_count << " active), CPU time: mean = "
+    handler_stats_stream << "), CPU time: mean = "
                          << to_human_readable(entry.second.cum_execution_time /
                                               static_cast<double>(entry.second.cum_count))
                          << ", total = "
