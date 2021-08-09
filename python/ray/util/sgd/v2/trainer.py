@@ -244,6 +244,10 @@ class _TuneTrainer(Trainer):
             self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None) -> None:
+
+        # from ray.util import inspect_serializability
+        # inspect_serializability(train_func, name="train_func_2")
+
         train_func = self._get_train_func(train_func, config)
         self._executor.start_training(train_func)
 
@@ -313,6 +317,7 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
         def default_resource_request(cls,
                                      config: Dict) -> PlacementGroupFactory:
             bundles = []
+            bundles += [{"CPU": 1}]  # driver
             worker_resources = {"CPU": 1, "GPU": int(use_gpu)}
             bundles += num_workers * [worker_resources]
             return PlacementGroupFactory(bundles, strategy="PACK")

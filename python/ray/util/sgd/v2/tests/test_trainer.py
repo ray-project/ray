@@ -36,6 +36,14 @@ def ray_start_2_cpus_2_gpus():
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 class TestConfig(BackendConfig):
     @property
     def backend_cls(self):
@@ -501,7 +509,7 @@ def test_run_after_user_error(ray_start_2_cpus):
     assert output == [1, 1]
 
 
-def test_tune_train(ray_start_2_cpus):
+def test_tune_train(ray_start_4_cpus):
     num_workers = 2
     epochs = 3
 
@@ -510,8 +518,7 @@ def test_tune_train(ray_start_2_cpus):
 
     tune.run(
         MnistTrainable,
-        num_samples=1,
-        stop={"training_iteration": 2},
+        num_samples=2,
         config={
             "lr": tune.loguniform(1e-4, 1e-1),
             "batch_size": tune.choice([32, 64, 128]),
