@@ -1,7 +1,7 @@
 import logging
 import os
 import types
-from typing import Dict, Set, Union, Optional, TYPE_CHECKING
+from typing import Dict, Set, List, Tuple, Union, Optional, Any, TYPE_CHECKING
 
 import ray
 from ray.experimental.workflow import execution
@@ -35,10 +35,9 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
         # have this one. We need a flag to tell whether it's a client
         # or a driver to use the right dir.
         # For now, just use /tmp/ray/workflow_data
-        logger.warning("Using default local dir: `/tmp/ray/workflow_data`. "
-                       "This should only be used for testing purposes.")
         storage = "file:///tmp/ray/workflow_data"
     if isinstance(storage, str):
+        logger.info(f"Using storage: {storage}")
         storage = storage_base.create_storage(storage)
     elif not isinstance(storage, Storage):
         raise TypeError("'storage' should be None, str, or Storage type.")
@@ -60,7 +59,14 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
     workflow_access.init_management_actor()
 
 
-def step(func: types.FunctionType) -> WorkflowStepFunction:
+def make_step_decorator(step_options: Dict[str, Any]):
+    def decorator(func):
+        return WorkflowStepFunction(func, **step_options)
+
+    return decorator
+
+
+def step(*args, **kwargs):
     """A decorator used for creating workflow steps.
 
     Examples:
@@ -68,13 +74,25 @@ def step(func: types.FunctionType) -> WorkflowStepFunction:
         ... def book_flight(origin: str, dest: str) -> Flight:
         ...    return Flight(...)
 
-    Args:
-        func: The function to turn into a workflow step.
+        >>> @workflow.step(max_retries=3, catch_exceptions=True)
+        ... def book_hotel(dest: str) -> Hotel:
+        ...    return Hotel(...)
+
     """
-    if not isinstance(func, types.FunctionType):
-        raise TypeError(
-            "The @workflow.step decorator can only wrap a function.")
-    return WorkflowStepFunction(func)
+    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+        return make_step_decorator({})(args[0])
+    if len(args) != 0:
+        raise ValueError(f"Invalid arguments for step decorator {args}")
+    step_options = {}
+    max_retries = kwargs.pop("max_retries", None)
+    if max_retries is not None:
+        step_options["max_retries"] = max_retries
+    catch_exceptions = kwargs.pop("catch_exceptions", None)
+    if catch_exceptions is not None:
+        step_options["catch_exceptions"] = catch_exceptions
+    if len(kwargs) != 0:
+        step_options["ray_options"] = kwargs
+    return make_step_decorator(step_options)
 
 
 class _VirtualActorDecorator:
@@ -179,33 +197,40 @@ def get_output(workflow_id: str) -> ray.ObjectRef:
     return execution.get_output(workflow_id)
 
 
-def list_all(status_filter: Optional[Union[WorkflowStatus, Set[
-        WorkflowStatus]]] = None) -> Dict[str, WorkflowStatus]:
+def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[
+        Union[WorkflowStatus, str]]]] = None
+             ) -> List[Tuple[str, WorkflowStatus]]:
     """List the workflow status. If status is given, it'll filter by that.
 
     Args:
-        status: If given, only return workflow with that status.
+        status: If given, only return workflow with that status. It can
+            be a set workflow status,
+            i.e., "RUNNING"/"FAILED"/"SUCCESSFUL"/"CANCELED"/"RESUMABLE"
 
     Examples:
         >>> workflow_step = long_running_job.step()
         >>> wf = workflow_step.async_run(workflow_id="long_running_job")
         >>> jobs = workflow.list_all()
-        >>> assert jobs == { "long_running_job": workflow.RUNNING }
+        >>> assert jobs == [ ("long_running_job", workflow.RUNNING) ]
         >>> ray.get(wf)
         >>> jobs = workflow.list_all({workflow.RUNNING})
         >>> assert jobs == []
-        >>> jobs = workflow.list_all(workflow.FINISHED)
-        >>> assert jobs == { "long_running_job": workflow.FINISHED }
+        >>> jobs = workflow.list_all(workflow.SUCCESSFUL)
+        >>> assert jobs == [ ("long_running_job", workflow.SUCCESSFUL) ]
 
     Returns:
         A list of tuple with workflow id and workflow status
     """
-    if isinstance(status_filter, WorkflowStatus):
+    if isinstance(status_filter, str):
+        status_filter = set({WorkflowStatus(status_filter)})
+    elif isinstance(status_filter, WorkflowStatus):
         status_filter = set({status_filter})
     elif isinstance(status_filter, set):
-        if not all([isinstance(s, WorkflowStatus) for s in status_filter]):
+        if all([isinstance(s, str) for s in status_filter]):
+            status_filter = {WorkflowStatus(s) for s in status_filter}
+        elif not all([isinstance(s, WorkflowStatus) for s in status_filter]):
             raise TypeError("status_filter contains element which is not"
-                            " a type of `WorkflowStatus`."
+                            " a type of `WorkflowStatus or str`."
                             f" {status_filter}")
     elif status_filter is None:
         status_filter = set(WorkflowStatus.__members__.keys())
@@ -215,8 +240,14 @@ def list_all(status_filter: Optional[Union[WorkflowStatus, Set[
     return execution.list_all(status_filter)
 
 
-def resume_all() -> Dict[str, ray.ObjectRef]:
+def resume_all(include_failed: bool = False) -> Dict[str, ray.ObjectRef]:
     """Resume all resumable workflow jobs.
+
+    This usually is used after ray cluster shutdown to resume all tasks.
+
+
+    Args:
+        with_failed: Whether to include the failed workflow.
 
     Examples:
         >>> workflow_step = failed_job.step()
@@ -226,13 +257,14 @@ def resume_all() -> Dict[str, ray.ObjectRef]:
         >>> except Exception:
         >>>     print("JobFailed")
         >>> jobs = workflow.list_all()
-        >>> assert jobs == {"failed_job": workflow.RESUMABLE}
-        >>> assert workflow.resume_all().get("failed_job") is not None
+        >>> assert jobs == [("failed_job", workflow.FAILED)]
+        >>> assert workflow.resume_all(
+        >>>   include_failed=True).get("failed_job") is not None
 
     Returns:
         Workflow resumed. It'll be a list of (workflow_id, returned_obj_ref).
     """
-    return execution.resume_all()
+    return execution.resume_all(include_failed)
 
 
 def get_status(workflow_id: str) -> WorkflowStatus:
@@ -244,7 +276,7 @@ def get_status(workflow_id: str) -> WorkflowStatus:
     Examples:
         >>> workflow_step = trip.step()
         >>> output = workflow_step.run(workflow_id="trip")
-        >>> assert workflow.FINISHED == workflow.get_status("trip")
+        >>> assert workflow.SUCCESSFUL == workflow.get_status("trip")
 
     Returns:
         The status of that workflow

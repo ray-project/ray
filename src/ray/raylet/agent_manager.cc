@@ -99,21 +99,25 @@ void AgentManager::StartAgent() {
   monitor_thread.detach();
 }
 
-void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
+void AgentManager::CreateRuntimeEnv(const JobID &job_id,
+                                    const std::string &serialized_runtime_env,
                                     CreateRuntimeEnvCallback callback) {
   if (runtime_env_agent_client_ == nullptr) {
     RAY_LOG(INFO)
         << "Runtime env agent is not registered yet. Will retry CreateRuntimeEnv later: "
         << serialized_runtime_env;
-    delay_executor_([this, serialized_runtime_env,
-                     callback] { CreateRuntimeEnv(serialized_runtime_env, callback); },
-                    RayConfig::instance().agent_manager_retry_interval_ms());
+    delay_executor_(
+        [this, job_id, serialized_runtime_env, callback] {
+          CreateRuntimeEnv(job_id, serialized_runtime_env, callback);
+        },
+        RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
   rpc::CreateRuntimeEnvRequest request;
+  request.set_job_id(job_id.Hex());
   request.set_serialized_runtime_env(serialized_runtime_env);
   runtime_env_agent_client_->CreateRuntimeEnv(
-      request, [this, serialized_runtime_env, callback](
+      request, [this, job_id, serialized_runtime_env, callback](
                    Status status, const rpc::CreateRuntimeEnvReply &reply) {
         if (status.ok()) {
           if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
@@ -130,8 +134,8 @@ void AgentManager::CreateRuntimeEnv(const std::string &serialized_runtime_env,
               << ", status = " << status
               << ", maybe there are some network problems, will retry it later.";
           delay_executor_(
-              [this, serialized_runtime_env, callback] {
-                CreateRuntimeEnv(serialized_runtime_env, callback);
+              [this, job_id, serialized_runtime_env, callback] {
+                CreateRuntimeEnv(job_id, serialized_runtime_env, callback);
               },
               RayConfig::instance().agent_manager_retry_interval_ms());
         }

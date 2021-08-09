@@ -506,7 +506,7 @@ def rollout(agent,
             episodes += 1
 
 
-if __name__ == "__main__":
+def main():
     parser = create_parser()
     args = parser.parse_args()
 
@@ -522,3 +522,7 @@ if __name__ == "__main__":
             "--out as well!")
 
     run(args, parser)
+
+
+if __name__ == "__main__":
+    main()

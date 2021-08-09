@@ -1,3 +1,17 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <boost/algorithm/string.hpp>
 
 #include "process_helper.h"
@@ -8,6 +22,9 @@
 
 namespace ray {
 namespace api {
+
+using ray::core::CoreWorkerProcess;
+using ray::core::WorkerType;
 
 /// IP address by which the local node can be reached *from* the `address`.
 ///
@@ -63,8 +80,7 @@ void ProcessHelper::StopRayNode() {
 
 void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) {
   std::string redis_ip = ConfigInternal::Instance().redis_ip;
-  if (ConfigInternal::Instance().worker_type == ray::WorkerType::DRIVER &&
-      redis_ip.empty()) {
+  if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER && redis_ip.empty()) {
     redis_ip = "127.0.0.1";
     StartRayNode(ConfigInternal::Instance().redis_port,
                  ConfigInternal::Instance().redis_password);
@@ -85,7 +101,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   }
 
   std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor = nullptr;
-  if (ConfigInternal::Instance().worker_type == ray::WorkerType::DRIVER) {
+  if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
     global_state_accessor.reset(new ray::gcs::GlobalStateAccessor(
         redis_address, ConfigInternal::Instance().redis_password));
     RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";

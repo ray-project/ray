@@ -1,11 +1,12 @@
 import sys
 
 try:
+    import opencensus  # noqa: F401
+    import prometheus_client  # noqa: F401
+
     import aiohttp.web
     import aiohttp
-except ImportError:
     import aiohttp_cors  # noqa: F401
-    print("The dashboard requires aiohttp to run.")
     import aioredis  # noqa: F401
 except (ModuleNotFoundError, ImportError):
     print("Not all Ray Dashboard dependencies were found. "
@@ -221,6 +222,10 @@ if __name__ == "__main__":
             args.redis_address,
             redis_password=args.redis_password,
             log_dir=args.log_dir)
+        # TODO(fyrestone): Avoid using ray.state in dashboard, it's not
+        # asynchronous and will lead to low performance. ray disconnect()
+        # will be hang when the ray.state is connected and the GCS is exit.
+        # Please refer to: https://github.com/ray-project/ray/issues/16328
         service_discovery = PrometheusServiceDiscoveryWriter(
             args.redis_address, args.redis_password, args.temp_dir)
         # Need daemon True to avoid dashboard hangs at exit.

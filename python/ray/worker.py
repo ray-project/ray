@@ -122,6 +122,9 @@ class Worker:
         # by the worker should drop into the debugger at the specified
         # breakpoint ID.
         self.debugger_get_breakpoint = b""
+        # If True, make the debugger external to the node this worker is
+        # running on.
+        self.ray_debugger_external = False
         self._load_code_from_local = False
         # Used to toggle whether or not logs should be filtered to only those
         # produced in the same job.
@@ -491,12 +494,22 @@ def get_gpu_ids():
     worker = global_worker
     worker.check_connected()
 
+    if worker.mode != WORKER_MODE:
+        logger.warning(
+            "`ray.get_gpu_ids()` will always return the empty list when "
+            "called from the driver. This is because Ray does not manage "
+            "GPU allocations to the driver process.")
+
     # TODO(ilr) Handle inserting resources in local mode
     all_resource_ids = global_worker.core_worker.resource_ids()
     assigned_ids = set()
     for resource, assignment in all_resource_ids.items():
         # Handle both normal and placement group GPU resources.
-        if resource == "GPU" or resource.startswith("GPU_group_"):
+        # Note: We should only get the GPU ids from the placement
+        # group resource that does not contain the bundle index!
+        import re
+        if resource == "GPU" or re.match(r"^GPU_group_[0-9A-Za-z]+$",
+                                         resource):
             for resource_id, _ in assignment:
                 assigned_ids.add(resource_id)
 
@@ -582,7 +595,6 @@ def init(
         log_to_driver=True,
         namespace=None,
         runtime_env=None,
-        internal_config=None,
         # The following are unstable parameters and their use is discouraged.
         _enable_object_reconstruction=False,
         _redis_max_memory=None,
@@ -604,18 +616,30 @@ def init(
     just attach this driver to it or we start all of the processes associated
     with a Ray cluster and attach to the newly started cluster.
 
-    To start Ray and all of the relevant processes, use this as follows:
+    To start Ray locally and all of the relevant processes, use this as
+    follows:
 
     .. code-block:: python
 
         ray.init()
 
-    To connect to an existing Ray cluster, use this as follows (substituting
-    in the appropriate address):
+    To connect to an existing local cluster, use this as follows (substituting
+    in the appropriate port if needed).
 
     .. code-block:: python
 
-        ray.init(address="123.45.67.89:6379")
+        ray.init(address="localhost:6379")
+
+    To connect to an existing remote cluster, use this as follows (substituting
+    in the appropriate address). Note the addition of "ray://" at the beginning
+    of the address.
+
+    .. code-block:: python
+
+        ray.init(address="ray://123.45.67.89:10001")
+
+    More details for starting and connecting to a remote cluster can be found
+    here: https://docs.ray.io/en/master/cluster/ray-client.html
 
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
@@ -631,10 +655,10 @@ def init(
             specify a specific node address. If the environment variable
             `RAY_ADDRESS` is defined and the address is None or "auto", Ray
             will set `address` to `RAY_ADDRESS`.
-            Addresses can be prefixed with a protocol to connect using Ray
-            Client. For example, passing in the address
+            Addresses can be prefixed with a "ray://" to connect to a remote
+            cluster. For example, passing in the address
             "ray://123.45.67.89:50005" will connect to the cluster at the
-            given address using the Ray client.
+            given address.
         num_cpus (int): Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
         num_gpus (int): Number of GPUs the user wishes to assign to each
@@ -672,12 +696,9 @@ def init(
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
-        runtime_env (dict): The runtime environment to use
-        internal_config (dict): Dictionary mapping names of a unstable
-            parameters to values, e.g. {"redis_password": "1234"}. This is
-            only used for initializing a local client (ray.init(local://...)).
-            Values in this dictionary will be used to configure the local
-            cluster. Parameter names should exclude the underscore prefix.
+        runtime_env (dict): The runtime environment to use for this job (see
+                :ref:`runtime-environments` for details).  This API is in beta
+                and may change before becoming stable.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -707,10 +728,11 @@ def init(
             and the API is subject to change.
 
     Returns:
-        If the provided address included a protocol (e.g. "ray://1.2.3.4")
-        then a ClientContext is returned with information such as settings,
-        server versions for ray and python, and the dashboard_url.
-        Otherwise, returns address information about the started processes.
+        If the provided address includes a protocol, for example by prepending
+        "ray://" to the address to get "ray://1.2.3.4:10001", then a
+        ClientContext is returned with information such as settings, server
+        versions for ray and python, and the dashboard_url. Otherwise,
+        returns address information about the started processes.
 
     Raises:
         Exception: An exception is raised if an inappropriate combination of
@@ -755,11 +777,6 @@ def init(
         # ray client. Raise an error, since most likely a typo in keyword
         unknown = ", ".join(kwargs)
         raise RuntimeError(f"Unknown keyword argument(s): {unknown}")
-
-    if internal_config is not None:
-        # Should only be used with local client
-        raise RuntimeError("`internal_config` should only be used with "
-                           "ray.init(local://...)")
 
     # Try to increase the file descriptor limit, which is too low by
     # default for Ray: https://github.com/ray-project/ray/issues/11239
@@ -1223,7 +1240,9 @@ def connect(node,
             namespace=None,
             job_config=None,
             runtime_env_hash=0,
-            worker_shim_pid=0):
+            runtime_env_json="{}",
+            worker_shim_pid=0,
+            ray_debugger_external=False):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1239,6 +1258,8 @@ def connect(node,
         runtime_env_hash (int): The hash of the runtime env for this worker.
         worker_shim_pid (int): The PID of the process for setup worker
             runtime env.
+        ray_debugger_host (bool): The host to bind a Ray debugger to on
+            this worker.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1310,10 +1331,14 @@ def connect(node,
     driver_name = ""
     log_stdout_file_path = ""
     log_stderr_file_path = ""
+    interactive_mode = False
     if mode == SCRIPT_MODE:
         import __main__ as main
-        driver_name = (main.__file__
-                       if hasattr(main, "__file__") else "INTERACTIVE MODE")
+        if hasattr(main, "__file__"):
+            driver_name = main.__file__
+        else:
+            interactive_mode = True
+            driver_name = "INTERACTIVE MODE"
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
@@ -1338,6 +1363,8 @@ def connect(node,
     if mode == WORKER_MODE:
         os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
 
+    worker.ray_debugger_external = ray_debugger_external
+
     serialized_job_config = job_config.serialize()
     worker.core_worker = ray._raylet.CoreWorker(
         mode, node.plasma_store_socket_name, node.raylet_socket_name, job_id,
@@ -1356,9 +1383,19 @@ def connect(node,
     elif mode == WORKER_MODE:
         # TODO(ekl) get rid of the env var hack and get runtime env from the
         # task spec and/or job config only.
-        uris = os.environ.get("RAY_PACKAGING_URI")
-        uris = [uris] if uris else \
-            worker.core_worker.get_job_config().runtime_env.uris
+        uris = []
+        global_job_config = worker.core_worker.get_job_config()
+        override_runtime_env = json.loads(runtime_env_json)
+
+        if os.environ.get("RAY_PACKAGING_URI"):
+            uris = [os.environ.get("RAY_PACKAGING_URI")]
+        if global_job_config.runtime_env.uris:
+            uris = global_job_config.runtime_env.uris
+        if override_runtime_env.get("uris"):
+            # TODO(simon): should we combine the uris from package and global
+            # job config if they are present?
+            uris = override_runtime_env["uris"]
+
         working_dir = runtime_env_pkg.ensure_runtime_env_setup(uris)
         if working_dir is not None:
             os.chdir(working_dir)
@@ -1402,11 +1439,13 @@ def connect(node,
         # paths of the workers. Also add the current directory. Note that this
         # assumes that the directory structures on the machines in the clusters
         # are the same.
-        # In client mode, if we use runtime env, then it'll be taken care of
-        # automatically.
-        script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
-        worker.run_function_on_all_workers(
-            lambda worker_info: sys.path.insert(1, script_directory))
+        # When using an interactive shell, there is no script directory.
+        if not interactive_mode:
+            script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
+            worker.run_function_on_all_workers(
+                lambda worker_info: sys.path.insert(1, script_directory))
+        # In client mode, if we use runtime envs with "working_dir", then
+        # it'll be handled automatically.  Otherwise, add the current dir.
         if not job_config.client_job and len(
                 job_config.get_runtime_env_uris()) == 0:
             current_directory = os.path.abspath(os.path.curdir)
@@ -1589,8 +1628,13 @@ def get(object_refs, *, timeout=None):
         if debugger_breakpoint != b"":
             frame = sys._getframe().f_back
             rdb = ray.util.pdb.connect_ray_pdb(
-                None, None, False, None,
-                debugger_breakpoint.decode() if debugger_breakpoint else None)
+                host=None,
+                port=None,
+                patch_stdstreams=False,
+                quiet=None,
+                breakpoint_uuid=debugger_breakpoint.decode()
+                if debugger_breakpoint else None,
+                debugger_external=worker.ray_debugger_external)
             rdb.set_trace(frame=frame)
 
         return values
@@ -2025,7 +2069,8 @@ def remote(*args, **kwargs):
             infinite retries.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
-            :ref:`runtime-environments` for detailed documentation.
+            :ref:`runtime-environments` for detailed documentation. This API is
+            in beta and may change before becoming stable.
         override_environment_variables (Dict[str, str]): (Deprecated in Ray
             1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
             field of :ref:`runtime-environments` instead.) This specifies

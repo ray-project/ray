@@ -315,5 +315,5 @@ py_test(
 # re-run if any of these files changes.
 py_library(
     name = "sgd_lib",
-    srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
+    srcs = glob(["**/*.py"], exclude=["tests/*.py", "v2/*"]),
 )

@@ -40,6 +40,13 @@ namespace raylet {
 using WorkerCommandMap =
     std::unordered_map<Language, std::vector<std::string>, std::hash<int>>;
 
+enum class RuntimeEnvStatus {
+  /// This runtime env is currently being installed.
+  PENDING,
+  /// This runtime env has completed installation (either successfully or not)
+  DONE
+};
+
 /// \class WorkerPoolInterface
 ///
 /// Used for new scheduler unit tests.
@@ -49,11 +56,11 @@ class WorkerPoolInterface {
   /// the worker back onto the pool once the worker has completed its work.
   ///
   /// \param task_spec The returned worker must be able to execute this task.
-  /// \param allocated_instances_serialized_json The allocated resouce instances
+  /// \param allocated_instances_serialized_json The allocated resource instances
   /// json string, it contains resource ID which assigned to this worker.
   /// Instance resource value will be like {"GPU":[10000,0,10000]}, non-instance
   /// resource value will be {"CPU":20000}.
-  /// \return An idle worker with tit he requested task spec. Returns nullptr if no
+  /// \return An idle worker with the requested task spec. Returns nullptr if no
   /// such worker exists.
   virtual std::shared_ptr<WorkerInterface> PopWorker(
       const TaskSpecification &task_spec,
@@ -126,6 +133,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// language.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
+  /// \param ray_debugger_external Ray debugger in workers will be started in a way
+  /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time.
   WorkerPool(instrumented_io_context &io_service, const NodeID node_id,
              const std::string node_address, int num_workers_soft_limit,
@@ -135,7 +144,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              std::function<void()> starting_worker_timeout_callback,
-             const std::function<double()> get_time);
+             std::function<void(const TaskID &)> runtime_env_setup_failed_callback,
+             int ray_debugger_external, const std::function<double()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -544,6 +554,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The callback that will be triggered once it times out to start a worker.
   std::function<void()> starting_worker_timeout_callback_;
+  /// The callback that will be triggered when a runtime_env setup for a task fails.
+  std::function<void(const TaskID &)> runtime_env_setup_failed_callback_;
+  /// If 1, expose Ray debuggers started by the workers externally (to this node).
+  int ray_debugger_external;
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
 
   /// The Job ID of the firstly received job.
@@ -555,7 +569,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// The number of registered workers of the first job.
   int first_job_registered_python_worker_count_;
 
-  /// The umber of initial Python workers to wait for the first job before the driver
+  /// The number of initial Python workers to wait for the first job before the driver
   /// receives RegisterClientReply.
   int first_job_driver_wait_num_python_workers_;
 
@@ -567,6 +581,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Set of jobs whose drivers have exited.
   absl::flat_hash_set<JobID> finished_jobs_;
+
+  /// Maps runtime env hash to its status.
+  std::unordered_map<int, RuntimeEnvStatus> runtime_env_statuses_;
 
   /// This map stores the same data as `idle_of_all_languages_`, but in a map structure
   /// for lookup performance.

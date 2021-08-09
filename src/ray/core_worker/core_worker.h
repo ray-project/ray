@@ -54,6 +54,7 @@
 /// 4) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
 
 namespace ray {
+namespace core {
 
 class CoreWorker;
 
@@ -544,7 +545,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::vector<ObjectID> &contained_object_ids,
                      ObjectID *object_id, std::shared_ptr<Buffer> *data,
                      bool created_by_worker,
-                     const std::unique_ptr<rpc::Address> owner_address = nullptr);
+                     const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -590,11 +591,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results Result list of objects data.
-  /// \param[in] plasma_objects_only Only get objects from Plasma Store.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results,
-             bool plasma_objects_only = false);
+             std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Get objects directly from the local plasma store, without waiting for the
   /// objects to be fetched from another node. This should only be used
@@ -688,14 +687,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status
   Status SetResource(const std::string &resource_name, const double capacity,
                      const NodeID &node_id);
-
-  /// Request an object to be spilled to external storage.
-  /// \param[in] object_ids The objects to be spilled.
-  /// \return Status. Returns Status::Invalid if any of the objects are not
-  /// eligible for spilling (they have gone out of scope or we do not own the
-  /// object). Otherwise, the return status is ok and we will use best effort
-  /// to spill the object.
-  Status SpillObjects(const std::vector<ObjectID> &object_ids);
 
   /// Submit a normal task.
   ///
@@ -840,6 +831,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
 
+  int64_t GetNumTasksSubmitted() const {
+    return direct_task_submitter_->GetNumTasksSubmitted();
+  }
+
+  int64_t GetNumLeasesRequested() const {
+    return direct_task_submitter_->GetNumLeasesRequested();
+  }
+
  public:
   /// Allocate the return object for an executing task. The caller should write into the
   /// data buffer of the allocated buffer, then call SealReturnObject() to seal it.
@@ -849,11 +848,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] data_size Size of the return value.
   /// \param[in] metadata Metadata buffer of the return value.
   /// \param[in] contained_object_id ID serialized within each return object.
+  /// \param[in][out] task_output_inlined_bytes Store the total size of all inlined
+  /// objects of a task. It is used to decide if the current object should be inlined. If
+  /// the current object is inlined, the task_output_inlined_bytes will be updated.
   /// \param[out] return_object RayObject containing buffers to write results into.
   /// \return Status.
   Status AllocateReturnObject(const ObjectID &object_id, const size_t &data_size,
                               const std::shared_ptr<Buffer> &metadata,
                               const std::vector<ObjectID> &contained_object_id,
+                              int64_t &task_output_inlined_bytes,
                               std::shared_ptr<RayObject> *return_object);
 
   /// Seal a return object for an executing task. The caller should already have
@@ -1412,4 +1415,5 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unique_ptr<rpc::JobConfig> job_config_;
 };
 
+}  // namespace core
 }  // namespace ray

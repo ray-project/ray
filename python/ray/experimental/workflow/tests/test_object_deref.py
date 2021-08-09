@@ -101,3 +101,8 @@ def test_object_deref(workflow_start_regular_shared):
     obj = return_data.step()
     arr: np.ndarray = receive_data.step(obj).run()
     assert np.array_equal(arr, np.ones(4096))
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

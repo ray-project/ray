@@ -157,20 +157,19 @@ py_test(
 )
 
 # CQL
-# Skipping due to high flakiness.
-#py_test(
-#    name = "run_regression_tests_pendulum_cql_tf",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["learning_tests_tf", "learning_tests_pendulum", "flaky"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    # Include the zipped json data file as well.
-#    data = [
-#        "tuned_examples/cql/pendulum-cql.yaml",
-#        "tests/data/pendulum/enormous.zip",
-#    ],
-#    args = ["--yaml-dir=tuned_examples/cql"]
-#)
+py_test(
+    name = "run_regression_tests_pendulum_cql_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_pendulum", "flaky"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tuned_examples/cql/pendulum-cql.yaml",
+        "tests/data/pendulum/enormous.zip",
+    ],
+    args = ["--yaml-dir=tuned_examples/cql"]
+)
 
 py_test(
     name = "run_regression_tests_pendulum_cql_torch",
@@ -505,16 +504,15 @@ py_test(
     args = ["--yaml-dir=tuned_examples/sac"]
 )
 
-# Skipping due to high flakiness.
-#py_test(
-#    name = "run_regression_tests_pendulum_sac_torch",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["learning_tests_torch", "learning_tests_pendulum", "flaky"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/sac/pendulum-sac.yaml"],
-#    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
-#)
+py_test(
+    name = "run_regression_tests_pendulum_sac_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_pendulum", "flaky"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/pendulum-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac", "--framework=torch"]
+)
 
 py_test(
     name = "run_regression_tests_transformed_actions_pendulum_sac_tf",
@@ -1378,13 +1376,12 @@ py_test(
 # Tag: utils
 # --------------------------------------------------------------------
 
-# Skipping due to high flakiness.
-#py_test(
-#    name = "test_curiosity",
-#    tags = ["utils", "flaky"],
-#    size = "large",
-#    srcs = ["utils/exploration/tests/test_curiosity.py"]
-#)
+py_test(
+    name = "test_curiosity",
+    tags = ["utils", "flaky"],
+    size = "large",
+    srcs = ["utils/exploration/tests/test_curiosity.py"]
+)
 
 py_test(
     name = "test_explorations",
@@ -1555,6 +1552,13 @@ py_test(
     tags = ["tests_dir", "tests_dir_F"],
     size = "small",
     srcs = ["tests/test_filters.py"]
+)
+
+py_test(
+    name = "tests/test_gpus",
+    tags = ["tests_dir", "tests_dir_G"],
+    size = "large",
+    srcs = ["tests/test_gpus.py"]
 )
 
 #py_test(
@@ -2219,6 +2223,24 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_vector_env_tf",
+    main = "examples/custom_vector_env.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_vector_env.py"],
+    args = ["--as-test", "--stop-reward=40.0"]
+)
+
+py_test(
+    name = "examples/custom_vector_env_torch",
+    main = "examples/custom_vector_env.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_vector_env.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=40.0"]
+)
+
+py_test(
     name = "examples/deterministic_training_tf",
     main = "examples/deterministic_training.py",
     tags = ["examples", "examples_D"],
@@ -2251,6 +2273,15 @@ py_test(
     size = "small",
     srcs = ["examples/eager_execution.py"],
     args = ["--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/fractional_gpus",
+    main = "examples/fractional_gpus.py",
+    tags = ["examples", "examples_F"],
+    size = "medium",
+    srcs = ["examples/fractional_gpus.py"],
+    args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
 )
 
 py_test(
@@ -2418,12 +2449,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/fractional_gpus",
-    main = "examples/fractional_gpus.py",
+    name = "examples/parametric_actions_cartpole_embeddings_learnt_by_model",
+    main = "examples/parametric_actions_cartpole_embeddings_learnt_by_model.py",
     tags = ["examples", "examples_P"],
     size = "medium",
-    srcs = ["examples/fractional_gpus.py"],
-    args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
+    srcs = ["examples/parametric_actions_cartpole_embeddings_learnt_by_model.py"],
+    args = ["--as-test", "--stop-reward=80.0"]
 )
 
 py_test(
@@ -2435,11 +2466,26 @@ py_test(
 )
 
 py_test(
+    name = "examples/remote_vector_env_with_custom_api",
+    tags = ["examples", "examples_R"],
+    size = "medium",
+    srcs = ["examples/remote_vector_env_with_custom_api.py"],
+    args = ["--stop-iters=3"]
+)
+
+py_test(
     name = "examples/restore_1_of_n_agents_from_checkpoint",
     tags = ["examples", "examples_R"],
     size = "medium",
     srcs = ["examples/restore_1_of_n_agents_from_checkpoint.py"],
     args = ["--pre-training-iters=1", "--stop-iters=1", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/rnnsac_stateless_cartpole",
+    tags = ["examples", "examples_R"],
+    size = "large",
+    srcs = ["examples/rnnsac_stateless_cartpole.py"]
 )
 
 py_test(

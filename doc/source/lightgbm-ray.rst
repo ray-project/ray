@@ -534,6 +534,9 @@ API reference
 .. autoclass:: lightgbm_ray.RayParams
     :members:
 
+.. note::
+  The ``xgboost_ray.RayDMatrix`` class is shared with :ref:`XGBoost-Ray <xgboost-ray>`.
+
 .. autoclass:: xgboost_ray.RayDMatrix
     :members:
     :noindex:

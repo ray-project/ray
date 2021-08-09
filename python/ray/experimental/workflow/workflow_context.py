@@ -1,5 +1,8 @@
+import logging
 from typing import Optional, List
 from contextlib import contextmanager
+from ray.experimental.workflow.common import WorkflowStatus
+logger = logging.getLogger(__name__)
 
 
 class WorkflowStepContext:
@@ -39,12 +42,13 @@ def workflow_step_context(workflow_id, storage_url) -> None:
         storage_url: The storage the workflow is using.
     """
     global _context
+    original_context = _context
     assert workflow_id is not None
     try:
         _context = WorkflowStepContext(workflow_id, storage_url)
         yield
     finally:
-        _context = None
+        _context = original_context
 
 
 def get_workflow_step_context() -> Optional[WorkflowStepContext]:
@@ -78,6 +82,15 @@ def get_current_step_id() -> str:
 def get_current_workflow_id() -> str:
     assert _context is not None
     return _context.workflow_id
+
+
+def get_step_name() -> str:
+    return f"{get_current_workflow_id()}@{get_current_step_id()}"
+
+
+def get_step_status_info(status: WorkflowStatus) -> str:
+    assert _context is not None
+    return f"Step status [{status}]\t[{get_step_name()}]"
 
 
 def get_scope():

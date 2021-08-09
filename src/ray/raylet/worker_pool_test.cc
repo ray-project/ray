@@ -92,13 +92,37 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
   };
 };
 
+class MockAgentManager : public AgentManager {
+ public:
+  MockAgentManager(AgentManager::Options options, DelayExecutorFn delay_executor,
+                   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory,
+                   bool start_agent = true)
+      : AgentManager(options, delay_executor, runtime_env_agent_client_factory,
+                     start_agent){};
+  void CreateRuntimeEnv(const JobID &job_id, const std::string &serialized_runtime_env,
+                        CreateRuntimeEnvCallback callback) override {
+    queued_callbacks.push(callback);
+  };
+
+  void PopAndInvokeCallback() {
+    if (queued_callbacks.size() > 0) {
+      CreateRuntimeEnvCallback callback = queued_callbacks.front();
+      queued_callbacks.pop();
+      callback(/*success=*/true, /*serialized_runtime_env_context=*/"");
+    }
+  }
+
+  std::queue<CreateRuntimeEnvCallback> queued_callbacks;
+};
+
 class WorkerPoolMock : public WorkerPool {
  public:
   explicit WorkerPoolMock(instrumented_io_context &io_service,
                           const WorkerCommandMap &worker_commands)
       : WorkerPool(io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
                    MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands,
-                   []() {}, [this]() { return current_time_ms_; }),
+                   []() {}, [](const TaskID &) {}, 0,
+                   [this]() { return current_time_ms_; }),
         last_worker_process_() {
     SetNodeManagerPort(1);
   }
@@ -1230,6 +1254,68 @@ TEST_F(WorkerPoolTest, StartWorkWithDifferentShimPid) {
   // Add the workers to the pool.
   worker_pool_->PushWorker(java_worker);
   ASSERT_TRUE(worker_pool_->PopWorker(java_task_spec) != nullptr);
+}
+
+TEST_F(WorkerPoolTest, NoSpuriousWorkerStartupDuringEnvInstall) {
+  std::vector<std::string> agent_commands = {};
+  const NodeID node_id = NodeID::FromRandom();
+  auto options = AgentManager::Options({node_id, agent_commands});
+  auto agent_manager = std::make_shared<MockAgentManager>(
+      std::move(options),
+      /*delay_executor=*/
+      [this](std::function<void()> task, uint32_t delay_ms) {
+        return execute_after(io_service_, task, delay_ms);
+      },
+      /*runtime_env_agent_factory=*/
+      [](const std::string &ip_address, int port) {
+        return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
+            new MockRuntimeEnvAgentClient());
+      },
+      false);
+  worker_pool_->SetAgentManager(agent_manager);
+
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
+  const auto normal_task_spec =
+      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
+                      /*dynamic_options=*/{}, TaskID::Nil(), "mock_runtime_env_1");
+
+  // Pop worker for a task with runtime env.
+  auto popped_worker = worker_pool_->PopWorker(normal_task_spec);
+
+  // No idle workers.
+  ASSERT_EQ(popped_worker, nullptr);
+
+  // Worker does not start because CreateRuntimeEnvCallback has not yet been invoked.
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
+
+  // Simulate the following situation: before runtime env is done installing,
+  // PopWorker is called several more times for the same task.
+  for (int i = 0; i < 10; i++) {
+    worker_pool_->PopWorker(normal_task_spec);
+  }
+
+  // Still, no workers should have started.
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
+
+  // AgentManager::CreateRuntimeEnv() should have only been called once.
+  ASSERT_EQ(agent_manager->queued_callbacks.size(), 1);
+
+  // Finish installing runtime env, call CreateRuntimeEnvCallback.
+  agent_manager->PopAndInvokeCallback();
+
+  // Only one worker process is started.
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+
+  // Now that the env has been created, we should be able to start workers for this env
+  // in parallel.  The soft limit of the number of workers is 5, so just add 4 more.
+  for (int i = 0; i < 4; i++) {
+    worker_pool_->PopWorker(normal_task_spec);
+  }
+  ASSERT_EQ(agent_manager->queued_callbacks.size(), 4);
+  for (int i = 0; i < 4; i++) {
+    agent_manager->PopAndInvokeCallback();
+  }
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 5);
 }
 
 }  // namespace raylet

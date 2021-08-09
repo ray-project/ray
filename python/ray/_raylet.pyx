@@ -398,6 +398,7 @@ cdef execute_task(
 
     worker = ray.worker.global_worker
     manager = worker.function_actor_manager
+    actor = None
 
     cdef:
         dict execution_infos = manager.execution_infos
@@ -576,13 +577,19 @@ cdef execute_task(
 
             backtrace = ray._private.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
+
+            # Generate the actor repr from the actor class.
+            actor_repr = repr(actor) if actor else None
+
             if isinstance(error, RayTaskError):
                 # Avoid recursive nesting of RayTaskError.
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error.cause, proctitle=title)
+                                              error.cause, proctitle=title,
+                                              actor_repr=actor_repr)
             else:
                 failure_object = RayTaskError(function_name, backtrace,
-                                              error, proctitle=title)
+                                              error, proctitle=title,
+                                              actor_repr=actor_repr)
             errors = []
             for _ in range(c_return_ids.size()):
                 errors.append(failure_object)
@@ -755,6 +762,12 @@ cdef int64_t restore_spilled_objects_handler(
                 "An unexpected internal error occurred while the IO worker "
                 "was restoring spilled objects.")
             logger.exception(exception_str)
+            if os.getenv("RAY_BACKEND_LOG_LEVEL") == "debug":
+                ray._private.utils.push_error_to_driver(
+                    ray.worker.global_worker,
+                    "restore_objects_error",
+                    traceback.format_exc() + exception_str,
+                    job_id=None)
     return bytes_restored
 
 
@@ -1011,16 +1024,14 @@ cdef class CoreWorker:
         return self.plasma_event_handler
 
     def get_objects(self, object_refs, TaskID current_task_id,
-                    int64_t timeout_ms=-1,
-                    plasma_objects_only=False):
+                    int64_t timeout_ms=-1):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
-            c_bool _plasma_objects_only = plasma_objects_only
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, timeout_ms, &results, _plasma_objects_only))
+                c_object_ids, timeout_ms, &results))
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -1307,6 +1318,7 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
+                    b"",
                     c_serialized_runtime_env,
                     c_override_environment_variables),
                 &return_ids, max_retries,
@@ -1689,12 +1701,14 @@ cdef class CoreWorker:
             shared_ptr[CBuffer] metadata
             c_vector[CObjectID] contained_id
             c_vector[CObjectID] return_ids_vector
+            int64_t task_output_inlined_bytes
 
         if return_ids.size() == 0:
             return
 
         n_returns = len(outputs)
         returns.resize(n_returns)
+        task_output_inlined_bytes = 0
         for i in range(n_returns):
             return_id, output = return_ids[i], outputs[i]
             context = worker.get_serialization_context()
@@ -1717,7 +1731,7 @@ cdef class CoreWorker:
                 check_status(
                     CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
                         return_id, data_size, metadata, contained_id,
-                        &returns[0][i]))
+                        task_output_inlined_bytes, &returns[0][i]))
 
             if returns[0][i].get() != NULL:
                 if returns[0][i].get().HasData():
@@ -1888,6 +1902,19 @@ cdef class CoreWorker:
         # TODO(architkulkarni): We should just use RuntimeEnvDict here
         # so all the serialization and validation is done in one place
         return json.dumps(result_dict, sort_keys=True)
+
+    def get_task_submission_stats(self):
+        cdef:
+            int64_t num_tasks_submitted
+            int64_t num_leases_requested
+
+        with nogil:
+            num_tasks_submitted = (
+                    CCoreWorkerProcess.GetCoreWorker().GetNumTasksSubmitted())
+            num_leases_requested = (
+                    CCoreWorkerProcess.GetCoreWorker().GetNumLeasesRequested())
+
+        return (num_tasks_submitted, num_leases_requested)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,
