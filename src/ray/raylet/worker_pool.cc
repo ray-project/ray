@@ -729,16 +729,16 @@ void WorkerPool::PopDeleteWorker(
 void WorkerPool::TryToAssignTaskToDedicatedWorker(
     std::unordered_map<Process, TaskWaitingForWorkerInfo> &starting_workers_to_tasks,
     const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
-    const PopWorkerStatus &status, bool *found, bool *used, TaskID *task_id) {
+    const PopWorkerStatus &status, bool *found, bool *dispatched, TaskID *task_id) {
   *found = false;
-  *used = false;
+  *dispatched = false;
   auto it = starting_workers_to_tasks.find(proc);
   if (it != starting_workers_to_tasks.end()) {
     *found = true;
     *task_id = it->second.task_id;
     const auto &callback = it->second.callback;
     RAY_CHECK(callback);
-    *used = callback(worker, status);
+    *dispatched = callback(worker, status);
     starting_workers_to_tasks.erase(it);
   }
 }

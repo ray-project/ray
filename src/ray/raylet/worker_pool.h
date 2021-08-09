@@ -60,8 +60,8 @@ enum PopWorkerStatus {
   RuntimeEnvCreationFailed = 4,
 };
 
-/// \Return True if any task dispatched successfully to the worker. Otherwise, return
-/// false.
+/// \Return true if the worker was used. Otherwise, return false and the worker will be
+/// returned to the worker pool.
 using PopWorkerCallback = std::function<bool(
     const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status)>;
 
@@ -90,8 +90,7 @@ class WorkerPoolInterface {
   /// json string, it contains resource ID which assigned to this worker.
   /// Instance resource value will be like {"GPU":[10000,0,10000]}, non-instance
   /// resource value will be {"CPU":20000}.
-  /// \return An idle worker with the requested task spec. Returns nullptr if no
-  /// such worker exists.
+  /// \return Void.
   virtual void PopWorker(
       const TaskSpecification &task_spec, const PopWorkerCallback &callback,
       const std::string &allocated_instances_serialized_json = "{}") = 0;
@@ -311,20 +310,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void PushUtilWorker(const std::shared_ptr<WorkerInterface> &worker);
   void PopUtilWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
-  /// Add an idle worker to the pool.
-  ///
-  /// \param The idle worker to add.
+  /// See interface.
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
 
-  /// Pop an idle worker from the pool. The caller is responsible for pushing
-  /// the worker back onto the pool once the worker has completed its work.
-  ///
-  /// \param task_spec The returned worker must be able to execute this task.
-  /// \param callback The callback function that executed when gets the result of
-  /// worker popping.
-  /// \param allocated_instances_serialized_json The allocated resouce
-  /// instances json string. \return An idle worker with the requested task spec. Returns
-  /// nullptr if no such worker exists.
+  /// See interface.
   void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback,
                  const std::string &allocated_instances_serialized_json = "{}");
 
