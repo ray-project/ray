@@ -40,8 +40,11 @@ If you want to define more complex HTTP handling logic, Serve integrates with `F
 .. code-block:: python
 
     from fastapi import FastAPI
+    from ray import serve
 
     app = FastAPI()
+    ray.client().namespace("namespace").connect()
+    serve.start(detached=True)
 
     @serve.deployment(route_prefix="/hello")
     @serve.ingress(app)
@@ -57,8 +60,11 @@ Now if you send a request to ``/hello``, this will be routed to the ``root`` met
 .. code-block:: python
 
     from fastapi import FastAPI
+    from ray import serve
 
     app = FastAPI()
+    ray.client().namespace("namespace").connect()
+    serve.start(detached=True)
 
     @serve.deployment(route_prefix="/hello")
     @serve.ingress(app)
@@ -78,8 +84,11 @@ You can also pass in an existing FastAPI app to a deployment to serve it as-is:
 .. code-block:: python
 
     from fastapi import FastAPI
+    from ray import serve
 
     app = FastAPI()
+    ray.client().namespace("namespace").connect()
+    serve.start(detached=True)
 
     @app.get("/")
     def f():
@@ -99,8 +108,11 @@ You can also combine routes defined this way with routes defined on the deployme
 .. code-block:: python
 
     from fastapi import FastAPI
+    from ray import serve
 
     app = FastAPI()
+    ray.client().namespace("namespace").connect()
+    serve.start(detached=True)
 
     @app.get("/")
     def f():
@@ -121,6 +133,13 @@ You can also combine routes defined this way with routes defined on the deployme
             return "Hello 2!"
 
 In this example, requests to both ``/api1`` and ``/api2`` would return ``Hello from the root!`` while a request to ``/api1/subpath`` would return ``Hello 1!`` and a request to ``/api2/subpath`` would return ``Hello 2!``.
+
+To try it out, save a code snippet in a local python file (i.e. main.py) and in the same directory, run the following commands to start a local Ray cluser on your machine.
+
+.. code-block:: bash
+
+    ray start --head
+    python main.py
 
 Configuring HTTP Server Locations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -19,6 +19,7 @@
 #include "ray/core_worker/core_worker.h"
 
 namespace ray {
+namespace core {
 
 // Notify the user about an unhandled error after this amount of time. This only
 // applies to interactive console (e.g., IPython), see:
@@ -585,4 +586,5 @@ MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
   return item;
 }
 
+}  // namespace core
 }  // namespace ray
