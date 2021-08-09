@@ -866,7 +866,7 @@ def test_get_non_existing_named_actor(ray_start_regular_shared):
         _ = ray.get_actor("non_existing_actor")
 
 
-def test_named_actor_cache(ray_start_regular):
+def test_named_actor_cache(ray_start_regular_shared):
     """Verify that named actor cache works well."""
 
     @ray.remote(max_restarts=-1)
