@@ -611,57 +611,14 @@ void ClusterTaskManager::FillResourceUsage(
 
   int num_reported = 0;
 
-  // 1-CPU optimization
-  static const ResourceSet one_cpu_resource_set(
-      std::unordered_map<std::string, double>({{kCPU_ResourceLabel, 1}}));
-  static const SchedulingClassDescriptor sched_cls(one_cpu_resource_set,
-                                                   ray::FunctionDescriptor());
-  static const SchedulingClass one_cpu_scheduling_cls =
-      TaskSpecification::GetSchedulingClass(sched_cls);
-  {
-    num_reported++;
-    int count = 0;
-    auto sched_it = tasks_to_schedule_.find(one_cpu_scheduling_cls);
-    if (sched_it != tasks_to_schedule_.end()) {
-      count += sched_it->second.size();
-    }
-    auto disp_it = tasks_to_dispatch_.find(one_cpu_scheduling_cls);
-    if (disp_it != tasks_to_dispatch_.end()) {
-      count += disp_it->second.size();
-    }
-
-    if (count > 0) {
-      auto by_shape_entry = resource_load_by_shape->Add();
-
-      for (const auto &resource : one_cpu_resource_set.GetResourceMap()) {
-        // Add to `resource_loads`.
-        const auto &label = resource.first;
-        const auto &quantity = resource.second;
-        (*resource_loads)[label] += quantity * count;
-
-        // Add to `resource_load_by_shape`.
-        (*by_shape_entry->mutable_shape())[label] = quantity;
-      }
-
-      int num_ready = by_shape_entry->num_ready_requests_queued();
-      by_shape_entry->set_num_ready_requests_queued(num_ready + count);
-
-      auto backlog_it = backlog_tracker_.find(one_cpu_scheduling_cls);
-      if (backlog_it != backlog_tracker_.end()) {
-        by_shape_entry->set_backlog_size(backlog_it->second);
-      }
-    }
-  }
-
   for (const auto &pair : tasks_to_schedule_) {
     const auto &scheduling_class = pair.first;
-    if (scheduling_class == one_cpu_scheduling_cls) {
-      continue;
-    }
-    if (num_reported++ >= max_resource_shapes_per_load_report_ &&
+    RAY_LOG(ERROR) << "[" << num_reported << "/" << max_resource_shapes_per_load_report_ << "] " << scheduling_class << " scheduling";
+    if (num_reported >= max_resource_shapes_per_load_report_ &&
         max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
       // the same resources.
+      RAY_LOG(ERROR) << "Skipping rest of scheduilng queue";
       break;
     }
     const auto &resources =
@@ -670,6 +627,7 @@ void ClusterTaskManager::FillResourceUsage(
     const auto &queue = pair.second;
     const auto &count = queue.size();
 
+    num_reported++;
     auto by_shape_entry = resource_load_by_shape->Add();
 
     for (const auto &resource : resources) {
@@ -695,11 +653,10 @@ void ClusterTaskManager::FillResourceUsage(
 
   for (const auto &pair : tasks_to_dispatch_) {
     const auto &scheduling_class = pair.first;
-    if (scheduling_class == one_cpu_scheduling_cls) {
-      continue;
-    }
-    if (num_reported++ >= max_resource_shapes_per_load_report_ &&
+    RAY_LOG(ERROR) << "[" << num_reported << "/" << max_resource_shapes_per_load_report_ << "] " << scheduling_class << " dispatch";
+    if (num_reported >= max_resource_shapes_per_load_report_ &&
         max_resource_shapes_per_load_report_ >= 0) {
+      RAY_LOG(ERROR) << "Skipping rest of dispatch queue";
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
       // the same resources.
       break;
@@ -710,6 +667,7 @@ void ClusterTaskManager::FillResourceUsage(
     const auto &queue = pair.second;
     const auto &count = queue.size();
 
+    num_reported++;
     auto by_shape_entry = resource_load_by_shape->Add();
 
     for (const auto &resource : resources) {
@@ -731,13 +689,12 @@ void ClusterTaskManager::FillResourceUsage(
 
   for (const auto &pair : infeasible_tasks_) {
     const auto &scheduling_class = pair.first;
-    if (scheduling_class == one_cpu_scheduling_cls) {
-      continue;
-    }
-    if (num_reported++ >= max_resource_shapes_per_load_report_ &&
+    RAY_LOG(ERROR) << "[" << num_reported << "/" << max_resource_shapes_per_load_report_ << "] " << scheduling_class << " infeasible";
+    if (num_reported >= max_resource_shapes_per_load_report_ &&
         max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
       // the same resources.
+      RAY_LOG(ERROR) << "Skipping rest of infeasible queue";
       break;
     }
     const auto &resources =
@@ -746,6 +703,7 @@ void ClusterTaskManager::FillResourceUsage(
     const auto &queue = pair.second;
     const auto &count = queue.size();
 
+    num_reported++;
     auto by_shape_entry = resource_load_by_shape->Add();
     for (const auto &resource : resources) {
       // Add to `resource_loads`.
@@ -767,6 +725,9 @@ void ClusterTaskManager::FillResourceUsage(
       by_shape_entry->set_backlog_size(backlog_it->second);
     }
   }
+
+  RAY_LOG(ERROR) << "Resoruce report contains " << data.resource_load_by_shape().resource_demands().size() <<
+    "shapes";
 
   if (RayConfig::instance().enable_light_weight_resource_report()) {
     // Check whether resources have been changed.
