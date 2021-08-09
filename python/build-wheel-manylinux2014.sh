@@ -25,6 +25,9 @@ NUMPY_VERSIONS=("1.14.5"
 yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
 yum -y install openssl
+if [ -n "$RAY_ASAN" ]; then
+  yum install devtoolset-9-libasan-devel.x86_64 -y
+fi
 
 java -version
 java_bin=$(readlink -f "$(command -v java)")
