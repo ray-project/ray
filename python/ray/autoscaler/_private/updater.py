@@ -87,7 +87,6 @@ class NodeUpdater:
         self.node_id = node_id
         self.provider_type = provider_config.get("type")
         self.provider = provider
-        self.provider_config = provider_config
         # Some node providers don't specify empty structures as
         # defaults. Better to be defensive.
         file_mounts = file_mounts or {}
@@ -129,38 +128,32 @@ class NodeUpdater:
                    "or also pass in `--use-normal-shells`.")
             cli_logger.abort(msg)
 
-        if self.provider_config.get('init_cmd_run_by_scheduler_not_ray_NodeUpdater', False):
-            cli_logger.print(
-                "The scheduler has already run init/setup commands " + 
-                "and will not use this NodeUpdater to run them"
-            )
-        else:
-            try:
-                with LogTimer(self.log_prefix +
-                            "Applied config {}".format(self.runtime_hash)):
-                    self.do_update()
-            except Exception as e:
-                self.provider.set_node_tags(
-                    self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
-                cli_logger.error("New status: {}", cf.bold(STATUS_UPDATE_FAILED))
+        try:
+            with LogTimer(self.log_prefix +
+                          "Applied config {}".format(self.runtime_hash)):
+                self.do_update()
+        except Exception as e:
+            self.provider.set_node_tags(
+                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
+            cli_logger.error("New status: {}", cf.bold(STATUS_UPDATE_FAILED))
 
-                cli_logger.error("!!!")
-                if hasattr(e, "cmd"):
-                    cli_logger.error(
-                        "Setup command `{}` failed with exit code {}. stderr:",
-                        cf.bold(e.cmd), e.returncode)
-                else:
-                    cli_logger.verbose_error("{}", str(vars(e)))
-                    # todo: handle this better somehow?
-                    cli_logger.error("{}", str(e))
-                # todo: print stderr here
-                cli_logger.error("!!!")
-                cli_logger.newline()
+            cli_logger.error("!!!")
+            if hasattr(e, "cmd"):
+                cli_logger.error(
+                    "Setup command `{}` failed with exit code {}. stderr:",
+                    cf.bold(e.cmd), e.returncode)
+            else:
+                cli_logger.verbose_error("{}", str(vars(e)))
+                # todo: handle this better somehow?
+                cli_logger.error("{}", str(e))
+            # todo: print stderr here
+            cli_logger.error("!!!")
+            cli_logger.newline()
 
-                if isinstance(e, click.ClickException):
-                    # todo: why do we ignore this here
-                    return
-                raise
+            if isinstance(e, click.ClickException):
+                # todo: why do we ignore this here
+                return
+            raise
 
         tags_to_set = {
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
