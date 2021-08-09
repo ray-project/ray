@@ -1294,6 +1294,19 @@ def test_actor_namespace_access(ray_start_regular):
         ray.get_actor("actor_name")  # => errors
 
 
+def test_get_actor_after_killed(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    class A:
+        pass
+
+    actor = A.options(name="namespace/actor", lifetime="detached").remote()
+    ray.kill(actor)
+    with pytest.raises(ValueError):
+        ray.get_actor("namespace/actor")
+
+
 if __name__ == "__main__":
     import pytest
     # Test suite is timing out. Disable on windows for now.

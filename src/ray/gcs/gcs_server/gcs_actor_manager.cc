@@ -236,15 +236,14 @@ void GcsActorManager::HandleGetNamedActorInfo(
   ActorID actor_id = GetActorIDByName(name, ray_namespace);
 
   Status status = Status::OK();
-  if (actor_id.IsNil()) {
-    // The named actor was not found.
+  const auto &iter = registered_actors_.find(actor_id);
+  if (actor_id.IsNil() || iter == registered_actors_.end()) {
+    // The named actor was not found or the actor is already removed.
     std::stringstream stream;
     stream << "Actor with name '" << name << "' was not found.";
     RAY_LOG(WARNING) << stream.str();
     status = Status::NotFound(stream.str());
   } else {
-    const auto &iter = registered_actors_.find(actor_id);
-    RAY_CHECK(iter != registered_actors_.end());
     reply->mutable_actor_table_data()->CopyFrom(iter->second->GetActorTableData());
     RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
                    << ", actor id = " << actor_id;

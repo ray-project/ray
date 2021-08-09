@@ -2092,7 +2092,7 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
     stream << "Failed to look up actor with name '" << name << "'. This could "
            << "because 1. You are trying to look up a named actor you "
            << "didn't create. 2. The named actor died. 3. The actor hasn't "
-           << "been created because named actor creation is asynchronous. "
+           << "been created yet because named actor creation is asynchronous. "
            << "4. You did not use a namespace matching the namespace of the "
            << "actor.";
     return std::make_pair(nullptr, Status::NotFound(stream.str()));
