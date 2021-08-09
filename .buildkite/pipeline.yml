@@ -199,6 +199,15 @@
     - bazel test --config=ci-debug $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,debug_tests,-flaky
       python/ray/tests/...
+- label: ":core: ASAN Test"
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
+      --build_tests_only
+      --config=asan-buildkite
+      --jobs=2
+      --test_tag_filters=-kubernetes,-jenkins_only,asan_tests,-flaky
+      -- python/ray/tests/...
 - label: ":python: (Worker In Container)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
