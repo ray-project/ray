@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Callable, TypeVar, List, Optional, Dict
 
 import ray
@@ -7,6 +6,7 @@ from ray.exceptions import RayActorError
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
 from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV
+from ray.ray_constants import env_integer
 
 T = TypeVar("T")
 
@@ -71,8 +71,8 @@ class BackendExecutor:
             train_func (Callable): The training function to run on each worker.
         """
 
-        use_detailed_autofilled_metrics = bool(
-            int(os.environ.get(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)))
+        use_detailed_autofilled_metrics = env_integer(
+            ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
 
         # First initialize the session.
         def initialize_session(world_rank, train_func):
