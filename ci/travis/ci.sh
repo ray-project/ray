@@ -301,7 +301,7 @@ _bazel_build_before_install() {
     bazel build "${target}"
   # elif [ "${RAY_DEBUG_BUILD}" = "asan" ] then
   #   bazel build 
-  elif [ "${RAY_DEBUG_BUILD}" = "debug" ] then
+  elif [ "${RAY_DEBUG_BUILD}" = "debug" ]; then
     bazel build --config debug "${target}"
   else
     echo "Invalid config given"
