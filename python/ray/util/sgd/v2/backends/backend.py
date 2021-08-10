@@ -3,9 +3,9 @@ from typing import Callable, TypeVar, List, Optional, Dict
 
 import ray
 from ray.exceptions import RayActorError
-from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session, \
-    TrainingResultType
+    TrainingResultType, TrainingResult
+from ray.util.sgd.v2.worker_group import WorkerGroup
 
 T = TypeVar("T")
 
@@ -109,16 +109,16 @@ class BackendExecutor:
 
         self.worker_group.execute_async(train_async)
 
-    def fetch_next_result(self) -> Optional[List[Dict]]:
-        """Fetch next results produced by ``sgd.report()`` from each worker.
+    def _get_next_results(self) -> Optional[List[TrainingResult]]:
+        """Fetches the next ``TrainingResult`` from each worker.
 
-        Assumes ``start_training`` has already been called.
+        Each ``TrainingResult`` is expected to correspond to the same step from
+        each worker (e.g. the same call to ``sgd.report()`` or
+        ``sgd.checkpoint()``).
 
         Returns:
-            A list of dictionaries of values passed to ``sgd.report()`` from
-                each worker. Each item corresponds to an intermediate result
-                a single worker. If there are no more items to fetch,
-                returns None.
+            A list of ``TrainingResult``s with the same
+            ``TrainingResultType``, or ``None`` if there are no more results.
         """
 
         def get_next():
@@ -143,6 +143,7 @@ class BackendExecutor:
 
             return result
 
+        # Get next result from each worker.
         futures = self.worker_group.execute_async(get_next)
         results = self.get_with_failure_handling(futures)
 
@@ -152,29 +153,53 @@ class BackendExecutor:
             if not all(r is None for r in results):
                 raise RuntimeError("Some workers returned results while "
                                    "others didn't. Make sure that "
-                                   "`sgd.report()` is called the same number "
-                                   "of times on all workers.")
+                                   "`sgd.report()` is called the same "
+                                   "number of times on all workers.")
             else:
                 # Return None if all results are None.
                 return None
-
         first_result = results[0]
         result_type = first_result.type
         if any(r.type != result_type for r in results):
-            raise RuntimeError("Some workers returned results with different "
-                               "types. All workers are expected to return the"
-                               "same type of result at every iteration.")
-        if result_type == TrainingResultType.REPORT:
-            result_data = [r.data for r in results]
-            return result_data
-        elif result_type == TrainingResultType.CHECKPOINT:
-            # Process checkpoint
-            self.latest_checkpoint = first_result.data
-            # Recurse until next REPORT call or training has finished.
-            return self.fetch_next_result()
-        else:
-            raise ValueError(f"Unexpected result type: {result_type}. "
-                             f"Expected one of {[type in TrainingResultType]}")
+            raise RuntimeError("Some workers returned results with "
+                               "different types. All workers are expected "
+                               "to return the same type of result at "
+                               "every iteration.")
+        return results
+
+    def _process_checkpoint(self, results):
+        # Process checkpoint
+        self.latest_checkpoint = results[0].data
+
+    def fetch_next_result(self) -> Optional[List[Dict]]:
+        """Fetch next results produced by ``sgd.report()`` from each worker.
+
+        Assumes ``start_training`` has already been called.
+
+        Returns:
+            A list of dictionaries of values passed to ``sgd.report()`` from
+                each worker. Each item corresponds to an intermediate result
+                a single worker. If there are no more items to fetch,
+                returns None.
+        """
+
+        while True:
+            results = self._get_next_results()
+            if results is None:
+                return None
+            first_result = results[0]
+            result_type = first_result.type
+            if result_type is TrainingResultType.REPORT:
+                result_data = [r.data for r in results]
+                return result_data
+            elif result_type is TrainingResultType.CHECKPOINT:
+                self._process_checkpoint(results)
+                # Iterate until next REPORT call or training has finished.
+            else:
+                raise SGDBackendError(f"Unexpected result type: "
+                                      f"{result_type}. "
+                                      f"Expected one of "
+                                      f"{[type in TrainingResultType]}")
 
     def finish_training(self) -> List[T]:
         """Finish training and return final results. Propagate any exceptions.
@@ -222,13 +247,22 @@ class BackendExecutor:
 
             return output
 
+        # Disable workers from enqueuing results from `sgd.report()`.
+        # Results will not be processed during the execution of `finish`.
+        # Note: Reported results may still be enqueued at this point,
+        #       and should be handled appropriately.
         futures = self.worker_group.execute_async(pause_reporting)
         self.get_with_failure_handling(futures)
 
-        # Finish up processing results.
-        results = self.fetch_next_result()
-        while results is not None:
-            results = self.fetch_next_result()
+        # Finish up processing checkpoints. Reporting has been disabled.
+        while True:
+            results = self._get_next_results()
+            if results is None:
+                break
+            result_type = results[0].type
+            # Process checkpoints and ignore other result types.
+            if result_type is TrainingResultType.CHECKPOINT:
+                self._process_checkpoint(results)
 
         futures = self.worker_group.execute_async(end_training)
         return self.get_with_failure_handling(futures)

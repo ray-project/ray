@@ -143,6 +143,7 @@ def test_locking():
     time.sleep(3)
 
     session.pause_reporting()
+    # Releases session.continue_lock to resume the training thread.
     session.get_next()
 
     with pytest.raises(KeyboardInterrupt):
