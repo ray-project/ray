@@ -411,7 +411,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             logger.warning("Failed to shutdown gracefully.")
             return False
 
-    def wait_for_condition(condition_predictor, timeout=10, retry_interval_ms=100):
+    def wait_for_condition(self, condition_predictor, timeout=60, retry_interval_ms=100):
         """Wait until a condition is met or time out with an exception.
 
         Args:
@@ -443,15 +443,17 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         # Remove worker placement group.
         if self._worker_placement_group:
             remove_placement_group(self._worker_placement_group)
+            removed_placement_group = self._worker_placement_group
             self._worker_placement_group = None
 
             def is_placement_group_removed():
-                table = ray.util.placement_group_table(self._worker_placement_group)
+                table = ray.util.placement_group_table(removed_placement_group)
                 if "state" not in table:
                     return False
                 return table["state"] == "REMOVED"
 
             self.wait_for_condition(is_placement_group_removed)
+            time.sleep(1)
 
     def reset(self):
         self.shutdown(force=True)
