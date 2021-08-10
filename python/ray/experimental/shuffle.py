@@ -209,54 +209,37 @@ def build_cluster(num_nodes, num_cpus, object_store_memory):
     return cluster
 
 
-def main(ray_address=None,
-         object_store_memory=1e9,
-         num_partitions=5,
-         partition_size=200e6,
-         num_nodes=None,
-         num_cpus=8,
-         no_streaming=False,
-         use_wait=False):
-    import argparse
+def run(ray_address=None,
+        object_store_memory=1e9,
+        num_partitions=5,
+        partition_size=200e6,
+        num_nodes=None,
+        num_cpus=8,
+        no_streaming=False,
+        use_wait=False):
     import numpy as np
     import time
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--ray-address", type=str, default=ray_address)
-    parser.add_argument(
-        "--object-store-memory", type=float, default=object_store_memory)
-    parser.add_argument("--num-partitions", type=int, default=num_partitions)
-    parser.add_argument("--partition-size", type=float, default=partition_size)
-    parser.add_argument("--num-nodes", type=int, default=num_nodes)
-    parser.add_argument("--num-cpus", type=int, default=num_cpus)
-    parser.add_argument(
-        "--no-streaming", action="store_true", default=no_streaming)
-    parser.add_argument("--use-wait", action="store_true", default=use_wait)
-    args = parser.parse_args()
-
-    is_multi_node = args.num_nodes
-    if args.ray_address:
+    is_multi_node = num_nodes
+    if ray_address:
         print("Connecting to a existing cluster...")
-        ray.init(address=args.ray_address)
+        ray.init(address=ray_address)
     elif is_multi_node:
         print("Emulating a cluster...")
-        print(f"Num nodes: {args.num_nodes}")
-        print(f"Num CPU per node: {args.num_cpus}")
-        print(f"Object store memory per node: {args.object_store_memory}")
-        cluster = build_cluster(args.num_nodes, args.num_cpus,
-                                args.object_store_memory)
+        print(f"Num nodes: {num_nodes}")
+        print(f"Num CPU per node: {num_cpus}")
+        print(f"Object store memory per node: {object_store_memory}")
+        cluster = build_cluster(num_nodes, num_cpus, object_store_memory)
         ray.init(address=cluster.address)
     else:
         print("Start a new cluster...")
-        ray.init(
-            num_cpus=args.num_cpus,
-            object_store_memory=args.object_store_memory)
+        ray.init(num_cpus=num_cpus, object_store_memory=object_store_memory)
 
-    partition_size = int(args.partition_size)
-    num_partitions = args.num_partitions
+    partition_size = int(partition_size)
+    num_partitions = num_partitions
     rows_per_partition = partition_size // (8 * 2)
     tracker = _StatusTracker.remote()
-    use_wait = args.use_wait
+    use_wait = use_wait
 
     def input_reader(i: PartitionID) -> Iterable[InType]:
         for _ in range(num_partitions):
@@ -289,7 +272,7 @@ def main(ray_address=None,
         tracker.inc2.remote()
         return total
 
-    if args.no_streaming:
+    if no_streaming:
         output_writer_callable = output_writer_non_streaming
         object_store_writer = ObjectStoreWriterNonStreaming
     else:
@@ -312,6 +295,30 @@ def main(ray_address=None,
     print()
     print("Shuffled", int(sum(output_sizes) / (1024 * 1024)), "MiB in", delta,
           "seconds")
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ray-address", type=str, default=None)
+    parser.add_argument("--object-store-memory", type=float, default=1e9)
+    parser.add_argument("--num-partitions", type=int, default=5)
+    parser.add_argument("--partition-size", type=float, default=200e6)
+    parser.add_argument("--num-nodes", type=int, default=None)
+    parser.add_argument("--num-cpus", type=int, default=8)
+    parser.add_argument("--no-streaming", action="store_true", default=False)
+    parser.add_argument("--use-wait", action="store_true", default=False)
+    args = parser.parse_args()
+
+    run(ray_address=args.ray_address,
+        object_store_memory=args.object_store_memory,
+        num_partitions=args.num_partitions,
+        partition_size=args.partition_size,
+        num_nodes=args.num_nodes,
+        num_cpus=args.num_cpus,
+        no_streaming=args.no_streaming,
+        use_wait=args.use_wait)
 
 
 if __name__ == "__main__":
