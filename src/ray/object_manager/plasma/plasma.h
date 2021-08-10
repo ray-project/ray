@@ -64,20 +64,4 @@ enum class ObjectStatus : int {
   /// The object was found.
   OBJECT_FOUND = 1
 };
-
-/// The plasma store information that is exposed to the eviction policy.
-struct PlasmaStoreInfo {
-  /// Objects that are in the Plasma store.
-  ObjectTable objects;
-};
-
-/// Get an entry from the object table and return NULL if the object_id
-/// is not present.
-///
-/// \param store_info The PlasmaStoreInfo that contains the object table.
-/// \param object_id The object_id of the entry we are looking for.
-/// \return The entry associated with the object_id or NULL if the object_id
-///         is not present.
-ObjectTableEntry *GetObjectTableEntry(PlasmaStoreInfo *store_info,
-                                      const ObjectID &object_id);
 }  // namespace plasma

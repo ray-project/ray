@@ -252,6 +252,11 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
     RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
   }
   num_bytes_available_ = num_bytes_available;
+  // Assume that initially we have enough capacity for all
+  // pulls. This will get set to true if there is at least one
+  // bundle request that we cannot activate due to lack of
+  // space.
+
   std::vector<ObjectID> objects_to_pull;
   std::unordered_set<ObjectID> object_ids_to_cancel;
   // If there are any get requests (highest priority), try to activate them. Since we
@@ -678,6 +683,11 @@ bool PullManager::PullRequestActiveOrWaitingForMetadata(uint64_t request_id) con
     return true;
   }
   return bundle_it->second.num_object_sizes_missing > 0;
+}
+
+bool PullManager::HasPullsQueued() const {
+  absl::MutexLock lock(&active_objects_mu_);
+  return active_object_pull_requests_.size() != object_pull_requests_.size();
 }
 
 std::string PullManager::BundleInfo(const Queue &bundles,

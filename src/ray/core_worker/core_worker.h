@@ -54,6 +54,7 @@
 /// 4) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
 
 namespace ray {
+namespace core {
 
 class CoreWorker;
 
@@ -544,7 +545,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::vector<ObjectID> &contained_object_ids,
                      ObjectID *object_id, std::shared_ptr<Buffer> *data,
                      bool created_by_worker,
-                     const std::unique_ptr<rpc::Address> owner_address = nullptr);
+                     const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -686,14 +687,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status
   Status SetResource(const std::string &resource_name, const double capacity,
                      const NodeID &node_id);
-
-  /// Request an object to be spilled to external storage.
-  /// \param[in] object_ids The objects to be spilled.
-  /// \return Status. Returns Status::Invalid if any of the objects are not
-  /// eligible for spilling (they have gone out of scope or we do not own the
-  /// object). Otherwise, the return status is ok and we will use best effort
-  /// to spill the object.
-  Status SpillObjects(const std::vector<ObjectID> &object_ids);
 
   /// Submit a normal task.
   ///
@@ -837,6 +830,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
+
+  int64_t GetNumTasksSubmitted() const {
+    return direct_task_submitter_->GetNumTasksSubmitted();
+  }
+
+  int64_t GetNumLeasesRequested() const {
+    return direct_task_submitter_->GetNumLeasesRequested();
+  }
 
  public:
   /// Allocate the return object for an executing task. The caller should write into the
@@ -1414,4 +1415,5 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unique_ptr<rpc::JobConfig> job_config_;
 };
 
+}  // namespace core
 }  // namespace ray
