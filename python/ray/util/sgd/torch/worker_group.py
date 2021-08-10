@@ -185,7 +185,6 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         # Get placement group
         self._create_placement_group(num_workers)
         pg = self._worker_placement_group or "default"
-        #print("pg:{}".format(pg.to_dict()))
 
         # Start workers
         self.remote_workers = [
