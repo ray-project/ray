@@ -28,6 +28,7 @@
 #include "ray/pubsub/subscriber.h"
 
 namespace ray {
+namespace core {
 
 static const rpc::Address empty_borrower;
 static const ReferenceCounter::ReferenceTableProto empty_refs;
@@ -2332,6 +2333,7 @@ TEST_F(ReferenceCountTest, TestRemoveOwnedObject) {
   ASSERT_FALSE(rc->HasReference(id));
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

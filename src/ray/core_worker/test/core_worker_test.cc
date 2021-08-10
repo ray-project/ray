@@ -44,6 +44,7 @@ int node_manager_port = 0;
 }  // namespace
 
 namespace ray {
+namespace core {
 
 static void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
@@ -58,8 +59,8 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
-  RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                              "actor creation task", "", "", ""));
+  RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
+                                         "actor creation task", "", "", ""));
   std::vector<std::unique_ptr<TaskArg>> args;
   args.emplace_back(new TaskArgByValue(
       std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
@@ -205,13 +206,13 @@ int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
   std::vector<std::unique_ptr<TaskArg>> args;
   TaskOptions options{"", 1, resources};
   std::vector<ObjectID> return_ids;
-  RayFunction func{Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                         "GetWorkerPid", "", "", "")};
+  RayFunction func{Language::PYTHON,
+                   FunctionDescriptorBuilder::BuildPython("GetWorkerPid", "", "", "")};
 
   CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, func, args, options,
                                                      &return_ids);
 
-  std::vector<std::shared_ptr<ray::RayObject>> results;
+  std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().Get(return_ids, -1, &results));
 
   if (nullptr == results[0]->GetData()) {
@@ -243,8 +244,8 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
           std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
       args.emplace_back(new TaskArgByReference(object_id, driver.GetRpcAddress()));
 
-      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                                  "MergeInputArgsAsOutput", "", "", ""));
+      RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
+                                             "MergeInputArgsAsOutput", "", "", ""));
       TaskOptions options;
       std::vector<ObjectID> return_ids;
       driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0,
@@ -253,7 +254,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
 
       ASSERT_EQ(return_ids.size(), 1);
 
-      std::vector<std::shared_ptr<ray::RayObject>> results;
+      std::vector<std::shared_ptr<RayObject>> results;
       RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
@@ -288,13 +289,13 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
       TaskOptions options{"", 1, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                                  "MergeInputArgsAsOutput", "", "", ""));
+      RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
+                                             "MergeInputArgsAsOutput", "", "", ""));
 
       driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
       ASSERT_EQ(return_ids.size(), 1);
 
-      std::vector<std::shared_ptr<ray::RayObject>> results;
+      std::vector<std::shared_ptr<RayObject>> results;
       RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
@@ -330,13 +331,13 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
     TaskOptions options{"", 1, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                                "MergeInputArgsAsOutput", "", "", ""));
+    RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
+                                           "MergeInputArgsAsOutput", "", "", ""));
     driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
 
     ASSERT_EQ(return_ids.size(), 1);
 
-    std::vector<std::shared_ptr<ray::RayObject>> results;
+    std::vector<std::shared_ptr<RayObject>> results;
     RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
 
     ASSERT_EQ(results.size(), 1);
@@ -392,8 +393,8 @@ void CoreWorkerTest::TestActorRestart(
 
       TaskOptions options{"", 1, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                                  "MergeInputArgsAsOutput", "", "", ""));
+      RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
+                                             "MergeInputArgsAsOutput", "", "", ""));
 
       driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
       ASSERT_EQ(return_ids.size(), 1);
@@ -435,8 +436,8 @@ void CoreWorkerTest::TestActorFailure(
 
       TaskOptions options{"", 1, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                                  "MergeInputArgsAsOutput", "", "", ""));
+      RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
+                                             "MergeInputArgsAsOutput", "", "", ""));
 
       driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
 
@@ -486,8 +487,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   // to benchmark performance.
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
-  RayFunction function(ray::Language::PYTHON,
-                       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+  RayFunction function(Language::PYTHON,
+                       FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   std::vector<std::unique_ptr<TaskArg>> args;
   args.emplace_back(new TaskArgByValue(
       std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
@@ -569,8 +570,8 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
 
     TaskOptions options{"", 1, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                                "MergeInputArgsAsOutput", "", "", ""));
+    RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
+                                           "MergeInputArgsAsOutput", "", "", ""));
 
     driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
     ASSERT_EQ(return_ids.size(), 1);
@@ -627,10 +628,10 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 TEST_F(ZeroNodeTest, TestActorHandle) {
   // Test actor handle serialization and deserialization round trip.
   JobID job_id = NextJobId();
-  ActorHandle original(
-      ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0), TaskID::Nil(),
-      rpc::Address(), job_id, ObjectID::FromRandom(), Language::PYTHON,
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""), "", 0);
+  ActorHandle original(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0),
+                       TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
+                       Language::PYTHON,
+                       FunctionDescriptorBuilder::BuildPython("", "", "", ""), "", 0);
   std::string output;
   original.Serialize(&output);
   ActorHandle deserialized(output);
@@ -838,10 +839,10 @@ TEST_F(SingleNodeTest, TestCancelTasks) {
   auto &driver = CoreWorkerProcess::GetCoreWorker();
 
   // Create two functions, each implementing a while(true) loop.
-  RayFunction func1(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                               "WhileTrueLoop", "", "", ""));
-  RayFunction func2(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
-                                               "WhileTrueLoop", "", "", ""));
+  RayFunction func1(Language::PYTHON,
+                    FunctionDescriptorBuilder::BuildPython("WhileTrueLoop", "", "", ""));
+  RayFunction func2(Language::PYTHON,
+                    FunctionDescriptorBuilder::BuildPython("WhileTrueLoop", "", "", ""));
   // Return IDs for the two functions that implement while(true) loops.
   std::vector<ObjectID> return_ids1;
   std::vector<ObjectID> return_ids2;
@@ -915,6 +916,7 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
   TestActorFailure(resources);
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

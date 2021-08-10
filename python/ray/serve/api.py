@@ -3,9 +3,7 @@ import atexit
 import collections
 import inspect
 import logging
-import os
 import re
-import sys
 import time
 from dataclasses import dataclass
 from functools import wraps
@@ -330,21 +328,6 @@ class Client:
         if ray_actor_options is None:
             ray_actor_options = {}
 
-        # If conda is activated and a conda env is not specified in runtime_env
-        # in ray_actor_options, default to conda env of this process (client).
-        # Without this code, the backend would run in the controller's conda
-        # env, which is likely different from that of the client.
-        # If using Ray client, skip this convenience feature because the local
-        # client env doesn't create the Ray cluster (so the client env is
-        # likely not present on the cluster.)
-        if not ray.util.client.ray.is_connected() and sys.platform != "win32":
-            if ray_actor_options.get("runtime_env") is None:
-                ray_actor_options["runtime_env"] = {}
-            if ray_actor_options["runtime_env"].get("conda") is None:
-                current_env = os.environ.get("CONDA_DEFAULT_ENV")
-                if current_env is not None and current_env != "":
-                    ray_actor_options["runtime_env"]["conda"] = current_env
-
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
 
@@ -403,9 +386,10 @@ class Client:
                 python_methods.append(method_name)
 
         goal_id, updating = ray.get(
-            self._controller.deploy.remote(
-                name, backend_config, replica_config, python_methods, version,
-                prev_version, route_prefix))
+            self._controller.deploy.remote(name, backend_config,
+                                           replica_config, python_methods,
+                                           version, prev_version, route_prefix,
+                                           ray.get_runtime_context().job_id))
 
         if updating:
             msg = f"Updating deployment '{name}'"
@@ -649,14 +633,13 @@ def start(
     current_namespace = ray.get_runtime_context().namespace
 
     try:
-        _get_global_client()
+        client = _get_global_client()
         logger.info("Connecting to existing Serve instance in namespace "
                     f"'{current_namespace}'.")
-        return
+        return client
     except RayServeException:
         pass
 
-    # Try to get serve controller if it exists
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
     else:
@@ -1178,7 +1161,7 @@ class Deployment:
 
     @property
     def route_prefix(self) -> Optional[str]:
-        """HTTP route prefix that this deploymet is exposed under."""
+        """HTTP route prefix that this deployment is exposed under."""
         return self._route_prefix
 
     @property
@@ -1188,7 +1171,7 @@ class Deployment:
 
     @property
     def init_args(self) -> Tuple[Any]:
-        """Arguments passed to the underlying class' constructor."""
+        """Arguments passed to the underlying class's constructor."""
         return self._init_args
 
     def __call__(self):

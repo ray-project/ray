@@ -48,7 +48,7 @@ INCLUDES_CPP_DIRS=(
 EXCLUDES_DIRS=(
     src/ray/object_manager/plasma/
     src/ray/thirdparty
-    cpp/example/thirdparty
+    cpp/example
 )
 
 ERROR_FILES=()

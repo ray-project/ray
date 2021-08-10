@@ -18,6 +18,7 @@ from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.new_dashboard.datacenter import DataOrganizer
 from ray.new_dashboard.utils import async_loop_forever
+from ray._raylet import connect_to_gcs
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
@@ -44,6 +45,8 @@ class DashboardHead:
         self.aiogrpc_gcs_channel = None
         self.http_session = None
         self.ip = ray.util.get_node_ip_address()
+        ip, port = redis_address.split(":")
+        self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = self.server.add_insecure_port("[::]:0")
         logger.info("Dashboard head grpc address: %s:%s", self.ip,
