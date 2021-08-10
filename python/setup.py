@@ -61,6 +61,7 @@ class SetupType(Enum):
 class BuildType(Enum):
     DEFAULT = 1
     DEBUG = 2
+    ASAN = 3
 
 
 class SetupSpec:
@@ -70,8 +71,12 @@ class SetupSpec:
         self.name: str = name
         version = find_version("ray", "__init__.py")
         # add .dbg suffix if debug mode is on.
-        self.version: str = f"{version}+dbg" \
-            if build_type == BuildType.DEBUG else version
+        if build_type == BuildType.DEBUG:
+            self.version: str = f"{version}+dbg"
+        elif build_type == BuildType.ASAN:
+            self.version: str = f"{version}+asan"
+        else:
+            self.version = version
         self.description: str = description
         self.build_type: BuildType = build_type
         self.files_to_include: list = []
@@ -85,8 +90,13 @@ class SetupSpec:
             return []
 
 
-BUILD_TYPE = BuildType.DEBUG if os.getenv(
-    "RAY_DEBUG_BUILD") == "debug" else BuildType.DEFAULT
+build_type = os.getenv("RAY_DEBUG_BUILD")
+if build_type == "debug":
+    BUILD_TYPE = BuildType.DEBUG
+elif build_type == "asan":
+    BUILD_TYPE = BuildType.ASAN
+else:
+    BUILD_TYPE = BuildType.DEFAULT
 
 if os.getenv("RAY_INSTALL_CPP") == "1":
     # "ray-cpp" wheel package.
@@ -364,6 +374,8 @@ def build(build_python, build_java, build_cpp):
     bazel_flags = ["--verbose_failures"]
     if setup_spec.build_type == BuildType.DEBUG:
         bazel_flags.extend(["--config", "debug"])
+    if setup_spec.build_type == BuildType.ASAN:
+        bazel_flags.extend(["--config", "asan"])
 
     return bazel_invoke(
         subprocess.check_call,

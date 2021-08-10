@@ -46,6 +46,8 @@
   commands:
     # Build the debug wheels
     - RAY_DEBUG_BUILD=debug LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    # Build the asan wheels
+    - RAY_DEBUG_BUILD=asan LINUX_WHEELS=1 ./ci/travis/ci.sh build
     # Upload the wheels.
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
@@ -200,14 +202,21 @@
       --test_tag_filters=-kubernetes,-jenkins_only,debug_tests,-flaky
       python/ray/tests/...
 - label: ":core: ASAN Test"
+- label: ":python: (ASAN tests)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    - RAY_DEBUG_BUILD=asan ./ci/travis/ci.sh build
     - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
-      --build_tests_only
       --config=asan-buildkite
-      --jobs=2
       --test_tag_filters=-kubernetes,-jenkins_only,asan_tests,-flaky
-      -- python/ray/tests/...
+      --test_env=CONDA_EXE
+      --test_env=CONDA_PYTHON_EXE
+      --test_env=CONDA_SHLVL
+      --test_env=CONDA_PREFIX
+      --test_env=CONDA_DEFAULT_ENV
+      python/ray/tests/...
 - label: ":python: (Worker In Container)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:

@@ -338,6 +338,6 @@ py_test_module_list(
   size = "large",
   extra_srcs = SRCS,
   name_suffix = "_asan",
-  tags = ["exclusive", "debug_tests"],
+  tags = ["exclusive", "asan_tests"],
   deps = ["//:ray_lib"],
 )
