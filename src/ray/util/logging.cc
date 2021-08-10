@@ -106,7 +106,7 @@ class DefaultStdErrLogger final {
 class SpdLogMessage final {
  public:
   explicit SpdLogMessage(const char *file, int line, int loglevel,
-                         std::ostringstream *expose_osstream)
+                         std::shared_ptr<std::ostringstream> expose_osstream)
       : loglevel_(loglevel), expose_osstream_(expose_osstream) {
     stream() << ConstBasename(file) << ":" << line << ": ";
   }
@@ -139,7 +139,7 @@ class SpdLogMessage final {
  private:
   std::ostringstream str_;
   int loglevel_;
-  std::ostringstream *expose_osstream_;
+  std::shared_ptr<std::ostringstream> expose_osstream_;
 };
 
 typedef ray::SpdLogMessage LoggingProvider;
@@ -351,7 +351,7 @@ RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
       severity_(severity),
       is_exposed_(severity == RayLogLevel::FATAL) {
   if (is_exposed_) {
-    expose_osstream_ = new std::ostringstream();
+    expose_osstream_ = std::make_shared<std::ostringstream>();
     *expose_osstream_ << file_name << ":" << line_number << ":";
   }
   if (is_enabled_) {

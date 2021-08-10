@@ -53,6 +53,7 @@
 #include <chrono>
 #include <functional>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
 
@@ -271,7 +272,7 @@ class RayLog : public RayLogBase {
   /// Whether need to expose this log or not.
   bool is_exposed_ = false;
   /// String stream of exposed log content.
-  std::ostringstream *expose_osstream_ = nullptr;
+  std::shared_ptr<std::ostringstream> expose_osstream_ = nullptr;
   /// Callback function which will be triggered to expose log.
   static ExposeLogCallback expose_log_callback_;
   static RayLogLevel severity_threshold_;
