@@ -19,7 +19,7 @@
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 using ray::core::CoreWorkerProcess;
 using ray::core::TaskOptions;
@@ -83,5 +83,5 @@ ObjectID NativeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
   return Submit(invocation, task_options);
 }
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray
