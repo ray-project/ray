@@ -2,7 +2,7 @@ from collections import deque
 import gym
 import os
 import pickle
-from typing import Callable, Dict, Optional, Set, Type, TYPE_CHECKING
+from typing import Callable, Dict, Optional, Type, TYPE_CHECKING
 
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.annotations import override
@@ -39,19 +39,10 @@ class PolicyMap(dict):
         """Initializes a PolicyMap instance.
 
         Args:
-            worker_index (int): The worker index of the RolloutWorker this map
-                resides in.
-            num_workers (int): The total number of remote workers in the
-                WorkerSet to which this map's RolloutWorker belongs to.
-            capacity (int): The maximum number of policies to hold in memory.
+            maxlen (int): The maximum number of policies to hold in memory.
                 The least used ones are written to disk/S3 and retrieved
                 when needed.
-            path (str): The path to store the policy pickle files to. Files
-                will have the name: [policy_id].[worker idx].policy.pkl.
-            policy_config (TrainerConfigDict): The Trainer's base config dict.
-            session_creator (Optional[Callable[[], tf1.Session]): An optional
-                tf1.Session creation callable.
-            seed (int): An optional seed (used to seed tf policies).
+            path (str):
         """
         super().__init__()
 
@@ -62,22 +53,22 @@ class PolicyMap(dict):
 
         # The file extension for stashed policies (that are no longer available
         # in-memory but can be reinstated any time from storage).
-        self.extension = f".{self.worker_index}.policy.pkl"
+        self.extension = ".policy.pkl"
 
         # Dictionary of keys that may be looked up (cached or not).
-        self.valid_keys: Set[str] = set()
+        self.valid_keys = set()
         # The actual cache with the in-memory policy objects.
-        self.cache: Dict[str, Policy] = {}
+        self.cache = {}
         # The doubly-linked list holding the currently in-memory objects.
         self.deque = deque(maxlen=capacity or 10)
         # The file path where to store overflowing policies.
         self.path = path or "."
         # The core config to use. Each single policy's config override is
         # added on top of this.
-        self.policy_config: TrainerConfigDict = policy_config or {}
+        self.policy_config = policy_config or {}
         # The orig classes/obs+act spaces, and config overrides of the
         # Policies.
-        self.policy_specs: Dict[PolicyID, PolicySpec] = {}
+        self.policy_specs = {}  # type: Dict[PolicyID, PolicySpec]
 
     def create_policy(self, policy_id: PolicyID, policy_cls: Type["Policy"],
                       observation_space: gym.Space, action_space: gym.Space,
@@ -149,7 +140,7 @@ class PolicyMap(dict):
     def __getitem__(self, item):
         # Never seen this key -> Error.
         if item not in self.valid_keys:
-            raise KeyError(f"PolicyID '{item}' not found in this PolicyMap!")
+            raise KeyError(f"'{item}' not a valid key!")
 
         # Item already in cache -> Rearrange deque (least recently used) and
         # return.
@@ -259,7 +250,9 @@ class PolicyMap(dict):
         policy_state = policy.get_state()
         # Closes policy's tf session, if any.
         self._close_session(policy)
-        # Remove from memory. This will clear the tf Graph as well.
+        # Remove from memory.
+        # TODO: (sven) This should clear the tf Graph as well, if the Trainer
+        #  would not hold parts of the graph (e.g. in tf multi-GPU setups).
         del self.cache[delkey]
         # Write state to disk.
         with open(self.path + "/" + delkey + self.extension, "wb") as f:
