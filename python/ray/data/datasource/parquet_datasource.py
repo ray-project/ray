@@ -42,7 +42,9 @@ class ParquetDatasource(Datasource[ArrowRow]):
 
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         pq_ds = pq.ParquetDataset(
-            paths, **dataset_kwargs, filesystem=filesystem,
+            paths,
+            **dataset_kwargs,
+            filesystem=filesystem,
             use_legacy_dataset=False)
         if schema is None:
             schema = pq_ds.schema
@@ -66,7 +68,9 @@ class ParquetDatasource(Datasource[ArrowRow]):
             tables = []
             for piece in pieces:
                 table = piece.to_table(
-                    use_threads=use_threads, columns=columns, schema=schema,
+                    use_threads=use_threads,
+                    columns=columns,
+                    schema=schema,
                     **reader_args)
                 part = _get_partition_keys(piece.partition_expression)
                 if part:

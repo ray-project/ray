@@ -489,10 +489,14 @@ def test_parquet_read(ray_start_regular_shared, tmp_path):
 
 def test_parquet_read_partitioned(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame({
-        "one": [1, 1, 1, 3, 3, 3], "two": ["a", "b", "c", "e", "f", "g"]})
+        "one": [1, 1, 1, 3, 3, 3],
+        "two": ["a", "b", "c", "e", "f", "g"]
+    })
     table = pa.Table.from_pandas(df)
     pq.write_to_dataset(
-        table, root_path=str(tmp_path), partition_cols=["one"],
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
         use_legacy_dataset=False)
     pq_ds = pq.ParquetDataset(str(tmp_path), use_legacy_dataset=False)
     print(pq_ds.read().to_pandas())
