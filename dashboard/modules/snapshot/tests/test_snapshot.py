@@ -1,8 +1,10 @@
 import os
+import sys
 import json
 import jsonschema
 
 import pprint
+import pytest
 import requests
 
 from ray.test_utils import (
@@ -58,6 +60,7 @@ ray.get(a.ping.remote())
 
     assert len(data["data"]["snapshot"]["actors"]) == 3
     assert len(data["data"]["snapshot"]["jobs"]) == 4
+    assert len(data["data"]["snapshot"]["deployments"]) == 0
 
     for actor_id, entry in data["data"]["snapshot"]["actors"].items():
         assert entry["jobId"] in data["data"]["snapshot"]["jobs"]
@@ -111,3 +114,7 @@ my_func.deploy()
         assert entry["rayJobId"] is not None
         assert entry["startTime"] == 0
         assert entry["endTime"] == 0
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
