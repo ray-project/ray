@@ -729,7 +729,6 @@ def test_use_dynamic_function_and_class(ray_start_regular_shared):
     job_config = ray.job_config.JobConfig(code_search_path=[current_path])
     ray.init({}, job_config=job_config)
 
-    @ray.remote
     def foo():
         return "OK"
 
