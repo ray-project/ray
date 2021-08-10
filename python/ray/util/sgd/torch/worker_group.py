@@ -185,6 +185,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         # Get placement group
         self._create_placement_group(num_workers)
         pg = self._worker_placement_group or "default"
+        #print("pg:{}".format(pg.to_dict()))
 
         # Start workers
         self.remote_workers = [
@@ -411,6 +412,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             return False
 
     def shutdown(self, force=False):
+        print("shutdown:{}".format(force))
         force_kill = force
         if not force_kill:
             cleanup = self._shutdown_remote_workers()
@@ -424,6 +426,33 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         if self._worker_placement_group:
             remove_placement_group(self._worker_placement_group)
             self._worker_placement_group = None
+
+            def is_placement_group_removed():
+                table = ray.util.placement_group_table(placement_group)
+                if "state" not in table:
+                    return False
+                return table["state"] == "REMOVED"
+
+            wait_for_condition(is_placement_group_removed)
+
+
+    def wait_for_condition(condition_predictor, timeout=10, retry_interval_ms=100):
+        """Wait until a condition is met or time out with an exception.
+ 
+        Args:
+            condition_predictor: A function that predicts the condition.
+            timeout: Maximum timeout in seconds.
+            retry_interval_ms: Retry interval in milliseconds.
+
+        Raises:
+            RuntimeError: If the condition is not met before the timeout expires.
+        """
+        start = time.time()
+        while time.time() - start <= timeout:
+            if condition_predictor():
+                return
+            time.sleep(retry_interval_ms / 1000.0)
+        raise RuntimeError("The condition wasn't met before the timeout expired.")
 
     def reset(self):
         self.shutdown(force=True)
