@@ -283,6 +283,7 @@ inline std::vector<opencensus::tags::TagKey> convertTags(
   This is a helper class to define a metrics. With this class
   we'll be able to define a multi-view-single-measure metric for
   efficiency (TODO Fix the bug in backend to make it work).
+  TODO Remove old metrics code.
 */
 class Stats {
   using Measure = opencensus::stats::Measure<double>;
@@ -333,7 +334,8 @@ class Stats {
       return;
     }
     TagsType combined_tags = StatsConfig::instance().GetGlobalTags();
-    // In case that tag containing non-printable chars
+    // In case that tag containing non-printable chars we replace them to '?'
+    // It's important here because otherwise, the message will fail to be sent.
     for (auto &t : tags) {
       for (auto &c : t.second) {
         if (!isprint(c)) {

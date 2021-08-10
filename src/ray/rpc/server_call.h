@@ -144,9 +144,8 @@ class ServerCallImpl : public ServerCall {
         response_writer_(&context_),
         io_service_(io_service),
         call_name_(std::move(call_name)) {
-    if (call_name_.empty()) {
-      call_name_ = "UNKNOWN";
-    }
+    // TODO call_name_ sometimes get corrunpted due to memory issues.
+    RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     STATS_grpc_server_req_new.Record(1.0, call_name_);
     start_time_ = absl::GetCurrentTimeNanos();
   }
