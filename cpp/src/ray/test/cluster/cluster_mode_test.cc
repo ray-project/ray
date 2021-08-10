@@ -29,8 +29,7 @@ ABSL_FLAG(int32_t, redis_port, 6379, "");
 
 TEST(RayClusterModeTest, FullTest) {
   ray::RayConfig config;
-  bool is_extern_cluster = absl::GetFlag<bool>(FLAGS_external_cluster);
-  if (is_extern_cluster) {
+  if (absl::GetFlag<bool>(FLAGS_external_cluster)) {
     auto port = absl::GetFlag<int32_t>(FLAGS_redis_port);
     std::string password = absl::GetFlag<std::string>(FLAGS_redis_password);
     ray::internal::ProcessHelper::GetInstance().StartRayNode(port, password);
@@ -179,10 +178,6 @@ TEST(RayClusterModeTest, FullTest) {
 
   uint64_t pid = *actor1.Task(&Counter::GetPid).Remote().Get();
   EXPECT_TRUE(Counter::IsProcessAlive(pid));
-
-  if (is_extern_cluster) {
-    ray::internal::ProcessHelper::GetInstance().StopRayNode();
-  }
 
   auto actor_object4 = actor1.Task(&Counter::Exit).Remote();
   std::this_thread::sleep_for(std::chrono::seconds(2));
