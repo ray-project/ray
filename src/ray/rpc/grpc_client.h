@@ -49,8 +49,8 @@ class GrpcClient {
     // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
     // this configurable, or selectively set it for known local connections only.
     argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
-    argument.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
-    argument.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
     std::shared_ptr<grpc::Channel> channel =
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
                                   grpc::InsecureChannelCredentials(), argument);
@@ -65,8 +65,8 @@ class GrpcClient {
     grpc::ChannelArguments argument;
     argument.SetResourceQuota(quota);
     argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
-    argument.SetMaxSendMessageSize(RayConfig::instance().max_grpc_message_size());
-    argument.SetMaxReceiveMessageSize(RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
+    argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
     std::shared_ptr<grpc::Channel> channel =
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
                                   grpc::InsecureChannelCredentials(), argument);
