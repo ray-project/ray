@@ -79,6 +79,7 @@ def Deprecated(old=None, *, new=None, help=None, error):
                         error=error,
                     )
                 return obj_init(*args, **kwargs)
+
             obj.__init__ = patched_init
             return obj
 
