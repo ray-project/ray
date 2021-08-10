@@ -33,7 +33,6 @@ $ cd ~/ray-results/; tensorboard --logdir .
 
 Other options for running this example:
 $ python attention_net.py --help
-# TODO: why does it not get the requested resources with multiple cpus?
 """
 
 import argparse
@@ -75,7 +74,6 @@ def get_cli_args():
         choices=["tf", "tf2", "tfe", "torch"],
         default="tf",
         help="The DL framework specifier.")
-    # FIXME: why does it get stuck if I set cpu to 2?
     parser.add_argument("--num-cpus", type=int, default=0)
     parser.add_argument(
         "--as-test",
