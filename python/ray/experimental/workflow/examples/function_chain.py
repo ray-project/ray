@@ -9,8 +9,12 @@ def function_chain(steps: List[Callable]) -> Callable:
 
     @ray.workflow.step
     def chain_func(*args, **kw_argv):
+        # Get the first function as a start
         wf_step = ray.workflow.step(steps[0]).step(*args, **kw_argv)
         for i in range(1, len(steps)):
+            # Convert each function inside steps into workflow step
+            # function and then use the previous output as the input
+            # for them.
             wf_step = ray.workflow.step(steps[i]).step(wf_step)
         return wf_step
 
