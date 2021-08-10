@@ -139,7 +139,7 @@ void GcsBasedActorScheduler::WarnResourceAllocationFailure(
   if (iter != gcs_resource_manager_->GetClusterResources().end()) {
     scheduling_resource = &iter->second;
   }
-  const std::string &scheduling_resource_str =
+  std::string scheduling_resource_str =
       scheduling_resource ? scheduling_resource->DebugString() : "None";
   // Return nullptr if the cluster resources are not enough.
   RAY_LOG(WARNING) << "No enough resources for creating actor "
@@ -185,26 +185,21 @@ void GcsBasedActorScheduler::HandleWorkerLeaseReply(
         node_to_actors_when_leasing_.erase(iter);
       }
       if (reply.rejected()) {
-        std::ostringstream ss;
-        ss << "Failed to lease worker from node " << node_id << " for actor "
-           << actor->GetActorID()
-           << " as the resources are seized by normal tasks, job id = "
-           << actor->GetActorID().JobId();
-        RAY_LOG(INFO) << ss.str();
+        RAY_LOG(INFO) << "Failed to lease worker from node " << node_id << " for actor "
+                      << actor->GetActorID()
+                      << " as the resources are seized by normal tasks, job id = "
+                      << actor->GetActorID().JobId();
         HandleWorkerLeaseRejectedReply(actor, reply);
       } else {
-        std::ostringstream ss;
-        ss << "Finished leasing worker from node " << node_id << " for actor "
-           << actor->GetActorID() << ", job id = " << actor->GetActorID().JobId();
-        RAY_LOG(INFO) << ss.str();
+        RAY_LOG(INFO) << "Finished leasing worker from node " << node_id << " for actor "
+                      << actor->GetActorID()
+                      << ", job id = " << actor->GetActorID().JobId();
         HandleWorkerLeaseGrantedReply(actor, reply);
       }
     } else {
-      std::ostringstream ss;
-      ss << "Failed to lease worker from node " << node_id << " for actor "
-         << actor->GetActorID() << ", status = " << status
-         << ", job id = " << actor->GetActorID().JobId();
-      RAY_LOG(WARNING) << ss.str();
+      RAY_LOG(WARNING) << "Failed to lease worker from node " << node_id << " for actor "
+                       << actor->GetActorID() << ", status = " << status
+                       << ", job id = " << actor->GetActorID().JobId();
       RetryLeasingWorkerFromNode(actor, node);
     }
   }

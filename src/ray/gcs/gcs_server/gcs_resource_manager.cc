@@ -346,10 +346,8 @@ void GcsResourceManager::DeleteResources(
 void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   auto node_id = NodeID::FromBinary(node.node_id());
   if (!cluster_scheduling_resources_.contains(node_id)) {
-    std::unordered_map<std::string, double> resource_mapping;
-    for (auto &entry : node.resources_total()) {
-      resource_mapping.emplace(entry.first, entry.second);
-    }
+    std::unordered_map<std::string, double> resource_mapping(
+        node.resources_total().begin(), node.resources_total().end());
     // Update the cluster scheduling resources as new node is added.
     ResourceSet node_resources(resource_mapping);
     cluster_scheduling_resources_.emplace(node_id, SchedulingResources(node_resources));
@@ -450,10 +448,9 @@ std::string GcsResourceManager::DebugString() const {
   return stream.str();
 }
 
-void GcsResourceManager::AddResourcesChangedListener(
-    const std::function<void()> &listener) {
+void GcsResourceManager::AddResourcesChangedListener(std::function<void()> listener) {
   RAY_CHECK(listener != nullptr);
-  resources_changed_listeners_.emplace_back(listener);
+  resources_changed_listeners_.emplace_back(std::move(listener));
 }
 
 void GcsResourceManager::UpdateNodeNormalTaskResources(

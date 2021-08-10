@@ -47,7 +47,7 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
   // Select a node to lease worker for the actor.
-  const auto &node_id = SelectNode(actor);
+  auto node_id = SelectNode(actor);
 
   auto node = gcs_node_manager_.GetAliveNode(node_id);
   if (!node.has_value()) {

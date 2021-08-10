@@ -1626,11 +1626,11 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     // If the reqiured resource and normal task resource exceed available resource,
     // reject it.
     ResourceSet normal_task_resources = cluster_task_manager_->CalcNormalTaskResources();
-    std::string msg = "Reject leasing as the raylet has no enough resources.";
-    RAY_LOG(INFO) << msg << " actor_id = " << actor_id
-                  << ", normal_task_resources = " << normal_task_resources.ToString()
-                  << ", local_resoruce_view = "
-                  << cluster_resource_scheduler_->GetLocalResourceViewString();
+    RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
+                   << " actor_id = " << actor_id
+                   << ", normal_task_resources = " << normal_task_resources.ToString()
+                   << ", local_resoruce_view = "
+                   << cluster_resource_scheduler_->GetLocalResourceViewString();
     auto resources_data = reply->mutable_resources_data();
     resources_data->set_node_id(self_node_id_.Binary());
     resources_data->set_resources_normal_task_changed(true);

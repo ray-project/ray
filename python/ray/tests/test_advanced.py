@@ -610,7 +610,8 @@ def test_task_output_inline_bytes_limit(ray_start_cluster):
 
 
 # This case tests whether gcs-based actor scheduler distributes actors
-# in a balanced way.
+# in a balanced way. By default, it uses the `SPREAD` strategy of
+# gcs resource scheduler.
 @pytest.mark.parametrize("args", [[5, 20], [5, 3]])
 def test_actor_distribution_balance(ray_start_cluster, args):
     cluster = ray_start_cluster
