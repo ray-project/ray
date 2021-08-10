@@ -151,7 +151,7 @@ class TestPPO(unittest.TestCase):
         # Test w/ LSTMs.
         config["model"]["use_lstm"] = True
 
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             num_iterations = 200
             learnt = False

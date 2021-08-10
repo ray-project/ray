@@ -5,27 +5,19 @@
 
 import re
 
-try:
-    from prometheus_client import start_http_server
-    from prometheus_client.core import (
-        REGISTRY,
-        CollectorRegistry,
-        CounterMetricFamily,
-        GaugeMetricFamily,
-        HistogramMetricFamily,
-        UnknownMetricFamily,
-    )
+from prometheus_client import start_http_server
+from prometheus_client.core import (
+    REGISTRY,
+    CollectorRegistry,
+    CounterMetricFamily,
+    GaugeMetricFamily,
+    HistogramMetricFamily,
+    UnknownMetricFamily,
+)
 
-    from opencensus.common.transports import sync
-    from opencensus.stats import aggregation_data as aggregation_data_module
-    from opencensus.stats import base_exporter
-except ImportError:
-    warning_message = (
-        "Not all Ray Dashboard dependencies were found. "
-        "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
-        "only be usable via `pip install 'ray[default]'`. Please "
-        "update your install command.")
-    raise ImportError(warning_message)
+from opencensus.common.transports import sync
+from opencensus.stats import aggregation_data as aggregation_data_module
+from opencensus.stats import base_exporter
 
 
 class Options(object):

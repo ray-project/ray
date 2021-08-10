@@ -255,6 +255,7 @@
                 <exclude>**/ActorCall.java</exclude>
                 <exclude>**/PyActorCall.java</exclude>
                 <exclude>**/runtime/generated/**/*.*</exclude>
+                <exclude>**/serve/generated/**/*.*</exclude>
               </excludes>
               <googleJavaFormat>
                 <version>1.7</version>

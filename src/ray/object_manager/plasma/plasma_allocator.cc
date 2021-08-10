@@ -89,7 +89,7 @@ PlasmaAllocator::PlasmaAllocator(const std::string &plasma_directory,
       << "PlasmaAllocator initialization failed."
       << " It's likely we don't have enought space in " << plasma_directory;
   // This will unmap the file, but the next one created will be as large
-  // as this one (this is an implementation internal of dlmalloc).
+  // as this one (this is an implementation detail of dlmalloc).
   Free(std::move(allocation.value()));
 }
 

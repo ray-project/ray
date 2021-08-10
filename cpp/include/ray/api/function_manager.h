@@ -32,17 +32,17 @@ namespace internal {
 template <typename T>
 inline static std::enable_if_t<!std::is_pointer<T>::value, msgpack::sbuffer>
 PackReturnValue(T result) {
-  return ray::api::Serializer::Serialize(std::move(result));
+  return Serializer::Serialize(std::move(result));
 }
 
 template <typename T>
 inline static std::enable_if_t<std::is_pointer<T>::value, msgpack::sbuffer>
 PackReturnValue(T result) {
-  return ray::api::Serializer::Serialize((uint64_t)result);
+  return Serializer::Serialize((uint64_t)result);
 }
 
 inline static msgpack::sbuffer PackVoid() {
-  return ray::api::Serializer::Serialize(msgpack::type::nil_t());
+  return Serializer::Serialize(msgpack::type::nil_t());
 }
 
 msgpack::sbuffer PackError(std::string error_msg);
@@ -88,27 +88,18 @@ struct Invoker {
     using RetrunType = boost::callable_traits::return_type_t<Function>;
     using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<Function>>;
     if (std::tuple_size<ArgsTuple>::value != args_buffer.size()) {
-      return PackError("Arguments number not match");
+      throw std::invalid_argument("Arguments number not match");
     }
 
     msgpack::sbuffer result;
     ArgsTuple tp{};
-    try {
-      bool is_ok = GetArgsTuple(
-          tp, args_buffer, std::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
-      if (!is_ok) {
-        return PackError("arguments error");
-      }
-
-      result = Invoker<Function>::Call<RetrunType>(func, std::move(tp));
-    } catch (msgpack::type_error &e) {
-      result = PackError(std::string("invalid arguments: ") + e.what());
-    } catch (const std::exception &e) {
-      result = PackError(std::string("function execute exception: ") + e.what());
-    } catch (...) {
-      result = PackError("unknown exception");
+    bool is_ok = GetArgsTuple(
+        tp, args_buffer, std::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
+    if (!is_ok) {
+      throw std::invalid_argument("Arguments error");
     }
 
+    result = Invoker<Function>::Call<RetrunType>(func, std::move(tp));
     return result;
   }
 
@@ -119,30 +110,21 @@ struct Invoker {
     using ArgsTuple =
         RemoveReference_t<RemoveFirst_t<boost::callable_traits::args_t<Function>>>;
     if (std::tuple_size<ArgsTuple>::value != args_buffer.size()) {
-      return PackError("Arguments number not match");
+      throw std::invalid_argument("Arguments number not match");
     }
 
     msgpack::sbuffer result;
     ArgsTuple tp{};
-    try {
-      bool is_ok = GetArgsTuple(
-          tp, args_buffer, std::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
-      if (!is_ok) {
-        return PackError("arguments error");
-      }
-
-      uint64_t actor_ptr =
-          ray::api::Serializer::Deserialize<uint64_t>(ptr->data(), ptr->size());
-      using Self = boost::callable_traits::class_of_t<Function>;
-      Self *self = (Self *)actor_ptr;
-      result = Invoker<Function>::CallMember<RetrunType>(func, self, std::move(tp));
-    } catch (msgpack::type_error &e) {
-      result = PackError(std::string("invalid arguments: ") + e.what());
-    } catch (const std::exception &e) {
-      result = PackError(std::string("function execute exception: ") + e.what());
-    } catch (...) {
-      result = PackError("unknown exception");
+    bool is_ok = GetArgsTuple(
+        tp, args_buffer, std::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
+    if (!is_ok) {
+      throw std::invalid_argument("Arguments error");
     }
+
+    uint64_t actor_ptr = Serializer::Deserialize<uint64_t>(ptr->data(), ptr->size());
+    using Self = boost::callable_traits::class_of_t<Function>;
+    Self *self = (Self *)actor_ptr;
+    result = Invoker<Function>::CallMember<RetrunType>(func, self, std::move(tp));
 
     return result;
   }
@@ -150,7 +132,7 @@ struct Invoker {
  private:
   template <typename T>
   static inline T ParseArg(char *data, size_t size, bool &is_ok) {
-    auto pair = ray::api::Serializer::DeserializeWhenNil<T>(data, size);
+    auto pair = Serializer::DeserializeWhenNil<T>(data, size);
     is_ok = pair.first;
     return pair.second;
   }
@@ -251,12 +233,12 @@ class FunctionManager {
   RegisterRemoteFunction(std::string const &name, const Function &f) {
     auto pair = func_ptr_to_key_map_.emplace(GetAddress(f), name);
     if (!pair.second) {
-      throw ray::api::RayException("Duplicate RAY_REMOTE function: " + name);
+      throw RayException("Duplicate RAY_REMOTE function: " + name);
     }
 
     bool ok = RegisterNonMemberFunc(name, f);
     if (!ok) {
-      throw ray::api::RayException("Duplicate RAY_REMOTE function: " + name);
+      throw RayException("Duplicate RAY_REMOTE function: " + name);
     }
 
     return true;
@@ -269,12 +251,12 @@ class FunctionManager {
     auto key = std::make_pair(typeid(Self).name(), GetAddress(f));
     auto pair = mem_func_to_key_map_.emplace(std::move(key), name);
     if (!pair.second) {
-      throw ray::api::RayException("Duplicate RAY_REMOTE function: " + name);
+      throw RayException("Duplicate RAY_REMOTE function: " + name);
     }
 
     bool ok = RegisterMemberFunc(name, f);
     if (!ok) {
-      throw ray::api::RayException("Duplicate RAY_REMOTE function: " + name);
+      throw RayException("Duplicate RAY_REMOTE function: " + name);
     }
 
     return true;

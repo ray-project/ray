@@ -87,7 +87,7 @@ if __name__ == "__main__":
 
     if args.server_address:
         import ray
-        ray.util.connect(args.server_address)
+        ray.init(f"ray://{args.server_address}")
 
     # __pbt_begin__
     scheduler = PopulationBasedTraining(

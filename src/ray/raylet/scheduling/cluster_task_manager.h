@@ -1,3 +1,17 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
 
 #include "absl/container/flat_hash_map.h"
@@ -20,7 +34,8 @@ namespace raylet {
 /// Work represents all the information needed to make a scheduling decision.
 /// This includes the task, the information we need to communicate to
 /// dispatch/spillback and the callback to trigger it.
-typedef std::tuple<Task, rpc::RequestWorkerLeaseReply *, std::function<void(void)>> Work;
+typedef std::tuple<RayTask, rpc::RequestWorkerLeaseReply *, std::function<void(void)>>
+    Work;
 
 typedef std::function<boost::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
     NodeInfoGetter;
@@ -59,7 +74,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       TaskDependencyManagerInterface &task_dependency_manager,
       std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
       NodeInfoGetter get_node_info,
-      std::function<void(const Task &)> announce_infeasible_task,
+      std::function<void(const RayTask &)> announce_infeasible_task,
       WorkerPoolInterface &worker_pool,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
       std::function<bool(const std::vector<ObjectID> &object_ids,
@@ -73,7 +88,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param task: The incoming task to be queued and scheduled.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  void QueueAndScheduleTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
+  void QueueAndScheduleTask(const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
   /// Move tasks from waiting to ready for dispatch. Called when a task's
@@ -88,7 +103,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///
   /// \param worker: The worker which was running the task.
   /// \param task: Output parameter.
-  void TaskFinished(std::shared_ptr<WorkerInterface> worker, Task *task) override;
+  void TaskFinished(std::shared_ptr<WorkerInterface> worker, RayTask *task) override;
 
   /// Return worker resources.
   /// This method will be removed and can be replaced by `ReleaseWorkerResources` directly
@@ -129,7 +144,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param[in] num_pending_tasks Number of pending tasks.
   /// \param[in] any_pending True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
-  bool AnyPendingTasks(Task *exemplar, bool *any_pending, int *num_pending_actor_creation,
+  bool AnyPendingTasks(RayTask *exemplar, bool *any_pending,
+                       int *num_pending_actor_creation,
                        int *num_pending_tasks) const override;
 
   /// (Step 5) Call once a task finishes (i.e. a worker is returned).
@@ -218,7 +234,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Function to get the node information of a given node id.
   NodeInfoGetter get_node_info_;
   /// Function to announce infeasible task to GCS.
-  std::function<void(const Task &)> announce_infeasible_task_;
+  std::function<void(const RayTask &)> announce_infeasible_task_;
 
   const int max_resource_shapes_per_load_report_;
   const bool report_worker_backlog_;
@@ -310,13 +326,13 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
-      std::shared_ptr<TaskResourceInstances> &allocated_instances, const Task &task,
+      std::shared_ptr<TaskResourceInstances> &allocated_instances, const RayTask &task,
       rpc::RequestWorkerLeaseReply *reply, std::function<void(void)> send_reply_callback);
 
   void Spillback(const NodeID &spillback_to, const Work &work);
 
-  void AddToBacklogTracker(const Task &task);
-  void RemoveFromBacklogTracker(const Task &task);
+  void AddToBacklogTracker(const RayTask &task);
+  void RemoveFromBacklogTracker(const RayTask &task);
 
   // Helper function to pin a task's args immediately before dispatch. This
   // returns false if there are missing args (due to eviction) or if there is

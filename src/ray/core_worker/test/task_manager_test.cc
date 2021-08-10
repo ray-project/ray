@@ -24,6 +24,7 @@
 #include "ray/pubsub/mock_pubsub.h"
 
 namespace ray {
+namespace core {
 
 TaskSpecification CreateTaskHelper(uint64_t num_returns,
                                    std::vector<ObjectID> dependencies) {
@@ -523,6 +524,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_EQ(num_retries_, 1);
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

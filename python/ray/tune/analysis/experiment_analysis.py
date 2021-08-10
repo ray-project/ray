@@ -22,11 +22,14 @@ from ray.tune.trial import Trial
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
+from ray.util.annotations import PublicAPI
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_FILE_TYPE = "csv"
 
 
+@PublicAPI(stability="beta")
 class Analysis:
     """Analyze all results from a directory of experiments.
 
@@ -378,6 +381,7 @@ class Analysis:
         return self._trial_dataframes
 
 
+@PublicAPI(stability="beta")
 class ExperimentAnalysis(Analysis):
     """Analyze results from a Tune experiment.
 

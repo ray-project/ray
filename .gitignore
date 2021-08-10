@@ -19,6 +19,7 @@
 /src/ray/object_manager/format/*_generated.h
 /src/ray/raylet/format/*_generated.h
 /java/runtime/src/main/java/io/ray/runtime/generated/*
+/java/serve/src/main/java/io/ray/serve/generated/*
 
 # Files genrated by c++ worker should be ignored.
 /cpp/example/thirdparty/

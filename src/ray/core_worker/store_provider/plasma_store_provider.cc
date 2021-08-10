@@ -20,6 +20,7 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+namespace core {
 
 void BufferTracker::Record(const ObjectID &object_id, TrackedBuffer *buffer,
                            const std::string &call_site) {
@@ -439,4 +440,5 @@ Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
   return Status::OK();
 }
 
+}  // namespace core
 }  // namespace ray
