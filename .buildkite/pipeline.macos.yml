@@ -68,6 +68,11 @@ steps:
       //:all python/ray/serve/... python/ray/new_dashboard/... -rllib/... -core_worker_test
     - *epilogue_commands
 
+- label: ":mac: :apple: Worker"
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/travis/ci.sh test_cpp
+
 - label: ":mac: :apple: Small and Large"
   <<: *common
   commands:
