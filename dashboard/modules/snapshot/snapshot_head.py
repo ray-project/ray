@@ -88,6 +88,8 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         return actors
 
     async def get_serve_info(self):
+        # Conditionally import serve to prevent ModuleNotFoundError
+        # from serve dependencies when only ray[default] is installed (#17712)
         try:
             from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
             from ray.serve.constants import SERVE_CONTROLLER_NAME
