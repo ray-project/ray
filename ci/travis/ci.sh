@@ -300,7 +300,8 @@ _bazel_build_before_install() {
   if [ -z "${RAY_DEBUG_BUILD-}" ]; then
     bazel build "${target}"
   elif [ "${RAY_DEBUG_BUILD}" = "asan" ]; then
-    bazel build --config asan "${target}"
+    # bazel build --config asan "${target}"
+    echo "Not needed"
   elif [ "${RAY_DEBUG_BUILD}" = "debug" ]; then
     bazel build --config debug "${target}"
   else
