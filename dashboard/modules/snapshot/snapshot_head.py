@@ -4,9 +4,6 @@ from ray.core.generated import gcs_service_pb2_grpc
 from ray.experimental.internal_kv import _internal_kv_get
 
 import ray.new_dashboard.utils as dashboard_utils
-from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
-from ray.serve.constants import SERVE_CONTROLLER_NAME
-from ray.serve.kv_store import format_key
 
 import json
 
@@ -91,6 +88,13 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         return actors
 
     async def get_serve_info(self):
+        try:
+            from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
+            from ray.serve.constants import SERVE_CONTROLLER_NAME
+            from ray.serve.kv_store import format_key
+        except Exception:
+            return "{}"
+
         client = self._dashboard_head.gcs_client
 
         # Serve wraps Ray's internal KV store and specially formats the keys.
@@ -99,7 +103,7 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         # ones have name = SERVE_CONTROLLER_NAME + random letters.
         key = format_key(SERVE_CONTROLLER_NAME, SERVE_SNAPSHOT_KEY)
 
-        return json.loads(_internal_kv_get(key, client) or "[]")
+        return json.loads(_internal_kv_get(key, client) or "{}")
 
     async def get_session_name(self):
         encoded_name = await self._dashboard_head.aioredis_client.get(
