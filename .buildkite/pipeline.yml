@@ -201,7 +201,6 @@
     - bazel test --config=ci-debug $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,debug_tests,-flaky
       python/ray/tests/...
-- label: ":core: ASAN Test"
 - label: ":python: (ASAN tests)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
