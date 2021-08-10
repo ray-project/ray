@@ -32,7 +32,6 @@ DEFINE_stats(test_declare, "TestStats2", ("tag1"), (1.0), ray::stats::COUNT,
              ray::stats::SUM);
 DECLARE_stats(test_declare);
 
-
 namespace ray {
 
 const int MetricsAgentPort = 10054;

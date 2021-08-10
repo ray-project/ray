@@ -19,7 +19,7 @@
 #include <memory>
 #include <tuple>
 #include <unordered_map>
-
+#include "gtest/gtest_prod.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/stats/stats_exporter.h"
 #include "opencensus/tags/tag_key.h"
