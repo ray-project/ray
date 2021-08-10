@@ -107,7 +107,8 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
 
         ray.get(dummy_handler.get.remote())
         ray.kill(dummy_handler)
-        time.sleep(1)
+        # make sure RESIZE_COOLDOWN times out
+        time.sleep(10)
         # trigger scale up
         trainer1.train()
         assert trainer1.worker_group.num_workers == 2
