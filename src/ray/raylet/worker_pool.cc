@@ -165,9 +165,9 @@ void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
                                            std::shared_ptr<WorkerInterface> worker,
                                            PopWorkerStatus status) {
   RAY_CHECK(callback);
-  auto dispatched = callback(worker, status);
-  if (worker && !dispatched) {
-    // The invalid worker not dispatched, restore it to worker pool.
+  auto used = callback(worker, status);
+  if (worker && !used) {
+    // The invalid worker not used, restore it to worker pool.
     PushWorker(worker);
   }
 }
@@ -399,11 +399,11 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
       bool found;
       bool used;
       TaskID task_id;
-      TryToAssignTaskToDedicatedWorker(state.starting_dedicated_workers_to_tasks, proc,
-                                       nullptr, status, &found, &used, &task_id);
+      InvokePopWorkerCallbackForProcess(state.starting_dedicated_workers_to_tasks, proc,
+                                        nullptr, status, &found, &used, &task_id);
       if (!found) {
-        TryToAssignTaskToDedicatedWorker(state.starting_workers_to_tasks, proc, nullptr,
-                                         status, &found, &used, &task_id);
+        InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks, proc, nullptr,
+                                          status, &found, &used, &task_id);
       }
       state.starting_worker_processes.erase(it);
       if (IsIOWorkerType(worker_type)) {
@@ -726,19 +726,19 @@ void WorkerPool::PopDeleteWorker(
   }
 }
 
-void WorkerPool::TryToAssignTaskToDedicatedWorker(
+void WorkerPool::InvokePopWorkerCallbackForProcess(
     std::unordered_map<Process, TaskWaitingForWorkerInfo> &starting_workers_to_tasks,
     const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
-    const PopWorkerStatus &status, bool *found, bool *dispatched, TaskID *task_id) {
+    const PopWorkerStatus &status, bool *found, bool *worker_used, TaskID *task_id) {
   *found = false;
-  *dispatched = false;
+  *worker_used = false;
   auto it = starting_workers_to_tasks.find(proc);
   if (it != starting_workers_to_tasks.end()) {
     *found = true;
     *task_id = it->second.task_id;
     const auto &callback = it->second.callback;
     RAY_CHECK(callback);
-    *dispatched = callback(worker, status);
+    *worker_used = callback(worker, status);
     starting_workers_to_tasks.erase(it);
   }
 }
@@ -751,9 +751,9 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   bool found;
   bool used;
   TaskID task_id;
-  TryToAssignTaskToDedicatedWorker(state.starting_dedicated_workers_to_tasks,
-                                   worker->GetShimProcess(), worker, PopWorkerStatus::OK,
-                                   &found, &used, &task_id);
+  InvokePopWorkerCallbackForProcess(state.starting_dedicated_workers_to_tasks,
+                                    worker->GetShimProcess(), worker, PopWorkerStatus::OK,
+                                    &found, &used, &task_id);
   if (found) {
     // The worker is used for the actor creation task with dynamic options.
     if (!used) {
@@ -764,9 +764,9 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     return;
   }
 
-  TryToAssignTaskToDedicatedWorker(state.starting_workers_to_tasks,
-                                   worker->GetShimProcess(), worker, PopWorkerStatus::OK,
-                                   &found, &used, &task_id);
+  InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
+                                    worker->GetShimProcess(), worker, PopWorkerStatus::OK,
+                                    &found, &used, &task_id);
   // The worker is not used for the actor creation task with dynamic options.
   if (!used) {
     // Put the worker to the idle pool.

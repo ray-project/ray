@@ -575,19 +575,19 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
                                       std::shared_ptr<WorkerInterface> worker,
                                       PopWorkerStatus status = PopWorkerStatus::OK);
 
-  /// Try to assign task which waiting for workers.
-  /// \param workers_to_tasks The queue of tasks which waiting for workers.
-  /// \param proc The process which the worker belongs to.
-  /// \param worker A new idle worker. If the worker is empty, we could also callback to
-  /// the task. \param status The pop worker status which will be forwarded to
+  /// Try to find a task that is associated with the given worker process from the given
+  /// queue. If found, invoke its PopWorkerCallback. \param workers_to_tasks The queue of
+  /// tasks which waiting for workers. \param proc The process which the worker belongs
+  /// to. \param worker A new idle worker. If the worker is empty, we could also callback
+  /// to the task. \param status The pop worker status which will be forwarded to
   /// `PopWorkerCallback`. \param found  Whether the related task found or not. \param
-  /// dispatched Whether the related task dispatched or not. \param task_id  The related
-  /// task id.
-  void TryToAssignTaskToDedicatedWorker(
+  /// worker_used Whether the worker is used by the task, only valid when found is true.
+  /// \param task_id  The related task id.
+  void InvokePopWorkerCallbackForProcess(
       std::unordered_map<Process, TaskWaitingForWorkerInfo> &workers_to_tasks,
       const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
       const PopWorkerStatus &status, bool *found /* output */,
-      bool *dispatched /* output */, TaskID *task_id /* output */);
+      bool *worker_used /* output */, TaskID *task_id /* output */);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
