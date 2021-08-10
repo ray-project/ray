@@ -170,7 +170,7 @@ class BackendExecutor:
         elif result_type == TrainingResultType.CHECKPOINT:
             # Process checkpoint
             self.latest_checkpoint = first_result.data
-            # Recurse until REPORT.
+            # Recurse until next REPORT call or training has finished.
             return self.fetch_next_result()
         else:
             raise ValueError(f"Unexpected result type: {result_type}. "
