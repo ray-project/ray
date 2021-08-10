@@ -104,7 +104,7 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         # controllers.  Currently we only get the detached one.  Non-detached
         # ones have name = SERVE_CONTROLLER_NAME + random letters.
         key = get_storage_key(SERVE_CONTROLLER_NAME, SERVE_SNAPSHOT_KEY)
-        val_bytes = _internal_kv_get(key, client) or "[]".encode("utf-8")
+        val_bytes = _internal_kv_get(key, client) or "{}".encode("utf-8")
         return json.loads(val_bytes.decode("utf-8"))
 
     async def get_session_name(self):
