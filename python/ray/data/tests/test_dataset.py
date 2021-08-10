@@ -1190,8 +1190,10 @@ def test_json_write(ray_start_regular_shared, tmp_path):
     ds.write_json(path)
     file_path2 = os.path.join(path, "data_000001.json")
     assert pd.concat([df, df2]).equals(
-        pd.concat([pd.read_json(file_path, orient="records", lines=True),
-                   pd.read_json(file_path2, orient="records", lines=True)]))
+        pd.concat([
+            pd.read_json(file_path, orient="records", lines=True),
+            pd.read_json(file_path2, orient="records", lines=True)
+        ]))
     shutil.rmtree(path)
 
 
