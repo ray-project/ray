@@ -1,6 +1,6 @@
 # coding: utf-8
 import logging
-
+from ray.util.annotations import DeveloperAPI
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.error import TuneError
 from ray.tune.cluster_info import is_ray_cluster
@@ -8,6 +8,7 @@ from ray.tune.cluster_info import is_ray_cluster
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class TrialExecutor:
     """Module for interacting with remote trainables.
 

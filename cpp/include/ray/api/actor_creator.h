@@ -18,7 +18,7 @@
 #include <ray/api/task_options.h>
 
 namespace ray {
-namespace api {
+namespace internal {
 
 template <typename F>
 using GetActorType = std::remove_pointer_t<boost::callable_traits::return_type_t<F>>;
@@ -32,7 +32,7 @@ class ActorCreator {
       : runtime_(runtime), remote_function_holder_(std::move(remote_function_holder)) {}
 
   template <typename... Args>
-  ActorHandle<GetActorType<F>> Remote(Args &&... args);
+  ray::ActorHandle<GetActorType<F>> Remote(Args &&... args);
 
   ActorCreator &SetGlobalName(std::string name) {
     create_options_.name = std::move(name);
@@ -62,7 +62,7 @@ class ActorCreator {
  private:
   RayRuntime *runtime_;
   RemoteFunctionHolder remote_function_holder_;
-  std::vector<ray::api::TaskArg> args_;
+  std::vector<TaskArg> args_;
   ActorCreationOptions create_options_{};
 };
 
@@ -77,5 +77,5 @@ ActorHandle<GetActorType<F>> ActorCreator<F>::Remote(Args &&... args) {
       runtime_->CreateActor(remote_function_holder_, args_, create_options_);
   return ActorHandle<GetActorType<F>>(returned_actor_id);
 }
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

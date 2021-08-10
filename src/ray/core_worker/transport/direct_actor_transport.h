@@ -77,7 +77,7 @@ class CoreWorkerDirectActorTaskSubmitter
         task_finisher_(task_finisher),
         warn_excess_queueing_(warn_excess_queueing) {
     next_queueing_warn_threshold_ =
-        RayConfig::instance().actor_excess_queueing_warn_threshold();
+        ::RayConfig::instance().actor_excess_queueing_warn_threshold();
   }
 
   /// Add an actor queue. This should be called whenever a reference to an
