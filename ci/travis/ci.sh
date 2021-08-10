@@ -299,7 +299,7 @@ _bazel_build_before_install() {
   # Build in debug mode if RAY_DEBUG_BUILD=1
   if [ -z "${RAY_DEBUG_BUILD-}" ]; then
     bazel build "${target}"
-  elif [ "${RAY_DEBUG_BUILD}" = "asan" ] then
+  elif [ "${RAY_DEBUG_BUILD}" = "asan" ]; then
     bazel build --config asan "${target}"
   elif [ "${RAY_DEBUG_BUILD}" = "debug" ]; then
     bazel build --config debug "${target}"
