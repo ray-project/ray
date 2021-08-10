@@ -576,12 +576,16 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
                                       PopWorkerStatus status = PopWorkerStatus::OK);
 
   /// Try to find a task that is associated with the given worker process from the given
-  /// queue. If found, invoke its PopWorkerCallback. \param workers_to_tasks The queue of
-  /// tasks which waiting for workers. \param proc The process which the worker belongs
-  /// to. \param worker A new idle worker. If the worker is empty, we could also callback
-  /// to the task. \param status The pop worker status which will be forwarded to
-  /// `PopWorkerCallback`. \param found  Whether the related task found or not. \param
-  /// worker_used Whether the worker is used by the task, only valid when found is true.
+  /// queue. If found, invoke its PopWorkerCallback.
+  /// \param workers_to_tasks The queue of tasks which waiting for workers.
+  /// \param proc The process which the worker belongs to.
+  /// \param worker A new idle worker. If the worker is empty, we could also callback
+  /// to the task.
+  /// \param status The pop worker status which will be forwarded to
+  /// `PopWorkerCallback`.
+  /// \param found  Whether the related task found or not.
+  /// \param worker_used Whether the worker is used by the task, only valid when found is
+  /// true.
   /// \param task_id  The related task id.
   void InvokePopWorkerCallbackForProcess(
       std::unordered_map<Process, TaskWaitingForWorkerInfo> &workers_to_tasks,

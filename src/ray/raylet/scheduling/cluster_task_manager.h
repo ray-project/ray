@@ -211,6 +211,13 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \return True if any tasks are ready for dispatch.
   bool SchedulePendingTasks();
 
+  /// Handle the popped worker from worker pool.
+  bool PoppedWorkerHandler(const std::shared_ptr<WorkerInterface> worker,
+                           PopWorkerStatus status, const TaskID &task_id,
+                           SchedulingClass scheduling_class,
+                           const std::shared_ptr<Work> &work, bool is_detached_actor,
+                           const rpc::Address &owner_address);
+
   /// (Step 3) Attempts to dispatch all tasks which are ready to run. A task
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
   /// available resources on the node.

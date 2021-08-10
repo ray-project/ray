@@ -154,6 +154,113 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(std::shared_ptr<Work> work) {
   return can_dispatch;
 }
 
+bool ClusterTaskManager::PoppedWorkerHandler(
+    const std::shared_ptr<WorkerInterface> worker, PopWorkerStatus status,
+    const TaskID &task_id, SchedulingClass scheduling_class,
+    const std::shared_ptr<Work> &work, bool is_detached_actor,
+    const rpc::Address &owner_address) {
+  const auto &reply = work->reply;
+  const auto &callback = work->callback;
+  bool canceled = work->status == WorkStatus::CANCELLED;
+  const auto &task = work->task;
+  const auto &spec = task.GetTaskSpecification();
+  bool dispatched = false;
+
+  // Check whether owner worker or owner node dead.
+  bool not_detached_with_owner_failed = false;
+  const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+  const auto owner_node_id = NodeID::FromBinary(owner_address.raylet_id());
+  if (!is_detached_actor && !is_owner_alive_(owner_worker_id, owner_node_id)) {
+    not_detached_with_owner_failed = true;
+  }
+
+  auto erase_from_dispatch_queue_fn = [this](const std::shared_ptr<Work> &work,
+                                             const SchedulingClass &scheduling_class) {
+    auto shapes_it = tasks_to_dispatch_.find(scheduling_class);
+    RAY_CHECK(shapes_it != tasks_to_dispatch_.end());
+    auto &dispatch_queue = shapes_it->second;
+    bool erased = false;
+    for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();
+         work_it++) {
+      if (*work_it == work) {
+        dispatch_queue.erase(work_it);
+        erased = true;
+        break;
+      }
+    }
+    if (dispatch_queue.empty()) {
+      tasks_to_dispatch_.erase(shapes_it);
+    }
+    RAY_CHECK(erased);
+  };
+
+  if (canceled) {
+    // Task has been canceled.
+    RAY_LOG(DEBUG) << "Task " << task_id << " has been canceled when worker popped";
+    // All the cleaning work has been done when canceled task. Just return
+    // false without doing anything.
+    return false;
+  }
+
+  if (!worker || not_detached_with_owner_failed) {
+    // There are two cases that will not dispatch the task at this time:
+    // Case 1: Empty worker popped.
+    // Case 2: The task owner failed (not alive), except the creation task of
+    // detached actor.
+    // In that two case, we should also release worker resources, release task
+    // args.
+
+    dispatched = false;
+    // We've already acquired resources so we need to release them.
+    cluster_resource_scheduler_->ReleaseWorkerResources(work->allocated_instances);
+    work->allocated_instances = nullptr;
+    // Release pinned task args.
+    ReleaseTaskArgs(task_id);
+
+    if (!worker) {
+      // Empty worker popped.
+      RAY_LOG(DEBUG) << "This node has available resources, but no worker processes "
+                        "to grant the lease "
+                     << task_id;
+      if (status == PopWorkerStatus::RuntimeEnvCreationFailed) {
+        // In case of runtime env creation failed, we cancel this task
+        // directly and raise a `RuntimeEnvSetupError` exception to user
+        // eventually. The task will be removed from dispatch queue in
+        // `CancelTask`.
+        CancelTask(task_id, true);
+      } else {
+        // In other cases, set the work status `WAITING` to make this task
+        // could be re-dispatched.
+        work->status = WorkStatus::WAITING;
+        // Return here because we shouldn't remove task dependencies.
+        return dispatched;
+      }
+    } else if (not_detached_with_owner_failed) {
+      // The task owner failed.
+      // Just remove the task from dispatch queue.
+      RAY_LOG(DEBUG) << "Call back to an owner failed task, task id = " << task_id;
+      erase_from_dispatch_queue_fn(work, scheduling_class);
+    }
+
+  } else {
+    // A worker has successfully popped for a valid task. Dispatch the task to
+    // the worker.
+    RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
+                   << worker->WorkerId();
+
+    Dispatch(worker, leased_workers_, work->allocated_instances, task, reply, callback);
+    erase_from_dispatch_queue_fn(work, scheduling_class);
+    dispatched = true;
+  }
+
+  // Remove task dependencies.
+  if (!spec.GetDependencies().empty()) {
+    task_dependency_manager_.RemoveTaskDependencies(task.GetTaskSpecification().TaskId());
+  }
+
+  return dispatched;
+}
+
 void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     WorkerPoolInterface &worker_pool,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers) {
@@ -264,115 +371,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
             [this, task_id, scheduling_class, work, is_detached_actor, owner_address](
                 const std::shared_ptr<WorkerInterface> worker,
                 PopWorkerStatus status) -> bool {
-              const auto &reply = work->reply;
-              const auto &callback = work->callback;
-              bool canceled = work->status == WorkStatus::CANCELLED;
-              const auto &task = work->task;
-              const auto &spec = task.GetTaskSpecification();
-              bool dispatched = false;
-
-              // Check whether owner worker or owner node dead.
-              bool not_detached_with_owner_failed = false;
-              const auto owner_worker_id =
-                  WorkerID::FromBinary(owner_address.worker_id());
-              const auto owner_node_id = NodeID::FromBinary(owner_address.raylet_id());
-              if (!is_detached_actor &&
-                  !is_owner_alive_(owner_worker_id, owner_node_id)) {
-                not_detached_with_owner_failed = true;
-              }
-
-              auto erase_from_dispatch_queue_fn =
-                  [this](const std::shared_ptr<Work> &work,
-                         const SchedulingClass &scheduling_class) {
-                    auto shapes_it = tasks_to_dispatch_.find(scheduling_class);
-                    RAY_CHECK(shapes_it != tasks_to_dispatch_.end());
-                    auto &dispatch_queue = shapes_it->second;
-                    bool erased = false;
-                    for (auto work_it = dispatch_queue.begin();
-                         work_it != dispatch_queue.end(); work_it++) {
-                      if (*work_it == work) {
-                        dispatch_queue.erase(work_it);
-                        erased = true;
-                        break;
-                      }
-                    }
-                    if (dispatch_queue.empty()) {
-                      tasks_to_dispatch_.erase(shapes_it);
-                    }
-                    RAY_CHECK(erased);
-                  };
-
-              if (canceled) {
-                // Task has been canceled.
-                RAY_LOG(DEBUG) << "Task " << task_id
-                               << " has been canceled when worker popped";
-                // All the cleaning work has been done when canceled task. Just return
-                // false without doing anything.
-                return false;
-              }
-
-              if (!worker || not_detached_with_owner_failed) {
-                // There are two cases that will not dispatch the task at this time:
-                // Case 1: Empty worker popped.
-                // Case 2: The task owner failed (not alive), except the creation task of
-                // detached actor.
-                // In that two case, we should also release worker resources, release task
-                // args.
-
-                dispatched = false;
-                // We've already acquired resources so we need to release them.
-                cluster_resource_scheduler_->ReleaseWorkerResources(
-                    work->allocated_instances);
-                work->allocated_instances = nullptr;
-                // Release pinned task args.
-                ReleaseTaskArgs(task_id);
-
-                if (!worker) {
-                  // Empty worker popped.
-                  RAY_LOG(DEBUG)
-                      << "This node has available resources, but no worker processes "
-                         "to grant the lease "
-                      << task_id;
-                  if (status == PopWorkerStatus::RuntimeEnvCreationFailed) {
-                    // In case of runtime env creation failed, we cancel this task
-                    // directly and raise a `RuntimeEnvSetupError` exception to user
-                    // eventually. The task will be removed from dispatch queue in
-                    // `CancelTask`.
-                    CancelTask(task_id, true);
-                  } else {
-                    // In other cases, set the work status `WAITING` to make this task
-                    // could be re-dispatched.
-                    work->status = WorkStatus::WAITING;
-                    // Return here because we shouldn't remove task dependencies.
-                    return dispatched;
-                  }
-                } else if (not_detached_with_owner_failed) {
-                  // The task owner failed.
-                  // Just remove the task from dispatch queue.
-                  RAY_LOG(DEBUG)
-                      << "Call back to an owner failed task, task id = " << task_id;
-                  erase_from_dispatch_queue_fn(work, scheduling_class);
-                }
-
-              } else {
-                // A worker has successfully popped for a valid task. Dispatch the task to
-                // the worker.
-                RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
-                               << worker->WorkerId();
-
-                Dispatch(worker, leased_workers_, work->allocated_instances, task, reply,
-                         callback);
-                erase_from_dispatch_queue_fn(work, scheduling_class);
-                dispatched = true;
-              }
-
-              // Remove task dependencies.
-              if (!spec.GetDependencies().empty()) {
-                task_dependency_manager_.RemoveTaskDependencies(
-                    task.GetTaskSpecification().TaskId());
-              }
-
-              return dispatched;
+              return PoppedWorkerHandler(worker, status, task_id, scheduling_class, work,
+                                         is_detached_actor, owner_address);
             },
             allocated_instances_serialized_json);
         work_it++;
