@@ -47,7 +47,7 @@ ABSL_FLAG(std::string, ray_logs_dir, "", "Logs dir for workers.");
 ABSL_FLAG(std::string, ray_node_ip_address, "", "The ip address for this node.");
 
 namespace ray {
-namespace api {
+namespace internal {
 
 void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
   if (!config.address.empty()) {
@@ -131,5 +131,5 @@ void ConfigInternal::SetRedisAddress(const std::string address) {
   redis_ip = address.substr(0, pos);
   redis_port = std::stoi(address.substr(pos + 1, address.length()));
 }
-}  // namespace api
+}  // namespace internal
 }  // namespace ray
