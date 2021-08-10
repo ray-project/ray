@@ -430,7 +430,6 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         raise RuntimeError("The condition wasn't met before the timeout expired.")
 
     def shutdown(self, force=False):
-        print("shutdown:{}".format(force))
         force_kill = force
         if not force_kill:
             cleanup = self._shutdown_remote_workers()
