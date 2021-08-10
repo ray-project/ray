@@ -1,8 +1,10 @@
 import os
+import sys
 import json
 import jsonschema
 
 import pprint
+import pytest
 import requests
 
 from ray.test_utils import (
@@ -112,3 +114,7 @@ my_func.deploy()
         assert entry["rayJobId"] is not None
         assert entry["startTime"] == 0
         assert entry["endTime"] == 0
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
