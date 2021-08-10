@@ -138,6 +138,9 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
       ray start --head
       RAY_ADDRESS=127.0.0.1:6379 ./bazel-bin/example
 
+    .. literalinclude:: ../../cpp/example/example.cc
+       :language: cpp  
+
     | - Now you can build your own Ray C++ application based on this project template.
 
 You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
