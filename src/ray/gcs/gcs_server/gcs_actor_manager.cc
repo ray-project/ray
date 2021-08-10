@@ -236,7 +236,7 @@ void GcsActorManager::HandleGetNamedActorInfo(
   ActorID actor_id = GetActorIDByName(name, ray_namespace);
 
   Status status = Status::OK();
-  const auto &iter = registered_actors_.find(actor_id);
+  auto iter = registered_actors_.find(actor_id);
   if (actor_id.IsNil() || iter == registered_actors_.end()) {
     // The named actor was not found or the actor is already removed.
     std::stringstream stream;
@@ -1121,7 +1121,7 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill,
                                 bool no_restart) {
   RAY_LOG(DEBUG) << "Killing actor, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id << ", force_kill = " << force_kill;
-  const auto &it = registered_actors_.find(actor_id);
+  auto it = registered_actors_.find(actor_id);
   if (it == registered_actors_.end()) {
     RAY_LOG(INFO) << "Tried to kill actor that does not exist " << actor_id;
     return;
