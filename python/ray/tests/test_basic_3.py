@@ -254,9 +254,10 @@ def test_worker_startup_count(ray_start_cluster):
 
     # Flood a large scale lease worker requests.
     for i in range(10000):
-        # Random cpu resources to ensure no cache and reuse.
+        # Use random cpu resources to make sure that all tasks are sent
+        # to the raylet. Because core worker will cache tasks with the
+        # same resource shape.
         num_cpus = 0.24 + np.random.uniform(0, 0.01)
-        print(num_cpus)
         slow_function.options(num_cpus=num_cpus).remote()
 
     # Check "debug_state.txt" to ensure no extra workers were started.
