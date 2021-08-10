@@ -258,10 +258,8 @@ int main(int argc, char *argv[]) {
 
         // Initialize event framework.
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
-          auto custom_fields = std::unordered_map<std::string, std::string>();
-          custom_fields.emplace("node_id", raylet->GetNodeId().Hex());
           ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_RAYLET,
-                            custom_fields, log_dir);
+                            {{"node_id", raylet->GetNodeID().Hex()}}, log_dir);
         };
 
         raylet->Start();

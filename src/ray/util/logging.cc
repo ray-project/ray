@@ -166,7 +166,7 @@ static int GetMappedSeverity(RayLogLevel severity) {
   }
 }
 
-ExposeLogCallback RayLog::expose_log_callback_;
+std::vector<ExposeLogCallback> RayLog::expose_log_callbacks_;
 
 void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_threshold,
                          const std::string &log_dir) {
@@ -341,8 +341,10 @@ std::string RayLog::GetLogFormatPattern() { return log_format_pattern_; }
 
 std::string RayLog::GetLoggerName() { return logger_name_; }
 
-void RayLog::SetExposeLogCallback(const ExposeLogCallback &expose_log_callback) {
-  expose_log_callback_ = expose_log_callback;
+void RayLog::AddExposeLogCallbacks(
+    const std::vector<ExposeLogCallback> &expose_log_callbacks) {
+  expose_log_callbacks_.insert(expose_log_callbacks_.end(), expose_log_callbacks.begin(),
+                               expose_log_callbacks.end());
 }
 
 RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
@@ -378,8 +380,10 @@ RayLog::~RayLog() {
     delete reinterpret_cast<LoggingProvider *>(logging_provider_);
     logging_provider_ = nullptr;
   }
-  if (expose_log_callback_ != nullptr && expose_osstream_ != nullptr) {
-    expose_log_callback_(EL_RAY_FATAL_CHECK_FAILED, expose_osstream_->str());
+  if (expose_osstream_ != nullptr) {
+    for (const auto &callback : expose_log_callbacks_) {
+      callback(EL_RAY_FATAL_CHECK_FAILED, expose_osstream_->str());
+    }
   }
   if (severity_ == RayLogLevel::FATAL) {
     std::_Exit(EXIT_FAILURE);

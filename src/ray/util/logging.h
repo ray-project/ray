@@ -56,6 +56,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #if defined(_WIN32)
 #ifndef _WINDOWS_
@@ -185,7 +186,7 @@ class RayLogBase {
   // By default, this class is a null log because it return false here.
   virtual bool IsEnabled() const { return false; };
 
-  // This function to judge whether current log is fatal or not.
+  // This function to judge whether need to expose current log.
   virtual bool IsExposed() const { return false; };
 
   template <typename T>
@@ -256,8 +257,9 @@ class RayLog : public RayLogBase {
 
   static std::string GetLoggerName();
 
-  /// Set callback function which will be triggered to expose log.
-  static void SetExposeLogCallback(const ExposeLogCallback &expose_log_callback);
+  /// Add callback functions that will be triggered to expose log.
+  static void AddExposeLogCallbacks(
+      const std::vector<ExposeLogCallback> &expose_log_callbacks);
 
  private:
   FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
@@ -273,8 +275,8 @@ class RayLog : public RayLogBase {
   bool is_exposed_ = false;
   /// String stream of exposed log content.
   std::shared_ptr<std::ostringstream> expose_osstream_ = nullptr;
-  /// Callback function which will be triggered to expose log.
-  static ExposeLogCallback expose_log_callback_;
+  /// Callback functions which will be triggered to expose log.
+  static std::vector<ExposeLogCallback> expose_log_callbacks_;
   static RayLogLevel severity_threshold_;
   // In InitGoogleLogging, it simply keeps the pointer.
   // We need to make sure the app name passed to InitGoogleLogging exist.
