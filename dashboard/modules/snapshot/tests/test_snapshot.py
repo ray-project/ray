@@ -5,6 +5,7 @@ import jsonschema
 import pprint
 import requests
 
+import ray
 from ray.test_utils import (
     format_web_url,
     run_string_as_driver,
@@ -68,7 +69,7 @@ ray.get(a.ping.remote())
         else:
             assert entry["endTime"] > 0, entry
         assert "runtimeEnv" in entry
-
+    # TODO(architkulkarni): Test ray version adn commit
 
 def test_serve_snapshot(ray_start_with_dashboard):
     driver_script = f"""
