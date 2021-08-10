@@ -1,6 +1,7 @@
 import copy
 
 import pytest
+from unittest.mock import Mock, patch
 
 from ray.autoscaler._private.aws.config import _get_vpc_id_or_die, \
     bootstrap_aws, log_to_cli, \
@@ -620,6 +621,56 @@ def test_launch_templates(ec2_client_stub, ec2_client_stub_fail_fast,
     ec2_client_stub.assert_no_pending_responses()
     ec2_client_stub_fail_fast.assert_no_pending_responses()
     ec2_client_stub_max_retries.assert_no_pending_responses()
+
+
+@pytest.mark.parametrize("num_nodes", [1001, 9999])
+@pytest.mark.parametrize("stop", [True, False])
+@pytest.mark.parametrize("spot", [True, False])
+def test_terminate_nodes(num_nodes, stop, spot):
+    # This test makes sure that we don't try to stop or terminate too many nodes
+    # in a single EC2 request. By default, only 1000 nodes can be
+    # stopped/terminated in one request. To terminate more nodes, we must break
+    # them up into multiple smaller requests.
+    #
+    # "num_nodes" is the number of nodes to stop or terminate.
+    # "stop" is True if we want to stop nodes, and False otherwise. Note that 
+    #   spot instances are always terminated, even if "stop" is True.
+    # "spot" is True if we want to terminate/stop spot nodes, and False for on-
+    #   demand nodes.
+
+    max_terminate_nodes = 1000
+
+    # Generate a list of unique instance ids to terminate
+    instance_ids = ["i-{:017d}".format(i) for i in range(num_nodes)]
+
+    config = helpers.bootstrap_aws_example_config_file("example-full.yaml")
+    config["provider"]["cache_stopped_nodes"] = stop
+
+    with patch("ray.autoscaler._private.aws.node_provider.make_ec2_client"):
+        provider = _get_node_provider(
+            config["provider"],
+            DEFAULT_CLUSTER_NAME,
+            False,
+        )
+
+    # "_get_cached_node" is used by the AWSNodeProvider to determine whether a
+    # node is a spot instance or an on-demand instance.
+    def mock_get_cached_node(node_id):
+        result = Mock()
+        result.spot_instance_request_id = "sir-08b93456" if spot else ""
+        return result
+
+    provider._get_cached_node = mock_get_cached_node
+
+    provider.terminate_nodes(instance_ids)
+
+    if spot or not stop:
+        call_args_list = provider.ec2.meta.client.terminate_instances.call_args_list
+    else:
+        call_args_list = provider.ec2.meta.client.stop_instances.call_args_list
+
+    for call in call_args_list:
+        assert len(call[1]["InstanceIds"]) <= max_terminate_nodes
 
 
 if __name__ == "__main__":
