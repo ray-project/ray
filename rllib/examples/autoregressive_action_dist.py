@@ -60,8 +60,7 @@ def get_cli_args():
         "--no-autoreg",
         action="store_true",
         help="Do NOT use an autoregressive action distribution but normal,"
-             "independently distributed actions."
-    )
+        "independently distributed actions.")
 
     # general args
     parser.add_argument(
@@ -135,7 +134,7 @@ if __name__ == "__main__":
     if not args.no_autoreg:
         config["model"] = {
             "custom_model": "autoregressive_model",
-                "custom_action_dist": "binary_autoreg_dist",
+            "custom_action_dist": "binary_autoreg_dist",
         }
 
     # use stop conditions passed via CLI (or defaults)
