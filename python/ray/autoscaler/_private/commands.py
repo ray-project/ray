@@ -907,7 +907,7 @@ def attach_cluster(config_file: str,
         override_cluster_name=override_cluster_name,
         no_config_cache=no_config_cache,
         port_forward=port_forward,
-        _allow_uninitialize=True)
+        _allow_uninitialized_state=True)
 
 
 def exec_cluster(config_file: str,
@@ -922,7 +922,7 @@ def exec_cluster(config_file: str,
                  no_config_cache: bool = False,
                  port_forward: Optional[Port_forward] = None,
                  with_output: bool = False,
-                 _allow_uninitialized: bool = False) -> str:
+                 _allow_uninitialized_state: bool = False) -> str:
     """Runs a command on the specified cluster.
 
     Arguments:
@@ -936,6 +936,8 @@ def exec_cluster(config_file: str,
         start: whether to start the cluster if it isn't up
         override_cluster_name: set the name of the cluster
         port_forward ( (int, int) or list[(int, int)] ): port(s) to forward
+        _allow_uninitialized_state: whether to execute on an uninitialized head
+            node.
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
     assert run_env in RUN_ENV_TYPES, "--run_env must be in {}".format(
@@ -955,7 +957,7 @@ def exec_cluster(config_file: str,
         config_file,
         override_cluster_name,
         create_if_needed=start,
-        _allow_uninitialized=_allow_uninitialized)
+        _allow_uninitialized_state=_allow_uninitialized_state)
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     updater = NodeUpdaterThread(
@@ -1226,7 +1228,7 @@ def _get_running_head_node(
         if node_state == STATUS_UP_TO_DATE:
             head_node = node
         else:
-            _backup_head_node = head_node
+            _backup_head_node = node
             cli_logger.warning(f"Head node ({node}) is in state {node_state}.")
 
     if head_node is not None:
@@ -1253,9 +1255,10 @@ def _get_running_head_node(
         if _allow_uninitialized_state and _backup_head_node is not None:
             cli_logger.warning(
                 f"The head node being returned: {_backup_head_node} is not "
-                "`up-to-date`. If you are not intending to debug a startup "
-                "issue, it is recommended to restart this head node with `ray "
-                f"stop {printable_config_file}`.")
+                "`up-to-date`. If you are not debugging a startup issue "
+                "it is recommended to restart this head node with: {}",
+                cf.bold(f"  ray stop  {printable_config_file}"))
+
             return _backup_head_node
         raise RuntimeError("Head node of cluster ({}) not found!".format(
             config["cluster_name"]))
