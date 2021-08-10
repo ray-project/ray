@@ -991,7 +991,8 @@ class TorchPolicy(Policy):
                 with lock:
                     results[shard_idx] = (ValueError(
                         e.args[0] + "\n" +
-                        "In tower {} on device {}".format(shard_idx, device)), e)
+                        "In tower {} on device {}".format(shard_idx, device)),
+                                          e)
 
         # Single device (GPU) or fake-GPU case (serialize for better
         # debugging).
