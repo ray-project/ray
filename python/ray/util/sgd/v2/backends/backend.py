@@ -3,8 +3,8 @@ from typing import Callable, TypeVar, List, Optional, Dict
 
 import ray
 from ray.exceptions import RayActorError
-from ray.util.sgd.v2.session import init_session, get_session, shutdown_session, \
-    TrainingResultType, TrainingResult
+from ray.util.sgd.v2.session import init_session, get_session, \
+    shutdown_session, TrainingResultType, TrainingResult
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 T = TypeVar("T")
@@ -153,8 +153,9 @@ class BackendExecutor:
             if not all(r is None for r in results):
                 raise RuntimeError("Some workers returned results while "
                                    "others didn't. Make sure that "
-                                   "`sgd.report()` is called the same "
-                                   "number of times on all workers.")
+                                   "`sgd.report()` and `sgd.checkpoint()` are "
+                                   "called the same number of times on all "
+                                   "workers.")
             else:
                 # Return None if all results are None.
                 return None
@@ -162,9 +163,10 @@ class BackendExecutor:
         result_type = first_result.type
         if any(r.type != result_type for r in results):
             raise RuntimeError("Some workers returned results with "
-                               "different types. All workers are expected "
-                               "to return the same type of result at "
-                               "every iteration.")
+                               "different types. Make sure `sgd.report()` and "
+                               "`sgd.save_checkpoint()` are called the same "
+                               "number of times and in the same order on each "
+                               "worker.")
         return results
 
     def _process_checkpoint(self, results):
