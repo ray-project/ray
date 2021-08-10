@@ -144,8 +144,11 @@ class RayServeReplica:
             "serve_deployment_request_counter",
             description=("The number of queries that have been "
                          "processed in this replica."),
-            tag_keys=("deployment", ))
-        self.request_counter.set_default_tags({"deployment": self.backend_tag})
+            tag_keys=("deployment", "replica"))
+        self.request_counter.set_default_tags({
+            "deployment": self.backend_tag,
+            "replica": self.replica_tag
+        })
 
         self.loop = asyncio.get_event_loop()
         self.long_poll_client = LongPollClient(
@@ -160,9 +163,12 @@ class RayServeReplica:
         self.error_counter = metrics.Counter(
             "serve_deployment_error_counter",
             description=("The number of exceptions that have "
-                         "occurred in the deployment."),
-            tag_keys=("deployment", ))
-        self.error_counter.set_default_tags({"deployment": self.backend_tag})
+                         "occurred in this replica."),
+            tag_keys=("deployment", "replica"))
+        self.error_counter.set_default_tags({
+            "deployment": self.backend_tag,
+            "replica": self.replica_tag
+        })
 
         self.restart_counter = metrics.Counter(
             "serve_deployment_replica_starts",

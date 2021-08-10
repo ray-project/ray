@@ -19,7 +19,9 @@
 #include "ray/core_worker/common.h"
 
 namespace ray {
-namespace api {
+namespace internal {
+
+using ray::core::WorkerType;
 
 enum class RunMode { SINGLE_PROCESS, CLUSTER };
 
@@ -68,5 +70,5 @@ class ConfigInternal {
   ConfigInternal(){};
 };
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

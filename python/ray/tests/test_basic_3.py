@@ -186,6 +186,48 @@ def test_fair_queueing(shutdown_only):
     assert len(ready) == 1000, len(ready)
 
 
+def test_actor_killing(shutdown_only):
+    # This is to test create and kill an actor immediately
+    import ray
+    ray.init(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def foo(self):
+            return None
+
+    worker_1 = Actor.remote()
+    ray.kill(worker_1)
+    worker_2 = Actor.remote()
+    assert ray.get(worker_2.foo.remote()) is None
+    ray.kill(worker_2)
+
+    worker_1 = Actor.options(max_restarts=1).remote()
+    ray.kill(worker_1, no_restart=False)
+    assert ray.get(worker_1.foo.remote()) is None
+
+    ray.kill(worker_1, no_restart=False)
+    worker_2 = Actor.remote()
+    assert ray.get(worker_2.foo.remote()) is None
+
+
+def test_actor_scheduling(shutdown_only):
+    ray.init()
+
+    @ray.remote
+    class A:
+        def run_fail(self):
+            ray.actor.exit_actor()
+
+        def get(self):
+            return 1
+
+    a = A.remote()
+    a.run_fail.remote()
+    with pytest.raises(Exception):
+        ray.get([a.get.remote()])
+
+
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "_system_config": {
@@ -196,13 +238,12 @@ def test_fair_queueing(shutdown_only):
     }],
     indirect=True)
 def test_worker_startup_count(ray_start_cluster):
-    """Test that no extra workers started while no available cpu resources in cluster."""
+    """Test that no extra workers started while no available cpu resources
+    in cluster."""
 
     cluster = ray_start_cluster
     # Cluster total cpu resources is 4.
-    cluster.add_node(
-        num_cpus=4,
-    )
+    cluster.add_node(num_cpus=4, )
     ray.init(address=cluster.address)
 
     # A slow function never returns. It will hold cpu resources all the way.

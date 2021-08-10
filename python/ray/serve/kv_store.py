@@ -1,6 +1,10 @@
 import ray.experimental.internal_kv as ray_kv
 
 
+def format_key(name, key):
+    return "{ns}-{key}".format(ns=name, key=key)
+
+
 class RayInternalKVStore:
     """Wraps ray's internal_kv with a namespace to avoid collisions.
 
@@ -16,19 +20,22 @@ class RayInternalKVStore:
         self.namespace = namespace or ""
 
     def _format_key(self, key):
-        return "{ns}-{key}".format(ns=self.namespace, key=key)
+        return format_key(
+            self.namespace,
+            key)  # "{ns}-{key}".format(ns=self.namespace, key=key)
 
     def put(self, key, val):
         """Put the key-value pair into the store.
 
         Args:
             key (str)
-            val (bytes)
+            val (Union[str, bytes])
         """
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
-        if not isinstance(val, bytes):
-            raise TypeError("val must be bytes, got: {}.".format(type(val)))
+        if not isinstance(val, bytes) and not isinstance(val, str):
+            raise TypeError("val must be a string or bytes, got: {}.".format(
+                type(val)))
 
         ray_kv._internal_kv_put(self._format_key(key), val, overwrite=True)
 

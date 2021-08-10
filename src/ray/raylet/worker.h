@@ -105,9 +105,9 @@ class WorkerInterface {
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
 
-  virtual Task &GetAssignedTask() = 0;
+  virtual RayTask &GetAssignedTask() = 0;
 
-  virtual void SetAssignedTask(const Task &assigned_task) = 0;
+  virtual void SetAssignedTask(const RayTask &assigned_task) = 0;
 
   virtual bool IsRegistered() = 0;
 
@@ -203,9 +203,9 @@ class Worker : public WorkerInterface {
 
   void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
 
-  Task &GetAssignedTask() { return assigned_task_; };
+  RayTask &GetAssignedTask() { return assigned_task_; };
 
-  void SetAssignedTask(const Task &assigned_task) { assigned_task_ = assigned_task; };
+  void SetAssignedTask(const RayTask &assigned_task) { assigned_task_ = assigned_task; };
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
@@ -279,8 +279,8 @@ class Worker : public WorkerInterface {
   /// The capacity of each resource instance allocated to this worker
   /// when running as an actor.
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
-  /// Task being assigned to this worker.
-  Task assigned_task_;
+  /// RayTask being assigned to this worker.
+  RayTask assigned_task_;
 };
 
 }  // namespace raylet
