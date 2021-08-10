@@ -1,0 +1,3 @@
+- label: "GPU Test"
+  commands:
+  - nvidia-smi
