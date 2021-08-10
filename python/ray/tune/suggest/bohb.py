@@ -5,6 +5,7 @@ import logging
 import math
 from typing import Dict, List, Optional, Union
 
+from ray.tune.experiment import Experiment
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Normal, \
@@ -167,8 +168,12 @@ class TuneBOHB(Searcher):
         bohb_config = self._bohb_config or {}
         self.bohber = BOHB(self._space, **bohb_config)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+    def set_search_properties(
+            self,
+            metric: Optional[str],
+            mode: Optional[str],
+            config: Dict,
+            experiments: Optional[List[Experiment]] = None) -> bool:
         if self._space:
             return False
         space = self.convert_search_space(config)
@@ -178,6 +183,7 @@ class TuneBOHB(Searcher):
             self._metric = metric
         if mode:
             self._mode = mode
+        self._experiments = experiments if experiments else []
 
         self._setup_bohb()
         return True

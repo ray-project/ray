@@ -4,6 +4,8 @@ import logging
 import os
 from typing import Dict, Optional, List
 
+from ray.tune.experiment import Experiment
+from ray.tune.suggest.util import with_try_catch
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -110,8 +112,12 @@ class Searcher:
         else:
             raise ValueError("Mode most either be a list or string")
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+    def set_search_properties(
+            self,
+            metric: Optional[str],
+            mode: Optional[str],
+            config: Dict,
+            experiments: Optional[List[Experiment]] = None) -> bool:
         """Pass search properties to searcher.
 
         This method acts as an alternative to instantiating search algorithms
@@ -123,11 +129,14 @@ class Searcher:
         Args:
             metric (str): Metric to optimize
             mode (str): One of ["min", "max"]. Direction to optimize.
-            config (dict): Tune config dict.
+            config (dict): Tune config dict. This should ideally be used for
+            passing algorithm-specific parameters.
+            experiments (Optional[List[Experiment]]): This is used for passing
+            algorithm-agnostic parameters. User should not need to touch this.
         """
         return False
 
-    def on_trial_result(self, trial_id: str, result: Dict):
+    def on_trial_result(self, trial_id: str, result: Dict) -> None:
         """Optional notification for result during training.
 
         Note that by default, the result dict may include NaNs or
@@ -148,7 +157,7 @@ class Searcher:
     def on_trial_complete(self,
                           trial_id: str,
                           result: Optional[Dict] = None,
-                          error: bool = False):
+                          error: bool = False) -> None:
         """Notification for the completion of trial.
 
         Typically, this method is used for notifying the underlying
@@ -451,5 +460,7 @@ class ConcurrencyLimiter(Searcher):
         self.searcher.on_unpause(trial_id)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
-        return self.searcher.set_search_properties(metric, mode, config)
+                              config: Dict,
+                              experiments: Optional[List[Experiment]]) -> bool:
+        return with_try_catch(self.searcher.set_search_properties, metric,
+                              mode, config, experiments)

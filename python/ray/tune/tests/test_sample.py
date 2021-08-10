@@ -1,10 +1,18 @@
+"""
+If you ever run into issues like
+https://gist.github.com/xwjiang2010/13e6df091e5938aff5b44769bec8ffb8,
+change your pytest running directory to ray/python/ray/tune/tests/
+"""
+
 from collections import defaultdict
 
+from mock import patch
 import numpy as np
 import unittest
 
 from ray import tune
 from ray.tune import Experiment
+from ray.tune.suggest.util import logger
 from ray.tune.suggest.variant_generator import generate_variants
 
 
@@ -1684,6 +1692,30 @@ class SearchSpaceTest(unittest.TestCase):
         # Also, for different samples the random variables should differ
         self.assertEqual(configs[0]["grid"], configs[3]["grid"])
         self.assertNotEqual(configs[0]["rand"], configs[3]["rand"])
+
+    @patch.object(logger, "warn")
+    def testSetSearchPropertiesBackwardCompatibility(self,
+                                                     mocked_warning_method):
+        from ray.tune.suggest import Searcher
+
+        class MySearcher(Searcher):
+            def __init__(self, metric="a", mode="min", **kwargs):
+                super(MySearcher, self).__init__(
+                    metric=metric, mode=mode, **kwargs)
+
+            def suggest(self, trial_id):
+                return {}
+
+            def on_trial_complete(self, trial_id, result, **kwargs):
+                pass
+
+            # impl that has not been updated yet.
+            def set_search_properties(self, metric, mode, config):
+                pass
+
+        tune.run(_mock_objective, config={"a": 1}, search_alg=MySearcher())
+        mocked_warning_method.assert_called_once_with(
+            "Please update custom Searcher to take in a list of experiments.")
 
 
 if __name__ == "__main__":

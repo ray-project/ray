@@ -1,6 +1,7 @@
 import copy
 from typing import Dict, List, Optional, Union
 
+from ray.tune.experiment import Experiment
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Float, Integer, LogUniform, \
     Quantized, Uniform
@@ -230,8 +231,11 @@ class AxSearch(Searcher):
             logger.warning("Detected sequential enforcement. Be sure to use "
                            "a ConcurrencyLimiter.")
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict):
+    def set_search_properties(self,
+                              metric: Optional[str],
+                              mode: Optional[str],
+                              config: Dict,
+                              experiments: Optional[List[Experiment]] = None):
         if self._ax:
             return False
         space = self.convert_search_space(config)
@@ -240,6 +244,7 @@ class AxSearch(Searcher):
             self._metric = metric
         if mode:
             self._mode = mode
+        self._experiments = experiments if experiments else []
 
         self._setup_experiment()
         return True

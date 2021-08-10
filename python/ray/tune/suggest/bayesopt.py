@@ -4,6 +4,7 @@ import pickle
 import json
 from typing import Dict, List, Optional, Tuple, Any
 
+from ray.tune.experiment import Experiment
 from ray.tune import ExperimentAnalysis
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Domain, Float, Quantized
@@ -202,8 +203,12 @@ class BayesOptSearch(Searcher):
         if self._analysis is not None:
             self.register_analysis(self._analysis)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+    def set_search_properties(
+            self,
+            metric: Optional[str],
+            mode: Optional[str],
+            config: Dict,
+            experiments: Optional[List[Experiment]] = None) -> bool:
         if self.optimizer:
             return False
         space = self.convert_search_space(config)
@@ -212,6 +217,7 @@ class BayesOptSearch(Searcher):
             self._metric = metric
         if mode:
             self._mode = mode
+        self._experiments = experiments if experiments else []
 
         if self._mode == "max":
             self._metric_op = 1.

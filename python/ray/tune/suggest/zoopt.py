@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple
 
 import ray
 import ray.cloudpickle as pickle
+from ray.tune.experiment import Experiment
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
     Uniform
@@ -215,8 +216,12 @@ class ZOOptSearch(Searcher):
                 parallel_num=self.parallel_num,
                 **self.kwargs)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+    def set_search_properties(
+            self,
+            metric: Optional[str],
+            mode: Optional[str],
+            config: Dict,
+            experiments: Optional[List[Experiment]] = None) -> bool:
         if self._dim_dict:
             return False
         space = self.convert_search_space(config)
@@ -226,6 +231,7 @@ class ZOOptSearch(Searcher):
             self._metric = metric
         if mode:
             self._mode = mode
+        self._experiments = experiments if experiments else []
 
         if self._mode == "max":
             self._metric_op = -1.

@@ -4,9 +4,11 @@ import numpy as np
 import pickle
 from typing import Dict, List, Optional, Tuple, Union, Any
 
+from ray.tune.experiment import Experiment
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
     LogUniform
+from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
@@ -18,8 +20,6 @@ try:
     import skopt as sko
 except ImportError:
     sko = None
-
-from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
@@ -220,8 +220,12 @@ class SkOptSearch(Searcher):
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+    def set_search_properties(
+            self,
+            metric: Optional[str],
+            mode: Optional[str],
+            config: Dict,
+            experiments: Optional[List[Experiment]] = None) -> bool:
         if self._skopt_opt:
             return False
         space = self.convert_search_space(config)
@@ -234,6 +238,7 @@ class SkOptSearch(Searcher):
             self._metric = metric
         if mode:
             self._mode = mode
+        self._experiments = experiments if experiments else []
 
         self._setup_skopt()
         return True

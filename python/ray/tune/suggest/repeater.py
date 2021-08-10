@@ -4,7 +4,9 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
+from ray.tune.experiment import Experiment
 from ray.tune.suggest.suggestion import Searcher
+from ray.tune.suggest.util import with_try_catch
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +181,11 @@ class Repeater(Searcher):
     def set_state(self, state: Dict):
         self.__dict__.update(state)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
-        return self.searcher.set_search_properties(metric, mode, config)
+    def set_search_properties(
+            self,
+            metric: Optional[str],
+            mode: Optional[str],
+            config: Dict,
+            experiments: Optional[List[Experiment]] = None) -> bool:
+        return with_try_catch(self.searcher.set_search_properties, metric,
+                              mode, config, experiments)
