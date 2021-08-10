@@ -203,7 +203,6 @@ Status raylet::RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
 }
 
 void raylet::RayletClient::NotifyDirectCallTaskBlocked(bool release_resources) {
-  flatbuffers::FlatBufferBuilder fbb;
   rpc::DirectCallTaskBlockedRequest request;
   request.set_worker_id(worker_id_.Binary());
   request.set_release_resources(release_resources);

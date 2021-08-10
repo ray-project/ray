@@ -24,36 +24,24 @@ void FairSchedulingQueue::PushAll(const SchedulingClass scheduling_class,
 }
 
 void FairSchedulingQueue::MarkRunning(const Task &task) {
-  // NOTE: It's unsafe to change `active_works_[scheduling_class]` while
-  // `scheduling_class` is in `work_queue_` since `works_queue_`'s comparator
-  // relies on `active_works_` and thus may become inconsistent.
   const auto scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
-
-  auto it = work_queue_.find(scheduling_class);
-  if (it != work_queue_.end()) {
-    auto queue = std::move(it->second);
-    work_queue_.erase(scheduling_class);
-    active_tasks_[scheduling_class]++;
-    work_queue_.emplace(scheduling_class, queue);
-  } else {
-    active_tasks_[scheduling_class]++;
-  }
+  AdjustPriority(scheduling_class, 1);
 }
 
 void FairSchedulingQueue::MarkFinished(const Task &task) {
-  // NOTE: It's unsafe to change `active_works_[scheduling_class]` while
-  // `scheduling_class` is in `work_queue_` since `works_queue_`'s comparator
-  // relies on `active_works_` and thus may become inconsistent.
   const auto scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
+  AdjustPriority(scheduling_class, -1);
+}
 
+void FairSchedulingQueue::AdjustPriority(const SchedulingClass scheduling_class, int64_t diff) {
   auto it = work_queue_.find(scheduling_class);
   if (it != work_queue_.end()) {
     auto queue = std::move(it->second);
     work_queue_.erase(scheduling_class);
-    active_tasks_[scheduling_class]--;
+    active_tasks_[scheduling_class] += diff;
     work_queue_.emplace(scheduling_class, queue);
   } else {
-    active_tasks_[scheduling_class]--;
+    active_tasks_[scheduling_class] += diff;
     if (active_tasks_[scheduling_class] == 0) {
       active_tasks_.erase(scheduling_class);
     }
@@ -105,7 +93,20 @@ SchedulingPriorityComparator::SchedulingPriorityComparator(
 
 bool SchedulingPriorityComparator::operator()(const SchedulingClass &lhs,
                                               const SchedulingClass &rhs) const {
-  return priorities_[lhs] < priorities_[rhs];
+  int64_t lhs_priority = 0;
+  int64_t rhs_priority = 0;
+
+  auto it = priorities_.find(lhs);
+  if (it != priorities_.end()) {
+    lhs_priority = it->second;
+  }
+
+  it = priorities_.find(rhs);
+  if (it != priorities_.end()) {
+    rhs_priority = it->second;
+  }
+
+  return lhs_priority < rhs_priority;
 }
 }  // namespace internal
 

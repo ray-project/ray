@@ -23,7 +23,7 @@ struct SchedulingPriorityComparator : public std::less<SchedulingClass> {
 
  private:
   /// A reference to FairSchedulingQueue::active_works_
-  std::unordered_map<SchedulingClass, uint64_t> &priorities_;
+  const std::unordered_map<SchedulingClass, uint64_t> &priorities_;
 };
 
 using WorkQueueType =
@@ -100,6 +100,8 @@ class FairSchedulingQueue {
        it's not in the map, therefore the map is still consistent).
     3. Reinsert scheduling class with a new priority.
   */
+
+  void AdjustPriority(const SchedulingClass scheduling_class, int64_t diff);
 
   /// The number of active tasks for each scheduling class, which is opposite
   /// of the priority of the task (low active count means we should schedule

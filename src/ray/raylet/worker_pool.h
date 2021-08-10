@@ -207,17 +207,17 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
                         const rpc::JobConfig &job_config,
                         std::function<void(Status, int)> send_reply_callback);
 
-  /// Get the client connection's registered worker.
-  ///
-  /// \param The client connection owned by a registered worker.
-  /// \return The Worker that owns the given client connection. Returns nullptr
-  /// if the client has not registered a worker yet.
-  std::shared_ptr<WorkerInterface> GetRegisteredWorker(const WorkerID &worker_id) const;
-
   /// Get the worker id's registered worker.
   ///
   /// \param The worker id.
   /// \return The worker whose id is provided. Returns nullptr
+  /// if the client has not registered a worker yet.
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(const WorkerID &worker_id) const;
+
+  /// Get the client connection's registered worker.
+  ///
+  /// \param The client connection owned by a registered worker.
+  /// \return The Worker that owns the given client connection. Returns nullptr
   /// if the client has not registered a worker yet.
   std::shared_ptr<WorkerInterface> GetRegisteredWorker(
       const std::shared_ptr<ClientConnection> &connection) const;
