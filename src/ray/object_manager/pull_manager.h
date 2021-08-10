@@ -147,6 +147,11 @@ class PullManager {
   /// earlier request is waiting for metadata.
   bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const;
 
+  /// Whether we are have requests queued that are not currently active. This
+  /// can happen when we are at capacity in the object store or temporarily, if
+  /// there are object sizes missing.
+  bool HasPullsQueued() const;
+
   std::string DebugString() const;
 
   /// Returns the number of bytes of quota remaining. When this is less than zero,
