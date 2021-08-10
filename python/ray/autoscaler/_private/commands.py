@@ -1257,7 +1257,7 @@ def _get_running_head_node(
                 f"The head node being returned: {_backup_head_node} is not "
                 "`up-to-date`. If you are not debugging a startup issue "
                 "it is recommended to restart this head node with: {}",
-                cf.bold(f"  ray stop  {printable_config_file}"))
+                cf.bold(f"  ray down  {printable_config_file}"))
 
             return _backup_head_node
         raise RuntimeError("Head node of cluster ({}) not found!".format(
