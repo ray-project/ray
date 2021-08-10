@@ -720,24 +720,42 @@ if __name__ == "__main__":
         assert b"OK" in output
 
 
-def test_use_dynamic_function_and_class(ray_start_regular_shared):
+@pytest.mark.skipif(client_test_enabled(), reason="init issue")
+def test_use_dynamic_function_and_class():
     # Test use dynamically defined functions
     # and classes for remote tasks and actors.
     # See https://github.com/ray-project/ray/issues/12834.
 
     current_path = os.path.dirname(__file__)
     job_config = ray.job_config.JobConfig(code_search_path=[current_path])
-    ray.init({}, job_config=job_config)
-    @ray.remote
-    def foo():
-        return "OK"
+    ray.init(job_config=job_config)
+
+    def foo1():
+        @ray.remote
+        def foo2():
+            return "OK"
+
+        return foo2
 
     @ray.remote
     class Foo:
         def foo(self):
             return "OK"
 
-    assert ray.get(foo.remote()) == "OK"
+    f = foo1()
+    assert ray.get(f.remote()) == "OK"
+    key_ = (
+        b"RemoteFunction:" + ray.worker.global_worker.current_job_id.binary() +
+        b":" + f._function_descriptor.function_id.binary())
+    (job_id_str, function_id_str, function_name, serialized_function, module,
+     max_calls) = ray.worker.global_worker.redis_client.hmget(
+         key_, [
+             "job_id", "function_id", "function_name", "function", "module",
+             "max_calls"
+         ])
+    assert f._function_descriptor.function_id == ray.FunctionID(
+        function_id_str)
+
     foo_actor = Foo.remote()
     assert ray.get(foo_actor.foo.remote()) == "OK"
 

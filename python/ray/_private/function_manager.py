@@ -47,9 +47,9 @@ class FunctionActorManager:
             the worker gets connected.
         _actors_to_export: The actors to export when the worker gets
             connected.
-        _function_execution_info: The map from job_id to function_id
+        _function_execution_info: The function_id
             and execution_info.
-        _num_task_executions: The map from job_id to function
+        _num_task_executions: The function
             execution times.
         imported_actor_classes: The set of actor classes keys (format:
             ActorClass:function_id) that are already in GCS.
@@ -59,9 +59,7 @@ class FunctionActorManager:
         self._worker = worker
         self._functions_to_export = []
         self._actors_to_export = []
-        # This field is a dictionary that maps a driver ID to a dictionary of
-        # functions (and information about those functions) that have been
-        # registered for that driver (this inner dictionary maps function IDs
+        # This field is a dictionary that maps function IDs
         # to a FunctionExecutionInfo object. This should only be used on
         # workers that execute remote functions.
         self._function_execution_info = defaultdict(lambda: {})
@@ -81,17 +79,13 @@ class FunctionActorManager:
         self.lock = threading.RLock()
         self.execution_infos = {}
 
-    def increase_task_counter(self, job_id, function_descriptor):
+    def increase_task_counter(self, function_descriptor):
         function_id = function_descriptor.function_id
-        if self._worker.load_code_from_local:
-            job_id = ray.JobID.nil()
-        self._num_task_executions[job_id][function_id] += 1
+        self._num_task_executions[function_id] += 1
 
-    def get_task_counter(self, job_id, function_descriptor):
+    def get_task_counter(self, function_descriptor):
         function_id = function_descriptor.function_id
-        if self._worker.load_code_from_local:
-            job_id = ray.JobID.nil()
-        return self._num_task_executions[job_id][function_id]
+        return self._num_task_executions[function_id]
 
     def compute_collision_identifier(self, function_or_class):
         """The identifier is used to detect excessive duplicate exports.
@@ -197,7 +191,7 @@ class FunctionActorManager:
         # atomic. Otherwise, there is race condition. Another thread may use
         # the temporary function above before the real function is ready.
         with self.lock:
-            self._num_task_executions[job_id][function_id] = 0
+            self._num_task_executions[function_id] = 0
 
             try:
                 function = pickle.loads(serialized_function)
@@ -208,7 +202,7 @@ class FunctionActorManager:
                         "This function was not imported properly.")
 
                 # Use a placeholder method when function pickled failed
-                self._function_execution_info[job_id][function_id] = (
+                self._function_execution_info[function_id] = (
                     FunctionExecutionInfo(
                         function=f,
                         function_name=function_name,
@@ -230,7 +224,7 @@ class FunctionActorManager:
                 # However in the worker process, the `__main__` module is a
                 # different module, which is `default_worker.py`
                 function.__module__ = module
-                self._function_execution_info[job_id][function_id] = (
+                self._function_execution_info[function_id] = (
                     FunctionExecutionInfo(
                         function=function,
                         function_name=function_name,
@@ -254,11 +248,9 @@ class FunctionActorManager:
             # Load function from local code.
             # Currently, we don't support isolating code by jobs,
             # thus always set job ID to NIL here.
-            job_id_local = ray.JobID.nil()
             if not function_descriptor.is_actor_method():
                 try:
-                    self._load_function_from_local(job_id_local,
-                                                   function_descriptor)
+                    self._load_function_from_local(function_descriptor)
                 except Exception:
                     # If the class is dynamic, it can still be loaded from GCS
                     # even if load_code_from_local is set True
@@ -276,7 +268,7 @@ class FunctionActorManager:
                 self._wait_for_function(function_descriptor, job_id)
         try:
             function_id = function_descriptor.function_id
-            info = self._function_execution_info[job_id][function_id]
+            info = self._function_execution_info[function_id]
         except KeyError as e:
             message = ("Error occurs in get_execution_info: "
                        "job_id: %s, function_descriptor: %s. Message: %s" %
@@ -284,11 +276,10 @@ class FunctionActorManager:
             raise KeyError(message)
         return info
 
-    def _load_function_from_local(self, job_id, function_descriptor):
+    def _load_function_from_local(self, function_descriptor):
         assert not function_descriptor.is_actor_method()
         function_id = function_descriptor.function_id
-        if (job_id in self._function_execution_info
-                and function_id in self._function_execution_info[job_id]):
+        if function_id in self._function_execution_info:
             return
         module_name, function_name = (
             function_descriptor.module_name,
@@ -301,13 +292,13 @@ class FunctionActorManager:
             for part in parts:
                 object = getattr(object, part)
             function = object._function
-            self._function_execution_info[job_id][function_id] = (
+            self._function_execution_info[function_id] = (
                 FunctionExecutionInfo(
                     function=function,
                     function_name=function_name,
                     max_calls=0,
                 ))
-            self._num_task_executions[job_id][function_id] = 0
+            self._num_task_executions[function_id] = 0
         except Exception as e:
             raise RuntimeError(f"Function {function_descriptor} failed "
                                "to be loaded from local code.\n"
@@ -337,7 +328,7 @@ class FunctionActorManager:
             with self.lock:
                 if (self._worker.actor_id.is_nil()
                         and (function_descriptor.function_id in
-                             self._function_execution_info[job_id])):
+                             self._function_execution_info)):
                     break
                 elif not self._worker.actor_id.is_nil() and (
                         self._worker.actor_id in self._worker.actors):
@@ -431,11 +422,10 @@ class FunctionActorManager:
         if actor_class is None:
             # Load actor class.
             if self._worker.load_code_from_local:
-                job_id_local = ray.JobID.nil()
                 # Load actor class from local code.
                 try:
                     actor_class = self._load_actor_class_from_local(
-                        job_id_local, actor_creation_function_descriptor)
+                        actor_creation_function_descriptor)
                 except Exception:
                     # If the class is dynamic, it can still be loaded from GCS
                     # even if load_code_from_local is set True
@@ -471,20 +461,18 @@ class FunctionActorManager:
                     actor_method,
                     actor_imported=True,
                 )
-                self._function_execution_info[job_id][method_id] = (
+                self._function_execution_info[method_id] = (
                     FunctionExecutionInfo(
                         function=executor,
                         function_name=actor_method_name,
                         max_calls=0,
                     ))
-                self._num_task_executions[job_id][method_id] = 0
-            self._num_task_executions[job_id][function_id] = 0
+                self._num_task_executions[method_id] = 0
+            self._num_task_executions[function_id] = 0
         return actor_class
 
-    def _load_actor_class_from_local(self, job_id,
-                                     actor_creation_function_descriptor):
+    def _load_actor_class_from_local(self, actor_creation_function_descriptor):
         """Load actor class from local code."""
-        assert isinstance(job_id, ray.JobID)
         module_name, class_name = (
             actor_creation_function_descriptor.module_name,
             actor_creation_function_descriptor.class_name)
