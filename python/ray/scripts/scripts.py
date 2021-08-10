@@ -1776,6 +1776,8 @@ def healthcheck(address, redis_password, component):
 
     if not address:
         address = services.get_ray_address_to_use_or_die()
+    else:
+        address = services.address_to_ip(address)
     redis_client = ray._private.services.create_redis_client(
         address, redis_password)
 

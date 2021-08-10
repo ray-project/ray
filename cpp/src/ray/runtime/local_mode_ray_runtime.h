@@ -19,7 +19,7 @@
 #include "abstract_ray_runtime.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 class LocalModeRayRuntime : public AbstractRayRuntime {
  public:
@@ -28,5 +28,5 @@ class LocalModeRayRuntime : public AbstractRayRuntime {
   ActorID GetNextActorID();
 };
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray
