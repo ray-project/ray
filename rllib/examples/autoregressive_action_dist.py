@@ -9,14 +9,31 @@ independently.
 To do this, you need both a custom model that implements the autoregressive
 pattern, and a custom action distribution class that leverages that model.
 This examples shows both.
----
+
+Related paper: https://arxiv.org/abs/1903.11524
+
 The example uses the CorrelatedActionsEnv where the agent observes a random
 number (0 or 1) and has to choose two actions a1 and a2.
-Action a1 should match the observation and a2 should match a1.
+Action a1 should match the observation (+5 reward) and a2 should match a1
+(+5 reward).
+Since a2 should depend on a1, an autoregressive action dist makes sense.
 
+---
+To better understand the environment, run 1 manual train iteration and test
+loop without Tune:
+$ python autoregressive_action_dist.py --stop-iters 1 --no-tune
+
+Run this example with defaults (using Tune and autoregressive action dist):
+$ python autoregressive_action_dist.py
+Then run again without autoregressive actions:
+$ python autoregressive_action_dist.py --no-autoreg
+# TODO: Why does this lead to better results than autoregressive actions?
+Compare learning curve on TensorBoard:
+$ cd ~/ray-results/; tensorboard --logdir .
+
+Other options for running this example:
+$ python attention_net.py --help
 # TODO: why does it not get the requested resources with multiple cpus?
-# TODO: better understand action dist and model
-# TODO: add usage description of example
 """
 
 import argparse
@@ -39,8 +56,13 @@ def get_cli_args():
     """Create CLI parser and return parsed arguments"""
     parser = argparse.ArgumentParser()
 
-    # example-specific args
-    # TODO: extra option: --no-correlation --> slower to learn?
+    # example-specific arg: disable autoregressive action dist
+    parser.add_argument(
+        "--no-autoreg",
+        action="store_true",
+        help="Do NOT use an autoregressive action distribution but normal,"
+             "independently distributed actions."
+    )
 
     # general args
     parser.add_argument(
@@ -95,6 +117,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     # main part: register and configure autoregressive action model and dist
+    # here, tailored to the CorrelatedActionsEnv such that a2 depends on a1
     ModelCatalog.register_custom_model(
         "autoregressive_model", TorchAutoregressiveActionModel
         if args.framework == "torch" else AutoregressiveActionModel)
@@ -102,32 +125,35 @@ if __name__ == "__main__":
         "binary_autoreg_dist", TorchBinaryAutoregressiveDistribution
         if args.framework == "torch" else BinaryAutoregressiveDistribution)
 
+    # standard config
     config = {
         "env": CorrelatedActionsEnv,
         "gamma": 0.5,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "model": {
-            "custom_model": "autoregressive_model",
-            "custom_action_dist": "binary_autoreg_dist",
-        },
         "framework": args.framework,
     }
+    # use registered model and dist in config
+    if not args.no_autoreg:
+        config["model"] = {
+            "custom_model": "autoregressive_model",
+                "custom_action_dist": "binary_autoreg_dist",
+        }
 
+    # use stop conditions passed via CLI (or defaults)
     stop = {
         "training_iteration": args.stop_iters,
         "timesteps_total": args.stop_timesteps,
         "episode_reward_mean": args.stop_reward,
     }
 
-    # training loop
-    # manual training loop using PPO and manually keeping track of state
+    # manual training loop using PPO without tune.run()
     if args.no_tune:
         if args.run != "PPO":
             raise ValueError("Only support --run PPO with --no-tune.")
         ppo_config = ppo.DEFAULT_CONFIG.copy()
         ppo_config.update(config)
-        trainer = ppo.PPOTrainer(config=ppo_config, env=args.env)
+        trainer = ppo.PPOTrainer(config=ppo_config, env=CorrelatedActionsEnv)
         # run manual training loop and print results after each iteration
         for _ in range(args.stop_iters):
             result = trainer.train()
@@ -137,12 +163,23 @@ if __name__ == "__main__":
                     result["episode_reward_mean"] >= args.stop_reward:
                 break
 
-        # TODO: implement manual test loop
+        # run manual test loop: 1 iteration until done
+        print("Finished training. Running manual test/inference loop.")
+        env = CorrelatedActionsEnv(_)
+        obs = env.reset()
+        done = False
+        total_reward = 0
+        while not done:
+            a1, a2 = trainer.compute_single_action(obs)
+            next_obs, reward, done, _ = env.step((a1, a2))
+            print(f"Obs: {obs}, Action: a1={a1} a2={a2}, Reward: {reward}")
+            obs = next_obs
+            total_reward += reward
+        print(f"Total reward in test episode: {total_reward}")
 
     # run with Tune for auto env and trainer creation and TensorBoard
     else:
         results = tune.run(args.run, stop=stop, config=config, verbose=2)
-        print(results)
 
         if args.as_test:
             print("Checking if learning goals were achieved")
