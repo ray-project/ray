@@ -33,7 +33,8 @@ void FairSchedulingQueue::MarkFinished(const Task &task) {
   AdjustPriority(scheduling_class, -1);
 }
 
-void FairSchedulingQueue::AdjustPriority(const SchedulingClass scheduling_class, int64_t diff) {
+void FairSchedulingQueue::AdjustPriority(const SchedulingClass scheduling_class,
+                                         int64_t diff) {
   auto it = work_queue_.find(scheduling_class);
   if (it != work_queue_.end()) {
     auto queue = std::move(it->second);
