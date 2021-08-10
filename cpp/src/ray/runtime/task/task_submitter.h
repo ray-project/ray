@@ -21,7 +21,7 @@
 #include "invocation_spec.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 class TaskSubmitter {
  public:
@@ -38,5 +38,5 @@ class TaskSubmitter {
   virtual ObjectID SubmitActorTask(InvocationSpec &invocation,
                                    const CallOptions &call_options) = 0;
 };
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

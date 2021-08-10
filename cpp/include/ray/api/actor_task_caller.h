@@ -19,7 +19,7 @@
 #include <ray/api/static_check.h>
 #include <ray/api/task_options.h>
 namespace ray {
-namespace api {
+namespace internal {
 
 template <typename F>
 class ActorTaskCaller {
@@ -54,7 +54,7 @@ class ActorTaskCaller {
   RayRuntime *runtime_;
   std::string id_;
   RemoteFunctionHolder remote_function_holder_;
-  std::vector<ray::api::TaskArg> args_;
+  std::vector<TaskArg> args_;
   CallOptions task_options_;
 };
 
@@ -74,5 +74,5 @@ ObjectRef<boost::callable_traits::return_type_t<F>> ActorTaskCaller<F>::Remote(
   return ObjectRef<ReturnType>(returned_object_id);
 }
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray
