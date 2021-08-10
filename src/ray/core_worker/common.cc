@@ -46,5 +46,10 @@ std::string LanguageString(Language language) {
   return "";
 }
 
+std::string GenerateCachedActorName(const std::string &ns,
+                                    const std::string &actor_name) {
+  return ns + "-" + actor_name;
+}
+
 }  // namespace core
 }  // namespace ray
