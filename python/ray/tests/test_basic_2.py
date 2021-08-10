@@ -739,6 +739,7 @@ def test_use_dynamic_function_and_class():
 
     @ray.remote
     class Foo:
+        @ray.method(num_returns=1)
         def foo(self):
             return "OK"
 
@@ -755,7 +756,6 @@ def test_use_dynamic_function_and_class():
          ])
     assert f._function_descriptor.function_id == ray.FunctionID(
         function_id_str)
-
     foo_actor = Foo.remote()
     assert ray.get(foo_actor.foo.remote()) == "OK"
 

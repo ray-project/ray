@@ -40,7 +40,6 @@ logger = logging.getLogger(__name__)
 
 class FunctionActorManager:
     """A class used to export/load remote functions and actors.
-
     Attributes:
         _worker: The associated worker that this manager related.
         _functions_to_export: The remote functions to export when
@@ -89,14 +88,11 @@ class FunctionActorManager:
 
     def compute_collision_identifier(self, function_or_class):
         """The identifier is used to detect excessive duplicate exports.
-
         The identifier is used to determine when the same function or class is
         exported many times. This can yield false positives.
-
         Args:
             function_or_class: The function or class to compute an identifier
                 for.
-
         Returns:
             The identifier. Note that different functions or classes can give
                 rise to same identifier. However, the same function should
@@ -127,13 +123,12 @@ class FunctionActorManager:
         try:
             for part in parts:
                 object = getattr(object, part)
-            return True
+            return object
         except Exception:
-            return False
+            return None
 
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
-
         Args:
             remote_function: the RemoteFunction object.
         """
@@ -147,8 +142,8 @@ class FunctionActorManager:
             )
             # If the function is dynamic, we still export it to GCS
             # even if load_code_from_local is set True.
-            if self.load_function_or_class_from_local(module_name,
-                                                      function_name):
+            if self.load_function_or_class_from_local(
+                    module_name, function_name) is not None:
                 return
         function = remote_function._function
         pickled_function = pickle.dumps(function)
@@ -236,11 +231,9 @@ class FunctionActorManager:
 
     def get_execution_info(self, job_id, function_descriptor):
         """Get the FunctionExecutionInfo of a remote function.
-
         Args:
             job_id: ID of the job that the function belongs to.
             function_descriptor: The FunctionDescriptor of the function to get.
-
         Returns:
             A FunctionExecutionInfo object.
         """
@@ -248,14 +241,19 @@ class FunctionActorManager:
             # Load function from local code.
             # Currently, we don't support isolating code by jobs,
             # thus always set job ID to NIL here.
-            if not function_descriptor.is_actor_method():
-                try:
-                    self._load_function_from_local(function_descriptor)
-                except Exception:
-                    # If the class is dynamic, it can still be loaded from GCS
+            function_id = function_descriptor.function_id
+            # If the function has already been loaded,
+            # There's no need to load again
+            if function_id not in self._function_execution_info:
+                if not function_descriptor.is_actor_method():
+                    # If the function is not able to be loaded,
+                    # try to load it from GCS,
                     # even if load_code_from_local is set True
-                    with profiling.profile("wait_for_function"):
-                        self._wait_for_function(function_descriptor, job_id)
+                    if self._load_function_from_local(
+                            function_descriptor) is None:
+                        with profiling.profile("wait_for_function"):
+                            self._wait_for_function(function_descriptor,
+                                                    job_id)
 
         else:
             # Load function from GCS.
@@ -279,18 +277,16 @@ class FunctionActorManager:
     def _load_function_from_local(self, function_descriptor):
         assert not function_descriptor.is_actor_method()
         function_id = function_descriptor.function_id
-        if function_id in self._function_execution_info:
-            return
+
         module_name, function_name = (
             function_descriptor.module_name,
             function_descriptor.function_name,
         )
-        try:
-            module = importlib.import_module(module_name)
-            parts = [part for part in function_name.split(".") if part]
-            object = module
-            for part in parts:
-                object = getattr(object, part)
+
+        object = self.load_function_or_class_from_local(
+            module_name, function_name)
+
+        if object is not None:
             function = object._function
             self._function_execution_info[function_id] = (
                 FunctionExecutionInfo(
@@ -299,22 +295,17 @@ class FunctionActorManager:
                     max_calls=0,
                 ))
             self._num_task_executions[function_id] = 0
-        except Exception as e:
-            raise RuntimeError(f"Function {function_descriptor} failed "
-                               "to be loaded from local code.\n"
-                               f"sys.path: {sys.path}, "
-                               f"Error message: {str(e)}")
+            return True
+        else:
+            return False
 
     def _wait_for_function(self, function_descriptor, job_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
-
         This method will simply loop until the import thread has imported the
         relevant function. If we spend too long in this loop, that may indicate
         a problem somewhere and we will push an error message to the user.
-
         If this worker is an actor, then this will wait until the actor has
         been defined.
-
         Args:
             function_descriptor : The FunctionDescriptor of the function that
                 we want to execute.
@@ -349,11 +340,9 @@ class FunctionActorManager:
 
     def _publish_actor_class_to_key(self, key, actor_class_info):
         """Push an actor class definition to Redis.
-
         The is factored out as a separate function because it is also called
         on cached actor class definitions when a worker connects for the first
         time.
-
         Args:
             key: The key to store the actor class info at.
             actor_class_info: Information about the actor class.
@@ -371,7 +360,8 @@ class FunctionActorManager:
                 actor_creation_function_descriptor.class_name)
             # If the class is dynamic, we still export it to GCS
             # even if load_code_from_local is set True.
-            if self.load_function_or_class_from_local(module_name, class_name):
+            if self.load_function_or_class_from_local(module_name,
+                                                      class_name) is not None:
                 return
 
         # `current_job_id` shouldn't be NIL, unless:
@@ -407,12 +397,10 @@ class FunctionActorManager:
 
     def load_actor_class(self, job_id, actor_creation_function_descriptor):
         """Load the actor class.
-
         Args:
             job_id: job ID of the actor.
             actor_creation_function_descriptor: Function descriptor of
                 the actor constructor.
-
         Returns:
             The actor class.
         """
@@ -422,15 +410,16 @@ class FunctionActorManager:
         if actor_class is None:
             # Load actor class.
             if self._worker.load_code_from_local:
-                # Load actor class from local code.
-                try:
-                    actor_class = self._load_actor_class_from_local(
-                        actor_creation_function_descriptor)
-                except Exception:
-                    # If the class is dynamic, it can still be loaded from GCS
-                    # even if load_code_from_local is set True
+                # Load actor class from local code first.
+                actor_class = self._load_actor_class_from_local(
+                    actor_creation_function_descriptor)
+                # If the actor is unable to be loaded
+                # from local, try to load it
+                # from GCS even if load_code_from_local is set True
+                if actor_class is None:
                     actor_class = self._load_actor_class_from_gcs(
                         job_id, actor_creation_function_descriptor)
+
             else:
                 # Load actor class from GCS.
                 actor_class = self._load_actor_class_from_gcs(
@@ -476,21 +465,17 @@ class FunctionActorManager:
         module_name, class_name = (
             actor_creation_function_descriptor.module_name,
             actor_creation_function_descriptor.class_name)
-        try:
-            module = importlib.import_module(module_name)
-            parts = [part for part in class_name.split(".") if part]
-            object = module
-            for part in parts:
-                object = getattr(object, part)
+
+        object = self.load_function_or_class_from_local(
+            module_name, class_name)
+
+        if object is not None:
             if isinstance(object, ray.actor.ActorClass):
                 return object.__ray_metadata__.modified_class
             else:
                 return object
-        except Exception as e:
-            raise RuntimeError(
-                f"Actor {class_name} failed to be imported from local code.\n"
-                f"sys.path: {sys.path}, "
-                f"Error Message: {str(e)}")
+        else:
+            return None
 
     def _create_fake_actor_class(self, actor_class_name, actor_method_names):
         class TemporaryActor:
@@ -566,10 +551,8 @@ class FunctionActorManager:
 
     def _make_actor_method_executor(self, method_name, method, actor_imported):
         """Make an executor that wraps a user-defined actor method.
-
         The wrapped method updates the worker's internal state and performs any
         necessary checkpointing operations.
-
         Args:
             method_name (str): The name of the actor method.
             method (instancemethod): The actor method to wrap. This should be a
@@ -578,7 +561,6 @@ class FunctionActorManager:
             actor_imported (bool): Whether the actor has been imported.
                 Checkpointing operations will not be run if this is set to
                 False.
-
         Returns:
             A function that executes the given actor method on the worker's
                 stored instance of the actor. The function also updates the
