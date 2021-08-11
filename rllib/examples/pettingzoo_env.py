@@ -50,7 +50,9 @@ if __name__ == "__main__":
     # Configuration for multiagent setup with policy sharing:
     config["multiagent"] = {
         # Setup a single, shared policy for all agents.
-        "policies": {"av": (None, observation_space, action_space, {})},
+        "policies": {
+            "av": (None, observation_space, action_space, {})
+        },
         # Map all agents to that policy.
         "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av",
     }

@@ -11,6 +11,7 @@ from pettingzoo.butterfly import pistonball_v4
 from pettingzoo.mpe import simple_spread_v2
 from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0
 
+
 class TestPettingZooEnv(unittest.TestCase):
     def setUp(self) -> None:
         ray.init()
@@ -19,7 +20,6 @@ class TestPettingZooEnv(unittest.TestCase):
         ray.shutdown()
 
     def test_pettingzoo_pistonball_v4_policies_are_dict_env(self):
-
         def env_creator(config):
             env = pistonball_v4.env(local_ratio=config.get("local_ratio", 0.2))
             env = dtype_v0(env, dtype=float32)
@@ -31,7 +31,7 @@ class TestPettingZooEnv(unittest.TestCase):
         config["env_config"] = {"local_ratio": 0.5}
         # Register env
         register_env("pistonball",
-                    lambda config: PettingZooEnv(env_creator(config)))
+                     lambda config: PettingZooEnv(env_creator(config)))
         env = PettingZooEnv(env_creator(config))
         observation_space = env.observation_space
         action_space = env.action_space
@@ -39,7 +39,9 @@ class TestPettingZooEnv(unittest.TestCase):
 
         config["multiagent"] = {
             # Setup a single, shared policy for all agents.
-            "policies": {"av": (None, observation_space, action_space, {})},
+            "policies": {
+                "av": (None, observation_space, action_space, {})
+            },
             # Map all agents to that policy.
             "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av",
         }
@@ -57,8 +59,6 @@ class TestPettingZooEnv(unittest.TestCase):
         trainer = get_trainer_class('PPO')(env="pistonball", config=config)
         trainer.train()
 
-
-
     def test_pettingzoo_env(self):
         register_env("simple_spread",
                      lambda _: PettingZooEnv(simple_spread_v2.env()))
@@ -74,7 +74,9 @@ class TestPettingZooEnv(unittest.TestCase):
         config["multiagent"] = {
             # Set of policy IDs (by default, will use Trainer's
             # default policy class, the env's obs/act spaces and config={}).
-            "policies": {"av": (None, observation_space, action_space, {})},
+            "policies": {
+                "av": (None, observation_space, action_space, {})
+            },
             # Mapping function that always returns "av" as policy ID to use
             # (for any agent).
             "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av"
