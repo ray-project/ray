@@ -5,6 +5,7 @@ import numpy as np
 import queue
 import threading
 import time
+import tree  # pip install dm_tree
 from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
     Type, TYPE_CHECKING, Union
 
@@ -782,7 +783,8 @@ def _process_observations(
                     obs_sp = worker.policy_map[episode.policy_for(
                         ag_id)].observation_space
                     obs_sp = getattr(obs_sp, "original_space", obs_sp)
-                    all_agents_obs[ag_id] = np.zeros_like(obs_sp.sample())
+                    all_agents_obs[ag_id] = tree.map_structure(
+                        np.zeros_like, obs_sp.sample())
         else:
             hit_horizon = False
             all_agents_done = False
