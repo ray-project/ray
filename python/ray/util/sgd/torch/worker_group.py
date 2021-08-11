@@ -17,7 +17,6 @@ from ray.util.sgd.torch.utils import setup_address
 from ray.util.sgd.utils import check_for_failure
 
 RESIZE_COOLDOWN_S = 10
-SGD_PLACEMENT_GROUP_TIMEOUT_S = 60
 logger = logging.getLogger(__name__)
 
 
