@@ -627,8 +627,8 @@ def test_launch_templates(ec2_client_stub, ec2_client_stub_fail_fast,
 @pytest.mark.parametrize("stop", [True, False])
 @pytest.mark.parametrize("spot", [True, False])
 def test_terminate_nodes(num_nodes, stop, spot):
-    # This test makes sure that we don't try to stop or terminate too many nodes
-    # in a single EC2 request. By default, only 1000 nodes can be
+    # This test makes sure that we don't try to stop or terminate too many
+    # nodes in a single EC2 request. By default, only 1000 nodes can be
     # stopped/terminated in one request. To terminate more nodes, we must break
     # them up into multiple smaller requests.
     #
