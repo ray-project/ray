@@ -451,7 +451,6 @@ class RemoteWorkerGroup(WorkerGroupInterface):
                 return table["state"] == "REMOVED"
 
             self.wait_for_condition(is_placement_group_removed)
-            time.sleep(1)
 
     def reset(self):
         self.shutdown(force=True)

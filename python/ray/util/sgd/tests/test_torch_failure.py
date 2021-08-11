@@ -104,8 +104,6 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
         assert trainer1.worker_group.num_workers == 1
         assert trainer1._num_failures == 1
 
-        ready, _ = ray.wait([dummp_pg.ready()])
-        assert ready
         ray.util.remove_placement_group(dummp_pg)
 
         def is_placement_group_removed():
