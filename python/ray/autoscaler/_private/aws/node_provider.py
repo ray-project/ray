@@ -1,7 +1,7 @@
 import random
 import copy
 import threading
-from collections import defaultdict, OrderedDict
+from collections import defaultdict, namedtuple, OrderedDict
 import logging
 import time
 from typing import Any, Dict, List
@@ -81,6 +81,8 @@ def list_ec2_instances(region: str, aws_credentials: Dict[str, Any] = None
 
 
 class AWSNodeProvider(NodeProvider):
+    max_terminate_nodes = 1000
+
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes",
@@ -457,12 +459,21 @@ class AWSNodeProvider(NodeProvider):
         pass
 
     def terminate_nodes(self, node_ids):
-        # AWS only allows 1000 nodes to be shutdown in a single terminate
-        # request.
-        max_terminate_nodes = 1000
-
         if not node_ids:
             return
+
+        terminate_instances_func = self.ec2.meta.client.terminate_instances
+        stop_instances_func = self.ec2.meta.client.stop_instances
+
+        # In some cases, this function stops some nodes, but terminates others.
+        # Each of these requires a different EC2 API call. So, we use the
+        # "nodes_to_terminate" dict below to keep track of exactly which API
+        # call will be used to stop/terminate which set of nodes. The key is
+        # the function to use, and the value is the list of nodes to terminate
+        # with that function.
+        nodes_to_terminate = {terminate_instances_func: [],
+                stop_instances_func: []}
+
         if self.cache_stopped_nodes:
             spot_ids = []
             on_demand_ids = []
@@ -482,23 +493,24 @@ class AWSNodeProvider(NodeProvider):
                         "under `provider` in the cluster configuration)"),
                     cli_logger.render_list(on_demand_ids))
 
-                for start in range(0, len(on_demand_ids), max_terminate_nodes):
-                    self.ec2.meta.client.stop_instances(
-                        InstanceIds=on_demand_ids[start:start +
-                                                  max_terminate_nodes])
             if spot_ids:
                 cli_logger.print(
                     "Terminating instances {} " +
                     cf.dimmed("(cannot stop spot instances, only terminate)"),
                     cli_logger.render_list(spot_ids))
 
-                for start in range(0, len(spot_ids), max_terminate_nodes):
-                    self.ec2.meta.client.terminate_instances(
-                        InstanceIds=spot_ids[start:start +
-                                             max_terminate_nodes])
+            nodes_to_terminate[stop_instances_func] = on_demand_ids
+            nodes_to_terminate[terminate_instances_func] = spot_ids
         else:
-            for start in range(0, len(node_ids), max_terminate_nodes):
-                self.ec2.meta.client.terminate_instances(
+            nodes_to_terminate[terminate_instances_func] = node_ids
+
+        max_terminate_nodes = self.max_terminate_nodes if \
+                self.max_terminate_nodes is not None else len(node_ids)
+
+        # for terminate_func, nodes in nodes_to_terminate.items():
+        for nodes, terminate_func in nodes_to_terminate.items():
+            for start in range(0, len(nodes), max_terminate_nodes):
+                terminate_func(
                     InstanceIds=node_ids[start:start + max_terminate_nodes])
 
     def _get_node(self, node_id):

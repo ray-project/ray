@@ -638,8 +638,6 @@ def test_terminate_nodes(num_nodes, stop, spot):
     # "spot" is True if we want to terminate/stop spot nodes, and False for on-
     #   demand nodes.
 
-    max_terminate_nodes = 1000
-
     # Generate a list of unique instance ids to terminate
     instance_ids = ["i-{:017d}".format(i) for i in range(num_nodes)]
 
@@ -665,12 +663,13 @@ def test_terminate_nodes(num_nodes, stop, spot):
     provider.terminate_nodes(instance_ids)
 
     if spot or not stop:
-        call_args_list = provider.ec2.meta.client.terminate_instances.call_args_list
+        call_args_list = provider.ec2.meta.client.terminate_instances \
+                .call_args_list
     else:
         call_args_list = provider.ec2.meta.client.stop_instances.call_args_list
 
     for call in call_args_list:
-        assert len(call[1]["InstanceIds"]) <= max_terminate_nodes
+        assert 0 < len(call[1]["InstanceIds"]) <= provider.max_terminate_nodes
 
 
 if __name__ == "__main__":
