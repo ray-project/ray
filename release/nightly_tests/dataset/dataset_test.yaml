@@ -11,4 +11,17 @@
     timeout: 600
     prepare: python wait_cluster.py
     script: python inference.py
+
+- name: shuffle_ingest
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@sangcho"
+
+  cluster:
+    app_config: shuffle_app_config.yaml
+    compute_template: shuffle_multi_node_gpu.yaml
+
+  run:
+    timeout: 900
+    script: python shuffle_ingest.py
   
