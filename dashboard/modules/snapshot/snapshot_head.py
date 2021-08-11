@@ -4,9 +4,6 @@ from ray.core.generated import gcs_service_pb2_grpc
 from ray.experimental.internal_kv import _internal_kv_get
 
 import ray.new_dashboard.utils as dashboard_utils
-from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
-from ray.serve.constants import SERVE_CONTROLLER_NAME
-from ray.serve.kv_store import format_key
 
 import json
 
@@ -91,6 +88,15 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         return actors
 
     async def get_serve_info(self):
+        # Conditionally import serve to prevent ModuleNotFoundError from serve
+        # dependencies when only ray[default] is installed (#17712)
+        try:
+            from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
+            from ray.serve.constants import SERVE_CONTROLLER_NAME
+            from ray.serve.kv_store import format_key
+        except Exception:
+            return "{}"
+
         client = self._dashboard_head.gcs_client
 
         # Serve wraps Ray's internal KV store and specially formats the keys.
