@@ -147,9 +147,9 @@ class ServeController:
             entry["end_time"] = 0
             entry["actors"] = dict()
             replicas_to_actor_handles = self._all_replica_handles().get(deployment_name) or dict()
-            for replica_tag, actor_handle in replicas_to_actor_handles:
+            for replica_tag, actor_handle in replicas_to_actor_handles.items():
                 actor_id = actor_handle._ray_actor_id.hex()
-                entry["actors"][actor_id]["replica_tag"] = replica_tag
+                entry["actors"][actor_id] = {"replica_tag": replica_tag}
             val[deployment_name] = entry
         self.kv_store.put(SNAPSHOT_KEY, json.dumps(val))
 

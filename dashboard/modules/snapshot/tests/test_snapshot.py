@@ -139,6 +139,7 @@ my_func.deploy()
     assert entry["rayJobId"] is not None
     assert entry["startTime"] > 0
     assert entry["endTime"] == 0
+    assert len(entry["actors"]) == 1
 
     entry_nondetached = data["data"]["snapshot"]["deployments"][
         "myFuncNondetached"]
@@ -151,6 +152,7 @@ my_func.deploy()
     assert entry_nondetached["rayJobId"] is not None
     assert entry_nondetached["startTime"] > 0
     assert entry_nondetached["endTime"] == 0
+    assert len(entry_nondetached["actors"]) == 1
 
 
 if __name__ == "__main__":
