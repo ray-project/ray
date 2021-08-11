@@ -3,12 +3,11 @@ from typing import Callable, TypeVar, List, Optional, Dict
 
 import ray
 from ray.exceptions import RayActorError
-from ray.util.sgd.v2.session import init_session, get_session, \
-    shutdown_session, TrainingResultType, TrainingResult
-from ray.util.sgd.v2.worker_group import WorkerGroup
-from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
-from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV
 from ray.ray_constants import env_integer
+from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV
+from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
+from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
+from ray.util.sgd.v2.worker_group import WorkerGroup
 
 T = TypeVar("T")
 

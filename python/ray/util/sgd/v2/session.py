@@ -1,12 +1,12 @@
-import queue
-import time
-from datetime import datetime
-import threading
-from enum import Enum, auto
-from typing import Callable, Optional, Dict
 import os
 import platform
+import queue
+import threading
+import time
+from datetime import datetime
+from enum import Enum, auto
 from typing import Callable
+from typing import Optional, Dict
 
 import ray
 from ray.util.sgd.v2.constants import (
@@ -157,7 +157,7 @@ class Session:
         result = TrainingResult(TrainingResultType.REPORT, kwargs.copy())
 
         # Add result to a thread-safe queue.
-        self.result_queue.put(kwargs, block=True)
+        self.result_queue.put(result, block=True)
 
         # Acquire lock to stop the training thread until main thread
         # triggers resume.
