@@ -19,7 +19,16 @@
 #include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"
+#include "ray/rpc/grpc_server.h"
+#include "ray/stats/metric.h"
 #include "ray/util/util.h"
+
+DEFINE_stats(grpc_server_req_latency_ms, "Request latency in grpc server", ("Method"), (),
+             ray::stats::GAUGE);
+DEFINE_stats(grpc_server_req_new, "New request number in grpc server", ("Method"), (),
+             ray::stats::COUNT);
+DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
+             ("Method"), (), ray::stats::COUNT);
 
 namespace ray {
 namespace rpc {

@@ -2,10 +2,8 @@ import socket
 from contextlib import closing
 from typing import Dict, List, Union
 import copy
-import json
 import glob
 import logging
-import numbers
 import os
 import inspect
 import threading
@@ -20,6 +18,8 @@ from typing import Optional
 import numpy as np
 import ray
 import psutil
+
+from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
 
 logger = logging.getLogger(__name__)
 
@@ -847,31 +847,6 @@ def force_on_current_node(task_or_actor):
     node_resource_key = get_current_node_resource_key()
     options = {"resources": {node_resource_key: 0.01}}
     return task_or_actor.options(**options)
-
-
-class SafeFallbackEncoder(json.JSONEncoder):
-    def __init__(self, nan_str="null", **kwargs):
-        super(SafeFallbackEncoder, self).__init__(**kwargs)
-        self.nan_str = nan_str
-
-    def default(self, value):
-        try:
-            if np.isnan(value):
-                return self.nan_str
-
-            if (type(value).__module__ == np.__name__
-                    and isinstance(value, np.ndarray)):
-                return value.tolist()
-
-            if issubclass(type(value), numbers.Integral):
-                return int(value)
-            if issubclass(type(value), numbers.Number):
-                return float(value)
-
-            return super(SafeFallbackEncoder, self).default(value)
-
-        except Exception:
-            return str(value)  # give up, just stringify it (ok for logs)
 
 
 if __name__ == "__main__":
