@@ -16,14 +16,6 @@ py_test(
 )
 
 py_test(
-    name = "test_api_new",
-    size = "medium",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive"],
-    deps = [":serve_lib"],
-)
-
-py_test(
     name = "test_deploy",
     size = "large",
     srcs = serve_tests_srcs,
@@ -207,14 +199,6 @@ py_test(
 
 py_test(
     name = "test_util",
-    size = "small",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_imported_backend",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive"],

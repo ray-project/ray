@@ -237,32 +237,6 @@ def get_node_id_for_actor(actor_handle):
         "NodeID"]
 
 
-async def mock_imported_function(request):
-    return await request.body()
-
-
-class MockImportedBackend:
-    """Used for testing backends.ImportedBackend.
-
-    This is necessary because we need the class to be installed in the worker
-    processes. We could instead mock out importlib but doing so is messier and
-    reduces confidence in the test (it isn't truly end-to-end).
-    """
-
-    def __init__(self, arg):
-        self.arg = arg
-        self.config = None
-
-    def reconfigure(self, config):
-        self.config = config
-
-    def __call__(self, request):
-        return {"arg": self.arg, "config": self.config}
-
-    async def other_method(self, request):
-        return await request.body()
-
-
 def compute_iterable_delta(old: Iterable,
                            new: Iterable) -> Tuple[set, set, set]:
     """Given two iterables, return the entries that's (added, removed, updated).

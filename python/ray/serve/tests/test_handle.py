@@ -157,13 +157,16 @@ def test_handle_option_chaining(serve_instance):
 
 
 def test_repeated_get_handle_cached(serve_instance):
+    @serve.deployment
     def f(_):
         return ""
 
-    serve.create_backend("m", f)
-    serve.create_endpoint("m", backend="m")
+    f.deploy()
 
-    handle_sets = {serve.get_handle("m") for _ in range(100)}
+    handle_sets = {f.get_handle() for _ in range(100)}
+    assert len(handle_sets) == 1
+
+    handle_sets = {serve.get_deployment("f").get_handle() for _ in range(100)}
     assert len(handle_sets) == 1
 
 

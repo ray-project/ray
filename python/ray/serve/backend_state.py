@@ -737,12 +737,6 @@ class BackendState:
         This includes both explicit code version updates and changes to the
         user_config.
         """
-        # NOTE(edoakes): this short-circuits when using the legacy
-        # `create_backend` codepath -- it can be removed once we deprecate
-        # that as the version should never be None.
-        if target_version is None:
-            return 0
-
         # Short circuit if target replicas is 0 (the backend is being deleted)
         # because this will be handled in the main loop.
         if target_replicas == 0:
