@@ -451,7 +451,6 @@ class RemoteWorkerGroup(WorkerGroupInterface):
 
             # Wait the placement_group been deleted
             wait_for_condition(is_placement_group_removed)
-            time.sleep(1)
 
     def reset(self):
         self.shutdown(force=True)
