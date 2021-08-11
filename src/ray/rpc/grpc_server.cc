@@ -122,7 +122,7 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
     if (ok) {
       switch (server_call->GetState()) {
       case ServerCallState::PENDING:
-        ray::stats::RequestReceivedCount().Record(
+        stats::RequestReceivedCount().Record(
             1, {{ray::stats::CallNameKey, server_call->GetCallName()},
                 {ray::stats::ThreadIndexKey, std::to_string(index)}});
         // We've received a new incoming request. Now this call object is used to

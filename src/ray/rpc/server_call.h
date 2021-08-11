@@ -89,6 +89,8 @@ class ServerCall {
   // Invoked when sending reply fails.
   virtual void OnReplyFailed() = 0;
 
+  virtual const std::string &GetCallName() = 0;
+
   virtual const ServerCallFactory &GetServerCallFactory() = 0;
 
   /// Virtual destruct function to make sure subclass would destruct properly.
@@ -214,6 +216,8 @@ class ServerCallImpl : public ServerCall {
       io_service_.post([callback]() { callback(); }, call_name_ + ".failure_callback");
     }
   }
+
+  const std::string &GetCallName() override { return call_name_; }
 
   const ServerCallFactory &GetServerCallFactory() override { return factory_; }
 
