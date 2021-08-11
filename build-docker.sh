@@ -7,7 +7,7 @@ set -x
 
 GPU=""
 BASE_IMAGE="ubuntu:focal"
-WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.5.1-cp37-cp37m-manylinux2014_x86_64.whl"
+WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.5.2-cp37-cp37m-manylinux2014_x86_64.whl"
 PYTHON_VERSION="3.7.7"
 
 
