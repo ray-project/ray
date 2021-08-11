@@ -33,6 +33,10 @@ Starting Ray
 
 You can start Ray on a single machine by adding this to your code.
 
+.. note::
+
+  In recent versions of Ray (>1.5), ``ray.init()`` will automatically be called on the first use of a Ray remote API.
+
 .. tabs::
   .. code-tab:: python
 
