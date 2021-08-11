@@ -27,7 +27,7 @@ class TestPettingZooEnv(unittest.TestCase):
             env = normalize_obs_v0(env)
             return env
 
-        config = deepcopy(get_trainer_class('PPO')._default_config)
+        config = deepcopy(get_trainer_class("PPO")._default_config)
         config["env_config"] = {"local_ratio": 0.5}
         # Register env
         register_env("pistonball",
@@ -48,7 +48,8 @@ class TestPettingZooEnv(unittest.TestCase):
 
         config["log_level"] = "DEBUG"
         config["num_workers"] = 1
-        # Fragment length, collected at once from each worker and for each agent!
+        # Fragment length, collected at once from each worker
+        # and for each agent!
         config["rollout_fragment_length"] = 30
         # Training batch size -> Fragments are concatenated up to this point.
         config["train_batch_size"] = 200
@@ -56,7 +57,7 @@ class TestPettingZooEnv(unittest.TestCase):
         config["horizon"] = 200
         # Default: False
         config["no_done_at_end"] = False
-        trainer = get_trainer_class('PPO')(env="pistonball", config=config)
+        trainer = get_trainer_class("PPO")(env="pistonball", config=config)
         trainer.train()
 
     def test_pettingzoo_env(self):
