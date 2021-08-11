@@ -157,7 +157,8 @@ def _resolve_paths_and_filesystem(
     return resolved_paths, filesystem
 
 
-def _expand_paths(paths, filesystem):
+def _expand_paths(paths: Union[str, List[str]],
+                  filesystem: "pyarrow.fs.FileSystem"):
     """
     Expands all provided paths into concrete file paths by walking directories.
     Also returns a sidecar of file infos.
