@@ -15,6 +15,7 @@
 #pragma once
 
 #include <chrono>
+#include <iomanip>
 #include <iterator>
 #include <mutex>
 #include <random>
@@ -91,7 +92,7 @@ inline int64_t current_sys_time_us() {
           std::chrono::system_clock::now().time_since_epoch());
   return mu_since_epoch.count();
 }
-	
+
 inline std::string current_sys_time_formatted() {
   auto t = std::time(nullptr);
   auto tm = *std::localtime(&t);
