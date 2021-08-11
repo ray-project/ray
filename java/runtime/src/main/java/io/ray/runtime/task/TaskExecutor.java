@@ -14,7 +14,6 @@ import io.ray.runtime.functionmanager.RayFunction;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectSerializer;
-import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -141,7 +140,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         } else {
           result = rayFunction.getConstructor().newInstance(args);
         }
-      } catch (InvocationTargetException e) {
+      } catch (Exception e) {
         final boolean isIntentionalSystemExit =
             e.getCause() != null && e.getCause() instanceof RayIntentionalSystemExitException;
         if (!isIntentionalSystemExit) {
@@ -150,9 +149,10 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
                   .map(arg -> arg == null ? null : arg.getClass())
                   .collect(Collectors.toList());
           LOGGER.error(
-              "Execute rayFunction {} failed. actor {}, argument types {}",
+              "Execute rayFunction {} failed. actor is {} , task id is {} , argument types are {}",
               rayFunction,
               actor,
+              taskId,
               argTypes);
         }
 
