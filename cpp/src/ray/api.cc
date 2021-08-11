@@ -29,7 +29,10 @@ void Init(RayConfig &config, int *argc, char ***argv) {
 
 void Init(RayConfig &config) { Init(config, nullptr, nullptr); }
 
-void Init() { Init(RayConfig(), nullptr, nullptr); }
+void Init() {
+  RayConfig config;
+  Init(config, nullptr, nullptr);
+}
 
 void Shutdown() { ray::internal::AbstractRayRuntime::DoShutdown(); }
 
