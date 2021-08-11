@@ -26,7 +26,7 @@ from ray.serve.constants import (
 )
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
-from ray.serve.kv_store import RayInternalKVStore
+from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
 from ray.serve.utils import logger
 
@@ -161,7 +161,7 @@ class ServeController:
                 }
 
             val[deployment_name] = entry
-        self.kv_store.put(SNAPSHOT_KEY, json.dumps(val))
+        self.kv_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
     def _all_replica_handles(
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:

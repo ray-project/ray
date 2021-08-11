@@ -173,10 +173,8 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // by all of core worker.
   RAY_LOG(DEBUG) << "Stats setup in core worker.";
   // Initialize stats in core worker global tags.
-  const ray::stats::TagsType global_tags = {
-      {ray::stats::ComponentKey, "core_worker"},
-      {ray::stats::VersionKey, "2.0.0.dev0"},
-      {ray::stats::NodeAddressKey, options_.node_ip_address}};
+  const stats::TagsType global_tags = {{stats::ComponentKey, "core_worker"},
+                                       {stats::VersionKey, "2.0.0.dev0"}};
 
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize

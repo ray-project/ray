@@ -24,10 +24,8 @@ namespace stats {
 
 absl::Mutex Metric::registration_mutex_;
 
-namespace internal {
-
-void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
-                    const std::vector<opencensus::tags::TagKey> &keys) {
+static void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
+                           const std::vector<opencensus::tags::TagKey> &keys) {
   // Register global keys.
   for (const auto &tag : ray::stats::StatsConfig::instance().GetGlobalTags()) {
     view_descriptor = view_descriptor.add_column(tag.first);
@@ -41,7 +39,6 @@ void RegisterAsView(opencensus::stats::ViewDescriptor view_descriptor,
   view_descriptor.RegisterForExport();
 }
 
-}  // namespace internal
 ///
 /// Stats Config
 ///
@@ -118,8 +115,7 @@ void Metric::Record(double value, const TagsType &tags) {
   opencensus::stats::Record({{*measure_, value}}, combined_tags);
 }
 
-void Metric::Record(double value,
-                    const std::unordered_map<std::string, std::string> &tags) {
+void Metric::Record(double value, std::unordered_map<std::string, std::string> &tags) {
   TagsType tags_pair_vec;
   std::for_each(
       tags.begin(), tags.end(),
@@ -136,7 +132,7 @@ void Gauge::RegisterView() {
           .set_description(description_)
           .set_measure(name_)
           .set_aggregation(opencensus::stats::Aggregation::LastValue());
-  internal::RegisterAsView(view_descriptor, tag_keys_);
+  RegisterAsView(view_descriptor, tag_keys_);
 }
 
 void Histogram::RegisterView() {
@@ -148,7 +144,7 @@ void Histogram::RegisterView() {
           .set_aggregation(opencensus::stats::Aggregation::Distribution(
               opencensus::stats::BucketBoundaries::Explicit(boundaries_)));
 
-  internal::RegisterAsView(view_descriptor, tag_keys_);
+  RegisterAsView(view_descriptor, tag_keys_);
 }
 
 void Count::RegisterView() {
@@ -159,7 +155,7 @@ void Count::RegisterView() {
           .set_measure(name_)
           .set_aggregation(opencensus::stats::Aggregation::Count());
 
-  internal::RegisterAsView(view_descriptor, tag_keys_);
+  RegisterAsView(view_descriptor, tag_keys_);
 }
 
 void Sum::RegisterView() {
@@ -170,8 +166,9 @@ void Sum::RegisterView() {
           .set_measure(name_)
           .set_aggregation(opencensus::stats::Aggregation::Sum());
 
-  internal::RegisterAsView(view_descriptor, tag_keys_);
+  RegisterAsView(view_descriptor, tag_keys_);
 }
 
 }  // namespace stats
+
 }  // namespace ray
