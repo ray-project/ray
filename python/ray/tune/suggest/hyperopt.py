@@ -236,9 +236,11 @@ class HyperOptSearch(Searcher):
         for k in config:
             _lookup(config, self._space, k)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+    def set_search_properties(self,
+                              metric: Optional[str],
+                              mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Experiment]) -> bool:
+                              experiment: Optional[Experiment] = None) -> bool:
         if self.domain:
             return False
         space = self.convert_search_space(config)

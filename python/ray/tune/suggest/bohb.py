@@ -168,9 +168,11 @@ class TuneBOHB(Searcher):
         bohb_config = self._bohb_config or {}
         self.bohber = BOHB(self._space, **bohb_config)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+    def set_search_properties(self,
+                              metric: Optional[str],
+                              mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Experiment]) -> bool:
+                              experiment: Optional[Experiment] = None) -> bool:
         if self._space:
             return False
         space = self.convert_search_space(config)

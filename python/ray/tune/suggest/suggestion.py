@@ -112,9 +112,11 @@ class Searcher:
         else:
             raise ValueError("Mode most either be a list or string")
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+    def set_search_properties(self,
+                              metric: Optional[str],
+                              mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Experiment]) -> bool:
+                              experiment: Optional[Experiment] = None) -> bool:
         """Pass search properties to searcher.
 
         This method acts as an alternative to instantiating search algorithms
@@ -456,9 +458,11 @@ class ConcurrencyLimiter(Searcher):
     def on_unpause(self, trial_id: str):
         self.searcher.on_unpause(trial_id)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+    def set_search_properties(self,
+                              metric: Optional[str],
+                              mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Experiment]) -> bool:
+                              experiment: Optional[Experiment] = None) -> bool:
         return set_search_properties_backwards_compatible(
             self.searcher.set_search_properties, metric, mode, config,
             experiment)

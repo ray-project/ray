@@ -24,8 +24,7 @@ class SearchAlgorithm:
         return self._metric
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict,
-                              experiment: Optional[Experiment]) -> bool:
+                              config: Dict, experiment: Experiment) -> bool:
         """Pass search properties to search algorithm.
 
         This method acts as an alternative to instantiating search algorithms
@@ -40,7 +39,7 @@ class SearchAlgorithm:
             mode (str): One of ["min", "max"]. Direction to optimize.
             config (dict): Tune config dict. This should ideally be used for
             passing algorithm-specific parameters.
-            experiment (Optional[Experiment]): A list of experiments set
+            experiment (Experiment): Experiment setting set
             by Ray Tune. This is algorithm-agnostic.
         """
         if self._metric and metric:

@@ -274,9 +274,11 @@ class OptunaSearch(Searcher):
                 for point in self._points_to_evaluate:
                     self._ot_study.enqueue_trial(point)
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+    def set_search_properties(self,
+                              metric: Optional[str],
+                              mode: Optional[str],
                               config: Dict,
-                              experiment: Optional[Experiment]) -> bool:
+                              experiment: Optional[Experiment] = None) -> bool:
         if self._space:
             return False
         space = self.convert_search_space(config)

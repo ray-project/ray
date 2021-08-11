@@ -231,8 +231,11 @@ class AxSearch(Searcher):
             logger.warning("Detected sequential enforcement. Be sure to use "
                            "a ConcurrencyLimiter.")
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict, experiment: Optional[Experiment]):
+    def set_search_properties(self,
+                              metric: Optional[str],
+                              mode: Optional[str],
+                              config: Dict,
+                              experiment: Optional[Experiment] = None):
         if self._ax:
             return False
         space = self.convert_search_space(config)
