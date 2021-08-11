@@ -2,7 +2,6 @@ import sys
 
 import ray
 
-import numpy as np
 import pytest
 
 from ray.cluster_utils import Cluster
