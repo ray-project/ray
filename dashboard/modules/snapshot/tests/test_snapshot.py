@@ -144,6 +144,7 @@ my_func.deploy()
     actor_id = next(iter(entry["actors"]))
     metadata = data["data"]["snapshot"]["actors"][actor_id]["serveMetadata"]
     assert metadata["deploymentName"] == "my_func"
+    assert metadata["version"] == "v1"
     assert len(metadata["replicaTag"]) > 0
 
     entry_nondetached = data["data"]["snapshot"]["deployments"][
@@ -162,6 +163,7 @@ my_func.deploy()
     actor_id = next(iter(entry_nondetached["actors"]))
     metadata = data["data"]["snapshot"]["actors"][actor_id]["serveMetadata"]
     assert metadata["deploymentName"] == "my_func_nondetached"
+    assert metadata["version"] == "v1"
     assert len(metadata["replicaTag"]) > 0
 
 
