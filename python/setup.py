@@ -73,7 +73,7 @@ class SetupSpec:
         # add .dbg suffix if debug mode is on.
         if build_type == BuildType.DEBUG:
             self.version: str = f"{version}+dbg"
-        elif build_type == BuildType.ASAN :
+        elif build_type == BuildType.ASAN:
             self.version: str = f"{version}+asan"
         else:
             self.version = version
