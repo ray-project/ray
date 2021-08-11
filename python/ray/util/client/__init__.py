@@ -1,9 +1,11 @@
-from typing import List, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict, Any
 from ray.job_config import JobConfig
 import os
 import sys
 import logging
 import json
+
+import grpc
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,7 @@ class RayAPIStub:
                 connection_retries: int = 3,
                 namespace: str = None,
                 *,
+                credentials: Optional[grpc.ChannelCredentials] = None,
                 ignore_version: bool = False) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
 
@@ -77,6 +80,7 @@ class RayAPIStub:
             self.client_worker = Worker(
                 conn_str,
                 secure=secure,
+                credentials=credentials,
                 metadata=metadata,
                 connection_retries=connection_retries)
             self.api.worker = self.client_worker

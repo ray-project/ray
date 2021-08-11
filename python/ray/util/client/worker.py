@@ -82,6 +82,7 @@ class Worker:
     def __init__(self,
                  conn_str: str = "",
                  secure: bool = False,
+                 credentials: Optional[grpc.ChannelCredentials] = None,
                  metadata: List[Tuple[str, str]] = None,
                  connection_retries: int = 3):
         """Initializes the worker side grpc client.
@@ -104,7 +105,9 @@ class Worker:
         self._converted: Dict[str, ClientStub] = {}
 
         if secure:
-            credentials = grpc.ssl_channel_credentials()
+            if credentials is None:
+                credentials = grpc.ssl_channel_credentials()
+
             self.channel = grpc.secure_channel(
                 conn_str, credentials, options=GRPC_OPTIONS)
         else:
