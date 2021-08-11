@@ -128,11 +128,15 @@
                       },
                       "replicaTag": {
                         "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
                       }
                     },
                     "required": [
                       "deploymentName",
-                      "replicaTag"
+                      "replicaTag",
+                      "version"
                     ]
                   },
                   "required": [
