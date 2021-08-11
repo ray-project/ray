@@ -37,35 +37,36 @@ class TrialExecutorInsufficientResourceTest(unittest.TestCase):
         self.cluster.shutdown()
 
     @freeze_time("2021-08-03", auto_tick_seconds=15)
-    def testOutputWarningMessage(self):
+    @patch.object(ray.tune.trial_executor.logger, "warning")
+    def testOutputWarningMessage(self, mocked_warn):
         def train(config):
             pass
 
-        with self.assertLogs(logger="ray.tune.trial_executor") as ctx:
-            out = tune.run(
-                train, resources_per_trial={
-                    "cpu": 1,
-                    "gpu": 1,
-                })
-            msg = ("Autoscaler is disabled. Resource is not ready after "
-                   "extended amount of time without any trials running - "
-                   "please consider if the allocated resource is not enough.")
-            assert ctx.records[0].msg == msg
+        out = tune.run(
+            train, resources_per_trial={
+                "cpu": 1,
+                "gpu": 1,
+            })
+        msg = ("Autoscaler is disabled. No trial is running and no new trial"
+               " has been started within at least the last 1.0 seconds. This "
+               "could be due to the cluster not having enough resources "
+               "available to start the next trial. Please check if the "
+               "requested resources can be fulfilled by your cluster, or will "
+               "be fulfilled eventually (when using the Ray autoscaler).")
+        mocked_warn.assert_called_with(msg)
 
     @freeze_time("2021-08-03")
-    def testNotOutputWarningMessage(self):
+    @patch.object(ray.tune.trial_executor.logger, "warning")
+    def testNotOutputWarningMessage(self, mocked_warn):
         def train(config):
             pass
 
-        # apparently there is no assertNoLogs yet...
-        with patch.object(ray.tune.trial_executor.logger,
-                          "warning") as warning_method:
-            out = tune.run(
-                train, resources_per_trial={
-                    "cpu": 1,
-                    "gpu": 1,
-                })
-            warning_method.assert_not_called()
+        out = tune.run(
+            train, resources_per_trial={
+                "cpu": 1,
+                "gpu": 1,
+            })
+        mocked_warn.assert_not_called()
 
 
 class RayTrialExecutorTest(unittest.TestCase):

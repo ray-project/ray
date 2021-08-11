@@ -1,4 +1,5 @@
 # coding: utf-8
+from functools import lru_cache
 import logging
 import os
 import time
@@ -9,7 +10,8 @@ from ray.tune.cluster_info import is_ray_cluster
 
 logger = logging.getLogger(__name__)
 
-
+# Accessing environment variable could be slow.
+@lru_cache()
 def _get_warn_threshold(autoscaler_enabled: bool) -> float:
     if autoscaler_enabled:
         return float(
@@ -17,7 +19,7 @@ def _get_warn_threshold(autoscaler_enabled: bool) -> float:
                 "TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER", "60"))
     else:
         return float(
-            os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "5"))
+            os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "1"))
 
 
 class TrialExecutor:
@@ -192,7 +194,7 @@ class TrialExecutor:
     def force_reconcilation_on_next_step_end(self):
         pass
 
-    def may_warn_insufficient_resource(self, all_trials):
+    def may_warn_insufficient_resources(self, all_trials):
         autoscaler_enabled = is_ray_cluster()
         if not any(trial.status == Trial.RUNNING for trial in all_trials):
             if self._no_running_trials_since == -1:
@@ -205,9 +207,14 @@ class TrialExecutor:
                                "Autoscaler is disabled.")
                 logger.warning(
                     f"{warn_prefix} "
-                    f"Resource is not ready after extended amount of time "
-                    f"without any trials running - please consider if the "
-                    f"allocated resource is not enough.")
+                    f"No trial is running and no new trial has been started "
+                    f"within at least the last "
+                    f"{_get_warn_threshold(autoscaler_enabled)} seconds. "
+                    f"This could be due to the cluster not having enough "
+                    f"resources available to start the next trial. Please "
+                    f"check if the requested resources can be fulfilled by "
+                    f"your cluster, or will be fulfilled eventually (when using"
+                    f" the Ray autoscaler).")
                 self._no_running_trials_since = time.monotonic()
         else:
             self._no_running_trials_since = -1
@@ -217,7 +224,7 @@ class TrialExecutor:
             return
 
         all_trials = trial_runner.get_trials()
-        self.may_warn_insufficient_resource(all_trials)
+        self.may_warn_insufficient_resources(all_trials)
         for trial in all_trials:
             if trial.uses_placement_groups:
                 return
