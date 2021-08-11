@@ -27,8 +27,8 @@
 namespace plasma {
 
 // ObjectLifecycleManager allocates LocalObjects from the allocator.
-// It tracks object’s lifecycle states including reference_count and created/sealed.
-// It uses eviction_policy to garbage collect objects when running out of space.
+// It tracks object’s lifecycle states such as reference count or object states
+// (created/sealed). It lazily garbage collects objects when running out of space.
 class ObjectLifecycleManager {
  public:
   ObjectLifecycleManager(IAllocator &allocator,
@@ -43,6 +43,7 @@ class ObjectLifecycleManager {
   /// \return
   ///   - pointer to created object and PlasmaError::OK when succeeds.
   ///   - nullptr and error message, including ObjectExists/OutOfMemory
+  /// TODO(scv119): use RAII instead of pointer for returned object.
   std::pair<const LocalObject *, flatbuf::PlasmaError> CreateObject(
       const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
       bool fallback_allocator);
@@ -65,19 +66,20 @@ class ObjectLifecycleManager {
   /// counting.
   ///
   /// \param object_id Object ID of the object to be aborted.
-  /// \return
-  ///   - false if such object doesn't exist, or the object has already been sealed.
-  ///   - true if abort successfuly.
-  bool AbortObject(const ObjectID &object_id);
+  /// \return One of the following error codes:
+  ///  - PlasmaError::OK, if the object was aborted successfully.
+  ///  - PlasmaError::ObjectNonexistent, if ths object doesn't exist.
+  ///  - PlasmaError::ObjectSealed, if ths object has already been sealed.
+  flatbuf::PlasmaError AbortObject(const ObjectID &object_id);
 
   /// Delete a specific object by object_id. The object is delete immediately
-  /// if it's been sealed and reference counting is zero. Otherwise it will not
-  /// be deleted.
+  /// if it's been sealed and reference counting is zero. Otherwise it will be
+  /// asynchronously deleted once there is no usage.
   ///
   /// \param object_id Object ID of the object to be deleted.
   /// \return One of the following error codes:
   ///  - PlasmaError::OK, if the object was delete successfully.
-  ///  - PlasmaError::ObjectNonexistent, if ths object isn't existed.
+  ///  - PlasmaError::ObjectNonexistent, if ths object doesn't exist.
   ///  - PlasmaError::ObjectNotsealed, if ths object is created but not sealed.
   ///  - PlasmaError::ObjectInUse, if the object is in use; it will be deleted
   ///  once it's no longer used (ref count becomes 0).
@@ -142,8 +144,8 @@ class ObjectLifecycleManager {
   const ray::DeleteObjectCallback delete_object_callback_;
 
   // list of objects which will be removed immediately
-  // once reference counting boecomes 0.
-  absl::flat_hash_set<ObjectID> eargerly_deletion_objects_;
+  // once reference count becomes 0.
+  absl::flat_hash_set<ObjectID> earger_deletion_objects_;
 
   // Total bytes of the objects whose references are greater than 0.
   int64_t num_bytes_in_use_;

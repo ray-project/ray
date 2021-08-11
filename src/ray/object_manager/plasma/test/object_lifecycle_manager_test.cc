@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/object_manager/plasma/object_lifecycle_manager.h"
 #include <limits>
+
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+
+#include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
 using namespace ray;
 using namespace testing;
@@ -137,6 +139,21 @@ TEST_F(ObjectLifecycleManagerTest, CreateObjectTriggerGC) {
   EXPECT_EQ(expect_notified_ids, notify_deleted_ids_);
 }
 
+TEST_F(ObjectLifecycleManagerTest, CreateObjectTriggerGCExhaused) {
+  EXPECT_CALL(*object_store_, GetObject(_)).Times(1).WillOnce(Return(nullptr));
+  EXPECT_CALL(*object_store_, CreateObject(_, _, false))
+      .Times(11)
+      .WillRepeatedly(Return(nullptr));
+  EXPECT_CALL(*eviction_policy_, RequireSpace(_, _)).Times(11).WillRepeatedly(Return(0));
+  EXPECT_CALL(*object_store_, CreateObject(_, _, true))
+      .Times(1)
+      .WillOnce(Return(&object1_));
+  auto expected = std::pair<const LocalObject *, flatbuf::PlasmaError>(
+      &object1_, flatbuf::PlasmaError::OK);
+  auto result = manager_->CreateObject({}, {}, /*falback*/ true);
+  EXPECT_EQ(expected, result);
+}
+
 TEST_F(ObjectLifecycleManagerTest, CreateObjectWithoutFallback) {
   EXPECT_CALL(*object_store_, GetObject(_)).Times(1).WillOnce(Return(nullptr));
   EXPECT_CALL(*object_store_, CreateObject(_, _, false))
@@ -193,8 +210,8 @@ TEST_F(ObjectLifecycleManagerTest, SealObject) {
 TEST_F(ObjectLifecycleManagerTest, AbortFailure) {
   EXPECT_CALL(*object_store_, GetObject(id1_)).Times(1).WillOnce(Return(nullptr));
   EXPECT_CALL(*object_store_, GetObject(id2_)).Times(1).WillOnce(Return(&sealed_object_));
-  EXPECT_FALSE(manager_->AbortObject(id1_));
-  EXPECT_FALSE(manager_->AbortObject(id2_));
+  EXPECT_EQ(manager_->AbortObject(id1_), flatbuf::PlasmaError::ObjectNonexistent);
+  EXPECT_EQ(manager_->AbortObject(id2_), flatbuf::PlasmaError::ObjectSealed);
 }
 
 TEST_F(ObjectLifecycleManagerTest, AbortSuccess) {
@@ -203,7 +220,7 @@ TEST_F(ObjectLifecycleManagerTest, AbortSuccess) {
       .WillRepeatedly(Return(&not_sealed_object_));
   EXPECT_CALL(*object_store_, DeleteObject(id3_)).Times(1).WillOnce(Return(true));
   EXPECT_CALL(*eviction_policy_, RemoveObject(id3_)).Times(1).WillOnce(Return());
-  EXPECT_TRUE(manager_->AbortObject(id3_));
+  EXPECT_EQ(manager_->AbortObject(id3_), flatbuf::PlasmaError::OK);
   // aborted object is not notified.
   EXPECT_TRUE(notify_deleted_ids_.empty());
 }
@@ -218,17 +235,17 @@ TEST_F(ObjectLifecycleManagerTest, DeleteFailure) {
         .WillOnce(Return(&not_sealed_object_));
     EXPECT_EQ(flatbuf::PlasmaError::ObjectNotSealed, manager_->DeleteObject(id2_));
     absl::flat_hash_set<ObjectID> expected_eagerly_deletion_objects{id2_};
-    EXPECT_EQ(expected_eagerly_deletion_objects, manager_->eargerly_deletion_objects_);
+    EXPECT_EQ(expected_eagerly_deletion_objects, manager_->earger_deletion_objects_);
   }
 
   {
-    manager_->eargerly_deletion_objects_.clear();
+    manager_->earger_deletion_objects_.clear();
     EXPECT_CALL(*object_store_, GetObject(id3_))
         .Times(1)
         .WillOnce(Return(&one_ref_object_));
     EXPECT_EQ(flatbuf::PlasmaError::ObjectInUse, manager_->DeleteObject(id3_));
     absl::flat_hash_set<ObjectID> expected_eagerly_deletion_objects{id3_};
-    EXPECT_EQ(expected_eagerly_deletion_objects, manager_->eargerly_deletion_objects_);
+    EXPECT_EQ(expected_eagerly_deletion_objects, manager_->earger_deletion_objects_);
   }
 }
 
@@ -296,18 +313,8 @@ TEST_F(ObjectLifecycleManagerTest, RemoveReferenceOneRefSealed) {
   EXPECT_EQ(0, one_ref_object_.GetRefCount());
 }
 
-TEST_F(ObjectLifecycleManagerTest, RemoveReferenceOneRefNotSealed) {
-  one_ref_object_.state = ObjectState::PLASMA_CREATED;
-  EXPECT_CALL(*object_store_, GetObject(id1_))
-      .Times(1)
-      .WillOnce(Return(&one_ref_object_));
-  EXPECT_CALL(*eviction_policy_, EndObjectAccess(id1_)).Times(1).WillOnce(Return());
-  EXPECT_TRUE(manager_->RemoveReference(id1_));
-  EXPECT_EQ(0, one_ref_object_.GetRefCount());
-}
-
 TEST_F(ObjectLifecycleManagerTest, RemoveReferenceOneRefEagerlyDeletion) {
-  manager_->eargerly_deletion_objects_.emplace(id1_);
+  manager_->earger_deletion_objects_.emplace(id1_);
 
   EXPECT_CALL(*object_store_, GetObject(id1_))
       .Times(2)

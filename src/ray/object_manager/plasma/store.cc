@@ -193,7 +193,7 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
   if (client->object_ids.find(object_id) != client->object_ids.end()) {
     return;
   }
-  object_lifecycle_mgr_.AddReference(object_id);
+  RAY_CHECK(object_lifecycle_mgr_.AddReference(object_id));
   // Add object id to the list of object ids that this client is using.
   client->object_ids.insert(object_id);
 }
@@ -476,7 +476,7 @@ int PlasmaStore::AbortObject(const ObjectID &object_id,
     return 0;
   }
   // The client requesting the abort is the creator. Free the object.
-  RAY_CHECK(object_lifecycle_mgr_.AbortObject(object_id));
+  RAY_CHECK(object_lifecycle_mgr_.AbortObject(object_id) == PlasmaError::OK);
   client->object_ids.erase(it);
   return 1;
 }
@@ -508,7 +508,6 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
       sealed_objects[object_id] = entry;
     } else {
       // Abort unsealed object.
-      // previous code is probably a bug.
       object_lifecycle_mgr_.AbortObject(object_id);
     }
   }
@@ -706,17 +705,12 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
   // The lock is acquired when a request is received to the plasma store.
   // recursive mutex is used here to allow
   std::lock_guard<std::recursive_mutex> guard(mutex_);
-<<<<<<< HEAD
-  auto entry = object_store_.GetObject(object_id);
+  auto entry = object_lifecycle_mgr_.GetObject(object_id);
   if (!entry) {
     // Object already evicted or deleted.
     return false;
   }
-  return entry->ref_count == 1;
-=======
-  auto entry = object_lifecycle_mgr_.GetObject(object_id);
   return entry->GetRefCount() == 1;
->>>>>>> c0ce25dbc (lifecycle)
 }
 
 void PlasmaStore::PrintDebugDump() const {

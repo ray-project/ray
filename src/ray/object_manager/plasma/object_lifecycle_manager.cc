@@ -15,9 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "ray/object_manager/plasma/object_lifecycle_manager.h"
 #include "absl/time/clock.h"
+
 #include "ray/common/ray_config.h"
+#include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
 namespace plasma {
 using namespace flatbuf;
@@ -27,7 +28,7 @@ ObjectLifecycleManager::ObjectLifecycleManager(
     : object_store_(std::make_unique<ObjectStore>(allocator)),
       eviction_policy_(std::make_unique<EvictionPolicy>(*object_store_, allocator)),
       delete_object_callback_(delete_object_callback),
-      eargerly_deletion_objects_(),
+      earger_deletion_objects_(),
       num_bytes_in_use_(0) {}
 
 std::pair<const LocalObject *, flatbuf::PlasmaError> ObjectLifecycleManager::CreateObject(
@@ -52,19 +53,19 @@ const LocalObject *ObjectLifecycleManager::GetObject(const ObjectID &object_id) 
 }
 
 const LocalObject *ObjectLifecycleManager::SealObject(const ObjectID &object_id) {
-  // TODO(scv119): should we check delete object from eargerly_deletion_objects_?
+  // TODO(scv119): should we check delete object from earger_deletion_objects_?
   return object_store_->SealObject(object_id);
 }
 
-bool ObjectLifecycleManager::AbortObject(const ObjectID &object_id) {
+flatbuf::PlasmaError ObjectLifecycleManager::AbortObject(const ObjectID &object_id) {
   auto entry = object_store_->GetObject(object_id);
   if (entry == nullptr) {
     RAY_LOG(ERROR) << "To abort an object it must be in the object table.";
-    return false;
+    return PlasmaError::ObjectNonexistent;
   }
   if (entry->state == ObjectState::PLASMA_SEALED) {
     RAY_LOG(ERROR) << "To abort an object it must not have been sealed.";
-    return false;
+    return PlasmaError::ObjectSealed;
   }
   if (entry->ref_count > 0) {
     // A client was using this object.
@@ -74,7 +75,7 @@ bool ObjectLifecycleManager::AbortObject(const ObjectID &object_id) {
   }
 
   DeleteObjectInternal(object_id);
-  return true;
+  return PlasmaError::OK;
 }
 
 PlasmaError ObjectLifecycleManager::DeleteObject(const ObjectID &object_id) {
@@ -88,14 +89,14 @@ PlasmaError ObjectLifecycleManager::DeleteObject(const ObjectID &object_id) {
     // To delete an object it must have been sealed,
     // otherwise there might be memeory corruption.
     // Put it into deletion cache, it will be deleted later.
-    eargerly_deletion_objects_.emplace(object_id);
+    earger_deletion_objects_.emplace(object_id);
     return PlasmaError::ObjectNotSealed;
   }
 
   if (entry->ref_count != 0) {
     // To delete an object, there must be no clients currently using it.
     // Put it into deletion cache, it will be deleted later.
-    eargerly_deletion_objects_.emplace(object_id);
+    earger_deletion_objects_.emplace(object_id);
     return PlasmaError::ObjectInUse;
   }
 
@@ -126,7 +127,7 @@ bool ObjectLifecycleManager::AddReference(const ObjectID &object_id) {
   }
   // Increase reference count.
   entry->ref_count++;
-  RAY_LOG(DEBUG) << "Object " << object_id << " in use by client"
+  RAY_LOG(DEBUG) << "Object " << object_id << " reference has incremented"
                  << ", num bytes in use is now " << num_bytes_in_use_;
   return true;
 }
@@ -152,8 +153,9 @@ bool ObjectLifecycleManager::RemoveReference(const ObjectID &object_id) {
 
   eviction_policy_->EndObjectAccess(object_id);
 
-  // TODO(scv119): should we avoid unsealed object?
-  if (eargerly_deletion_objects_.count(object_id) > 0) {
+  // TODO(scv119): handle this anomaly in upper layer.
+  RAY_CHECK(entry->Sealed()) << object_id << " is not sealed while ref count becomes 0.";
+  if (earger_deletion_objects_.count(object_id) > 0) {
     DeleteObjectInternal(object_id);
   }
   return true;
@@ -167,6 +169,9 @@ const LocalObject *ObjectLifecycleManager::CreateObjectInternal(
     const ray::ObjectInfo &object_info, plasma::flatbuf::ObjectSource source,
     bool allow_fallback_allocation) {
   // Try to evict objects until there is enough space.
+  // NOTE(ekl) if we can't achieve this after a number of retries, it's
+  // because memory fragmentation in dlmalloc prevents us from allocating
+  // even if our footprint tracker here still says we have free space.
   for (int num_tries = 0; num_tries <= 10; num_tries++) {
     auto result =
         object_store_->CreateObject(object_info, source, /*fallback_allocate*/ false);
@@ -184,15 +189,8 @@ const LocalObject *ObjectLifecycleManager::CreateObjectInternal(
                      << " failed, need " << space_needed;
       break;
     }
-    // NOTE(ekl) if we can't achieve this after a number of retries, it's
-    // because memory fragmentation in dlmalloc prevents us from allocating
-    // even if our footprint tracker here still says we have free space.
   }
 
-  if (!RayConfig::instance().plasma_unlimited()) {
-    RAY_LOG(DEBUG) << "Fallback allocation is not enabled.";
-    return nullptr;
-  }
   if (!allow_fallback_allocation) {
     RAY_LOG(DEBUG) << "Fallback allocation not enabled for this request.";
     return nullptr;
@@ -230,12 +228,11 @@ void ObjectLifecycleManager::EvictObjects(const std::vector<ObjectID> &object_id
 
 void ObjectLifecycleManager::DeleteObjectInternal(const ObjectID &object_id) {
   auto entry = object_store_->GetObject(object_id);
-  if (entry == nullptr) {
-    return;
-  }
+  RAY_CHECK(entry != nullptr);
+
   bool aborted = entry->state == ObjectState::PLASMA_CREATED;
 
-  eargerly_deletion_objects_.erase(object_id);
+  earger_deletion_objects_.erase(object_id);
   eviction_policy_->RemoveObject(object_id);
   object_store_->DeleteObject(object_id);
 
@@ -275,7 +272,7 @@ ObjectLifecycleManager::ObjectLifecycleManager(
     : object_store_(std::move(store)),
       eviction_policy_(std::move(eviction_policy)),
       delete_object_callback_(delete_object_callback),
-      eargerly_deletion_objects_(),
+      earger_deletion_objects_(),
       num_bytes_in_use_(0) {}
 
 }  // namespace plasma
