@@ -82,7 +82,6 @@ class PlasmaAllocator : public IAllocator {
  private:
   const int64_t kFootprintLimit;
   const size_t kAlignment;
-  const bool kFallbackEnabled;
   int64_t allocated_;
   // TODO(scv119): once we refactor object_manager this no longer
   // need to be atomic.
