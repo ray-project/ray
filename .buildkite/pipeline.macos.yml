@@ -69,6 +69,7 @@ steps:
     - *epilogue_commands
 
 - label: ":mac: :apple: Worker"
+  <<: *common
   commands:
     - *prelude_commands
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
