@@ -133,7 +133,6 @@ HeartbeatSender::HeartbeatSender(NodeID self_node_id,
 }
 
 HeartbeatSender::~HeartbeatSender() {
-  heartbeat_runner_.reset();
   heartbeat_io_service_.stop();
   if (heartbeat_thread_->joinable()) {
     heartbeat_thread_->join();
@@ -157,7 +156,7 @@ void HeartbeatSender::Heartbeat() {
   auto heartbeat_data = std::make_shared<HeartbeatTableData>();
   heartbeat_data->set_node_id(self_node_id_.Binary());
   RAY_CHECK_OK(
-      gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, [](Status status) {
+      gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, [this](Status status) {
         if (status.IsDisconnected()) {
           RAY_LOG(FATAL) << "This node has been marked as dead.";
         }
