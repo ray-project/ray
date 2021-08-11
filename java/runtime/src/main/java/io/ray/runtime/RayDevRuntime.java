@@ -12,16 +12,14 @@ import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.task.LocalModeTaskExecutor;
 import io.ray.runtime.task.LocalModeTaskSubmitter;
-
+import io.ray.runtime.util.BinaryFileUtil;
+import io.ray.runtime.util.JniUtils;
+import io.ray.runtime.util.SystemUtil;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import io.ray.runtime.util.BinaryFileUtil;
-import io.ray.runtime.util.JniUtils;
-import io.ray.runtime.util.SystemUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -134,7 +132,7 @@ public class RayDevRuntime extends AbstractRayRuntime {
     SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd_hh-mm-ss-ms");
     Date date = new Date();
     String sessionDir =
-      String.format("/tmp/ray/local_mode_session_%s_%d", format.format(date), SystemUtil.pid());
+        String.format("/tmp/ray/local_mode_session_%s_%d", format.format(date), SystemUtil.pid());
     rayConfig.setSessionDir(sessionDir);
   }
 }

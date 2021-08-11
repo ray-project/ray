@@ -13,5 +13,4 @@ public class SystemConfigTest extends BaseTest {
     boolean ret2 = (boolean) SystemConfig.get("worker_process_watchdog_enabled");
     Assert.assertTrue(ret2);
   }
-
 }

@@ -12,7 +12,6 @@ import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectRefImpl;
 import io.ray.runtime.object.ObjectSerializer;
 import io.ray.runtime.util.SystemConfig;
-
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -26,7 +25,7 @@ public class ArgumentsBuilder {
    * be passed by value. Otherwise it'll be passed by reference.
    */
   public static final long LARGEST_SIZE_PASS_BY_VALUE =
-    ((Double) SystemConfig.get("max_direct_call_object_size")).longValue();
+      ((Double) SystemConfig.get("max_direct_call_object_size")).longValue();
 
   /** This dummy type is also defined in signature.py. Please keep it synced. */
   private static final NativeRayObject PYTHON_DUMMY_TYPE =
