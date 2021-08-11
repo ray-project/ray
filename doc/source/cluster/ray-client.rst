@@ -144,12 +144,12 @@ If you encounter the following error message when connecting to the ``Ray Cluste
 
 If you use ``nginx-ingress-controller``, It may be resolved to add the following Ingress configuration.
 
-..
+
 .. code-block:: yaml
-   #..
+   
    metadata:
      annotations:
         nginx.ingress.kubernetes.io/server-snippet: |
           underscores_in_headers on;
           ignore_invalid_headers on;
-        #..
+   
