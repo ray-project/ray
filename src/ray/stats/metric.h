@@ -387,9 +387,9 @@ class Stats {
           (), ray::stats::GAUGE);
       STATS_async_pool_req_execution_time_ms.record(1, "method");
 */
-#define DEFINE_stats(name, description, tags, buckets, types...)           \
+#define DEFINE_stats(name, description, tags, buckets, ...)                \
   ray::stats::internal::Stats STATS_##name(                                \
       #name, description, {STATS_DEPAREN(tags)}, {STATS_DEPAREN(buckets)}, \
-      ray::stats::internal::RegisterViewList<types>)
+      ray::stats::internal::RegisterViewList<__VA_ARGS__>)
 
 #define DECLARE_stats(name) extern ray::stats::internal::Stats STATS_##name
