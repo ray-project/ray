@@ -416,6 +416,16 @@ To run a distributed Ray program, you'll need to execute your program on the sam
               -Dray.address=<address> \
               <classname> <args>
 
+  .. group-tab:: C++
+
+    You need to add the ``RAY_ADDRESS`` env var to your command line (like ``RAY_ADDRESS=...``).
+
+    To connect your program to the Ray cluster, run it like this:
+
+        .. code-block:: bash
+
+            RAY_ADDRESS=<address> ./<binary> <args>
+
     .. note:: Specifying ``auto`` as the address hasn't been implemented in Java yet. You need to provide the actual address. You can find the address of the server from the output of the ``ray up`` command.
 
 

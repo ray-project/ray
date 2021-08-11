@@ -88,6 +88,40 @@ Creating an actor
       // Create an actor with a factory method.
       Ray.actor(CounterFactory::createCounter).remote();
 
+  .. group-tab:: C++
+
+    You can convert a standard C++ class into a Ray actor class as follows:
+
+    .. code-block:: c++
+
+      // A regular C++ class.
+      class Counter {
+
+      private:
+        int value = 0;
+
+      public:
+        int Increment() {
+          this.value += 1;
+          return this.value;
+        }
+
+        int GetCounter() {
+          return this.value;
+        }
+
+        void Reset(int new_value) {
+          this.value = new_value;
+        }
+
+        static Counter* CreateCounter() {
+          return new Counter();
+        }
+      }
+
+      // Create an actor with a factory method.
+      ray::Actor(&Counter::CreateCounter).Remote();
+
 When the above actor is instantiated, the following events happen.
 
 1. A node in the cluster is chosen and a worker process is created on that node
@@ -130,6 +164,15 @@ Methods of the actor can be called remotely.
     counterActor.task(Counter::reset, 10).remote();
     Assert.assertEquals((int) counterActor.task(Counter::increment).remote().get(), 11);
 
+  .. code-tab:: c++
+
+    ActorHandle<Counter> counter_actor = ray::Actor(&Counter::CreateCounter).Remote();
+    // Call an actor method with a return value
+    assert(*counter_actor.task(&Counter::Increment).Remote().Get(), 1);
+    // Call an actor method without return value. In this case, the return type of `Remote()` is void.
+    counter_actor.Task(&Counter::Reset).Remote(10);
+    assert(*counter_actor.Task(&Counter::Increment).Remote().Get(), 11);
+
 .. _actor-resource-guide:
 
 Resources with Actors
@@ -160,6 +203,17 @@ You can specify that an actor requires CPUs or GPUs in the decorator. While Ray 
       }
 
       Ray.actor(GpuActor::new).setResource("CPU", 2.0).setResource("GPU", 0.5).remote();
+
+  .. group-tab:: C++
+
+    .. In C++, we always specify resources when creating actors. There's no annotation available to act like the Python decorator ``@ray.remote(...)``.
+
+    .. code-block:: c++
+
+      class GpuActor {
+      }
+
+      ray::Actor(&GpuActor::CreateGpuActor).SetResource("CPU", 2.0).SetResource("GPU", 0.5).Remote();
 
 When an ``GPUActor`` instance is created, it will be placed on a node that has
 at least 1 GPU, and the GPU will be reserved for the actor for the duration of
@@ -195,6 +249,13 @@ have these resources (see `configuration instructions
 
     Ray.actor(GpuActor::new).setResource("Resource2", 1.0).remote();
 
+  .. code-tab:: c++
+
+    class GpuActor {
+    }
+
+    ray::Actor(&GpuActor::CreateGpuActor).SetResource("Resource2", 1.0).Remote();
+
 
 If you need to instantiate many copies of the same actor with varying resource
 requirements, you can do so as follows.
@@ -223,6 +284,18 @@ requirements, you can do so as follows.
     ActorHandle<Counter> a3 = Ray.actor(Counter::new).setResource("CPU", 3.0)
       .setResource("Custom3", 1.0).remote();
 
+  .. code-tab:: c++
+
+    class Counter {
+      ...
+    }
+
+    ActorHandle<Counter> a1 = ray::Actor(&GpuActor::CreateGpuActor).SetResource("CPU", 1.0)
+      .SetResource("Custom1", 1.0).Remote();
+    ActorHandle<Counter> a2 = ray::Actor(&GpuActor::CreateGpuActor).SetResource("CPU", 2.0)
+      .SetResource("Custom2", 1.0).Remote();
+    ActorHandle<Counter> a3 = ray::Actor(&GpuActor::CreateGpuActor).SetResource("CPU", 3.0)
+      .SetResource("Custom3", 1.0).Remote();
 
 Note that to create these actors successfully, Ray will need to be started with
 sufficient CPU resources and the relevant custom resources.
@@ -247,6 +320,10 @@ Automatic termination
   .. group-tab:: Java
 
     Terminating an actor automatically when the initial actor handle goes out of scope hasn't been implemented in Java yet.
+
+  .. group-tab:: C++
+
+    Terminating an actor automatically when the initial actor handle goes out of scope hasn't been implemented in C++ yet.
 
 Manual termination within the actor
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -274,6 +351,16 @@ This will kill the actor process and release resources associated/assigned to th
     can be waited on to wait for the actor to exit (calling ``ObjectRef::get`` on it will
     throw a ``RayActorException``).
 
+  .. group-tab:: C++
+    .. code-block:: c++
+
+      ray::ExitActor();
+
+    Garbage collection for actors haven't been implemented yet, so this is currently the
+    only way to terminate an actor gracefully. The ``ObjectRef`` resulting from the task
+    can be waited on to wait for the actor to exit (calling ``ObjectRef::Get`` on it will
+    throw a ``RayActorException``).
+
 Note that this method of termination will wait until any previously submitted
 tasks finish executing and then exit the process gracefully with sys.exit.
 
@@ -291,6 +378,10 @@ You can terminate an actor forcefully.
 
     actorHandle.kill();
 
+  .. code-tab:: c++
+
+    actor_handle.Kill();
+
 This will call the exit syscall from within the actor, causing it to exit
 immediately and any pending tasks to fail.
 
@@ -307,6 +398,12 @@ immediately and any pending tasks to fail.
     This will not go through the normal Java System.exit teardown logic, so any
     shutdown hooks installed in the actor using ``Runtime.addShutdownHook(...)`` will
     not be called.
+
+  .. group-tab:: C++
+
+    This will not go through the normal
+    C++ std::exit teardown logic, so any exit handlers installed in the actor using
+    ``std::atexit`` will not be called.
 
 Passing Around Actor Handles
 ----------------------------
@@ -332,6 +429,19 @@ Actor handles can be passed into other tasks. We can define remote functions (or
         for (int i = 0; i < 1000; i++) {
           TimeUnit.MILLISECONDS.sleep(100);
           counter.task(Counter::increment).remote();
+        }
+      }
+    }
+
+  .. code-tab:: c++
+
+    class MyRayApp {
+
+    public:
+      static void foo(ActorHandle<Counter> counter) {
+        for (int i = 0; i < 1000; i++) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          counter.Task(&Counter::Increment).Remote();
         }
       }
     }
@@ -364,6 +474,21 @@ If we instantiate an actor, we can pass the handle around to various tasks.
     for (int i = 0; i < 10; i++) {
       TimeUnit.SECONDS.sleep(1);
       System.out.println(counter.task(Counter::getCounter).remote().get());
+    }
+
+  .. code-tab:: c++
+
+    ActorHandle<Counter> counter = ray::Actor(Counter::CreateCounter).Remote();
+
+    // Start some tasks that use the actor.
+    for (int i = 0; i < 3; i++) {
+      ray::Task(&MyRayApp::foo, counter).Remote();
+    }
+
+    // Print the counter value.
+    for (int i = 0; i < 10; i++) {
+      sleep(1);
+      std::cout << *counter.Task(&Counter::GetCounter).Remote().Get() << std::endl;
     }
 
 Named Actors
@@ -414,6 +539,18 @@ exist. See :ref:`actor-lifetimes` for more details.
       // Retrieve the actor later somewhere in the same job
       Optional<ActorHandle<Counter>> counter = Ray.getActor("some_name_in_job");
       Assert.assertTrue(counter.isPresent());
+
+  .. group-tab:: C++
+
+    .. code-block:: c++
+
+      // Create an actor with a globally unique name
+      ActorHandle<Counter> counter = ray::Actor(Counter::CreateCounter).SetGlobalName("some_name").Remote();
+
+      ...
+
+      // Retrieve the actor later somewhere
+      Optional<ActorHandle<Counter>> counter = ray::GetGlobalActor("some_name");
 
 .. note::
 
@@ -475,6 +612,10 @@ Actor Lifetimes
 
     Customizing lifetime of an actor hasn't been implemented in Java yet.
 
+  .. group-tab:: C++
+
+    Customizing lifetime of an actor hasn't been implemented in C++ yet.
+
 Actor Pool
 ----------
 
@@ -498,6 +639,10 @@ Actor Pool
   .. group-tab:: Java
 
     Actor pool hasn't been implemented in Java yet.
+
+  .. group-tab:: C++
+
+    Actor pool hasn't been implemented in C++ yet.
 
 
 FAQ: Actors, Workers and Resources
@@ -539,3 +684,7 @@ Concurrency within an actor
   .. group-tab:: Java
 
     Actor-level concurrency hasn't been implemented in Java yet.
+
+  .. group-tab:: C++
+
+    Actor-level concurrency hasn't been implemented in C++ yet.
