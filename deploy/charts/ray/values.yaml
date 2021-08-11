@@ -17,9 +17,6 @@ podTypes:
     # Since we set headPodType: rayHeadType, the Ray head pod will use the configuration
     # defined in this entry of podTypes:
     rayHeadType:
-        # No worker pods of this pod type (just the head). Thus, we set minWorkers and maxWorkers to 0.
-        minWorkers: 0
-        maxWorkers: 0
         # CPU is the number of CPUs used by this pod type.
         # (Used for both requests and limits. Must be an integer, as Ray does not support fractional CPUs.)
         CPU: 1
