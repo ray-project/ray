@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import ray
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
-from ray.serve.backend_state import BackendState
+from ray.serve.backend_state import BackendState, ReplicaState
 from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
@@ -146,21 +146,31 @@ class ServeController:
             entry["start_time"] = backend_info.start_time_ms or 0
             entry["end_time"] = 0
             entry["actors"] = dict()
-            replicas_to_actor_handles = self._all_replica_handles().get(
-                deployment_name) or dict()
-            for replica_tag, actor_handle in replicas_to_actor_handles.items():
-                actor_id = actor_handle._ray_actor_id.hex()
-                entry["actors"][actor_id] = {"replica_tag": replica_tag}
+            # replicas_to_actor_handles = self._all_replica_handles().get(
+            #     deployment_name) or dict()
+            # for replica_tag, actor_handle in replicas_to_actor_handles.items():
+            #     actor_id = actor_handle._ray_actor_id.hex()
+            #     entry["actors"][actor_id] = {"replica_tag": replica_tag}
+
+            replica_state_container = self.backend_state._replicas[
+                deployment_name]
+            running_replicas = replica_state_container.get(
+                [ReplicaState.RUNNING])
+            for replica in running_replicas:
+                actor_id = replica.actor_handle._ray_actor_id.hex()
+                replica_tag = replica.replica_tag
+                replica_version = replica.version.code_version
+                entry["actors"][actor_id] = {
+                    "replica_tag": replica_tag,
+                    "version": replica_version
+                }
+
             val[deployment_name] = entry
         self.kv_store.put(SNAPSHOT_KEY, json.dumps(val))
 
     def _all_replica_handles(
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
-        """Returns a dict containing all running replica handles.
-
-        The dictionary maps a backend tag to a dictionary mapping a replica tag
-        to the handle to the underlying actor.
-        """
+        """Used for testing."""
         return self.backend_state.get_running_replica_handles()
 
     def get_all_backends(self) -> Dict[BackendTag, BackendConfig]:
