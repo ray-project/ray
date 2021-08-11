@@ -21,6 +21,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/stats/metric.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
 
 DEFINE_stats(grpc_server_req_latency_ms, "Request latency in grpc server", ("Method"), (),
