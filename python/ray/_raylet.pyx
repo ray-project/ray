@@ -322,11 +322,15 @@ cdef prepare_args(
     cdef:
         size_t size
         int64_t put_threshold
+        int64_t rpc_inline_threshold
+        int64_t total_inlined
         shared_ptr[CBuffer] arg_data
         c_vector[CObjectID] inlined_ids
 
     worker = ray.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
+    total_inlined = 0
+    rpc_inline_threshold = RayConfig.instance().task_rpc_inlined_bytes_limit()
     for arg in args:
         if isinstance(arg, ObjectRef):
             c_arg = (<ObjectRef>arg).native()
@@ -353,7 +357,8 @@ cdef prepare_args(
             # plasma here. This is inefficient for small objects, but inlined
             # arguments aren't associated ObjectRefs right now so this is a
             # simple fix for reference counting purposes.
-            if <int64_t>size <= put_threshold:
+            if <int64_t>size <= put_threshold and \
+                    (<int64_t>size + total_inlined <= rpc_inline_threshold):
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 if size > 0:
@@ -367,10 +372,12 @@ cdef prepare_args(
                             arg_data, string_to_buffer(metadata),
                             inlined_ids))))
                 inlined_ids.clear()
+                total_inlined += <int64_t>size
             else:
                 args_vector.push_back(unique_ptr[CTaskArg](
                     new CTaskArgByReference(CObjectID.FromBinary(
-                        core_worker.put_serialized_object(serialized_arg)),
+                        core_worker.put_serialized_object(
+                            serialized_arg, inline_small_object=False)),
                         CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())))
 
 
@@ -1064,7 +1071,8 @@ cdef class CoreWorker:
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
                             c_bool created_by_worker,
-                            owner_address=None):
+                            owner_address=None,
+                            c_bool inline_small_object=True):
         cdef:
             unique_ptr[CAddress] c_owner_address
 
@@ -1075,7 +1083,8 @@ cdef class CoreWorker:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
                              metadata, data_size, contained_ids,
                              c_object_id, data, created_by_worker,
-                             move(c_owner_address)))
+                             move(c_owner_address),
+                             inline_small_object))
         else:
             c_object_id[0] = object_ref.native()
             if owner_address is None:
@@ -1161,7 +1170,8 @@ cdef class CoreWorker:
     def put_serialized_object(self, serialized_object,
                               ObjectRef object_ref=None,
                               c_bool pin_object=True,
-                              owner_address=None):
+                              owner_address=None,
+                              c_bool inline_small_object=True):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -1174,12 +1184,13 @@ cdef class CoreWorker:
         metadata = string_to_buffer(serialized_object.metadata)
         put_threshold = RayConfig.instance().max_direct_call_object_size()
         put_small_object_in_memory_store = (
-            RayConfig.instance().put_small_object_in_memory_store())
+            RayConfig.instance().put_small_object_in_memory_store() and
+            inline_small_object)
         total_bytes = serialized_object.total_bytes
         object_already_exists = self._create_put_buffer(
             metadata, total_bytes, object_ref,
             ObjectRefsToVector(serialized_object.contained_object_refs),
-            &c_object_id, &data, True, owner_address)
+            &c_object_id, &data, True, owner_address, inline_small_object)
 
         if not object_already_exists:
             if total_bytes > 0:
