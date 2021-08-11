@@ -121,3 +121,35 @@ Starting a connection on older Ray versions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you encounter ``socket.gaierror: [Errno -2] Name or service not known`` when using ``ray.init("ray://...")`` then you may be on a version of Ray prior to 1.5 that does not support starting client connections through ``ray.init``. If this is the case, see the `1.4.1 docs <https://docs.ray.io/en/releases-1.4.1/cluster/ray-client.html>`_ for Ray client.
+
+Connection through the Ingress
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you encounter the following error message when connecting to the ``Ray Cluster`` through ``Ingress`` then it may be caused the Ingress configuration.
+
+..
+.. code-block:: python
+
+   grpc._channel._MultiThreadedRendezvous: <_MultiThreadedRendezvous of RPC that terminated with:
+       status = StatusCode.INVALID_ARGUMENT
+       details = ""
+       debug_error_string = "{"created":"@1628668820.164591000","description":"Error received from peer ipv4:10.233.120.107:443","file":"src/core/lib/surface/call.cc","file_line":1062,"grpc_message":"","grpc_status":3}"
+   >
+   Got Error from logger channel -- shutting down: <_MultiThreadedRendezvous of RPC that terminated with:
+       status = StatusCode.INVALID_ARGUMENT
+       details = ""
+       debug_error_string = "{"created":"@1628668820.164713000","description":"Error received from peer ipv4:10.233.120.107:443","file":"src/core/lib/surface/call.cc","file_line":1062,"grpc_message":"","grpc_status":3}"
+   >
+
+
+If you use ``nginx-ingress-controller``, It may be resolved to add the following Ingress configuration.
+
+..
+.. code-block:: yaml
+   #..
+   metadata:
+     annotations:
+        nginx.ingress.kubernetes.io/server-snippet: |
+          underscores_in_headers on;
+          ignore_invalid_headers on;
+        #..
