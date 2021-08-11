@@ -14,7 +14,6 @@ from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
                               ReplicaTag)
 from ray.serve.config import BackendConfig
-from ray.serve.constants import RESERVED_VERSION_TAG
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
@@ -679,18 +678,9 @@ class BackendState:
         # Ensures this method is idempotent.
         existing_info = self._backend_metadata.get(backend_tag)
         if existing_info is not None:
-            # Old codepath. We use RESERVED_VERSION_TAG to distinguish that
-            # we shouldn't use versions at all to determine redeployment
-            # because `None` is used to indicate always redeploying.
-            if backend_info.version == RESERVED_VERSION_TAG:
-                if (existing_info.backend_config == backend_info.backend_config
-                        and existing_info.replica_config ==
-                        backend_info.replica_config):
-                    return self._backend_goals.get(backend_tag, None), False
-            # New codepath: treat version as ground truth for implementation.
-            elif (existing_info.backend_config == backend_info.backend_config
-                  and backend_info.version is not None
-                  and existing_info.version == backend_info.version):
+            if (existing_info.backend_config == backend_info.backend_config
+                    and backend_info.version is not None
+                    and existing_info.version == backend_info.version):
                 return self._backend_goals.get(backend_tag, None), False
 
         if backend_tag not in self._replicas:

@@ -93,7 +93,7 @@ class ServeStarletteEndpoint:
     def __init__(self, endpoint_tag: EndpointTag, path_prefix: str):
         self.endpoint_tag = endpoint_tag
         self.path_prefix = path_prefix
-        self.handle = serve.get_handle(
+        self.handle = serve.api._get_global_client().get_handle(
             self.endpoint_tag,
             sync=False,
             missing_ok=True,
@@ -143,12 +143,13 @@ class LongestPrefixRouter:
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                self.handles[endpoint] = serve.get_handle(
-                    endpoint,
-                    sync=False,
-                    missing_ok=True,
-                    _internal_pickled_http_request=True,
-                )
+                self.handles[
+                    endpoint] = serve.api._get_global_client().get_handle(
+                        endpoint,
+                        sync=False,
+                        missing_ok=True,
+                        _internal_pickled_http_request=True,
+                    )
 
         # Clean up any handles that are no longer used.
         for endpoint in existing_handles:
