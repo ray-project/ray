@@ -1258,7 +1258,7 @@ void ClusterTaskManager::SpillWaitingTasks() {
   }
 }
 
-bool ClusterTaskManager::IsLocallySchedulable(const Task &task) const {
+bool ClusterTaskManager::IsLocallySchedulable(const RayTask &task) const {
   const auto &spec = task.GetTaskSpecification();
   return cluster_resource_scheduler_->IsLocallySchedulable(
       spec.GetRequiredResources().GetResourceMap());
