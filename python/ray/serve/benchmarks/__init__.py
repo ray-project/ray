@@ -1,5 +1,3 @@
 from ray.serve.benchmarks import microbenchmark
 
-__all__ = [
-    "microbenchmark"
-]
+__all__ = ["microbenchmark"]

@@ -16,7 +16,6 @@ import ray
 from ray import serve
 from ray.serve.utils import logger
 
-
 NUM_CLIENTS = 8
 CALLS_PER_BATCH = 100
 
@@ -36,8 +35,8 @@ async def timeit(name, fn, multiplier=1):
             count += 1
         end = time.time()
         stats.append(multiplier * count / (end - start))
-    logger.info("\t{} {} +- {} requests/s".format(name, round(np.mean(stats), 2),
-                                            round(np.std(stats), 2)))
+    logger.info("\t{} {} +- {} requests/s".format(name, round(
+        np.mean(stats), 2), round(np.std(stats), 2)))
     return round(np.mean(stats), 2)
 
 
@@ -65,14 +64,13 @@ async def trial(result_json, intermediate_handles, num_replicas,
     trial_key_base = (
         f"replica:{num_replicas}/batch_size:{max_batch_size}/"
         f"concurrent_queries:{max_concurrent_queries}/"
-        f"data_size:{data_size}/intermediate_handle:{intermediate_handles}"
-    )
+        f"data_size:{data_size}/intermediate_handle:{intermediate_handles}")
 
     logger.info(f"intermediate_handles={intermediate_handles},"
-          f"num_replicas={num_replicas},"
-          f"max_batch_size={max_batch_size},"
-          f"max_concurrent_queries={max_concurrent_queries},"
-          f"data_size={data_size}")
+                f"num_replicas={num_replicas},"
+                f"max_batch_size={max_batch_size},"
+                f"max_concurrent_queries={max_concurrent_queries},"
+                f"data_size={data_size}")
 
     deployment_name = "api"
     if intermediate_handles:
@@ -154,11 +152,9 @@ async def main():
                                                            (10000, 10000)]:
                 # TODO(edoakes): large data causes broken pipe errors.
                 for data_size in ["small"]:
-                    await trial(
-                        result_json, intermediate_handles, num_replicas,
-                        max_batch_size, max_concurrent_queries,
-                        data_size
-                    )
+                    await trial(result_json, intermediate_handles,
+                                num_replicas, max_batch_size,
+                                max_concurrent_queries, data_size)
     return result_json
 
 
