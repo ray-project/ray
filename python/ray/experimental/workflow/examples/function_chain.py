@@ -30,10 +30,12 @@ Multiply semantics of each steps:
   [[s_1_1, s_1_2],
    [s_2_1, s_2_2]]
 
-    s_1_1 -> s_2_1
-    s_1_1 -> s_2_2
-    s_1_2 -> s_2_1
-    s_1_2 -> s_2_2
+      /-> s_1_1 ->  s_2_1 - \
+entry           \-> s_2_2 ---\
+      \-> s_1_2 ->  s_2_1 ----> end
+                \-> s_2_2 --/
+
+Each step will only be executed one time.
 
 Basically, given a list of list [L1, L2, ...], we'd like to have
   L1 x L2 x L3
