@@ -6,6 +6,7 @@ import json
 import os
 
 import numpy as np
+import ray.util.sgd.v2 as sgd
 import tensorflow as tf
 from ray.util.sgd.v2 import Trainer
 
@@ -57,7 +58,9 @@ def train_func(config):
 
     history = multi_worker_model.fit(
         multi_worker_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch)
-    return history.history
+    results = history.history
+    sgd.report(loss=results["loss"][-1], accuracy=results["accuracy"][-1])
+    return results
 
 
 def train_tensorflow_mnist(num_workers=1, use_gpu=False):
