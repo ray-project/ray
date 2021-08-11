@@ -73,15 +73,13 @@ absl::optional<Allocation> BuildAllocation(void *addr, size_t size) {
 
 PlasmaAllocator::PlasmaAllocator(const std::string &plasma_directory,
                                  const std::string &fallback_directory,
-                                 bool hugepage_enabled, int64_t footprint_limit,
-                                 bool fallback_enabled)
+                                 bool hugepage_enabled, int64_t footprint_limit)
     : kFootprintLimit(footprint_limit),
       kAlignment(kAllocationAlignment),
-      kFallbackEnabled(fallback_enabled),
       allocated_(0),
       fallback_allocated_(0) {
   internal::SetDLMallocConfig(plasma_directory, fallback_directory, hugepage_enabled,
-                              fallback_enabled);
+                              /*fallback_enabled=*/true);
   RAY_CHECK(kFootprintLimit > kDlMallocReserved)
       << "Footprint limit has to be greater than " << kDlMallocReserved;
   auto allocation = Allocate(kFootprintLimit - kDlMallocReserved);
