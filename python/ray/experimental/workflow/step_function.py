@@ -13,6 +13,7 @@ class WorkflowStepFunction:
                  func: Callable,
                  max_retries=1,
                  catch_exceptions=False,
+                 step_name=None,
                  ray_options=None):
         if not isinstance(max_retries, int) or max_retries < 1:
             raise ValueError("max_retries should be greater or equal to 1.")
@@ -24,6 +25,7 @@ class WorkflowStepFunction:
         self._catch_exceptions = catch_exceptions
         self._ray_options = ray_options or {}
         self._func_signature = signature.extract_signature(func)
+        self._step_name = step_name or ""
 
         # Override signature and docstring
         @functools.wraps(func)
@@ -39,6 +41,7 @@ class WorkflowStepFunction:
                 max_retries=self._max_retries,
                 catch_exceptions=self._catch_exceptions,
                 ray_options=self._ray_options,
+                step_name=self._step_name,
             )
             return Workflow(workflow_data)
 
@@ -53,6 +56,7 @@ class WorkflowStepFunction:
                 *,
                 max_retries: int = 1,
                 catch_exceptions: bool = False,
+                step_name: str = None,
                 **ray_options) -> "WorkflowStepFunction":
         """This function set how the step function is going to be executed.
 
@@ -64,6 +68,8 @@ class WorkflowStepFunction:
                 If it's set to be true, (Optional[R], Optional[E]) will be
                 returned.
                 If it's false, the normal result will be returned.
+            step_name(str): The name of this step which can be used to fetch
+                the result of this step later.
             **ray_options(dict): All parameters in this fields will be passed
                 to ray remote function options.
 
@@ -71,4 +77,4 @@ class WorkflowStepFunction:
             The step function itself.
         """
         return WorkflowStepFunction(self._func, max_retries, catch_exceptions,
-                                    ray_options)
+                                    step_name, ray_options)

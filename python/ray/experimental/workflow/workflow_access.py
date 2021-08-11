@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Tuple, Optional, TYPE_CHECKING
 
 from dataclasses import dataclass
 import ray
@@ -262,7 +262,8 @@ class WorkflowManagementActor:
                              "it has failed before initialization.")
         return self._actor_initialized[actor_id]
 
-    def get_output(self, workflow_id: str) -> "ray.ObjectRef":
+    def get_output(self, workflow_id: str,
+                   step_name: Optional[str]) -> "ray.ObjectRef":
         """Get the output of a running workflow.
 
         Args:
