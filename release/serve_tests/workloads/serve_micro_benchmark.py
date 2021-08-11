@@ -1,8 +1,6 @@
-# stdlib imports
 import asyncio
 import os
 
-# ray imports
 from ray.serve.benchmarks.microbenchmark import main as benchmark_main
 from ray.serve.utils import logger
 from serve_test_cluster_utils import (
