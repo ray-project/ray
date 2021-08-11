@@ -1660,8 +1660,9 @@ class SearchSpaceTest(unittest.TestCase):
             },
         ])
 
-        with self.assertLogs(
-                "ray.tune.suggest.variant_generator", level="WARN") as cm:
+        from ray.tune.suggest.variant_generator import logger
+
+        with self.assertLogs(logger.name, level="WARN") as cm:
             analysis = tune.run(
                 _mock_objective,
                 name="test",
