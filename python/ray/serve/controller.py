@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -142,7 +143,7 @@ class ServeController:
             # Or refactor the route_prefix logic in the Deployment class now.
             entry["http_route"] = route_prefix or f"/{deployment_name}"
             entry["status"] = "RUNNING"
-            entry["start_time"] = 0
+            entry["start_time"] = backend_info.start_time_ms or 0
             entry["end_time"] = 0
             val[deployment_name] = entry
         self.kv_store.put(SNAPSHOT_KEY, json.dumps(val))
@@ -332,7 +333,8 @@ class ServeController:
                 version=version,
                 backend_config=backend_config,
                 replica_config=replica_config,
-                deployer_job_id=deployer_job_id)
+                deployer_job_id=deployer_job_id,
+                start_time_ms=int(time.time() * 1000))
 
             goal_id, updating = self.backend_state.deploy_backend(
                 name, backend_info)

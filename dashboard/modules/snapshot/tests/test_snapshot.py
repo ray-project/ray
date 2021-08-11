@@ -137,7 +137,7 @@ my_func.deploy()
     assert entry["className"] == "my_func"
     assert entry["status"] == "RUNNING"
     assert entry["rayJobId"] is not None
-    assert entry["startTime"] == 0
+    assert entry["startTime"] > 0
     assert entry["endTime"] == 0
 
     entry_nondetached = data["data"]["snapshot"]["deployments"][
@@ -149,7 +149,7 @@ my_func.deploy()
     assert entry_nondetached["className"] == "my_func_nondetached"
     assert entry_nondetached["status"] == "RUNNING"
     assert entry_nondetached["rayJobId"] is not None
-    assert entry_nondetached["startTime"] == 0
+    assert entry_nondetached["startTime"] > 0
     assert entry_nondetached["endTime"] == 0
 
 
