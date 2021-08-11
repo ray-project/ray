@@ -98,7 +98,6 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         try:
             from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
             from ray.serve.constants import SERVE_CONTROLLER_NAME
-            from ray.serve.kv_store import format_key
         except Exception:
             return "{}"
 

@@ -152,5 +152,6 @@ my_func.deploy()
     assert entry_nondetached["startTime"] == 0
     assert entry_nondetached["endTime"] == 0
 
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
