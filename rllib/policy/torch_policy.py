@@ -580,16 +580,17 @@ class TorchPolicy(Policy):
                 "Must call Policy.load_batch_into_buffer() before "
                 "Policy.learn_on_loaded_batch()!")
 
-        # Set Model to train mode.
-        if self.model:
-            self.model.train()
-
         # Get the correct slice of the already loaded batch to use,
         # based on offset and batch size.
         device_batch_size = \
             self.config.get(
                 "sgd_minibatch_size", self.config["train_batch_size"]) // \
             len(self.devices)
+
+        # Set Model to train mode.
+        if self.model_gpu_towers:
+            for t in self.model_gpu_towers:
+                t.train()
 
         # Shortcut for 1 CPU only: Batch should already be stored in
         # `self._loaded_batches`.
