@@ -107,6 +107,8 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
         assert trainer1.worker_group.num_workers == 1
         assert trainer1._num_failures == 1
 
+        ray.util.remove_placement_group(dummy_pg)
+
         def is_placement_group_removed():
             table = ray.util.placement_group_table(dummy_pg)
             if "state" not in table:
