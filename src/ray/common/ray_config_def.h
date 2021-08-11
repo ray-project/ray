@@ -95,14 +95,6 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
-/// Whether to never raise OOM. Instead, we fallback to allocating from the filesystem
-/// in /tmp, creating a new file per object. This degrades performance since filesystem
-/// backed objects are written to disk, but allows Ray to operate with degraded
-/// performance instead of crashing. Note that memory admission control is still in play,
-/// so Ray will still do its best to avoid running out of memory (i.e., via throttling and
-/// spilling).
-RAY_CONFIG(bool, plasma_unlimited, true)
-
 /// DEBUG-ONLY: Min number of pulls to keep active. Only supports values {0, 1}.
 RAY_CONFIG(int, pull_manager_min_active_pulls, 1)
 

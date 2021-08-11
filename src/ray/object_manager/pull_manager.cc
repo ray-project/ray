@@ -24,7 +24,7 @@ PullManager::PullManager(
     const std::function<void(const ObjectID &)> cancel_pull_request,
     const RestoreSpilledObjectCallback restore_spilled_object,
     const std::function<double()> get_time, int pull_timeout_ms,
-    int64_t num_bytes_available, std::function<void()> object_store_full_callback,
+    int64_t num_bytes_available,
     std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object,
     int min_active_pulls)
     : self_node_id_(self_node_id),
@@ -36,8 +36,6 @@ PullManager::PullManager(
       min_active_pulls_(min_active_pulls),
       pull_timeout_ms_(pull_timeout_ms),
       num_bytes_available_(num_bytes_available),
-      // TODO(ekl) remove this callback once plasma unlimited is the only path.
-      object_store_full_callback_(object_store_full_callback),
       pin_object_(pin_object),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
@@ -277,11 +275,10 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
                                    &highest_wait_req_id_being_pulled_,
                                    &object_ids_to_cancel);
 
-    // Activate the next get request if we have space, or are in unlimited allocation
-    // mode.
+    // Activate the next get request unconditionally.
     get_requests_remaining = ActivateNextPullBundleRequest(
         get_request_bundles_, &highest_get_req_id_being_pulled_,
-        /*respect_quota=*/!RayConfig::instance().plasma_unlimited(), &objects_to_pull);
+        /*respect_quota=*/false, &objects_to_pull);
   }
 
   // Do the same but for wait requests (medium priority).
@@ -314,22 +311,10 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
   DeactivateUntilMarginAvailable("wait request", wait_request_bundles_, min_active_pulls_,
                                  /*quota_margin=*/0L, &highest_wait_req_id_being_pulled_,
                                  &object_ids_to_cancel);
-  // It should always be possible to stay under the available memory by
-  // canceling all requests.
-  if (!RayConfig::instance().plasma_unlimited()) {
-    DeactivateUntilMarginAvailable("get request", get_request_bundles_, min_active_pulls_,
-                                   /*quota_margin=*/0L, &highest_get_req_id_being_pulled_,
-                                   &object_ids_to_cancel);
-    RAY_CHECK(!OverQuota() || num_active_bundles_ <= min_active_pulls_) << DebugString();
-  }
 
   // Call the cancellation callbacks outside of the lock.
   for (const auto &obj_id : object_ids_to_cancel) {
     cancel_pull_request_(obj_id);
-  }
-
-  if (!RayConfig::instance().plasma_unlimited()) {
-    TriggerOutOfMemoryHandlingIfNeeded();
   }
 
   {
@@ -340,35 +325,6 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
       }
     }
   }
-}
-
-void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
-  if (highest_get_req_id_being_pulled_ > 0 || highest_wait_req_id_being_pulled_ > 0 ||
-      highest_task_req_id_being_pulled_ > 0) {
-    // At least one request is being actively pulled, so there is
-    // currently enough space. Note that if pull_manager_min_active_pulls > 0, then
-    // we will always return here.
-    return;
-  }
-
-  // No requests are being pulled. Check whether this is because we don't have
-  // object size information yet.
-  auto head = get_request_bundles_.begin();
-  if (head == get_request_bundles_.end()) {
-    head = wait_request_bundles_.begin();
-    if (head == wait_request_bundles_.end()) {
-      head = task_argument_bundles_.begin();
-      if (head == task_argument_bundles_.end()) {
-        // No requests queued.
-        return;
-      }
-    }
-  }
-  if (head->second.num_object_sizes_missing > 0) {
-    // Wait for the size information before triggering OOM.
-    return;
-  }
-  object_store_full_callback_();
 }
 
 std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {

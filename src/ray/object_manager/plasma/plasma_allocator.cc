@@ -142,8 +142,7 @@ void PlasmaAllocator::Free(Allocation allocation) {
   RAY_LOG(DEBUG) << "deallocating " << allocation.size << " at " << allocation.address;
   dlfree(allocation.address);
   allocated_ -= allocation.size;
-  if (RayConfig::instance().plasma_unlimited() &&
-      internal::IsOutsideInitialAllocation(allocation.address)) {
+  if (internal::IsOutsideInitialAllocation(allocation.address)) {
     fallback_allocated_ -= allocation.size;
   }
 }

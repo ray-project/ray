@@ -65,7 +65,7 @@ class PullManager {
       const std::function<void(const ObjectID &)> cancel_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
       const std::function<double()> get_time, int pull_timeout_ms,
-      int64_t num_bytes_available, std::function<void()> object_store_full_callback,
+      int64_t num_bytes_available,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
       int min_active_pulls = RayConfig::instance().pull_manager_min_active_pulls());
 
@@ -265,11 +265,6 @@ class PullManager {
                                       uint64_t *highest_id_for_bundle,
                                       std::unordered_set<ObjectID> *objects_to_cancel);
 
-  /// Trigger out-of-memory handling if the first request in the queue needs
-  /// more space than the bytes available. This is needed to make room for the
-  /// request.
-  void TriggerOutOfMemoryHandlingIfNeeded();
-
   /// Return debug info about this bundle queue.
   std::string BundleInfo(const Queue &bundles, uint64_t highest_id_being_pulled) const;
 
@@ -324,10 +319,6 @@ class PullManager {
 
   /// The number of currently active bundles.
   int64_t num_active_bundles_ = 0;
-
-  /// Triggered when the first request in the queue can't be pulled due to
-  /// out-of-memory. This callback should try to make more bytes available.
-  std::function<void()> object_store_full_callback_;
 
   /// Callback to pin plasma objects.
   std::function<std::unique_ptr<RayObject>(const ObjectID &object_ids)> pin_object_;
