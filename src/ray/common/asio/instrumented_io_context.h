@@ -63,7 +63,6 @@ struct GuardedGlobalStats {
 
 /// An opaque stats handle, used to manually instrument event loop handlers that don't
 /// hook into a .post() call.
-// TODO Pull out the tracker from ASIO
 struct StatsHandle {
   std::string handler_name;
   int64_t start_time;

@@ -1364,7 +1364,8 @@ def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
         start=start,
         override_cluster_name=cluster_name,
         no_config_cache=no_config_cache,
-        port_forward=port_forward)
+        port_forward=port_forward,
+        _allow_uninitialized_state=True)
 
 
 @cli.command()
