@@ -5,6 +5,7 @@ import ray.util.sgd.v2 as sgd
 import torch
 import torch.nn as nn
 from ray.util.sgd.v2 import Trainer, TorchConfig
+from ray.util.sgd.v2.callbacks import JsonLoggerCallback
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DistributedSampler
 
@@ -90,7 +91,8 @@ def train_linear(num_workers=1):
     trainer = Trainer(TorchConfig(backend="gloo"), num_workers=num_workers)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
     trainer.start()
-    results = trainer.run(train_func, config)
+    results = trainer.run(
+        train_func, config, callbacks=[JsonLoggerCallback("./sgd_results")])
     trainer.shutdown()
 
     print(results)

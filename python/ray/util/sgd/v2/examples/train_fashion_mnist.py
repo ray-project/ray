@@ -4,6 +4,7 @@ from typing import Dict
 import torch
 import ray.util.sgd.v2 as sgd
 from ray.util.sgd.v2.trainer import Trainer
+from ray.util.sgd.v2.callbacks import JsonLoggerCallback
 from torch import nn
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
@@ -125,7 +126,8 @@ def train_fashion_mnist(num_workers=1, use_gpu=False):
             "lr": 1e-3,
             "batch_size": 64,
             "epochs": 4
-        })
+        },
+        callbacks=[JsonLoggerCallback("./sgd_results")])
     trainer.shutdown()
     print(f"Loss results: {result}")
 

@@ -139,9 +139,13 @@ class Trainer:
         train_func = self._get_train_func(train_func, config)
         # TODO(matt): Set default callbacks.
         callbacks = [] if callbacks is None else callbacks
+        finished_with_errors = False
 
         try:
+            for callback in callbacks:
+                callback.start_training()
             self._executor.start_training(train_func)
+
             while True:
                 intermediate_results = self._executor.fetch_next_result()
                 if intermediate_results is None:
@@ -149,17 +153,23 @@ class Trainer:
                 else:
                     for callback in callbacks:
                         callback.handle_result(intermediate_results)
+
             return self._executor.finish_training()
         except InactiveWorkerGroupError:
+            finished_with_errors = True
             raise RuntimeError(
                 "This Trainer is not active. It is either shutdown already or "
                 "never started in the first place. Either create a new "
                 "Trainer or start this one.") from None
         except SGDBackendError:
+            finished_with_errors = True
             raise RuntimeError("Training failed. You should not be seeing "
                                "this error and this is a bug. Please create "
                                "a new issue at "
                                "https://github.com/ray-project/ray.") from None
+        finally:
+            for callback in callbacks:
+                callback.finish_training(error=finished_with_errors)
 
     def _get_train_func(
             self,

@@ -35,6 +35,7 @@ py_test_module_list(
       "tests/test_lifetime.py",
       "tests/test_workflow_manager.py",
       "tests/test_virtual_actor.py",
+      "tests/test_storage_failure.py",
   ],
   size = "medium",
   extra_srcs = SRCS,

@@ -18,6 +18,9 @@
 namespace ray {
 namespace streaming {
 
+using ray::core::CoreWorkerProcess;
+using ray::core::TaskOptions;
+
 void SendInternal(const ActorID &peer_actor_id, std::shared_ptr<LocalMemoryBuffer> buffer,
                   RayFunction &function, int return_num,
                   std::vector<ObjectID> &return_ids) {
