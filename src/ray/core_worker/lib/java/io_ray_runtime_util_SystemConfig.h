@@ -35,4 +35,3 @@ Java_io_ray_runtime_util_SystemConfig_nativeGetSystemConfig(JNIEnv *, jclass, js
 }
 #endif
 #endif
-

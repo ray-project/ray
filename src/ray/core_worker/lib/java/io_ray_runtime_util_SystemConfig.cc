@@ -39,4 +39,3 @@ JNIEXPORT jstring JNICALL Java_io_ray_runtime_util_SystemConfig_nativeGetSystemC
   RAY_LOG(FATAL) << "Unsupported system config: " << key;
   return nullptr;
 }
-
