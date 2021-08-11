@@ -173,7 +173,7 @@ if setup_spec.type == SetupType.RAY:
             "opencensus",  # noqa
             "prometheus_client >= 0.7.1",  # noqa
         ],
-        "serve": ["uvicorn", "requests", "starlette", "fastapi"],
+        "serve": ["uvicorn", "requests", "starlette", "fastapi", "boto3"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [

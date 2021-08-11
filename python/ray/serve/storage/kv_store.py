@@ -1,16 +1,17 @@
 import sqlite3
 
 import boto3
-import ray.experimental.internal_kv as ray_kv
 from botocore.exceptions import ClientError
+
+import ray.experimental.internal_kv as ray_kv
 from ray.serve.storage.kv_store_base import KVStoreBase
 from ray.serve.utils import logger
 
 
-def get_storage_key(self, key):
+def get_storage_key(namespace: str, storage_key: str):
     """In case we need to access kvstore
     """
-    return "{ns}-{key}".format(ns=self.namespace, key=key)
+    return "{ns}-{key}".format(ns=namespace, key=storage_key)
 
 
 class RayInternalKVStore(KVStoreBase):
