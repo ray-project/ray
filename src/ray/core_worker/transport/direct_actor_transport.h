@@ -39,6 +39,7 @@
 namespace {}  // namespace
 
 namespace ray {
+namespace core {
 
 /// The max time to wait for out-of-order tasks.
 const int kMaxReorderWaitSeconds = 30;
@@ -76,7 +77,7 @@ class CoreWorkerDirectActorTaskSubmitter
         task_finisher_(task_finisher),
         warn_excess_queueing_(warn_excess_queueing) {
     next_queueing_warn_threshold_ =
-        RayConfig::instance().actor_excess_queueing_warn_threshold();
+        ::RayConfig::instance().actor_excess_queueing_warn_threshold();
   }
 
   /// Add an actor queue. This should be called whenever a reference to an
@@ -782,7 +783,7 @@ class CoreWorkerDirectTaskReceiver {
                            std::vector<std::shared_ptr<RayObject>> *return_objects,
                            ReferenceCounter::ReferenceTableProto *borrower_refs)>;
 
-  using OnTaskDone = std::function<ray::Status()>;
+  using OnTaskDone = std::function<Status()>;
 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                instrumented_io_context &main_io_service,
@@ -857,4 +858,5 @@ class CoreWorkerDirectTaskReceiver {
   void SetMaxActorConcurrency(bool is_asyncio, int fiber_max_concurrency);
 };
 
+}  // namespace core
 }  // namespace ray

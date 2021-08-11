@@ -25,7 +25,7 @@
 #include "task_submitter.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 class LocalModeTaskSubmitter : public TaskSubmitter {
  public:
@@ -49,5 +49,5 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
 
   ObjectID Submit(InvocationSpec &invocation, const ActorCreationOptions &options);
 };
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

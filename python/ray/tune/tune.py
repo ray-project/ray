@@ -9,6 +9,8 @@ import sys
 import time
 
 import ray
+from ray.util.annotations import PublicAPI
+
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -62,6 +64,7 @@ def _report_progress(runner, reporter, done=False):
         reporter.report(trials, done, sched_debug_str, executor_debug_str)
 
 
+@PublicAPI
 def run(
         run_or_experiment: Union[str, Callable, Type],
         name: Optional[str] = None,
@@ -575,6 +578,7 @@ def run(
         default_mode=mode)
 
 
+@PublicAPI
 def run_experiments(
         experiments: Union[Experiment, Mapping, Sequence[Union[Experiment,
                                                                Mapping]]],

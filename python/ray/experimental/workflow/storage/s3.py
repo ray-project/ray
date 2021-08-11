@@ -32,7 +32,11 @@ class S3StorageImpl(Storage):
         self._s3_path.rstrip("/")
         if len(self._s3_path) == 0:
             raise ValueError(f"s3 path {self._s3_path} invalid")
-        self._session = aioboto3.Session()
+        self._session = aioboto3.Session(
+            region_name=region_name,
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            aws_session_token=aws_session_token)
         self._region_name = region_name
         self._endpoint_url = endpoint_url
         self._aws_access_key_id = aws_access_key_id
@@ -75,8 +79,12 @@ class S3StorageImpl(Storage):
             else:
                 raise
 
-    async def delete(self, key: str) -> None:
-        raise NotImplementedError
+    async def delete_prefix(self, key_prefix: str) -> None:
+        async with self._session.resource(
+                "s3", endpoint_url=self._endpoint_url,
+                config=self._config) as s3:
+            bucket = await s3.Bucket(self._bucket)
+            await bucket.objects.filter(Prefix=key_prefix).delete()
 
     async def scan_prefix(self, key_prefix: str) -> List[str]:
         keys = []
@@ -100,13 +108,7 @@ class S3StorageImpl(Storage):
 
     def _client(self):
         return self._session.client(
-            "s3",
-            region_name=self._region_name,
-            endpoint_url=self._endpoint_url,
-            aws_access_key_id=self._aws_access_key_id,
-            aws_secret_access_key=self._aws_secret_access_key,
-            aws_session_token=self._aws_session_token,
-            config=self._config)
+            "s3", endpoint_url=self._endpoint_url, config=self._config)
 
     @property
     def storage_url(self) -> str:
