@@ -157,14 +157,14 @@ def train_mnist_tune_checkpoint(config,
                                 num_epochs=10,
                                 num_gpus=0):
     data_dir = os.path.expanduser("~/data")
-    kwargs={
-        'max_epochs' : num_epochs,
+    kwargs = {
+        "max_epochs": num_epochs,
         # If fractional GPUs passed in, convert to int.
-        'gpus' : math.ceil(num_gpus),
-        'logger' : TensorBoardLogger(
+        "gpus": math.ceil(num_gpus),
+        "logger": TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
-        'progress_bar_refresh_rate' : 0,
-        'callbacks' : [
+        "progress_bar_refresh_rate": 0,
+        "callbacks": [
             TuneReportCheckpointCallback(
                 metrics={
                     "loss": "ptl/val_loss",
