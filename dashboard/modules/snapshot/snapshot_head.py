@@ -113,7 +113,8 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
 
         deployments_per_controller: List[Dict[str, Any]] = []
         for key in serve_snapshot_keys:
-            val_bytes = _internal_kv_get(key, gcs_client) or "{}".encode("utf-8")
+            val_bytes = _internal_kv_get(key,
+                                         gcs_client) or "{}".encode("utf-8")
             deployments_per_controller.append(
                 json.loads(val_bytes.decode("utf-8")))
         deployments: Dict[str, Any] = {
