@@ -6,6 +6,7 @@ import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.exception.RayActorException;
+import io.ray.runtime.exception.RayException;
 import io.ray.runtime.exception.RayIntentionalSystemExitException;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
@@ -85,6 +86,12 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     return results;
   }
 
+  private void throwIfDependencyFailed(Object arg) {
+    if (arg instanceof RayException) {
+      throw (RayException) arg;
+    }
+  }
+
   protected List<NativeRayObject> execute(List<String> rayFunctionInfo, List<Object> argsBytes) {
     runtime.setIsContextSet(true);
     TaskType taskType = runtime.getWorkerContext().getCurrentTaskType();
@@ -122,6 +129,10 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       }
       Object[] args =
           ArgumentsBuilder.unwrap(argsBytes, rayFunction.executable.getParameterTypes());
+      for (Object arg : args) {
+        throwIfDependencyFailed(arg);
+      }
+
       // Execute the task.
       Object result;
       try {

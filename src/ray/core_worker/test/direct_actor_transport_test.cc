@@ -23,6 +23,7 @@
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
+namespace core {
 
 using ::testing::_;
 using ::testing::ElementsAre;
@@ -648,6 +649,7 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
   StopIOService();
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

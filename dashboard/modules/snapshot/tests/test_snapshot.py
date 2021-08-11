@@ -1,8 +1,10 @@
 import os
+import sys
 import json
 import jsonschema
 
 import pprint
+import pytest
 import requests
 
 from ray.test_utils import (
@@ -58,6 +60,7 @@ ray.get(a.ping.remote())
 
     assert len(data["data"]["snapshot"]["actors"]) == 3
     assert len(data["data"]["snapshot"]["jobs"]) == 4
+    assert len(data["data"]["snapshot"]["deployments"]) == 0
 
     for actor_id, entry in data["data"]["snapshot"]["actors"].items():
         assert entry["jobId"] in data["data"]["snapshot"]["jobs"]
@@ -68,3 +71,50 @@ ray.get(a.ping.remote())
         else:
             assert entry["endTime"] > 0, entry
         assert "runtimeEnv" in entry
+
+
+def test_serve_snapshot(ray_start_with_dashboard):
+    driver_script = f"""
+import ray
+from ray import serve
+
+ray.init(
+    address="{ray_start_with_dashboard['redis_address']}",
+    namespace="serve")
+
+serve.start(detached=True)
+
+@serve.deployment(version="v1")
+def my_func(request):
+  return "hello"
+
+my_func.deploy()
+    """
+    run_string_as_driver(driver_script)
+
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+    response = requests.get(f"{webui_url}/api/snapshot")
+    response.raise_for_status()
+    data = response.json()
+    schema_path = os.path.join(
+        os.path.dirname(dashboard.__file__),
+        "modules/snapshot/snapshot_schema.json")
+    pprint.pprint(data)
+    jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
+
+    assert len(data["data"]["snapshot"]["deployments"]) == 1
+    for deployment_name, entry in data["data"]["snapshot"][
+            "deployments"].items():
+        assert entry["name"] == "my_func"
+        assert entry["version"] == "v1"
+        assert entry["httpRoute"] == "/my_func"
+        assert entry["className"] == "my_func"
+        assert entry["status"] == "RUNNING"
+        assert entry["rayJobId"] is not None
+        assert entry["startTime"] == 0
+        assert entry["endTime"] == 0
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

@@ -29,6 +29,7 @@
 namespace {}  // namespace
 
 namespace ray {
+namespace core {
 
 bool ReferenceCounter::OwnObjects() const {
   absl::MutexLock lock(&mutex_);
@@ -68,7 +69,7 @@ ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
     const ReferenceTableProto &proto) {
   ReferenceTable refs;
   for (const auto &ref : proto) {
-    refs.emplace(ray::ObjectID::FromBinary(ref.reference().object_id()),
+    refs.emplace(ObjectID::FromBinary(ref.reference().object_id()),
                  Reference::FromProto(ref));
   }
   return refs;
@@ -1226,4 +1227,5 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref) const 
   }
 }
 
+}  // namespace core
 }  // namespace ray
