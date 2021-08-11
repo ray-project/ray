@@ -62,7 +62,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.state_lock = threading.Lock()
         self.ray_connect_handler = ray_connect_handler
 
-    def Init(self, request, context=None) -> ray_client_pb2.InitResponse:
+    def Init(self, request: ray_client_pb2.InitRequest,
+             context=None) -> ray_client_pb2.InitResponse:
         if request.job_config:
             job_config = pickle.loads(request.job_config)
             job_config.client_job = True
@@ -74,7 +75,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 worker = ray.worker.global_worker
                 current_job_config = worker.core_worker.get_job_config()
             else:
-                self.ray_connect_handler(job_config)
+                extra_kwargs = json.loads(request.ray_init_kwargs or "{}")
+                self.ray_connect_handler(job_config, **extra_kwargs)
         if job_config is None:
             return ray_client_pb2.InitResponse(ok=True)
         job_config = job_config.get_proto_job_config()
@@ -633,17 +635,21 @@ def shutdown_with_server(server, _exiting_interpreter=False):
 
 
 def create_ray_handler(redis_address, redis_password):
-    def ray_connect_handler(job_config: JobConfig = None):
+    def ray_connect_handler(job_config: JobConfig = None, **ray_init_kwargs):
         if redis_address:
             if redis_password:
                 ray.init(
                     address=redis_address,
                     _redis_password=redis_password,
-                    job_config=job_config)
+                    job_config=job_config,
+                    **ray_init_kwargs)
             else:
-                ray.init(address=redis_address, job_config=job_config)
+                ray.init(
+                    address=redis_address,
+                    job_config=job_config,
+                    **ray_init_kwargs)
         else:
-            ray.init(job_config=job_config)
+            ray.init(job_config=job_config, **ray_init_kwargs)
 
     return ray_connect_handler
 
