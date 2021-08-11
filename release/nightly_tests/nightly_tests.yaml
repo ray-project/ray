@@ -313,4 +313,5 @@
 
   run:
     timeout: 7200
+    prepare: python wait_cluster.py 32 1000
     script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions 1000 --num-nodes 31 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
