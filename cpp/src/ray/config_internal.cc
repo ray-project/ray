@@ -21,7 +21,9 @@
 
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
 
-ABSL_FLAG(std::string, ray_redis_password, "",
+/// absl::flags does not provide a IsDefaultValue method, so use a non-empty dummy default
+/// value to support empty redis password.
+ABSL_FLAG(std::string, ray_redis_password, "absl::flags dummy default value",
           "Prevents external clients without the password from connecting to Redis "
           "if provided.");
 
@@ -49,7 +51,7 @@ ABSL_FLAG(std::string, ray_node_ip_address, "", "The ip address for this node.")
 namespace ray {
 namespace internal {
 
-void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
+void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (!config.address.empty()) {
     SetRedisAddress(config.address);
   }
@@ -60,9 +62,9 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
   if (config.redis_password_) {
     redis_password = *config.redis_password_;
   }
-  if (argc != nullptr && argv != nullptr) {
+  if (argc != 0 && argv != nullptr) {
     // Parse config from command line.
-    absl::ParseCommandLine(*argc, *argv);
+    absl::ParseCommandLine(argc, argv);
 
     if (!FLAGS_ray_code_search_path.CurrentValue().empty()) {
       // Code search path like this "/path1/xxx.so:/path2".

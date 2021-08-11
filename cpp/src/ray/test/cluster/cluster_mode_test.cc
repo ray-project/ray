@@ -20,8 +20,8 @@
 #include "counter.h"
 #include "plus.h"
 
-int *cmd_argc = nullptr;
-char ***cmd_argv = nullptr;
+int cmd_argc = 0;
+char **cmd_argv = nullptr;
 
 ABSL_FLAG(bool, external_cluster, false, "");
 ABSL_FLAG(std::string, redis_password, "12345678", "");
@@ -232,8 +232,8 @@ TEST(RayClusterModeTest, ExceptionTest) {
 
 int main(int argc, char **argv) {
   absl::ParseCommandLine(argc, argv);
-  cmd_argc = &argc;
-  cmd_argv = &argv;
+  cmd_argc = argc;
+  cmd_argv = argv;
   ::testing::InitGoogleTest(&argc, argv);
   int ret = RUN_ALL_TESTS();
 

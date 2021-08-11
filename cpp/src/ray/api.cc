@@ -19,12 +19,12 @@
 
 namespace ray {
 
-void Init(ray::RayConfig &config, int *argc, char ***argv) {
+void Init(ray::RayConfig &config, int argc, char **argv) {
   ray::internal::ConfigInternal::Instance().Init(config, argc, argv);
   Init();
 }
 
-void Init(ray::RayConfig &config) { Init(config, nullptr, nullptr); }
+void Init(ray::RayConfig &config) { Init(config, 0, nullptr); }
 
 void Init() {
   std::call_once(is_inited_, [] {
