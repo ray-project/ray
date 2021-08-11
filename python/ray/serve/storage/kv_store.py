@@ -1,7 +1,10 @@
 import sqlite3
 
-import boto3
-from botocore.exceptions import ClientError
+try:
+    import boto3
+    from botocore.exceptions import ClientError
+except ImportError:
+    boto3 = None
 
 import ray.experimental.internal_kv as ray_kv
 from ray.serve.storage.kv_store_base import KVStoreBase
@@ -174,7 +177,11 @@ class RayS3KVStore(KVStoreBase):
         self._namespace = namepsace
         self._bucket = bucket
         self._s3_path = s3_path
-
+        if not boto3:
+            raise ImportError(
+                "You tried to use S3KVstore client without boto3 installed."
+                "Please run `pip install boto3`"
+            )
         self._s3 = boto3.client(
             "s3",
             region_name=region_name,
