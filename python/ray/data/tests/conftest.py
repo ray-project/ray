@@ -4,7 +4,7 @@ import shutil
 import pytest
 import pyarrow as pa
 
-from ray.experimental.data.tests.mock_server import *  # noqa
+from ray.data.tests.mock_server import *  # noqa
 
 
 @pytest.fixture(scope="function")

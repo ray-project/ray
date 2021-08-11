@@ -17,11 +17,11 @@ from pytest_lazyfixture import lazy_fixture
 import ray
 
 from ray.tests.conftest import *  # noqa
-from ray.data.tests.conftest import *  # noqa
 from ray.data.datasource import DummyOutputDatasource
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 import ray.data.tests.util as util
+from ray.data.tests.conftest import *  # noqa
 
 
 def maybe_pipeline(ds, enabled):
