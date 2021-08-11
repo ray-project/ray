@@ -17,6 +17,7 @@ from ray.util.sgd.torch.utils import setup_address
 from ray.util.sgd.utils import check_for_failure
 
 RESIZE_COOLDOWN_S = 10
+SGD_PLACEMENT_GROUP_TIMEOUT_S = 60
 logger = logging.getLogger(__name__)
 
 
@@ -119,9 +120,9 @@ def wait_for_condition(condition_predictor, timeout=60, retry_interval_ms=100):
     start = time.time()
     while time.time() - start <= timeout:
         if condition_predictor():
-            return
+            return True
         time.sleep(retry_interval_ms / 1000.0)
-    raise RuntimeError("The condition wasn't met before the timeout expired.")
+    return False
 
 
 class RemoteWorkerGroup(WorkerGroupInterface):
@@ -450,7 +451,12 @@ class RemoteWorkerGroup(WorkerGroupInterface):
                 return table["state"] == "REMOVED"
 
             # Wait the placement_group been deleted
-            wait_for_condition(is_placement_group_removed)
+            success = wait_for_condition(is_placement_group_removed,
+                                         SGD_PLACEMENT_GROUP_TIMEOUT_S)
+            if not success:
+                logger.warning(
+                    f"Placement Group removal is not successful after "
+                    f"{SGD_PLACEMENT_GROUP_TIMEOUT_S} seconds.")
 
     def reset(self):
         self.shutdown(force=True)
