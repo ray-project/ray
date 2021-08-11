@@ -675,6 +675,12 @@ def test_detached_actor(ray_start_regular):
             ValueError, match="Actor name cannot be an empty string"):
         DetachedActor._remote(lifetime="detached", name="")
 
+    with pytest.raises(ValueError):
+        DetachedActor._remote(lifetime="detached", name="hi", namespace="")
+
+    with pytest.raises(ValueError):
+        DetachedActor._remote(lifetime="detached", name="hi", namespace=2)
+
     d = DetachedActor._remote(lifetime="detached", name="d_actor")
     assert ray.get(d.ping.remote()) == "pong"
 

@@ -437,6 +437,7 @@ class ActorClass:
                 max_restarts=None,
                 max_task_retries=None,
                 name=None,
+                namespace=None,
                 lifetime=None,
                 placement_group="default",
                 placement_group_bundle_index=-1,
@@ -478,6 +479,7 @@ class ActorClass:
                     max_restarts=max_restarts,
                     max_task_retries=max_task_retries,
                     name=name,
+                    namespace=namespace,
                     lifetime=lifetime,
                     placement_group=placement_group,
                     placement_group_bundle_index=placement_group_bundle_index,
@@ -609,6 +611,20 @@ class ActorClass:
 
         worker = ray.worker.global_worker
         worker.check_connected()
+
+        if name is not None:
+            if not isinstance(name, str):
+                raise TypeError(
+                    f"name must be None or a string, got: '{type(name)}'.")
+            elif name == "":
+                raise ValueError("Actor name cannot be an empty string.")
+        if namespace is not None:
+            if not isinstance(namespace, str):
+                raise TypeError(
+                    f"namespace must be None or a string, got: '{type(namespace)}'."
+                )
+            elif namespace == "":
+                raise ValueError("Actor namespace cannot be an empty string.")
 
         # Check whether the name is already taken.
         # TODO(edoakes): this check has a race condition because two drivers
