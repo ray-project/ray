@@ -120,6 +120,21 @@
                   "port": {
                     "type": "integer"
                   },
+                  "serveMetadata": {
+                    "type": "object",
+                    "properties": {
+                      "deploymentName": {
+                        "type": "string"
+                      },
+                      "replicaTag": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "deploymentName",
+                      "replicaTag"
+                    ]
+                  },
                   "required": [
                     "jobId",
                     "state",

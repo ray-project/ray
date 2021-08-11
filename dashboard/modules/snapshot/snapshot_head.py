@@ -93,11 +93,14 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
 
             deployments = await self.get_serve_info()
             for deployment_name, deployment_info in deployments.items():
-                for replica_actor_id, actor_info in deployment_info["actors"].items():
+                for replica_actor_id, actor_info in deployment_info[
+                        "actors"].items():
                     if replica_actor_id in actors:
                         actors[replica_actor_id]["serve_metadata"] = dict()
-                        actors[replica_actor_id]["serve_metadata"]["replica_tag"] = actor_info["replica_tag"]
-                        actors[replica_actor_id]["serve_metadata"]["deployment_name"] = deployment_name
+                        actors[replica_actor_id]["serve_metadata"][
+                            "replica_tag"] = actor_info["replica_tag"]
+                        actors[replica_actor_id]["serve_metadata"][
+                            "deployment_name"] = deployment_name
         return actors
 
     async def get_serve_info(self):
