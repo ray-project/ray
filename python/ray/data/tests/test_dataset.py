@@ -1179,7 +1179,7 @@ def test_json_write(ray_start_regular_shared, tmp_path):
     ds._set_uuid("data")
     ds.write_json(path)
     file_path = os.path.join(path, "data_000000.json")
-    assert df.equals(pd.read_json(file_path))
+    assert df.equals(pd.read_json(file_path, orient="records", lines=True))
     shutil.rmtree(path)
 
     # Two blocks.
@@ -1190,8 +1190,44 @@ def test_json_write(ray_start_regular_shared, tmp_path):
     ds.write_json(path)
     file_path2 = os.path.join(path, "data_000001.json")
     assert pd.concat([df, df2]).equals(
-        pd.concat([pd.read_json(file_path),
-                   pd.read_json(file_path2)]))
+        pd.concat([
+            pd.read_json(file_path, orient="records", lines=True),
+            pd.read_json(file_path2, orient="records", lines=True)
+        ]))
+    shutil.rmtree(path)
+
+
+def test_json_roundtrip(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_json_dir")
+
+    # Single block.
+    os.mkdir(path)
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds._set_uuid("data")
+    ds.write_json(path)
+    file_path = os.path.join(path, "data_000000.json")
+    ds2 = ray.data.read_json([file_path])
+    ds2df = pd.concat(ray.get(ds2.to_pandas()))
+    assert ds2df.equals(df)
+    # Test metadata ops.
+    for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+    shutil.rmtree(path)
+
+    # Two blocks.
+    os.mkdir(path)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas([ray.put(df), ray.put(df2)])
+    ds._set_uuid("data")
+    ds.write_json(path)
+    file_path2 = os.path.join(path, "data_000001.json")
+    ds2 = ray.data.read_json([file_path, file_path2], parallelism=2)
+    ds2df = pd.concat(ray.get(ds2.to_pandas()))
+    assert pd.concat([df, df2]).equals(ds2df)
+    # Test metadata ops.
+    for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
     shutil.rmtree(path)
 
 

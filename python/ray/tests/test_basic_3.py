@@ -11,7 +11,9 @@ import ray.cluster_utils
 from ray.test_utils import (
     dicts_equal,
     wait_for_pid_to_exit,
+    wait_for_condition,
 )
+from pathlib import Path
 
 import ray
 
@@ -224,6 +226,64 @@ def test_actor_scheduling(shutdown_only):
     a.run_fail.remote()
     with pytest.raises(Exception):
         ray.get([a.get.remote()])
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "_system_config": {
+            "event_stats_print_interval_ms": 100,
+            "debug_dump_period_milliseconds": 100,
+            "event_stats": True
+        }
+    }],
+    indirect=True)
+def test_worker_startup_count(ray_start_cluster):
+    """Test that no extra workers started while no available cpu resources
+    in cluster."""
+
+    cluster = ray_start_cluster
+    # Cluster total cpu resources is 4.
+    cluster.add_node(num_cpus=4, )
+    ray.init(address=cluster.address)
+
+    # A slow function never returns. It will hold cpu resources all the way.
+    @ray.remote
+    def slow_function():
+        while True:
+            time.sleep(1000)
+
+    # Flood a large scale lease worker requests.
+    for i in range(10000):
+        # Use random cpu resources to make sure that all tasks are sent
+        # to the raylet. Because core worker will cache tasks with the
+        # same resource shape.
+        num_cpus = 0.24 + np.random.uniform(0, 0.01)
+        slow_function.options(num_cpus=num_cpus).remote()
+
+    # Check "debug_state.txt" to ensure no extra workers were started.
+    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    debug_state_path = session_path / "debug_state.txt"
+
+    def get_num_workers():
+        with open(debug_state_path) as f:
+            for line in f.readlines():
+                num_workers_prefix = "- num PYTHON workers: "
+                if num_workers_prefix in line:
+                    return int(line[len(num_workers_prefix):])
+        return None
+
+    # Wait for "debug_state.txt" to be updated to reflect the started worker.
+    start = time.time()
+    wait_for_condition(lambda: get_num_workers() == 16)
+    time_waited = time.time() - start
+    print(f"Waited {time_waited} for debug_state.txt to be updated")
+
+    # Check that no more workers started for a while.
+    for i in range(100):
+        num = get_num_workers()
+        assert num == 16
+        time.sleep(0.1)
 
 
 if __name__ == "__main__":
