@@ -173,8 +173,10 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // by all of core worker.
   RAY_LOG(DEBUG) << "Stats setup in core worker.";
   // Initialize stats in core worker global tags.
-  const stats::TagsType global_tags = {{stats::ComponentKey, "core_worker"},
-                                       {stats::VersionKey, "2.0.0.dev0"}};
+  const ray::stats::TagsType global_tags = {
+      {ray::stats::ComponentKey, "core_worker"},
+      {ray::stats::VersionKey, "2.0.0.dev0"},
+      {ray::stats::NodeAddressKey, options_.node_ip_address}};
 
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
@@ -1589,63 +1591,6 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
         // added them to the reference.
         callback();
       });
-}
-
-Status CoreWorker::SpillObjects(const std::vector<ObjectID> &object_ids) {
-  if (object_ids.empty()) {
-    return Status::OK();
-  }
-  auto mutex = std::make_shared<absl::Mutex>();
-  auto num_remaining = std::make_shared<size_t>(object_ids.size());
-  auto ready_promise = std::make_shared<std::promise<void>>(std::promise<void>());
-  Status final_status;
-
-  // TODO(Clark): Add spilled URL and spilled node ID to reference in this callback.
-  auto callback = [mutex, num_remaining, ready_promise]() {
-    absl::MutexLock lock(mutex.get());
-    (*num_remaining)--;
-    if (*num_remaining == 0) {
-      ready_promise->set_value();
-    }
-  };
-
-  for (const auto &object_id : object_ids) {
-    RAY_LOG(DEBUG) << "Requesting spill for object " << object_id;
-    // Acquire a temporary reference to make sure that the object is still in
-    // scope by the time we register the callback to spill the object.
-    // Otherwise, the callback may never get called.
-    AddLocalReference(object_id, "<temporary (get object status)>");
-
-    rpc::Address owner_address;
-    auto has_owner = reference_counter_->GetOwner(object_id, &owner_address);
-    if (!has_owner) {
-      final_status =
-          Status::Invalid("Cannot call spill on objects that have gone out of scope.");
-      callback();
-    } else if (WorkerID::FromBinary(owner_address.worker_id()) !=
-               worker_context_.GetWorkerID()) {
-      final_status = Status::Invalid("Cannot call spill on objects that we do not own.");
-      callback();
-    } else {
-      memory_store_->GetAsync(
-          object_id, [this, object_id, callback](std::shared_ptr<RayObject> obj) {
-            SpillOwnedObject(object_id, obj, callback);
-          });
-    }
-
-    // Remove the temporary reference.
-    RemoveLocalReference(object_id);
-  }
-
-  ready_promise->get_future().wait();
-
-  for (const auto &object_id : object_ids) {
-    // TODO(Clark): Move this to the callback (unless we really wanted to batch it) and
-    // also include the spilled URL, spilled node ID, and updated object size.
-    reference_counter_->HandleObjectSpilled(object_id, "", NodeID::Nil(), -1,
-                                            /*release*/ true);
-  }
-  return final_status;
 }
 
 std::unordered_map<std::string, double> AddPlacementGroupConstraint(

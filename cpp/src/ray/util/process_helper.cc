@@ -21,7 +21,7 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 using ray::core::CoreWorkerProcess;
 using ray::core::WorkerType;
@@ -184,5 +184,5 @@ void ProcessHelper::RayStop() {
   }
 }
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

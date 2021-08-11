@@ -236,7 +236,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SetResource(const c_string &resource_name,
                                const double capacity,
                                const CNodeID &client_Id)
-        CRayStatus SpillObjects(const c_vector[CObjectID] &object_ids)
 
         CJobConfig GetJobConfig()
 

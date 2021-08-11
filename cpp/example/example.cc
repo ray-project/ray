@@ -4,9 +4,6 @@
 /// including the `<ray/api.h>` header
 #include <ray/api.h>
 
-/// using namespace
-using namespace ::ray::api;
-
 /// common function
 int Plus(int x, int y) { return x + y; }
 /// Declare remote function
@@ -32,31 +29,31 @@ RAY_REMOTE(Counter::FactoryCreate, &Counter::Add);
 
 int main(int argc, char **argv) {
   /// configuration and initialization
-  RayConfig config;
-  Ray::Init(config);
+  ray::RayConfig config;
+  ray::Init(config);
 
   /// put and get object
-  auto object = Ray::Put(100);
-  auto put_get_result = *(Ray::Get(object));
+  auto object = ray::Put(100);
+  auto put_get_result = *(ray::Get(object));
   std::cout << "put_get_result = " << put_get_result << std::endl;
 
   /// common task
-  auto task_object = Ray::Task(Plus).Remote(1, 2);
-  int task_result = *(Ray::Get(task_object));
+  auto task_object = ray::Task(Plus).Remote(1, 2);
+  int task_result = *(ray::Get(task_object));
   std::cout << "task_result = " << task_result << std::endl;
 
   /// actor
-  ActorHandle<Counter> actor = Ray::Actor(Counter::FactoryCreate).Remote(0);
+  ray::ActorHandle<Counter> actor = ray::Actor(Counter::FactoryCreate).Remote(0);
   /// actor task
   auto actor_object = actor.Task(&Counter::Add).Remote(3);
-  int actor_task_result = *(Ray::Get(actor_object));
+  int actor_task_result = *(ray::Get(actor_object));
   std::cout << "actor_task_result = " << actor_task_result << std::endl;
   /// actor task with reference argument
   auto actor_object2 = actor.Task(&Counter::Add).Remote(task_object);
-  int actor_task_result2 = *(Ray::Get(actor_object2));
+  int actor_task_result2 = *(ray::Get(actor_object2));
   std::cout << "actor_task_result2 = " << actor_task_result2 << std::endl;
 
   /// shutdown
-  Ray::Shutdown();
+  ray::Shutdown();
   return 0;
 }
