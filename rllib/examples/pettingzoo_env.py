@@ -6,7 +6,7 @@ from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0
 import ray
 from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.env import PettingZooEnv
-from pettingzoo.butterfly import pistonball_v1
+from pettingzoo.butterfly import pistonball_v4
 
 from ray.tune.registry import register_env
 
