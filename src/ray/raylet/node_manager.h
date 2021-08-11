@@ -131,7 +131,6 @@ class HeartbeatSender {
   instrumented_io_context heartbeat_io_service_;
   /// Heartbeat thread, using with heartbeat_io_service_.
   std::unique_ptr<std::thread> heartbeat_thread_;
-  std::unique_ptr<PeriodicalRunner> heartbeat_runner_;
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;

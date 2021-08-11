@@ -126,14 +126,10 @@ HeartbeatSender::HeartbeatSender(NodeID self_node_id,
     boost::asio::io_service::work io_service_work_(heartbeat_io_service_);
     heartbeat_io_service_.run();
   }));
-  heartbeat_runner_.reset(new PeriodicalRunner(heartbeat_io_service_));
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
-  heartbeat_runner_->RunFnPeriodically(
-      [this] { Heartbeat(); },
-      RayConfig::instance().raylet_heartbeat_period_milliseconds(),
-      "NodeManager.deadline_timer.heartbeat");
+  heartbeat_io_service_.post([this]() { Heartbeat(); }, "NodeManager.heartbeat");
 }
 
 HeartbeatSender::~HeartbeatSender() {
@@ -163,8 +159,10 @@ void HeartbeatSender::Heartbeat() {
   RAY_CHECK_OK(
       gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, [](Status status) {
         if (status.IsDisconnected()) {
-          RAY_LOG(FATAL) << "This node has beem marked as dead.";
+          RAY_LOG(FATAL) << "This node has been marked as dead.";
         }
+        execute_after(heartbeat_io_service_, [this]() { Heartbeat(); },
+                      RayConfig::instance().raylet_heartbeat_period_milliseconds());
       }));
 }
 
