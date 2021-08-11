@@ -7,8 +7,8 @@
 
 name: $(BuildDefinitionName)_$(SourceBranchName)_$(BuildID)
 stages:
-  - stage: RayBuild
-    displayName: 'Ray Build'
+  - stage: RayBuild1
+    displayName: 'Ray Build 1'
     dependsOn: []
     jobs:
       - job: RayTestsSmallAndLarge
@@ -52,6 +52,10 @@ stages:
           - template: templates/ray-small-large.yml
           # Template containing steps to publish artifacts
           - template: templates/artifacts.yml
+  - stage: RayBuild2
+    displayName: 'Ray Build 2'
+    dependsOn: []
+    jobs:
       - job: RayTestsMediumAtoJ
         timeoutInMinutes: 360
         cancelTimeoutInMinutes: 5
@@ -93,6 +97,10 @@ stages:
           - template: templates/ray-medium-a-j.yml
           # Template containing steps to publish artifacts
           - template: templates/artifacts.yml
+  - stage: RayBuild3
+    displayName: 'Ray Build 3'
+    dependsOn: []
+    jobs:
       - job: RayTestsMediumKtoZ
         timeoutInMinutes: 360
         cancelTimeoutInMinutes: 5
@@ -285,8 +293,8 @@ stages:
           - template: templates/rlib-test-m-to-z-tf-2.yml
           # Template containing steps to publish artifacts
           - template: templates/artifacts.yml
-  - stage: WheelsBuild
-    displayName: 'Wheels Build'
+  - stage: UbuntuWheelsBuild
+    displayName: 'Ubuntu Wheels Build'
     dependsOn: []
     jobs:
       - job: UbuntuWheels
@@ -329,6 +337,10 @@ stages:
           - template: templates/python-upload.yml
           # Template containing steps to publish artifacts
           - template: templates/artifacts.yml
+  - stage: MacOSWheelsBuild
+    displayName: 'MacOS Wheels Build'
+    dependsOn: []
+    jobs:
       - job: MacOSWheels
         # dependsOn: RayTests
         timeoutInMinutes: 360
@@ -450,7 +462,7 @@ stages:
     jobs:
       - job: JavaTests
         # Disabled
-        # condition: False
+        condition: False
         timeoutInMinutes: 360
         cancelTimeoutInMinutes: 5
         strategy:
