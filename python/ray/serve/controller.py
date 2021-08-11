@@ -145,13 +145,8 @@ class ServeController:
             entry["status"] = "RUNNING"
             entry["start_time"] = backend_info.start_time_ms or 0
             entry["end_time"] = 0
-            entry["actors"] = dict()
-            # replicas_to_actor_handles = self._all_replica_handles().get(
-            #     deployment_name) or dict()
-            # for replica_tag, actor_handle in replicas_to_actor_handles.items():
-            #     actor_id = actor_handle._ray_actor_id.hex()
-            #     entry["actors"][actor_id] = {"replica_tag": replica_tag}
 
+            entry["actors"] = dict()
             replica_state_container = self.backend_state._replicas[
                 deployment_name]
             running_replicas = replica_state_container.get(
