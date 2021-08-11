@@ -305,14 +305,3 @@ py_test(
     tags = ["exclusive"],
     deps = [":serve_lib"]
 )
-
-# Disable the deployment tutorial test because it requires
-# ray start --head in the background
-# py_test(
-    #name = "tutorial_deploy",
-    #size = "small",
-    #srcs = glob(["examples/doc/*.py"]),
-    #tags = ["exclusive"],
-    #deps = [":serve_lib"]
-# )
-

@@ -814,6 +814,7 @@ class Deployment:
             init_args=init_args,
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
+            _internal=True,
         )
 
     def __eq__(self, other):
