@@ -131,7 +131,6 @@ def cql_loss(policy: Policy, model: ModelV2,
             min_q = torch.min(min_q, twin_q_)
         actor_loss = (alpha.detach() * log_pis_t - min_q).mean()
     else:
-
         bc_logp = action_dist_t.logp(actions)
         actor_loss = (alpha.detach() * log_pis_t - bc_logp).mean()
         # actor_loss = -bc_logp.mean()
@@ -159,8 +158,8 @@ def cql_loss(policy: Policy, model: ModelV2,
     # Target q network evaluation.
     q_tp1 = target_model.get_q_values(target_model_out_tp1, policy_tp1)
     if twin_q:
-        twin_q_tp1 = target_model.get_twin_q_values(
-            target_model_out_tp1, policy_tp1)
+        twin_q_tp1 = target_model.get_twin_q_values(target_model_out_tp1,
+                                                    policy_tp1)
         # Take min over both twin-NNs.
         q_tp1 = torch.min(q_tp1, twin_q_tp1)
 
