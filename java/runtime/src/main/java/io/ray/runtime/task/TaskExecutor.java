@@ -14,6 +14,7 @@ import io.ray.runtime.functionmanager.RayFunction;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectSerializer;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -156,7 +157,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
               argTypes);
         }
 
-        if (e.getCause() != null) {
+        if (e instanceof InvocationTargetException && e.getCause() != null) {
           throw e.getCause();
         } else {
           throw e;
