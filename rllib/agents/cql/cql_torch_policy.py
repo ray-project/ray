@@ -23,7 +23,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
     TrainerConfigDict
 from ray.rllib.utils.torch_ops import apply_grad_clipping, \
-    convert_to_torch_tensor
+    convert_to_torch_tensor, concat_multi_gpu_td_errors
 
 torch, nn = try_import_torch()
 F = nn.functional
@@ -65,6 +65,9 @@ def cql_loss(policy: Policy, model: ModelV2,
     logger.info(f"Current iteration = {policy.cur_iter}")
     policy.cur_iter += 1
 
+    # Look up the target model (tower) using the model tower.
+    target_model = policy.target_models[model]
+
     # For best performance, turn deterministic off
     deterministic = policy.config["_deterministic_loss"]
     assert not deterministic
@@ -83,7 +86,7 @@ def cql_loss(policy: Policy, model: ModelV2,
 
     obs = train_batch[SampleBatch.CUR_OBS]
     actions = train_batch[SampleBatch.ACTIONS]
-    rewards = train_batch[SampleBatch.REWARDS]
+    rewards = train_batch[SampleBatch.REWARDS].float()
     next_obs = train_batch[SampleBatch.NEXT_OBS]
     terminals = train_batch[SampleBatch.DONES]
 
@@ -97,7 +100,7 @@ def cql_loss(policy: Policy, model: ModelV2,
         "is_training": True,
     }, [], None)
 
-    target_model_out_tp1, _ = policy.target_model({
+    target_model_out_tp1, _ = target_model({
         "obs": next_obs,
         "is_training": True,
     }, [], None)
@@ -128,7 +131,6 @@ def cql_loss(policy: Policy, model: ModelV2,
             min_q = torch.min(min_q, twin_q_)
         actor_loss = (alpha.detach() * log_pis_t - min_q).mean()
     else:
-
         bc_logp = action_dist_t.logp(actions)
         actor_loss = (alpha.detach() * log_pis_t - bc_logp).mean()
         # actor_loss = -bc_logp.mean()
@@ -153,10 +155,10 @@ def cql_loss(policy: Policy, model: ModelV2,
         twin_q_t_selected = torch.squeeze(twin_q_t, dim=-1)
 
     # Target q network evaluation.
-    q_tp1 = policy.target_model.get_q_values(target_model_out_tp1, policy_tp1)
+    q_tp1 = target_model.get_q_values(target_model_out_tp1, policy_tp1)
     if twin_q:
-        twin_q_tp1 = policy.target_model.get_twin_q_values(
-            target_model_out_tp1, policy_tp1)
+        twin_q_tp1 = target_model.get_twin_q_values(target_model_out_tp1,
+                                                    policy_tp1)
         # Take min over both twin-NNs.
         q_tp1 = torch.min(q_tp1, twin_q_tp1)
 
@@ -346,6 +348,7 @@ CQLTorchPolicy = build_policy_class(
     validate_spaces=validate_spaces,
     before_loss_init=cql_setup_late_mixins,
     make_model_and_action_dist=build_sac_model_and_action_dist,
+    extra_learn_fetches_fn=concat_multi_gpu_td_errors,
     mixins=[TargetNetworkMixin, ComputeTDErrorMixin],
     action_distribution_fn=action_distribution_fn,
     compute_gradients_fn=compute_gradients_fn,
