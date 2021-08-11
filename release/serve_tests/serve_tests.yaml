@@ -7,7 +7,7 @@
     timeout: 7200
     long_running: False
     script: python workloads/single_deployment_1k_noop_replica.py
-  
+
   smoke_test:
     timeout: 600
 
@@ -20,6 +20,19 @@
     timeout: 7200
     long_running: False
     script: python workloads/multi_deployment_1k_noop_replica.py
-  
+
+  smoke_test:
+    timeout: 600
+
+- name: serve_micro_benchmark
+  cluster:
+    app_config: app_config.yaml
+    compute_template: compute_tpl_single_node.yaml
+
+  run:
+    timeout: 7200
+    long_running: False
+    script: python workloads/serve_micro_benchmark.py
+
   smoke_test:
     timeout: 600
