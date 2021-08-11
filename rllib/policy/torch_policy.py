@@ -587,6 +587,11 @@ class TorchPolicy(Policy):
                 "sgd_minibatch_size", self.config["train_batch_size"]) // \
             len(self.devices)
 
+        # Set Model to train mode.
+        if self.model_gpu_towers:
+            for t in self.model_gpu_towers:
+                t.train()
+
         # Shortcut for 1 CPU only: Batch should already be stored in
         # `self._loaded_batches`.
         if len(self.devices) == 1 and self.devices[0].type == "cpu":
