@@ -1,13 +1,14 @@
+from typing import Dict, Any, List
+
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.experimental.internal_kv import _internal_kv_get
+from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_list
 
 import ray.new_dashboard.utils as dashboard_utils
 import ray
 from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
 from ray.serve.constants import SERVE_CONTROLLER_NAME
-from ray.serve.kv_store import format_key
 
 import json
 
@@ -93,16 +94,27 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
             actors[actor_id] = entry
         return actors
 
-    async def get_serve_info(self):
-        client = self._dashboard_head.gcs_client
+    async def get_serve_info(self) -> Dict[str, Any]:
+        """Return the info for all deployments from all serve controllers."""
+        gcs_client = self._dashboard_head.gcs_client
 
         # Serve wraps Ray's internal KV store and specially formats the keys.
-        # TODO(architkulkarni): Use _internal_kv_list to get all Serve
-        # controllers.  Currently we only get the detached one.  Non-detached
-        # ones have name = SERVE_CONTROLLER_NAME + random letters.
-        key = format_key(SERVE_CONTROLLER_NAME, SERVE_SNAPSHOT_KEY)
+        # These are the keys we are interested in:
+        # SERVE_CONTROLLER_NAME(+ optional random letters):SERVE_SNAPSHOT_KEY
 
-        return json.loads(_internal_kv_get(key, client) or "{}")
+        serve_keys = _internal_kv_list(SERVE_CONTROLLER_NAME, gcs_client)
+        serve_snapshot_keys = filter(lambda k: SERVE_SNAPSHOT_KEY in str(k),
+                                     serve_keys)
+
+        deployments_per_controller: List[Dict[str, Any]] = [
+            json.loads(_internal_kv_get(k, gcs_client) or "{}")
+            for k in serve_snapshot_keys
+        ]
+        deployments: Dict[str, Any] = {
+            k: v
+            for d in deployments_per_controller for k, v in d.items()
+        }
+        return deployments
 
     async def get_session_name(self):
         encoded_name = await self._dashboard_head.aioredis_client.get(
