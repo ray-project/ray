@@ -145,9 +145,8 @@ def cql_loss(policy: Policy, model: ModelV2,
     # Q-values for the batched actions.
     action_dist_tp1 = action_dist_class(
         model.get_policy_output(model_out_tp1), policy.model)
-    policy_tp1, log_pis_tp1 = action_dist_tp1.sample_logp()
+    policy_tp1, _ = action_dist_tp1.sample_logp()
 
-    log_pis_tp1 = torch.unsqueeze(log_pis_tp1, -1)
     q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
     q_t_selected = torch.squeeze(q_t, dim=-1)
     if twin_q:
