@@ -31,6 +31,7 @@
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
+namespace core {
 
 // Interface for mocking.
 class ReferenceCounterInterface {
@@ -821,4 +822,5 @@ class ReferenceCounter : public ReferenceCounterInterface,
   pubsub::SubscriberInterface *object_info_subscriber_;
 };
 
+}  // namespace core
 }  // namespace ray

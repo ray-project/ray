@@ -696,7 +696,9 @@ def init(
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
-        runtime_env (dict): The runtime environment to use for this job.
+        runtime_env (dict): The runtime environment to use for this job (see
+                :ref:`runtime-environments` for details).  This API is in beta
+                and may change before becoming stable.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -2067,7 +2069,8 @@ def remote(*args, **kwargs):
             infinite retries.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
-            :ref:`runtime-environments` for detailed documentation.
+            :ref:`runtime-environments` for detailed documentation. This API is
+            in beta and may change before becoming stable.
         override_environment_variables (Dict[str, str]): (Deprecated in Ray
             1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
             field of :ref:`runtime-environments` instead.) This specifies

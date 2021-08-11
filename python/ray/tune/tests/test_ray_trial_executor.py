@@ -18,7 +18,7 @@ from ray.cluster_utils import Cluster
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
-class TrialExecutorInsufficientResourceTest(unittest.TestCase):
+class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
     def setUp(self):
         os.environ["TUNE_INSUFFICENT_RESOURCE_WARN_THRESHOLD_S"] = "1"
         self.cluster = Cluster(
@@ -42,7 +42,7 @@ class TrialExecutorInsufficientResourceTest(unittest.TestCase):
         def train(config):
             pass
 
-        out = tune.run(
+        tune.run(
             train, resources_per_trial={
                 "cpu": 1,
                 "gpu": 1,
@@ -61,7 +61,7 @@ class TrialExecutorInsufficientResourceTest(unittest.TestCase):
         def train(config):
             pass
 
-        out = tune.run(
+        tune.run(
             train, resources_per_trial={
                 "cpu": 1,
                 "gpu": 1,
