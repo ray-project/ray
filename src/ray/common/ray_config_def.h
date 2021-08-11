@@ -470,3 +470,9 @@ RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 
 /// ServerCall instance number of each RPC service handler
 RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
+
+/// grpc keepalive sent interval
+RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000);
+
+/// grpc keepalive timeout
+RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);

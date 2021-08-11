@@ -50,8 +50,8 @@ void GrpcServer::Run() {
                              RayConfig::instance().max_grpc_message_size());
   builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
                              RayConfig::instance().max_grpc_message_size());
-  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, 10000);
-  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 20000);
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, RayConfig::instance().grpc_keepalive_time_ms());
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, RayConfig::instance().grpc_keepalive_timeout_ms());
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
 
   // TODO(hchen): Add options for authentication.
