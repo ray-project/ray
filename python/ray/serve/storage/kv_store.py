@@ -5,13 +5,14 @@ try:
     from botocore.exceptions import ClientError
 except ImportError:
     boto3 = None
+from typing import Optional
 
 import ray.experimental.internal_kv as ray_kv
 from ray.serve.storage.kv_store_base import KVStoreBase
 from ray.serve.utils import logger
 
 
-def get_storage_key(namespace: str, storage_key: str):
+def get_storage_key(namespace: str, storage_key: str) -> str:
     """In case we need to access kvstore
     """
     return "{ns}-{key}".format(ns=namespace, key=storage_key)
@@ -23,7 +24,7 @@ class RayInternalKVStore(KVStoreBase):
     Supports string keys and bytes values, caller must handle serialization.
     """
 
-    def __init__(self, namespace=None):
+    def __init__(self, namespace: str = None):
         assert ray_kv._internal_kv_initialized()
         if namespace is not None and not isinstance(namespace, str):
             raise TypeError("namespace must a string, got: {}.".format(
@@ -31,10 +32,10 @@ class RayInternalKVStore(KVStoreBase):
 
         self.namespace = namespace or ""
 
-    def get_storage_key(self, key):
+    def get_storage_key(self, key: str) -> str:
         return "{ns}-{key}".format(ns=self.namespace, key=key)
 
-    def put(self, key, val):
+    def put(self, key: str, val: bytes) -> bool:
         """Put the key-value pair into the store.
 
         Args:
@@ -48,7 +49,7 @@ class RayInternalKVStore(KVStoreBase):
 
         ray_kv._internal_kv_put(self.get_storage_key(key), val, overwrite=True)
 
-    def get(self, key):
+    def get(self, key: str) -> Optional[bytes]:
         """Get the value associated with the given key from the store.
 
         Args:
@@ -62,7 +63,7 @@ class RayInternalKVStore(KVStoreBase):
 
         return ray_kv._internal_kv_get(self.get_storage_key(key))
 
-    def delete(self, key):
+    def delete(self, key: str):
         """Delete the value associated with the given key from the store.
 
         Args:
@@ -95,10 +96,10 @@ class RayLocalKVStore(KVStoreBase):
                        "(key TEXT UNIQUE, value BLOB)")
         self._conn.commit()
 
-    def get_storage_key(self, key):
+    def get_storage_key(self, key: str) -> str:
         return "{ns}-{key}".format(ns=self._namespace, key=key)
 
-    def put(self, key, val):
+    def put(self, key: str, val: bytes) -> bool:
         """Put the key-value pair into the store.
 
         Args:
@@ -115,8 +116,9 @@ class RayLocalKVStore(KVStoreBase):
             f"INSERT OR REPLACE INTO {self._namespace} "
             "(key, value) VALUES (?,?)", (self.get_storage_key(key), val))
         self._conn.commit()
+        return True
 
-    def get(self, key):
+    def get(self, key: str) -> Optional[bytes]:
         """Get the value associated with the given key from the store.
 
         Args:
@@ -140,7 +142,7 @@ class RayLocalKVStore(KVStoreBase):
             value, *_ = result[0]
             return value
 
-    def delete(self, key):
+    def delete(self, key: str):
         """Delete the value associated with the given key from the store.
 
         Args:
@@ -180,8 +182,7 @@ class RayS3KVStore(KVStoreBase):
         if not boto3:
             raise ImportError(
                 "You tried to use S3KVstore client without boto3 installed."
-                "Please run `pip install boto3`"
-            )
+                "Please run `pip install boto3`")
         self._s3 = boto3.client(
             "s3",
             region_name=region_name,
@@ -189,10 +190,10 @@ class RayS3KVStore(KVStoreBase):
             aws_secret_access_key=aws_secret_access_key,
             aws_session_token=aws_session_token)
 
-    def get_storage_key(self, key):
+    def get_storage_key(self, key: str) -> str:
         return "{ns}-{key}".format(ns=self._namespace, key=key)
 
-    def put(self, key, val):
+    def put(self, key: str, val: bytes) -> bool:
         """Put the key-value pair into the store.
 
         Args:
@@ -213,7 +214,7 @@ class RayS3KVStore(KVStoreBase):
                          f"in RayExternalKVStore: {message}")
             raise e
 
-    def get(self, key):
+    def get(self, key: str) -> Optional[bytes]:
         """Get the value associated with the given key from the store.
 
         Args:
@@ -239,7 +240,7 @@ class RayS3KVStore(KVStoreBase):
                              f"in RayExternalKVStore: {message}")
                 raise e
 
-    def delete(self, key):
+    def delete(self, key: str):
         """Delete the value associated with the given key from the store.
 
         Args:

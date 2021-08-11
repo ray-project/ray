@@ -22,7 +22,7 @@ class KVStoreBase(metaclass=abc.ABCMeta):
         raise NotImplementedError("get_storage_key() has to be implemented")
 
     @abstractmethod
-    def put(self, key: str, val: bytes) -> None:
+    def put(self, key: str, val: bytes) -> bool:
         """Put object into kv store, bytes only.
 
         Args:
