@@ -124,12 +124,6 @@ ObjectManager::ObjectManager(
   pull_manager_.reset(new PullManager(
       self_node_id_, object_is_local, send_pull_request, cancel_pull_request,
       restore_spilled_object_, get_time, config.pull_timeout_ms, available_memory,
-      [spill_objects_callback, object_store_full_callback]() {
-        // TODO(swang): This copies the out-of-memory handling in the
-        // CreateRequestQueue. It would be nice to unify these.
-        object_store_full_callback();
-        static_cast<void>(spill_objects_callback());
-      },
       pin_object));
   // Start object manager rpc server and send & receive request threads
   StartRpcService();

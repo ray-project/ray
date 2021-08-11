@@ -30,7 +30,6 @@ class PullManagerTestWithCapacity {
         object_is_local_(false),
         num_send_pull_request_calls_(0),
         num_restore_spilled_object_calls_(0),
-        num_object_store_full_calls_(0),
         fake_time_(0),
         pull_manager_(
             self_node_id_, [this](const ObjectID &object_id) { return object_is_local_; },
@@ -44,7 +43,6 @@ class PullManagerTestWithCapacity {
               restore_object_callback_ = callback;
             },
             [this]() { return fake_time_; }, 10000, num_available_bytes,
-            [this]() { num_object_store_full_calls_++; },
             [this](const ObjectID &object_id) { return PinReturn(); }) {}
 
   void AssertNoLeaks() {
@@ -77,7 +75,6 @@ class PullManagerTestWithCapacity {
   bool allow_pin_ = false;
   int num_send_pull_request_calls_;
   int num_restore_spilled_object_calls_;
-  int num_object_store_full_calls_;
   std::function<void(const ray::Status &)> restore_object_callback_;
   double fake_time_;
   PullManager pull_manager_;
@@ -671,7 +668,6 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
 
   // Reduce the available memory.
   ASSERT_TRUE(num_abort_calls_.empty());
-  ASSERT_EQ(num_object_store_full_calls_, 0);
   pull_manager_.UpdatePullsBasedOnAvailableMemory(oids.size() * object_size - 1);
 
   // In unlimited mode, we fulfill all ray.gets using the fallback allocator.
@@ -739,7 +735,6 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
     }
   }
 
-  num_object_store_full_calls_ = 0;
   for (int capacity = 0; capacity < 20; capacity++) {
     int num_requests_quota =
         std::min(num_requests, capacity / (object_size * num_oids_per_request));
@@ -765,7 +760,6 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
         ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_ids[i]));
       }
     }
-    num_object_store_full_calls_ = 0;
   }
 
   for (auto req_id : req_ids) {

@@ -94,15 +94,6 @@ PlasmaAllocator::PlasmaAllocator(const std::string &plasma_directory,
 }
 
 absl::optional<Allocation> PlasmaAllocator::Allocate(size_t bytes) {
-  if (!kFallbackEnabled) {
-    // We only check against the footprint limit in when fallback allocation is disabled.
-    // In fallback disabled mode: the check is done here; dlmemalign never returns
-    // nullptr. In fallback enabled mode: dlmemalign returns nullptr once the initial
-    // /dev/shm block fills.
-    if (allocated_ + static_cast<int64_t>(bytes) > kFootprintLimit) {
-      return absl::nullopt;
-    }
-  }
   RAY_LOG(DEBUG) << "allocating " << bytes;
   void *mem = dlmemalign(kAlignment, bytes);
   RAY_LOG(DEBUG) << "allocated " << bytes << " at " << mem;
@@ -114,9 +105,6 @@ absl::optional<Allocation> PlasmaAllocator::Allocate(size_t bytes) {
 }
 
 absl::optional<Allocation> PlasmaAllocator::FallbackAllocate(size_t bytes) {
-  if (!kFallbackEnabled) {
-    return absl::nullopt;
-  }
   // Forces allocation as a separate file.
   RAY_CHECK(dlmallopt(M_MMAP_THRESHOLD, 0));
   RAY_LOG(DEBUG) << "fallback allocating " << bytes;
