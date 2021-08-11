@@ -2000,8 +2000,10 @@ void NodeManager::ProcessSubscribePlasmaReady(
 void NodeManager::DumpDebugState() const {
   std::fstream fs;
   fs.open(initial_config_.session_dir + "/debug_state.txt",
-          std::fstream::out | std::fstream::trunc);
+          std::fstream::out | std::fstream::app);
+  fs << "[" << current_sys_time_formatted() << "]\n";
   fs << DebugString();
+  fs << "\n\n\n";
   fs.close();
 }
 

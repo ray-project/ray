@@ -91,6 +91,14 @@ inline int64_t current_sys_time_us() {
           std::chrono::system_clock::now().time_since_epoch());
   return mu_since_epoch.count();
 }
+	
+inline std::string current_sys_time_formatted() {
+  auto t = std::time(nullptr);
+  auto tm = *std::localtime(&t);
+  std::stringstream ss;
+  ss << std::put_time(&tm, "%d-%m-%Y %H:%M:%S");
+  return ss.str();
+}
 
 /// A helper function to parse command-line arguments in a platform-compatible manner.
 ///
