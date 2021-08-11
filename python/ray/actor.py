@@ -7,6 +7,7 @@ import ray._raylet
 import ray._private.signature as signature
 import ray._private.runtime_env as runtime_support
 import ray.worker
+from ray.util.annotations import PublicAPI
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
 
@@ -29,6 +30,7 @@ from ray.util.tracing.tracing_helper import (_tracing_actor_creation,
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 @client_mode_hook
 def method(*args, **kwargs):
     """Annotate an actor method.
@@ -530,7 +532,7 @@ class ActorClass:
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor, which can be used
                 to retrieve the actor via ray.get_actor(name) as long as the
-                actor is still alive.
+                actor is still alive. Names may not contain '/'.
             lifetime: Either `None`, which defaults to the actor will fate
                 share with its creator and will be deleted once its refcount
                 drops to zero, or "detached", which means the actor will live
@@ -546,8 +548,9 @@ class ActorClass:
                 of this actor should implicitly use the same placement group
                 as its parent. It is True by default.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
-                this actor or task and its children (see ``runtime_env.py`` for
-                more details).
+                this actor or task and its children (see
+                :ref:`runtime-environments` for details).  This API is in beta
+                and may change before becoming stable.
             override_environment_variables: Environment variables to override
                 and/or introduce for this actor.  This is a dictionary mapping
                 variable names to their values.
@@ -606,8 +609,19 @@ class ActorClass:
             if not isinstance(name, str):
                 raise TypeError(
                     f"name must be None or a string, got: '{type(name)}'.")
-            if name == "":
+            elif name == "":
                 raise ValueError("Actor name cannot be an empty string.")
+            split_names = name.split("/", maxsplit=1)
+            if len(split_names) <= 1:
+                name = split_names[0]
+                namespace = ""
+            else:
+                # must be length 2
+                namespace, name = split_names
+            if "/" in name:
+                raise ValueError("Actor name may not contain '/'.")
+        else:
+            namespace = ""
 
         # Check whether the name is already taken.
         # TODO(edoakes): this check has a race condition because two drivers
@@ -712,6 +726,11 @@ class ActorClass:
         if runtime_env is None:
             runtime_env = meta.runtime_env
         if runtime_env:
+            if runtime_env.get("working_dir"):
+                raise NotImplementedError(
+                    "Overriding working_dir for actors is not supported. "
+                    "Please use ray.init(runtime_env={'working_dir': ...}) "
+                    "to configure per-job environment instead.")
             runtime_env_dict = runtime_support.RuntimeEnvDict(
                 runtime_env).get_parsed_dict()
         else:
@@ -734,6 +753,7 @@ class ActorClass:
             max_concurrency,
             detached,
             name if name is not None else "",
+            namespace,
             is_asyncio,
             placement_group.id,
             placement_group_bundle_index,
@@ -831,10 +851,11 @@ class ActorHandle:
     def __del__(self):
         # Mark that this actor handle has gone out of scope. Once all actor
         # handles are out of scope, the actor will exit.
-        worker = ray.worker.global_worker
-        if worker.connected and hasattr(worker, "core_worker"):
-            worker.core_worker.remove_actor_handle_reference(
-                self._ray_actor_id)
+        if ray.worker:
+            worker = ray.worker.global_worker
+            if worker.connected and hasattr(worker, "core_worker"):
+                worker.core_worker.remove_actor_handle_reference(
+                    self._ray_actor_id)
 
     def _actor_method_call(self,
                            method_name,
@@ -929,9 +950,9 @@ class ActorHandle:
         return self._ray_method_signatures.keys()
 
     def __repr__(self):
-        return (f"Actor("
-                f"{self._ray_actor_creation_function_descriptor.class_name},"
-                f"{self._actor_id.hex()})")
+        return ("Actor("
+                f"{self._ray_actor_creation_function_descriptor.class_name}, "
+                f"{self._actor_id.hex()}")
 
     @property
     def _actor_id(self):

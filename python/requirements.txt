@@ -6,11 +6,9 @@
 #
 # setup.py install_requires
 aiohttp==3.7
-aioredis
+aioredis < 2
 click >= 7.0
 cloudpickle
-colorama
-colorful
 filelock
 gpustat
 grpcio >= 1.28.1
@@ -31,7 +29,7 @@ dm_tree
 flask
 gym
 lz4
-opencv-python-headless==4.3.0.36
+scikit-image
 pandas==1.0.5
 scipy==1.4.1
 tabulate
@@ -72,6 +70,7 @@ pytest==5.4.3
 pytest-asyncio
 pytest-rerunfailures
 pytest-sugar
+pytest-lazy-fixture
 pytest-timeout
 scikit-learn==0.22.2
 tensorflow

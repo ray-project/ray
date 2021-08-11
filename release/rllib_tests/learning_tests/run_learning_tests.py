@@ -53,13 +53,13 @@ if __name__ == "__main__":
             # We also stop early, once we reach the desired reward.
             e["stop"]["episode_reward_mean"] = \
                 e["pass_criteria"]["episode_reward_mean"]
-            experiments[k] = e
 
             # Generate the torch copy of the experiment.
             e_torch = copy.deepcopy(e)
             e_torch["config"]["framework"] = "torch"
             k_tf = re.sub("^(\\w+)-", "\\1-tf-", k)
             k_torch = re.sub("-tf-", "-torch-", k_tf)
+            experiments[k_tf] = e
             experiments[k_torch] = e_torch
             # Generate `checks` dict.
             for k_ in [k_tf, k_torch]:
@@ -88,8 +88,10 @@ if __name__ == "__main__":
         ray.init()
 
     for i in range(max_num_repeats):
+        print(f"Starting learning test iteration {0}...")
         # We are done.
         if len(experiments_to_run) == 0:
+            print("All experiments finished.")
             break
 
         # Run remaining experiments.

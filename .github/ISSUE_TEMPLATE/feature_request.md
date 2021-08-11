@@ -1,6 +1,6 @@
 ---
 name: Feature request/Question
-about: For feature requests or questions, post on https://discuss.ray.io/ instead!
+about: For questions and discussion, post on https://discuss.ray.io/ instead!
 title: ''
 labels: enhancement
 assignees: ''
@@ -11,4 +11,4 @@ assignees: ''
 
 ### Describe your feature request
 
-For feature requests or questions, post on our Discussion page instead: https://discuss.ray.io/
+For questions, post on our Discussion page instead: https://discuss.ray.io/

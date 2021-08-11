@@ -20,8 +20,21 @@ namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
-    : gcs_table_storage_(gcs_table_storage) {}
+    instrumented_io_context &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage, bool redis_broadcast_enabled)
+    : periodical_runner_(main_io_service),
+      gcs_pub_sub_(gcs_pub_sub),
+      gcs_table_storage_(gcs_table_storage),
+      redis_broadcast_enabled_(redis_broadcast_enabled),
+      max_broadcasting_batch_size_(
+          RayConfig::instance().resource_broadcast_batch_size()) {
+  if (redis_broadcast_enabled_) {
+    periodical_runner_.RunFnPeriodically(
+        [this] { SendBatchedResourceUsage(); },
+        RayConfig::instance().raylet_report_resources_period_milliseconds(),
+        "GcsResourceManager.deadline_timer.send_batched_resource_usage");
+  }
+}
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                             rpc::GetResourcesReply *reply,
@@ -74,7 +87,11 @@ void GcsResourceManager::HandleUpdateResources(
       node_resource_change.set_node_id(node_id.Binary());
       node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
                                                                changed_resources->end());
-      {
+      if (redis_broadcast_enabled_) {
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
+                                           node_resource_change.SerializeAsString(),
+                                           nullptr));
+      } else {
         absl::MutexLock guard(&resource_buffer_mutex_);
         resources_buffer_proto_.add_batch()->mutable_change()->Swap(
             &node_resource_change);
@@ -126,7 +143,11 @@ void GcsResourceManager::HandleDeleteResources(
       for (const auto &resource_name : resource_names) {
         node_resource_change.add_deleted_resources(resource_name);
       }
-      {
+      if (redis_broadcast_enabled_) {
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
+                                           node_resource_change.SerializeAsString(),
+                                           nullptr));
+      } else {
         absl::MutexLock guard(&resource_buffer_mutex_);
         resources_buffer_proto_.add_batch()->mutable_change()->Swap(
             &node_resource_change);
@@ -367,18 +388,36 @@ void GcsResourceManager::GetResourceUsageBatchForBroadcast(
     rpc::ResourceUsageBroadcastData &buffer) {
   absl::MutexLock guard(&resource_buffer_mutex_);
   resources_buffer_proto_.Swap(&buffer);
-  if (!resources_buffer_.empty()) {
-    for (auto &resources : resources_buffer_) {
-      buffer.add_batch()->mutable_data()->Swap(&resources.second);
-    }
-    resources_buffer_.clear();
+  auto beg = resources_buffer_.begin();
+  auto ptr = beg;
+  for (size_t cnt = buffer.batch().size();
+       cnt < max_broadcasting_batch_size_ && cnt < resources_buffer_.size();
+       ++ptr, ++cnt) {
+    buffer.add_batch()->mutable_data()->Swap(&ptr->second);
   }
+  resources_buffer_.erase(beg, ptr);
 }
 
 void GcsResourceManager::GetResourceUsageBatchForBroadcast_Locked(
     rpc::ResourceUsageBatchData &buffer) {
-  for (auto &resources : resources_buffer_) {
-    buffer.add_batch()->Swap(&resources.second);
+  auto beg = resources_buffer_.begin();
+  auto ptr = beg;
+  for (size_t cnt = 0;
+       cnt < max_broadcasting_batch_size_ && cnt < resources_buffer_.size();
+       ++ptr, ++cnt) {
+    buffer.add_batch()->Swap(&ptr->second);
+  }
+  resources_buffer_.erase(beg, ptr);
+}
+
+void GcsResourceManager::SendBatchedResourceUsage() {
+  absl::MutexLock guard(&resource_buffer_mutex_);
+  rpc::ResourceUsageBatchData batch;
+  GetResourceUsageBatchForBroadcast_Locked(batch);
+  if (batch.ByteSizeLong() > 0) {
+    RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
+                                       batch.SerializeAsString(), nullptr));
+    stats::OutboundHeartbeatSizeKB.Record(batch.ByteSizeLong() / 1024.0);
   }
 }
 

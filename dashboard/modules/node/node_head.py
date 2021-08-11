@@ -1,4 +1,3 @@
-import sys
 import asyncio
 import re
 import logging
@@ -53,7 +52,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         self._stubs = {}
         # NodeInfoGcsService
         self._gcs_node_info_stub = None
-        self._gcs_rpc_error_counter = 0
         self._collect_memory_info = False
         DataSource.nodes.signal.append(self._update_stubs)
 
@@ -126,20 +124,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 DataSource.node_id_to_hostname.reset(node_id_to_hostname)
                 DataSource.agents.reset(agents)
                 DataSource.nodes.reset(nodes)
-
-                self._gcs_rpc_error_counter = 0
-            except aiogrpc.AioRpcError:
-                # TODO(fyrestone): Use a dedicated RPC to check if gcs
-                # is alive.
-                logger.exception("Got AioRpcError when updating nodes.")
-                self._gcs_rpc_error_counter += 1
-                if self._gcs_rpc_error_counter > \
-                        node_consts.MAX_COUNT_OF_GCS_RPC_ERROR:
-                    logger.error(
-                        "Dashboard suicide, the GCS RPC error count %s > %s",
-                        self._gcs_rpc_error_counter,
-                        node_consts.MAX_COUNT_OF_GCS_RPC_ERROR)
-                    sys.exit(-1)
             except Exception:
                 logger.exception("Error updating nodes.")
             finally:
@@ -294,8 +278,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 if match:
                     pid = match.group(1)
                     ip = match.group(2)
-                    errs_for_ip = DataSource.ip_and_pid_to_errors.get(ip, {})
-                    pid_errors = errs_for_ip.get(pid, [])
+                    errs_for_ip = dict(
+                        DataSource.ip_and_pid_to_errors.get(ip, {}))
+                    pid_errors = list(errs_for_ip.get(pid, []))
                     pid_errors.append({
                         "message": message,
                         "timestamp": error_data.timestamp,

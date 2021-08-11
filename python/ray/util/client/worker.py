@@ -242,7 +242,7 @@ class Worker:
         if not data.valid:
             try:
                 err = cloudpickle.loads(data.error)
-            except pickle.UnpicklingError:
+            except (pickle.UnpicklingError, TypeError):
                 logger.exception("Failed to deserialize {}".format(data.error))
                 raise
             raise err
@@ -278,7 +278,7 @@ class Worker:
         if not resp.valid:
             try:
                 raise cloudpickle.loads(resp.error)
-            except pickle.UnpicklingError:
+            except (pickle.UnpicklingError, TypeError):
                 logger.exception("Failed to deserialize {}".format(resp.error))
                 raise
         return ClientObjectRef(resp.id)
@@ -339,7 +339,7 @@ class Worker:
         if not ticket.valid:
             try:
                 raise cloudpickle.loads(ticket.error)
-            except pickle.UnpicklingError:
+            except (pickle.UnpicklingError, TypeError):
                 logger.exception("Failed to deserialize {}".format(
                     ticket.error))
                 raise
@@ -477,6 +477,13 @@ class Worker:
     def internal_kv_list(self, prefix: bytes) -> bytes:
         req = ray_client_pb2.KVListRequest(prefix=prefix)
         return self.server.KVList(req, metadata=self.metadata).keys
+
+    def list_named_actors(self, all_namespaces: bool) -> List[Dict[str, str]]:
+        req = ray_client_pb2.ClientListNamedActorsRequest(
+            all_namespaces=all_namespaces)
+        return json.loads(
+            self.server.ListNamedActors(req,
+                                        metadata=self.metadata).actors_json)
 
     def is_initialized(self) -> bool:
         if self.server is not None:

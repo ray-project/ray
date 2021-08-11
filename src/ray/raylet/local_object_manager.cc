@@ -161,7 +161,7 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
     SpillObjectsInternal(objects_to_spill, [this, bytes_to_spill, objects_to_spill,
                                             start_time](const Status &status) {
       if (!status.ok()) {
-        RAY_LOG(INFO) << "Failed to spill objects: " << status.ToString();
+        RAY_LOG(DEBUG) << "Failed to spill objects: " << status.ToString();
       } else {
         auto now = absl::GetCurrentTimeNanos();
         RAY_LOG(DEBUG) << "Spilled " << bytes_to_spill << " bytes in "
@@ -283,9 +283,9 @@ void LocalObjectManager::UnpinSpilledObjectCallback(
     std::shared_ptr<size_t> num_remaining,
     std::function<void(const ray::Status &)> callback, ray::Status status) {
   if (!status.ok()) {
-    RAY_LOG(INFO) << "Failed to send spilled url for object " << object_id
-                  << " to object directory, considering the object to have been freed: "
-                  << status.ToString();
+    RAY_LOG(DEBUG) << "Failed to send spilled url for object " << object_id
+                   << " to object directory, considering the object to have been freed: "
+                   << status.ToString();
   } else {
     RAY_LOG(DEBUG) << "Object " << object_id << " spilled to " << object_url
                    << " and object directory has been informed";

@@ -15,6 +15,7 @@
 #include "ray/core_worker/common.h"
 
 namespace ray {
+namespace core {
 
 std::string WorkerTypeString(WorkerType type) {
   // TODO(suquark): Use proto3 utils to get the string.
@@ -45,4 +46,10 @@ std::string LanguageString(Language language) {
   return "";
 }
 
+std::string GenerateCachedActorName(const std::string &ns,
+                                    const std::string &actor_name) {
+  return ns + "-" + actor_name;
+}
+
+}  // namespace core
 }  // namespace ray

@@ -307,18 +307,26 @@ def _bootstrap_config(config: Dict[str, Any],
                 f"Failed to autodetect node resources: {str(exc)}. "
                 "You can see full stack trace with higher verbosity.")
 
-    # NOTE: if `resources` field is missing, validate_config for providers
-    # other than AWS and Kubernetes will fail (the schema error will ask the
-    # user to manually fill the resources) as we currently support autofilling
-    # resources for AWS and Kubernetes only.
-    validate_config(config)
+    try:
+        # NOTE: if `resources` field is missing, validate_config for providers
+        # other than AWS and Kubernetes will fail (the schema error will ask
+        # the user to manually fill the resources) as we currently support
+        # autofilling resources for AWS and Kubernetes only.
+        validate_config(config)
+    except (ModuleNotFoundError, ImportError):
+        cli_logger.abort(
+            "Not all Ray autoscaler dependencies were found. "
+            "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
+            "only be usable via `pip install 'ray[default]'`. Please "
+            "update your install command.")
     resolved_config = provider_cls.bootstrap_config(config)
 
     if not no_config_cache:
         with open(cache_key, "w") as f:
             config_cache = {
                 "_version": CONFIG_CACHE_VERSION,
-                "provider_log_info": try_get_log_state(config["provider"]),
+                "provider_log_info": try_get_log_state(
+                    resolved_config["provider"]),
                 "config": resolved_config
             }
             f.write(json.dumps(config_cache))
@@ -602,8 +610,8 @@ def get_or_create_head_node(config: Dict[str, Any],
     # The above `head_node` field is deprecated in favor of per-node-type
     # node_configs. We allow it for backwards-compatibility.
     head_node_resources = None
-    if "head_node_type" in config:
-        head_node_type = config["head_node_type"]
+    head_node_type = config.get("head_node_type")
+    if head_node_type:
         head_node_tags[TAG_RAY_USER_NODE_TYPE] = head_node_type
         head_config = config["available_node_types"][head_node_type]
         head_node_config.update(head_config["node_config"])
@@ -613,23 +621,15 @@ def get_or_create_head_node(config: Dict[str, Any],
         head_node_resources = head_config.get("resources")
 
     launch_hash = hash_launch_conf(head_node_config, config["auth"])
-    launching_new_head = False
-    if head_node is None or provider.node_tags(head_node).get(
-            TAG_RAY_LAUNCH_CONFIG) != launch_hash:
-        launching_new_head = True
+    creating_new_head = _should_create_new_head(head_node, launch_hash,
+                                                head_node_type, provider)
+    if creating_new_head:
         with cli_logger.group("Acquiring an up-to-date head node"):
             global_event_system.execute_callback(
                 CreateClusterEvent.acquiring_new_head_node)
             if head_node is not None:
-                cli_logger.print(
-                    "Currently running head node is out-of-date with "
-                    "cluster configuration")
-                cli_logger.print(
-                    "hash is {}, expected {}",
-                    cf.bold(
-                        provider.node_tags(head_node)
-                        .get(TAG_RAY_LAUNCH_CONFIG)), cf.bold(launch_hash))
-                cli_logger.confirm(yes, "Relaunching it.", _abort=True)
+                cli_logger.confirm(
+                    yes, "Relaunching the head node.", _abort=True)
 
                 provider.terminate_node(head_node)
                 cli_logger.print("Terminated head node {}", head_node)
@@ -685,9 +685,9 @@ def get_or_create_head_node(config: Dict[str, Any],
             else:
                 setup_commands = []
             ray_start_commands = config["head_start_ray_commands"]
-        # If user passed in --no-restart and we're not launching a new head,
+        # If user passed in --no-restart and we're not creating a new head,
         # omit start commands.
-        elif no_restart and not launching_new_head:
+        elif no_restart and not creating_new_head:
             setup_commands = config["head_setup_commands"]
             ray_start_commands = []
         else:
@@ -756,6 +756,60 @@ def get_or_create_head_node(config: Dict[str, Any],
         remote_shell_str = updater.cmd_runner.remote_shell_command_str()
         cli_logger.print("Get a remote shell to the cluster manually:")
         cli_logger.print("  {}", remote_shell_str.strip())
+
+
+def _should_create_new_head(head_node_id: Optional[str], new_launch_hash: str,
+                            new_head_node_type: str,
+                            provider: NodeProvider) -> bool:
+    """Decides whether a new head node needs to be created.
+
+    We need a new head if at least one of the following holds:
+    (a) There isn't an existing head node
+    (b) The user-submitted head node_config differs from the existing head
+        node's node_config.
+    (c) The user-submitted head node_type key differs from the existing head
+        node's node_type.
+
+    Args:
+        head_node_id (Optional[str]): head node id if a head exists, else None
+        new_launch_hash (str): hash of current user-submitted head config
+        new_head_node_type (str): current user-submitted head node-type key
+
+    Returns:
+        bool: True if a new Ray head node should be launched, False otherwise
+    """
+    if not head_node_id:
+        # No head node exists, need to create it.
+        return True
+
+    # Pull existing head's data.
+    head_tags = provider.node_tags(head_node_id)
+    current_launch_hash = head_tags.get(TAG_RAY_LAUNCH_CONFIG)
+    current_head_type = head_tags.get(TAG_RAY_USER_NODE_TYPE)
+
+    # Compare to current head
+    hashes_mismatch = new_launch_hash != current_launch_hash
+    types_mismatch = new_head_node_type != current_head_type
+
+    new_head_required = hashes_mismatch or types_mismatch
+
+    # Warn user
+    if new_head_required:
+        with cli_logger.group(
+                "Currently running head node is out-of-date with cluster "
+                "configuration"):
+
+            if hashes_mismatch:
+                cli_logger.print("Current hash is {}, expected {}",
+                                 cf.bold(current_launch_hash),
+                                 cf.bold(new_launch_hash))
+
+            if types_mismatch:
+                cli_logger.print("Current head node type is {}, expected {}",
+                                 cf.bold(current_head_type),
+                                 cf.bold(new_head_node_type))
+
+    return new_head_required
 
 
 def _set_up_config_for_head_node(config: Dict[str, Any],
@@ -919,8 +973,8 @@ def exec_cluster(config_file: str,
         docker_config=config.get("docker"))
     shutdown_after_run = False
     if cmd and stop:
-        cmd += "; ".join([
-            "ray stop",
+        cmd = "; ".join([
+            cmd, "ray stop",
             "ray teardown ~/ray_bootstrap_config.yaml --yes --workers-only"
         ])
         shutdown_after_run = True

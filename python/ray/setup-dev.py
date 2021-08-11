@@ -20,7 +20,7 @@ def do_link(package, force=False, local_path=None):
     local_home = os.path.abspath(os.path.join(__file__, local_path))
     # If installed package dir does not exist, continue either way. We'll
     # remove it/create a link from there anyways.
-    if not os.path.isdir(package_home):
+    if not os.path.isdir(package_home) and not os.path.isfile(package_home):
         print(f"{package_home} does not exist. Continuing to link.")
     # Make sure the path we are linking to does exist.
     assert os.path.exists(local_home), local_home
@@ -39,8 +39,17 @@ def do_link(package, force=False, local_path=None):
             pass
         except OSError:
             os.remove(package_home)
-        subprocess.check_call(
-            ["mklink", "/J", package_home, local_home], shell=True)
+
+        # create symlink for directory or file
+        if os.path.isdir(local_home):
+            subprocess.check_call(
+                ["mklink", "/J", package_home, local_home], shell=True)
+        elif os.path.isfile(local_home):
+            subprocess.check_call(
+                ["mklink", "/H", package_home, local_home], shell=True)
+        else:
+            print(f"{local_home} is neither directory nor file. Link failed.")
+
     # Posix: Use `ln -s` to create softlink.
     else:
         sudo = []
@@ -68,6 +77,7 @@ if __name__ == "__main__":
     do_link("autoscaler", force=args.yes)
     do_link("ray_operator", force=args.yes)
     do_link("cloudpickle", force=args.yes)
+    do_link("data", force=args.yes)
     do_link("scripts", force=args.yes)
     do_link("internal", force=args.yes)
     do_link("tests", force=args.yes)

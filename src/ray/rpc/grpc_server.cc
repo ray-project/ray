@@ -19,7 +19,16 @@
 #include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"
+#include "ray/rpc/grpc_server.h"
+#include "ray/stats/metric.h"
 #include "ray/util/util.h"
+
+DEFINE_stats(grpc_server_req_latency_ms, "Request latency in grpc server", ("Method"), (),
+             ray::stats::GAUGE);
+DEFINE_stats(grpc_server_req_new, "New request number in grpc server", ("Method"), (),
+             ray::stats::COUNT);
+DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
+             ("Method"), (), ray::stats::COUNT);
 
 namespace ray {
 namespace rpc {
@@ -76,7 +85,11 @@ void GrpcServer::Run() {
       // Create a buffer of 100 calls for each RPC handler.
       // TODO(edoakes): a small buffer should be fine and seems to have better
       // performance, but we don't currently handle backpressure on the client.
-      for (int j = 0; j < 100; j++) {
+      int buffer_size = 100;
+      if (entry->GetMaxActiveRPCs() != -1) {
+        buffer_size = entry->GetMaxActiveRPCs();
+      }
+      for (int j = 0; j < buffer_size; j++) {
         entry->CreateCall();
       }
     }
@@ -135,6 +148,10 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       delete_call = true;
     }
     if (delete_call) {
+      if (ok && server_call->GetServerCallFactory().GetMaxActiveRPCs() != -1) {
+        // Create a new `ServerCall` to accept the next incoming request.
+        server_call->GetServerCallFactory().CreateCall();
+      }
       delete server_call;
     }
   }

@@ -1,21 +1,23 @@
 import gym
 import logging
+import importlib.util
 from types import FunctionType
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.rllib.evaluation.rollout_worker import RolloutWorker, \
-    _validate_multiagent_config
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput, D4RLReader
-from ray.rllib.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, EnvType
+from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.typing import EnvType, PolicyID, TrainerConfigDict
+from ray.tune.registry import registry_contains_input, registry_get_input
 
 tf1, tf, tfv = try_import_tf()
 
@@ -85,6 +87,15 @@ class WorkerSet:
                     e[0]: (getattr(e[1], "original_space", e[1]), e[2])
                     for e in remote_spaces
                 }
+                # Try to add the actual env's obs/action spaces.
+                try:
+                    env_spaces = ray.get(self.remote_workers(
+                    )[0].foreach_env.remote(
+                        lambda env: (env.observation_space, env.action_space))
+                                         )[0]
+                    spaces["__env__"] = env_spaces
+                except Exception:
+                    pass
             else:
                 spaces = None
 
@@ -108,10 +119,10 @@ class WorkerSet:
         """Return a list of remote rollout workers."""
         return self._remote_workers
 
-    def sync_weights(self) -> None:
+    def sync_weights(self, policies: Optional[List[PolicyID]] = None) -> None:
         """Syncs weights from the local worker to all remote workers."""
         if self.remote_workers():
-            weights = ray.put(self.local_worker().get_weights())
+            weights = ray.put(self.local_worker().get_weights(policies))
             for e in self.remote_workers():
                 e.set_weights.remote(weights)
 
@@ -305,6 +316,19 @@ class WorkerSet:
             return tf1.Session(
                 config=tf1.ConfigProto(**config["tf_session_args"]))
 
+        def valid_module(class_path):
+            if isinstance(class_path, str) and "." in class_path:
+                module_path, class_name = class_path.rsplit(".", 1)
+                try:
+                    spec = importlib.util.find_spec(module_path)
+                    if spec is not None:
+                        return True
+                except (ModuleNotFoundError, ValueError):
+                    print(
+                        f"module {module_path} not found while trying to get "
+                        f"input {class_path}")
+            return False
+
         if isinstance(config["input"], FunctionType):
             input_creator = config["input"]
         elif config["input"] == "sampler":
@@ -313,9 +337,15 @@ class WorkerSet:
             input_creator = (
                 lambda ioctx: ShuffledInput(MixedInput(config["input"], ioctx),
                                             config["shuffle_buffer_size"]))
+        elif isinstance(config["input"], str) and \
+                registry_contains_input(config["input"]):
+            input_creator = registry_get_input(config["input"])
         elif "d4rl" in config["input"]:
             env_name = config["input"].split(".")[-1]
             input_creator = (lambda ioctx: D4RLReader(env_name, ioctx))
+        elif valid_module(config["input"]):
+            input_creator = (lambda ioctx: ShuffledInput(from_config(
+                config["input"], ioctx=ioctx)))
         else:
             input_creator = (
                 lambda ioctx: ShuffledInput(JsonReader(config["input"], ioctx),
@@ -343,20 +373,21 @@ class WorkerSet:
         else:
             input_evaluation = config["input_evaluation"]
 
-        # Fill in the default policy_cls if 'None' is specified in multiagent.
-        if config["multiagent"]["policies"]:
-            tmp = config["multiagent"]["policies"]
-            _validate_multiagent_config(tmp, allow_none_graph=True)
-            # TODO: (sven) Allow for setting observation and action spaces to
-            #  None as well, in which case, spaces are taken from env.
-            #  It's tedious to have to provide these in a multi-agent config.
-            for k, v in tmp.items():
-                if v[0] is None:
-                    tmp[k] = (policy_cls, v[1], v[2], v[3])
-            policy_spec = tmp
-        # Otherwise, policy spec is simply the policy class itself.
+        # Assert everything is correct in "multiagent" config dict (if given).
+        ma_policies = config["multiagent"]["policies"]
+        if ma_policies:
+            for pid, policy_spec in ma_policies.copy().items():
+                assert isinstance(policy_spec, (PolicySpec, list, tuple))
+                # Class is None -> Use `policy_cls`.
+                if policy_spec.policy_class is None:
+                    ma_policies[pid] = ma_policies[pid]._replace(
+                        policy_class=policy_cls)
+            policies = ma_policies
+
+        # Create a policy_spec (MultiAgentPolicyConfigDict),
+        # even if no "multiagent" setup given by user.
         else:
-            policy_spec = policy_cls
+            policies = policy_cls
 
         if worker_index == 0:
             extra_python_environs = config.get(
@@ -368,7 +399,7 @@ class WorkerSet:
         worker = cls(
             env_creator=env_creator,
             validate_env=validate_env,
-            policy_spec=policy_spec,
+            policy_spec=policies,
             policy_mapping_fn=config["multiagent"]["policy_mapping_fn"],
             policies_to_train=config["multiagent"]["policies_to_train"],
             tf_session_creator=(session_creator

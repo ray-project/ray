@@ -58,7 +58,7 @@ inline static int RegisterRemoteFunctions(const T &t, U... u) {
   int index = 0;
   const auto func_names = GetFunctionNames(t);
   (void)std::initializer_list<int>{
-      (ray::internal::FunctionManager::Instance().RegisterRemoteFunction(
+      (FunctionManager::Instance().RegisterRemoteFunction(
            std::string(func_names[index].data(), func_names[index].length()), u),
        index++, 0)...};
   return 0;
@@ -73,13 +73,10 @@ inline static int RegisterRemoteFunctions(const T &t, U... u) {
 #endif
 }  // namespace internal
 
-namespace api {
-
 #define RAY_REMOTE(...)                 \
   static auto ANONYMOUS_VARIABLE(var) = \
       ray::internal::RegisterRemoteFunctions(#__VA_ARGS__, __VA_ARGS__);
 
 #define RAY_FUNC(f, ...) ray::internal::underload<__VA_ARGS__>(f)
 
-}  // namespace api
 }  // namespace ray

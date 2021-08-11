@@ -21,9 +21,9 @@ if __name__ == "__main__":
     """
     alg_name = "PPO"
 
-    # function that outputs the environment you wish to register.
+    # Function that outputs the environment you wish to register.
     def env_creator(config):
-        env = pistonball_v1.env(local_ratio=config.get("local_ratio", 0.2))
+        env = pistonball_v4.env(local_ratio=config.get("local_ratio", 0.2))
         env = dtype_v0(env, dtype=float32)
         env = color_reduction_v0(env, mode="R")
         env = normalize_obs_v0(env)
@@ -32,29 +32,23 @@ if __name__ == "__main__":
     num_cpus = 1
     num_rollouts = 2
 
-    # 1. Gets default training configuration and specifies the POMgame to load.
+    # Gets default training configuration and specifies the POMgame to load.
     config = deepcopy(get_trainer_class(alg_name)._default_config)
 
-    # 2. Set environment config. This will be passed to
+    # Set environment config. This will be passed to
     # the env_creator function via the register env lambda below.
     config["env_config"] = {"local_ratio": 0.5}
 
-    # 3. Register env
+    # Register env
     register_env("pistonball",
                  lambda config: PettingZooEnv(env_creator(config)))
 
-    # 4. Extract space dimensions
-    test_env = PettingZooEnv(env_creator({}))
-    obs_space = test_env.observation_space
-    act_space = test_env.action_space
-
-    # 5. Configuration for multiagent setup with policy sharing:
+    # Configuration for multiagent setup with policy sharing:
     config["multiagent"] = {
-        "policies": {
-            # the first tuple value is None -> uses default policy
-            "av": (None, obs_space, act_space, {}),
-        },
-        "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av"
+        # Setup a single, shared policy for all agents.
+        "policies": {"av"},
+        # Map all agents to that policy.
+        "policy_mapping_fn": lambda agent_id, episode, **kwargs: "av",
     }
 
     # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
@@ -74,11 +68,9 @@ if __name__ == "__main__":
     # If no_done_at_end = True, environment is not resetted
     # when dones[__all__]= True.
 
-    # 6. Initialize ray and trainer object
+    # Initialize ray and trainer object
     ray.init(num_cpus=num_cpus + 1)
     trainer = get_trainer_class(alg_name)(env="pistonball", config=config)
 
-    # 7. Train once
+    # Train once
     trainer.train()
-
-    test_env.reset()

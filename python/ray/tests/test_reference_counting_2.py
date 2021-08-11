@@ -121,9 +121,6 @@ def test_return_object_ref(one_worker_100MiB, use_ray_put, failure):
     outer_oid = return_an_id.remote()
     inner_oid_binary = ray.get(outer_oid)[0].binary()
 
-    # Check that the inner ID is pinned by the outer ID.
-    _fill_object_store_and_get(inner_oid_binary)
-
     # Check that taking a reference to the inner ID and removing the outer ID
     # doesn't unpin the object.
     inner_oid = ray.get(outer_oid)[0]  # noqa: F841

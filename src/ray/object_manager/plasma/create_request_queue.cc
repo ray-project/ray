@@ -190,9 +190,10 @@ void CreateRequestQueue::RemoveDisconnectedClientRequests(
 
   for (auto it = fulfilled_requests_.begin(); it != fulfilled_requests_.end();) {
     if (it->second && it->second->client == client) {
-      fulfilled_requests_.erase(it);
+      fulfilled_requests_.erase(it++);
+    } else {
+      it++;
     }
-    it++;
   }
 }
 

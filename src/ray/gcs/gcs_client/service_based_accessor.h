@@ -81,6 +81,10 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const std::string &name, const std::string &ray_namespace,
       const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
+  Status AsyncListNamedActors(
+      bool all_namespaces, const std::string &ray_namespace,
+      const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback) override;
+
   Status AsyncRegisterActor(const TaskSpecification &task_spec,
                             const StatusCallback &callback) override;
 
@@ -89,6 +93,10 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
   Status AsyncKillActor(const ActorID &actor_id, bool force_kill, bool no_restart,
                         const StatusCallback &callback) override;
+
+  Status AsyncSubscribeAll(
+      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const StatusCallback &done) override;
 
   Status AsyncSubscribe(const ActorID &actor_id,
                         const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
@@ -253,6 +261,55 @@ class ServiceBasedNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
   ServiceBasedGcsClient *client_impl_;
 
   Sequencer<NodeID> sequencer_;
+};
+
+/// \class ServiceBasedTaskInfoAccessor
+/// ServiceBasedTaskInfoAccessor is an implementation of `TaskInfoAccessor`
+/// that uses GCS service as the backend.
+class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
+ public:
+  explicit ServiceBasedTaskInfoAccessor(ServiceBasedGcsClient *client_impl);
+
+  virtual ~ServiceBasedTaskInfoAccessor() = default;
+
+  Status AsyncAdd(const std::shared_ptr<rpc::TaskTableData> &data_ptr,
+                  const StatusCallback &callback) override;
+
+  Status AsyncGet(const TaskID &task_id,
+                  const OptionalItemCallback<rpc::TaskTableData> &callback) override;
+
+  Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
+                           const StatusCallback &callback) override;
+
+  Status AsyncGetTaskLease(
+      const TaskID &task_id,
+      const OptionalItemCallback<rpc::TaskLeaseData> &callback) override;
+
+  Status AsyncSubscribeTaskLease(
+      const TaskID &task_id,
+      const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
+      const StatusCallback &done) override;
+
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id) override;
+
+  Status AttemptTaskReconstruction(
+      const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
+      const StatusCallback &callback) override;
+
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override;
+
+  bool IsTaskLeaseUnsubscribed(const TaskID &task_id) override;
+
+ private:
+  /// Save the subscribe operations, so we can call them again when PubSub
+  /// server restarts from a failure.
+  std::unordered_map<TaskID, SubscribeOperation> subscribe_task_lease_operations_;
+
+  /// Save the fetch data operation in this function, so we can call it again when GCS
+  /// server restarts from a failure.
+  std::unordered_map<TaskID, FetchDataOperation> fetch_task_lease_data_operations_;
+
+  ServiceBasedGcsClient *client_impl_;
 };
 
 /// \class ServiceBasedObjectInfoAccessor

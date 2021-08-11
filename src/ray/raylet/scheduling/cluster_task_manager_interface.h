@@ -76,7 +76,7 @@ class ClusterTaskManagerInterface {
   ///
   /// \param worker: The worker which was running the task.
   /// \param task: Output parameter.
-  virtual void TaskFinished(std::shared_ptr<WorkerInterface> worker, Task *task) = 0;
+  virtual void TaskFinished(std::shared_ptr<WorkerInterface> worker, RayTask *task) = 0;
 
   /// Return worker resources.
   /// This method will be removed and can be replaced by `ReleaseWorkerResources` directly
@@ -88,17 +88,21 @@ class ClusterTaskManagerInterface {
   /// Attempt to cancel an already queued task.
   ///
   /// \param task_id: The id of the task to remove.
+  /// \param runtime_env_setup_failed: If this is being cancelled because the env setup
+  /// failed.
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  virtual bool CancelTask(const TaskID &task_id) = 0;
+  virtual bool CancelTask(const TaskID &task_id,
+                          bool runtime_env_setup_failed = false) = 0;
 
   /// Queue task and schedule. This hanppens when processing the worker lease request.
   ///
   /// \param task: The incoming task to be queued and scheduled.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  virtual void QueueAndScheduleTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
+  virtual void QueueAndScheduleTask(const RayTask &task,
+                                    rpc::RequestWorkerLeaseReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) = 0;
 
   /// Return if any tasks are pending resource acquisition.
@@ -108,7 +112,7 @@ class ClusterTaskManagerInterface {
   /// \param[in] num_pending_tasks Number of pending tasks.
   /// \param[in] any_pending True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
-  virtual bool AnyPendingTasks(Task *exemplar, bool *any_pending,
+  virtual bool AnyPendingTasks(RayTask *exemplar, bool *any_pending,
                                int *num_pending_actor_creation,
                                int *num_pending_tasks) const = 0;
 

@@ -5,6 +5,7 @@ import pytest
 from ray.autoscaler._private.aws.config import _get_vpc_id_or_die, \
     bootstrap_aws, log_to_cli, \
     DEFAULT_AMI
+from ray.autoscaler._private.providers import _get_node_provider
 import ray.tests.aws.utils.stubs as stubs
 import ray.tests.aws.utils.helpers as helpers
 from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
@@ -12,7 +13,8 @@ from ray.tests.aws.utils.constants import AUX_SUBNET, DEFAULT_SUBNET, \
     DEFAULT_SG_WITH_RULES_AUX_SUBNET, AUX_SG, \
     DEFAULT_SG_WITH_RULES, DEFAULT_SG_WITH_NAME, \
     DEFAULT_SG_WITH_NAME_AND_RULES, CUSTOM_IN_BOUND_RULES, \
-    DEFAULT_KEY_PAIR, DEFAULT_INSTANCE_PROFILE
+    DEFAULT_KEY_PAIR, DEFAULT_INSTANCE_PROFILE, DEFAULT_CLUSTER_NAME, \
+    DEFAULT_LT
 
 
 def test_use_subnets_in_only_one_vpc(iam_client_stub, ec2_client_stub):
@@ -225,19 +227,19 @@ def test_fills_out_amis_and_iam(iam_client_stub, ec2_client_stub):
 
     defaults_filled = bootstrap_aws(config)
 
-    ami = DEFAULT_AMI.get(config.get("provider", {}).get("region"))
+    ami = DEFAULT_AMI.get(defaults_filled.get("provider", {}).get("region"))
 
     for node_type in defaults_filled["available_node_types"].values():
         node_config = node_type["node_config"]
         assert node_config.get("ImageId") == ami
 
     # Correctly configured IAM role
-    assert (config["head_node"]["IamInstanceProfile"] == {
+    assert (defaults_filled["head_node"]["IamInstanceProfile"] == {
         "Arn": DEFAULT_INSTANCE_PROFILE["Arn"]
     })
     # Workers of the head's type do not get the IAM role.
     head_type = config["head_node_type"]
-    assert "IamInstanceProfile" not in config["available_node_types"][
+    assert "IamInstanceProfile" not in defaults_filled["available_node_types"][
         head_type]
 
     iam_client_stub.assert_no_pending_responses()
@@ -359,7 +361,7 @@ def test_create_sg_multinode(iam_client_stub, ec2_client_stub):
     # name and in bound rules
     assert bootstrapped_config["provider"]["security_group"][
         "GroupName"] == DEFAULT_SG_WITH_NAME_AND_RULES["GroupName"]
-    assert config["provider"]["security_group"][
+    assert bootstrapped_config["provider"]["security_group"][
         "IpPermissions"] == CUSTOM_IN_BOUND_RULES
 
     # Confirming correct security group got filled for head and workers
@@ -456,6 +458,168 @@ def test_log_to_cli(iam_client_stub, ec2_client_stub):
     log_to_cli(config)
     iam_client_stub.assert_no_pending_responses()
     ec2_client_stub.assert_no_pending_responses()
+
+
+def test_network_interfaces(ec2_client_stub, iam_client_stub,
+                            ec2_client_stub_fail_fast,
+                            ec2_client_stub_max_retries):
+
+    # use default stubs to skip ahead to subnet configuration
+    stubs.configure_iam_role_default(iam_client_stub)
+    stubs.configure_key_pair_default(ec2_client_stub)
+
+    # given the security groups associated with our network interfaces...
+    sgids = ["sg-00000000", "sg-11111111", "sg-22222222", "sg-33333333"]
+    security_groups = []
+    suffix = 0
+    for sgid in sgids:
+        sg = copy.deepcopy(DEFAULT_SG)
+        sg["GroupName"] += f"-{suffix}"
+        sg["GroupId"] = sgid
+        security_groups.append(sg)
+        suffix += 1
+    # expect to describe all security groups to ensure they share the same VPC
+    stubs.describe_sgs_by_id(ec2_client_stub, sgids, security_groups)
+
+    # use a default stub to skip subnet configuration
+    stubs.configure_subnet_default(ec2_client_stub)
+
+    # given our mocks and an example config file as input...
+    # expect the config to be loaded, validated, and bootstrapped successfully
+    config = helpers.bootstrap_aws_example_config_file(
+        "example-network-interfaces.yaml")
+
+    # instantiate a new node provider
+    new_provider = _get_node_provider(
+        config["provider"],
+        DEFAULT_CLUSTER_NAME,
+        False,
+    )
+
+    for name, node_type in config["available_node_types"].items():
+        node_cfg = node_type["node_config"]
+        tags = helpers.node_provider_tags(config, name)
+        # given our bootstrapped node config as input to create a new node...
+        # expect to first describe all stopped instances that could be reused
+        stubs.describe_instances_with_any_filter_consumer(
+            ec2_client_stub_max_retries)
+        # given no stopped EC2 instances to reuse...
+        # expect to create new nodes with the given network interface config
+        stubs.run_instances_with_network_interfaces_consumer(
+            ec2_client_stub_fail_fast,
+            node_cfg["NetworkInterfaces"],
+        )
+        new_provider.create_node(node_cfg, tags, 1)
+
+    iam_client_stub.assert_no_pending_responses()
+    ec2_client_stub.assert_no_pending_responses()
+    ec2_client_stub_fail_fast.assert_no_pending_responses()
+    ec2_client_stub_max_retries.assert_no_pending_responses()
+
+
+def test_network_interface_conflict_keys():
+    # If NetworkInterfaces are defined, SubnetId and SecurityGroupIds
+    # can't be specified in the same node type config.
+    conflict_kv_pairs = [("SubnetId", "subnet-0000000"),
+                         ("SubnetIds", ["subnet-0000000", "subnet-1111111"]),
+                         ("SecurityGroupIds", ["sg-1234abcd", "sg-dcba4321"])]
+    expected_error_msg = "If NetworkInterfaces are defined, subnets and " \
+                         "security groups must ONLY be given in each " \
+                         "NetworkInterface."
+    for conflict_kv_pair in conflict_kv_pairs:
+        config = helpers.load_aws_example_config_file(
+            "example-network-interfaces.yaml")
+        head_name = config["head_node_type"]
+        head_node_cfg = config["available_node_types"][head_name][
+            "node_config"]
+        head_node_cfg[conflict_kv_pair[0]] = conflict_kv_pair[1]
+        with pytest.raises(ValueError, match=expected_error_msg):
+            helpers.bootstrap_aws_config(config)
+
+
+def test_network_interface_missing_subnet():
+    # If NetworkInterfaces are defined, each must have a subnet ID
+    expected_error_msg = "NetworkInterfaces are defined but at least one is " \
+                         "missing a subnet. Please ensure all interfaces " \
+                         "have a subnet assigned."
+    config = helpers.load_aws_example_config_file(
+        "example-network-interfaces.yaml")
+    for name, node_type in config["available_node_types"].items():
+        node_cfg = node_type["node_config"]
+        for network_interface_cfg in node_cfg["NetworkInterfaces"]:
+            network_interface_cfg.pop("SubnetId")
+            with pytest.raises(ValueError, match=expected_error_msg):
+                helpers.bootstrap_aws_config(config)
+
+
+def test_network_interface_missing_security_group():
+    # If NetworkInterfaces are defined, each must have security groups
+    expected_error_msg = "NetworkInterfaces are defined but at least one is " \
+                         "missing a security group. Please ensure all " \
+                         "interfaces have a security group assigned."
+    config = helpers.load_aws_example_config_file(
+        "example-network-interfaces.yaml")
+    for name, node_type in config["available_node_types"].items():
+        node_cfg = node_type["node_config"]
+        for network_interface_cfg in node_cfg["NetworkInterfaces"]:
+            network_interface_cfg.pop("Groups")
+            with pytest.raises(ValueError, match=expected_error_msg):
+                helpers.bootstrap_aws_config(config)
+
+
+def test_launch_templates(ec2_client_stub, ec2_client_stub_fail_fast,
+                          ec2_client_stub_max_retries):
+
+    # given the launch template associated with our default head node type...
+    # expect to first describe the default launch template by ID
+    stubs.describe_launch_template_versions_by_id_default(
+        ec2_client_stub, ["$Latest"])
+    # given the launch template associated with our default worker node type...
+    # expect to next describe the same default launch template by name
+    stubs.describe_launch_template_versions_by_name_default(
+        ec2_client_stub, ["2"])
+    # use default stubs to skip ahead to subnet configuration
+    stubs.configure_key_pair_default(ec2_client_stub)
+
+    # given the security groups associated with our launch template...
+    sgids = [DEFAULT_SG["GroupId"]]
+    security_groups = [DEFAULT_SG]
+    # expect to describe all security groups to ensure they share the same VPC
+    stubs.describe_sgs_by_id(ec2_client_stub, sgids, security_groups)
+
+    # use a default stub to skip subnet configuration
+    stubs.configure_subnet_default(ec2_client_stub)
+
+    # given our mocks and an example config file as input...
+    # expect the config to be loaded, validated, and bootstrapped successfully
+    config = helpers.bootstrap_aws_example_config_file(
+        "example-launch-templates.yaml")
+
+    # instantiate a new node provider
+    new_provider = _get_node_provider(
+        config["provider"],
+        DEFAULT_CLUSTER_NAME,
+        False,
+    )
+
+    max_count = 1
+    for name, node_type in config["available_node_types"].items():
+        # given our bootstrapped node config as input to create a new node...
+        # expect to first describe all stopped instances that could be reused
+        stubs.describe_instances_with_any_filter_consumer(
+            ec2_client_stub_max_retries)
+        # given no stopped EC2 instances to reuse...
+        # expect to create new nodes with the given launch template config
+        node_cfg = node_type["node_config"]
+        stubs.run_instances_with_launch_template_consumer(
+            ec2_client_stub_fail_fast, config, node_cfg, name,
+            DEFAULT_LT["LaunchTemplateData"], max_count)
+        tags = helpers.node_provider_tags(config, name)
+        new_provider.create_node(node_cfg, tags, max_count)
+
+    ec2_client_stub.assert_no_pending_responses()
+    ec2_client_stub_fail_fast.assert_no_pending_responses()
+    ec2_client_stub_max_retries.assert_no_pending_responses()
 
 
 if __name__ == "__main__":

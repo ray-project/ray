@@ -43,6 +43,7 @@ py_test_module_list(
     "test_get_locations.py",
     "test_global_state.py",
     "test_healthcheck.py",
+    "test_kill_raylet_signal_log.py",
     "test_mldataset.py",
   ],
   size = "medium",
@@ -62,7 +63,9 @@ py_test_module_list(
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
     "test_multiprocessing.py",
+    "test_object_assign_owner.py",
     "test_output.py",
+    "test_ray_init.py",
     "test_reconstruction.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
@@ -74,6 +77,7 @@ py_test_module_list(
     "test_stress_sharded.py",
     "test_tempfile.py",
     "test_tensorflow.py",
+    "test_ray_debugger.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -87,6 +91,7 @@ py_test_module_list(
     "test_asyncio_cluster.py",
     "test_asyncio.py",
     "test_autoscaler.py",
+    "test_autoscaler_gcp.py",
     "test_autoscaler_yaml.py",
     "test_cli_logger.py",
     "test_client_metadata.py",
@@ -106,10 +111,11 @@ py_test_module_list(
     "test_node_manager.py",
     "test_numba.py",
     "test_queue.py",
-    "test_ray_debugger.py",
-    "test_ray_init.py",
+    "test_ray_shutdown.py",
+    "test_traceback.py",
     "test_unhandled_error.py",
     "test_top_level_api.py",
+    "test_list_actors.py",
   ],
   size = "small",
   extra_srcs = SRCS,
@@ -240,6 +246,13 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+py_test(
+    name = "test_gcp_node_provider",
+    size = "small",
+    srcs = SRCS + ["gcp/test_gcp_node_provider.py"],
+    deps = ["//:ray_lib"],
+)
+
 # Note(simon): typing tests are not included in module list
 #    because they requires globs and it might be refactored in the future.
 py_test(
@@ -277,6 +290,8 @@ py_test_module_list(
     "test_basic_2.py",
     "test_basic_3.py",
     "test_asyncio.py",
+    "test_multiprocessing.py",
+    "test_list_actors.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -297,4 +312,18 @@ py_test_module_list(
   tags = ["exclusive", "worker-container"],
   # Now we run this test in a container which has installed ray
   deps = [],
+)
+
+py_test_module_list(
+  files = [
+    "test_object_spilling.py",
+    "test_object_spilling_2.py",
+    "test_scheduling.py",
+    "test_array.py"
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  name_suffix = "_debug_mode",
+  tags = ["exclusive", "debug_tests"],
+  deps = ["//:ray_lib"],
 )

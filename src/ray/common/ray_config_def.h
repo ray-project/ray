@@ -115,7 +115,9 @@ RAY_CONFIG(bool, pull_manager_pin_active_objects, true)
 RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
 
 RAY_CONFIG(float, scheduler_spread_threshold,
-           env_float("RAY_SCHEDULER_SPREAD_THRESHOLD", 0.5))
+           getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
+               ? std::stof(getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
+               : 0.5)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -132,6 +134,10 @@ RAY_CONFIG(int64_t, grpc_server_retry_timeout_milliseconds, 1000)
 // The min number of retries for direct actor creation tasks. The actual number
 // of creation retries will be MAX(actor_creation_min_retries, max_restarts).
 RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
+
+/// Warn if more than this many tasks are queued for submission to an actor.
+/// It likely indicates a bug in the user code.
+RAY_CONFIG(int64_t, actor_excess_queueing_warn_threshold, 5000)
 
 /// When trying to resolve an object, the initial period that the raylet will
 /// wait before contacting the object's owner to check if the object is still
@@ -153,6 +159,9 @@ RAY_CONFIG(uint64_t, raylet_death_check_interval_milliseconds, 1000)
 RAY_CONFIG(int64_t, get_timeout_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_get_request_size, 10000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
+/// How long to wait for a fetch to complete during ray.get before warning the
+/// user.
+RAY_CONFIG(int64_t, fetch_warn_timeout_milliseconds, 60000)
 
 /// Temporary workaround for https://github.com/ray-project/ray/pull/16402.
 RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
@@ -216,9 +225,6 @@ RAY_CONFIG(uint32_t, maximum_gcs_storage_operation_batch_size, 1000)
 /// Maximum number of rows in GCS profile table.
 RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 
-/// When getting objects from object store, print a warning every this number of attempts.
-RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
-
 /// When getting objects from object store, max number of ids to print in the warning
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
@@ -252,6 +258,9 @@ RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // Feature flag to turn on resource report polling. Polling and raylet pushing are
 // mutually exlusive.
 RAY_CONFIG(bool, pull_based_resource_reporting, true)
+// Feature flag to use grpc instead of redis for resource broadcast.
+// TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
+RAY_CONFIG(bool, grpc_based_resource_broadcast, false)
 // Feature flag to enable grpc based pubsub in GCS.
 RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 
@@ -302,6 +311,9 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 /// Whether put small objects in the local memory store.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
 
+// Max number bytes of inlined objects in a task execution result.
+RAY_CONFIG(int64_t, task_output_inlined_bytes_limit, 10 * 1024 * 1024)
+
 /// Maximum number of tasks that can be in flight between an owner and a worker for which
 /// the owner has been granted a lease. A value >1 is used when we want to enable
 /// pipelining task submission.
@@ -347,13 +359,13 @@ RAY_CONFIG(bool, enable_timeline, true)
 
 /// The maximum number of pending placement group entries that are reported to monitor to
 /// autoscale the cluster.
-RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
+RAY_CONFIG(int64_t, max_placement_group_load_report_size, 1000)
 
 /* Configuration parameters for object spilling. */
 /// JSON configuration that describes the external storage. This is passed to
 /// Python IO workers to determine how to store/restore an object to/from
 /// external storage.
-RAY_CONFIG(string_type, object_spilling_config, "")
+RAY_CONFIG(std::string, object_spilling_config, "")
 
 /// Whether to enable automatic object spilling. If enabled, then
 /// Ray will choose objects to spill when the object store is out of
@@ -429,3 +441,32 @@ RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
 /// If enabled, raylet will report resources only when resources are changed.
 RAY_CONFIG(bool, enable_light_weight_resource_report, true)
+
+// The number of seconds to wait for the Raylet to start. This is normally
+// fast, but when RAY_preallocate_plasma_memory=1 is set, it may take some time
+// (a few GB/s) to populate all the pages on Raylet startup.
+RAY_CONFIG(uint32_t, raylet_start_wait_time_s,
+           getenv("RAY_preallocate_plasma_memory") != nullptr &&
+                   getenv("RAY_preallocate_plasma_memory") == std::string("1")
+               ? 120
+               : 10)
+
+/// The scheduler will treat these predefined resource types as unit_instance.
+/// Default predefined_unit_instance_resources is "GPU".
+/// When set it to "CPU,GPU", we will also treat CPU as unit_instance.
+RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
+
+/// The scheduler will treat these custom resource types as unit_instance.
+/// Default custom_unit_instance_resources is empty.
+/// When set it to "FPGA", we will treat FPGA as unit_instance.
+RAY_CONFIG(std::string, custom_unit_instance_resources, "")
+
+// Maximum size of the batches when broadcasting resources to raylet.
+RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
+
+// If enabled and worker stated in container, the container will add
+// resource limit.
+RAY_CONFIG(bool, worker_resource_limits_enabled, false)
+
+/// ServerCall instance number of each RPC service handler
+RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)

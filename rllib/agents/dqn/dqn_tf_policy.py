@@ -220,7 +220,7 @@ def get_distribution_inputs_and_class(policy: Policy,
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
     policy.q_values = q_vals
-    policy.q_func_vars = model.variables()
+
     return policy.q_values, Categorical, []  # state-out
 
 
@@ -304,6 +304,9 @@ def adam_optimizer(policy: Policy, config: TrainerConfigDict
 
 def clip_gradients(policy: Policy, optimizer: "tf.keras.optimizers.Optimizer",
                    loss: TensorType) -> ModelGradients:
+    if not hasattr(policy, "q_func_vars"):
+        policy.q_func_vars = policy.model.variables()
+
     return minimize_and_clip(
         optimizer,
         loss,

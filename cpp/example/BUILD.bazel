@@ -3,9 +3,6 @@ cc_binary(
     srcs = glob([
         "*.cc",
     ]),
-    args = [
-        "--ray-dynamic-library-path $(location example.so)",
-    ],
     data = [
         "example.so",
     ],

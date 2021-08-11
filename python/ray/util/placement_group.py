@@ -8,7 +8,8 @@ import ray
 from ray._raylet import ObjectRef
 from ray._raylet import PlacementGroupID
 from ray._private.utils import hex_to_binary
-from ray.ray_constants import (to_memory_units, MEMORY_RESOURCE_UNIT_BYTES)
+from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.ray_constants import to_memory_units
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.client_mode_hook import client_mode_wrap
 
@@ -32,6 +33,7 @@ def _export_bundle_reservation_check_method_if_needed():
     bundle_reservation_check = bundle_reservation_check_func
 
 
+@PublicAPI
 class PlacementGroup:
     """A handle to a placement group."""
 
@@ -68,33 +70,12 @@ class PlacementGroup:
             "bundle length == 0, current bundle length: "
             f"{len(self.bundle_cache)}")
 
-        # Select the first bundle to schedule a dummy task.
-        # Since the placement group creation will be atomic, it is sufficient
-        # to schedule a single task.
-        bundle_index = 0
-        bundle = self.bundle_cache[bundle_index]
-
-        resource_name, value = self._get_a_non_zero_resource(bundle)
-        num_cpus = 0
-        num_gpus = 0
-        memory = 0
-        resources = {}
-        if resource_name == "CPU":
-            num_cpus = value
-        elif resource_name == "GPU":
-            num_gpus = value
-        elif resource_name == "memory":
-            memory = value
-        else:
-            resources[resource_name] = value
-
         return bundle_reservation_check.options(
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            memory=memory,
             placement_group=self,
-            placement_group_bundle_index=bundle_index,
-            resources=resources).remote(self)
+            placement_group_bundle_index=0,
+            resources={
+                "bundle": 0.001
+            }).remote(self)
 
     def wait(self, timeout_seconds: Union[float, int]) -> bool:
         """Wait for the placement group to be ready within the specified time.
@@ -158,16 +139,6 @@ class PlacementGroup:
         bundle_cache = pg_dict["bundle_cache"]
         return PlacementGroup(pg_id, bundle_cache)
 
-    def _get_a_non_zero_resource(self, bundle: Dict):
-        # Any number between 0-1 should be fine.
-        MOCK_VALUE = 0.001
-        for key, value in bundle.items():
-            if value > 0:
-                value = MEMORY_RESOURCE_UNIT_BYTES \
-                    if key == "memory" else MOCK_VALUE
-                return key, value
-        assert False, "This code should be unreachable."
-
     def _fill_bundle_cache_if_needed(self) -> None:
         if not self.bundle_cache:
             self.bundle_cache = _get_bundle_cache(self.id)
@@ -207,6 +178,7 @@ def _get_bundle_cache(pg_id: PlacementGroupID) -> List[Dict]:
         "because GCS server is too busy.")
 
 
+@PublicAPI
 @client_mode_wrap
 def placement_group(bundles: List[Dict[str, float]],
                     strategy: str = "PACK",
@@ -268,6 +240,7 @@ def placement_group(bundles: List[Dict[str, float]],
     return PlacementGroup(placement_group_id)
 
 
+@PublicAPI
 @client_mode_wrap
 def remove_placement_group(placement_group: PlacementGroup) -> None:
     """Asynchronously remove placement group.
@@ -282,6 +255,7 @@ def remove_placement_group(placement_group: PlacementGroup) -> None:
     worker.core_worker.remove_placement_group(placement_group.id)
 
 
+@PublicAPI
 @client_mode_wrap
 def get_placement_group(placement_group_name: str) -> PlacementGroup:
     """Get a placement group object with a global name.
@@ -306,6 +280,7 @@ def get_placement_group(placement_group_name: str) -> PlacementGroup:
                 hex_to_binary(placement_group_info["placement_group_id"])))
 
 
+@DeveloperAPI
 @client_mode_wrap
 def placement_group_table(placement_group: PlacementGroup = None) -> dict:
     """Get the state of the placement group from GCS.
@@ -321,6 +296,7 @@ def placement_group_table(placement_group: PlacementGroup = None) -> dict:
     return ray.state.state.placement_group_table(placement_group_id)
 
 
+@PublicAPI
 def get_current_placement_group() -> Optional[PlacementGroup]:
     """Get the current placement group which a task or actor is using.
 

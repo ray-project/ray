@@ -15,6 +15,7 @@
 #include "ray/core_worker/transport/dependency_resolver.h"
 
 namespace ray {
+namespace core {
 
 struct TaskState {
   TaskState(TaskSpecification t,
@@ -115,4 +116,5 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
   }
 }
 
+}  // namespace core
 }  // namespace ray

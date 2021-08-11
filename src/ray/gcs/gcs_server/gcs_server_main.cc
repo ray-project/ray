@@ -42,7 +42,9 @@ int main(int argc, char *argv[]) {
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const int gcs_server_port = static_cast<int>(FLAGS_gcs_server_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
-  const std::string config_list = FLAGS_config_list;
+  std::string config_list;
+  RAY_CHECK(absl::Base64Unescape(FLAGS_config_list, &config_list))
+      << "config_list is not a valid base64-encoded string.";
   const std::string redis_password = FLAGS_redis_password;
   const bool retry_redis = FLAGS_retry_redis;
   const std::string node_ip_address = FLAGS_node_ip_address;
@@ -103,6 +105,8 @@ int main(int argc, char *argv[]) {
   gcs_server_config.node_ip_address = node_ip_address;
   gcs_server_config.pull_based_resource_reporting =
       RayConfig::instance().pull_based_resource_reporting();
+  gcs_server_config.grpc_based_resource_broadcast =
+      RayConfig::instance().grpc_based_resource_broadcast();
   gcs_server_config.grpc_pubsub_enabled = RayConfig::instance().gcs_grpc_based_pubsub();
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
 
