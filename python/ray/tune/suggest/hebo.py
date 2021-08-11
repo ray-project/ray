@@ -213,12 +213,9 @@ class HEBOSearch(Searcher):
             else:
                 self._initial_points = self._points_to_evaluate
 
-    def set_search_properties(
-            self,
-            metric: Optional[str],
-            mode: Optional[str],
-            config: Dict,
-            experiments: Optional[List[Experiment]] = None) -> bool:
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict,
+                              experiment: Optional[Experiment]) -> bool:
         if self._opt:
             return False
         space = self.convert_search_space(config)
@@ -227,7 +224,6 @@ class HEBOSearch(Searcher):
             self._metric = metric
         if mode:
             self._mode = mode
-        self._experiments = experiments if experiments else []
 
         self._setup_optimizer()
         return True

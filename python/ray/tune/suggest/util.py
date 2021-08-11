@@ -1,25 +1,26 @@
 import logging
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 
 from ray.tune.experiment import Experiment
 
 logger = logging.getLogger(__name__)
 
 
-def with_try_catch(set_search_property_func,
-                   metric: Optional[str],
-                   mode: Optional[str],
-                   config: Dict,
-                   experiments: Optional[List[Experiment]] = None) -> bool:
+def set_search_properties_backwards_compatible(
+        set_search_properties_func, metric: Optional[str], mode: Optional[str],
+        config: Dict, experiment: Optional[Experiment]) -> bool:
+    """Wraps around set_search_properties() so that it is backward compatible.
+
+    Also outputs a warning to urge customm searchers to be updated.
+    """
     try:
-        return set_search_property_func(metric, mode, config, experiments)
+        return set_search_properties_func(metric, mode, config, experiment)
     except TypeError as e:
-        if str(
-                e
-        ) == ("set_search_properties() takes 4 positional arguments but 5 "
-              "were given"):
-            logger.warn("Please update custom Searcher to take in a list of "
-                        "experiments.")
-            return set_search_property_func(metric, mode, config)
+        if str(e).startswith("set_search_properties() takes"):
+            logger.warning(
+                "Please update custom Searcher to take in function signature "
+                "as ``def set_search_properties(metric, mode, config, "
+                "experiment=None) -> bool``.")
+            return set_search_properties_func(metric, mode, config)
         else:
             raise e

@@ -216,12 +216,9 @@ class ZOOptSearch(Searcher):
                 parallel_num=self.parallel_num,
                 **self.kwargs)
 
-    def set_search_properties(
-            self,
-            metric: Optional[str],
-            mode: Optional[str],
-            config: Dict,
-            experiments: Optional[List[Experiment]] = None) -> bool:
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict,
+                              experiment: Optional[Experiment]) -> bool:
         if self._dim_dict:
             return False
         space = self.convert_search_space(config)
@@ -231,7 +228,6 @@ class ZOOptSearch(Searcher):
             self._metric = metric
         if mode:
             self._mode = mode
-        self._experiments = experiments if experiments else []
 
         if self._mode == "max":
             self._metric_op = -1.

@@ -275,12 +275,9 @@ class DragonflySearch(Searcher):
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
 
-    def set_search_properties(
-            self,
-            metric: Optional[str],
-            mode: Optional[str],
-            config: Dict,
-            experiments: Optional[List[Experiment]] = None) -> bool:
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict,
+                              experiment: Optional[Experiment]) -> bool:
         if self._opt:
             return False
         space = self.convert_search_space(config)
@@ -289,7 +286,6 @@ class DragonflySearch(Searcher):
             self._metric = metric
         if mode:
             self._mode = mode
-        self._experiments = experiments if experiments else []
 
         self._setup_dragonfly()
         return True

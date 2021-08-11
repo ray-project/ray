@@ -1693,9 +1693,9 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertEqual(configs[0]["grid"], configs[3]["grid"])
         self.assertNotEqual(configs[0]["rand"], configs[3]["rand"])
 
-    @patch.object(logger, "warn")
-    def testSetSearchPropertiesBackwardCompatibility(self,
-                                                     mocked_warning_method):
+    @patch.object(logger, "warning")
+    def testSetSearchPropertiesBackwardsCompatibility(self,
+                                                      mocked_warning_method):
         from ray.tune.suggest import Searcher
 
         class MySearcher(Searcher):
@@ -1715,7 +1715,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         tune.run(_mock_objective, config={"a": 1}, search_alg=MySearcher())
         mocked_warning_method.assert_called_once_with(
-            "Please update custom Searcher to take in a list of experiments.")
+            "Please update custom Searcher to take in function signature "
+            "as ``def set_search_properties(metric, mode, config, "
+            "experiment=None) -> bool``.")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ import numpy as np
 
 from ray.tune.experiment import Experiment
 from ray.tune.suggest.suggestion import Searcher
-from ray.tune.suggest.util import with_try_catch
+from ray.tune.suggest.util import set_search_properties_backwards_compatible
 
 logger = logging.getLogger(__name__)
 
@@ -181,11 +181,9 @@ class Repeater(Searcher):
     def set_state(self, state: Dict):
         self.__dict__.update(state)
 
-    def set_search_properties(
-            self,
-            metric: Optional[str],
-            mode: Optional[str],
-            config: Dict,
-            experiments: Optional[List[Experiment]] = None) -> bool:
-        return with_try_catch(self.searcher.set_search_properties, metric,
-                              mode, config, experiments)
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict,
+                              experiment: Optional[Experiment]) -> bool:
+        return set_search_properties_backwards_compatible(
+            self.searcher.set_search_properties, metric, mode, config,
+            experiment)

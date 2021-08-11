@@ -5,7 +5,7 @@ import os
 from typing import Dict, Optional, List
 
 from ray.tune.experiment import Experiment
-from ray.tune.suggest.util import with_try_catch
+from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -112,12 +112,9 @@ class Searcher:
         else:
             raise ValueError("Mode most either be a list or string")
 
-    def set_search_properties(
-            self,
-            metric: Optional[str],
-            mode: Optional[str],
-            config: Dict,
-            experiments: Optional[List[Experiment]] = None) -> bool:
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict,
+                              experiment: Optional[Experiment]) -> bool:
         """Pass search properties to searcher.
 
         This method acts as an alternative to instantiating search algorithms
@@ -131,7 +128,7 @@ class Searcher:
             mode (str): One of ["min", "max"]. Direction to optimize.
             config (dict): Tune config dict. This should ideally be used for
             passing algorithm-specific parameters.
-            experiments (Optional[List[Experiment]]): This is used for passing
+            experiment (Optional[Experiment]): This is used for passing
             algorithm-agnostic parameters. User should not need to touch this.
         """
         return False
@@ -461,6 +458,7 @@ class ConcurrencyLimiter(Searcher):
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict,
-                              experiments: Optional[List[Experiment]]) -> bool:
-        return with_try_catch(self.searcher.set_search_properties, metric,
-                              mode, config, experiments)
+                              experiment: Optional[Experiment]) -> bool:
+        return set_search_properties_backwards_compatible(
+            self.searcher.set_search_properties, metric, mode, config,
+            experiment)

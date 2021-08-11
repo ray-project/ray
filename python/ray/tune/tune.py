@@ -23,7 +23,7 @@ from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, \
     SearchGenerator
 from ray.tune.suggest.suggestion import Searcher
-from ray.tune.suggest.util import with_try_catch
+from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
 from ray.tune.trainable import Trainable
@@ -446,8 +446,9 @@ def run(
     if not search_alg:
         search_alg = BasicVariantGenerator()
 
-    if config and not with_try_catch(search_alg.set_search_properties, metric,
-                                     mode, config, experiments):
+    if config and not set_search_properties_backwards_compatible(
+            search_alg.set_search_properties, metric, mode, config,
+            experiments[0]):
         if has_unresolved_values(config):
             raise ValueError(
                 "You passed a `config` parameter to `tune.run()` with "
