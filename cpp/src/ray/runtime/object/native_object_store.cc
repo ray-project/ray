@@ -24,7 +24,7 @@
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 using ray::core::CoreWorkerProcess;
 
@@ -129,5 +129,5 @@ void NativeObjectStore::RemoveLocalReference(const std::string &id) {
     core_worker.RemoveLocalReference(ObjectID::FromBinary(id));
   }
 }
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

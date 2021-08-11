@@ -28,7 +28,7 @@
 #include "ray/core_worker/core_worker.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 using ray::core::WorkerContext;
 
@@ -56,14 +56,16 @@ class AbstractRayRuntime : public RayRuntime {
                          int timeout_ms);
 
   std::string Call(const RemoteFunctionHolder &remote_function_holder,
-                   std::vector<ray::api::TaskArg> &args, const CallOptions &task_options);
+                   std::vector<ray::internal::TaskArg> &args,
+                   const CallOptions &task_options);
 
   std::string CreateActor(const RemoteFunctionHolder &remote_function_holder,
-                          std::vector<ray::api::TaskArg> &args,
+                          std::vector<ray::internal::TaskArg> &args,
                           const ActorCreationOptions &create_options);
 
   std::string CallActor(const RemoteFunctionHolder &remote_function_holder,
-                        const std::string &actor, std::vector<ray::api::TaskArg> &args,
+                        const std::string &actor,
+                        std::vector<ray::internal::TaskArg> &args,
                         const CallOptions &call_options);
 
   void AddLocalReference(const std::string &id);
@@ -83,6 +85,9 @@ class AbstractRayRuntime : public RayRuntime {
   const std::unique_ptr<WorkerContext> &GetWorkerContext();
 
   static std::shared_ptr<AbstractRayRuntime> GetInstance();
+  static std::shared_ptr<AbstractRayRuntime> DoInit();
+
+  static void DoShutdown();
 
  protected:
   std::unique_ptr<WorkerContext> worker_;
@@ -92,13 +97,7 @@ class AbstractRayRuntime : public RayRuntime {
 
  private:
   static std::shared_ptr<AbstractRayRuntime> abstract_ray_runtime_;
-  static std::shared_ptr<AbstractRayRuntime> DoInit();
-
-  static void DoShutdown();
-
   void Execute(const TaskSpecification &task_spec);
-
-  friend class Ray;
 };
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

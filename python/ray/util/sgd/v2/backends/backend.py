@@ -6,6 +6,9 @@ from ray.exceptions import RayActorError
 from ray.util.sgd.v2.session import init_session, get_session, \
     shutdown_session, TrainingResultType, TrainingResult
 from ray.util.sgd.v2.worker_group import WorkerGroup
+from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
+from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV
+from ray.ray_constants import env_integer
 
 T = TypeVar("T")
 
@@ -76,13 +79,18 @@ class BackendExecutor:
                 via ``sgd.load_checkpoint()``.
         """
 
+        use_detailed_autofilled_metrics = env_integer(
+            ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
+
         # First initialize the session.
         def initialize_session(world_rank, train_func, checkpoint):
             try:
                 init_session(
                     training_func=train_func,
                     world_rank=world_rank,
-                    checkpoint=checkpoint)
+                    checkpoint=checkpoint,
+                    detailed_autofilled_metrics=use_detailed_autofilled_metrics
+                )
             except ValueError:
                 raise SGDBackendError(
                     "Attempting to start training but a "
