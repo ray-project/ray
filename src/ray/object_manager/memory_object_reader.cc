@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/object_manager/memory_object_reader.h"
+
 #include <cstring>
 
 namespace ray {

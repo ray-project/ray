@@ -12,16 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/object_manager/chunk_object_reader.h"
-#include "ray/object_manager/memory_object_reader.h"
-#include "ray/object_manager/spilled_object_reader.h"
-
 #include <boost/endian/conversion.hpp>
 #include <fstream>
 
 #include "absl/strings/str_format.h"
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
+#include "ray/object_manager/chunk_object_reader.h"
+#include "ray/object_manager/memory_object_reader.h"
+#include "ray/object_manager/spilled_object_reader.h"
 #include "ray/util/filesystem.h"
 
 namespace ray {
