@@ -1,4 +1,5 @@
 import asyncio
+import json
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -22,7 +23,7 @@ from ray.serve.constants import (
     ALL_HTTP_METHODS, )
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
-from ray.serve.kv_store import RayInternalKVStore
+from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
 from ray.serve.utils import logger
 
@@ -32,6 +33,8 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 0.1
+
+SNAPSHOT_KEY = "serve-deployments-snapshot"
 
 
 @ray.remote(num_cpus=0)
@@ -82,7 +85,6 @@ class ServeController:
         self.backend_state = BackendState(controller_name, detached,
                                           self.kv_store, self.long_poll_host,
                                           self.goal_manager)
-
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
     async def wait_for_goal(self, goal_id: GoalId) -> None:
@@ -117,8 +119,31 @@ class ServeController:
                     self.backend_state.update()
                 except Exception as e:
                     logger.error(f"Exception updating backend state: {e}")
-
+            self._put_serve_snapshot()
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
+
+    def _put_serve_snapshot(self) -> None:
+        val = dict()
+        for deployment_name, (backend_info,
+                              route_prefix) in self.list_deployments().items():
+            entry = dict()
+            entry["name"] = deployment_name
+            entry["namespace"] = ray.get_runtime_context().namespace
+            entry["ray_job_id"] = ("None"
+                                   if backend_info.deployer_job_id is None else
+                                   backend_info.deployer_job_id.hex())
+            entry[
+                "class_name"] = backend_info.replica_config.func_or_class_name
+            entry["version"] = backend_info.version or "Unversioned"
+            # TODO(architkulkarni): When we add the feature to allow
+            # deployments with no HTTP route, update the below line.
+            # Or refactor the route_prefix logic in the Deployment class now.
+            entry["http_route"] = route_prefix or f"/{deployment_name}"
+            entry["status"] = "RUNNING"
+            entry["start_time"] = 0
+            entry["end_time"] = 0
+            val[deployment_name] = entry
+        self.kv_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
     def _all_replica_handles(
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
@@ -142,11 +167,16 @@ class ServeController:
 
             return goal_ids
 
-    async def deploy(
-            self, name: str, backend_config: BackendConfig,
-            replica_config: ReplicaConfig, python_methods: List[str],
-            version: Optional[str], prev_version: Optional[str],
-            route_prefix: Optional[str]) -> Tuple[Optional[GoalId], bool]:
+    async def deploy(self,
+                     name: str,
+                     backend_config: BackendConfig,
+                     replica_config: ReplicaConfig,
+                     python_methods: List[str],
+                     version: Optional[str],
+                     prev_version: Optional[str],
+                     route_prefix: Optional[str],
+                     deployer_job_id: "Optional[ray._raylet.JobID]" = None
+                     ) -> Tuple[Optional[GoalId], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
 
@@ -170,7 +200,8 @@ class ServeController:
                         name, replica_config.serialized_backend_def)),
                 version=version,
                 backend_config=backend_config,
-                replica_config=replica_config)
+                replica_config=replica_config,
+                deployer_job_id=deployer_job_id)
 
             goal_id, updating = self.backend_state.deploy_backend(
                 name, backend_info)

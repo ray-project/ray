@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional
 from ray import cloudpickle
 from ray.serve.common import (EndpointInfo, EndpointTag, TrafficPolicy)
 from ray.serve.long_poll import LongPollNamespace
-from ray.serve.kv_store import RayInternalKVStore
+from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
 
 CHECKPOINT_KEY = "serve-endpoint-state-checkpoint"

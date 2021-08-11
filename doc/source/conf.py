@@ -160,7 +160,7 @@ extensions = [
 ]
 
 versionwarning_admonition_type = "note"
-versionwarning_banner_title = "[Ray Summit 2021 | June 22-24 | Virtual & Free]"
+versionwarning_banner_title = "Join the Ray Discuss Forums!"
 
 FORUM_LINK = ("https://discuss.ray.io")
 

@@ -39,7 +39,11 @@ msgpack::sbuffer PackError(std::string error_msg) {
   return sbuffer;
 }
 }  // namespace internal
-namespace api {
+namespace internal {
+
+using ray::core::CoreWorkerProcess;
+using ray::core::WorkerType;
+
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::abstract_ray_runtime_ = nullptr;
 
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
@@ -112,7 +116,7 @@ std::vector<bool> AbstractRayRuntime::Wait(const std::vector<std::string> &ids,
 }
 
 std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
-    std::vector<ray::api::TaskArg> &args) {
+    std::vector<ray::internal::TaskArg> &args) {
   std::vector<std::unique_ptr<::ray::TaskArg>> ray_args;
   for (auto &arg : args) {
     std::unique_ptr<::ray::TaskArg> ray_arg = nullptr;
@@ -135,7 +139,7 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
 
 InvocationSpec BuildInvocationSpec1(TaskType task_type,
                                     const RemoteFunctionHolder &remote_function_holder,
-                                    std::vector<ray::api::TaskArg> &args,
+                                    std::vector<ray::internal::TaskArg> &args,
                                     const ActorID &actor) {
   InvocationSpec invocation_spec;
   invocation_spec.task_type = task_type;
@@ -148,7 +152,7 @@ InvocationSpec BuildInvocationSpec1(TaskType task_type,
 }
 
 std::string AbstractRayRuntime::Call(const RemoteFunctionHolder &remote_function_holder,
-                                     std::vector<ray::api::TaskArg> &args,
+                                     std::vector<ray::internal::TaskArg> &args,
                                      const CallOptions &task_options) {
   auto invocation_spec = BuildInvocationSpec1(
       TaskType::NORMAL_TASK, remote_function_holder, args, ActorID::Nil());
@@ -157,7 +161,8 @@ std::string AbstractRayRuntime::Call(const RemoteFunctionHolder &remote_function
 
 std::string AbstractRayRuntime::CreateActor(
     const RemoteFunctionHolder &remote_function_holder,
-    std::vector<ray::api::TaskArg> &args, const ActorCreationOptions &create_options) {
+    std::vector<ray::internal::TaskArg> &args,
+    const ActorCreationOptions &create_options) {
   auto invocation_spec = BuildInvocationSpec1(
       TaskType::ACTOR_CREATION_TASK, remote_function_holder, args, ActorID::Nil());
   return task_submitter_->CreateActor(invocation_spec, create_options).Binary();
@@ -165,7 +170,7 @@ std::string AbstractRayRuntime::CreateActor(
 
 std::string AbstractRayRuntime::CallActor(
     const RemoteFunctionHolder &remote_function_holder, const std::string &actor,
-    std::vector<ray::api::TaskArg> &args, const CallOptions &call_options) {
+    std::vector<ray::internal::TaskArg> &args, const CallOptions &call_options) {
   auto invocation_spec = BuildInvocationSpec1(
       TaskType::ACTOR_TASK, remote_function_holder, args, ActorID::FromBinary(actor));
   return task_submitter_->SubmitActorTask(invocation_spec, call_options).Binary();
@@ -200,8 +205,7 @@ std::string GetFullName(bool global, const std::string &name) {
     return "";
   }
   return global ? name
-                : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() +
-                      "-" + name;
+                : CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" + name;
 }
 
 /// TODO(qicosmos): Now only support global name, will support the name of a current job.
@@ -231,12 +235,12 @@ void AbstractRayRuntime::KillActor(const std::string &str_actor_id, bool no_rest
 
 void AbstractRayRuntime::ExitActor() {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-  if (ConfigInternal::Instance().worker_type != ray::WorkerType::WORKER ||
+  if (ConfigInternal::Instance().worker_type != WorkerType::WORKER ||
       core_worker.GetActorId().IsNil()) {
     throw std::logic_error("This shouldn't be called on a non-actor worker.");
   }
   throw RayIntentionalSystemExitException("SystemExit");
 }
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

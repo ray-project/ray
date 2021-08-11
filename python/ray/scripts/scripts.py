@@ -1364,7 +1364,8 @@ def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
         start=start,
         override_cluster_name=cluster_name,
         no_config_cache=no_config_cache,
-        port_forward=port_forward)
+        port_forward=port_forward,
+        _allow_uninitialized_state=True)
 
 
 @cli.command()
@@ -1776,6 +1777,8 @@ def healthcheck(address, redis_password, component):
 
     if not address:
         address = services.get_ray_address_to_use_or_die()
+    else:
+        address = services.address_to_ip(address)
     redis_client = ray._private.services.create_redis_client(
         address, redis_password)
 

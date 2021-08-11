@@ -201,9 +201,10 @@ class Client:
                 python_methods.append(method_name)
 
         goal_id, updating = ray.get(
-            self._controller.deploy.remote(
-                name, backend_config, replica_config, python_methods, version,
-                prev_version, route_prefix))
+            self._controller.deploy.remote(name, backend_config,
+                                           replica_config, python_methods,
+                                           version, prev_version, route_prefix,
+                                           ray.get_runtime_context().job_id))
 
         if updating:
             msg = f"Updating deployment '{name}'"
@@ -386,14 +387,13 @@ def start(
             )
 
     try:
-        _get_global_client()
+        client = _get_global_client()
         logger.info("Connecting to existing Serve instance in namespace "
                     f"'{current_namespace}'.")
-        return
+        return client
     except RayServeException:
         pass
 
-    # Try to get serve controller if it exists
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
     else:
@@ -693,7 +693,7 @@ class Deployment:
 
     @property
     def route_prefix(self) -> Optional[str]:
-        """HTTP route prefix that this deploymet is exposed under."""
+        """HTTP route prefix that this deployment is exposed under."""
         return self._route_prefix
 
     @property
@@ -703,7 +703,7 @@ class Deployment:
 
     @property
     def init_args(self) -> Tuple[Any]:
-        """Arguments passed to the underlying class' constructor."""
+        """Arguments passed to the underlying class's constructor."""
         return self._init_args
 
     def __call__(self):
