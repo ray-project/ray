@@ -5,7 +5,7 @@ Datasets: Distributed Arrow on Ray
 
 .. tip::
 
-  Ray Datasets is available in early preview at ``ray.data`` with Ray 1.6+.
+  Ray Datasets is available in early preview at ``ray.data`` with Ray 1.6+ (and ``ray.experimental.data`` in Ray 1.5).
 
 Ray Datasets are the standard way to load and exchange data in Ray libraries and applications. Datasets provide basic distributed data transformations such as ``map``, ``filter``, and ``repartition``, and are compatible with a variety of file formats, datasources, and distributed frameworks.
 
