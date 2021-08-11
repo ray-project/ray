@@ -140,17 +140,26 @@ class ServeController:
             entry["version"] = backend_info.version or "Unversioned"
             # TODO(architkulkarni): When we add the feature to allow
             # deployments with no HTTP route, update the below line.
-            # Or refactor the route_prefix logic in the Deployment class now.
+            # Or refactor the route_prefix logic in the Deployment class.
             entry["http_route"] = route_prefix or f"/{deployment_name}"
             entry["status"] = "RUNNING"
             entry["start_time"] = backend_info.start_time_ms or 0
             entry["end_time"] = 0
+            entry["actors"] = dict()
+            replicas_to_actor_handles = self._all_replica_handles().get(deployment_name) or dict()
+            for replica_tag, actor_handle in replicas_to_actor_handles:
+                actor_id = actor_handle._ray_actor_id.hex()
+                entry["actors"][actor_id]["replica_tag"] = replica_tag
             val[deployment_name] = entry
         self.kv_store.put(SNAPSHOT_KEY, json.dumps(val))
 
     def _all_replica_handles(
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
-        """Used for testing."""
+        """Returns a dict containing all running replica handles.
+
+        The dictionary maps a backend tag to a dictionary mapping a replica tag
+        to the handle to the underlying actor.
+        """
         return self.backend_state.get_running_replica_handles()
 
     def get_all_backends(self) -> Dict[BackendTag, BackendConfig]:

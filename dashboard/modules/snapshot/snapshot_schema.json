@@ -192,6 +192,8 @@
             "type": "string"
           },
           "required": [
+            "rayVersion",
+            "rayCommit",
             "jobs",
             "actors",
             "sessionName"
