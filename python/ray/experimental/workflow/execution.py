@@ -11,8 +11,8 @@ from ray.experimental.workflow.common import (Workflow, WorkflowStatus,
 from ray.experimental.workflow.step_executor import commit_step
 from ray.experimental.workflow.storage import get_global_storage
 from ray.experimental.workflow.workflow_access import (
-    flatten_workflow_output,
-    get_or_create_management_actor, get_management_actor)
+    flatten_workflow_output, get_or_create_management_actor,
+    get_management_actor)
 
 if TYPE_CHECKING:
     from ray.experimental.workflow.step_executor import WorkflowExecutionResult

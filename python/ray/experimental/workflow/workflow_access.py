@@ -65,7 +65,7 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef) -> Any:
         The resolved physical object.
     """
     try:
-        workflow_manager = get_management_actor()
+        actor = get_management_actor()
     except ValueError as e:
         raise ValueError(
             "Failed to connect to the workflow management actor.") from e
