@@ -237,7 +237,7 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_ && gcs_node_manager_);
-  std::shared_ptr<GcsActorSchedulerInterface> scheduler;
+  std::unique_ptr<GcsActorSchedulerInterface> scheduler;
   auto schedule_failure_handler = [this](std::shared_ptr<GcsActor> actor) {
     // When there are no available nodes to schedule the actor the
     // gcs_actor_scheduler will treat it as failed and invoke this handler. In
@@ -254,18 +254,18 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
 
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     RAY_CHECK(gcs_resource_manager_ && gcs_resource_scheduler_);
-    scheduler = std::make_shared<GcsBasedActorScheduler>(
+    scheduler = std::make_unique<GcsBasedActorScheduler>(
         main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
         gcs_resource_manager_, gcs_resource_scheduler_, schedule_failure_handler,
         schedule_success_handler, raylet_client_pool_, client_factory);
   } else {
-    scheduler = std::make_shared<RayletBasedActorScheduler>(
+    scheduler = std::make_unique<RayletBasedActorScheduler>(
         main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
         schedule_failure_handler, schedule_success_handler, raylet_client_pool_,
         client_factory);
   }
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      scheduler, gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
+      std::move(scheduler), gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },

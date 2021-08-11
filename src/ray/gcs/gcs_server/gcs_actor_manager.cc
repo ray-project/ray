@@ -101,7 +101,7 @@ std::shared_ptr<GcsActorWorkerAssignment> GcsActor::GetActorWorkerAssignment() c
 
 void GcsActor::SetActorWorkerAssignment(
     std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr) {
-  assignment_ptr_ = assignment_ptr;
+  assignment_ptr_ = std::move(assignment_ptr);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

@@ -52,13 +52,14 @@ NodeID GcsBasedActorScheduler::SelectNode(std::shared_ptr<GcsActor> actor) {
   bool need_sole_actor_worker_assignment = true;
   if (auto selected_actor_worker_assignment = SelectOrAllocateActorWorkerAssignment(
           actor, need_sole_actor_worker_assignment)) {
-    actor->SetActorWorkerAssignment(selected_actor_worker_assignment);
-    return selected_actor_worker_assignment->GetNodeID();
+    auto node_id = selected_actor_worker_assignment->GetNodeID();
+    actor->SetActorWorkerAssignment(std::move(selected_actor_worker_assignment));
+    return node_id;
   }
   return NodeID::Nil();
 }
 
-std::shared_ptr<GcsActorWorkerAssignment>
+std::unique_ptr<GcsActorWorkerAssignment>
 GcsBasedActorScheduler::SelectOrAllocateActorWorkerAssignment(
     std::shared_ptr<GcsActor> actor, bool need_sole_actor_worker_assignment) {
   const auto &task_spec = actor->GetCreationTaskSpecification();
@@ -71,7 +72,7 @@ GcsBasedActorScheduler::SelectOrAllocateActorWorkerAssignment(
   // TODO(Chong-Li): code path for actors that do not need a sole assignment.
 }
 
-std::shared_ptr<GcsActorWorkerAssignment>
+std::unique_ptr<GcsActorWorkerAssignment>
 GcsBasedActorScheduler::AllocateNewActorWorkerAssignment(
     const ResourceSet &required_resources, bool is_shared,
     const TaskSpecification &task_spec) {
@@ -83,7 +84,7 @@ GcsBasedActorScheduler::AllocateNewActorWorkerAssignment(
   }
 
   // Create a new gcs actor worker assignment.
-  auto gcs_actor_worker_assignment = std::make_shared<GcsActorWorkerAssignment>(
+  auto gcs_actor_worker_assignment = std::make_unique<GcsActorWorkerAssignment>(
       selected_node_id, required_resources, is_shared);
 
   return gcs_actor_worker_assignment;

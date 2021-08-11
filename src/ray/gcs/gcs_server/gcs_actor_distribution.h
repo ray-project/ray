@@ -114,7 +114,7 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
 
  private:
   /// Select an existing or allocate a new actor worker assignment for the actor.
-  std::shared_ptr<GcsActorWorkerAssignment> SelectOrAllocateActorWorkerAssignment(
+  std::unique_ptr<GcsActorWorkerAssignment> SelectOrAllocateActorWorkerAssignment(
       std::shared_ptr<GcsActor> actor, bool need_sole_actor_worker_assignment);
 
   /// Allocate a new actor worker assignment.
@@ -122,7 +122,7 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// \param required_resources The resources that the worker required.
   /// \param is_shared If the worker is shared by multiple actors or not.
   /// \param task_spec The specification of the task.
-  std::shared_ptr<GcsActorWorkerAssignment> AllocateNewActorWorkerAssignment(
+  std::unique_ptr<GcsActorWorkerAssignment> AllocateNewActorWorkerAssignment(
       const ResourceSet &required_resources, bool is_shared,
       const TaskSpecification &task_spec);
 
