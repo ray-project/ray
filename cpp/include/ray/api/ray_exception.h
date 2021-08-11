@@ -18,7 +18,7 @@
 #include <string>
 
 namespace ray {
-namespace api {
+namespace internal {
 
 class RayException : public std::exception {
  public:
@@ -53,6 +53,5 @@ class RayFunctionNotFound : public RayException {
  public:
   RayFunctionNotFound(const std::string &msg) : RayException(msg){};
 };
-
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

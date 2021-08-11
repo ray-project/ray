@@ -1,3 +1,5 @@
+import inspect
+
 from ray.util import log_once
 from ray.rllib.utils.deprecation import deprecation_warning
 
@@ -65,6 +67,22 @@ def Deprecated(old=None, *, new=None, help=None, error):
     """
 
     def _inner(obj):
+        if inspect.isclass(obj):
+            obj_init = obj.__init__
+
+            def patched_init(*args, **kwargs):
+                if log_once(old or obj.__name__):
+                    deprecation_warning(
+                        old=old or obj.__name__,
+                        new=new,
+                        help=help,
+                        error=error,
+                    )
+                return obj_init(*args, **kwargs)
+
+            obj.__init__ = patched_init
+            return obj
+
         def _ctor(*args, **kwargs):
             if log_once(old or obj.__name__):
                 deprecation_warning(

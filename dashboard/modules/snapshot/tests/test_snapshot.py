@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import jsonschema
 
@@ -61,6 +62,7 @@ ray.get(a.ping.remote())
 
     assert len(data["data"]["snapshot"]["actors"]) == 3
     assert len(data["data"]["snapshot"]["jobs"]) == 4
+    assert len(data["data"]["snapshot"]["deployments"]) == 0
 
     for actor_id, entry in data["data"]["snapshot"]["actors"].items():
         assert entry["jobId"] in data["data"]["snapshot"]["jobs"]
@@ -77,7 +79,7 @@ ray.get(a.ping.remote())
 
 @pytest.mark.parametrize(
     "ray_start_with_dashboard", [{
-        "num_cpus": 8
+        "num_cpus": 4
     }], indirect=True)
 def test_serve_snapshot(ray_start_with_dashboard):
     """Test detached and nondetached Serve instances running concurrently."""
@@ -149,3 +151,6 @@ my_func.deploy()
     assert entry_nondetached["rayJobId"] is not None
     assert entry_nondetached["startTime"] == 0
     assert entry_nondetached["endTime"] == 0
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

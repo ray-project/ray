@@ -26,6 +26,7 @@
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
+namespace core {
 
 // Used to prevent leases from timing out when not testing that logic. It would
 // be better to use a mock clock or lease manager interface, but that's high
@@ -60,7 +61,7 @@ class MockRayletClient : public PinObjectsInterface {
  public:
   void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
-      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {
+      const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) override {
     RAY_LOG(INFO) << "PinObjectIDs " << object_ids.size();
     callbacks.push_back(callback);
   }
@@ -254,6 +255,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionChain) {
   }
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {
