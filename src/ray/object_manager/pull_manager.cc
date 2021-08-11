@@ -25,15 +25,13 @@ PullManager::PullManager(
     const RestoreSpilledObjectCallback restore_spilled_object,
     const std::function<double()> get_time, int pull_timeout_ms,
     int64_t num_bytes_available,
-    std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object,
-    int min_active_pulls)
+    std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object)
     : self_node_id_(self_node_id),
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
       cancel_pull_request_(cancel_pull_request),
       restore_spilled_object_(restore_spilled_object),
       get_time_(get_time),
-      min_active_pulls_(min_active_pulls),
       pull_timeout_ms_(pull_timeout_ms),
       num_bytes_available_(num_bytes_available),
       pin_object_(pin_object),
@@ -142,8 +140,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     }
 
     // Quota check.
-    if (respect_quota && num_active_bundles_ >= min_active_pulls_ &&
-        bytes_to_pull > RemainingQuota()) {
+    if (respect_quota && num_active_bundles_ >= 1 && bytes_to_pull > RemainingQuota()) {
       RAY_LOG(DEBUG) << "Bundle would exceed quota: "
                      << "num_bytes_being_pulled(" << num_bytes_being_pulled_
                      << ") + "
@@ -306,9 +303,9 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
 
   // While we are over capacity, deactivate requests starting from the back of the queues.
   DeactivateUntilMarginAvailable(
-      "task args request", task_argument_bundles_, min_active_pulls_, /*quota_margin=*/0L,
+      "task args request", task_argument_bundles_, /*retain_min=*/1, /*quota_margin=*/0L,
       &highest_task_req_id_being_pulled_, &object_ids_to_cancel);
-  DeactivateUntilMarginAvailable("wait request", wait_request_bundles_, min_active_pulls_,
+  DeactivateUntilMarginAvailable("wait request", wait_request_bundles_, /*retain_min=*/1,
                                  /*quota_margin=*/0L, &highest_wait_req_id_being_pulled_,
                                  &object_ids_to_cancel);
 

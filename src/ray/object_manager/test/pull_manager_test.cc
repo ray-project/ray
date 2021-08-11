@@ -678,23 +678,13 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
     return;
   }
 
-  if (RayConfig::instance().pull_manager_min_active_pulls() == 0) {
-    ASSERT_TRUE(pull_manager_.HasPullsQueued());
-    AssertNumActiveRequestsEquals(0);
-    for (auto &oid : oids) {
-      ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
-      ASSERT_EQ(num_abort_calls_[oid], 1);
-    }
-    ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
-  } else {
-    ASSERT_FALSE(pull_manager_.HasPullsQueued());
-    AssertNumActiveRequestsEquals(3);
-    for (auto &oid : oids) {
-      ASSERT_TRUE(pull_manager_.IsObjectActive(oid));
-      ASSERT_EQ(num_abort_calls_[oid], 0);
-    }
-    ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
+  ASSERT_FALSE(pull_manager_.HasPullsQueued());
+  AssertNumActiveRequestsEquals(3);
+  for (auto &oid : oids) {
+    ASSERT_TRUE(pull_manager_.IsObjectActive(oid));
+    ASSERT_EQ(num_abort_calls_[oid], 0);
   }
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
 
   pull_manager_.CancelPull(req_id);
   for (auto &oid : oids) {
@@ -738,8 +728,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
   for (int capacity = 0; capacity < 20; capacity++) {
     int num_requests_quota =
         std::min(num_requests, capacity / (object_size * num_oids_per_request));
-    int num_requests_expected = std::max(
-        RayConfig::instance().pull_manager_min_active_pulls(), num_requests_quota);
+    int num_requests_expected = std::max(1, num_requests_quota);
     if (GetParam()) {
       num_requests_expected = num_requests;
     }

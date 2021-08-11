@@ -66,8 +66,7 @@ class PullManager {
       const RestoreSpilledObjectCallback restore_spilled_object,
       const std::function<double()> get_time, int pull_timeout_ms,
       int64_t num_bytes_available,
-      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-      int min_active_pulls = RayConfig::instance().pull_manager_min_active_pulls());
+      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object);
 
   /// Add a new pull request for a bundle of objects. The objects in the
   /// request will get pulled once:
@@ -280,8 +279,6 @@ class PullManager {
   const std::function<void(const ObjectID &)> cancel_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
   const std::function<double()> get_time_;
-  /// The minimum number of pull bundles to keep active.
-  const int min_active_pulls_;
   uint64_t pull_timeout_ms_;
 
   /// The next ID to assign to a bundle pull request, so that the caller can

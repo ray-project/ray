@@ -95,9 +95,6 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
-/// DEBUG-ONLY: Min number of pulls to keep active. Only supports values {0, 1}.
-RAY_CONFIG(int, pull_manager_min_active_pulls, 1)
-
 /// Whether to use the hybrid scheduling policy, or one of the legacy spillback
 /// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
 /// then spread via weighted (by critical resource usage).
