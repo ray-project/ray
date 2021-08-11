@@ -620,9 +620,8 @@ class ActorClass:
                 raise ValueError("Actor name cannot be an empty string.")
         if namespace is not None:
             if not isinstance(namespace, str):
-                raise TypeError(
-                    f"namespace must be None or a string, got: '{type(namespace)}'."
-                )
+                raise TypeError(f"namespace must be None or a string, "
+                                f"got: '{type(namespace)}'.")
             elif namespace == "":
                 raise ValueError("Actor namespace cannot be an empty string.")
 
