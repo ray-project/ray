@@ -37,6 +37,23 @@ def explained_variance(y, pred):
     return tf.maximum(-1.0, 1 - (diff_var / y_var))
 
 
+def get_gpu_devices():
+    """Returns a list of GPU device names, e.g. ["/gpu:0", "/gpu:1"].
+    Supports both tf1.x and tf2.x.
+    """
+    if tfv == 1:
+        from tensorflow.python.client import device_lib
+        devices = device_lib.list_local_devices()
+    else:
+        try:
+            devices = tf.config.list_physical_devices()
+        except Exception:
+            devices = tf.config.experimental.list_physical_devices()
+
+    # Expect "GPU", but also stuff like: "XLA_GPU".
+    return [d.name for d in devices if "GPU" in d.device_type]
+
+
 def get_placeholder(*, space=None, value=None, name=None, time_axis=False):
     from ray.rllib.models.catalog import ModelCatalog
 
