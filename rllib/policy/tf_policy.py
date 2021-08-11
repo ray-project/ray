@@ -18,6 +18,7 @@ from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
+from ray.rllib.utils.tf_ops import get_gpu_devices
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
@@ -148,7 +149,7 @@ class TFPolicy(Policy):
             from ray.rllib.evaluation.rollout_worker import get_global_worker
             worker = get_global_worker()
             worker_idx = worker.worker_index if worker else 0
-            if tf.config.list_physical_devices("GPU"):
+            if get_gpu_devices():
                 logger.info("TFPolicy (worker={}) running on GPU.".format(
                     worker_idx if worker_idx > 0 else "local"))
             else:
