@@ -73,7 +73,7 @@ class SetupSpec:
         # add .dbg suffix if debug mode is on.
         if build_type == BuildType.DEBUG:
             self.version: str = f"{version}+dbg"
-        elif build_type == BuildType.ASAN:
+        elif build_type == BuildType.ASAN :
             self.version: str = f"{version}+asan"
         else:
             self.version = version
@@ -99,6 +99,9 @@ else:
     BUILD_TYPE = BuildType.DEFAULT
 
 if os.getenv("RAY_INSTALL_CPP") == "1":
+    # Don't build asan for cpp now.
+    if build_type == "asan":
+        BUILD_TYPE = BuildType.DEFAULT
     # "ray-cpp" wheel package.
     setup_spec = SetupSpec(SetupType.RAY_CPP, "ray-cpp",
                            "A subpackage of Ray which provide Ray C++ API.",
