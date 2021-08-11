@@ -743,21 +743,24 @@ def test_use_dynamic_function_and_class():
         def foo(self):
             return "OK"
 
+    # To check if the dynamic function is stored in GCS
+    # Keep the key of function the same as export.
     f = foo1()
     assert ray.get(f.remote()) == "OK"
-    key_ = (
+    key_func = (
         b"RemoteFunction:" + ray.worker.global_worker.current_job_id.binary() +
         b":" + f._function_descriptor.function_id.binary())
-    (job_id_str, function_id_str, function_name, serialized_function, module,
-     max_calls) = ray.worker.global_worker.redis_client.hmget(
-         key_, [
-             "job_id", "function_id", "function_name", "function", "module",
-             "max_calls"
-         ])
-    assert f._function_descriptor.function_id == ray.FunctionID(
-        function_id_str)
+    assert ray.worker.global_worker.redis_client.exists(key_func) == 1
     foo_actor = Foo.remote()
+
+    # To check if the dynamic class is stored in GCS
+    # Keep the key of class the same as export.
     assert ray.get(foo_actor.foo.remote()) == "OK"
+    key_cls = (
+        b"ActorClass:" + ray.worker.global_worker.current_job_id.binary() +
+        b":" +
+        foo_actor._ray_actor_creation_function_descriptor.function_id.binary())
+    assert ray.worker.global_worker.redis_client.exists(key_cls) == 1
 
 
 if __name__ == "__main__":

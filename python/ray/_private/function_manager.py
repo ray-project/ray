@@ -134,8 +134,6 @@ class FunctionActorManager:
         """
         if self._worker.load_code_from_local:
             function_descriptor = remote_function._function_descriptor
-            if function_descriptor.is_actor_method():
-                return
             module_name, function_name = (
                 function_descriptor.module_name,
                 function_descriptor.function_name,
@@ -239,31 +237,25 @@ class FunctionActorManager:
         """
         if self._worker.load_code_from_local:
             # Load function from local code.
-            # Currently, we don't support isolating code by jobs,
-            # thus always set job ID to NIL here.
             function_id = function_descriptor.function_id
             # If the function has already been loaded,
             # There's no need to load again
-            if function_id not in self._function_execution_info:
-                if not function_descriptor.is_actor_method():
-                    # If the function is not able to be loaded,
-                    # try to load it from GCS,
-                    # even if load_code_from_local is set True
-                    if self._load_function_from_local(
-                            function_descriptor) is None:
-                        with profiling.profile("wait_for_function"):
-                            self._wait_for_function(function_descriptor,
-                                                    job_id)
-
-        else:
-            # Load function from GCS.
-            # Wait until the function to be executed has actually been
-            # registered on this worker. We will push warnings to the user if
-            # we spend too long in this loop.
-            # The driver function may not be found in sys.path. Try to load
-            # the function from GCS.
-            with profiling.profile("wait_for_function"):
-                self._wait_for_function(function_descriptor, job_id)
+            if function_id in self._function_execution_info:
+                return self._function_execution_info[function_id]
+            if not function_descriptor.is_actor_method():
+                # If the function is not able to be loaded,
+                # try to load it from GCS,
+                # even if load_code_from_local is set True
+                if self._load_function_from_local(function_descriptor) is True:
+                    return self._function_execution_info[function_id]
+        # Load function from GCS.
+        # Wait until the function to be executed has actually been
+        # registered on this worker. We will push warnings to the user if
+        # we spend too long in this loop.
+        # The driver function may not be found in sys.path. Try to load
+        # the function from GCS.
+        with profiling.profile("wait_for_function"):
+            self._wait_for_function(function_descriptor, job_id)
         try:
             function_id = function_descriptor.function_id
             info = self._function_execution_info[function_id]
@@ -285,7 +277,6 @@ class FunctionActorManager:
 
         object = self.load_function_or_class_from_local(
             module_name, function_name)
-
         if object is not None:
             function = object._function
             self._function_execution_info[function_id] = (
