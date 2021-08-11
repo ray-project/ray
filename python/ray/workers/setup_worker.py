@@ -27,6 +27,14 @@ parser.add_argument(
     type=str,
     help="the worker allocated resource")
 
+parser.add_argument(
+    "--session-dir", type=str, help="the directory for the current session")
+
+parser.add_argument(
+    "--worker-entrypoint",
+    type=str,
+    help="the worker entrypoint: python,java etc. ")
+
 
 def get_tmp_dir(remaining_args):
     for arg in remaining_args:
@@ -117,7 +125,10 @@ if __name__ == "__main__":
     if container_option and container_option.get("image"):
         start_worker_in_container(container_option, args, remaining_args)
     else:
-        remaining_args.append("--serialized-runtime-env")
-        remaining_args.append(args.serialized_runtime_env or "{}")
-        setup = import_attr(args.worker_setup_hook)
-        setup(remaining_args)
+        worker_command = [args.worker_entrypoint]
+        worker_command += remaining_args
+        os.execvp(args.worker_entrypoint, worker_command)
+        # remaining_args.append("--serialized-runtime-env")
+        # remaining_args.append(args.serialized_runtime_env or "{}")
+        # setup = import_attr(args.worker_setup_hook)
+        # setup(remaining_args)
