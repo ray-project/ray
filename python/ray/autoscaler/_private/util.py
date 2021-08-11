@@ -157,7 +157,7 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     with_defaults = fillout_defaults(config)
     merge_setup_commands(with_defaults)
     validate_docker_config(with_defaults)
-    fill_node_type_max_workers(with_defaults)
+    fill_node_type_min_max_workers(with_defaults)
     return with_defaults
 
 
@@ -257,26 +257,20 @@ def merge_setup_commands(config):
     return config
 
 
-def fill_node_type_max_workers(config):
+def fill_node_type_min_max_workers(config):
     """Sets default per-node max workers to global max_workers.
     This equivalent to setting the default per-node max workers to infinity,
     with the only upper constraint coming from the global max_workers.
+    Also sets default min_workers for the head node to 0.
     """
     assert "max_workers" in config, "Global max workers should be set."
     node_types = config["available_node_types"]
     for node_type_name in node_types:
         node_type_data = node_types[node_type_name]
 
-        # Log a warning if head node type's max_workers is absent.
-        if (node_type_name == config["head_node_type"]
-                and "max_workers" not in node_type_data):
-            cli_logger.warning(
-                HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE.format(
-                    node_type=node_type_name,
-                    max_workers=config["max_workers"],
-                    version=ray.__version__))
+        if node_type_name == config["head_node_type"]:
+            node_type_data.setdefault("min_workers", 0)
 
-        # The key part of this function:
         node_type_data.setdefault("max_workers", config["max_workers"])
 
 
