@@ -1,26 +1,25 @@
-import os
-import sys
 import argparse
+import hashlib
 import json
 import logging
-import yaml
-import hashlib
-import subprocess
+import os
 import runpy
 import shutil
-
-from filelock import FileLock
-from typing import Optional, List, Dict, Any
+import subprocess
+import sys
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-import ray
+import yaml
+from filelock import FileLock
 from ray._private.conda import (get_conda_activate_commands,
                                 get_or_create_conda_env)
-from ray._private.utils import try_to_create_directory
-from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
-                                get_release_wheel_url)
+from ray._private.utils import (get_master_wheel_url, get_release_wheel_url,
+                                get_wheel_filename, try_to_create_directory)
 from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
                                                get_hook_logger)
+
+import ray
 
 logger = logging.getLogger(__name__)
 parser = argparse.ArgumentParser()
@@ -257,6 +256,28 @@ def current_ray_pip_specifier() -> Optional[str]:
     else:
         return get_release_wheel_url()
 
+def requirements_file_to_list(filename: str, skip_ray: bool = True) -> List[str]:
+    """Generate a list from a requirements file, this is required to use pip requirements file in conda dependencies.
+
+    Args:
+        filename (str): The requirements file to load
+        skip_ray (bool): If ray has been specified in the requirements file should it be skipped or added
+
+    Returns:
+        (list): The dependencies in list format
+    """
+    try:
+        with open(filename) as file:
+            lines = file.readlines()
+            if skip_ray:
+                return [dependency.strip('\n') for dependency in lines if 'ray' not in dependency]
+            else:
+                return [dependency.strip('\n') for dependency in lines]
+            
+    except IsADirectoryError:
+        return []
+    except FileNotFoundError:
+        return []
 
 def inject_dependencies(
         conda_dict: Dict[Any, Any],
@@ -297,11 +318,15 @@ def inject_dependencies(
     # Insert pip dependencies.
     found_pip_dict = False
     for dep in deps:
-        if isinstance(dep, dict) and dep.get("pip") and isinstance(
-                dep["pip"], list):
-            dep["pip"] = pip_dependencies + dep["pip"]
-            found_pip_dict = True
-            break
+        if isinstance(dep, dict) and dep.get("pip"):
+            if isinstance(dep["pip"], list):
+                dep["pip"] = pip_dependencies + dep["pip"]
+                found_pip_dict = True
+                break
+            if isinstance(dep["pip"], str):
+                dep["pip"] = pip_dependencies + requirements_file_to_list(dep["pip"])
+                found_pip_dict = True
+                break
     if not found_pip_dict:
         deps.append({"pip": pip_dependencies})
 
