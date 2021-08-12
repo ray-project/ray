@@ -164,14 +164,19 @@ class Session:
         self.continue_lock.acquire()
 
     def checkpoint(self, **kwargs):
-        """Adds kwargs to the queue to be consumed by main thread."""
+        """Adds kwargs to the queue to be consumed by main thread.
+
+        Also stores the checkpoint in ``self.loaded_checkpoint``.
+        """
+
+        # Update session checkpoint to latest checkpoint.
+        self.loaded_checkpoint = kwargs
 
         # Only store checkpoints on worker with rank 0.
         if self.world_rank != 0:
             kwargs = {}
 
-        result = TrainingResult(TrainingResultType.CHECKPOINT, kwargs.copy())
-
+        result = TrainingResult(TrainingResultType.CHECKPOINT, kwargs)
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
 
@@ -279,6 +284,10 @@ def load_checkpoint() -> Optional[Dict]:
 
     Args:
         **kwargs: Any key value pair to be checkpointed by SGD.
+    Returns:
+        The most recently saved checkpoint if ``sgd.save_checkpoint()``
+        has been called. Otherwise, the checkpoint that the session was
+        originally initialized with. ``None`` if neither exist.
     """
     session = get_session()
     return session.loaded_checkpoint
@@ -295,7 +304,7 @@ def save_checkpoint(**kwargs) -> None:
         def train_func():
             for iter in range(100):
                 time.sleep(1)
-                sgd.checkpoint(epoch=iter)
+                sgd.save_checkpoint(epoch=iter)
 
         trainer = Trainer(backend="torch")
         trainer.start()

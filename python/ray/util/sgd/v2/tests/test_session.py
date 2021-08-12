@@ -1,8 +1,9 @@
 import time
-import pytest
 
+import pytest
 from ray.util.sgd.v2.session import init_session, shutdown_session, \
-    get_session, world_rank, report, save_checkpoint, TrainingResultType
+    get_session, world_rank, report, save_checkpoint, TrainingResultType, \
+    load_checkpoint
 
 
 @pytest.fixture(scope="function")
@@ -100,6 +101,7 @@ def test_checkpoint():
     session.start()
     validate_zero(0)
     validate_zero(1)
+    session.finish()
     shutdown_session()
 
     def validate_nonzero():
@@ -113,10 +115,27 @@ def test_checkpoint():
     session.start()
     validate_nonzero()
     validate_nonzero()
+    session.finish()
     shutdown_session()
 
     with pytest.raises(ValueError):
         save_checkpoint(epoch=2)
+
+
+def test_load_checkpoint_after_save():
+    def train():
+        for i in range(2):
+            save_checkpoint(epoch=i)
+            checkpoint = load_checkpoint()
+            assert checkpoint["epoch"] == i
+
+    init_session(training_func=train, world_rank=0)
+    session = get_session()
+    session.start()
+    for i in range(2):
+        session.get_next()
+    session.finish()
+    shutdown_session()
 
 
 def test_locking():
