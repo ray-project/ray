@@ -52,8 +52,6 @@ serve.start(detached=True)
 """.format(ray_client_instance)
     run_string_as_driver(start)
 
-    serve.connect()
-
     deploy = """
 import ray
 ray.util.connect("{}", namespace="")
