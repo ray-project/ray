@@ -658,8 +658,8 @@ def start(
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
     else:
-        controller_name = format_actor_name(SERVE_CONTROLLER_NAME,
-                                            get_random_letters())
+        controller_name = format_actor_name(get_random_letters(),
+                                            SERVE_CONTROLLER_NAME)
 
     if isinstance(http_options, dict):
         http_options = HTTPOptions.parse_obj(http_options)
