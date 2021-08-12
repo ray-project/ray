@@ -67,6 +67,7 @@ class ClientBuilder:
         self.address = address
         self._job_config = JobConfig()
         self._fill_defaults_from_env()
+        self._remote_init_kwargs = {}
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -98,7 +99,9 @@ class ClientBuilder:
                 dashboard_url.
         """
         client_info_dict = ray.util.client_connect.connect(
-            self.address, job_config=self._job_config)
+            self.address,
+            job_config=self._job_config,
+            ray_init_kwargs=self._remote_init_kwargs)
         dashboard_url = ray.get(
             ray.remote(ray.worker.get_dashboard_url).remote())
         return ClientContext(
@@ -134,11 +137,12 @@ class ClientBuilder:
         if kwargs.get("runtime_env") is not None:
             self.env(kwargs["runtime_env"])
             del kwargs["runtime_env"]
-        if not kwargs:
-            return self
-        unknown = ", ".join(kwargs)
-        raise RuntimeError(
-            f"Unexpected keyword argument(s) for Ray Client: {unknown}")
+        if kwargs:
+            self._remote_init_kwargs = kwargs
+            unknown = ", ".join(kwargs)
+            logger.info("Passing the following kwargs to ray.init() "
+                        f"on the server: {unknown}")
+        return self
 
 
 class _LocalClientBuilder(ClientBuilder):

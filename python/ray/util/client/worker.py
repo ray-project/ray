@@ -513,11 +513,16 @@ class Worker:
                 f"Init Failure From Server:\n{init_resp.msg}")
         return
 
-    def _server_init(self, job_config: JobConfig):
+    def _server_init(self,
+                     job_config: JobConfig,
+                     ray_init_kwargs: Optional[Dict[str, Any]] = None):
         """Initialize the server"""
+        if ray_init_kwargs is None:
+            ray_init_kwargs = {}
         try:
             if job_config is None:
-                init_req = ray_client_pb2.InitRequest()
+                init_req = ray_client_pb2.InitRequest(
+                    ray_init_kwargs=json.dumps(ray_init_kwargs))
                 self._call_init(init_req)
                 return
 
@@ -528,7 +533,8 @@ class Worker:
                 # Generate the uri for runtime env
                 runtime_env.rewrite_runtime_env_uris(job_config)
                 init_req = ray_client_pb2.InitRequest(
-                    job_config=pickle.dumps(job_config))
+                    job_config=pickle.dumps(job_config),
+                    ray_init_kwargs=json.dumps(ray_init_kwargs))
                 self._call_init(init_req)
                 runtime_env.upload_runtime_env_package_if_needed(job_config)
                 runtime_env.PKG_DIR = old_dir
