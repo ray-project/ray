@@ -662,6 +662,7 @@ class SampleBatch(dict):
                 data,
                 _is_training=self.is_training,
                 _time_major=self.time_major,
+                _zero_padded=self.zero_padded,
             )
         else:
             start, stop = slice_.start, slice_.stop

@@ -1960,7 +1960,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/complex_struct_space_tf", main = "examples/complex_struct_space.py",
+    name = "examples/complex_struct_space_tf",
+    main = "examples/complex_struct_space.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/complex_struct_space.py"],
@@ -1968,7 +1969,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/complex_struct_space_tf_eager", main = "examples/complex_struct_space.py",
+    name = "examples/complex_struct_space_tf_eager",
+    main = "examples/complex_struct_space.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/complex_struct_space.py"],
@@ -1976,7 +1978,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/complex_struct_space_torch", main = "examples/complex_struct_space.py",
+    name = "examples/complex_struct_space_torch",
+    main = "examples/complex_struct_space.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/complex_struct_space.py"],

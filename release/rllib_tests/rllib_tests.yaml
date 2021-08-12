@@ -7,6 +7,15 @@
     timeout: 14400
     script: python learning_tests/run_learning_tests.py
 
+- name: multi_gpu_learning_tests
+  cluster:
+    app_config: app_config.yaml
+    compute_template: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 7200
+    script: python multi_gpu_learning_tests/run_multi_gpu_learning_tests.py
+
 - name: example_scripts_on_gpu_tests
   cluster:
     app_config: app_config.yaml

@@ -1,6 +1,4 @@
-"""Learning regression tests for RLlib (torch and tf).
-
-Runs Atari/PyBullet benchmarks for all major algorithms.
+"""Multi-GPU learning tests for RLlib (torch and tf).
 """
 
 import json
@@ -23,9 +21,9 @@ if __name__ == "__main__":
     # Run all tests in the found yaml files.
     results = run_learning_tests_from_yaml(yaml_files)
 
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/rllib_learning_test.json")
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/rllib_multi_gpu_learning_tests.json")
     with open(test_output_json, "wt") as f:
         json.dump(results, f)
 
-    print("PASSED.")
+    print("Ok.")

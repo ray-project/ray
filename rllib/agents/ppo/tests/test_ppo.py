@@ -151,6 +151,9 @@ class TestPPO(unittest.TestCase):
         # Test w/ LSTMs.
         config["model"]["use_lstm"] = True
 
+        # Double batch size (2 GPUs).
+        config["train_batch_size"] = 8000
+
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
             num_iterations = 200
