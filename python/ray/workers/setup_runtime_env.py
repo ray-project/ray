@@ -1,26 +1,25 @@
-import os
-import sys
 import argparse
+import hashlib
 import json
 import logging
-import yaml
-import hashlib
-import subprocess
+import os
 import runpy
 import shutil
-
-from filelock import FileLock
-from typing import Optional, List, Dict, Any
+import subprocess
+import sys
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
-import ray
+import yaml
+from filelock import FileLock
 from ray._private.conda import (get_conda_activate_commands,
                                 get_or_create_conda_env)
-from ray._private.utils import try_to_create_directory
-from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
-                                get_release_wheel_url)
+from ray._private.utils import (get_master_wheel_url, get_release_wheel_url,
+                                get_wheel_filename, try_to_create_directory)
 from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
                                                get_hook_logger)
+
+import ray
 
 logger = logging.getLogger(__name__)
 parser = argparse.ArgumentParser()
@@ -276,11 +275,11 @@ def requirements_file_to_list(filename: str,
             lines = file.readlines()
             if skip_ray:
                 return [
-                    dependency.strip('\n') for dependency in lines
+                    dependency.strip("\n") for dependency in lines
                     if "ray" not in dependency
                 ]
             else:
-                return [dependency.strip('\n') for dependency in lines]
+                return [dependency.strip("\n") for dependency in lines]
 
     except IsADirectoryError:
         return []
@@ -346,3 +345,4 @@ def inject_dependencies(
 
 if __name__ == "__main__":
     setup_worker(sys.argv[1:])
+
