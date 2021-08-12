@@ -22,6 +22,6 @@
     compute_template: shuffle_multi_node_gpu.yaml
 
   run:
-    timeout: 900
+    timeout: 3600
     script: python shuffle_ingest.py
   

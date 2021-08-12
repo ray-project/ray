@@ -1,6 +1,10 @@
+import json
+import os
 import time
 import ray
 import argparse
+
+from datetime import datetime
 
 DUMMY_ROW = {
     "key": 0,
@@ -29,15 +33,10 @@ DUMMY_ROW = {
 
 
 def create_parser():
-    parser = argparse.ArgumentParser(description="Eric Example")
+    parser = argparse.ArgumentParser(description="Test script to evaluate distributed shuffling with consumers")
     parser.add_argument("--address")
     parser.add_argument("--num-rows", type=int, default=8 * (10**8))
     parser.add_argument("--num-files", type=int, default=50)
-    parser.add_argument("--read-cache", action="store_true", default=False)
-    parser.add_argument(
-        "--data-dir",
-        type=str,
-        default="s3://shuffling-data-loader-benchmarks/data/")
     parser.add_argument(
         "--batch-size",
         type=int,
@@ -56,10 +55,15 @@ def run_consume(args, data_dir=None):
 
     @ray.remote(num_gpus=1)
     def consume(split, rank=None, batch_size=None):
+        start = datetime.now()
         for i, x in enumerate(split.iter_rows()):
             time.sleep(1)
             if i % 10 == 0:
                 print(i)
+            now = datetime.now()
+            # After 3000 seconds, we consider the test succeeds.
+            if (now - start).total_seconds() > 3000:
+                break
         return
 
     tasks = [
@@ -76,4 +80,9 @@ if __name__ == "__main__":
     ray.init(address=args.address)
 
     run_consume(args, data_dir=None)
-    # run_shuffle(args)
+    if "TEST_OUTPUT_JSON" in os.environ:
+        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
+        results = {
+            "success": 1
+        }
+        json.dump(results, out_file)
