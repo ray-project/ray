@@ -996,17 +996,17 @@ class Dataset(Generic[T]):
             return zip(*iters)
 
         def format_batch(batch: Block, format: str) -> BatchType:
-            if batch_format == "native":
+            if format == "native":
                 return batch
-            elif batch_format == "pandas":
+            elif format == "pandas":
                 batch = BlockAccessor.for_block(batch)
                 return batch.to_pandas()
-            elif batch_format == "pyarrow":
+            elif format == "pyarrow":
                 batch = BlockAccessor.for_block(batch)
                 return batch.to_arrow()
             else:
                 raise ValueError(
-                    f"The given batch format: {batch_format} "
+                    f"The given batch format: {format} "
                     f"is invalid. Supported batch type: {BatchType}")
 
         batcher = Batcher(batch_size=batch_size)
