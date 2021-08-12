@@ -19,12 +19,15 @@
 
 namespace ray {
 
+static bool is_inited_ = false;
+
 void Init(RayConfig &config, int *argc, char ***argv) {
-  ray::internal::ConfigInternal::Instance().Init(config, argc, argv);
-  std::call_once(is_inited_, [] {
+  if (!is_inited_) {
+    ray::internal::ConfigInternal::Instance().Init(config, argc, argv);
     auto runtime = ray::internal::AbstractRayRuntime::DoInit();
     ray::internal::RayRuntimeHolder::Instance().Init(runtime);
-  });
+  }
+  is_inited_ = true;
 }
 
 void Init(RayConfig &config) { Init(config, nullptr, nullptr); }
@@ -34,6 +37,12 @@ void Init() {
   Init(config, nullptr, nullptr);
 }
 
-void Shutdown() { ray::internal::AbstractRayRuntime::DoShutdown(); }
+bool IsInitialized() { return is_inited_; }
+
+void Shutdown() {
+  ray::internal::AbstractRayRuntime::DoShutdown();
+  ray::internal::RayRuntimeHolder::Instance().Clear();
+  is_inited_ = false;
+}
 
 }  // namespace ray

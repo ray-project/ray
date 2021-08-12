@@ -26,6 +26,13 @@ DEFINE_bool(external_cluster, false, "");
 DEFINE_string(redis_password, "12345678", "");
 DEFINE_int32(redis_port, 6379, "");
 
+TEST(RayClusterModeTest, Initialized) {
+  ray::Init();
+  EXPECT_TRUE(ray::IsInitialized());
+  ray::Shutdown();
+  EXPECT_TRUE(!ray::IsInitialized());
+}
+
 TEST(RayClusterModeTest, FullTest) {
   ray::RayConfig config;
   if (FLAGS_external_cluster) {
