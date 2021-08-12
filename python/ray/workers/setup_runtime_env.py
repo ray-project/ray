@@ -325,7 +325,8 @@ def inject_dependencies(
                 found_pip_dict = True
                 break
             if isinstance(dep["pip"], str):
-                dep["pip"] = pip_dependencies + requirements_file_to_list(dep["pip"])
+                skip_ray =  "ray[default]" in pip_dependencies
+                dep["pip"] = pip_dependencies + requirements_file_to_list(dep["pip"], skip_ray=skip_ray)
                 found_pip_dict = True
                 break
     if not found_pip_dict:
@@ -336,4 +337,5 @@ def inject_dependencies(
 
 if __name__ == "__main__":
     setup_worker(sys.argv[1:])
+
 
