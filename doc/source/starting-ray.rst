@@ -51,6 +51,12 @@ Calling ``ray.init()`` (without any ``address`` args) starts a Ray runtime on yo
       }
     }
 
+  .. code-tab:: c++
+
+    #include <ray/api.h>
+    // Other Ray APIs will not work until `ray::Init()` is called.
+    ray::Init()
+
 When the process calling ``ray.init()`` terminates, the Ray runtime will also terminate. To explicitly stop or restart Ray, use the shutdown API.
 
 .. tabs::
@@ -73,6 +79,13 @@ When the process calling ``ray.init()`` terminates, the Ray runtime will also te
         Ray.shutdown();
       }
     }
+
+  .. code-tab:: c++
+
+    #include <ray/api.h>
+    ray::Init()
+    ... // ray program
+    ray::Shutdown()
 
 .. tabs::
   .. group-tab:: Python
@@ -104,6 +117,22 @@ When the process calling ``ray.init()`` terminates, the Ray runtime will also te
           Ray.shutdown();
           Assert.assertFalse(Ray.isInitialized());
         }
+      }
+
+  .. group-tab:: C++
+
+    To check if Ray is initialized, you can call ``ray::IsInitialized()``:
+
+    .. code-block:: c++
+
+      #include <ray/api.h>
+
+      int main(int argc, char **argv) {
+        ray::Init();
+        assert(ray::IsInitialized());
+
+        ray::Shutdown();
+        assert(!ray::IsInitialized());
       }
 
 See the `Configuration <configure.html>`__ documentation for the various ways to configure Ray.
@@ -158,6 +187,21 @@ You can connect to this Ray runtime by starting a driver process on the same nod
         -Dray.address=<address> \
         <classname> <args>
 
+  .. group-tab:: C++
+
+    .. code-block:: c++
+
+      #include <ray/api.h>
+
+      int main(int argc, char **argv) {
+        ray::Init();
+        ...
+      }
+
+    .. code-block:: bash
+
+      RAY_ADDRESS=<address> ./<binary> <args>
+
 
 You can connect other nodes to the head node, creating a Ray cluster by also calling ``ray start`` on those nodes. See :ref:`manual-cluster` for more details. Calling ``ray.init(address="auto")`` on any of the cluster machines will connect to the ray cluster.
 
@@ -201,8 +245,18 @@ By default, Ray will parallelize its workload and run tasks on multiple processe
       java -classpath <classpath> \
         -Dray.local-mode=true \
         <classname> <args>
-
+    
     .. note:: If you just want to run your Java code in local mode, you can run it without Ray or even Python installed.
+
+  .. group-tab:: C++
+
+    .. code-block:: c++
+
+      RayConfig config;
+      config.local_mode = true;
+      ray::Init(config);
+
+    .. note:: If you just want to run your C++ code in local mode, you can run it without Ray or even Python installed.
 
 Note that there are some known issues with local mode. Please read :ref:`these tips <local-mode-tips>` for more information.
 
