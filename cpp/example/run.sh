@@ -3,5 +3,5 @@ bazel build //:example
 if [[ "$OSTYPR" == "darwin"* ]]; then
     DYLD_LIBRARY_PATH="$ROOT_DIR/thirdparty/lib" $ROOT_DIR/bazel-bin/example
 else
-    bazel run //:example
+    LD_LIBRARY_PATH="$ROOT_DIR/thirdparty/lib" $ROOT_DIR/bazel-bin/example
 fi
