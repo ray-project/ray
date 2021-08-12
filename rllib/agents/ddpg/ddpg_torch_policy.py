@@ -16,8 +16,7 @@ from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.torch_ops import apply_grad_clipping, \
-    concat_multi_gpu_td_errors, huber_loss, l2_loss
+from ray.rllib.utils.torch_ops import apply_grad_clipping, huber_loss, l2_loss
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
     LocalOptimizer, GradInfoDict
 
@@ -176,14 +175,10 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
             [actor_loss, critic_loss], input_dict)
 
     # Store values for stats function.
-    policy.q_t = q_t
     policy.actor_loss = actor_loss
     policy.critic_loss = critic_loss
-
-    # Store td-error in model, such that for multi-GPU, we do not override
-    # them during the parallel loss phase. TD-error tensor in final stats
-    # can then be concatenated and retrieved for each individual batch item.
-    model.td_error = td_error
+    policy.td_error = td_error
+    policy.q_t = q_t
 
     # Return two loss terms (corresponding to the two optimizers, we create).
     return policy.actor_loss, policy.critic_loss
@@ -226,6 +221,8 @@ def build_ddpg_stats(policy: Policy,
         "mean_q": torch.mean(policy.q_t),
         "max_q": torch.max(policy.q_t),
         "min_q": torch.min(policy.q_t),
+        "mean_td_error": torch.mean(policy.td_error),
+        "td_error": policy.td_error,
     }
     return stats
 
@@ -255,7 +252,7 @@ class ComputeTDErrorMixin:
             loss_fn(self, self.model, None, input_dict)
 
             # Self.td_error is set within actor_critic_loss call.
-            return self.model.td_error
+            return self.td_error
 
         self.compute_td_error = compute_td_error
 
@@ -304,7 +301,6 @@ DDPGTorchPolicy = build_policy_class(
     before_loss_init=setup_late_mixins,
     action_distribution_fn=get_distribution_inputs_and_class,
     make_model_and_action_dist=build_ddpg_models_and_action_dist,
-    extra_learn_fetches_fn=concat_multi_gpu_td_errors,
     apply_gradients_fn=apply_gradients_fn,
     mixins=[
         TargetNetworkMixin,

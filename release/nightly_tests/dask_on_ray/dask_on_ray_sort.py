@@ -43,6 +43,9 @@ def load_dataset(client, data_dir, s3_bucket, nbytes, npartitions):
     x = []
     for i in range(npartitions):
         x.append(generate_s3_file(i, data_dir, s3_bucket))
+    # from ray.util.dask import ProgressBarCallback
+    # with ProgressBarCallback():
+    # dask.compute(x, _ray_enable_progress_bar=True)
     dask.compute(x)
 
     filenames = [
@@ -81,6 +84,9 @@ def load_dataset_files(client, data_dir, file_path, nbytes, npartitions):
     x = []
     for i in range(npartitions):
         x.append(generate_file(i, data_dir, file_path))
+    # from ray.util.dask import ProgressBarCallback
+    # with ProgressBarCallback():
+    #     dask.compute(x, _ray_enable_progress_bar=True)
     dask.compute(x)
 
     filenames = [
@@ -113,9 +119,15 @@ def trial(client,
         print("Trial {} start".format(i))
         trial_start = time.time()
 
+        # from ray.util.dask import ProgressBarCallback
+        # with ProgressBarCallback():
+        #     print(
+        #         df.set_index("a", shuffle="tasks",
+        #                      max_branch=float("inf")).compute(
+        #                          _ray_enable_progress_bar=True).head(10))
         print(
-            df.set_index("a", shuffle="tasks", max_branch=float("inf")).head(
-                10, npartitions=-1))
+            df.set_index("a", shuffle="tasks",
+                         max_branch=float("inf")).compute().head(10))
 
         trial_end = time.time()
         duration = trial_end - trial_start
@@ -186,6 +198,7 @@ if __name__ == "__main__":
         npartitions = args.nbytes // args.max_partition_size
 
     duration = []
+    print("Start the main trial")
     output = trial(
         client,
         args.data_dir,

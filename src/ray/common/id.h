@@ -392,8 +392,7 @@ T BaseID<T>::FromRandom() {
 template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
   RAY_CHECK(binary.size() == T::Size() || binary.size() == 0)
-      << "expected size is " << T::Size() << ", but got data " << binary << " of size "
-      << binary.size();
+      << "expected size is " << T::Size() << ", but got data size is " << binary.size();
   T t;
   std::memcpy(t.MutableData(), binary.data(), binary.size());
   return t;

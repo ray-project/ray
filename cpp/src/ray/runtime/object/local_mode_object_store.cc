@@ -24,8 +24,7 @@
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
-namespace api {
-
+namespace internal {
 LocalModeObjectStore::LocalModeObjectStore(LocalModeRayRuntime &local_mode_ray_tuntime)
     : local_mode_ray_tuntime_(local_mode_ray_tuntime) {
   memory_store_ = std::make_unique<CoreWorkerMemoryStore>();
@@ -106,5 +105,5 @@ std::vector<bool> LocalModeObjectStore::Wait(const std::vector<ObjectID> &ids,
 void LocalModeObjectStore::AddLocalReference(const std::string &id) { return; }
 
 void LocalModeObjectStore::RemoveLocalReference(const std::string &id) { return; }
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

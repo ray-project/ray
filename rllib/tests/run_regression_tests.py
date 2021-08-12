@@ -96,12 +96,19 @@ if __name__ == "__main__":
         # reward.
         passed = False
         for i in range(3):
+            # Try starting a new ray cluster.
             try:
                 ray.init(num_cpus=5, local_mode=args.local_mode)
-                trials = run_experiments(experiments, resume=False, verbose=2)
-            finally:
-                ray.shutdown()
-                _register_all()
+            # Allow running this script on existing cluster as well.
+            except ConnectionError:
+                ray.init()
+            else:
+                try:
+                    trials = run_experiments(
+                        experiments, resume=False, verbose=2)
+                finally:
+                    ray.shutdown()
+                    _register_all()
 
             for t in trials:
                 # If we have evaluation workers, use their rewards.
