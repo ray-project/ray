@@ -14,7 +14,6 @@ import io.ray.runtime.functionmanager.RayFunction;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectSerializer;
-import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -128,8 +127,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       if (taskType == TaskType.ACTOR_TASK) {
         actor = actorContext.currentActor;
       }
-      args =
-          ArgumentsBuilder.unwrap(argsBytes, rayFunction.executable.getParameterTypes());
+      args = ArgumentsBuilder.unwrap(argsBytes, rayFunction.executable.getParameterTypes());
       for (Object arg : args) {
         throwIfDependencyFailed(arg);
       }
@@ -159,14 +157,18 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         throw (RayIntentionalSystemExitException) e;
       }
 
-      final List<Class<?>> argTypes = args == null ? null :
-        Arrays.stream(args)
-          .map(arg -> arg == null ? null : arg.getClass())
-          .collect(Collectors.toList());
+      final List<Class<?>> argTypes =
+          args == null
+              ? null
+              : Arrays.stream(args)
+                  .map(arg -> arg == null ? null : arg.getClass())
+                  .collect(Collectors.toList());
       LOGGER.error(
-        "Failed to execute task {} . rayFunction is {} , argument types are {}",
-        taskId, rayFunction, argTypes, e);
-
+          "Failed to execute task {} . rayFunction is {} , argument types are {}",
+          taskId,
+          rayFunction,
+          argTypes,
+          e);
 
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
