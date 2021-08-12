@@ -845,12 +845,12 @@ def test_union(ray_start_regular_shared):
     assert ds.sum() == (950 * 2)
 
     # Test materialized union.
-    ds2 = ds.from_items([1, 2, 3, 4, 5])
+    ds2 = ray.data.from_items([1, 2, 3, 4, 5])
     assert ds2.count() == 5
     ds2 = ds2.union(ds2)
     assert ds2.count() == 10
     ds2 = ds2.union(ds)
-    assert ds2.count() == (950 * 2 + 10)
+    assert ds2.count() == 210
 
 
 def test_split(ray_start_regular_shared):
