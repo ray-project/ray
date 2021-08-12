@@ -625,6 +625,12 @@ def start(
                 DeprecationWarning,
             )
 
+    if isinstance(http_options, dict):
+        http_options = HTTPOptions.parse_obj(http_options)
+    if http_options is None:
+        http_options = HTTPOptions(
+            host=http_host, port=http_port, middlewares=http_middlewares)
+
     # Initialize ray if needed.
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
@@ -634,8 +640,14 @@ def start(
 
     try:
         client = _get_global_client()
+        print(client.__dict__)
         logger.info("Connecting to existing Serve instance in namespace "
                     f"'{current_namespace}'.")
+        if client._http_config != http_options:
+            logger.info(
+                "HTTP config of existing Serve instance doesn't match. "
+                "Starting new Serve instance.")
+            raise RayServeException
         return client
     except RayServeException:
         pass
@@ -647,12 +659,6 @@ def start(
                                             get_random_letters())
     # Always start controller in "serve" namespace
     controller_name = f"serve/{controller_name}"
-
-    if isinstance(http_options, dict):
-        http_options = HTTPOptions.parse_obj(http_options)
-    if http_options is None:
-        http_options = HTTPOptions(
-            host=http_host, port=http_port, middlewares=http_middlewares)
 
     controller = ServeController.options(
         num_cpus=(1 if dedicated_cpu else 0),
