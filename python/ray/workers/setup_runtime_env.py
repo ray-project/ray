@@ -257,12 +257,16 @@ def current_ray_pip_specifier() -> Optional[str]:
     else:
         return get_release_wheel_url()
 
-def requirements_file_to_list(filename: str, skip_ray: bool = True) -> List[str]:
-    """Generate a list from a requirements file, this is required to use pip requirements file in conda dependencies.
+
+def requirements_file_to_list(filename: str,
+                              skip_ray: bool = True) -> List[str]:
+    """Generate a list from a requirements file, this is required to use
+            pip requirements file in conda dependencies.
 
     Args:
         filename (str): The requirements file to load
-        skip_ray (bool): If ray has been specified in the requirements file should it be skipped or added
+        skip_ray (bool): If ray has been specified in the requirements
+            file should it be skipped or added
 
     Returns:
         (list): The dependencies in list format
@@ -271,14 +275,18 @@ def requirements_file_to_list(filename: str, skip_ray: bool = True) -> List[str]
         with open(filename) as file:
             lines = file.readlines()
             if skip_ray:
-                return [dependency.strip('\n') for dependency in lines if 'ray' not in dependency]
+                return [
+                    dependency.strip('\n') for dependency in lines
+                    if 'ray' not in dependency
+                ]
             else:
                 return [dependency.strip('\n') for dependency in lines]
-            
+
     except IsADirectoryError:
         return []
     except FileNotFoundError:
         return []
+
 
 def inject_dependencies(
         conda_dict: Dict[Any, Any],
@@ -325,8 +333,9 @@ def inject_dependencies(
                 found_pip_dict = True
                 break
             if isinstance(dep["pip"], str):
-                skip_ray =  "ray[default]" in pip_dependencies
-                dep["pip"] = pip_dependencies + requirements_file_to_list(dep["pip"], skip_ray=skip_ray)
+                skip_ray = "ray[default]" in pip_dependencies
+                dep["pip"] = pip_dependencies + requirements_file_to_list(
+                    dep["pip"], skip_ray=skip_ray)
                 found_pip_dict = True
                 break
     if not found_pip_dict:
@@ -337,5 +346,3 @@ def inject_dependencies(
 
 if __name__ == "__main__":
     setup_worker(sys.argv[1:])
-
-
