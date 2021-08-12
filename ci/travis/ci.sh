@@ -129,7 +129,7 @@ test_core() {
       ;;
   esac
   # shellcheck disable=SC2046
-  bazel test --config=ci --build_tests_only $(./scripts/bazel_export_options) -- "${args[@]}"
+  bazel test --javabase=@bazel_tools//tools/jdk:remote_jdk11 --config=ci --build_tests_only $(./scripts/bazel_export_options) -- "${args[@]}"
 }
 
 test_python() {
@@ -190,18 +190,18 @@ test_python() {
     # Check why this issue doesn't arise on Linux/Mac.
     # Ideally importing ray.cloudpickle should import pickle5 automatically.
     # shellcheck disable=SC2046
-    bazel test --config=ci --build_tests_only $(./scripts/bazel_export_options) \
+    bazel test --javabase=@bazel_tools//tools/jdk:remote_jdk11 --config=ci --build_tests_only $(./scripts/bazel_export_options) \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- \
       "${args[@]}";
   fi
 }
 
 test_cpp() {
-  bazel build --config=ci //cpp:all
+  bazel build --javabase=@bazel_tools//tools/jdk:remote_jdk11 --config=ci //cpp:all
   # shellcheck disable=SC2046
-  bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
+  bazel test --javabase=@bazel_tools//tools/jdk:remote_jdk11 --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
   # run cluster mode test with external cluster
-  bazel test //cpp:cluster_mode_test --test_arg=--external-cluster=true --test_arg=--redis-password="1234" \
+  bazel test //cpp:cluster_mode_test  --javabase=@bazel_tools//tools/jdk:remote_jdk11 --test_arg=--external-cluster=true --test_arg=--redis-password="1234" \
     --test_arg=--ray-redis-password="1234"
   # run the cpp example
   bazel run //cpp/example:example
@@ -293,12 +293,12 @@ _bazel_build_before_install() {
     target="//:ray_pkg"
   fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-  bazel build "${target}"
+  bazel build  --javabase=@bazel_tools//tools/jdk:remote_jdk11 "${target}"
 }
 
 
 _bazel_build_protobuf() {
-  bazel build "//:install_py_proto"
+  bazel build --javabase=@bazel_tools//tools/jdk:remote_jdk11 "//:install_py_proto"
 }
 
 install_ray() {
