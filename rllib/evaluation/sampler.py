@@ -5,6 +5,7 @@ import numpy as np
 import queue
 import threading
 import time
+import tree  # pip install dm_tree
 from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
     Type, TYPE_CHECKING, Union
 
@@ -554,12 +555,8 @@ def _env_runner(
             extra_batch_callback,
             env_id=env_id)
         # Call each policy's Exploration.on_episode_start method.
-        # Note: This may break the exploration (e.g. ParameterNoise) of
-        # policies in the `policy_map` that have not been recently used
-        # (and are therefore stashed to disk). However, we certainly do not
-        # want to loop through all (even stashed) policies here as that
-        # would counter the purpose of the LRU policy caching.
-        for p in worker.policy_map.cache.values():
+        # types: Policy
+        for p in worker.policy_map.values():
             if getattr(p, "exploration", None) is not None:
                 p.exploration.on_episode_start(
                     policy=p,
@@ -782,7 +779,8 @@ def _process_observations(
                     obs_sp = worker.policy_map[episode.policy_for(
                         ag_id)].observation_space
                     obs_sp = getattr(obs_sp, "original_space", obs_sp)
-                    all_agents_obs[ag_id] = np.zeros_like(obs_sp.sample())
+                    all_agents_obs[ag_id] = tree.map_structure(
+                        np.zeros_like, obs_sp.sample())
         else:
             hit_horizon = False
             all_agents_done = False
@@ -906,14 +904,8 @@ def _process_observations(
             if ma_sample_batch:
                 outputs.append(ma_sample_batch)
 
-            # Call each (in-memory) policy's Exploration.on_episode_end
-            # method.
-            # Note: This may break the exploration (e.g. ParameterNoise) of
-            # policies in the `policy_map` that have not been recently used
-            # (and are therefore stashed to disk). However, we certainly do not
-            # want to loop through all (even stashed) policies here as that
-            # would counter the purpose of the LRU policy caching.
-            for p in worker.policy_map.cache.values():
+            # Call each policy's Exploration.on_episode_end method.
+            for p in worker.policy_map.values():
                 if getattr(p, "exploration", None) is not None:
                     p.exploration.on_episode_end(
                         policy=p,

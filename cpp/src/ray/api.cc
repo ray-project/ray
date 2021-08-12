@@ -18,25 +18,22 @@
 #include "runtime/abstract_ray_runtime.h"
 
 namespace ray {
-namespace api {
 
-std::once_flag Ray::is_inited_;
-
-void Ray::Init(RayConfig &config, int *argc, char ***argv) {
-  ConfigInternal::Instance().Init(config, argc, argv);
-  Init();
-}
-
-void Ray::Init(RayConfig &config) { Init(config, nullptr, nullptr); }
-
-void Ray::Init() {
+void Init(RayConfig &config, int *argc, char ***argv) {
+  ray::internal::ConfigInternal::Instance().Init(config, argc, argv);
   std::call_once(is_inited_, [] {
-    auto runtime = AbstractRayRuntime::DoInit();
+    auto runtime = ray::internal::AbstractRayRuntime::DoInit();
     ray::internal::RayRuntimeHolder::Instance().Init(runtime);
   });
 }
 
-void Ray::Shutdown() { AbstractRayRuntime::DoShutdown(); }
+void Init(RayConfig &config) { Init(config, nullptr, nullptr); }
 
-}  // namespace api
+void Init() {
+  RayConfig config;
+  Init(config, nullptr, nullptr);
+}
+
+void Shutdown() { ray::internal::AbstractRayRuntime::DoShutdown(); }
+
 }  // namespace ray

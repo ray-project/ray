@@ -19,7 +19,7 @@
 #include "ray/core_worker/common.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 using ray::core::WorkerType;
 
@@ -70,5 +70,5 @@ class ConfigInternal {
   ConfigInternal(){};
 };
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

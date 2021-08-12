@@ -130,6 +130,7 @@ void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id, const ActorID &ac
                                         const TaskID &task_id) {
   // NOTE: This method will cancel the outstanding lease request and remove leasing
   // information from the internal state.
+  RAY_LOG(DEBUG) << "Canceling worker leasing of task " << task_id;
   auto node_it = node_to_actors_when_leasing_.find(node_id);
   RAY_CHECK(node_it != node_to_actors_when_leasing_.end());
   node_it->second.erase(actor_id);
@@ -343,6 +344,7 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
         if (iter != node_to_workers_when_creating_.end()) {
           auto worker_iter = iter->second.find(actor->GetWorkerID());
           if (worker_iter != iter->second.end()) {
+            RAY_LOG(DEBUG) << "Worker " << worker_iter->first << " is in creating map.";
             // The worker is still in the creating map.
             if (status.ok()) {
               // Remove related core worker client.
@@ -361,12 +363,20 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
               RetryCreatingActorOnWorker(actor, worker);
             }
           }
+        } else {
+          RAY_LOG(DEBUG) << "Actor " << actor->GetActorID()
+                         << " has been removed from creating map. Actor status "
+                         << actor->GetState();
+          auto actor_id = status.ok() ? actor->GetActorID() : ActorID::Nil();
+          KillActorOnWorker(worker->GetAddress(), actor_id);
         }
       });
 }
 
 void GcsActorScheduler::RetryCreatingActorOnWorker(
     std::shared_ptr<GcsActor> actor, std::shared_ptr<GcsLeasedWorker> worker) {
+  RAY_LOG(DEBUG) << "Retry creating actor " << actor->GetActorID() << " on worker "
+                 << worker->GetWorkerID();
   RAY_UNUSED(execute_after(
       io_context_, [this, actor, worker] { DoRetryCreatingActorOnWorker(actor, worker); },
       RayConfig::instance().gcs_create_actor_retry_interval_ms()));
@@ -392,6 +402,26 @@ void GcsActorScheduler::DoRetryCreatingActorOnWorker(
 std::shared_ptr<WorkerLeaseInterface> GcsActorScheduler::GetOrConnectLeaseClient(
     const rpc::Address &raylet_address) {
   return raylet_client_pool_->GetOrConnectByAddress(raylet_address);
+}
+
+bool GcsActorScheduler::KillActorOnWorker(const rpc::Address &worker_address,
+                                          ActorID actor_id) {
+  if (worker_address.raylet_id().empty()) {
+    RAY_LOG(DEBUG) << "Invalid worker address, skip the killing of actor " << actor_id;
+    return false;
+  }
+
+  auto cli = core_worker_clients_.GetOrConnect(worker_address);
+  rpc::KillActorRequest request;
+  // Set it to be Nil() since it hasn't been setup yet.
+  request.set_intended_actor_id(actor_id.Binary());
+  request.set_force_kill(true);
+  request.set_no_restart(true);
+  cli->KillActor(request, [actor_id](auto &status, auto &) {
+    RAY_LOG(DEBUG) << "Killing actor " << actor_id
+                   << " with return status: " << status.ToString();
+  });
+  return true;
 }
 
 std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNode(
@@ -450,6 +480,12 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
           << actor->GetActorID()
           << " has been already cancelled. The response will be ignored. Job id = "
           << actor->GetActorID().JobId();
+      if (actor->GetState() == rpc::ActorTableData::DEAD) {
+        // If the actor has been killed, we need to kill the worker too
+        // otherwise, the worker will be leaked.
+        RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker.";
+        KillActorOnWorker(reply.worker_address(), ActorID::Nil());
+      }
       return;
     }
 
@@ -477,6 +513,11 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
     } else {
       RetryLeasingWorkerFromNode(actor, node);
     }
+  } else if (actor->GetState() == rpc::ActorTableData::DEAD) {
+    // If the actor has been killed, we need to kill the worker too
+    // otherwise, the worker will be leaked.
+    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << " is dead, kill the worker.";
+    KillActorOnWorker(reply.worker_address(), ActorID::Nil());
   }
 }
 

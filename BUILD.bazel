@@ -963,20 +963,6 @@ cc_test(
 )
 
 cc_test(
-    name = "allocator_test",
-    srcs = [
-        "src/ray/object_manager/plasma/test/allocator_test.cc",
-    ],
-    copts = COPTS,
-    deps = [
-        ":plasma_store_server_lib",
-        "@boost//:filesystem",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "fallback_allocator_test",
     srcs = [
         "src/ray/object_manager/plasma/test/fallback_allocator_test.cc",

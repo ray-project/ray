@@ -19,7 +19,7 @@
 #include "ray/core_worker/core_worker.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 using ray::core::CoreWorkerOptions;
 
@@ -41,5 +41,5 @@ class ProcessHelper {
  private:
   ProcessHelper(){};
 };
-}  // namespace api
+}  // namespace internal
 }  // namespace ray
