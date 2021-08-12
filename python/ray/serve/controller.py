@@ -152,7 +152,12 @@ class ServeController:
             running_replicas = replica_state_container.get(
                 [ReplicaState.RUNNING])
             for replica in running_replicas:
-                actor_id = replica.actor_handle._ray_actor_id.hex()
+                try:
+                    actor_handle = replica.actor_handle
+                except ValueError:
+                    # Actor died or hasn't yet been created.
+                    continue
+                actor_id = actor_handle._ray_actor_id.hex()
                 replica_tag = replica.replica_tag
                 replica_version = replica.version.code_version
                 entry["actors"][actor_id] = {
