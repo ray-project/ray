@@ -15,6 +15,12 @@
         "snapshot": {
           "type": "object",
           "properties": {
+            "ray_version": {
+              "type": "string"
+            },
+            "ray_commit": {
+              "type": "string"
+            },
             "jobs": {
               "type": "object",
               "patternProperties": {
