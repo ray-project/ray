@@ -12,13 +12,16 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from fsspec.implementations.local import LocalFileSystem
+from pytest_lazyfixture import lazy_fixture
 
 import ray
 
 from ray.tests.conftest import *  # noqa
 from ray.data.datasource import DummyOutputDatasource
 from ray.data.block import BlockAccessor
+from ray.data.datasource.file_based_datasource import _unwrap_protocol
 import ray.data.tests.util as util
+from ray.data.tests.conftest import *  # noqa
 
 
 def maybe_pipeline(ds, enabled):
@@ -485,6 +488,51 @@ def test_parquet_read(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet(str(tmp_path), columns=["one"])
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
+
+
+def test_parquet_read_partitioned(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame({
+        "one": [1, 1, 1, 3, 3, 3],
+        "two": ["a", "b", "c", "e", "f", "g"]
+    })
+    table = pa.Table.from_pandas(df)
+    pq.write_to_dataset(
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
+        use_legacy_dataset=False)
+    pq_ds = pq.ParquetDataset(str(tmp_path), use_legacy_dataset=False)
+    print(pq_ds.read().to_pandas())
+
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    # Test metadata-only parquet ops.
+    assert len(ds._blocks._blocks) == 1
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == 2, input_files
+    assert str(ds) == \
+        "Dataset(num_blocks=2, num_rows=6, " \
+        "schema={two: string, " \
+        "one: dictionary<values=int32, indices=int32, ordered=0>})", ds
+    assert repr(ds) == \
+        "Dataset(num_blocks=2, num_rows=6, " \
+        "schema={two: string, " \
+        "one: dictionary<values=int32, indices=int32, ordered=0>})", ds
+    assert len(ds._blocks._blocks) == 1
+
+    # Forces a data read.
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert len(ds._blocks._blocks) == 2
+    assert sorted(values) == [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"],
+                              [3, "g"]]
+
+    # Test column selection.
+    ds = ray.data.read_parquet(str(tmp_path), columns=["one"])
+    values = [s["one"] for s in ds.take()]
+    assert sorted(values) == [1, 1, 1, 3, 3, 3]
 
 
 def test_parquet_write(ray_start_regular_shared, tmp_path):
@@ -1047,88 +1095,139 @@ def test_to_torch_feature_columns(ray_start_regular_shared):
     assert np.array_equal(df.values, combined_iterations)
 
 
-def test_json_read(ray_start_regular_shared, tmp_path):
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
     # Single file.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(tmp_path, "test1.json")
-    df1.to_json(path1, orient="records", lines=True)
-    ds = ray.data.read_json(path1)
-    assert df1.equals(ray.get(ds.to_pandas())[0])
+    path1 = os.path.join(data_path, "test1.json")
+    df1.to_json(
+        path1, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json(path1, filesystem=fs)
+    dsdf = ray.get(ds.to_pandas())[0]
+    assert df1.equals(dsdf)
     # Test metadata ops.
     assert ds.count() == 3
-    assert ds.input_files() == [path1]
+    assert ds.input_files() == [_unwrap_protocol(path1)]
     assert "{one: int64, two: string}" in str(ds), ds
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(tmp_path, "test2.json")
-    df2.to_json(path2, orient="records", lines=True)
-    ds = ray.data.read_json([path1, path2], parallelism=2)
+    path2 = os.path.join(data_path, "test2.json")
+    df2.to_json(
+        path2, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json([path1, path2], parallelism=2, filesystem=fs)
     dsdf = pd.concat(ray.get(ds.to_pandas()))
-    assert pd.concat([df1, df2]).equals(dsdf)
+    df = pd.concat([df1, df2])
+    assert df.equals(dsdf)
     # Test metadata ops.
     for block, meta in zip(ds._blocks, ds._blocks.get_metadata()):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
-    path3 = os.path.join(tmp_path, "test3.json")
-    df3.to_json(path3, orient="records", lines=True)
+    path3 = os.path.join(data_path, "test3.json")
+    df3.to_json(
+        path3, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json(
+        [path1, path2, path3], parallelism=2, filesystem=fs)
     df = pd.concat([df1, df2, df3], ignore_index=True)
-    ds = ray.data.read_json([path1, path2, path3], parallelism=2)
     dsdf = pd.concat(ray.get(ds.to_pandas()), ignore_index=True)
     assert df.equals(dsdf)
 
     # Directory, two files.
-    path = os.path.join(tmp_path, "test_json_dir")
-    os.mkdir(path)
+    path = os.path.join(data_path, "test_json_dir")
+    if fs is None:
+        os.mkdir(path)
+    else:
+        fs.create_dir(_unwrap_protocol(path))
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(path, "data0.json")
-    df1.to_json(path1, orient="records", lines=True)
+    df1.to_json(
+        path1, orient="records", lines=True, storage_options=storage_options)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(path, "data1.json")
-    df2.to_json(path2, orient="records", lines=True)
-    ds = ray.data.read_json(path)
+    df2.to_json(
+        path2, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json(path, filesystem=fs)
     df = pd.concat([df1, df2])
     dsdf = pd.concat(ray.get(ds.to_pandas()))
     assert df.equals(dsdf)
-    shutil.rmtree(path)
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
 
     # Two directories, three files.
-    path1 = os.path.join(tmp_path, "test_json_dir1")
-    path2 = os.path.join(tmp_path, "test_json_dir2")
-    os.mkdir(path1)
-    os.mkdir(path2)
+    path1 = os.path.join(data_path, "test_json_dir1")
+    path2 = os.path.join(data_path, "test_json_dir2")
+    if fs is None:
+        os.mkdir(path1)
+        os.mkdir(path2)
+    else:
+        fs.create_dir(_unwrap_protocol(path1))
+        fs.create_dir(_unwrap_protocol(path2))
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     file_path1 = os.path.join(path1, "data0.json")
-    df1.to_json(file_path1, orient="records", lines=True)
+    df1.to_json(
+        file_path1,
+        orient="records",
+        lines=True,
+        storage_options=storage_options)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     file_path2 = os.path.join(path2, "data1.json")
-    df2.to_json(file_path2, orient="records", lines=True)
+    df2.to_json(
+        file_path2,
+        orient="records",
+        lines=True,
+        storage_options=storage_options)
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
     file_path3 = os.path.join(path2, "data2.json")
-    df3.to_json(file_path3, orient="records", lines=True)
-    ds = ray.data.read_json([path1, path2])
+    df3.to_json(
+        file_path3,
+        orient="records",
+        lines=True,
+        storage_options=storage_options)
+    ds = ray.data.read_json([path1, path2], filesystem=fs)
     df = pd.concat([df1, df2, df3])
     dsdf = pd.concat(ray.get(ds.to_pandas()))
     assert df.equals(dsdf)
-    shutil.rmtree(path1)
-    shutil.rmtree(path2)
+    if fs is None:
+        shutil.rmtree(path1)
+        shutil.rmtree(path2)
+    else:
+        fs.delete_dir(_unwrap_protocol(path1))
+        fs.delete_dir(_unwrap_protocol(path2))
 
     # Directory and file, two files.
-    dir_path = os.path.join(tmp_path, "test_json_dir")
-    os.mkdir(dir_path)
+    dir_path = os.path.join(data_path, "test_json_dir")
+    if fs is None:
+        os.mkdir(dir_path)
+    else:
+        fs.create_dir(_unwrap_protocol(dir_path))
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(dir_path, "data0.json")
-    df1.to_json(path1, orient="records", lines=True)
+    df1.to_json(
+        path1, orient="records", lines=True, storage_options=storage_options)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(tmp_path, "data1.json")
-    df2.to_json(path2, orient="records", lines=True)
-    ds = ray.data.read_json([dir_path, path2])
+    path2 = os.path.join(data_path, "data1.json")
+    df2.to_json(
+        path2, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json([dir_path, path2], filesystem=fs)
     df = pd.concat([df1, df2])
     dsdf = pd.concat(ray.get(ds.to_pandas()))
     assert df.equals(dsdf)
-    shutil.rmtree(dir_path)
+    if fs is None:
+        shutil.rmtree(dir_path)
+    else:
+        fs.delete_dir(_unwrap_protocol(dir_path))
 
 
 def test_zipped_json_read(ray_start_regular_shared, tmp_path):
@@ -1179,7 +1278,7 @@ def test_json_write(ray_start_regular_shared, tmp_path):
     ds._set_uuid("data")
     ds.write_json(path)
     file_path = os.path.join(path, "data_000000.json")
-    assert df.equals(pd.read_json(file_path))
+    assert df.equals(pd.read_json(file_path, orient="records", lines=True))
     shutil.rmtree(path)
 
     # Two blocks.
@@ -1190,29 +1289,74 @@ def test_json_write(ray_start_regular_shared, tmp_path):
     ds.write_json(path)
     file_path2 = os.path.join(path, "data_000001.json")
     assert pd.concat([df, df2]).equals(
-        pd.concat([pd.read_json(file_path),
-                   pd.read_json(file_path2)]))
+        pd.concat([
+            pd.read_json(file_path, orient="records", lines=True),
+            pd.read_json(file_path2, orient="records", lines=True)
+        ]))
     shutil.rmtree(path)
 
 
-def test_csv_read(ray_start_regular_shared, tmp_path):
+def test_json_roundtrip(ray_start_regular_shared, tmp_path):
+    path = os.path.join(tmp_path, "test_json_dir")
+
+    # Single block.
+    os.mkdir(path)
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    ds = ray.data.from_pandas([ray.put(df)])
+    ds._set_uuid("data")
+    ds.write_json(path)
+    file_path = os.path.join(path, "data_000000.json")
+    ds2 = ray.data.read_json([file_path])
+    ds2df = pd.concat(ray.get(ds2.to_pandas()))
+    assert ds2df.equals(df)
+    # Test metadata ops.
+    for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+    shutil.rmtree(path)
+
+    # Two blocks.
+    os.mkdir(path)
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas([ray.put(df), ray.put(df2)])
+    ds._set_uuid("data")
+    ds.write_json(path)
+    file_path2 = os.path.join(path, "data_000001.json")
+    ds2 = ray.data.read_json([file_path, file_path2], parallelism=2)
+    ds2df = pd.concat(ray.get(ds2.to_pandas()))
+    assert pd.concat([df, df2]).equals(ds2df)
+    # Test metadata ops.
+    for block, meta in zip(ds2._blocks, ds2._blocks.get_metadata()):
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+    shutil.rmtree(path)
+
+
+@pytest.mark.parametrize("fs,data_path,endpoint_url", [
+    (None, lazy_fixture("local_path"), None),
+    (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+    (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server"))
+])
+def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
     # Single file.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    path1 = os.path.join(tmp_path, "test1.csv")
-    df1.to_csv(path1, index=False)
-    ds = ray.data.read_csv(path1)
+    path1 = os.path.join(data_path, "test1.csv")
+    df1.to_csv(path1, index=False, storage_options=storage_options)
+    ds = ray.data.read_csv(path1, filesystem=fs)
     dsdf = ray.get(ds.to_pandas())[0]
     assert df1.equals(dsdf)
     # Test metadata ops.
     assert ds.count() == 3
-    assert ds.input_files() == [path1]
+    assert ds.input_files() == [_unwrap_protocol(path1)]
     assert "{one: int64, two: string}" in str(ds), ds
 
     # Two files, parallelism=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(tmp_path, "test2.csv")
-    df2.to_csv(path2, index=False)
-    ds = ray.data.read_csv([path1, path2], parallelism=2)
+    path2 = os.path.join(data_path, "test2.csv")
+    df2.to_csv(path2, index=False, storage_options=storage_options)
+    ds = ray.data.read_csv([path1, path2], parallelism=2, filesystem=fs)
     dsdf = pd.concat(ray.get(ds.to_pandas()))
     df = pd.concat([df1, df2])
     assert df.equals(dsdf)
@@ -1222,63 +1366,83 @@ def test_csv_read(ray_start_regular_shared, tmp_path):
 
     # Three files, parallelism=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
-    path3 = os.path.join(tmp_path, "test3.csv")
-    df3.to_csv(path3, index=False)
-    ds = ray.data.read_csv([path1, path2, path3], parallelism=2)
+    path3 = os.path.join(data_path, "test3.csv")
+    df3.to_csv(path3, index=False, storage_options=storage_options)
+    ds = ray.data.read_csv([path1, path2, path3], parallelism=2, filesystem=fs)
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = pd.concat(ray.get(ds.to_pandas()), ignore_index=True)
     assert df.equals(dsdf)
 
     # Directory, two files.
-    path = os.path.join(tmp_path, "test_csv_dir")
-    os.mkdir(path)
+    path = os.path.join(data_path, "test_csv_dir")
+    if fs is None:
+        os.mkdir(path)
+    else:
+        fs.create_dir(_unwrap_protocol(path))
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(path, "data0.csv")
-    df1.to_csv(path1, index=False)
+    df1.to_csv(path1, index=False, storage_options=storage_options)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(path, "data1.csv")
-    df2.to_csv(path2, index=False)
-    ds = ray.data.read_csv(path)
+    df2.to_csv(path2, index=False, storage_options=storage_options)
+    ds = ray.data.read_csv(path, filesystem=fs)
     df = pd.concat([df1, df2])
     dsdf = pd.concat(ray.get(ds.to_pandas()))
     assert df.equals(dsdf)
-    shutil.rmtree(path)
+    if fs is None:
+        shutil.rmtree(path)
+    else:
+        fs.delete_dir(_unwrap_protocol(path))
 
     # Two directories, three files.
-    path1 = os.path.join(tmp_path, "test_csv_dir1")
-    path2 = os.path.join(tmp_path, "test_csv_dir2")
-    os.mkdir(path1)
-    os.mkdir(path2)
+    path1 = os.path.join(data_path, "test_csv_dir1")
+    path2 = os.path.join(data_path, "test_csv_dir2")
+    if fs is None:
+        os.mkdir(path1)
+        os.mkdir(path2)
+    else:
+        fs.create_dir(_unwrap_protocol(path1))
+        fs.create_dir(_unwrap_protocol(path2))
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     file_path1 = os.path.join(path1, "data0.csv")
-    df1.to_csv(file_path1, index=False)
+    df1.to_csv(file_path1, index=False, storage_options=storage_options)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     file_path2 = os.path.join(path2, "data1.csv")
-    df2.to_csv(file_path2, index=False)
+    df2.to_csv(file_path2, index=False, storage_options=storage_options)
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
     file_path3 = os.path.join(path2, "data2.csv")
-    df3.to_csv(file_path3, index=False)
-    ds = ray.data.read_csv([path1, path2])
+    df3.to_csv(file_path3, index=False, storage_options=storage_options)
+    ds = ray.data.read_csv([path1, path2], filesystem=fs)
     df = pd.concat([df1, df2, df3])
     dsdf = pd.concat(ray.get(ds.to_pandas()))
     assert df.equals(dsdf)
-    shutil.rmtree(path1)
-    shutil.rmtree(path2)
+    if fs is None:
+        shutil.rmtree(path1)
+        shutil.rmtree(path2)
+    else:
+        fs.delete_dir(_unwrap_protocol(path1))
+        fs.delete_dir(_unwrap_protocol(path2))
 
     # Directory and file, two files.
-    dir_path = os.path.join(tmp_path, "test_csv_dir")
-    os.mkdir(dir_path)
+    dir_path = os.path.join(data_path, "test_csv_dir")
+    if fs is None:
+        os.mkdir(dir_path)
+    else:
+        fs.create_dir(_unwrap_protocol(dir_path))
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     path1 = os.path.join(dir_path, "data0.csv")
-    df1.to_csv(path1, index=False)
+    df1.to_csv(path1, index=False, storage_options=storage_options)
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    path2 = os.path.join(tmp_path, "data1.csv")
-    df2.to_csv(path2, index=False)
-    ds = ray.data.read_csv([dir_path, path2])
+    path2 = os.path.join(data_path, "data1.csv")
+    df2.to_csv(path2, index=False, storage_options=storage_options)
+    ds = ray.data.read_csv([dir_path, path2], filesystem=fs)
     df = pd.concat([df1, df2])
     dsdf = pd.concat(ray.get(ds.to_pandas()))
     assert df.equals(dsdf)
-    shutil.rmtree(dir_path)
+    if fs is None:
+        shutil.rmtree(dir_path)
+    else:
+        fs.delete_dir(_unwrap_protocol(dir_path))
 
 
 def test_csv_write(ray_start_regular_shared, tmp_path):

@@ -797,7 +797,7 @@ class Dataset(Generic[T]):
             block = BlockAccessor.for_block(block)
             logger.debug(
                 f"Writing {block.num_rows()} records to {write_path}.")
-            block.to_pandas().to_json(write_path, orient="records")
+            block.to_pandas().to_json(write_path, orient="records", lines=True)
 
         refs = [
             json_write.remote(
