@@ -1,5 +1,4 @@
 from functools import partial
-import gym
 from gym.spaces import Box, Dict, Discrete
 import numpy as np
 import unittest

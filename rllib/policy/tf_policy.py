@@ -887,7 +887,8 @@ class TFPolicy(Policy):
                     if key in self._input_dict:
                         # Handle complex/nested spaces as well.
                         tree.map_structure(
-                            lambda k, v: builder.add_feed_dict({k: v}), self._input_dict[key], value
+                            lambda k, v: builder.add_feed_dict({k: v}),
+                            self._input_dict[key], value,
                         )
             # For policies that inherit directly from TFPolicy.
             else:

@@ -551,7 +551,8 @@ class DynamicTFPolicy(TFPolicy):
                 if view_req.used_for_training:
                     # Create a +time-axis placeholder if the shift is not an
                     # int (range or list of ints).
-                    flatten = view_col not in [SampleBatch.OBS, SampleBatch.NEXT_OBS] or \
+                    flatten = view_col not in [
+                        SampleBatch.OBS, SampleBatch.NEXT_OBS] or \
                               self.config["preprocessor_pref"] is not None
                     input_dict[view_col] = get_placeholder(
                         space=view_req.space,

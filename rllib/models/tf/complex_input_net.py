@@ -133,10 +133,7 @@ class ComplexInputNetwork(TFModelV2):
                 cnn_out, _ = self.cnns[i]({SampleBatch.OBS: component})
                 outs.append(cnn_out)
             elif i in self.one_hot:
-                #if component.dtype in [tf.int32, tf.int64, tf.uint8]:
                 outs.append(one_hot(component, self.flattened_input_space[i]))
-                #else:
-                #    outs.append(tf.cast(component, tf.float32))
             else:
                 outs.append(
                     tf.cast(

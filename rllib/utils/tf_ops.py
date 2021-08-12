@@ -70,7 +70,10 @@ def get_placeholder(*,
                 return ModelCatalog.get_action_placeholder(space, None)
             else:
                 return tree.map_structure_with_path(
-                    lambda path, component: get_placeholder(space=component, name=name + "." + ".".join([str(p) for p in path])),
+                    lambda path, component: get_placeholder(
+                        space=component,
+                        name=name + "." + ".".join([str(p) for p in path]),
+                    ),
                     get_base_struct_from_space(space),
                 )
         return tf1.placeholder(
@@ -206,9 +209,9 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                         args_flat.append(a)
                 args = args_flat
 
-                # We have not built any placeholders yet: Do this once here, then
-                # reuse the same placeholders each time we call this function
-                # again.
+                # We have not built any placeholders yet: Do this once here,
+                # then reuse the same placeholders each time we call this
+                # function again.
                 if symbolic_out[0] is None:
                     with session_or_none.graph.as_default():
 

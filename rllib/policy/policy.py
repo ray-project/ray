@@ -852,7 +852,8 @@ class Policy(metaclass=ABCMeta):
         ret = {}
         for view_col, view_req in self.view_requirements.items():
             if self.config["preprocessor_pref"] is not None and \
-                    isinstance(view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)):
+                    isinstance(view_req.space,
+                               (gym.spaces.Dict, gym.spaces.Tuple)):
                 _, shape = ModelCatalog.get_action_shape(
                     view_req.space, framework=self.config["framework"])
                 ret[view_col] = \

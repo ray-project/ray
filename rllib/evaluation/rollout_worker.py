@@ -387,7 +387,8 @@ class RolloutWorker(ParallelIteratorWorker):
         self.count_steps_by: str = count_steps_by
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
-        self.preprocessing_enabled: bool = False if preprocessor_pref is None else True
+        self.preprocessing_enabled: bool = False \
+            if preprocessor_pref is None else True
         self.observation_filter = observation_filter
         self.last_batch: SampleBatchType = None
         self.global_vars: dict = None
@@ -1361,7 +1362,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space, merged_conf.get("model"))
                 self.preprocessors[name] = preprocessor
-                obs_space = preprocessor.observation_space
+                if preprocessor is not None:
+                    obs_space = preprocessor.observation_space
             else:
                 self.preprocessors[name] = None
 

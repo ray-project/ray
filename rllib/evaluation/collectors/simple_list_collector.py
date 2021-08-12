@@ -125,12 +125,12 @@ class _AgentCollector:
         for k, v in values.items():
             if k not in self.buffers:
                 self._build_buffers(single_row=values)
-            #if k == SampleBatch.OBS:
-            #    tree.map_structure_with_path(self._add_obs_helper, v)
-            #else:
-            flattened = tree.flatten(v)
-            for i, sub_list in enumerate(self.buffers[k]):
-                sub_list.append(flattened[i])
+            if k != SampleBatch.INFOS:
+                flattened = tree.flatten(v)
+                for i, sub_list in enumerate(self.buffers[k]):
+                    sub_list.append(flattened[i])
+            else:
+                self.buffers[k][0].append(v)
         self.agent_steps += 1
 
     def build(self, view_requirements: ViewRequirementsDict) -> SampleBatch:
@@ -336,8 +336,6 @@ class _PolicyCollector:
             policy (Policy): The policy object.
         """
 
-        #self.buffers: Dict[str, Any] = {}
-        #collections.defaultdict(list)
         self.batches = []
         self.policy = policy
         # The total timestep count for all agents that use this policy.
@@ -345,8 +343,6 @@ class _PolicyCollector:
         # agentB, both using this policy, acting in the same episode and both
         # doing n steps would increase the count by 2*n.
         self.agent_steps = 0
-        # Seq-lens list of already added agent batches.
-        #self.seq_lens = [] if policy.is_recurrent() else None
 
     def add_postprocessed_batch_for_training(
             self, batch: SampleBatch,
@@ -361,13 +357,6 @@ class _PolicyCollector:
                 view-column needs to be copied at all (not needed for
                 training).
         """
-        #for view_col, data in batch.items():
-        # 1) If col is not in view_requirements, we must have a direct
-        # child of the base Policy that doesn't do auto-view req creation.
-        # 2) Col is in view-reqs and needed for training.
-        #    view_req = view_requirements.get(view_col)
-        #    if view_req is None or view_req.used_for_training:
-        #        self.buffers[view_col].extend(data)
         # Add the agent's trajectory length to our count.
         self.agent_steps += batch.count
         # And remove columns not needed for training.
@@ -375,13 +364,6 @@ class _PolicyCollector:
             if view_col in batch and not view_req.used_for_training:
                 del batch[view_col]
         self.batches.append(batch)
-        # Adjust the seq-lens array depending on the incoming agent sequences.
-        #if self.seq_lens is not None:
-        #    max_seq_len = self.policy.config["model"]["max_seq_len"]
-        #    count = batch.count
-        #    while count > 0:
-        #        self.seq_lens.append(min(count, max_seq_len))
-        #        count -= max_seq_len
 
     def build(self):
         """Builds a SampleBatch for this policy from the collected data.
@@ -393,17 +375,11 @@ class _PolicyCollector:
                 this policy.
         """
         # Create batch from our buffers.
-        #batch = SampleBatch({
-        #    k: tree.unflatten_as(, v) for k, v in self.buffers.items()
-        #}, seq_lens=self.seq_lens)
         batch = SampleBatch.concat_samples(self.batches)
-        # Clear buffers for future samples.
-        #self.buffers.clear()
+        # Clear batches for future samples.
         self.batches = []
         # Reset agent steps to 0 and seq-lens to empty list.
         self.agent_steps = 0
-        #if self.seq_lens is not None:
-        #    self.seq_lens = []
         return batch
 
 
@@ -620,8 +596,10 @@ class SimpleListCollector(SampleCollector):
                     # Buffer for the data does not exist yet: Create dummy
                     # (zero) data.
                     if data_col not in buffers[k]:
-                        fill_value = get_dummy_batch_for_space(view_req.space, batch_size=0) \
-                            if isinstance(view_req.space, Space) else \
+                        fill_value = get_dummy_batch_for_space(
+                            view_req.space,
+                            batch_size=0,
+                        ) if isinstance(view_req.space, Space) else \
                             view_req.space
                         self.agent_collectors[k]._build_buffers({
                             data_col: fill_value
@@ -635,8 +613,8 @@ class SimpleListCollector(SampleCollector):
                     # `shift_from` and `shift_to` are defined: User wants a
                     # view with some time-range.
                     if isinstance(time_indices, tuple):
-                        # `shift_to` == -1: Until the end (including(!) the last
-                        # item).
+                        # `shift_to` == -1: Until the end (including(!) the
+                        # last item).
                         if time_indices[1] == -1:
                             for d, b in zip(data, buffers[k][data_col]):
                                 d.append(b[time_indices[0]:])
