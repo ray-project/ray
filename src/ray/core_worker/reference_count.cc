@@ -834,7 +834,9 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
       for (const auto &inner_id : inner_ids) {
         it->second.contains.insert(inner_id);
         auto inner_it = object_id_refs_.find(inner_id);
-        RAY_CHECK(inner_it != object_id_refs_.end());
+        if (inner_it == object_id_refs_.end()) {
+          inner_it = object_id_refs_.emplace(inner_id, Reference()).first;
+        }
         RAY_LOG(DEBUG) << "Setting inner ID " << inner_id
                        << " contained_in_owned: " << object_id;
         inner_it->second.contained_in_owned.insert(object_id);
