@@ -47,12 +47,13 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
                 "cpu": 1,
                 "gpu": 1,
             })
-        msg = ("Autoscaler is disabled. No trial is running and no new trial"
-               " has been started within at least the last 1.0 seconds. This "
-               "could be due to the cluster not having enough resources "
-               "available to start the next trial. Please check if the "
-               "requested resources can be fulfilled by your cluster, or will "
-               "be fulfilled eventually (when using the Ray autoscaler).")
+        msg = (
+            "No trial is running and no new trial has been started within at"
+            " least the last 1.0 seconds. This could be due to the cluster "
+            "not having enough resources available to start the next trial. "
+            "Please stop the tuning job and readjust resources_per_trial "
+            "argument passed into tune.run() and/or start a cluster with more "
+            "resources.")
         mocked_warn.assert_called_with(msg)
 
     @freeze_time("2021-08-03")

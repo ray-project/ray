@@ -15,16 +15,37 @@ from ray.tune.cluster_info import is_ray_cluster
 logger = logging.getLogger(__name__)
 
 
-# Accessing environment variable could be slow.
 @lru_cache()
-def _get_warn_threshold(autoscaler_enabled: bool) -> float:
-    if autoscaler_enabled:
+def _get_warning_threshold() -> float:
+    if is_ray_cluster():
         return float(
             os.environ.get(
                 "TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER", "60"))
     else:
         return float(
             os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "1"))
+
+
+@lru_cache()
+def _get_warning_msg() -> str:
+    if is_ray_cluster():
+        return (
+            f"If autoscaler is still scaling up, ignore this message. No "
+            f"trial is running and no new trial has been started within at "
+            f"least the last {_get_warning_threshold()} seconds. "
+            f"This could be due to the cluster not having enough "
+            f"resources available to start the next trial. Please stop the "
+            f"tuning job and readjust resources_per_trial argument passed "
+            f"into tune.run() as well as max_workers and worker_nodes "
+            f"InstanceType specified in cluster.yaml.")
+    else:
+        return (f"No trial is running and no new trial has been started within"
+                f" at least the last {_get_warning_threshold()} seconds. "
+                f"This could be due to the cluster not having enough "
+                f"resources available to start the next trial. Please stop "
+                f"the tuning job and readjust resources_per_trial argument "
+                f"passed into tune.run() and/or start a cluster with more "
+                f"resources.")
 
 
 @DeveloperAPI
@@ -215,27 +236,15 @@ class TrialExecutor(metaclass=ABCMeta):
     def force_reconcilation_on_next_step_end(self) -> None:
         pass
 
-    def may_warn_insufficient_resources(self, all_trials):
-        autoscaler_enabled = is_ray_cluster()
+    def _may_warn_insufficient_resources(self, all_trials):
         if not any(trial.status == Trial.RUNNING for trial in all_trials):
             if self._no_running_trials_since == -1:
                 self._no_running_trials_since = time.monotonic()
             elif time.monotonic(
-            ) - self._no_running_trials_since > _get_warn_threshold(
-                    autoscaler_enabled):
-                warn_prefix = ("If autoscaler is still scaling up, ignore "
-                               "this message." if autoscaler_enabled else
-                               "Autoscaler is disabled.")
-                logger.warning(
-                    f"{warn_prefix} "
-                    f"No trial is running and no new trial has been started "
-                    f"within at least the last "
-                    f"{_get_warn_threshold(autoscaler_enabled)} seconds. "
-                    f"This could be due to the cluster not having enough "
-                    f"resources available to start the next trial. Please "
-                    f"check if the requested resources can be fulfilled by "
-                    f"your cluster, or will be fulfilled eventually (when "
-                    f"using the Ray autoscaler).")
+            ) - self._no_running_trials_since > _get_warning_threshold():
+                # TODO(xwjiang): We should ideally output a more helpful msg.
+                # https://github.com/ray-project/ray/issues/17799
+                logger.warning(_get_warning_msg())
                 self._no_running_trials_since = time.monotonic()
         else:
             self._no_running_trials_since = -1
@@ -249,7 +258,7 @@ class TrialExecutor(metaclass=ABCMeta):
 
         if self._queue_trials:
             return
-        self.may_warn_insufficient_resources(trials)
+        self._may_warn_insufficient_resources(trials)
         for trial in trials:
             if trial.uses_placement_groups:
                 return
