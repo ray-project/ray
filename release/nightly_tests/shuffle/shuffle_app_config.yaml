@@ -1,5 +1,5 @@
 base_image: "anyscale/ray-ml:pinned-nightly-py37"
-env_vars: {}
+env_vars: {"RAY_event_stats": 1}
 debian_packages: []
 
 python:
@@ -8,6 +8,7 @@ python:
 
 post_build_cmds:
   - pip uninstall -y ray
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  # - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip install https://s3-us-west-2.amazonaws.com/ray-wheels/test_wheels/obod-bug-debug/42a47a732b1e0cf7cd60e58c1a609e5b1545e9e5/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
   - pip3 install -U ray[default]
   - echo {{env["DATESTAMP"]}}
