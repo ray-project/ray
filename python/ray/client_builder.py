@@ -1,5 +1,6 @@
 import os
 import importlib
+import inspect
 import json
 import logging
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from ray.ray_constants import (RAY_ADDRESS_ENVIRONMENT_VARIABLE,
                                RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
 from ray.job_config import JobConfig
 import ray.util.client_connect
+from ray.worker import init as ray_driver_init
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +140,12 @@ class ClientBuilder:
             self.env(kwargs["runtime_env"])
             del kwargs["runtime_env"]
         if kwargs:
+            expected_sig = inspect.signature(ray_driver_init)
+            extra_args = set(kwargs.keys()).difference(
+                expected_sig.parameters.keys())
+            if len(extra_args) > 0:
+                raise RuntimeError("Got unexpected kwargs: {}".format(
+                    ", ".join(extra_args)))
             self._remote_init_kwargs = kwargs
             unknown = ", ".join(kwargs)
             logger.info("Passing the following kwargs to ray.init() "
