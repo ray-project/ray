@@ -2855,14 +2855,13 @@ MemAvailable:   33000000 kB
         self.waitFor(
             metrics_incremented, fail_msg="Expected metrics to update")
 
-    def testValidateDefaultConfigi2(self):
+    def testDefaultMinMaxWorkers(self):
         config = copy.deepcopy(MOCK_DEFAULT_CONFIG)
         config = prepare_config(config)
         node_types = config["available_node_types"]
         head_node_config = node_types["ray.head.default"]
         assert head_node_config["min_workers"] == 0
-        # Max workers: set from global max workers.
-        assert head_node_config["max_workers"] == 2
+        assert head_node_config["max_workers"] == 0
 
 
 if __name__ == "__main__":
