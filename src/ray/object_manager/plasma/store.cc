@@ -238,10 +238,6 @@ const LocalObject *PlasmaStore::CreateObjectInternal(const ray::ObjectInfo &obje
     }
   }
 
-  if (!RayConfig::instance().plasma_unlimited()) {
-    RAY_LOG(DEBUG) << "Fallback allocation is not enabled.";
-    return nullptr;
-  }
   if (!allow_fallback_allocation) {
     RAY_LOG(DEBUG) << "Fallback allocation not enabled for this request.";
     return nullptr;

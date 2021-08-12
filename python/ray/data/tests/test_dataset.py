@@ -487,6 +487,51 @@ def test_parquet_read(ray_start_regular_shared, tmp_path):
     assert sorted(values) == [1, 2, 3, 4, 5, 6]
 
 
+def test_parquet_read_partitioned(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame({
+        "one": [1, 1, 1, 3, 3, 3],
+        "two": ["a", "b", "c", "e", "f", "g"]
+    })
+    table = pa.Table.from_pandas(df)
+    pq.write_to_dataset(
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
+        use_legacy_dataset=False)
+    pq_ds = pq.ParquetDataset(str(tmp_path), use_legacy_dataset=False)
+    print(pq_ds.read().to_pandas())
+
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    # Test metadata-only parquet ops.
+    assert len(ds._blocks._blocks) == 1
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
+    input_files = ds.input_files()
+    assert len(input_files) == 2, input_files
+    assert str(ds) == \
+        "Dataset(num_blocks=2, num_rows=6, " \
+        "schema={two: string, " \
+        "one: dictionary<values=int32, indices=int32, ordered=0>})", ds
+    assert repr(ds) == \
+        "Dataset(num_blocks=2, num_rows=6, " \
+        "schema={two: string, " \
+        "one: dictionary<values=int32, indices=int32, ordered=0>})", ds
+    assert len(ds._blocks._blocks) == 1
+
+    # Forces a data read.
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert len(ds._blocks._blocks) == 2
+    assert sorted(values) == [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"],
+                              [3, "g"]]
+
+    # Test column selection.
+    ds = ray.data.read_parquet(str(tmp_path), columns=["one"])
+    values = [s["one"] for s in ds.take()]
+    assert sorted(values) == [1, 1, 1, 3, 3, 3]
+
+
 def test_parquet_write(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
