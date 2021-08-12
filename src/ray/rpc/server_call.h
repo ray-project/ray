@@ -163,7 +163,7 @@ class ServerCallImpl : public ServerCall {
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
-    STATS_grpc_server_req_handling.Record(1.0, call_num_);
+    STATS_grpc_server_req_handling.Record(1.0, call_name_);
     if (!io_service_.stopped()) {
       io_service_.post([this] { HandleRequestImpl(); }, call_name_);
     } else {
