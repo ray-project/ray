@@ -21,7 +21,10 @@ namespace ray {
 
 void Init(ray::RayConfig &config, int argc, char **argv) {
   ray::internal::ConfigInternal::Instance().Init(config, argc, argv);
-  Init();
+  std::call_once(is_inited_, [] {
+    auto runtime = ray::internal::AbstractRayRuntime::DoInit();
+    ray::internal::RayRuntimeHolder::Instance().Init(runtime);
+  });
 }
 
 void Init(ray::RayConfig &config) { Init(config, 0, nullptr); }
