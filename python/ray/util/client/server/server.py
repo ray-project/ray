@@ -76,7 +76,14 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 current_job_config = worker.core_worker.get_job_config()
             else:
                 extra_kwargs = json.loads(request.ray_init_kwargs or "{}")
-                self.ray_connect_handler(job_config, **extra_kwargs)
+                try:
+                    self.ray_connect_handler(job_config, **extra_kwargs)
+                except Exception as e:
+                    logger.exception("Running Ray Init failed:")
+                    return ray_client_pb2.InitResponse(
+                        ok=False,
+                        msg="Call to `ray.init()` on the server "
+                        f"failed with: {e}")
         if job_config is None:
             return ray_client_pb2.InitResponse(ok=True)
         job_config = job_config.get_proto_job_config()
