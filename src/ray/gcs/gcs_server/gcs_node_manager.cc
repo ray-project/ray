@@ -40,7 +40,8 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                   << ", address = " << request.node_info().node_manager_address();
     RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
                                        request.node_info().SerializeAsString(), nullptr));
-    AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
+    auto node_info = std::shared_ptr<rpc::GcsNodeInfo>(google::protobuf::Arena::Create<rpc::GcsNodeInfo>(&arena_, request.node_info()));
+    AddNode(node_info);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
   RAY_CHECK_OK(
@@ -57,7 +58,7 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_timestamp(current_sys_time_ms());
     AddDeadNodeToCache(node);
-    auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
+    auto node_info_delta = std::shared_ptr<rpc::GcsNodeInfo>(google::protobuf::Arena::Create<rpc::GcsNodeInfo>(&arena_));
     node_info_delta->set_node_id(node->node_id());
     node_info_delta->set_state(node->state());
     node_info_delta->set_timestamp(node->timestamp());
@@ -83,10 +84,12 @@ void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &requ
                                           rpc::GetAllNodeInfoReply *& reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   for (const auto &entry : alive_nodes_) {
-    reply->add_node_info_list()->CopyFrom(*entry.second);
+    // reply->add_node_info_list()->CopyFrom(*entry.second);
+    reply->mutable_node_info_list()->UnsafeArenaAddAllocated(entry.second.get());
   }
   for (const auto &entry : dead_nodes_) {
-    reply->add_node_info_list()->CopyFrom(*entry.second);
+    // reply->add_node_info_list()->CopyFrom(*entry.second);
+    reply->mutable_node_info_list()->UnsafeArenaAddAllocated(entry.second.get());
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
@@ -173,7 +176,7 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_timestamp(current_sys_time_ms());
     AddDeadNodeToCache(node);
-    auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
+    auto node_info_delta = std::shared_ptr<rpc::GcsNodeInfo>(google::protobuf::Arena::Create<rpc::GcsNodeInfo>(&arena_));
     node_info_delta->set_node_id(node->node_id());
     node_info_delta->set_state(node->state());
     node_info_delta->set_timestamp(node->timestamp());
@@ -191,10 +194,11 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
 
 void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
   for (const auto &item : gcs_init_data.Nodes()) {
+    auto node_info = std::shared_ptr<rpc::GcsNodeInfo>(google::protobuf::Arena::Create<rpc::GcsNodeInfo>(&arena_, item.second));
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
-      AddNode(std::make_shared<rpc::GcsNodeInfo>(item.second));
+      AddNode(node_info);
     } else if (item.second.state() == rpc::GcsNodeInfo::DEAD) {
-      dead_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
+      dead_nodes_.emplace(item.first, node_info);
       sorted_dead_node_list_.emplace_back(item.first, item.second.timestamp());
     }
   }

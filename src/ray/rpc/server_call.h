@@ -18,6 +18,8 @@
 
 #include <ctype.h>
 #include <boost/asio.hpp>
+#include <google/protobuf/arena.h>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
@@ -151,6 +153,8 @@ class ServerCallImpl : public ServerCall {
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     STATS_grpc_server_req_new.Record(1.0, call_name_);
     start_time_ = absl::GetCurrentTimeNanos();
+    request_ = google::protobuf::Arena::Create<Request>(&arena_);
+    reply_ = google::protobuf::Arena::Create<Reply>(&arena_);
   }
 
   ~ServerCallImpl() override {
@@ -189,7 +193,7 @@ class ServerCallImpl : public ServerCall {
       factory.CreateCall();
     }
     (service_handler_.*handle_request_function_)(
-        request_, reply_ptr_,
+        *request_, reply_,
         [this](Status status, std::function<void()> success,
                std::function<void()> failure) {
           // These two callbacks must be set before `SendReply`, because `SendReply`
@@ -224,8 +228,10 @@ class ServerCallImpl : public ServerCall {
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
     state_ = ServerCallState::SENDING_REPLY;
-    response_writer_.Finish(*reply_ptr_, RayStatusToGrpcStatus(status), this);
+    response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
+
+  google::protobuf::Arena arena_;
 
   /// State of this call.
   ServerCallState state_;
@@ -250,11 +256,10 @@ class ServerCallImpl : public ServerCall {
   instrumented_io_context &io_service_;
 
   /// The request message.
-  Request request_;
+  Request* request_;
 
   /// The reply message.
-  Reply reply_;
-  Reply* reply_ptr_;
+  Reply* reply_;
 
   /// Human-readable name for this RPC call.
   std::string call_name_;
@@ -331,7 +336,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         *this, service_handler_, handle_request_function_, io_service_, call_name_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
-    (service_.*request_call_function_)(&call->context_, &call->request_,
+    (service_.*request_call_function_)(&call->context_, call->request_,
                                        &call->response_writer_, cq_.get(), cq_.get(),
                                        call);
   }

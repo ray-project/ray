@@ -118,6 +118,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::string DebugString() const;
 
  private:
+  google::protobuf::Arena arena_;
+
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
   /// evicted.
   ///

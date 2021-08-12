@@ -17,6 +17,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
+#include <google/protobuf/arena.h>
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -68,7 +69,9 @@ class ClientCallImpl : public ClientCall {
   explicit ClientCallImpl(const ClientCallback<Reply> &callback,
                           std::shared_ptr<StatsHandle> stats_handle)
       : callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
-        stats_handle_(std::move(stats_handle)) {}
+        stats_handle_(std::move(stats_handle)) {
+    reply_ = google::protobuf::Arena::Create<Reply>(&arena_);
+  }
 
   Status GetStatus() override {
     absl::MutexLock lock(&mutex_);
@@ -87,15 +90,17 @@ class ClientCallImpl : public ClientCall {
       status = return_status_;
     }
     if (callback_ != nullptr) {
-      callback_(status, reply_);
+      callback_(status, *reply_);
     }
   }
 
   std::shared_ptr<StatsHandle> GetStatsHandle() override { return stats_handle_; }
 
  private:
+
+  google::protobuf::Arena arena_;
   /// The reply message.
-  Reply reply_;
+  Reply* reply_;
 
   /// The callback function to handle the reply.
   ClientCallback<Reply> callback_;
@@ -232,7 +237,7 @@ class ClientCallManager {
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
     auto tag = new ClientCallTag(call);
-    call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
+    call->response_reader_->Finish(call->reply_, &call->status_, (void *)tag);
     return call;
   }
 
