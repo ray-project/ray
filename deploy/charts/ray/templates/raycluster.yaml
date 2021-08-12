@@ -19,8 +19,12 @@ spec:
   podTypes:
     {{- range $key, $val := .Values.podTypes }}
     - name: {{ $key }}
+      {{- if $val.minWorkers }}
       minWorkers: {{ $val.minWorkers }}
+      {{- end }}
+      {{- if $val.minWorkers }}
       maxWorkers: {{ $val.maxWorkers }}
+      {{- end }}
       {{- if $val.rayResources }}
       rayResources:
         {{- toYaml $val.rayResources | nindent 8 }}

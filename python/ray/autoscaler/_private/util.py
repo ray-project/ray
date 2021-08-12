@@ -268,10 +268,11 @@ def fill_node_type_min_max_workers(config):
     for node_type_name in node_types:
         node_type_data = node_types[node_type_name]
 
+        node_type_data.setdefault("min_workers", 0)
         if node_type_name == config["head_node_type"]:
-            node_type_data.setdefault("min_workers", 0)
-
-        node_type_data.setdefault("max_workers", config["max_workers"])
+            node_type_data.setdefault("max_workers", 0)
+        else:
+            node_type_data.setdefault("max_workers", config["max_workers"])
 
 
 def with_head_node_ip(cmds, head_ip=None):

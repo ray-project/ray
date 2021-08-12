@@ -349,8 +349,6 @@ Each node type is identified by a user-specified key.
                         Ebs:
                             VolumeSize: 100
                 resources: {"CPU": 2}
-                min_workers: 0
-                max_workers: 0
             ray.worker.default:
                 node_config:
                   InstanceType: m5.large
