@@ -7,6 +7,7 @@ import ray.util.sgd.v2 as sgd
 import tensorflow as tf
 import torch
 from ray import tune
+from ray.tune import TuneError
 from ray.util.sgd.v2 import Trainer
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface, \
     BackendExecutor
@@ -528,6 +529,17 @@ def test_tune_torch_fashion_mnist(ray_start_8_cpus):
     # Check that loss decreases in each trial.
     for path, df in analysis.trial_dataframes.items():
         assert df.loc[1, "loss"] < df.loc[0, "loss"]
+
+
+def test_tune_error(ray_start_2_cpus):
+    def train_func(config):
+        raise RuntimeError("Error in training function!")
+
+    trainer = Trainer(TestConfig())
+    TestTrainable = trainer.to_tune_trainable(train_func)
+
+    with pytest.raises(TuneError):
+        tune.run(TestTrainable)
 
 
 if __name__ == "__main__":
