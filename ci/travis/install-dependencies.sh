@@ -296,17 +296,20 @@ install_dependencies() {
       esac
     fi
 
-    # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
-    # that break the entire CI job: Simply retry installation in this case
-    # after n seconds.
-    local status="0";
-    local errmsg="";
-    for _ in {1..3}; do
-      errmsg=$(CC=gcc pip install -r "${WORKSPACE_DIR}"/python/requirements.txt 2>&1) && break;
-      status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
-    done
-    if [ "$status" != "0" ]; then
-      echo "${status}" && return 1
+    # Don't install requirements.txt if testing minimal install.
+    if [ "$MINIMAL-}" != 1 ]; then
+      # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
+      # that break the entire CI job: Simply retry installation in this case
+      # after n seconds.
+      local status="0";
+      local errmsg="";
+      for _ in {1..3}; do
+        errmsg=$(CC=gcc pip install -r "${WORKSPACE_DIR}"/python/requirements.txt 2>&1) && break;
+        status=$errmsg && echo "'pip install ...' failed, will retry after n seconds!" && sleep 30;
+      done
+      if [ "$status" != "0" ]; then
+        echo "${status}" && return 1
+      fi
     fi
   fi
 
