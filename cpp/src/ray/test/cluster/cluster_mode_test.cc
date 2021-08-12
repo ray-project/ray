@@ -26,6 +26,13 @@ DEFINE_bool(external_cluster, false, "");
 DEFINE_string(redis_password, "12345678", "");
 DEFINE_int32(redis_port, 6379, "");
 
+TEST(RayClusterModeTest, Initialized) {
+  ray::Init();
+  EXPECT_TRUE(ray::IsInitialized());
+  ray::Shutdown();
+  EXPECT_TRUE(!ray::IsInitialized());
+}
+
 TEST(RayClusterModeTest, FullTest) {
   ray::RayConfig config;
   config.num_cpus = 2;
@@ -113,9 +120,10 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result.ready.size(), 3);
   EXPECT_EQ(result.unready.size(), 0);
 
-  int result1 = *(ray::Get(r1));
-  int result0 = *(ray::Get(r0));
-  int result2 = *(ray::Get(r2));
+  auto result_vector = ray::Get(objects);
+  int result0 = *(result_vector[0]);
+  int result1 = *(result_vector[1]);
+  int result2 = *(result_vector[2]);
   EXPECT_EQ(result0, 1);
   EXPECT_EQ(result1, 31);
   EXPECT_EQ(result2, 25);
