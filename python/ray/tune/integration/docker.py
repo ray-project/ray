@@ -60,15 +60,24 @@ class DockerSyncer(NodeSyncer):
 
 class DockerSyncClient(SyncClient):
     """DockerSyncClient to be used by DockerSyncer.
+
     This client takes care of executing the synchronization
     commands for Docker nodes. In its ``sync_down`` and
     ``sync_up`` commands, it expects tuples for the source
     and target, respectively, for compatibility with docker.
+
+    Args:
+        should_bootstrap: Whether to bootstrap the autoscaler
+            cofiguration. This may be useful when you are
+            running into authentication problems; i.e.:
+            https://github.com/ray-project/ray/issues/17756.
+
     """
 
-    def __init__(self):
+    def __init__(self, should_bootstrap: bool = True):
         self._command_runners = {}
         self._cluster_config = None
+        self._should_bootstrap = should_bootstrap
 
     def configure(self, cluster_config_file: str):
         self._cluster_config_file = cluster_config_file
@@ -87,6 +96,7 @@ class DockerSyncClient(SyncClient):
             target=target_dir,
             down=False,
             ip_address=target_node,
+            should_bootstrap=self._should_bootstrap,
             use_internal_ip=True)
 
         return True
@@ -105,6 +115,7 @@ class DockerSyncClient(SyncClient):
             target=target,
             down=True,
             ip_address=source_node,
+            should_bootstrap=self._should_bootstrap,
             use_internal_ip=True)
 
         return True
