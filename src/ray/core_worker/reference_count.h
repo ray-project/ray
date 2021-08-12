@@ -48,8 +48,6 @@ class ReferenceCounterInterface {
   virtual bool SetDeleteCallback(
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
-  virtual void UpdateOwnedObjectNestedObjectIds(
-      const ObjectID &object_id, const std::vector<ObjectID> &inner_ids) = 0;
 
   virtual ~ReferenceCounterInterface() {}
 };
@@ -218,7 +216,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] object_id The ID of the object to look up.
   /// \param[out] owner_address The address of the object owner.
   /// \return false if the object is out of scope or we do not yet have
-  /// ownership information. The latter can happen when object IDs are pasesd
+  /// ownership information. The latter can happen when object IDs are passed
   /// out of band.
   bool GetOwner(const ObjectID &object_id, rpc::Address *owner_address = nullptr) const
       LOCKS_EXCLUDED(mutex_);
@@ -331,10 +329,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddNestedObjectIds(const ObjectID &object_id,
                           const std::vector<ObjectID> &inner_ids,
                           const rpc::WorkerAddress &owner_address) LOCKS_EXCLUDED(mutex_);
-
-  void UpdateOwnedObjectNestedObjectIds(const ObjectID &object_id,
-                                        const std::vector<ObjectID> &inner_ids)
-      LOCKS_EXCLUDED(mutex_);
 
   /// Update the pinned location of an object stored in plasma.
   ///

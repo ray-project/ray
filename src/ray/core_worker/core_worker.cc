@@ -376,11 +376,17 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
-    auto execute_task =
-        std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
-                  std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
-        worker_context_, task_execution_service_, execute_task,
+        worker_context_, task_execution_service_,
+        [this](
+            const TaskSpecification &task_spec,
+            const std::shared_ptr<ResourceMappingType> resource_ids,
+            std::vector<std::shared_ptr<RayObject>> *return_objects,
+            ReferenceCounter::ReferenceTableProto *borrower_refs,
+            absl::flat_hash_map<ObjectID, rpc::Address> *owner_of_nested_return_objects) {
+          return this->ExecuteTask(task_spec, resource_ids, return_objects, borrower_refs,
+                                   owner_of_nested_return_objects);
+        },
         [this] { return local_raylet_client_->TaskDone(); });
   }
 
@@ -2116,10 +2122,12 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
-                               const std::shared_ptr<ResourceMappingType> &resource_ids,
-                               std::vector<std::shared_ptr<RayObject>> *return_objects,
-                               ReferenceCounter::ReferenceTableProto *borrowed_refs) {
+Status CoreWorker::ExecuteTask(
+    const TaskSpecification &task_spec,
+    const std::shared_ptr<ResourceMappingType> &resource_ids,
+    std::vector<std::shared_ptr<RayObject>> *return_objects,
+    ReferenceCounter::ReferenceTableProto *borrowed_refs,
+    absl::flat_hash_map<ObjectID, rpc::Address> *owner_of_nested_return_objects) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
@@ -2187,6 +2195,19 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       return_ids, task_spec.GetDebuggerBreakpoint(), return_objects,
       creation_task_exception_pb_bytes);
 
+  // For nested return objects, we get their ownership info from reference
+  // counter.
+  if (owner_of_nested_return_objects != nullptr) {
+    for (const auto &object : *return_objects) {
+      for (const auto &nested_id : object->GetNestedIds()) {
+        rpc::Address owner_address;
+        if (reference_counter_->GetOwner(nested_id, &owner_address)) {
+          owner_of_nested_return_objects->emplace(nested_id, owner_address);
+        }
+      }
+    }
+  }
+
   // Get the reference counts for any IDs that we borrowed during this task and
   // return them to the caller. This will notify the caller of any IDs that we
   // (or a nested task) are still borrowing. It will also notify the caller of
@@ -2195,6 +2216,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   if (!borrowed_ids.empty()) {
     reference_counter_->GetAndClearLocalBorrowers(borrowed_ids, borrowed_refs);
   }
+
   // Unpin the borrowed IDs.
   std::vector<ObjectID> deleted;
   for (const auto &borrowed_id : borrowed_ids) {

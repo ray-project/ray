@@ -818,28 +818,6 @@ void ReferenceCounter::AddNestedObjectIds(const ObjectID &object_id,
   AddNestedObjectIdsInternal(object_id, inner_ids, owner_address);
 }
 
-void ReferenceCounter::UpdateOwnedObjectNestedObjectIds(
-    const ObjectID &object_id, const std::vector<ObjectID> &inner_ids) {
-  absl::MutexLock lock(&mutex_);
-  auto it = object_id_refs_.find(object_id);
-  // We own object_id. This is a `ray.put()` case OR returning an object ID
-  // from a task and the task's caller executed in the same process as us.
-  if (it != object_id_refs_.end()) {
-    RAY_CHECK(it->second.owned_by_us);
-    // The outer object is still in scope. Mark the inner ones as being
-    // contained in the outer object ID so we do not GC the inner objects
-    // until the outer object goes out of scope.
-    for (const auto &inner_id : inner_ids) {
-      it->second.contains.insert(inner_id);
-      auto inner_it = object_id_refs_.find(inner_id);
-      RAY_CHECK(inner_it != object_id_refs_.end());
-      RAY_LOG(DEBUG) << "Setting inner ID " << inner_id
-                     << " contained_in_owned: " << object_id;
-      inner_it->second.contained_in_owned.insert(object_id);
-    }
-  }
-}
-
 void ReferenceCounter::AddNestedObjectIdsInternal(
     const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
     const rpc::WorkerAddress &owner_address) {

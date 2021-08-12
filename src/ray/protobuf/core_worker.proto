@@ -66,10 +66,10 @@ message ReturnObject {
   bytes data = 3;
   // Metadata of the object.
   bytes metadata = 4;
-  // ObjectIDs that were nested in data. This is only set for inlined objects.
-  repeated bytes nested_inlined_ids = 5;
   // Size of this object.
   int64 size = 6;
+  // ObjectRefs that were nested in data.
+  repeated ObjectReference nested_refs = 7;
 }
 
 message StealTasksRequest {

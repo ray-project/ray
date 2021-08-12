@@ -777,11 +777,12 @@ class NormalSchedulingQueue : public SchedulingQueue {
 
 class CoreWorkerDirectTaskReceiver {
  public:
-  using TaskHandler =
-      std::function<Status(const TaskSpecification &task_spec,
-                           const std::shared_ptr<ResourceMappingType> resource_ids,
-                           std::vector<std::shared_ptr<RayObject>> *return_objects,
-                           ReferenceCounter::ReferenceTableProto *borrower_refs)>;
+  using TaskHandler = std::function<Status(
+      const TaskSpecification &task_spec,
+      const std::shared_ptr<ResourceMappingType> resource_ids,
+      std::vector<std::shared_ptr<RayObject>> *return_objects,
+      ReferenceCounter::ReferenceTableProto *borrower_refs,
+      absl::flat_hash_map<ObjectID, rpc::Address> *owner_of_nested_return_objects)>;
 
   using OnTaskDone = std::function<Status()>;
 

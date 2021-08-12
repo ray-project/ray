@@ -1114,11 +1114,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///                     objects whose IDs we passed to the task in its
   ///                     arguments and recursively, any object IDs that were
   ///                     contained in those objects.
+  /// \param results[out] owner_of_nested_return_objects. Stores the ownership
+  ///                     for every nested return object.
   /// \return Status.
   Status ExecuteTask(const TaskSpecification &task_spec,
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
-                     ReferenceCounter::ReferenceTableProto *borrowed_refs);
+                     ReferenceCounter::ReferenceTableProto *borrowed_refs,
+                     absl::flat_hash_map<ObjectID, rpc::Address>
+                         *owner_of_nested_return_objects = nullptr);
 
   /// Execute a local mode task (runs normal ExecuteTask)
   ///

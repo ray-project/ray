@@ -487,8 +487,10 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
-    auto status = task_handler_(task_spec, resource_ids, &return_objects,
-                                reply->mutable_borrowed_refs());
+    absl::flat_hash_map<ObjectID, rpc::Address> owner_of_nested_return_objects;
+    auto status =
+        task_handler_(task_spec, resource_ids, &return_objects,
+                      reply->mutable_borrowed_refs(), &owner_of_nested_return_objects);
 
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
@@ -512,7 +514,12 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
           }
         }
         for (const auto &nested_id : result->GetNestedIds()) {
-          return_object->add_nested_inlined_ids(nested_id.Binary());
+          auto nested_ref = return_object->add_nested_refs();
+          nested_ref->set_object_id(nested_id.Binary());
+          auto it = owner_of_nested_return_objects.find(nested_id);
+          if (it != owner_of_nested_return_objects.end()) {
+            nested_ref->mutable_owner_address()->CopyFrom(it->second);
+          }
         }
       }
       if (task_spec.IsActorCreationTask()) {

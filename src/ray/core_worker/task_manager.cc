@@ -221,18 +221,18 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                 reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
             return_object.metadata().size());
       }
+
+      std::vector<ObjectID> nested_ids;
+      nested_ids.reserve(return_object.nested_refs().size());
+      for (const auto &nested_ref : return_object.nested_refs()) {
+        nested_ids.push_back(ObjectID::FromBinary(nested_ref.object_id()));
+      }
+
       bool stored_in_direct_memory = in_memory_store_->Put(
-          RayObject(data_buffer, metadata_buffer,
-                    IdVectorFromProtobuf<ObjectID>(return_object.nested_inlined_ids())),
-          object_id);
+          RayObject(data_buffer, metadata_buffer, nested_ids), object_id);
       if (stored_in_direct_memory) {
         direct_return_ids.push_back(object_id);
       }
-    }
-
-    if (reference_counter_->OwnedByUs(object_id)) {
-      reference_counter_->UpdateOwnedObjectNestedObjectIds(
-          object_id, IdVectorFromProtobuf<ObjectID>(return_object.nested_inlined_ids()));
     }
   }
 
