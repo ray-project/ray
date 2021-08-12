@@ -48,6 +48,8 @@ class ReferenceCounterInterface {
   virtual bool SetDeleteCallback(
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
+  virtual void UpdateOwnedObjectNestedObjectIds(
+      const ObjectID &object_id, const std::vector<ObjectID> &inner_ids) = 0;
 
   virtual ~ReferenceCounterInterface() {}
 };
@@ -329,6 +331,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddNestedObjectIds(const ObjectID &object_id,
                           const std::vector<ObjectID> &inner_ids,
                           const rpc::WorkerAddress &owner_address) LOCKS_EXCLUDED(mutex_);
+
+  void UpdateOwnedObjectNestedObjectIds(const ObjectID &object_id,
+                                        const std::vector<ObjectID> &inner_ids)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Update the pinned location of an object stored in plasma.
   ///

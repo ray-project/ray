@@ -229,6 +229,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         direct_return_ids.push_back(object_id);
       }
     }
+
+    if (reference_counter_->OwnedByUs(object_id)) {
+      reference_counter_->UpdateOwnedObjectNestedObjectIds(
+          object_id, IdVectorFromProtobuf<ObjectID>(return_object.nested_inlined_ids()));
+    }
   }
 
   TaskSpecification spec;
