@@ -99,9 +99,6 @@ else:
     BUILD_TYPE = BuildType.DEFAULT
 
 if os.getenv("RAY_INSTALL_CPP") == "1":
-    # Don't build asan for cpp now.
-    if build_type == "asan":
-        BUILD_TYPE = BuildType.DEFAULT
     # "ray-cpp" wheel package.
     setup_spec = SetupSpec(SetupType.RAY_CPP, "ray-cpp",
                            "A subpackage of Ray which provide Ray C++ API.",
@@ -371,8 +368,12 @@ def build(build_python, build_java, build_cpp):
 
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
-    bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
-    bazel_targets += ["//java:ray_java_pkg"] if build_java else []
+    bazel_targets += [
+        "//cpp:ray_cpp_pkg"
+    ] if build_cpp and not (setup_spec.build_type == "asan") else []
+    bazel_targets += [
+        "//java:ray_java_pkg"
+    ] if build_java and not (setup_spec.build_type == "asan") else []
 
     bazel_flags = ["--verbose_failures"]
     if setup_spec.build_type == BuildType.DEBUG:
