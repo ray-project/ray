@@ -893,6 +893,10 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
   // recursive mutex is used here to allow
   std::lock_guard<std::recursive_mutex> guard(mutex_);
   auto entry = object_store_.GetObject(object_id);
+  if (!entry) {
+    // Object already evicted or deleted.
+    return false;
+  }
   return entry->ref_count == 1;
 }
 
