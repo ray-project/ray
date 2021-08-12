@@ -56,7 +56,6 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
   virtual void DisconnectActor(
       const ActorID &actor_id, int64_t num_restarts, bool dead,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr) = 0;
-  virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
 
   virtual void CheckTimeoutTasks() = 0;
 
@@ -93,15 +92,6 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] task The task spec to submit.
   /// \return Status::Invalid if the task is not yet supported.
   Status SubmitTask(TaskSpecification task_spec);
-
-  /// Tell this actor to exit immediately.
-  ///
-  /// \param[in] actor_id The actor_id of the actor to kill.
-  /// \param[in] force_kill Whether to force kill the actor, or let the actor
-  /// try a clean exit.
-  /// \param[in] no_restart If set to true, the killed actor will not be
-  /// restarted anymore.
-  void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
 
   /// Create connection to actor and send all pending tasks.
   ///
@@ -221,10 +211,6 @@ class CoreWorkerDirectActorTaskSubmitter
     /// pair key: timestamp in ms when this task should be considered as timeout.
     /// pair value: task specification
     std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
-
-    /// A force-kill request that should be sent to the actor once an RPC
-    /// client to the actor is available.
-    absl::optional<rpc::KillActorRequest> pending_force_kill;
   };
 
   /// Push a task to a remote actor via the given client.

@@ -31,34 +31,6 @@ void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
   client_queues_.emplace(actor_id, ClientQueue());
 }
 
-void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
-                                                   bool force_kill, bool no_restart) {
-  absl::MutexLock lock(&mu_);
-  rpc::KillActorRequest request;
-  request.set_intended_actor_id(actor_id.Binary());
-  request.set_force_kill(force_kill);
-  request.set_no_restart(no_restart);
-
-  auto it = client_queues_.find(actor_id);
-  // The language frontend can only kill actors that it has a reference to.
-  RAY_CHECK(it != client_queues_.end());
-
-  if (!it->second.pending_force_kill) {
-    it->second.pending_force_kill = request;
-  } else if (force_kill) {
-    // Overwrite the previous request to kill the actor if the new request is a
-    // force kill.
-    it->second.pending_force_kill->set_force_kill(true);
-    if (no_restart) {
-      // Overwrite the previous request to disable restart if the new request's
-      // no_restart flag is set to true.
-      it->second.pending_force_kill->set_no_restart(true);
-    }
-  }
-
-  SendPendingTasks(actor_id);
-}
-
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   auto task_id = task_spec.TaskId();
   auto actor_id = task_spec.ActorId();
@@ -124,7 +96,6 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue)
   queue.rpc_client = nullptr;
   core_worker_client_pool_->Disconnect(WorkerID::FromBinary(queue.worker_id));
   queue.worker_id.clear();
-  queue.pending_force_kill.reset();
 }
 
 void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
@@ -267,15 +238,6 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
     return;
   }
   auto &client_queue = it->second;
-
-  // Check if there is a pending force kill. If there is, send it and disconnect the
-  // client.
-  if (client_queue.pending_force_kill) {
-    RAY_LOG(INFO) << "Sending KillActor request to actor " << actor_id;
-    // It's okay if this fails because this means the worker is already dead.
-    client_queue.rpc_client->KillActor(*client_queue.pending_force_kill, nullptr);
-    client_queue.pending_force_kill.reset();
-  }
 
   // Submit all pending requests.
   auto &requests = client_queue.requests;
