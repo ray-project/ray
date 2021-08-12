@@ -228,6 +228,53 @@ TEST(RayClusterModeTest, ExceptionTest) {
   EXPECT_THROW(object1.Get(), ray::internal::RayTaskException);
 }
 
+bool CheckRefCount(const std::string &object_id,
+                   std::pair<size_t, size_t> ref_count_pair) {
+  auto map = ray::internal::GetRayRuntime()->GetAllReferenceCounts();
+  auto it = map.find(object_id);
+  if (it == map.end()) {
+    return false;
+  }
+
+  return it->second == ref_count_pair;
+}
+
+bool CheckRefCount(const std::string &object_id) {
+  auto map = ray::internal::GetRayRuntime()->GetAllReferenceCounts();
+  return map.find(object_id) == map.end();
+}
+
+TEST(RayClusterModeTest, LocalRefrenceTest) {
+  std::string objec_id;
+  {
+    auto r1 = ray::Task(Return1).Remote();
+    objec_id = r1.ID();
+    EXPECT_TRUE(CheckRefCount(objec_id, std::make_pair(1, 0)));
+
+    ray::ObjectRef<int> r2(r1);
+    EXPECT_TRUE(CheckRefCount(objec_id, std::make_pair(2, 0)));
+    // r1.Get();
+    // r2.Get();
+  }
+  EXPECT_TRUE(CheckRefCount(objec_id));
+}
+
+TEST(RayClusterModeTest, DependencyRefrenceTest) {
+  std::string objec_id;
+  {
+    auto r1 = ray::Task(Return1).Remote();
+    objec_id = r1.ID();
+    EXPECT_TRUE(CheckRefCount(objec_id, std::make_pair(1, 0)));
+
+    ray::ObjectRef<int> r2 = ray::Task(Plus1).Remote(r1);
+    EXPECT_TRUE(CheckRefCount(r2.ID(), std::make_pair(1, 0)));
+    EXPECT_TRUE(CheckRefCount(objec_id, std::make_pair(1, 1)));
+    r2.Get();
+    EXPECT_TRUE(CheckRefCount(r1.ID(), std::make_pair(1, 0)));
+  }
+  EXPECT_TRUE(CheckRefCount(objec_id));
+}
+
 int main(int argc, char **argv) {
   gflags::ParseCommandLineFlags(&argc, &argv, false);
   cmd_argc = &argc;
