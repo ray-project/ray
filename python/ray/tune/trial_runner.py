@@ -26,6 +26,7 @@ from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
+from ray.tune.experiment import Experiment
 from ray.util.debug import log_once
 
 MAX_DEBUG_TRIALS = 20
@@ -322,13 +323,24 @@ class TrialRunner:
 
         self._callbacks = CallbackList(callbacks or [])
 
-        self._callbacks.setup()
-
         if checkpoint_period is None:
             checkpoint_period = os.getenv("TUNE_GLOBAL_CHECKPOINT_S", "auto")
 
         self._checkpoint_period = checkpoint_period
         self._checkpoint_manager = self._create_checkpoint_manager()
+
+    def setup_callbacks(self, experiment: Optional[Experiment]) -> None:
+        """Calls ``setup`` method in callbacks.
+
+        Args:
+            experiment (Experiment): Experiment passed to callback ``setup``
+                methods. Not persisted.
+        """
+        self._callbacks.setup(experiment=experiment)
+
+    def end_experiment_callbacks(self) -> None:
+        """Calls ``on_experiment_end`` method in callbacks."""
+        self._callbacks.on_experiment_end(trials=self._trials)
 
     def _create_checkpoint_manager(self):
         return _ExperimentCheckpointManager(

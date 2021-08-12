@@ -1,14 +1,19 @@
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Optional
+from abc import ABC
+import logging
 
 from ray.tune.checkpoint_manager import Checkpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
+    from ray.tune.experiment import Experiment
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="beta")
-class Callback:
+class Callback(ABC):
     """Tune base callback that can be extended and passed to a ``TrialRunner``
 
     Tune callbacks are called from within the ``TrialRunner`` class. There are
@@ -43,11 +48,15 @@ class Callback:
 
     """
 
-    def setup(self):
+    def setup(self, experiment: Optional["Experiment"] = None):
         """Called once at the very beginning of training.
 
         Any Callback setup should be added here (setting environment
         variables, etc.)
+
+        Arguments:
+            experiment (Optional[Experiment]): Experiment setting set
+                by Ray Tune.
         """
         pass
 
@@ -170,6 +179,14 @@ class Callback:
         """
         pass
 
+    def on_experiment_end(self, trials: List["Trial"]):
+        """Called after experiment is over and all trials have concluded.
+
+        Arguments:
+            trials (List[Trial]): List of trials.
+        """
+        pass
+
 
 class CallbackList:
     """Call multiple callbacks at once."""
@@ -177,9 +194,19 @@ class CallbackList:
     def __init__(self, callbacks: List[Callback]):
         self._callbacks = callbacks
 
-    def setup(self):
+    def setup(self, experiment: Optional["Experiment"] = None):
         for callback in self._callbacks:
-            callback.setup()
+            try:
+                callback.setup(experiment=experiment)
+            except TypeError as e:
+                if "argument" in str(e):
+                    logger.warning(
+                        "Please update ``setup`` method in callback "
+                        f"{callback.__class__} to take in an ``experiment`` "
+                        "optional argument (as ``setup(experiment=None)``.)")
+                    callback.setup()
+                else:
+                    raise e
 
     def on_step_begin(self, **info):
         for callback in self._callbacks:
@@ -216,3 +243,7 @@ class CallbackList:
     def on_checkpoint(self, **info):
         for callback in self._callbacks:
             callback.on_checkpoint(**info)
+
+    def on_experiment_end(self, **info):
+        for callback in self._callbacks:
+            callback.on_experiment_end(**info)

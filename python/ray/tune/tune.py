@@ -480,6 +480,9 @@ def run(
         callbacks=callbacks,
         metric=metric)
 
+    # Calls setup on callbacks
+    runner.setup_callbacks(experiment=experiments[0])
+
     if not runner.resumed:
         for exp in experiments:
             search_alg.add_configurations([exp])
@@ -552,6 +555,9 @@ def run(
     for trial in runner.get_trials():
         if trial.status != Trial.TERMINATED:
             incomplete_trials += [trial]
+
+    # Calls on_experiment_end on callbacks
+    runner.end_experiment_callbacks()
 
     if incomplete_trials:
         if raise_on_failed_trial and not state[signal.SIGINT]:

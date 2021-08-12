@@ -4,6 +4,8 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
+from collections import OrderedDict
 
 import ray
 from ray import tune
@@ -18,12 +20,16 @@ from ray.tune.syncer import SyncConfig, SyncerCallback
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune import Callback
+from ray.tune.callback import logger as callback_logger
 from ray.tune.utils.callback import create_default_callbacks
 
 
 class TestCallback(Callback):
     def __init__(self):
-        self.state = {}
+        self.state = OrderedDict()
+
+    def setup(self, experiment=None):
+        self.state["setup"] = experiment
 
     def on_step_begin(self, **info):
         self.state["step_begin"] = info
@@ -53,6 +59,9 @@ class TestCallback(Callback):
     def on_trial_error(self, **info):
         self.state["trial_fail"] = info
 
+    def on_experiment_end(self, **info):
+        self.state["experiment_end"] = info
+
 
 class _MockTrialExecutor(RayTrialExecutor):
     def __init__(self):
@@ -81,6 +90,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.executor = _MockTrialExecutor()
         self.trial_runner = TrialRunner(
             trial_executor=self.executor, callbacks=[self.callback])
+        # experiment would never be None normally, but it's fine for testing
+        self.trial_runner.setup_callbacks(experiment=None)
 
     def tearDown(self):
         ray.shutdown()
@@ -109,7 +120,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertTrue(
             all(k not in self.callback.state for k in [
                 "trial_restore", "trial_save", "trial_result",
-                "trial_complete", "trial_fail"
+                "trial_complete", "trial_fail", "experiment_end"
             ]))
 
         self.executor.next_trial = trials[1]
@@ -197,6 +208,10 @@ class TrialRunnerCallbacks(unittest.TestCase):
             raise_on_failed_trial=False,
             callbacks=[self.callback])
 
+        self.assertIn("setup", self.callback.state)
+        self.assertTrue(self.callback.state["setup"] is not None)
+        # check if it was added first
+        self.assertTrue(list(self.callback.state)[0] == "setup")
         self.assertEqual(
             self.callback.state["trial_fail"]["trial"].config["do"], "fail")
         self.assertEqual(
@@ -206,6 +221,9 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertEqual(
             self.callback.state["trial_complete"]["trial"].config["do"],
             "delay")
+        self.assertIn("experiment_end", self.callback.state)
+        # check if it was added last
+        self.assertTrue(list(self.callback.state)[-1] == "experiment_end")
 
     def testCallbackReordering(self):
         """SyncerCallback should come after LoggerCallback callbacks"""
@@ -262,6 +280,20 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertLess(callbacks.index(lc), callbacks.index(mc3))
         # Syncer callback is appended
         self.assertLess(callbacks.index(mc3), syncer_pos)
+
+    @patch.object(callback_logger, "warning")
+    def testCallbackSetupBackwardsCompatible(self, mocked_warning_method):
+        class NoExperimentInSetupCallback(Callback):
+            # Old method definition didn't take in experiment
+            def setup(self):
+                return
+
+        callback = NoExperimentInSetupCallback()
+        trial_runner = TrialRunner(callbacks=[callback])
+        trial_runner.setup_callbacks(experiment=None)
+        mocked_warning_method.assert_called_once()
+        self.assertIn("Please update",
+                      mocked_warning_method.call_args_list[0][0][0])
 
 
 if __name__ == "__main__":
