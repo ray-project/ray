@@ -12,7 +12,7 @@ import requests
 import ray
 from ray import serve
 from ray.cluster_utils import Cluster
-from ray.serve.constants import RAY_HEAD_NODE_URL_ENV_VAR, SERVE_PROXY_NAME
+from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)
@@ -271,12 +271,12 @@ def test_http_root_url(ray_shutdown):
     root_url = "https://my.domain.dev/prefix"
 
     port = new_port()
-    os.environ[RAY_HEAD_NODE_URL_ENV_VAR] = root_url
+    os.environ[SERVE_ROOT_URL_ENV_KEY] = root_url
     serve.start(http_options=dict(port=port))
     f.deploy()
     assert f.url == root_url + "/f"
     serve.shutdown()
-    del os.environ[RAY_HEAD_NODE_URL_ENV_VAR]
+    del os.environ[SERVE_ROOT_URL_ENV_KEY]
 
     port = new_port()
     serve.start(http_options=dict(port=port))

@@ -8,7 +8,7 @@ from pydantic import BaseModel, PositiveInt, validator, NonNegativeFloat
 
 from ray import cloudpickle as cloudpickle
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 RAY_HEAD_NODE_URL_ENV_VAR)
+                                 SERVE_ROOT_URL_ENV_KEY)
 
 
 class BackendConfig(BaseModel):
@@ -170,8 +170,8 @@ class HTTPOptions(pydantic.BaseModel):
     @validator("root_url", always=True)
     def fill_default_root_url(cls, v, values):
         if v == "":
-            if RAY_HEAD_NODE_URL_ENV_VAR in os.environ:
-                return os.environ[RAY_HEAD_NODE_URL_ENV_VAR]
+            if SERVE_ROOT_URL_ENV_KEY in os.environ:
+                return os.environ[SERVE_ROOT_URL_ENV_KEY]
             else:
                 return f"http://{values['host']}:{values['port']}"
         return v
