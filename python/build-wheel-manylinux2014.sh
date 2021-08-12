@@ -91,7 +91,7 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
     PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
     /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     # build ray-cpp wheel
-    if [ "${RAY_DEBUG_BUILD}" -ne "asan" ]; then
+    if [ "${RAY_DEBUG_BUILD}" != "asan" ]; then
       PATH=/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH \
       RAY_INSTALL_CPP=1 /opt/python/"${PYTHON}"/bin/python setup.py bdist_wheel
     fi
