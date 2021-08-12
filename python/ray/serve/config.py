@@ -1,12 +1,14 @@
 import inspect
 from enum import Enum
+import os
 from typing import Any, List, Optional
 
 import pydantic
 from pydantic import BaseModel, PositiveInt, validator, NonNegativeFloat
 
 from ray import cloudpickle as cloudpickle
-from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
+from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
+                                 RAY_HEAD_NODE_URL_ENV_VAR)
 
 
 class BackendConfig(BaseModel):
@@ -157,11 +159,21 @@ class HTTPOptions(pydantic.BaseModel):
     middlewares: List[Any] = []
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
     num_cpus: int = 0
+    root_url: str = ""
 
     @validator("location", always=True)
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
             return DeploymentMode.NoServer
+        return v
+
+    @validator("root_url", always=True)
+    def fill_default_root_url(cls, v, values):
+        if v == "":
+            if RAY_HEAD_NODE_URL_ENV_VAR in os.environ:
+                return os.environ[RAY_HEAD_NODE_URL_ENV_VAR]
+            else:
+                return f"http://{values['host']}:{values['port']}"
         return v
 
     class Config:
