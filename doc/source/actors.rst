@@ -102,22 +102,24 @@ Creating an actor
 
       public:
         int Increment() {
-          this.value += 1;
-          return this.value;
+          value += 1;
+          return value;
         }
 
         int GetCounter() {
-          return this.value;
+          return value;
         }
 
         void Reset(int new_value) {
-          this.value = new_value;
+          value = new_value;
         }
 
         static Counter* CreateCounter() {
           return new Counter();
         }
-      }
+      };
+      RAY_REMOTE(&Counter::Increment, &Counter::GetCounter, 
+                 &Counter::Reset, Counter::CreateCounter);
 
       // Create an actor with a factory method.
       ray::Actor(&Counter::CreateCounter).Remote();
@@ -166,9 +168,9 @@ Methods of the actor can be called remotely.
 
   .. code-tab:: c++
 
-    ActorHandle<Counter> counter_actor = ray::Actor(&Counter::CreateCounter).Remote();
+    ray::ActorHandle<Counter> counter_actor = ray::Actor(&Counter::CreateCounter).Remote();
     // Call an actor method with a return value
-    assert(*counter_actor.task(&Counter::Increment).Remote().Get(), 1);
+    assert(*counter_actor.Task(&Counter::Increment).Remote().Get(), 1);
     // Call an actor method without return value. In this case, the return type of `Remote()` is void.
     counter_actor.Task(&Counter::Reset).Remote(10);
     assert(*counter_actor.Task(&Counter::Increment).Remote().Get(), 11);
@@ -211,6 +213,9 @@ You can specify that an actor requires CPUs or GPUs in the decorator. While Ray 
     .. code-block:: c++
 
       class GpuActor {
+        static GpuActor* CreateGpuActor() {
+          return new GpuActor();
+        }
       }
 
       ray::Actor(&GpuActor::CreateGpuActor).SetResource("CPU", 2.0).SetResource("GPU", 0.5).Remote();
@@ -252,6 +257,9 @@ have these resources (see `configuration instructions
   .. code-tab:: c++
 
     class GpuActor {
+      static GpuActor* CreateGpuActor() {
+        return new GpuActor();
+      }
     }
 
     ray::Actor(&GpuActor::CreateGpuActor).SetResource("Resource2", 1.0).Remote();
@@ -290,11 +298,11 @@ requirements, you can do so as follows.
       ...
     }
 
-    ActorHandle<Counter> a1 = ray::Actor(&GpuActor::CreateGpuActor).SetResource("CPU", 1.0)
+    auto a1 = ray::Actor(&GpuActor::CreateGpuActor).SetResource("CPU", 1.0)
       .SetResource("Custom1", 1.0).Remote();
-    ActorHandle<Counter> a2 = ray::Actor(&GpuActor::CreateGpuActor).SetResource("CPU", 2.0)
+    auto a2 = ray::Actor(&GpuActor::CreateGpuActor).SetResource("CPU", 2.0)
       .SetResource("Custom2", 1.0).Remote();
-    ActorHandle<Counter> a3 = ray::Actor(&GpuActor::CreateGpuActor).SetResource("CPU", 3.0)
+    auto a3 = ray::Actor(&GpuActor::CreateGpuActor).SetResource("CPU", 3.0)
       .SetResource("Custom3", 1.0).Remote();
 
 Note that to create these actors successfully, Ray will need to be started with
@@ -435,16 +443,12 @@ Actor handles can be passed into other tasks. We can define remote functions (or
 
   .. code-tab:: c++
 
-    class MyRayApp {
-
-    public:
-      static void foo(ActorHandle<Counter> counter) {
+      void Foo(ray::ActorHandle<Counter> counter) {
         for (int i = 0; i < 1000; i++) {
           std::this_thread::sleep_for(std::chrono::milliseconds(100));
           counter.Task(&Counter::Increment).Remote();
         }
       }
-    }
 
 If we instantiate an actor, we can pass the handle around to various tasks.
 
@@ -478,16 +482,16 @@ If we instantiate an actor, we can pass the handle around to various tasks.
 
   .. code-tab:: c++
 
-    ActorHandle<Counter> counter = ray::Actor(Counter::CreateCounter).Remote();
+    auto counter = ray::Actor(Counter::CreateCounter).Remote();
 
     // Start some tasks that use the actor.
     for (int i = 0; i < 3; i++) {
-      ray::Task(&MyRayApp::foo, counter).Remote();
+      ray::Task(Foo, counter).Remote();
     }
 
     // Print the counter value.
     for (int i = 0; i < 10; i++) {
-      sleep(1);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
       std::cout << *counter.Task(&Counter::GetCounter).Remote().Get() << std::endl;
     }
 
@@ -550,7 +554,7 @@ exist. See :ref:`actor-lifetimes` for more details.
       ...
 
       // Retrieve the actor later somewhere
-      Optional<ActorHandle<Counter>> counter = ray::GetGlobalActor("some_name");
+      boost::optional<ray::ActorHandle<Counter>> counter = ray::GetGlobalActor("some_name");
 
 .. note::
 

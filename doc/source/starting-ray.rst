@@ -49,6 +49,12 @@ You must initialize Ray before any tasks or actors are called.
       }
     }
 
+  .. code-tab:: c++
+
+    #include <ray/api.h>
+    // Other Ray APIs will not work until `ray::Init()` is called.
+    ray::Init()
+
 When the process calling ``ray.init()`` terminates, the Ray runtime will also terminate. To explicitly stop or restart Ray, use the shutdown API.
 
 .. tabs::
@@ -71,6 +77,13 @@ When the process calling ``ray.init()`` terminates, the Ray runtime will also te
         Ray.shutdown();
       }
     }
+
+  .. code-tab:: c++
+
+    #include <ray/api.h>
+    ray::Init()
+    ... // ray program
+    ray::Shutdown()
 
 .. tabs::
   .. group-tab:: Python
@@ -230,6 +243,8 @@ By default, Ray will parallelize its workload and run tasks on multiple processe
       java -classpath <classpath> \
         -Dray.local-mode=true \
         <classname> <args>
+    
+    .. note:: If you just want to run your Java code in local mode, you can run it without Ray or even Python installed.
 
   .. group-tab:: C++
 
@@ -239,7 +254,7 @@ By default, Ray will parallelize its workload and run tasks on multiple processe
       config.local_mode = true;
       ray::Init(config);
 
-    .. note:: If you just want to run your Java code in local mode, you can run it without Ray or even Python installed.
+    .. note:: If you just want to run your C++ code in local mode, you can run it without Ray or even Python installed.
 
 Note that there are some known issues with local mode. Please read :ref:`these tips <local-mode-tips>` for more information.
 

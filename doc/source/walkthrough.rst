@@ -64,6 +64,7 @@ You can start Ray on a single machine by adding this to your code.
 
   .. code-tab:: c++
 
+    // Run `ray cpp --show-library-path` to find headers and libraries.
     #include <ray/api.h>
 
     int main(int argc, char **argv) {
@@ -157,36 +158,33 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
   .. group-tab:: C++
 
     .. code:: c++
-
-      class MyRayApp {
-        public:
-          // A regular C++ static method.
-          static int MyFunction() {
-            return 1;
-          }
+      
+      // A regular C++ function.
+      int MyFunction() {
+        return 1;
       }
+      // Register as a remote function by `RAY_REMOTE`.
+      RAY_REMOTE(MyFunction);
 
       // Invoke the above method as a Ray remote function.
       // This will immediately return an object ref (a future) and then create
       // a task that will be executed on a worker process.
-      ObjectRef<int> res = ray::Task(MyRayApp::MyFunction).Remote();
+      auto res = ray::Task(MyFunction).Remote();
 
-      // The result can be retrieved with ``ObjectRef::Get``.
+      // The result can be retrieved with ``ray::ObjectRef::Get``.
       assert(*res.Get() == 1);
 
-      class MyRayApp {
-      public:
-        static int SlowFunction() {
-          sleep(10);
-          return 1;
-        }
+      int SlowFunction() {
+        std::this_thread::sleep_for(std::chrono::seconds(10));
+        return 1;
       }
+      RAY_REMOTE(SlowFunction);
 
       // Invocations of Ray remote functions happen in parallel.
       // All computation is performed in the background, driven by Ray's internal event loop.
       for(int i = 0; i < 4; i++) {
         // This doesn't block.
-        ray::Task(MyRayApp::SlowFunction).Remote();
+        ray::Task(SlowFunction).Remote();
       }
 
 .. _ray-object-refs:
@@ -228,19 +226,17 @@ Passing object refs to remote functions
 
   .. code-tab:: c++
 
-    class MyRayApp {
-    public:
-      static int FunctionWithAnArgument(int value) {
-        return value + 1;
-      }
+    static int FunctionWithAnArgument(int value) {
+      return value + 1;
     }
+    RAY_REMOTE(FunctionWithAnArgument);
 
-    ObjectRef<int> objRef1 = ray::Task(MyRayApp::MyFunction).Remote();
-    assert(*objRef1.Get() == 1);
+    auto obj_ref1 = ray::Task(MyFunction).Remote();
+    assert(*obj_ref1.Get() == 1);
 
     // You can pass an object ref as an argument to another Ray remote function.
-    ObjectRef<int> objRef2 = ray::Task(MyRayApp::FunctionWithAnArgument, objRef1).Remote();
-    assert(*objRef2.Get() == 2);
+    auto obj_ref2 = ray::Task(FunctionWithAnArgument, obj_ref1).Remote();
+    assert(*obj_ref2.Get() == 2);
 
 Note the following behaviors:
 
@@ -269,15 +265,14 @@ this default behavior by passing in specific resources.
 
     Set Java system property: ``-Dray.resources=CPU:8,GPU:4,Custom:2``.
 
-  .. group-tab:: C++
 
-    .. code-tab:: c++
+  .. code-tab:: c++
 
-        RayConfig config;
-        config.num_cpus = 8;
-        config.num_gpus = 4;
-        config.resources = {{"Custom", 2}};
-        ray::Init(config);
+    RayConfig config;
+    config.num_cpus = 8;
+    config.num_gpus = 4;
+    config.resources = {{"Custom", 2}};
+    ray::Init(config);
 
 Ray also allows specifying a task's resources requirements (e.g., CPU, GPU, and custom resources).
 The task will only run on a machine if there are enough resources
@@ -299,7 +294,7 @@ available to execute the task.
   .. code-tab:: c++
 
     // Specify required resources.
-    ray::Task(MyRayApp::MyFunction).SetResource("CPU", 1.0).SetResource("GPU", 4.0).Remote();
+    ray::Task(MyFunction).SetResource("CPU", 1.0).SetResource("GPU", 4.0).Remote();
 
 .. note::
 
@@ -340,7 +335,7 @@ Below are more examples of resource specifications:
   .. code-tab:: c++
 
     // Ray aslo supports fractional and custom resources.
-    ray::Task(MyRayApp::MyFunction).SetResource("GPU", 0.5).SetResource("Custom", 1.0).Remote();
+    ray::Task(MyFunction).SetResource("GPU", 0.5).SetResource("Custom", 1.0).Remote();
 
 Multiple returns
 ~~~~~~~~~~~~~~~~
@@ -431,7 +426,7 @@ Object refs can be created in multiple ways.
 
     // Put an object in Ray's object store.
     int y = 1;
-    ObjectRef<int> objectRef = ray::Put(y);
+    ray::ObjectRef<int> object_ref = ray::Put(y);
 
 .. note::
 
@@ -496,13 +491,13 @@ If the current node's object store does not contain the object, the object is do
     .. code-block:: c++
 
       // Get the value of one object ref.
-      ObjectRef<int> obj_ref = ray::Put(1);
+      ray::ObjectRef<int> obj_ref = ray::Put(1);
       assert(*obj_ref.Get() == 1);
 
       // Get the values of multiple object refs in parallel.
-      std::vector<ObjectRef<int>> obj_refs;
+      std::vector<ray::ObjectRef<int>> obj_refs;
       for (int i = 0; i < 3; i++) {
-        obj_refs.emplace_back(Ray.put(i));
+        obj_refs.emplace_back(ray::Put(i));
       }
       auto results = ray::Get(obj_refs);
       assert(results.size() == 3);
@@ -525,9 +520,9 @@ works as follows.
     System.out.println(waitResult.getReady());  // List of ready objects.
     System.out.println(waitResult.getUnready());  // list of unready objects.
   
-    .. code-tab:: c++
+  .. code-tab:: c++
 
-    auto wait_result = ray::Wait(object_refs, /*num_objects=*/0, /*timeout_ms=*/1000);
+    ray::WaitResult<int> wait_result = ray::Wait(object_refs, /*num_objects=*/0, /*timeout_ms=*/1000);
 
 Object Spilling
 ---------------
@@ -594,22 +589,24 @@ Actors extend the Ray API from functions (tasks) to classes. An actor is essenti
 
       private:
           int value = 0;
-          static Counter *FactoryCreate() {
-            return new Counter();
-          }
 
       public:
-        int increment() {
-          this.value += 1;
-          return this.value;
+        static Counter *CreateCounter() {
+          return new Counter();
         }
-      }
+
+        int Increment() {
+          value += 1;
+          return value;
+        }
+      };
+      RAY_REMOTE(Counter::CreateCounter, &Counter::Increment);
 
       // Create an actor from this class.
       // `ray::Actor` takes a factory method that can produce
       // a `Counter` object. Here, we pass `Counter`'s factory function
       // as the argument.
-      ActorHandle<Counter> counter = ray::Actor(Counter::FactoryCreate).Remote();
+      auto counter = ray::Actor(Counter::CreateCounter).Remote();
 
 Specifying required resources
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -633,7 +630,7 @@ You can specify resource requirements in actors too (see the `Actors section
   .. code-tab:: c++
 
     // Specify required resources for an actor.
-    ray::Actor(Counter::FactoryCreate).SetResource("CPU", 2.0).SetResource("GPU", 0.5).Remote();
+    ray::Actor(Counter::CreateCounter).SetResource("CPU", 2.0).SetResource("GPU", 0.5).Remote();
 
 
 Calling the actor
@@ -659,7 +656,7 @@ value.
   .. code-tab:: c++
 
     // Call the actor.
-    ObjectRef<int> object_ref = counter.Task(&Counter::increment).Remote();
+    auto object_ref = counter.Task(&Counter::increment).Remote();
     assert(*object_ref.Get() == 1);
 
 Methods called on different actors can execute in parallel, and methods called on the same actor are executed serially in the order that they are called. Methods on the same actor will share state with one another, as shown below.
@@ -709,19 +706,19 @@ Methods called on different actors can execute in parallel, and methods called o
   .. code-tab:: c++
 
     // Create ten Counter actors.
-    std::vector<ActorHandle<Counter>> counters;
+    std::vector<ray::ActorHandle<Counter>> counters;
     for (int i = 0; i < 10; i++) {
-      counters.emplace_back(ray::Actor(Counter::FactoryCreate).Remote());
+      counters.emplace_back(ray::Actor(Counter::CreateCounter).Remote());
     }
 
     // Increment each Counter once and get the results. These tasks all happen in
     // parallel.
-    std::vector<ObjectRef<int>> object_refs;
-    for (ActorHandle<Counter> counter_actor : counters) {
-      object_refs.add(counter_actor.Task(&Counter::increment).Remote());
+    std::vector<ray::ObjectRef<int>> object_refs;
+    for (ray::ActorHandle<Counter> counter_actor : counters) {
+      object_refs.emplace_back(counter_actor.Task(&Counter::Increment).Remote());
     }
     // prints 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
-    auto results = ray.Get(object_refs);
+    auto results = ray::Get(object_refs);
     for (const auto &result : results) {
       std::cout << *result;
     }
@@ -730,10 +727,10 @@ Methods called on different actors can execute in parallel, and methods called o
     // and share state.
     object_refs.clear();
     for (int i = 0; i < 5; i++) {
-      object_refs.add(counters[0].Task(&Counter::increment).Remote());
+      object_refs.emplace_back(counters[0].Task(&Counter::Increment).Remote());
     }
     // prints 2, 3, 4, 5, 6
-    results = ray.Get(object_refs);
+    results = ray::Get(object_refs);
     for (const auto &result : results) {
       std::cout << *result;
     }
