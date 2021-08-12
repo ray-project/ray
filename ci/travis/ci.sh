@@ -296,7 +296,6 @@ _bazel_build_before_install() {
   fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
 
-  # Build in debug mode if RAY_DEBUG_BUILD=1
   if [ -z "${RAY_DEBUG_BUILD-}" ]; then
     bazel build "${target}"
   elif [ "${RAY_DEBUG_BUILD}" = "asan" ]; then

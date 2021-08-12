@@ -368,18 +368,14 @@ def build(build_python, build_java, build_cpp):
 
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
-    bazel_targets += [
-        "//cpp:ray_cpp_pkg"
-    ] if build_cpp and not (setup_spec.build_type == "asan") else []
-    bazel_targets += [
-        "//java:ray_java_pkg"
-    ] if build_java and not (setup_spec.build_type == "asan") else []
+    bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
+    bazel_targets += ["//java:ray_java_pkg"] if build_java else []
 
     bazel_flags = ["--verbose_failures"]
     if setup_spec.build_type == BuildType.DEBUG:
         bazel_flags.extend(["--config", "debug"])
     if setup_spec.build_type == BuildType.ASAN:
-        bazel_flags.extend(["--config", "asan-build"])
+        bazel_flags.extend(["--config=asan-build"])
 
     return bazel_invoke(
         subprocess.check_call,
