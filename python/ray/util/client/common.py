@@ -259,8 +259,9 @@ class ClientRemoteMethod(ClientStub):
         self._method_name = method_name
 
     def __call__(self, *args, **kwargs):
-        raise TypeError(f"Remote method cannot be called directly. "
-                        f"Use {self._name}.remote() instead")
+        raise TypeError("Actor methods cannot be called directly. Instead "
+                        f"of running 'object.{self._method_name}()', try "
+                        f"'object.{self._method_name}.remote()'.")
 
     def remote(self, *args, **kwargs):
         return return_refs(ray.call_remote(self, *args, **kwargs))

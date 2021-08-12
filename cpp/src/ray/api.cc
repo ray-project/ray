@@ -27,10 +27,8 @@ void Init(ray::RayConfig &config, int argc, char **argv) {
 void Init(ray::RayConfig &config) { Init(config, 0, nullptr); }
 
 void Init() {
-  std::call_once(is_inited_, [] {
-    auto runtime = ray::internal::AbstractRayRuntime::DoInit();
-    ray::internal::RayRuntimeHolder::Instance().Init(runtime);
-  });
+  RayConfig config;
+  Init(config, 0, nullptr);
 }
 
 void Shutdown() { ray::internal::AbstractRayRuntime::DoShutdown(); }
