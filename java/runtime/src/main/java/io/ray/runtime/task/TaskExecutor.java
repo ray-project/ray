@@ -112,6 +112,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     // Find the executable object.
 
     RayFunction rayFunction = localRayFunction.get();
+    Object[] args = null;
     try {
       // Find the executable object.
       if (rayFunction == null) {
@@ -127,7 +128,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       if (taskType == TaskType.ACTOR_TASK) {
         actor = actorContext.currentActor;
       }
-      Object[] args =
+      args =
           ArgumentsBuilder.unwrap(argsBytes, rayFunction.executable.getParameterTypes());
       for (Object arg : args) {
         throwIfDependencyFailed(arg);
@@ -135,34 +136,12 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
       // Execute the task.
       Object result;
-      try {
-        if (!rayFunction.isConstructor()) {
-          result = rayFunction.getMethod().invoke(actor, args);
-        } else {
-          result = rayFunction.getConstructor().newInstance(args);
-        }
-      } catch (Exception e) {
-        final boolean isIntentionalSystemExit =
-            e.getCause() != null && e.getCause() instanceof RayIntentionalSystemExitException;
-        if (!isIntentionalSystemExit) {
-          final List<Class<?>> argTypes =
-              Arrays.stream(args)
-                  .map(arg -> arg == null ? null : arg.getClass())
-                  .collect(Collectors.toList());
-          LOGGER.error(
-              "Execute rayFunction {} failed. actor is {} , task id is {} , argument types are {}",
-              rayFunction,
-              actor,
-              taskId,
-              argTypes);
-        }
-
-        if (e instanceof InvocationTargetException && e.getCause() != null) {
-          throw e.getCause();
-        } else {
-          throw e;
-        }
+      if (!rayFunction.isConstructor()) {
+        result = rayFunction.getMethod().invoke(actor, args);
+      } else {
+        result = rayFunction.getConstructor().newInstance(args);
       }
+
       // Set result
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         if (rayFunction.hasReturn()) {
@@ -179,7 +158,15 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         // the return object with the ACTOR_DIED metadata.
         throw (RayIntentionalSystemExitException) e;
       }
-      LOGGER.error("Error executing task " + taskId, e);
+
+      final List<Class<?>> argTypes = args == null ? null :
+        Arrays.stream(args)
+          .map(arg -> arg == null ? null : arg.getClass())
+          .collect(Collectors.toList());
+      LOGGER.error(
+        "Failed to execute task {} . rayFunction is {} , argument types are {}",
+        taskId, rayFunction, argTypes, e);
+
 
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
