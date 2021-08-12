@@ -273,9 +273,6 @@ def test_no_http(ray_shutdown):
     # The following should have the same effect.
     options = [
         {
-            "http_host": None
-        },
-        {
             "http_options": {
                 "host": None
             }

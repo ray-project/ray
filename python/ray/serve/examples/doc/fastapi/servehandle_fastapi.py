@@ -23,7 +23,7 @@ class GPT2:
 @app.on_event("startup")  # Code to be run when the server starts.
 async def startup_event():
     ray.init(address="auto")  # Connect to the running Ray cluster.
-    serve.start(http_host=None)  # Start the Ray Serve instance.
+    serve.start(http_options: {"http_host": None})  # Start the Ray Serve instance.
 
     # Deploy our GPT2 Deployment.
     GPT2.deploy()
