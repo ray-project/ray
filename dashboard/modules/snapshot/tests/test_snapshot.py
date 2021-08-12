@@ -142,7 +142,8 @@ my_func.deploy()
 
     assert len(entry["actors"]) == 1
     actor_id = next(iter(entry["actors"]))
-    metadata = data["data"]["snapshot"]["actors"][actor_id]["serveMetadata"]
+    metadata = data["data"]["snapshot"]["actors"][actor_id]["metadata"][
+        "serve"]
     assert metadata["deploymentName"] == "my_func"
     assert metadata["version"] == "v1"
     assert len(metadata["replicaTag"]) > 0
@@ -161,7 +162,8 @@ my_func.deploy()
 
     assert len(entry_nondetached["actors"]) == 1
     actor_id = next(iter(entry_nondetached["actors"]))
-    metadata = data["data"]["snapshot"]["actors"][actor_id]["serveMetadata"]
+    metadata = data["data"]["snapshot"]["actors"][actor_id]["metadata"][
+        "serve"]
     assert metadata["deploymentName"] == "my_func_nondetached"
     assert metadata["version"] == "v1"
     assert len(metadata["replicaTag"]) > 0

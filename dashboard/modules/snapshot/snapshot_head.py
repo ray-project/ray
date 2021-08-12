@@ -87,7 +87,8 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
                 "current_worker_id": actor_table_entry.address.worker_id.hex(),
                 "current_raylet_id": actor_table_entry.address.raylet_id.hex(),
                 "ip_address": actor_table_entry.address.ip_address,
-                "port": actor_table_entry.address.port
+                "port": actor_table_entry.address.port,
+                "metadata": dict()
             }
             actors[actor_id] = entry
 
@@ -96,11 +97,13 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
                 for replica_actor_id, actor_info in deployment_info[
                         "actors"].items():
                     if replica_actor_id in actors:
-                        metadata = dict()
-                        metadata["replica_tag"] = actor_info["replica_tag"]
-                        metadata["deployment_name"] = deployment_name
-                        metadata["version"] = actor_info["version"]
-                        actors[replica_actor_id]["serve_metadata"] = metadata
+                        serve_metadata = dict()
+                        serve_metadata["replica_tag"] = actor_info[
+                            "replica_tag"]
+                        serve_metadata["deployment_name"] = deployment_name
+                        serve_metadata["version"] = actor_info["version"]
+                        actors[replica_actor_id]["metadata"][
+                            "serve"] = serve_metadata
         return actors
 
     async def get_serve_info(self):

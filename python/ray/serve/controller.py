@@ -143,7 +143,7 @@ class ServeController:
             # Or refactor the route_prefix logic in the Deployment class.
             entry["http_route"] = route_prefix or f"/{deployment_name}"
             entry["status"] = "RUNNING"
-            entry["start_time"] = backend_info.start_time_ms or 0
+            entry["start_time"] = backend_info.start_time_ms
             entry["end_time"] = 0
 
             entry["actors"] = dict()
