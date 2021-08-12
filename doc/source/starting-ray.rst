@@ -126,10 +126,10 @@ When the process calling ``ray.init()`` terminates, the Ray runtime will also te
       #include <ray/api.h>
 
       int main(int argc, char **argv) {
-        ray::Init(config);
+        ray::Init();
         assert(ray::IsInitialized());
 
-        Ray.shutdown();
+        ray::Shutdown();
         assert(!ray::IsInitialized());
       }
 
