@@ -70,7 +70,7 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerGaugeNat
   std::vector<TagKeyType> tag_keys;
   MetricTransform(env, j_name, j_description, j_unit, tag_key_list, &metric_name,
                   &description, &unit, tag_keys);
-  auto *gauge = new ray::stats::Gauge(metric_name, description, unit, tag_keys);
+  auto *gauge = new stats::Gauge(metric_name, description, unit, tag_keys);
   return reinterpret_cast<jlong>(gauge);
 }
 
@@ -83,7 +83,7 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerCountNat
   std::vector<TagKeyType> tag_keys;
   MetricTransform(env, j_name, j_description, j_unit, tag_key_list, &metric_name,
                   &description, &unit, tag_keys);
-  auto *count = new ray::stats::Count(metric_name, description, unit, tag_keys);
+  auto *count = new stats::Count(metric_name, description, unit, tag_keys);
   return reinterpret_cast<jlong>(count);
 }
 
@@ -96,7 +96,7 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerSumNativ
   std::vector<TagKeyType> tag_keys;
   MetricTransform(env, j_name, j_description, j_unit, tag_key_list, &metric_name,
                   &description, &unit, tag_keys);
-  auto *sum = new ray::stats::Sum(metric_name, description, unit, tag_keys);
+  auto *sum = new stats::Sum(metric_name, description, unit, tag_keys);
   return reinterpret_cast<jlong>(sum);
 }
 
@@ -114,22 +114,20 @@ JNIEXPORT jlong JNICALL Java_io_ray_runtime_metric_NativeMetric_registerHistogra
   JavaDoubleArrayToNativeDoubleVector(env, j_boundaries, &boundaries);
 
   auto *histogram =
-      new ray::stats::Histogram(metric_name, description, unit, boundaries, tag_keys);
+      new stats::Histogram(metric_name, description, unit, boundaries, tag_keys);
   return reinterpret_cast<jlong>(histogram);
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_metric_NativeMetric_unregisterMetricNative(
     JNIEnv *env, jclass obj, jlong metric_native_pointer) {
-  ray::stats::Metric *metric =
-      reinterpret_cast<ray::stats::Metric *>(metric_native_pointer);
+  stats::Metric *metric = reinterpret_cast<stats::Metric *>(metric_native_pointer);
   delete metric;
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_metric_NativeMetric_recordNative(
     JNIEnv *env, jclass obj, jlong metric_native_pointer, jdouble value,
     jobject tag_key_list, jobject tag_value_list) {
-  ray::stats::Metric *metric =
-      reinterpret_cast<ray::stats::Metric *>(metric_native_pointer);
+  stats::Metric *metric = reinterpret_cast<stats::Metric *>(metric_native_pointer);
   std::vector<std::string> tag_key_str_list;
   std::vector<std::string> tag_value_str_list;
   JavaStringListToNativeStringVector(env, tag_key_list, &tag_key_str_list);

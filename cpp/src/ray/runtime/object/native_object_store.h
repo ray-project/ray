@@ -20,7 +20,7 @@
 #include "object_store.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 class NativeObjectStore : public ObjectStore {
  public:
@@ -44,5 +44,5 @@ class NativeObjectStore : public ObjectStore {
                       const std::shared_ptr<Buffer> &data_buffer);
 };
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

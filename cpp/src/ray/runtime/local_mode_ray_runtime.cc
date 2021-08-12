@@ -21,11 +21,11 @@
 #include "./task/local_mode_task_submitter.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 LocalModeRayRuntime::LocalModeRayRuntime() {
   worker_ = std::make_unique<WorkerContext>(
-      ray::WorkerType::DRIVER, ComputeDriverIdFromJob(JobID::Nil()), JobID::Nil());
+      ray::core::WorkerType::DRIVER, ComputeDriverIdFromJob(JobID::Nil()), JobID::Nil());
   object_store_ = std::unique_ptr<ObjectStore>(new LocalModeObjectStore(*this));
   task_submitter_ = std::unique_ptr<TaskSubmitter>(new LocalModeTaskSubmitter(*this));
 }
@@ -37,5 +37,5 @@ ActorID LocalModeRayRuntime::GetNextActorID() {
   return actor_id;
 }
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray
