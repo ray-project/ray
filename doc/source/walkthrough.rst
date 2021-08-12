@@ -591,22 +591,24 @@ Actors extend the Ray API from functions (tasks) to classes. An actor is essenti
           int value = 0;
 
       public:
-        static Counter *CreateCounter() {
-          return new Counter();
-        }
-
         int Increment() {
           value += 1;
           return value;
         }
       };
-      RAY_REMOTE(Counter::CreateCounter, &Counter::Increment);
+
+      // Factory function of Counter class.
+      static Counter *CreateCounter() {
+          return new Counter();
+      };
+
+      RAY_REMOTE(&Counter::Increment, CreateCounter);
 
       // Create an actor from this class.
       // `ray::Actor` takes a factory method that can produce
       // a `Counter` object. Here, we pass `Counter`'s factory function
       // as the argument.
-      auto counter = ray::Actor(Counter::CreateCounter).Remote();
+      auto counter = ray::Actor(CreateCounter).Remote();
 
 Specifying required resources
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -630,7 +632,7 @@ You can specify resource requirements in actors too (see the `Actors section
   .. code-tab:: c++
 
     // Specify required resources for an actor.
-    ray::Actor(Counter::CreateCounter).SetResource("CPU", 2.0).SetResource("GPU", 0.5).Remote();
+    ray::Actor(CreateCounter).SetResource("CPU", 2.0).SetResource("GPU", 0.5).Remote();
 
 
 Calling the actor
@@ -650,7 +652,7 @@ value.
   .. code-tab:: java
 
     // Call the actor.
-    ObjectRef<Integer> objectRef = counter.task(Counter::increment).remote();
+    ObjectRef<Integer> objectRef = counter.task(&Counter::increment).remote();
     Assert.assertTrue(objectRef.get() == 1);
 
   .. code-tab:: c++
@@ -708,7 +710,7 @@ Methods called on different actors can execute in parallel, and methods called o
     // Create ten Counter actors.
     std::vector<ray::ActorHandle<Counter>> counters;
     for (int i = 0; i < 10; i++) {
-      counters.emplace_back(ray::Actor(Counter::CreateCounter).Remote());
+      counters.emplace_back(ray::Actor(CreateCounter).Remote());
     }
 
     // Increment each Counter once and get the results. These tasks all happen in

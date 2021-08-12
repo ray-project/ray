@@ -113,16 +113,18 @@ Creating an actor
         void Reset(int new_value) {
           value = new_value;
         }
+      };
 
-        static Counter* CreateCounter() {
+      // Factory function of Counter class.
+      Counter* CreateCounter() {
           return new Counter();
         }
-      };
+
       RAY_REMOTE(&Counter::Increment, &Counter::GetCounter, 
-                 &Counter::Reset, Counter::CreateCounter);
+                 &Counter::Reset, CreateCounter);
 
       // Create an actor with a factory method.
-      ray::Actor(&Counter::CreateCounter).Remote();
+      ray::Actor(CreateCounter).Remote();
 
 When the above actor is instantiated, the following events happen.
 
@@ -168,7 +170,7 @@ Methods of the actor can be called remotely.
 
   .. code-tab:: c++
 
-    ray::ActorHandle<Counter> counter_actor = ray::Actor(&Counter::CreateCounter).Remote();
+    ray::ActorHandle<Counter> counter_actor = ray::Actor(CreateCounter).Remote();
     // Call an actor method with a return value
     assert(*counter_actor.Task(&Counter::Increment).Remote().Get(), 1);
     // Call an actor method without return value. In this case, the return type of `Remote()` is void.
@@ -482,7 +484,7 @@ If we instantiate an actor, we can pass the handle around to various tasks.
 
   .. code-tab:: c++
 
-    auto counter = ray::Actor(Counter::CreateCounter).Remote();
+    auto counter = ray::Actor(CreateCounter).Remote();
 
     // Start some tasks that use the actor.
     for (int i = 0; i < 3; i++) {
@@ -549,7 +551,7 @@ exist. See :ref:`actor-lifetimes` for more details.
     .. code-block:: c++
 
       // Create an actor with a globally unique name
-      ActorHandle<Counter> counter = ray::Actor(Counter::CreateCounter).SetGlobalName("some_name").Remote();
+      ActorHandle<Counter> counter = ray::Actor(CreateCounter).SetGlobalName("some_name").Remote();
 
       ...
 
