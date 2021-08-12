@@ -1,7 +1,7 @@
 import random
 import copy
 import threading
-from collections import defaultdict, namedtuple, OrderedDict
+from collections import defaultdict, OrderedDict
 import logging
 import time
 from typing import Any, Dict, List
@@ -472,7 +472,7 @@ class AWSNodeProvider(NodeProvider):
         # the function to use, and the value is the list of nodes to terminate
         # with that function.
         nodes_to_terminate = {terminate_instances_func: [],
-                stop_instances_func: []}
+                              stop_instances_func: []}
 
         if self.cache_stopped_nodes:
             spot_ids = []
@@ -505,7 +505,7 @@ class AWSNodeProvider(NodeProvider):
             nodes_to_terminate[terminate_instances_func] = node_ids
 
         max_terminate_nodes = self.max_terminate_nodes if \
-                self.max_terminate_nodes is not None else len(node_ids)
+            self.max_terminate_nodes is not None else len(node_ids)
 
         # for terminate_func, nodes in nodes_to_terminate.items():
         for nodes, terminate_func in nodes_to_terminate.items():
