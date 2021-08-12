@@ -281,7 +281,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Helper function to produce actor table data for a newly created actor.
   ///
-  /// \param task_spec Task specification of the actor creation task that created the
+  /// \param task_spec RayTask specification of the actor creation task that created the
   /// actor.
   /// \param worker The port that the actor is listening on.
   std::shared_ptr<ActorTableData> CreateActorTableDataFromCreationTask(
@@ -290,7 +290,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
   /// \return Void.
-  void FinishAssignedActorCreationTask(WorkerInterface &worker, const Task &task);
+  void FinishAssignedActorCreationTask(WorkerInterface &worker, const RayTask &task);
 
   /// Handle blocking gets of objects. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
@@ -577,8 +577,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Publish the infeasible task error to GCS so that drivers can subscribe to it and
   /// print.
   ///
-  /// \param task Task that is infeasible
-  void PublishInfeasibleTaskError(const Task &task) const;
+  /// \param task RayTask that is infeasible
+  void PublishInfeasibleTaskError(const RayTask &task) const;
 
   /// Get pointers to objects stored in plasma. They will be
   /// released once the returned references go out of scope.
