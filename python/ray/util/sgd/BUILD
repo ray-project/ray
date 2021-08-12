@@ -17,14 +17,14 @@ py_test(
     tags = ["exclusive"],
     deps = [":sgd_lib"]
 )
-
-py_test(
-    name = "test_ptl",
-    size = "large",
-    srcs = ["tests/test_ptl.py"],
-    tags = ["exclusive", "pytorch-lightning", "pytorch"],
-    deps = [":sgd_lib"],
-)
+# This is no longer maintained.
+#py_test(
+#    name = "test_ptl",
+#    size = "large",
+#    srcs = ["tests/test_ptl.py"],
+#    tags = ["exclusive", "pytorch-lightning", "pytorch"],
+#    deps = [":sgd_lib"],
+#)
 
 py_test(
     name = "test_tensorflow",

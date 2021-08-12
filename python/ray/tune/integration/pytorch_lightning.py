@@ -1,9 +1,12 @@
+import logging
 from typing import Dict, List, Optional, Union
 
 from pytorch_lightning import Callback, Trainer, LightningModule
 from ray import tune
 
 import os
+
+logger = logging.getLogger(__name__)
 
 
 class TuneCallback(Callback):
@@ -169,7 +172,8 @@ class TuneReportCallback(TuneCallback):
             metrics = [metrics]
         self._metrics = metrics
 
-    def _handle(self, trainer: Trainer, pl_module: LightningModule):
+    def _get_report_dict(self, trainer: Trainer,
+                         pl_module: LightningModule):
         # Don't report if just doing initial validation sanity checks.
         if trainer.running_sanity_check:
             return
@@ -185,8 +189,18 @@ class TuneReportCallback(TuneCallback):
                     metric = self._metrics[key]
                 else:
                     metric = key
-                report_dict[key] = trainer.callback_metrics[metric].item()
-        tune.report(**report_dict)
+                if metric in trainer.callback_metrics:
+                    report_dict[key] = trainer.callback_metrics[metric].item()
+                else:
+                    logger.warning(f"Metric {metric} does not exist in "
+                                   "`trainer.callback_metrics.")
+
+        return report_dict
+
+    def _handle(self, trainer: Trainer, pl_module: LightningModule):
+        report_dict = self._get_report_dict(trainer, pl_module)
+        if report_dict is not None:
+            tune.report(**report_dict)
 
 
 class _TuneCheckpointCallback(TuneCallback):
@@ -259,13 +273,16 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     """
 
+    _checkpoint_callback_cls = _TuneCheckpointCallback
+    _report_callbacks_cls = TuneReportCallback
+
     def __init__(self,
                  metrics: Union[None, str, List[str], Dict[str, str]] = None,
                  filename: str = "checkpoint",
                  on: Union[str, List[str]] = "validation_end"):
         super(TuneReportCheckpointCallback, self).__init__(on)
-        self._checkpoint = _TuneCheckpointCallback(filename, on)
-        self._report = TuneReportCallback(metrics, on)
+        self._checkpoint = self._checkpoint_callback_cls(filename, on)
+        self._report = self._report_callbacks_cls(metrics, on)
 
     def _handle(self, trainer: Trainer, pl_module: LightningModule):
         self._checkpoint._handle(trainer, pl_module)
