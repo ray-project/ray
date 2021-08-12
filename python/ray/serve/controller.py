@@ -248,9 +248,11 @@ class ServeController:
             self.endpoint_state.delete_endpoint(endpoint)
 
     async def create_backend(
-            self, backend_tag: BackendTag, backend_config: BackendConfig,
+            self,
+            backend_tag: BackendTag,
+            backend_config: BackendConfig,
             replica_config: ReplicaConfig,
-            deployer_job_id: Optional["Optional[ray._raylet.JobID]"]
+            deployer_job_id: Optional["Optional[ray._raylet.JobID]"] = None
     ) -> Optional[GoalId]:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
