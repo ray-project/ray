@@ -618,11 +618,6 @@ def start(
                 - "NoServer" or None: disable HTTP server.
             - num_cpus (int): The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
-            - root_url (str): The base url for HTTP server, used to supply
-              the full url for a deployment. For example, `root_url="https://
-              my.domain.com/reverse-proxy-prefix/serve`. You can also set
-              environment variable `RAY_HEAD_NODE_PUBLIC_URL` to provide
-              default value.
         dedicated_cpu (bool): Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """

@@ -271,12 +271,6 @@ def test_http_root_url(ray_shutdown):
     root_url = "https://my.domain.dev/prefix"
 
     port = new_port()
-    serve.start(http_options=dict(port=port, root_url=root_url))
-    f.deploy()
-    assert f.url == root_url + "/f"
-    serve.shutdown()
-
-    port = new_port()
     os.environ[RAY_HEAD_NODE_URL_ENV_VAR] = root_url
     serve.start(http_options=dict(port=port))
     f.deploy()
