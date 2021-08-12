@@ -1529,9 +1529,6 @@ cdef class CoreWorker:
 
         return resources_dict
 
-    def plasma_unlimited(self):
-        return RayConfig.instance().plasma_unlimited()
-
     def profile_event(self, c_string event_type, object extra_data=None):
         if RayConfig.instance().enable_timeline():
             return ProfileEvent.make(
