@@ -1,6 +1,10 @@
+from typing import Dict, Any, List
+
+import ray
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_pb2
 from ray.core.generated import gcs_service_pb2_grpc
+from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_list
 
 import ray.new_dashboard.utils as dashboard_utils
 
@@ -20,11 +24,15 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
     async def snapshot(self, req):
         job_data = await self.get_job_info()
         actor_data = await self.get_actor_info()
+        serve_data = await self.get_serve_info()
         session_name = await self.get_session_name()
         snapshot = {
             "jobs": job_data,
             "actors": actor_data,
+            "deployments": serve_data,
             "session_name": session_name,
+            "ray_version": ray.__version__,
+            "ray_commit": ray.__commit__
         }
         return dashboard_utils.rest_response(
             success=True, message="hello", snapshot=snapshot)
@@ -79,10 +87,41 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
                 "current_worker_id": actor_table_entry.address.worker_id.hex(),
                 "current_raylet_id": actor_table_entry.address.raylet_id.hex(),
                 "ip_address": actor_table_entry.address.ip_address,
-                "port": actor_table_entry.address.port,
+                "port": actor_table_entry.address.port
             }
             actors[actor_id] = entry
         return actors
+
+    async def get_serve_info(self):
+        # Conditionally import serve to prevent ModuleNotFoundError from serve
+        # dependencies when only ray[default] is installed (#17712)
+        try:
+            from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
+            from ray.serve.constants import SERVE_CONTROLLER_NAME
+        except Exception:
+            return "{}"
+
+        gcs_client = self._dashboard_head.gcs_client
+
+        # Serve wraps Ray's internal KV store and specially formats the keys.
+        # These are the keys we are interested in:
+        # SERVE_CONTROLLER_NAME(+ optional random letters):SERVE_SNAPSHOT_KEY
+
+        serve_keys = _internal_kv_list(SERVE_CONTROLLER_NAME, gcs_client)
+        serve_snapshot_keys = filter(lambda k: SERVE_SNAPSHOT_KEY in str(k),
+                                     serve_keys)
+
+        deployments_per_controller: List[Dict[str, Any]] = []
+        for key in serve_snapshot_keys:
+            val_bytes = _internal_kv_get(key,
+                                         gcs_client) or "{}".encode("utf-8")
+            deployments_per_controller.append(
+                json.loads(val_bytes.decode("utf-8")))
+        deployments: Dict[str, Any] = {
+            k: v
+            for d in deployments_per_controller for k, v in d.items()
+        }
+        return deployments
 
     async def get_session_name(self):
         encoded_name = await self._dashboard_head.aioredis_client.get(

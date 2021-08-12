@@ -15,6 +15,12 @@
         "snapshot": {
           "type": "object",
           "properties": {
+            "ray_version": {
+              "type": "string"
+            },
+            "ray_commit": {
+              "type": "string"
+            },
             "jobs": {
               "type": "object",
               "patternProperties": {
@@ -129,6 +135,54 @@
                     "actorClass",
                     "ipAddress",
                     "port"
+                  ]
+                }
+              }
+            },
+            "deployments": {
+              "type": "object",
+              "patternProperties": {
+                "[0-9a-f]*": {
+                  "type": "object",
+                  "properties": {
+                    "className": {
+                      "type": "string"
+                    },
+                    "endTime": {
+                      "type": "integer"
+                    },
+                    "startTime": {
+                      "type": "integer"
+                    },
+                    "httpRoute": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "namespace": {
+                      "type": "string"
+                    },
+                    "rayJobId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "className",
+                    "startTime",
+                    "endTime",
+                    "httpRoute",
+                    "name",
+                    "namespace",
+                    "rayJobId",
+                    "status",
+                    "version"
                   ]
                 }
               }

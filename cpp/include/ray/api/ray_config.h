@@ -16,11 +16,11 @@
 #include <ray/api/ray_exception.h>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include "boost/optional.hpp"
 
 namespace ray {
-namespace api {
 
 class RayConfig {
  public:
@@ -41,7 +41,17 @@ class RayConfig {
 
   // Prevents external clients without the password from connecting to Redis if provided.
   boost::optional<std::string> redis_password_;
+
+  // Number of CPUs the user wishes to assign to each raylet. By default, this is set
+  // based on virtual cores.
+  int num_cpus = 0;
+
+  // Number of GPUs the user wishes to assign to each raylet. By default, this is set
+  // based on detected GPUs.
+  int num_gpus = 0;
+
+  // A mapping the names of custom resources to the quantities for them available.
+  std::unordered_map<std::string, int> resources;
 };
 
-}  // namespace api
 }  // namespace ray
