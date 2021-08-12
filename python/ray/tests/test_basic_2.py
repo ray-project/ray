@@ -720,7 +720,8 @@ if __name__ == "__main__":
         assert b"OK" in output
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="init issue")
+@pytest.mark.skipif(
+    client_test_enabled(), reason="JobConfig doesn't work in client mode")
 def test_use_dynamic_function_and_class():
     # Test use dynamically defined functions
     # and classes for remote tasks and actors.
@@ -743,19 +744,19 @@ def test_use_dynamic_function_and_class():
         def foo(self):
             return "OK"
 
-    # To check if the dynamic function is stored in GCS
-    # Keep the key of function the same as export.
     f = foo1()
     assert ray.get(f.remote()) == "OK"
+    # To check if the dynamic function is stored in GCS
+    # Keep the key of function the same as export.
     key_func = (
         b"RemoteFunction:" + ray.worker.global_worker.current_job_id.binary() +
         b":" + f._function_descriptor.function_id.binary())
     assert ray.worker.global_worker.redis_client.exists(key_func) == 1
     foo_actor = Foo.remote()
 
+    assert ray.get(foo_actor.foo.remote()) == "OK"
     # To check if the dynamic class is stored in GCS
     # Keep the key of class the same as export.
-    assert ray.get(foo_actor.foo.remote()) == "OK"
     key_cls = (
         b"ActorClass:" + ray.worker.global_worker.current_job_id.binary() +
         b":" +
