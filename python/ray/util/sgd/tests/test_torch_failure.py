@@ -8,7 +8,6 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 
 import ray
-from ray.test_utils import wait_for_condition
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.worker_group import RemoteWorkerGroup
 from ray.util.sgd.torch.training_operator import TrainingOperator
@@ -95,24 +94,20 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
             config={"batch_size": 100000},
             use_local=use_local,
             num_workers=2)
-        bundle = {
-            "CPU": 1,
-        }
-        bundles = [bundle]
-        dummp_pg = ray.util.placement_group(bundles, strategy="SPREAD")
+
+        @ray.remote(num_cpus=1)
+        class DummyActor:
+            def get(self):
+                return 1
+
+        dummy_handler = DummyActor.remote()
         trainer1.train(max_retries=1)
         assert trainer1.worker_group.num_workers == 1
         assert trainer1._num_failures == 1
 
-        ray.util.remove_placement_group(dummp_pg)
-
-        def is_placement_group_removed():
-            table = ray.util.placement_group_table(dummp_pg)
-            if "state" not in table:
-                return False
-            return table["state"] == "REMOVED"
-
-        wait_for_condition(is_placement_group_removed)
+        ray.get(dummy_handler.get.remote())
+        ray.kill(dummy_handler)
+        time.sleep(1)
         # trigger scale up
         trainer1.train()
         assert trainer1.worker_group.num_workers == 2
