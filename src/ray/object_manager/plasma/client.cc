@@ -19,9 +19,9 @@
 
 #include "ray/object_manager/plasma/client.h"
 
-#include <cstring>
-
 #include <algorithm>
+#include <boost/asio.hpp>
+#include <cstring>
 #include <deque>
 #include <mutex>
 #include <tuple>
@@ -29,16 +29,13 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/asio.hpp>
-
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/object_manager/plasma/shared_memory.h"
-
-#include "absl/container/flat_hash_map.h"
 
 namespace fb = plasma::flatbuf;
 

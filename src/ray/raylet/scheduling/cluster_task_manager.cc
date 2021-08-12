@@ -1,9 +1,10 @@
+#include "ray/raylet/scheduling/cluster_task_manager.h"
+
 #include <google/protobuf/map.h>
 
 #include <boost/functional/hash.hpp>
 #include <boost/range/join.hpp>
 
-#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
 

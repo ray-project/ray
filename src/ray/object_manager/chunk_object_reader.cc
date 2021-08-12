@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/object_manager/chunk_object_reader.h"
+
 #include "ray/util/logging.h"
 
 namespace ray {
