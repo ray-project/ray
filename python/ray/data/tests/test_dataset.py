@@ -831,6 +831,28 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
             lambda df: 1, batch_size=2, batch_format="pyarrow").take()
 
 
+def test_union(ray_start_regular_shared):
+    ds = ray.data.range(20, parallelism=10)
+
+    # Test lazy union.
+    ds = ds.union(ds, ds, ds, ds)
+    assert ds.num_blocks() == 50
+    assert ds.count() == 100
+    assert ds.sum() == 950
+
+    ds = ds.union(ds)
+    assert ds.count() == 200
+    assert ds.sum() == (950 * 2)
+
+    # Test materialized union.
+    ds2 = ds.from_items([1, 2, 3, 4, 5])
+    assert ds2.count() == 5
+    ds2 = ds2.union(ds2)
+    assert ds2.count() == 10
+    ds2 = ds2.union(ds)
+    assert ds2.count() == (950 * 2 + 10)
+
+
 def test_split(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
