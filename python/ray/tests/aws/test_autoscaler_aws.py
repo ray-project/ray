@@ -633,8 +633,8 @@ def test_terminate_nodes(num_nodes, stop, spot):
     # them up into multiple smaller requests.
     #
     # "num_nodes" is the number of nodes to stop or terminate.
-    # "stop" is True if we want to stop nodes, and False to terminate nodes. Note
-    #   that spot instances are always terminated, even if "stop" is True.
+    # "stop" is True if we want to stop nodes, and False to terminate nodes.
+    #   Note that spot instances are always terminated, even if "stop" is True.
     # "spot" is True if we want to terminate/stop spot nodes, and False for on-
     #   demand nodes.
 
