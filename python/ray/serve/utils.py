@@ -202,7 +202,11 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
     if controller_name is None:
         name = actor_name
     else:
-        name = "{}:{}".format(actor_name, controller_name)
+        if "/" in controller_name:
+            namespace, controller_name = controller_name.split("/")
+            name = "{}/{}:{}".format(namespace, actor_name, controller_name)
+        else:
+            name = "{}:{}".format(actor_name, controller_name)
 
     for modifier in modifiers:
         name += "-{}".format(modifier)
