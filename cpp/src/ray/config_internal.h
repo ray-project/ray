@@ -53,6 +53,12 @@ class ConfigInternal {
 
   std::string node_ip_address = "";
 
+  int num_cpus = 0;
+
+  int num_gpus = 0;
+
+  std::unordered_map<std::string, int> resources;
+
   static ConfigInternal &Instance() {
     static ConfigInternal config;
     return config;

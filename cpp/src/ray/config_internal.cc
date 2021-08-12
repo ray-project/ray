@@ -62,6 +62,15 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (config.redis_password_) {
     redis_password = *config.redis_password_;
   }
+  if (config.num_cpus > 0) {
+    num_cpus = config.num_cpus;
+  }
+  if (config.num_gpus > 0) {
+    num_gpus = config.num_gpus;
+  }
+  if (!config.resources.empty()) {
+    resources = config.resources;
+  }
   if (argc != 0 && argv != nullptr) {
     // Parse config from command line.
     absl::ParseCommandLine(argc, argv);
