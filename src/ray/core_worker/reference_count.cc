@@ -493,8 +493,8 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     }
   }
   if (it->second.borrowers.empty()) {
-    // Check if we are shutting down and deleting this reference is now only
-    // used by the local process.
+    // Check if we are shutting down and if this reference is now only used by
+    // the local process.
     ShutdownIfNeeded();
   }
   if (it->second.ShouldDelete(lineage_pinning_enabled_)) {
