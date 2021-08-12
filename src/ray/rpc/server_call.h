@@ -153,8 +153,8 @@ class ServerCallImpl : public ServerCall {
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     STATS_grpc_server_req_new.Record(1.0, call_name_);
     start_time_ = absl::GetCurrentTimeNanos();
-    request_ = google::protobuf::Arena::Create<Request>(&arena_);
-    reply_ = google::protobuf::Arena::Create<Reply>(&arena_);
+    request_ = google::protobuf::Arena::CreateMessage<Request>(&arena_);
+    reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
   }
 
   ~ServerCallImpl() override {

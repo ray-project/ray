@@ -70,7 +70,7 @@ class ClientCallImpl : public ClientCall {
                           std::shared_ptr<StatsHandle> stats_handle)
       : callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
         stats_handle_(std::move(stats_handle)) {
-    reply_ = google::protobuf::Arena::Create<Reply>(&arena_);
+    reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
   }
 
   Status GetStatus() override {
