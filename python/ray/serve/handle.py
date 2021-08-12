@@ -195,8 +195,7 @@ class RayServeHandle:
         if name not in self.known_python_methods:
             raise AttributeError(
                 f"ServeHandle for endpoint {self.endpoint_name} doesn't have "
-                f"python method {name}. Please check all Python methods via "
-                "`serve.list_endpoints()`. If you used the "
+                f"python method {name}. If you used the "
                 f"get_handle('{self.endpoint_name}', missing_ok=True) flag, "
                 f"Serve cannot know all methods for {self.endpoint_name}. "
                 "You can set the method manually via "
