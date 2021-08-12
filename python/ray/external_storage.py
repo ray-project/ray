@@ -125,6 +125,8 @@ class ExternalStorage(metaclass=abc.ABCMeta):
                 object_refs, ray_object_pairs, owner_addresses):
             address_len = len(owner_address)
             metadata_len = len(metadata)
+            if buf is None:
+                raise ValueError(f"object ref {ref.hex()} does not exist.")
             buf_len = len(buf)
             payload = address_len.to_bytes(8, byteorder="little") + \
                 metadata_len.to_bytes(8, byteorder="little") + \

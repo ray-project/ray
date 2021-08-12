@@ -309,8 +309,9 @@
 - name: dask_on_ray_1tb_sort
   cluster:
     app_config: dask_on_ray/dask_on_ray_app_config.yaml
-    compute_template: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
+    compute_template: dask_on_ray/1tb_sort_compute.yaml
 
   run:
-    timeout: 14400
-    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions 500 --num-nodes 5 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
+    timeout: 7200
+    prepare: python wait_cluster.py 32 1000
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions 1000 --num-nodes 31 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
