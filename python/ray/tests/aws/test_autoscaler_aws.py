@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 from ray.autoscaler._private.aws.config import _get_vpc_id_or_die, \
     bootstrap_aws, log_to_cli, \
     DEFAULT_AMI
+from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
 from ray.autoscaler._private.providers import _get_node_provider
 import ray.tests.aws.utils.stubs as stubs
 import ray.tests.aws.utils.helpers as helpers
@@ -641,15 +642,13 @@ def test_terminate_nodes(num_nodes, stop, spot):
     # Generate a list of unique instance ids to terminate
     instance_ids = ["i-{:017d}".format(i) for i in range(num_nodes)]
 
-    config = helpers.bootstrap_aws_example_config_file("example-full.yaml")
-    config["provider"]["cache_stopped_nodes"] = stop
-
     with patch("ray.autoscaler._private.aws.node_provider.make_ec2_client"):
-        provider = _get_node_provider(
-            config["provider"],
-            DEFAULT_CLUSTER_NAME,
-            False,
-        )
+        provider = AWSNodeProvider(
+            provider_config={
+                "region": "nowhere",
+                "cache_stopped_nodes": stop
+            },
+            cluster_name="default")
 
     # "_get_cached_node" is used by the AWSNodeProvider to determine whether a
     # node is a spot instance or an on-demand instance.
