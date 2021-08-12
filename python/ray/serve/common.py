@@ -35,6 +35,7 @@ class BackendInfo:
                  deployer_job_id: "Optional[ray._raylet.JobID]" = None):
         self.backend_config = backend_config
         self.replica_config = replica_config
+        # The time when .deploy() was first called for this deployment.
         self.start_time_ms = start_time_ms
         self.actor_def = actor_def
         self.version = version
