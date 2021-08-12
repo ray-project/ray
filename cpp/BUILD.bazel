@@ -83,6 +83,7 @@ genrule(
         cp -f $(location default_worker) "$$WORK_DIR/python/ray/core/src/ray/cpp/default_worker" &&
         cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
         cp -f $(locations libray_api.so) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
+        cp -f $(locations libray_api.so) "/usr/local/lib/" &&
         PY_CPP_DIR="$$WORK_DIR/python/ray/cpp" &&
         rm -rf $$PY_CPP_DIR &&
         BOOST_DIR="$$PY_CPP_DIR/include/boost/" &&
