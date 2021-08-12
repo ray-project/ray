@@ -540,12 +540,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object create by worker or not.
   /// \param[in] owner_address The address of object's owner. If not provided,
   /// defaults to this worker.
+  /// \param[in] inline_small_object wether to inline create this object if it's
+  /// small.
   /// \return Status.
   Status CreateOwned(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                      const std::vector<ObjectID> &contained_object_ids,
                      ObjectID *object_id, std::shared_ptr<Buffer> *data,
                      bool created_by_worker,
-                     const std::unique_ptr<rpc::Address> &owner_address = nullptr);
+                     const std::unique_ptr<rpc::Address> &owner_address = nullptr,
+                     bool inline_small_object = true);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the

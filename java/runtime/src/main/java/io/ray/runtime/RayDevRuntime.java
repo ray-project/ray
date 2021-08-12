@@ -12,6 +12,11 @@ import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.task.LocalModeTaskExecutor;
 import io.ray.runtime.task.LocalModeTaskSubmitter;
+import io.ray.runtime.util.BinaryFileUtil;
+import io.ray.runtime.util.JniUtils;
+import io.ray.runtime.util.SystemUtil;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -33,6 +38,10 @@ public class RayDevRuntime extends AbstractRayRuntime {
     if (rayConfig.getJobId().isNil()) {
       rayConfig.setJobId(nextJobId());
     }
+
+    updateSessionDir(rayConfig);
+    JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
+
     taskExecutor = new LocalModeTaskExecutor(this);
     workerContext = new LocalModeWorkerContext(rayConfig.getJobId());
     objectStore = new LocalModeObjectStore(workerContext);
@@ -117,5 +126,13 @@ public class RayDevRuntime extends AbstractRayRuntime {
     private AsyncContext(TaskSpec task) {
       this.task = task;
     }
+  }
+
+  private static void updateSessionDir(RayConfig rayConfig) {
+    SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd_hh-mm-ss-ms");
+    Date date = new Date();
+    String sessionDir =
+        String.format("/tmp/ray/session_local_mode_%s_%d", format.format(date), SystemUtil.pid());
+    rayConfig.setSessionDir(sessionDir);
   }
 }

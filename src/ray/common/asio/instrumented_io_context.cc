@@ -113,6 +113,12 @@ std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(
 void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
                                               std::shared_ptr<StatsHandle> handle) {
   int64_t start_execution = absl::GetCurrentTimeNanos();
+  // Update running count
+  {
+    auto &stats = handle->handler_stats;
+    absl::MutexLock lock(&(stats->mutex));
+    stats->stats.running_count++;
+  }
   // Execute actual handler.
   fn();
   int64_t end_execution = absl::GetCurrentTimeNanos();
@@ -128,6 +134,8 @@ void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
     // Handler-specific current count.
     stats->stats.curr_count--;
     STATS_operation_active_count.Record(stats->stats.curr_count, handle->handler_name);
+    // Handler-specific running count.
+    stats->stats.running_count--;
   }
   // Update global stats.
   const auto queue_time_ns = start_execution - handle->start_time;
@@ -225,8 +233,11 @@ std::string instrumented_io_context::StatsString() const {
     curr_count += entry.second.curr_count;
     cum_execution_time += entry.second.cum_execution_time;
     handler_stats_stream << "\n\t" << entry.first << " - " << entry.second.cum_count
-                         << " total (" << entry.second.curr_count
-                         << " active), CPU time: mean = "
+                         << " total (" << entry.second.curr_count << " active";
+    if (entry.second.running_count > 0) {
+      handler_stats_stream << ", " << entry.second.running_count << " running";
+    }
+    handler_stats_stream << "), CPU time: mean = "
                          << to_human_readable(entry.second.cum_execution_time /
                                               static_cast<double>(entry.second.cum_count))
                          << ", total = "
