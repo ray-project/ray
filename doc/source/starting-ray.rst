@@ -27,7 +27,9 @@ Starting Ray on a single machine
 
 Calling ``ray.init()`` (without any ``address`` args) starts a Ray runtime on your laptop/machine. This laptop/machine becomes the  "head node".
 
-You must initialize Ray before any tasks or actors are called.
+.. note::
+
+  In recent versions of Ray (>=1.5), ``ray.init()`` will automatically be called on the first use of a Ray remote API.
 
 .. tabs::
   .. code-tab:: python

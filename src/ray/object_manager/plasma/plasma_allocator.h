@@ -39,7 +39,7 @@ class PlasmaAllocator : public IAllocator {
  public:
   PlasmaAllocator(const std::string &plasma_directory,
                   const std::string &fallback_directory, bool hugepage_enabled,
-                  int64_t footprint_limit, bool fallback_enabled);
+                  int64_t footprint_limit);
 
   /// On linux, it allocates memory from a pre-mmapped file from /dev/shm.
   /// On other system, it allocates memory from a pre-mmapped file on disk.
@@ -82,7 +82,6 @@ class PlasmaAllocator : public IAllocator {
  private:
   const int64_t kFootprintLimit;
   const size_t kAlignment;
-  const bool kFallbackEnabled;
   int64_t allocated_;
   // TODO(scv119): once we refactor object_manager this no longer
   // need to be atomic.
