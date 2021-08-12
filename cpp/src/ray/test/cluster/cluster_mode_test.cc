@@ -118,9 +118,10 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result.ready.size(), 3);
   EXPECT_EQ(result.unready.size(), 0);
 
-  int result1 = *(ray::Get(r1));
-  int result0 = *(ray::Get(r0));
-  int result2 = *(ray::Get(r2));
+  auto result_vector = ray::Get(objects);
+  int result0 = *(result_vector[0]);
+  int result1 = *(result_vector[1]);
+  int result2 = *(result_vector[2]);
   EXPECT_EQ(result0, 1);
   EXPECT_EQ(result1, 31);
   EXPECT_EQ(result2, 25);

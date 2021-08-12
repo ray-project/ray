@@ -19,11 +19,14 @@
 
 namespace ray {
 
+static bool is_init_;
+
 void Init(RayConfig &config, int *argc, char ***argv) {
   if (!IsInitialized()) {
     internal::ConfigInternal::Instance().Init(config, argc, argv);
     auto runtime = internal::AbstractRayRuntime::DoInit();
     internal::RayRuntimeHolder::Instance().Init(runtime);
+    is_init_ = true;
   }
 }
 
@@ -34,11 +37,12 @@ void Init() {
   Init(config, nullptr, nullptr);
 }
 
-bool IsInitialized() { return internal::GetRayRuntime() != nullptr; }
+bool IsInitialized() { return is_init_; }
 
 void Shutdown() {
+  // TODO(guyang.sgy): Clean the ray runtime.
   internal::AbstractRayRuntime::DoShutdown();
-  internal::RayRuntimeHolder::Instance().Clear();
+  is_init_ = false;
 }
 
 }  // namespace ray

@@ -27,8 +27,6 @@ struct RayRuntimeHolder {
 
   void Init(std::shared_ptr<RayRuntime> runtime) { runtime_ = runtime; }
 
-  void Clear() { runtime_ = nullptr; }
-
   std::shared_ptr<RayRuntime> Runtime() { return runtime_; }
 
  private:
