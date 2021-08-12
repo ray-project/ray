@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple,
                     Type, Union, overload)
-from warnings import warn
 from weakref import WeakValueDictionary
 
 from starlette.requests import Request
@@ -21,8 +20,7 @@ from ray.actor import ActorHandle
 from ray.util.annotations import Deprecated, PublicAPI
 from ray.serve.common import BackendInfo, GoalId
 from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
-from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
+from ray.serve.constants import (HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
 from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle

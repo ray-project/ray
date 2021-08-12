@@ -38,7 +38,7 @@ def ray_cluster():
 
 def test_shutdown(ray_shutdown):
     ray.init(num_cpus=16)
-    serve.start(http_port=8003)
+    serve.start(http_options=dict(http_port=8003))
 
     @serve.deployment
     def f():
