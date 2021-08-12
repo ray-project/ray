@@ -640,7 +640,6 @@ def start(
 
     try:
         client = _get_global_client()
-        print(client.__dict__)
         logger.info("Connecting to existing Serve instance in namespace "
                     f"'{current_namespace}'.")
         if client._http_config != http_options:
