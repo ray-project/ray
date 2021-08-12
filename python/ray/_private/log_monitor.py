@@ -140,6 +140,7 @@ class LogMonitor:
         # runtime_env setup process is logged here
         runtime_env_setup_paths = glob.glob(
             f"{self.logs_dir}/runtime_env*.log")
+        total_files = 0
         for file_path in (log_file_paths + raylet_err_paths + gcs_err_path +
                           monitor_log_paths + runtime_env_setup_paths):
             if os.path.isfile(
@@ -174,6 +175,8 @@ class LogMonitor:
                         worker_pid=worker_pid))
                 log_filename = os.path.basename(file_path)
                 logger.info(f"Beginning to track file {log_filename}")
+                total_files += 1
+        return total_files
 
     def open_closed_files(self):
         """Open some closed files if they may have new lines.
@@ -297,13 +300,17 @@ class LogMonitor:
         files to monitor. It will also store those log files in Redis.
         """
         while True:
-            self.update_log_filenames()
+            total_files = self.update_log_filenames()
             self.open_closed_files()
             anything_published = self.check_log_files_and_publish_updates()
             # If nothing was published, then wait a little bit before checking
             # for logs to avoid using too much CPU.
             if not anything_published:
                 time.sleep(0.1)
+            if total_files > 1000:
+                # If there are more than 1000 files, sleep to reduce cpu usage.
+                # glob uses lots of cpu.
+                time.sleep(1)
 
 
 if __name__ == "__main__":
