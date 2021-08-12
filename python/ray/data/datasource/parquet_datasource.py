@@ -36,13 +36,18 @@ class ParquetDatasource(Datasource[ArrowRow]):
         import pyarrow.parquet as pq
         import numpy as np
 
-        paths, file_infos, filesystem = _resolve_paths_and_filesystem(
-            paths, filesystem)
-        file_sizes = [file_info.size for file_info in file_infos]
+        paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        if len(paths) == 1:
+            paths = paths[0]
 
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         pq_ds = pq.ParquetDataset(
-            paths, **dataset_kwargs, filesystem=filesystem)
+            paths,
+            **dataset_kwargs,
+            filesystem=filesystem,
+            use_legacy_dataset=False)
+        if schema is None:
+            schema = pq_ds.schema
         pieces = pq_ds.pieces
 
         def read_pieces(serialized_pieces: List[str]):
@@ -56,13 +61,24 @@ class ParquetDatasource(Datasource[ArrowRow]):
             ]
 
             import pyarrow as pa
+            from pyarrow.dataset import _get_partition_keys
+
             logger.debug(f"Reading {len(pieces)} parquet pieces")
             use_threads = reader_args.pop("use_threads", False)
-            tables = [
-                piece.to_table(
-                    use_threads=use_threads, columns=columns, **reader_args)
-                for piece in pieces
-            ]
+            tables = []
+            for piece in pieces:
+                table = piece.to_table(
+                    use_threads=use_threads,
+                    columns=columns,
+                    schema=schema,
+                    **reader_args)
+                part = _get_partition_keys(piece.partition_expression)
+                if part:
+                    for col, value in part.items():
+                        table = table.set_column(
+                            table.schema.get_field_index(col), col,
+                            pa.array([value] * len(table)))
+                tables.append(table)
             if len(tables) > 1:
                 table = pa.concat_tables(tables)
             else:
@@ -70,21 +86,18 @@ class ParquetDatasource(Datasource[ArrowRow]):
             return table
 
         read_tasks = []
-        for pieces, file_sizes in zip(
-                np.array_split(pieces, parallelism),
-                np.array_split(file_sizes, parallelism)):
-            if len(pieces) == 0:
+        for pieces_ in np.array_split(pieces, parallelism):
+            if len(pieces_) == 0:
                 continue
-            metadata = _get_metadata(pieces, file_sizes, schema)
-            pieces = [cloudpickle.dumps(p) for p in pieces]
+            metadata = _get_metadata(pieces_, schema)
+            pieces_ = [cloudpickle.dumps(p) for p in pieces_]
             read_tasks.append(
-                ReadTask(lambda pieces=pieces: read_pieces(pieces), metadata))
+                ReadTask(lambda pieces=pieces_: read_pieces(pieces), metadata))
 
         return read_tasks
 
 
 def _get_metadata(pieces: List["pyarrow._dataset.ParquetFileFragment"],
-                  file_sizes: List[int],
                   schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None):
     piece_metadata = []
     for p in pieces:
@@ -94,7 +107,7 @@ def _get_metadata(pieces: List["pyarrow._dataset.ParquetFileFragment"],
             break
     input_files = [p.path for p in pieces]
     if len(piece_metadata) == len(pieces):
-        # Piece metadata was available, constructo a normal
+        # Piece metadata was available, construct a normal
         # BlockMetadata.
         block_metadata = BlockMetadata(
             num_rows=sum(m.num_rows for m in piece_metadata),
@@ -102,14 +115,14 @@ def _get_metadata(pieces: List["pyarrow._dataset.ParquetFileFragment"],
                 sum(
                     m.row_group(i).total_byte_size
                     for i in range(m.num_row_groups)) for m in piece_metadata),
-            schema=piece_metadata[0].schema.to_arrow_schema(),
+            schema=schema,
             input_files=input_files)
     else:
         # Piece metadata was not available, construct an empty
         # BlockMetadata.
         block_metadata = BlockMetadata(
             num_rows=None,
-            size_bytes=sum(file_sizes),
+            size_bytes=None,
             schema=schema,
             input_files=input_files)
     return block_metadata

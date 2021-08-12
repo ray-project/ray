@@ -41,12 +41,12 @@ class MockWorker : public WorkerInterface {
   const std::string IpAddress() const { return address_.ip_address(); }
 
   void SetAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     allocated_instances_ = allocated_instances;
   }
 
   void SetLifetimeAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     lifetime_allocated_instances_ = allocated_instances;
   }
 
