@@ -498,6 +498,8 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
   - Example: ``{"conda": {"dependencies": ["pytorch", “torchvision”, "pip", {"pip": ["pendulum"]}]}}``
 
+  - Example: ``{"conda": {"dependencies": ["pytorch", “torchvision”, "pip", {"pip": ["./requirements.txt"]}]}}``
+
   - Example: ``"./environment.yml"``
 
   - Example: ``"pytorch_p36"``
