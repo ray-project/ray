@@ -28,9 +28,8 @@ class Counter {
 RAY_REMOTE(Counter::FactoryCreate, &Counter::Add);
 
 int main(int argc, char **argv) {
-  /// configuration and initialization
-  ray::RayConfig config;
-  ray::Init(config);
+  /// initialization
+  ray::Init();
 
   /// put and get object
   auto object = ray::Put(100);
