@@ -19,15 +19,12 @@
 
 namespace ray {
 
-static bool is_inited_ = false;
-
 void Init(RayConfig &config, int *argc, char ***argv) {
-  if (!is_inited_) {
-    ray::internal::ConfigInternal::Instance().Init(config, argc, argv);
-    auto runtime = ray::internal::AbstractRayRuntime::DoInit();
-    ray::internal::RayRuntimeHolder::Instance().Init(runtime);
+  if (!IsInitialized()) {
+    internal::ConfigInternal::Instance().Init(config, argc, argv);
+    auto runtime = internal::AbstractRayRuntime::DoInit();
+    internal::RayRuntimeHolder::Instance().Init(runtime);
   }
-  is_inited_ = true;
 }
 
 void Init(RayConfig &config) { Init(config, nullptr, nullptr); }
@@ -37,12 +34,11 @@ void Init() {
   Init(config, nullptr, nullptr);
 }
 
-bool IsInitialized() { return is_inited_; }
+bool IsInitialized() { return internal::GetRayRuntime() != nullptr; }
 
 void Shutdown() {
-  ray::internal::AbstractRayRuntime::DoShutdown();
-  ray::internal::RayRuntimeHolder::Instance().Clear();
-  is_inited_ = false;
+  internal::AbstractRayRuntime::DoShutdown();
+  internal::RayRuntimeHolder::Instance().Clear();
 }
 
 }  // namespace ray
