@@ -22,6 +22,7 @@ lightgbm==3.2.1
 matplotlib==3.3.4; python_version < '3.7'
 matplotlib==3.4.2; python_version >= '3.7'
 mlflow==1.19.0
+mock==4.0.3
 mxnet==1.8.0.post0
 nevergrad==0.4.3.post3
 optuna==2.8.0
