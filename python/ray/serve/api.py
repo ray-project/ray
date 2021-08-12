@@ -341,7 +341,10 @@ class Client:
         self._wait_for_goal(
             ray.get(
                 self._controller.create_backend.remote(
-                    backend_tag, backend_config, replica_config)))
+                    backend_tag,
+                    backend_config,
+                    replica_config,
+                    deployer_job_id=ray.get_runtime_context().job_id)))
 
     @_ensure_connected
     def deploy(self,

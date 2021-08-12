@@ -29,16 +29,16 @@ class BackendInfo:
     def __init__(self,
                  backend_config: BackendConfig,
                  replica_config: ReplicaConfig,
+                 start_time_ms: int,
                  actor_def: Optional[ActorClass] = None,
                  version: Optional[str] = None,
-                 deployer_job_id: "Optional[ray._raylet.JobID]" = None,
-                 start_time_ms: Optional[str] = None):
+                 deployer_job_id: "Optional[ray._raylet.JobID]" = None):
         self.backend_config = backend_config
         self.replica_config = replica_config
+        self.start_time_ms = start_time_ms
         self.actor_def = actor_def
         self.version = version
         self.deployer_job_id = deployer_job_id
-        self.start_time_ms = start_time_ms
 
 
 class TrafficPolicy:

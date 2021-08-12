@@ -197,6 +197,7 @@ def backend_info(version: Optional[str] = None,
     info = BackendInfo(
         actor_def=None,
         version=version,
+        start_time_ms=0,
         backend_config=BackendConfig(
             num_replicas=num_replicas, user_config=user_config, **config_opts),
         replica_config=ReplicaConfig(lambda x: x))

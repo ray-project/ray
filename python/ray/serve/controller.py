@@ -249,7 +249,9 @@ class ServeController:
 
     async def create_backend(
             self, backend_tag: BackendTag, backend_config: BackendConfig,
-            replica_config: ReplicaConfig) -> Optional[GoalId]:
+            replica_config: ReplicaConfig,
+            deployer_job_id: Optional["Optional[ray._raylet.JobID]"]
+    ) -> Optional[GoalId]:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
             backend_info = BackendInfo(
@@ -258,7 +260,9 @@ class ServeController:
                         backend_tag, replica_config.serialized_backend_def)),
                 version=RESERVED_VERSION_TAG,
                 backend_config=backend_config,
-                replica_config=replica_config)
+                replica_config=replica_config,
+                start_time_ms=int(time.time() * 1000),
+                deployer_job_id=deployer_job_id)
             goal_id, _ = self.backend_state.deploy_backend(
                 backend_tag, backend_info)
             return goal_id
@@ -290,7 +294,9 @@ class ServeController:
                 version=existing_info.version,
                 backend_config=existing_info.backend_config.copy(
                     update=config_options.dict(exclude_unset=True)),
-                replica_config=existing_info.replica_config)
+                replica_config=existing_info.replica_config,
+                deployer_job_id=existing_info.deployer_job_id,
+                start_time_ms=existing_info.start_time_ms)
             goal_id, _ = self.backend_state.deploy_backend(
                 backend_tag, backend_info)
             return goal_id
