@@ -83,17 +83,12 @@ void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &requ
                                           rpc::GetAllNodeInfoReply *& reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   for (const auto &entry : alive_nodes_) {
-    // reply->add_node_info_list()->CopyFrom(*entry.second);
     reply->mutable_node_info_list()->UnsafeArenaAddAllocated(entry.second.get());
   }
   for (const auto &entry : dead_nodes_) {
-    // reply->add_node_info_list()->CopyFrom(*entry.second);
     reply->mutable_node_info_list()->UnsafeArenaAddAllocated(entry.second.get());
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  // for(size_t i = 0; i < alive_nodes_.size() + dead_nodes_.size(); ++i) {
-  //   reply->mutable_node_info_list()->UnsafeArenaReleaseLast();
-  // }
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 

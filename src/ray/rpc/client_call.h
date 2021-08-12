@@ -70,7 +70,6 @@ class ClientCallImpl : public ClientCall {
                           std::shared_ptr<StatsHandle> stats_handle)
       : callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
         stats_handle_(std::move(stats_handle)) {
-    reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
   }
 
   Status GetStatus() override {
@@ -90,7 +89,7 @@ class ClientCallImpl : public ClientCall {
       status = return_status_;
     }
     if (callback_ != nullptr) {
-      callback_(status, *reply_);
+      callback_(status, reply_);
     }
   }
 
@@ -98,9 +97,8 @@ class ClientCallImpl : public ClientCall {
 
  private:
 
-  google::protobuf::Arena arena_;
   /// The reply message.
-  Reply* reply_;
+  Reply reply_;
 
   /// The callback function to handle the reply.
   ClientCallback<Reply> callback_;
@@ -237,7 +235,7 @@ class ClientCallManager {
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
     auto tag = new ClientCallTag(call);
-    call->response_reader_->Finish(call->reply_, &call->status_, (void *)tag);
+    call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     return call;
   }
 
