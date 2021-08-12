@@ -647,8 +647,7 @@ def start(
     if isinstance(http_options, dict):
         http_options = HTTPOptions.parse_obj(http_options)
     if http_options is None:
-        http_options = HTTPOptions(
-            host=http_host, port=http_port, middlewares=http_middlewares)
+        http_options = HTTPOptions()
 
     controller = ServeController.options(
         num_cpus=(1 if dedicated_cpu else 0),
