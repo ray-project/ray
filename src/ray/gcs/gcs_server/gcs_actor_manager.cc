@@ -603,9 +603,10 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
     const auto &worker_id = actor->GetWorkerID();
     auto node_it = created_actors_.find(node_id);
     if (node_it != created_actors_.end() && node_it->second.count(worker_id)) {
-      // The actor has already been created. Destroy the process by force-killing
-      // it.
-      NotifyCoreWorkerToKillActor(actor);
+      // The actor has already been created. Destroy the process by killing
+      // it. We do not force-kill the actor because we want to keep it alive if
+      // it owns ObjectRefs borrowed by other processes.
+      NotifyCoreWorkerToKillActor(actor, /*force_kill=*/false, /*no_restart=*/true);
       RAY_CHECK(node_it->second.erase(actor->GetWorkerID()));
       if (node_it->second.empty()) {
         created_actors_.erase(node_it);

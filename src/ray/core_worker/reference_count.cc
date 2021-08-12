@@ -31,9 +31,21 @@ namespace {}  // namespace
 namespace ray {
 namespace core {
 
-bool ReferenceCounter::OwnObjects() const {
+bool ReferenceCounter::OwnObjectsInBorrowerScope() const {
   absl::MutexLock lock(&mutex_);
-  return !object_id_refs_.empty();
+  return OwnObjectsInBorrowerScope();
+}
+
+bool ReferenceCounter::OwnObjectsInBorrowerScopeInternal() const {
+  for (const auto &ref : object_id_refs_) {
+    if (ref.second.owned_by_us && !ref.second.borrowers.empty()) {
+      RAY_LOG(DEBUG) << ref.first << " is still in scope at "
+                     << ref.second.borrowers.size() << " other workers";
+      return false;
+    }
+  }
+  RAY_LOG(DEBUG) << "All owned objects are only in scope at local process";
+  return true;
 }
 
 bool ReferenceCounter::OwnedByUs(const ObjectID &object_id) const {
@@ -47,7 +59,7 @@ bool ReferenceCounter::OwnedByUs(const ObjectID &object_id) const {
 
 void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
   absl::MutexLock lock(&mutex_);
-  if (object_id_refs_.empty()) {
+  if (!OwnObjectsInBorrowerScopeInternal()) {
     shutdown();
   } else {
     RAY_LOG(WARNING)
@@ -58,9 +70,9 @@ void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
 }
 
 void ReferenceCounter::ShutdownIfNeeded() {
-  if (shutdown_hook_ && object_id_refs_.empty()) {
-    RAY_LOG(WARNING)
-        << "All object references have gone out of scope, shutting down worker.";
+  if (shutdown_hook_ && !OwnObjectsInBorrowerScopeInternal()) {
+    RAY_LOG(WARNING) << "All object references have gone out of scope at other workers, "
+                        "shutting down this worker.";
     shutdown_hook_();
   }
 }
@@ -97,7 +109,7 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
   auto it = object_id_refs_.find(object_id);
   RAY_CHECK(it != object_id_refs_.end());
 
-  RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
+  RAY_LOG(DEBUG) << "Adding borrowed object " << object_id << " outer ID " << outer_id;
   // Skip adding this object as a borrower if we already have ownership info.
   // If we already have ownership info, then either we are the owner or someone
   // else already knows that we are a borrower.
@@ -479,6 +491,11 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     if (deleted) {
       deleted->push_back(id);
     }
+  }
+  if (it->second.borrowers.empty()) {
+    // Check if we are shutting down and deleting this reference is now only
+    // used by the local process.
+    ShutdownIfNeeded();
   }
   if (it->second.ShouldDelete(lineage_pinning_enabled_)) {
     RAY_LOG(DEBUG) << "Deleting Reference to object " << id;

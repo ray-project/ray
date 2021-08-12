@@ -403,7 +403,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param force_kill Whether to force kill an actor by killing the worker.
   /// \param no_restart If set to true, the killed actor will not be restarted anymore.
   void NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
-                                   bool force_kill = true, bool no_restart = true);
+                                   bool force_kill, bool no_restart);
 
   /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
   /// evicted.

@@ -800,25 +800,9 @@ void CoreWorker::Exit(
     // drain the object references.
     task_execution_service_.post(
         [this, shutdown]() {
-          bool not_actor_task = false;
-          {
-            absl::MutexLock lock(&mutex_);
-            not_actor_task = actor_id_.IsNil();
-          }
-          if (not_actor_task) {
-            // If we are a task, then we cannot hold any object references in the
-            // heap. Therefore, any active object references are being held by other
-            // processes. Wait for these processes to release their references
-            // before we shutdown. NOTE(swang): This could still cause this worker
-            // process to stay alive forever if another process holds a reference
-            // forever.
-            reference_counter_->DrainAndShutdown(shutdown);
-          } else {
-            // If we are an actor, then we may be holding object references in the
-            // heap. Then, we should not wait to drain the object references before
-            // shutdown since this could hang.
-            shutdown();
-          }
+          // NOTE(swang): This could still cause this worker process to stay
+          // alive forever if another process holds a reference forever.
+          reference_counter_->DrainAndShutdown(shutdown);
         },
         "CoreWorker.DrainAndShutdown");
   };
@@ -3086,7 +3070,7 @@ void CoreWorker::HandleDeleteSpilledObjects(
 
 void CoreWorker::HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
-  bool own_objects = reference_counter_->OwnObjects();
+  bool own_objects = reference_counter_->OwnObjectsInBorrowerScope();
   int64_t pins_in_flight = local_raylet_client_->GetPinsInFlight();
   // We consider the worker to be idle if it doesn't own any objects and it doesn't have
   // any object pinning RPCs in flight.

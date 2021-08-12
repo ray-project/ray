@@ -13,7 +13,8 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray.internal.internal_api import memory_summary
-from ray.test_utils import SignalActor, put_object, wait_for_condition
+from ray.test_utils import (SignalActor, put_object, wait_for_condition,
+                            wait_for_pid_to_exit)
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -531,6 +532,64 @@ def test_object_unpin_stress(ray_start_cluster):
 
     wait_for_condition(lambda: ((f"Plasma memory usage {total_size}"
                                  " MiB") in memory_summary(stats_only=True)))
+
+
+def test_drain_refs_before_exit(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=1,
+        object_store_memory=100 * 1024 * 1024,
+        _system_config={
+            "max_direct_call_object_size": 0,
+        })
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    class Child:
+        def __init__(self):
+            self.x = ray.put("x")
+
+        def get_pid(self):
+            return os.getpid()
+
+        def get_x(self):
+            return self.x
+
+    @ray.remote
+    class Parent:
+        def __init__(self):
+            self.child = Child.remote()
+
+        def get_pids(self):
+            return os.getpid(), ray.get(self.child.get_pid.remote())
+
+        def get_x(self):
+            return self.child.get_x.remote()
+
+    def get_and_return_x():
+        p = Parent.remote()
+        pids = ray.get(p.get_pids.remote())
+        return pids, p.get_x.remote()
+
+    pids, nested_x = get_and_return_x()
+    parent_pid, child_pid = pids
+
+    x = ray.get(ray.get(nested_x))
+    ray.get(x)
+    # Parent can exit once the outer ref is out of scope.
+    del nested_x
+    wait_for_pid_to_exit(parent_pid)
+
+    # TODO(swang): This currently does not work reliably because parent may
+    # exit before notifying x's owner that the driver still has a reference to
+    # the object. To fix this, we would have to make sure that all published
+    # messages reached their subscribers.
+    # Inner object still accessible.
+    # ray.get(x)
+
+    # Child can exit once the inner ref is out of scope.
+    del x
+    wait_for_pid_to_exit(child_pid)
 
 
 if __name__ == "__main__":

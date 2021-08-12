@@ -81,8 +81,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param shutdown The shutdown callback to call.
   void DrainAndShutdown(std::function<void()> shutdown);
 
-  /// Return true if the worker owns any object.
-  bool OwnObjects() const;
+  /// Return true if the worker owns any object that is in scope at a borrower
+  /// (a different worker process).
+  bool OwnObjectsInBorrowerScope() const;
 
   /// Return true if the object is owned by us.
   bool OwnedByUs(const ObjectID &object_id) const;
@@ -634,6 +635,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
+
+  /// Check whether we own any objects that are in scope at a borrower (a
+  /// different worker). This is used to make sure that borrowers can still use
+  /// their ObjectRefs if we get a shutdown signal.
+  bool OwnObjectsInBorrowerScopeInternal() const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   bool GetOwnerInternal(const ObjectID &object_id,
                         rpc::Address *owner_address = nullptr) const
