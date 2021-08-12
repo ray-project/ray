@@ -277,7 +277,7 @@ def requirements_file_to_list(filename: str,
             if skip_ray:
                 return [
                     dependency.strip('\n') for dependency in lines
-                    if 'ray' not in dependency
+                    if "ray" not in dependency
                 ]
             else:
                 return [dependency.strip('\n') for dependency in lines]
