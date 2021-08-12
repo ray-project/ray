@@ -27,6 +27,8 @@ DEFINE_stats(grpc_server_req_latency_ms, "Request latency in grpc server", ("Met
              ray::stats::GAUGE);
 DEFINE_stats(grpc_server_req_new, "New request number in grpc server", ("Method"), (),
              ray::stats::COUNT);
+DEFINE_stats(grpc_server_req_handling, "Request number are handling in grpc server", ("Method"), (),
+             ray::stats::COUNT);
 DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
              ("Method"), (), ray::stats::COUNT);
 
