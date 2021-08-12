@@ -60,6 +60,20 @@ static std::string GetNodeIpAddress(const std::string &address = "8.8.8.8:53") {
   }
 }
 
+std::string FormatResourcesArg(const std::unordered_map<std::string, int> &resources) {
+  std::ostringstream oss;
+  oss << "{";
+  for (auto iter = resources.begin(); iter != resources.end();) {
+    oss << "\"" << iter->first << "\":" << iter->second;
+    ++iter;
+    if (iter != resources.end()) {
+      oss << ",";
+    }
+  }
+  oss << "}";
+  return oss.str();
+}
+
 void ProcessHelper::StartRayNode(const int redis_port, const std::string redis_password,
                                  const int num_cpus, const int num_gpus,
                                  const std::unordered_map<std::string, int> resources) {
@@ -75,18 +89,8 @@ void ProcessHelper::StartRayNode(const int redis_port, const std::string redis_p
     cmdargs.emplace_back(std::to_string(num_gpus));
   }
   if (!resources.empty()) {
-    std::ostringstream oss;
-    oss << "{";
-    for (auto iter = resources.begin(); iter != resources.end();) {
-      oss << "\"" << iter->first << "\":" << iter->second;
-      ++iter;
-      if (iter != resources.end()) {
-        oss << ",";
-      }
-    }
-    oss << "}";
     cmdargs.emplace_back("--resources");
-    cmdargs.emplace_back(oss.str());
+    cmdargs.emplace_back(FormatResourcesArg(resources));
   }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
