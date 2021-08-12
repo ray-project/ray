@@ -762,6 +762,12 @@ cdef int64_t restore_spilled_objects_handler(
                 "An unexpected internal error occurred while the IO worker "
                 "was restoring spilled objects.")
             logger.exception(exception_str)
+            if os.getenv("RAY_BACKEND_LOG_LEVEL") == "debug":
+                ray._private.utils.push_error_to_driver(
+                    ray.worker.global_worker,
+                    "restore_objects_error",
+                    traceback.format_exc() + exception_str,
+                    job_id=None)
     return bytes_restored
 
 
@@ -1312,6 +1318,7 @@ cdef class CoreWorker:
             CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
+                    b"",
                     c_serialized_runtime_env,
                     c_override_environment_variables),
                 &return_ids, max_retries,
@@ -1521,9 +1528,6 @@ cdef class CoreWorker:
             postincrement(iterator)
 
         return resources_dict
-
-    def plasma_unlimited(self):
-        return RayConfig.instance().plasma_unlimited()
 
     def profile_event(self, c_string event_type, object extra_data=None):
         if RayConfig.instance().enable_timeline():

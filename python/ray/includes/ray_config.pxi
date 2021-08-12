@@ -105,9 +105,5 @@ cdef class Config:
         return RayConfig.instance().enable_timeline()
 
     @staticmethod
-    def plasma_unlimited():
-        return RayConfig.instance().plasma_unlimited()
-
-    @staticmethod
     def max_grpc_message_size():
         return RayConfig.instance().max_grpc_message_size()
