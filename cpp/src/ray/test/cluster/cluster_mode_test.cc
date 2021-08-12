@@ -28,6 +28,8 @@ DEFINE_int32(redis_port, 6379, "");
 
 TEST(RayClusterModeTest, FullTest) {
   ray::RayConfig config;
+  config.num_cpus = 2;
+  config.resources = {{"resource1", 1}, {"resource2", 2}};
   if (FLAGS_external_cluster) {
     ray::internal::ProcessHelper::GetInstance().StartRayNode(FLAGS_redis_port,
                                                              FLAGS_redis_password);
