@@ -471,8 +471,10 @@ class AWSNodeProvider(NodeProvider):
         # call will be used to stop/terminate which set of nodes. The key is
         # the function to use, and the value is the list of nodes to terminate
         # with that function.
-        nodes_to_terminate = {terminate_instances_func: [],
-                              stop_instances_func: []}
+        nodes_to_terminate = {
+            terminate_instances_func: [],
+            stop_instances_func: []
+        }
 
         if self.cache_stopped_nodes:
             spot_ids = []
@@ -510,8 +512,8 @@ class AWSNodeProvider(NodeProvider):
         # for terminate_func, nodes in nodes_to_terminate.items():
         for nodes, terminate_func in nodes_to_terminate.items():
             for start in range(0, len(nodes), max_terminate_nodes):
-                terminate_func(
-                    InstanceIds=node_ids[start:start + max_terminate_nodes])
+                terminate_func(InstanceIds=node_ids[start:start +
+                                                    max_terminate_nodes])
 
     def _get_node(self, node_id):
         """Refresh and get info for this node, updating the cache."""
