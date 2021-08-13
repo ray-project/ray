@@ -25,6 +25,10 @@ public class Sum extends Metric {
     this.sum = new DoubleAdder();
   }
 
+  public Sum(String name, String description, Map<String, String> tags) {
+    this(name, description, "", TagKey.tagsFromMap(tags));
+  }
+
   @Override
   public void update(double value) {
     sum.add(value);

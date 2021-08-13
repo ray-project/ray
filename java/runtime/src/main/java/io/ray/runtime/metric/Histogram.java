@@ -35,6 +35,11 @@ public class Histogram extends Metric {
     histogramWindow = Collections.synchronizedList(new ArrayList<>());
   }
 
+  public Histogram(
+      String name, String description, List<Double> boundaries, Map<String, String> tags) {
+    this(name, description, "", boundaries, TagKey.tagsFromMap(tags));
+  }
+
   private void updateForWindow(double value) {
     if (histogramWindow.size() == HISTOGRAM_WINDOW_SIZE) {
       histogramWindow.remove(0);

@@ -18,6 +18,10 @@ public class Gauge extends Metric {
     Preconditions.checkState(metricNativePointer != 0, "Gauge native pointer must not be 0.");
   }
 
+  public Gauge(String name, String description, Map<String, String> tags) {
+    this(name, description, "", TagKey.tagsFromMap(tags));
+  }
+
   public double getValue() {
     return value.doubleValue();
   }

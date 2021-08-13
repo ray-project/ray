@@ -22,6 +22,10 @@ public class Count extends Metric {
     Preconditions.checkState(metricNativePointer != 0, "Count native pointer must not be 0.");
   }
 
+  public Count(String name, String description, Map<String, String> tags) {
+    this(name, description, "", TagKey.tagsFromMap(tags));
+  }
+
   @Override
   public void update(double value) {
     count.add(value);
