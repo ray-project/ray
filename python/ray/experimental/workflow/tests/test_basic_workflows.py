@@ -119,6 +119,28 @@ def test_async_execution(workflow_start_regular_shared):
     assert ray.get(output) == 314
 
 
+def test_partial(workflow_start_regular_shared):
+    ys = [1,2,3]
+    def add(x, y):
+        return x + y
+
+    from functools import partial
+    fs = [partial(add, y=y) for y in ys]
+
+    @ray.workflow.step
+    def chain_func(*args, **kw_argv):
+        # Get the first function as a start
+        wf_step = workflow.step(fs[0]).step(*args, **kw_argv)
+        for i in range(1, len(fs)):
+            # Convert each function inside steps into workflow step
+            # function and then use the previous output as the input
+            # for them.
+            wf_step = workflow.step(fs[i]).step(wf_step)
+        return wf_step
+
+    assert chain_func.step(1).run() == 7
+
+
 @ray.remote
 def deep_nested(x):
     if x >= 42:
