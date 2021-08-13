@@ -2,10 +2,10 @@
 # re-run if any of these files changes.
 py_library(
     name = "serve_lib",
-    srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
+    srcs = glob(["**/*.py"], exclude=["tests/**/*.py"]),
 )
 
-serve_tests_srcs = glob(["tests/*.py"])
+serve_tests_srcs = glob(["tests/**/*.py"])
 
 py_test(
     name = "test_api",
@@ -331,4 +331,3 @@ py_test(
     #tags = ["exclusive"],
     #deps = [":serve_lib"]
 # )
-

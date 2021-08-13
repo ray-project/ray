@@ -16,18 +16,12 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include <ctype.h>
 #include <boost/asio.hpp>
 #include <google/protobuf/arena.h>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
-#include "ray/stats/metric.h"
-
-DECLARE_stats(grpc_server_req_latency_ms);
-DECLARE_stats(grpc_server_req_new);
-DECLARE_stats(grpc_server_req_finished);
 
 namespace ray {
 namespace rpc {
@@ -148,28 +142,13 @@ class ServerCallImpl : public ServerCall {
         handle_request_function_(handle_request_function),
         response_writer_(&context_),
         io_service_(io_service),
-        call_name_(std::move(call_name)) {
-    // TODO call_name_ sometimes get corrunpted due to memory issues.
-    RAY_CHECK(!call_name_.empty()) << "Call name is empty";
-    STATS_grpc_server_req_new.Record(1.0, call_name_);
-    start_time_ = absl::GetCurrentTimeNanos();
-    request_ = google::protobuf::Arena::CreateMessage<Request>(&arena_);
-    reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
-  }
-
-  ~ServerCallImpl() override {
-    STATS_grpc_server_req_finished.Record(1.0, call_name_);
-    auto end_time = absl::GetCurrentTimeNanos();
-    STATS_grpc_server_req_latency_ms.Record((end_time - start_time_) / 1000000,
-                                            call_name_);
-  }
+        call_name_(std::move(call_name)) {}
 
   ServerCallState GetState() const override { return state_; }
 
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
-    STATS_grpc_server_req_new.Record(1.0, call_name_);
     if (!io_service_.stopped()) {
       io_service_.post([this] { HandleRequestImpl(); }, call_name_);
     } else {
