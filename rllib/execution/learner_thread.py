@@ -1,7 +1,6 @@
 import copy
 from six.moves import queue
 import threading
-import time
 from typing import Dict, Optional
 
 from ray.rllib.evaluation.metrics import get_learner_stats
