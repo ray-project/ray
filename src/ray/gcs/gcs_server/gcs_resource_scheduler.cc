@@ -19,6 +19,11 @@ namespace gcs {
 
 double LeastResourceScorer::Score(const ResourceSet &required_resources,
                                   const SchedulingResources &node_resources) {
+  // In GCS-based actor scheduling, the `resources_available_` (of class
+  // `SchedulingResources`) is only acquired or released by actor scheduling, instead of
+  // being updated by resource reports from raylets. So the 'actual' available resources
+  // (if there exist normal tasks) are equal to `resources_available_` -
+  // `resources_normal_tasks_`.
   ResourceSet new_available_resource_set;
   const ResourceSet *available_resource_set = &node_resources.GetAvailableResources();
   if (!node_resources.GetNormalTaskResources().IsEmpty()) {
