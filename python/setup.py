@@ -168,9 +168,6 @@ if setup_spec.type == SetupType.RAY:
             "colorful",  # noqa
             "py-spy >= 0.2.0",  # noqa
             "jsonschema",  # noqa
-            # matplotlib 3.4.3 breaks docker build, so pin it here
-            # Todo: Remove this when safe?
-            "matplotlib < 3.4.3",  # noqa
             "requests",  # noqa
             "gpustat",  # noqa
             "opencensus",  # noqa
@@ -192,6 +189,9 @@ if setup_spec.type == SetupType.RAY:
         "dm_tree",
         "gym",
         "lz4",
+        # matplotlib (dependency of scikit-image) 3.4.3 breaks docker build
+        # Todo: Remove this when safe?
+        "matplotlib!=3.4.3",
         "scikit-image",
         "pyyaml",
         "scipy",
