@@ -487,7 +487,8 @@ class AWSNodeProvider(NodeProvider):
 
                 self.ec2.meta.client.terminate_instances(InstanceIds=spot_ids)
         else:
-            self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
+            for i in range(0, len(node_ids), 500):
+                self.ec2.meta.client.terminate_instances(InstanceIds=node_ids[i:i + 500])
 
     def _get_node(self, node_id):
         """Refresh and get info for this node, updating the cache."""

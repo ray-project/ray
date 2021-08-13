@@ -427,19 +427,7 @@ bool GcsActorScheduler::KillActorOnWorker(const rpc::Address &worker_address,
 std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNode(
     std::shared_ptr<GcsActor> actor) {
   // Select a node to lease worker for the actor.
-  std::shared_ptr<rpc::GcsNodeInfo> node;
-
-  // If an actor has resource requirements, we will try to schedule it on the same node as
-  // the owner if possible.
-  const auto &task_spec = actor->GetCreationTaskSpecification();
-  if (!task_spec.GetRequiredResources().IsEmpty()) {
-    auto maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
-    node = maybe_node.has_value() ? maybe_node.value() : SelectNodeRandomly();
-  } else {
-    node = SelectNodeRandomly();
-  }
-
-  return node;
+  return SelectNodeRandomly();
 }
 
 std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNodeRandomly() const {
