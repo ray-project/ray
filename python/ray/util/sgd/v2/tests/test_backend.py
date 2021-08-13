@@ -191,8 +191,6 @@ def test_persisted_checkpoint(ray_start_2_cpus):
     e2.start_training(validate, checkpoint=e.latest_checkpoint_path)
     e2.finish_training()
 
-    assert e.latest_checkpoint_path == "f"
-
 
 def test_mismatch_checkpoint_report(ray_start_2_cpus):
     def train():

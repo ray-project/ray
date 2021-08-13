@@ -67,6 +67,7 @@ class BackendExecutor:
         self.timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
         # Create directory for logs.
         os.makedirs(self.log_dir, exist_ok=True)
+        logger.info(f"Results will be logged in: {self.log_dir}")
 
         # Unique checkpoint ID.
         self.latest_checkpoint_id = 0
@@ -213,6 +214,8 @@ class BackendExecutor:
         # Write checkpoint to disk.
         with open(self.latest_checkpoint_path, "wb") as f:
             cloudpickle.dump(checkpoint, f)
+            logger.debug(f"Checkpoint successfully written to: "
+                         f"{self.latest_checkpoint_path}")
 
     def _load_checkpoint(self, checkpoint_path: str) -> Dict:
         """Load the checkpoint dictionary from the input path."""
