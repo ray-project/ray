@@ -1,6 +1,7 @@
 package io.ray.api.options;
 
 import io.ray.api.Ray;
+import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.placementgroup.PlacementGroup;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -17,6 +18,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final int maxConcurrency;
   public final PlacementGroup group;
   public final int bundleIndex;
+  public final List<ConcurrencyGroup> concurrencyGroups;
 
   private ActorCreationOptions(
       boolean global,
@@ -26,7 +28,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
       List<String> jvmOptions,
       int maxConcurrency,
       PlacementGroup group,
-      int bundleIndex) {
+      int bundleIndex,
+      List<ConcurrencyGroup> concurrencyGroups) {
     super(resources);
     this.global = global;
     this.name = name;
@@ -35,6 +38,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     this.maxConcurrency = maxConcurrency;
     this.group = group;
     this.bundleIndex = bundleIndex;
+    this.concurrencyGroups = concurrencyGroups;
   }
 
   /** The inner class for building ActorCreationOptions. */
@@ -47,6 +51,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private int maxConcurrency = 1;
     private PlacementGroup group;
     private int bundleIndex;
+    private List<ConcurrencyGroup> concurrencyGroups = new ArrayList<>();
 
     /**
      * Set the actor name of a named actor. This named actor is only accessible from this job by
@@ -176,7 +181,21 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     public ActorCreationOptions build() {
       return new ActorCreationOptions(
-          global, name, resources, maxRestarts, jvmOptions, maxConcurrency, group, bundleIndex);
+          global,
+          name,
+          resources,
+          maxRestarts,
+          jvmOptions,
+          maxConcurrency,
+          group,
+          bundleIndex,
+          concurrencyGroups);
+    }
+
+    /** Set the concurrency groups for this actor. */
+    public Builder setConcurrencyGroups(List<ConcurrencyGroup> concurrencyGroups) {
+      this.concurrencyGroups = concurrencyGroups;
+      return this;
     }
   }
 }

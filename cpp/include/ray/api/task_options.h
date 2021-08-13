@@ -17,20 +17,19 @@
 #include <cmath>
 
 namespace ray {
-namespace api {
+namespace internal {
 
 inline void CheckTaskOptions(const std::unordered_map<std::string, double> &resources) {
   for (auto &pair : resources) {
     if (pair.first.empty() || pair.second == 0) {
-      throw ray::api::RayException(
-          "Resource values should be positive. Specified resource: " + pair.first +
-          " = " + std::to_string(pair.second) + ".");
+      throw RayException("Resource values should be positive. Specified resource: " +
+                         pair.first + " = " + std::to_string(pair.second) + ".");
     }
     // Note: A resource value should be an integer if it is greater than 1.0.
     // e.g. 3.0 is a valid resource value, but 3.5 is not.
     double intpart;
     if (pair.second > 1 && std::modf(pair.second, &intpart) != 0.0) {
-      throw ray::api::RayException(
+      throw RayException(
           "A resource value should be an integer if it is greater than 1.0. Specified "
           "resource: " +
           pair.first + " = " + std::to_string(pair.second) + ".");
@@ -50,5 +49,5 @@ struct ActorCreationOptions {
   int max_concurrency = 1;
 };
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray
