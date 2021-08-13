@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple,
                     Type, Union, overload)
-from warnings import warn
 from weakref import WeakValueDictionary
 
 from starlette.requests import Request
@@ -21,8 +20,7 @@ from ray.actor import ActorHandle
 from ray.util.annotations import Deprecated, PublicAPI
 from ray.serve.common import BackendInfo, GoalId
 from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
-from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
+from ray.serve.constants import (HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
 from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
@@ -566,11 +564,9 @@ class Client:
 @PublicAPI
 def start(
         detached: bool = False,
-        http_host: Optional[str] = DEFAULT_HTTP_HOST,
-        http_port: int = DEFAULT_HTTP_PORT,
-        http_middlewares: List[Any] = [],
         http_options: Optional[Union[dict, HTTPOptions]] = None,
         dedicated_cpu: bool = False,
+        **kwargs,
 ) -> Client:
     """Initialize a serve instance.
 
@@ -586,9 +582,6 @@ def start(
           explicitly stopped with serve.shutdown(). This should *not* be set in
           an anonymous Ray namespace because you will not be able to reconnect
           to the instance after the script exits.
-        http_host (Optional[str]): Deprecated, use http_options instead.
-        http_port (int): Deprecated, use http_options instead.
-        http_middlewares (list): Deprecated, use http_options instead.
         http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
@@ -612,21 +605,12 @@ def start(
         dedicated_cpu (bool): Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
-    if ((http_host != DEFAULT_HTTP_HOST) or (http_port != DEFAULT_HTTP_PORT)
-            or (len(http_middlewares) != 0)):
-        if http_options is not None:
+    http_deprecated_args = ["http_host", "http_port", "http_middlewares"]
+    for key in http_deprecated_args:
+        if key in kwargs:
             raise ValueError(
-                "You cannot specify both `http_options` and any of the "
-                "`http_host`, `http_port`, and `http_middlewares` arguments. "
-                "`http_options` is preferred.")
-        else:
-            warn(
-                "`http_host`, `http_port`, `http_middlewares` are deprecated. "
-                "Please use serve.start(http_options={'host': ..., "
-                "'port': ..., middlewares': ...}) instead.",
-                DeprecationWarning,
-            )
-
+                f"{key} is deprecated, please use serve.start(http_options="
+                f'{{"{key}": {kwargs[key]}}}) instead.')
     # Initialize ray if needed.
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
@@ -661,8 +645,7 @@ def start(
     if isinstance(http_options, dict):
         http_options = HTTPOptions.parse_obj(http_options)
     if http_options is None:
-        http_options = HTTPOptions(
-            host=http_host, port=http_port, middlewares=http_middlewares)
+        http_options = HTTPOptions()
 
     controller = ServeController.options(
         num_cpus=(1 if dedicated_cpu else 0),

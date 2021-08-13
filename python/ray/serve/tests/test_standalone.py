@@ -38,7 +38,7 @@ def ray_cluster():
 
 def test_shutdown(ray_shutdown):
     ray.init(num_cpus=16)
-    serve.start(http_port=8003)
+    serve.start(http_options=dict(port=8003))
 
     @serve.deployment
     def f():
@@ -272,9 +272,6 @@ def test_http_proxy_fail_loudly(ray_shutdown):
 def test_no_http(ray_shutdown):
     # The following should have the same effect.
     options = [
-        {
-            "http_host": None
-        },
         {
             "http_options": {
                 "host": None
