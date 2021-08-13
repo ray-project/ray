@@ -98,7 +98,8 @@ class Client:
         self._controller_name = controller_name
         self._detached = detached
         self._shutdown = False
-        self._http_config = ray.get(controller.get_http_config.remote())
+        self._http_config: HTTPOptions = ray.get(
+            controller.get_http_config.remote())
 
         # Each handle has the overhead of long poll client, therefore cached.
         self.handle_cache = WeakValueDictionary()
@@ -112,6 +113,10 @@ class Client:
                 self.shutdown()
 
             atexit.register(shutdown_serve_client)
+
+    @property
+    def root_url(self):
+        return self._http_config.root_url
 
     def __del__(self):
         if not self._detached:
@@ -351,6 +356,7 @@ class Client:
                version: Optional[str] = None,
                prev_version: Optional[str] = None,
                route_prefix: Optional[str] = None,
+               url: str = "",
                _blocking: Optional[bool] = True) -> Optional[GoalId]:
         if config is None:
             config = {}
@@ -400,6 +406,9 @@ class Client:
 
         if _blocking:
             self._wait_for_goal(goal_id)
+            logger.info(
+                f"Deployment '{name}{':'+version if version else ''}' is ready"
+                f" at `{url}`.")
         else:
             return goal_id
 
@@ -1167,6 +1176,12 @@ class Deployment:
         """Arguments passed to the underlying class's constructor."""
         return self._init_args
 
+    @property
+    def url(self):
+        """Full HTTP url for this deployment."""
+        return _get_global_client().root_url + (self._route_prefix
+                                                or f"/{self._name}")
+
     def __call__(self):
         raise RuntimeError("Deployments cannot be constructed directly. "
                            "Use `deployment.deploy() instead.`")
@@ -1191,6 +1206,7 @@ class Deployment:
             version=self._version,
             prev_version=self._prev_version,
             route_prefix=self._route_prefix,
+            url=self.url,
             _blocking=_blocking,
             _internal=True)
 
