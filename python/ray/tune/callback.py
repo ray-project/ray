@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Dict, List, Optional
 from abc import ABC
-import logging
+import warnings
 
 from ray.tune.checkpoint_manager import Checkpoint
 from ray.util.annotations import PublicAPI
@@ -8,8 +8,6 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
     from ray.tune.experiment import Experiment
-
-logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="beta")
@@ -48,7 +46,7 @@ class Callback(ABC):
 
     """
 
-    def setup(self, experiment: Optional["Experiment"] = None):
+    def setup(self, experiment: Optional["Experiment"] = None, **info):
         """Called once at the very beginning of training.
 
         Any Callback setup should be added here (setting environment
@@ -57,6 +55,7 @@ class Callback(ABC):
         Arguments:
             experiment (Optional[Experiment]): Experiment setting set
                 by Ray Tune.
+            **info: Kwargs dict for forward compatibility.
         """
         pass
 
@@ -179,11 +178,12 @@ class Callback(ABC):
         """
         pass
 
-    def on_experiment_end(self, trials: List["Trial"]):
+    def on_experiment_end(self, trials: List["Trial"], **info):
         """Called after experiment is over and all trials have concluded.
 
         Arguments:
             trials (List[Trial]): List of trials.
+            **info: Kwargs dict for forward compatibility.
         """
         pass
 
@@ -194,16 +194,17 @@ class CallbackList:
     def __init__(self, callbacks: List[Callback]):
         self._callbacks = callbacks
 
-    def setup(self, experiment: Optional["Experiment"] = None):
+    def setup(self, experiment: Optional["Experiment"] = None, **info):
         for callback in self._callbacks:
             try:
                 callback.setup(experiment=experiment)
             except TypeError as e:
                 if "argument" in str(e):
-                    logger.warning(
+                    warnings.warn(
                         "Please update ``setup`` method in callback "
                         f"{callback.__class__} to take in an ``experiment`` "
-                        "optional argument (as ``setup(experiment=None)``.)")
+                        "optional argument (as ``setup(experiment=None)``.)",
+                        FutureWarning)
                     callback.setup()
                 else:
                     raise e

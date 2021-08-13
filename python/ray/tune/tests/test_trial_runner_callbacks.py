@@ -17,10 +17,10 @@ from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.syncer import SyncConfig, SyncerCallback
 
+from ray.tune.callback import warnings
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune import Callback
-from ray.tune.callback import logger as callback_logger
 from ray.tune.utils.callback import create_default_callbacks
 
 
@@ -281,7 +281,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         # Syncer callback is appended
         self.assertLess(callbacks.index(mc3), syncer_pos)
 
-    @patch.object(callback_logger, "warning")
+    @patch.object(warnings, "warn")
     def testCallbackSetupBackwardsCompatible(self, mocked_warning_method):
         class NoExperimentInSetupCallback(Callback):
             # Old method definition didn't take in experiment
