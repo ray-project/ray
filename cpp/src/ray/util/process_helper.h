@@ -27,7 +27,9 @@ class ProcessHelper {
  public:
   void RayStart(CoreWorkerOptions::TaskExecutionCallback callback);
   void RayStop();
-  void StartRayNode(int redis_port, std::string redis_password);
+  void StartRayNode(const int redis_port, const std::string redis_password,
+                    const int num_cpus = 0, const int num_gpus = 0,
+                    const std::unordered_map<std::string, int> resources = {});
   void StopRayNode();
 
   static ProcessHelper &GetInstance() {

@@ -145,42 +145,6 @@ class ObjectManager : public ObjectManagerInterface,
                          rpc::FreeObjectsReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Receive an object chunk from a remote object manager. Small object may
-  /// fit in one chunk.
-  ///
-  /// If this is the last remaining chunk for an object, then the object will
-  /// be sealed. Else, we will keep the plasma buffer open until the remaining
-  /// chunks are received.
-  ///
-  /// If the object is no longer being actively pulled, the object will not be
-  /// created.
-  ///
-  /// \param node_id Node id of remote object manager which sends this chunk
-  /// \param object_id Object id
-  /// \param owner_address The address of the object's owner
-  /// \param data_size Data size
-  /// \param metadata_size Metadata size
-  /// \param chunk_index Chunk index
-  /// \param data Chunk data
-  /// \return Whether the chunk was successfully written into the local object
-  /// store. This can fail if the chunk was already received in the past, or if
-  /// the object is no longer being actively pulled.
-  bool ReceiveObjectChunk(const NodeID &node_id, const ObjectID &object_id,
-                          const rpc::Address &owner_address, uint64_t data_size,
-                          uint64_t metadata_size, uint64_t chunk_index,
-                          const std::string &data);
-
-  /// Send pull request
-  ///
-  /// \param object_id Object id
-  /// \param client_id Remote server client id
-  void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
-
-  /// Get the rpc client according to the node ID
-  ///
-  /// \param node_id Remote node id, will send rpc request to it
-  std::shared_ptr<rpc::ObjectManagerClient> GetRpcClient(const NodeID &node_id);
-
   /// Get the port of the object manager rpc server.
   int GetServerPort() const { return object_manager_server_.GetPort(); }
 
@@ -422,6 +386,42 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const NodeID &node_id);
+
+  /// Receive an object chunk from a remote object manager. Small object may
+  /// fit in one chunk.
+  ///
+  /// If this is the last remaining chunk for an object, then the object will
+  /// be sealed. Else, we will keep the plasma buffer open until the remaining
+  /// chunks are received.
+  ///
+  /// If the object is no longer being actively pulled, the object will not be
+  /// created.
+  ///
+  /// \param node_id Node id of remote object manager which sends this chunk
+  /// \param object_id Object id
+  /// \param owner_address The address of the object's owner
+  /// \param data_size Data size
+  /// \param metadata_size Metadata size
+  /// \param chunk_index Chunk index
+  /// \param data Chunk data
+  /// \return Whether the chunk was successfully written into the local object
+  /// store. This can fail if the chunk was already received in the past, or if
+  /// the object is no longer being actively pulled.
+  bool ReceiveObjectChunk(const NodeID &node_id, const ObjectID &object_id,
+                          const rpc::Address &owner_address, uint64_t data_size,
+                          uint64_t metadata_size, uint64_t chunk_index,
+                          const std::string &data);
+
+  /// Send pull request
+  ///
+  /// \param object_id Object id
+  /// \param client_id Remote server client id
+  void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
+
+  /// Get the rpc client according to the node ID
+  ///
+  /// \param node_id Remote node id, will send rpc request to it
+  std::shared_ptr<rpc::ObjectManagerClient> GetRpcClient(const NodeID &node_id);
 
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.
