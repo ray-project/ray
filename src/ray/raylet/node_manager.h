@@ -249,9 +249,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// report to GCS.
   void FillResourceReport(rpc::ResourcesData &resources_data);
 
-  /// Report resource usage to the GCS.
-  void ReportResourceUsage();
-
   /// Write out debug state to a file.
   void DumpDebugState() const;
 
