@@ -547,7 +547,7 @@ def new_scheduler_enabled():
 
 
 def client_test_enabled() -> bool:
-    return os.environ.get("RAY_CLIENT_MODE", "0") == "1"
+    return ray._private.client_mode_hook.is_client_mode_enabled
 
 
 def object_memory_usage() -> bool:
