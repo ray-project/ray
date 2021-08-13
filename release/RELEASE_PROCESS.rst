@@ -310,9 +310,9 @@ to proceed with the final stages of the release!
    readthedocs to see if that fixes it.
 
 7. **Update ML Docker Image:** Upgrade the ``requirements_ml_docker.txt`` dependencies to use the same Tensorflow and Torch version as
-    minimum of ``requirements_tune.txt`` and ``requirements_rllib.txt``. Make any changes to the CUDA
-    version so that it is compatible with these Tensorflow (https://www.tensorflow.org/install/source#gpu) or Torch (https://pytorch.org/get-started/locally/, https://pytorch.org/get-started/previous-versions/)
-    versions. Ping @ijrsvt or @amogkam for assistance.
+   minimum of ``requirements_tune.txt`` and ``requirements_rllib.txt``. Make any changes to the CUDA
+   version so that it is compatible with these Tensorflow (https://www.tensorflow.org/install/source#gpu) or Torch (https://pytorch.org/get-started/locally/, https://pytorch.org/get-started/previous-versions/)
+   versions. Ping @ijrsvt or @amogkam for assistance.
 
 8. **Update latest Docker Image:** SET THE VERSION NUMBER IN `docker/fix-docker-latest.sh`, then run the script ot update the "latest" tag
    in Dockerhub for the 
@@ -325,10 +325,10 @@ to proceed with the final stages of the release!
    Ray slack (message a team lead if you do not have permissions.)
 
 10. **Improve the release process:** Find some way to improve the release
-   process so that whoever manages the release next will have an easier time.
-   If you had to make any changes to tests or cluster configurations, make
-   sure they are contributed back! If you've noticed anything in the docs that
-   was out-of-date, please patch them.
+    process so that whoever manages the release next will have an easier time.
+    If you had to make any changes to tests or cluster configurations, make
+    sure they are contributed back! If you've noticed anything in the docs that
+    was out-of-date, please patch them.
 
 **You're done! Congratulations and good job!**
 
