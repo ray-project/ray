@@ -310,7 +310,7 @@ to proceed with the final stages of the release!
    readthedocs to see if that fixes it.
 
 7. **Update ML Docker Image:** Upgrade the ``requirements_ml_docker.txt`` dependencies to use the same Tensorflow and Torch version as
-    Torch version as minimum of ``requirements_tune.txt`` and ``requirements_rllib.txt``. Make any changes to the CUDA
+    minimum of ``requirements_tune.txt`` and ``requirements_rllib.txt``. Make any changes to the CUDA
     version so that it is compatible with these Tensorflow (https://www.tensorflow.org/install/source#gpu) or Torch (https://pytorch.org/get-started/locally/, https://pytorch.org/get-started/previous-versions/)
     versions. Ping @ijrsvt or @amogkam for assistance.
 
