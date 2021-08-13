@@ -1,4 +1,5 @@
 import datetime
+import functools
 import logging
 import time
 from typing import List, Tuple
@@ -13,16 +14,17 @@ HISTOGRAM_BOUNDARIES = list(range(50, 200, 50))
 
 
 def timeit(
-    event: str,
-    report_time=False,
-    report_in_progress=True,
-    report_completed=True,
+        event: str,
+        report_time=False,
+        report_in_progress=True,
+        report_completed=True,
 ):
     def decorator(f):
+        @functools.wraps(f)
         def wrapped_f(*args, **kwargs):
             progress_tracker = ray.get_actor(constants.PROGRESS_TRACKER_ACTOR)
-            progress_tracker.inc.remote(f"{event}_in_progress",
-                                        echo=report_in_progress)
+            progress_tracker.inc.remote(
+                f"{event}_in_progress", echo=report_in_progress)
             try:
                 start = time.time()
                 ret = f(*args, **kwargs)
@@ -33,8 +35,8 @@ def timeit(
                     duration,
                     echo=report_time,
                 )
-                progress_tracker.inc.remote(f"{event}_completed",
-                                            echo=report_completed)
+                progress_tracker.inc.remote(
+                    f"{event}_completed", echo=report_completed)
                 return ret
             finally:
                 progress_tracker.dec.remote(f"{event}_in_progress")
@@ -73,9 +75,9 @@ def create_progress_tracker(args):
 @ray.remote
 class ProgressTracker:
     def __init__(
-        self,
-        gauges: List[str],
-        histograms: List[Tuple[str, List[int]]],
+            self,
+            gauges: List[str],
+            histograms: List[Tuple[str, List[int]]],
     ):
         self.counts = {m: 0 for m in gauges}
         self.gauges = {m: Gauge(m) for m in gauges}

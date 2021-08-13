@@ -9,7 +9,7 @@ def test_distributed_sort():
         "--total_data_size=1_000_000_000",
         "--num_mappers=4",
         "--num_reducers=4",
-        "--num_merged_mappers=2",
+        "--num_mappers_per_round=2",
         "--ray_address=",
         "--skip_input",
         "--skip_output",

@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import csv
 import logging
 import os
@@ -14,7 +15,8 @@ from ray.experimental.raysort import constants
 from ray.experimental.raysort import logging_utils
 from ray.experimental.raysort import sortlib
 from ray.experimental.raysort import tracing_utils
-from ray.experimental.raysort.types import BlockInfo, ByteCount, RecordCount, PartId, PartInfo, Path
+from ray.experimental.raysort.types import \
+    BlockInfo, ByteCount, RecordCount, PartId, PartInfo, Path
 
 Args = argparse.Namespace
 
@@ -24,9 +26,7 @@ Args = argparse.Namespace
 
 
 def get_args(*args, **kwargs):
-    parser = argparse.ArgumentParser(description="""
-    TODO
-    """)
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--ray_address",
         default="auto",
@@ -35,13 +35,13 @@ def get_args(*args, **kwargs):
     )
     parser.add_argument(
         "--total_data_size",
-        default=2 * 1000 * 1024 * 1024 * 1024,
+        default=1 * 1000 * 1024 * 1024 * 1024,
         type=ByteCount,
         help="total data size in bytes",
     )
     parser.add_argument(
         "--num_mappers",
-        default=512,
+        default=256,
         type=int,
         help="number of map tasks",
     )
@@ -67,15 +67,13 @@ def get_args(*args, **kwargs):
         "--reducer_input_chunk",
         default=100 * 1024 * 1024,
         type=ByteCount,
-        help=
-        "number of bytes to read from each mapper block in merge/reduce tasks",
+        help="bytes to read from each file in reduce tasks",
     )
     parser.add_argument(
         "--reducer_output_chunk",
         default=1 * 1024 * 1024,
         type=RecordCount,
-        help=
-        "number of bytes to buffer before writing the output in merge/reduce tasks",
+        help="bytes to buffer before writing the output in merge/reduce tasks",
     )
     parser.add_argument(
         "--skip_sorting",
@@ -191,7 +189,10 @@ def _load_manifest(args: Args, path: Path) -> List[PartInfo]:
         ]
 
 
-def _load_partition(path: Path) -> np.ndarray:
+def _load_partition(args: Args, path: Path) -> np.ndarray:
+    if args.skip_input:
+        return np.frombuffer(
+            np.random.bytes(args.input_part_size), dtype=np.uint8).copy()
     return np.fromfile(path, dtype=np.uint8)
 
 
@@ -209,15 +210,10 @@ def _dummy_sort_and_partition(part: np.ndarray,
 
 @ray.remote
 @tracing_utils.timeit("map")
-def mapper(args: Args, boundaries: List[int], path: Path) -> List[np.ndarray]:
+def mapper(args: Args, mapper_id: PartId, boundaries: List[int],
+           path: Path) -> List[np.ndarray]:
     logging_utils.init()
-
-    if args.skip_input:
-        part = np.frombuffer(
-            np.random.bytes(args.input_part_size), dtype=np.uint8)
-    else:
-        part = _load_partition(path)
-
+    part = _load_partition(args, path)
     sort_fn = _dummy_sort_and_partition \
         if args.skip_sorting else sortlib.sort_and_partition
     blocks = sort_fn(part, boundaries)
@@ -238,18 +234,11 @@ def _dummy_merge(
         blocks.append(((m, d_), block))
 
 
-@ray.remote(num_cpus=0, resources={"worker": 1e-3})
-def _write_data(path, data):
-    with open(path, "ab") as fout:
-        fout.write(data)
-
-
 def _merge_impl(args: Args,
                 M: int,
                 pinfo: PartInfo,
                 get_block: Callable[[int, int], np.ndarray],
-                skip_output=False,
-                remote_writer=True):
+                skip_output=False):
     merge_fn = _dummy_merge if args.skip_sorting else sortlib.merge_partitions
     merger = merge_fn(M, args.reducer_output_chunk, get_block)
 
@@ -257,24 +246,14 @@ def _merge_impl(args: Args,
         for datachunk in merger:
             del datachunk
     else:
-        if not remote_writer:
-            with open(pinfo.path, "wb") as fout:
-                for datachunk in merger:
-                    fout.write(datachunk)
-        else:
-            with open(pinfo.path, "wb"):
-                pass
-            task = None
+        with open(pinfo.path, "wb") as fout:
             for datachunk in merger:
-                if task is not None:
-                    ray.get(task)
-                task = _write_data.remote(pinfo.path, datachunk)
-            if task is not None:
-                ray.get(task)
+                fout.write(datachunk)
     return pinfo
 
 
-@ray.remote(num_cpus=0, resources={"worker": 1e-3})
+@ray.remote(
+    num_cpus=0, resources={"worker": 1e-3})  # TODO: test setting this to 1
 @tracing_utils.timeit("merge")
 def merge_mapper_blocks(args: Args, reducer_id: PartId, mapper_id: PartId,
                         *blocks: List[np.ndarray]) -> PartInfo:
@@ -287,8 +266,7 @@ def merge_mapper_blocks(args: Args, reducer_id: PartId, mapper_id: PartId,
             return None
         return blocks[i]
 
-    _merge_impl(args, M, pinfo, get_block)
-    return pinfo
+    return _merge_impl(args, M, pinfo, get_block)
 
 
 @ray.remote(num_cpus=0, resources={"worker": 1e-3})
@@ -297,7 +275,6 @@ def final_merge(args: Args, reducer_id: PartId,
                 *merged_parts: List[PartInfo]) -> PartInfo:
     M = len(merged_parts)
 
-    @ray.remote(num_cpus=0, resources={"worker": 1e-3})
     def _load_block_chunk(pinfo: PartInfo, d: int) -> np.ndarray:
         return np.fromfile(
             pinfo.path,
@@ -305,39 +282,38 @@ def final_merge(args: Args, reducer_id: PartId,
             count=args.reducer_input_chunk,
             offset=d * args.reducer_input_chunk)
 
-    block_chunks = [
-        _load_block_chunk.remote(pinfo, 0) for pinfo in merged_parts
-    ]
-
     def get_block(i, d):
-        ret = block_chunks[i]
-        block_chunks[i] = _load_block_chunk.remote(merged_parts[i], d + 1)
-        ret = ray.get(ret)
+        ret = _load_block_chunk(merged_parts[i], d)
         if ret.size == 0:
             return None
-        return np.copy(ret)
+        return ret
 
     pinfo = _part_info(args, reducer_id, "output")
-    _merge_impl(args, M, pinfo, get_block, args.skip_output)
-    return pinfo
+    return _merge_impl(args, M, pinfo, get_block, args.skip_output)
 
 
 def _node_res(node: str) -> Dict[str, float]:
     return {"resources": {f"node:{node}": 1e-3}}
 
 
-def _get_placement_groups(args: Args) -> List[ray.PlacementGroupID]:
+@contextlib.contextmanager
+def worker_placement_groups(args: Args) -> List[ray.PlacementGroupID]:
     """
-    TODO: document
+    Returns one placement group per node with a `worker` resource. To run
+    tasks in the placement group, use
+    `@ray.remote(num_cpus=0, resources={"worker": 1e-3})`.
     """
-    worker_share = args.num_workers / args.num_reducers
     pgs = [
         ray.util.placement_group([{
-            "worker": worker_share
+            "worker": 1
         }]) for _ in range(args.num_reducers)
     ]
     ray.get([pg.ready() for pg in pgs])
-    return pgs
+    try:
+        yield pgs
+    finally:
+        for pg in pgs:
+            ray.util.remove_placement_group(pg)
 
 
 @tracing_utils.timeit("sort", report_time=True)
@@ -345,50 +321,51 @@ def sort_main(args: Args):
     parts = _load_manifest(args, constants.INPUT_MANIFEST_FILE)
     assert len(parts) == args.num_mappers
     boundaries = sortlib.get_boundaries(args.num_reducers)
-    pgs = _get_placement_groups(args)
 
-    mapper_opt = {"num_returns": args.num_reducers}
+    mapper_opt = {
+        "num_returns": args.num_reducers,
+        "num_cpus": 4,  # concurrency = 2
+    }
     merge_results = np.empty(
         (args.num_rounds, args.num_reducers), dtype=object)
 
     part_id = 0
-    for round in range(args.num_rounds):
-        # Limit the number of in-flight rounds.
-        num_extra_rounds = round - args.num_concurrent_rounds + 1
-        if num_extra_rounds > 0:
-            ray.wait(
-                [f for f in merge_results.flatten() if f is not None],
-                num_returns=num_extra_rounds * args.num_reducers)
+    with worker_placement_groups(args) as pgs:
+        for round in range(args.num_rounds):
+            # Limit the number of in-flight rounds.
+            num_extra_rounds = round - args.num_concurrent_rounds + 1
+            if num_extra_rounds > 0:
+                ray.wait(
+                    [f for f in merge_results.flatten() if f is not None],
+                    num_returns=num_extra_rounds * args.num_reducers)
 
-        # Submit map tasks.
-        mapper_results = np.empty(
-            (args.num_mappers_per_round, args.num_reducers), dtype=object)
-        for _ in range(args.num_mappers_per_round):
-            _, node, path = parts[part_id]
-            m = part_id % args.num_mappers_per_round
-            if not args.skip_input:
-                mapper_opt.update(_node_res(node))
-            mapper_results[m, :] = mapper.options(**mapper_opt).remote(
-                args, boundaries, path)
-            part_id += 1
+            # Submit map tasks.
+            mapper_results = np.empty(
+                (args.num_mappers_per_round, args.num_reducers), dtype=object)
+            for _ in range(args.num_mappers_per_round):
+                _, node, path = parts[part_id]
+                m = part_id % args.num_mappers_per_round
+                mapper_results[m, :] = mapper.options(**mapper_opt).remote(
+                    args, part_id, boundaries, path)
+                part_id += 1
 
-        # Submit merge tasks.
-        merge_results[round, :] = [
-            merge_mapper_blocks.options(placement_group=pgs[r]).remote(
-                args, r, round, *mapper_results[:, r].tolist())
+            # Submit merge tasks.
+            merge_results[round, :] = [
+                merge_mapper_blocks.options(placement_group=pgs[r]).remote(
+                    args, r, round, *mapper_results[:, r].tolist())
+                for r in range(args.num_reducers)
+            ]
+
+            # Delete local references to mapper results.
+            mapper_results = None
+
+        # Submit second-stage reduce tasks.
+        reducer_results = [
+            final_merge.options(placement_group=pgs[r]).remote(
+                args, r, *merge_results[:, r].tolist())
             for r in range(args.num_reducers)
         ]
-
-    # Delete local references to mapper results.
-    mapper_results = None
-
-    # Submit second-stage reduce tasks.
-    reducer_results = [
-        final_merge.options(placement_group=pgs[r]).remote(
-            args, r, *merge_results[:, r].tolist())
-        for r in range(args.num_reducers)
-    ]
-    reducer_results = ray.get(reducer_results)
+        reducer_results = ray.get(reducer_results)
 
     if not args.skip_output:
         with open(constants.OUTPUT_MANIFEST_FILE, "w") as fout:
