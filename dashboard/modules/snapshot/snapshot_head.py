@@ -106,14 +106,14 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
                             "serve"] = serve_metadata
         return actors
 
-    async def get_serve_info(self):
+    async def get_serve_info(self) -> Dict[str, Any]:
         # Conditionally import serve to prevent ModuleNotFoundError from serve
         # dependencies when only ray[default] is installed (#17712)
         try:
             from ray.serve.controller import SNAPSHOT_KEY as SERVE_SNAPSHOT_KEY
             from ray.serve.constants import SERVE_CONTROLLER_NAME
         except Exception:
-            return "{}"
+            return {}
 
         gcs_client = self._dashboard_head.gcs_client
 
