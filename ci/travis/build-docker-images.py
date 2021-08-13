@@ -94,7 +94,7 @@ def _get_wheel_name(minor_version_number):
             file for file in glob.glob(
                 f"{_get_root_dir()}/.whl/ray-*{PYTHON_WHL_VERSION}"
                 f"{minor_version_number}*-manylinux*")
-            if "+dbg" not in file  # Exclude dbg builds
+            if "+" not in file  # Exclude dbg, asan  builds
         ]
         assert len(matches) == 1, (
             f"Found ({len(matches)}) matches for 'ray-*{PYTHON_WHL_VERSION}"
