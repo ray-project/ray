@@ -1,5 +1,5 @@
 base_image: "anyscale/ray-ml:pinned-nightly-py37"
-env_vars: {"RAY_event_stats": 1, "RAY_max_direct_call_object_size": 0}
+env_vars: {"RAY_max_direct_call_object_size": 0}
 debian_packages: []
 
 python:
