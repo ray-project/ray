@@ -39,10 +39,13 @@ void Init(ray::RayConfig &config);
 /// Initialize Ray runtime with config and command-line arguments.
 /// If a parameter is explicitly set in command-line arguments, the parameter value will
 /// be overwritten.
-void Init(ray::RayConfig &config, int *argc, char ***argv);
+void Init(ray::RayConfig &config, int argc, char **argv);
 
 /// Initialize Ray runtime with default config.
 void Init();
+
+/// Check if ray::Init has been called yet.
+bool IsInitialized();
 
 /// Shutdown Ray runtime.
 void Shutdown();
@@ -111,8 +114,6 @@ boost::optional<ActorHandle<T>> GetGlobalActor(const std::string &actor_name);
 /// \Throws RayException if the current process is a driver or the current worker is not
 /// an actor.
 inline void ExitActor() { ray::internal::GetRayRuntime()->ExitActor(); }
-
-static std::once_flag is_inited_;
 
 template <typename T>
 std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids);
