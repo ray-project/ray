@@ -58,11 +58,6 @@ class SGDSingleFileLoggingCallback(SGDCallback, metaclass=abc.ABCMeta):
 
         self._workers_to_log = workers_to_log
 
-        # Create a JSON file with an empty list
-        # that will be latter appended to
-        with open(self._log_path, "w") as f:
-            json.dump([], f, cls=SafeFallbackEncoder)
-
     @property
     def log_path(self) -> Path:
         """Path to the log file."""
@@ -81,6 +76,13 @@ class JsonLoggerCallback(SGDSingleFileLoggingCallback):
     """
 
     _default_filename: Union[str, Path] = RESULT_FILE_JSON
+
+    def start_training(self, logdir: str, **info):
+        super().start_training(logdir, **info)
+        # Create a JSON file with an empty list
+        # that will be latter appended to
+        with open(self._log_path, "w") as f:
+            json.dump([], f, cls=SafeFallbackEncoder)
 
     def handle_result(self, results: Optional[List[Dict]], **info):
         if self._workers_to_log is None or results is None:
