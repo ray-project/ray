@@ -123,8 +123,11 @@ def test_partial(workflow_start_regular_shared):
     ys = [1,2,3]
     def add(x, y):
         return x + y
-
     from functools import partial
+
+    f1 = workflow.step(partial(add, 10))
+    assert f1.step(10).run() == 20
+
     fs = [partial(add, y=y) for y in ys]
 
     @ray.workflow.step
