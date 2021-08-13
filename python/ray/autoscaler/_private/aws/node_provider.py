@@ -509,8 +509,7 @@ class AWSNodeProvider(NodeProvider):
         max_terminate_nodes = self.max_terminate_nodes if \
             self.max_terminate_nodes is not None else len(node_ids)
 
-        # for terminate_func, nodes in nodes_to_terminate.items():
-        for nodes, terminate_func in nodes_to_terminate.items():
+        for terminate_func, nodes in nodes_to_terminate.items():
             for start in range(0, len(nodes), max_terminate_nodes):
                 terminate_func(InstanceIds=node_ids[start:start +
                                                     max_terminate_nodes])
