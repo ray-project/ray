@@ -80,11 +80,11 @@ void ProcessHelper::StartRayNode(const int redis_port, const std::string redis_p
   std::vector<std::string> cmdargs({"ray", "start", "--head", "--port",
                                     std::to_string(redis_port), "--redis-password",
                                     redis_password, "--include-dashboard", "false"});
-  if (num_cpus > 0) {
+  if (num_cpus >= 0) {
     cmdargs.emplace_back("--num-cpus");
     cmdargs.emplace_back(std::to_string(num_cpus));
   }
-  if (num_gpus > 0) {
+  if (num_gpus >= 0) {
     cmdargs.emplace_back("--num-gpus");
     cmdargs.emplace_back(std::to_string(num_gpus));
   }
