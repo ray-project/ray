@@ -120,9 +120,11 @@ def test_async_execution(workflow_start_regular_shared):
 
 
 def test_partial(workflow_start_regular_shared):
-    ys = [1,2,3]
+    ys = [1, 2, 3]
+
     def add(x, y):
         return x + y
+
     from functools import partial
 
     f1 = workflow.step(partial(add, 10))

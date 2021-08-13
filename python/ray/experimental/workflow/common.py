@@ -14,11 +14,14 @@ from ray import ObjectRef
 StepID = str
 WorkflowOutputType = ObjectRef
 
+
 def get_module(f):
     return f.__module__ if hasattr(f, "__module__") else "<?>"
 
+
 def get_qualname(f):
     return f.__qualname__ if hasattr(f, "__qualname__") else "<?>"
+
 
 @dataclass
 class WorkflowRef:
@@ -119,6 +122,7 @@ class WorkflowExecutionResult:
 class WorkflowMetaData:
     # The current status of the workflow
     status: WorkflowStatus
+
 
 def slugify(value: str, allow_unicode=False) -> str:
     """Adopted from
