@@ -254,13 +254,6 @@ Python versions must be the same in both environments.
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
 
-.. note::
-  If a conda environment is not specified, your deployment will be started in the
-  same conda environment as the client (the process creating the deployment) by
-  default.  (When using :ref:`ray-client`, your deployment will be started in the
-  conda environment that the Serve controller is running in, which by default is the
-  conda environment the remote Ray cluster was started in.)
-
 The dependencies required in the deployment may be different than
 the dependencies installed in the driver program (the one running Serve API
 calls). In this case, you should use a delayed import within the class to avoid
