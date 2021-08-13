@@ -148,7 +148,7 @@ class Trainer:
 
         try:
             for callback in callbacks:
-                callback.start_training()
+                callback.start_training(logdir=self.log_dir)
             self._executor.start_training(train_func, checkpoint)
 
             while True:
