@@ -205,19 +205,16 @@ class TBXLoggerCallback(SGDSingleFileSingleWorkerLoggingCallback):
         result = {k: v for k, v in result.items() if k not in self.IGNORE_KEYS}
         flat_result = flatten_dict(result, delimiter="/")
         path = ["ray", "sgd"]
-        valid_result = {}
 
         # same logic as in ray.tune.logger.TBXLogger
         for attr, value in flat_result.items():
             full_attr = "/".join(path + [attr])
             if (isinstance(value, self.VALID_SUMMARY_TYPES)
                     and not np.isnan(value)):
-                valid_result[full_attr] = value
                 self._file_writer.add_scalar(
                     full_attr, value, global_step=step)
             elif ((isinstance(value, list) and len(value) > 0)
                   or (isinstance(value, np.ndarray) and value.size > 0)):
-                valid_result[full_attr] = value
 
                 # Must be video
                 if isinstance(value, np.ndarray) and value.ndim == 5:
@@ -236,7 +233,6 @@ class TBXLoggerCallback(SGDSingleFileSingleWorkerLoggingCallback):
                             "You are trying to log an invalid value ({}={}) "
                             "via {}!".format(full_attr, value,
                                              type(self).__name__))
-
         self._file_writer.flush()
 
     def finish_training(self, error: bool = False, **info):
