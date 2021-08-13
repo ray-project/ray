@@ -55,14 +55,9 @@ public class TaskExceptionTest extends BaseTest {
 
   @Test
   public void testThrowRootExceptionForChainedTasks() {
-    Assert.assertThrows(
-        RayTaskException.class,
-        () -> {
-          try {
-            Ray.task(TaskExceptionTest::hello).remote().get();
-          } catch (Exception e) {
-            throw e.getCause();
-          }
-        });
+    RayTaskException ex =
+        Assert.expectThrows(
+            RayTaskException.class, () -> Ray.task(TaskExceptionTest::hello).remote().get());
+    Assert.assertTrue(ex.getCause() instanceof RayTaskException);
   }
 }
