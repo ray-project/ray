@@ -125,12 +125,12 @@ class _AgentCollector:
         for k, v in values.items():
             if k not in self.buffers:
                 self._build_buffers(single_row=values)
-            if k != SampleBatch.INFOS:
+            if k == SampleBatch.INFOS or k.startswith("state_out_"):
+                self.buffers[k][0].append(v)
+            else:
                 flattened = tree.flatten(v)
                 for i, sub_list in enumerate(self.buffers[k]):
                     sub_list.append(flattened[i])
-            else:
-                self.buffers[k][0].append(v)
         self.agent_steps += 1
 
     def build(self, view_requirements: ViewRequirementsDict) -> SampleBatch:
@@ -316,8 +316,11 @@ class _AgentCollector:
                 "env_id", "t"
             ] else 0)
 
-            # Store all data as flattened lists, except INFOS.
-            if col == SampleBatch.INFOS:
+            # Store all data as flattened lists, except INFOS and state-out
+            # lists. Reason: These are monolithic items (infos is a dict that
+            # should not be further split, same for state-out items, which could
+            # be custom dicts as well).
+            if col == SampleBatch.INFOS or col.startswith("state_out_"):
                 self.buffers[col] = [[data]]
             else:
                 self.buffers[col] = [[v for _ in range(shift)]
