@@ -55,8 +55,8 @@ steps:
     - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
     - python .buildkite/copy_files.py --destination branch_jars --path ./.jar/darwin
     # Upload to latest directory.
-    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
-    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
+    - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
+    - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
 
 
 - label: ":mac: :apple: Ray C++ and Libraries"
