@@ -466,12 +466,6 @@ ray::Status NodeManager::RegisterGcs() {
         "NodeManager.deadline_timer.flush_free_objects");
   }
   last_resource_report_at_ms_ = now_ms;
-  // Start the timer that gets object manager profiling information and sends it
-  // to the GCS.
-  periodical_runner_.RunFnPeriodically(
-      [this] { GetObjectManagerProfileInfo(); },
-      RayConfig::instance().raylet_heartbeat_period_milliseconds(),
-      "NodeManager.deadline_timer.object_manager_profiling");
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
