@@ -133,7 +133,7 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
 
             if image_name == "base-deps":
                 build_args["BASE_IMAGE"] = (
-                    "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04"
+                    "nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04"
                     if gpu == "-gpu" else "ubuntu:focal")
             else:
                 # NOTE(ilr) This is a bit of an abuse of the name "GPU"
