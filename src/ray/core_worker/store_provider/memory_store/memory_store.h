@@ -26,6 +26,7 @@
 #include "ray/core_worker/reference_count.h"
 
 namespace ray {
+namespace core {
 
 struct MemoryStoreStats {
   int32_t num_in_plasma = 0;
@@ -234,4 +235,5 @@ class CoreWorkerMemoryStore {
   int64_t used_object_store_memory_ GUARDED_BY(mu_) = 0;
 };
 
+}  // namespace core
 }  // namespace ray

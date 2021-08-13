@@ -9,10 +9,12 @@ import io.ray.runtime.metric.Histogram;
 import io.ray.runtime.metric.MetricConfig;
 import io.ray.runtime.metric.Metrics;
 import io.ray.serve.api.Serve;
+import io.ray.serve.generated.BackendConfig;
 import io.ray.serve.poll.KeyListener;
 import io.ray.serve.poll.KeyType;
 import io.ray.serve.poll.LongPollClient;
 import io.ray.serve.poll.LongPollNamespace;
+import io.ray.serve.util.BackendConfigUtil;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ReflectUtil;
 import java.lang.reflect.Method;
@@ -57,7 +59,7 @@ public class RayServeReplica {
     this.replicaTag = Serve.getReplicaContext().getReplicaTag();
     this.callable = callable;
     this.config = backendConfig;
-    this.reconfigure(backendConfig.getUserConfig());
+    this.reconfigure(BackendConfigUtil.getUserConfig(backendConfig));
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(
@@ -79,15 +81,15 @@ public class RayServeReplica {
             .name("serve_backend_request_counter")
             .description("The number of queries that have been processed in this replica.")
             .unit("")
-            .tags(ImmutableMap.of("backend", backendTag))
+            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
             .register();
 
     errorCounter =
         Metrics.count()
             .name("serve_backend_error_counter")
-            .description("The number of exceptions that have occurred in the backend.")
+            .description("The number of exceptions that have occurred in this replica.")
             .unit("")
-            .tags(ImmutableMap.of("backend", backendTag))
+            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
             .register();
 
     restartCounter =
@@ -190,7 +192,7 @@ public class RayServeReplica {
   public void drainPendingQueries() {
     while (true) {
       try {
-        Thread.sleep(config.getExperimentalGracefulShutdownWaitLoopS() * 1000);
+        Thread.sleep((long) (config.getExperimentalGracefulShutdownWaitLoopS() * 1000));
       } catch (InterruptedException e) {
         LOGGER.error(
             "Replica {} was interrupted in sheep when draining pending queries", replicaTag);

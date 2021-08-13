@@ -3,8 +3,12 @@ package io.ray.serve;
 import com.google.common.base.Preconditions;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
+import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
+import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.util.BackendConfigUtil;
 import io.ray.serve.util.ReflectUtil;
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Optional;
 import org.apache.commons.lang3.StringUtils;
@@ -19,11 +23,17 @@ public class RayServeWrappedReplica {
       String backendTag,
       String replicaTag,
       String backendDef,
-      Object[] initArgs,
-      BackendConfig backendConfig,
+      byte[] initArgsbytes,
+      byte[] backendConfigBytes,
       String controllerName)
       throws ClassNotFoundException, NoSuchMethodException, InstantiationException,
-          IllegalAccessException, IllegalArgumentException, InvocationTargetException {
+          IllegalAccessException, IllegalArgumentException, InvocationTargetException, IOException {
+
+    // Parse BackendConfig.
+    BackendConfig backendConfig = BackendConfigUtil.parseFrom(backendConfigBytes);
+
+    // Parse init args.
+    Object[] initArgs = parseInitArgs(initArgsbytes, backendConfig);
 
     // Instantiate the object defined by backendDef.
     Class backendClass = Class.forName(backendDef);
@@ -43,6 +53,23 @@ public class RayServeWrappedReplica {
     backend = new RayServeReplica(callable, backendConfig, optional.get());
   }
 
+  private Object[] parseInitArgs(byte[] initArgsbytes, BackendConfig backendConfig)
+      throws IOException {
+
+    if (initArgsbytes == null || initArgsbytes.length == 0) {
+      return new Object[0];
+    }
+
+    if (!backendConfig.getIsCrossLanguage()) {
+      // If the construction request is from Java API, deserialize initArgsbytes to Object[]
+      // directly.
+      return MessagePackSerializer.decode(initArgsbytes, Object[].class);
+    } else {
+      // For other language like Python API, not support Array type.
+      return new Object[] {MessagePackSerializer.decode(initArgsbytes, Object.class)};
+    }
+  }
+
   /**
    * The entry method to process the request.
    *
@@ -51,7 +78,7 @@ public class RayServeWrappedReplica {
    *     backendDef.
    * @return the result of request being processed
    */
-  public Object handle_request(RequestMetadata requestMetadata, Object[] requestArgs) {
+  public Object handleRequest(RequestMetadata requestMetadata, Object[] requestArgs) {
     return backend.handleRequest(new Query(requestArgs, requestMetadata));
   }
 
@@ -61,7 +88,7 @@ public class RayServeWrappedReplica {
   }
 
   /** Wait until there is no request in processing. It is used for stopping replica gracefully. */
-  public void drain_pending_queries() {
+  public void drainPendingQueries() {
     backend.drainPendingQueries();
   }
 }

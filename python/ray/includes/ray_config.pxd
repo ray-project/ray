@@ -55,14 +55,12 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         c_bool put_small_object_in_memory_store() const
 
-        int64_t task_output_inlined_bytes_limit() const
+        int64_t task_rpc_inlined_bytes_limit() const
 
         uint32_t max_tasks_in_flight_per_worker() const
 
         uint64_t metrics_report_interval_ms() const
 
         c_bool enable_timeline() const
-
-        c_bool plasma_unlimited() const
 
         uint32_t max_grpc_message_size() const

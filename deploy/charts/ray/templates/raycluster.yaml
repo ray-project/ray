@@ -76,7 +76,7 @@ spec:
                 {{- if .GPU }}
                 nvidia.com/gpu: {{ .GPU }}
                 {{- end }}
-          {{- if $val.nodeSelector }}
+          {{- if .nodeSelector }}
           nodeSelector:
           {{- toYaml $val.nodeSelector | nindent 10 }}
           {{- end }}

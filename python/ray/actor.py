@@ -548,8 +548,9 @@ class ActorClass:
                 of this actor should implicitly use the same placement group
                 as its parent. It is True by default.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
-                this actor or task and its children (see ``runtime_env.py`` for
-                more details).
+                this actor or task and its children (see
+                :ref:`runtime-environments` for details).  This API is in beta
+                and may change before becoming stable.
             override_environment_variables: Environment variables to override
                 and/or introduce for this actor.  This is a dictionary mapping
                 variable names to their values.
@@ -949,9 +950,9 @@ class ActorHandle:
         return self._ray_method_signatures.keys()
 
     def __repr__(self):
-        return (f"Actor("
-                f"{self._ray_actor_creation_function_descriptor.class_name},"
-                f"{self._actor_id.hex()})")
+        return ("Actor("
+                f"{self._ray_actor_creation_function_descriptor.class_name}, "
+                f"{self._actor_id.hex()}")
 
     @property
     def _actor_id(self):

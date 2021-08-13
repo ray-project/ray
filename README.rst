@@ -289,11 +289,9 @@ More Information
 
 - `Ray paper`_
 - `Ray HotOS paper`_
-- `Blog (old)`_
 
 .. _`Documentation`: http://docs.ray.io/en/master/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
-.. _`Blog (old)`: https://ray-project.github.io/
 .. _`Blog`: https://medium.com/distributed-computing-with-ray
 .. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Ray Design Patterns`: https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit
