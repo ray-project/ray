@@ -106,6 +106,7 @@ class EpisodicBuffer(object):
 
         self.timesteps += batch.count
         episodes = batch.split_by_episode()
+        self.episodes.extend(episodes)
 
         if len(self.episodes) > self.max_length:
             delta = len(self.episodes) - self.max_length
