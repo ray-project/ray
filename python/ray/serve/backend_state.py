@@ -679,6 +679,9 @@ class BackendState:
         # Ensures this method is idempotent.
         existing_info = self._backend_metadata.get(backend_tag)
         if existing_info is not None:
+            # Redeploying should not reset the deployment's start time.
+            backend_info.start_time_ms = existing_info.start_time_ms
+
             # Old codepath. We use RESERVED_VERSION_TAG to distinguish that
             # we shouldn't use versions at all to determine redeployment
             # because `None` is used to indicate always redeploying.
