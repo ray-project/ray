@@ -182,10 +182,13 @@ class ConcatBatches:
             out = SampleBatch.concat_samples(self.buffer)
 
             perf_counter = time.perf_counter()
+            timer = _get_shared_metrics().timers[SAMPLE_TIMER]
             if self.last_batch_time is not None:
-                timer = _get_shared_metrics().timers[SAMPLE_TIMER]
                 timer.push(perf_counter - self.last_batch_time)
                 timer.push_units_processed(self.count)
+            else:
+                timer.push_units_processed(self.count)
+
             self.last_batch_time = perf_counter
             self.buffer = []
             self.count = 0
