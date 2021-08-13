@@ -15,7 +15,8 @@ torchvision==0.9.1+cpu;sys_platform!="darwin"
 # ---------------------
 # Atari
 atari_py==0.2.6
-gym[atari]==0.18.3
+git+https://github.com/openai/gym.git@master
+gym[atari]
 # Kaggle envs.
 kaggle_environments==1.7.11
 # Unity3D testing

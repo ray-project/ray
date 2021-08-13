@@ -27,7 +27,7 @@ requests
 ## setup.py extras
 dm_tree
 flask
-gym
+git+https://github.com/openai/gym.git@master
 lz4
 scikit-image
 opencv-python-headless==4.3.0.36
@@ -51,7 +51,7 @@ cython >= 0.29.15
 dataclasses; python_version < '3.7'
 feather-format
 google-api-python-client
-gym
+git+https://github.com/openai/gym.git@master
 gym-minigrid
 kubernetes
 lxml
