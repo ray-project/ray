@@ -79,7 +79,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
 
     target_model_out, _ = target_model.from_batch(train_batch)
 
-    prev_action_dist = dist_class(behaviour_logits, policy.model)
+    prev_action_dist = dist_class(behaviour_logits, model)
     values = model.value_function()
     values_time_major = _make_time_major(values)
 
@@ -151,7 +151,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
         logp_ratio = is_ratio * torch.exp(actions_logp - prev_actions_logp)
         policy._is_ratio = is_ratio
 
-        advantages = vtrace_returns.pg_advantages.to(policy.device)
+        advantages = vtrace_returns.pg_advantages.to(logp_ratio.device)
         surrogate_loss = torch.min(
             advantages * logp_ratio,
             advantages *
@@ -162,7 +162,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
-        value_targets = vtrace_returns.vs.to(policy.device)
+        value_targets = vtrace_returns.vs.to(values_time_major.device)
         delta = values_time_major[:-1] - value_targets
         mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
