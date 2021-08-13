@@ -189,6 +189,9 @@ if setup_spec.type == SetupType.RAY:
         "dm_tree",
         "gym",
         "lz4",
+        # matplotlib (dependency of scikit-image) 3.4.3 breaks docker build
+        # Todo: Remove this when safe?
+        "matplotlib!=3.4.3",
         "scikit-image",
         "pyyaml",
         "scipy",
