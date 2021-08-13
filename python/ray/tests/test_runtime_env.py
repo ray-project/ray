@@ -874,13 +874,13 @@ def test_no_spurious_worker_startup(ray_start_cluster):
     session_path = Path(session_dir)
     debug_state_path = session_path / "debug_state.txt"
 
-    def get_num_workers():
+    def get_num_workers() -> int:
         with open(debug_state_path) as f:
             for line in f.readlines():
                 num_workers_prefix = "- num PYTHON workers: "
                 if num_workers_prefix in line:
                     return int(line[len(num_workers_prefix):])
-        return None
+        return 0
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
     start = time.time()
@@ -889,8 +889,8 @@ def test_no_spurious_worker_startup(ray_start_cluster):
     print(f"Waited {time_waited} for debug_state.txt to be updated")
 
     # If any workers were unnecessarily started during the initial env
-    # installation, they will bypass the runtime env setup hook because the
-    # created env will have been cached and should be added to num_workers
+    # installation, they will bypass the runtime env setup hook (because the
+    # created env will have been cached) and should be added to num_workers
     # within a few seconds.  Adjusting the default update period for
     # debut_state.txt via this cluster_utils pytest fixture seems to be broken,
     # so just check it for the next 10 seconds (the default period).
