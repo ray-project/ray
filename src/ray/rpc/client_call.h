@@ -16,7 +16,6 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include <google/protobuf/arena.h>
 #include <boost/asio.hpp>
 
 #include "absl/synchronization/mutex.h"

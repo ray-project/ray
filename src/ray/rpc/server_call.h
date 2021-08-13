@@ -138,7 +138,10 @@ class ServerCallImpl : public ServerCall {
         handle_request_function_(handle_request_function),
         response_writer_(&context_),
         io_service_(io_service),
-        call_name_(std::move(call_name)) {}
+        call_name_(std::move(call_name)) {
+    request_ = google::protobuf::Arena::CreateMessage<Request>(&arena_);
+    reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
+  }
 
   ServerCallState GetState() const override { return state_; }
 
