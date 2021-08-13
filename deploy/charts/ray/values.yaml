@@ -41,12 +41,6 @@ podTypes:
         #   operator: Exists
         #   effect: NoSchedule
 
-        ## imagePullSecret for the head Node containers
-        ## Reference to one or more secrets to be used when pulling images
-        ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
-        imagePullSecrets: []
-        # - name: "image-pull-secret"
-
     # The key for each podType is a user-defined string.
     rayWorkerType:
         # minWorkers is the minimum number of Ray workers of this pod type to keep running.
@@ -79,11 +73,6 @@ podTypes:
         #   operator: Exists
         #   effect: NoSchedule
 
-        ## imagePullSecret for the worker Node containers
-        ## Reference to one or more secrets to be used when pulling images
-        ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
-        imagePullSecrets: []
-        # - name: "image-pull-secret"
 
 # Operator settings:
 
@@ -109,9 +98,4 @@ operatorImage: rayproject/ray:latest
 # For a specific master commit, use the first 6 characters of the commit SHA, e.g. `rayproject/ray:050a07`.
 # The operator and Ray cluster can use different Ray versions, provided both versions are >= 1.2.0
 
-## imagePullSecret for the rey operator
-## Reference to one or more secrets to be used when pulling images
-## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
-imagePullSecrets: []
-# - name: docker-global-cred
 
