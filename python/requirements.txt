@@ -75,7 +75,6 @@ pytest-sugar
 pytest-lazy-fixture
 pytest-timeout
 scikit-learn==0.22.2
-tensorflow==2.5.1
 testfixtures
 werkzeug
 xlrd
