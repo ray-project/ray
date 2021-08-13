@@ -124,14 +124,14 @@ class EpisodicBuffer(object):
             episode: SampleBatch representing an episode
         """
         obs = episode["obs"]
-        new_obs = episode["new_obs"]
+        # new_obs = episode["new_obs"]
         action = episode["actions"]
         reward = episode["rewards"]
 
         act_shape = action.shape
         act_reset = np.array([0.0] * act_shape[-1])[None]
         rew_reset = np.array(0.0)[None]
-        obs_end = np.array(new_obs[act_shape[0] - 1])[None]
+        obs_end = np.array(obs[act_shape[0] - 1])[None]
 
         batch_obs = np.concatenate([obs, obs_end], axis=0)
         batch_action = np.concatenate([act_reset, action], axis=0)

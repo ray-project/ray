@@ -197,7 +197,7 @@ def action_sampler_fn(policy, model, input_dict, state, explore, timestep):
 
     # Custom Exploration
     if timestep <= policy.config["prefill_timesteps"]:
-        logp = [0.0]
+        logp = None
         # Random action in space [-1.0, 1.0]
         action = 2.0 * torch.rand(1, model.action_space.shape[0]) - 1.0
         state = model.get_initial_state()
