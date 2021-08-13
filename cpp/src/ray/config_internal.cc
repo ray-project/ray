@@ -13,43 +13,45 @@
 // limitations under the License.
 
 #include <boost/dll/runtime_symbol_info.hpp>
+#include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
 #include "absl/strings/str_split.h"
-#include "gflags/gflags.h"
 
 #include "config_internal.h"
 
-DEFINE_string(ray_address, "", "The address of the Ray cluster to connect to.");
+ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
 
-DEFINE_string(ray_redis_password, "",
-              "Prevents external clients without the password from connecting to Redis "
-              "if provided.");
+/// absl::flags does not provide a IsDefaultValue method, so use a non-empty dummy default
+/// value to support empty redis password.
+ABSL_FLAG(std::string, ray_redis_password, "absl::flags dummy default value",
+          "Prevents external clients without the password from connecting to Redis "
+          "if provided.");
 
-DEFINE_string(
-    ray_code_search_path, "",
-    "A list of directories or files of dynamic libraries that specify the "
-    "search path for user code. Only searching the top level under a directory. "
-    "':' is used as the separator.");
+ABSL_FLAG(std::string, ray_code_search_path, "",
+          "A list of directories or files of dynamic libraries that specify the "
+          "search path for user code. Only searching the top level under a directory. "
+          "':' is used as the separator.");
 
-DEFINE_string(ray_job_id, "", "Assigned job id.");
+ABSL_FLAG(std::string, ray_job_id, "", "Assigned job id.");
 
-DEFINE_int32(ray_node_manager_port, 0, "The port to use for the node manager.");
+ABSL_FLAG(int32_t, ray_node_manager_port, 0, "The port to use for the node manager.");
 
-DEFINE_string(ray_raylet_socket_name, "",
-              "It will specify the socket name used by the raylet if provided.");
+ABSL_FLAG(std::string, ray_raylet_socket_name, "",
+          "It will specify the socket name used by the raylet if provided.");
 
-DEFINE_string(ray_plasma_store_socket_name, "",
-              "It will specify the socket name used by the plasma store if provided.");
+ABSL_FLAG(std::string, ray_plasma_store_socket_name, "",
+          "It will specify the socket name used by the plasma store if provided.");
 
-DEFINE_string(ray_session_dir, "", "The path of this session.");
+ABSL_FLAG(std::string, ray_session_dir, "", "The path of this session.");
 
-DEFINE_string(ray_logs_dir, "", "Logs dir for workers.");
+ABSL_FLAG(std::string, ray_logs_dir, "", "Logs dir for workers.");
 
-DEFINE_string(ray_node_ip_address, "", "The ip address for this node.");
+ABSL_FLAG(std::string, ray_node_ip_address, "", "The ip address for this node.");
 
 namespace ray {
 namespace internal {
 
-void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
+void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (!config.address.empty()) {
     SetRedisAddress(config.address);
   }
@@ -69,43 +71,42 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
   if (!config.resources.empty()) {
     resources = config.resources;
   }
-  if (argc != nullptr && argv != nullptr) {
+  if (argc != 0 && argv != nullptr) {
     // Parse config from command line.
-    gflags::ParseCommandLineFlags(argc, argv, true);
+    absl::ParseCommandLine(argc, argv);
 
-    if (!FLAGS_ray_code_search_path.empty()) {
+    if (!FLAGS_ray_code_search_path.CurrentValue().empty()) {
       // Code search path like this "/path1/xxx.so:/path2".
-      code_search_path =
-          absl::StrSplit(FLAGS_ray_code_search_path, ':', absl::SkipEmpty());
+      code_search_path = absl::StrSplit(FLAGS_ray_code_search_path.CurrentValue(), ':',
+                                        absl::SkipEmpty());
     }
-    if (!FLAGS_ray_address.empty()) {
-      SetRedisAddress(FLAGS_ray_address);
+    if (!FLAGS_ray_address.CurrentValue().empty()) {
+      SetRedisAddress(FLAGS_ray_address.CurrentValue());
     }
-    google::CommandLineFlagInfo info;
     // Don't rewrite `ray_redis_password` when it is not set in the command line.
-    if (GetCommandLineFlagInfo("ray_redis_password", &info) && !info.is_default) {
-      redis_password = FLAGS_ray_redis_password;
+    if (FLAGS_ray_redis_password.CurrentValue() !=
+        FLAGS_ray_redis_password.DefaultValue()) {
+      redis_password = FLAGS_ray_redis_password.CurrentValue();
     }
-    if (!FLAGS_ray_job_id.empty()) {
-      job_id = FLAGS_ray_job_id;
+    if (!FLAGS_ray_job_id.CurrentValue().empty()) {
+      job_id = FLAGS_ray_job_id.CurrentValue();
     }
-    node_manager_port = FLAGS_ray_node_manager_port;
-    if (!FLAGS_ray_raylet_socket_name.empty()) {
-      raylet_socket_name = FLAGS_ray_raylet_socket_name;
+    node_manager_port = absl::GetFlag<int32_t>(FLAGS_ray_node_manager_port);
+    if (!FLAGS_ray_raylet_socket_name.CurrentValue().empty()) {
+      raylet_socket_name = FLAGS_ray_raylet_socket_name.CurrentValue();
     }
-    if (!FLAGS_ray_plasma_store_socket_name.empty()) {
-      plasma_store_socket_name = FLAGS_ray_plasma_store_socket_name;
+    if (!FLAGS_ray_plasma_store_socket_name.CurrentValue().empty()) {
+      plasma_store_socket_name = FLAGS_ray_plasma_store_socket_name.CurrentValue();
     }
-    if (!FLAGS_ray_session_dir.empty()) {
-      session_dir = FLAGS_ray_session_dir;
+    if (!FLAGS_ray_session_dir.CurrentValue().empty()) {
+      session_dir = FLAGS_ray_session_dir.CurrentValue();
     }
-    if (!FLAGS_ray_logs_dir.empty()) {
-      logs_dir = FLAGS_ray_logs_dir;
+    if (!FLAGS_ray_logs_dir.CurrentValue().empty()) {
+      logs_dir = FLAGS_ray_logs_dir.CurrentValue();
     }
-    if (!FLAGS_ray_node_ip_address.empty()) {
-      node_ip_address = FLAGS_ray_node_ip_address;
+    if (!FLAGS_ray_node_ip_address.CurrentValue().empty()) {
+      node_ip_address = FLAGS_ray_node_ip_address.CurrentValue();
     }
-    gflags::ShutDownCommandLineFlags();
   }
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
     if (redis_ip.empty()) {
@@ -121,7 +122,7 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
       RAY_LOG(INFO) << "No code search path found yet. "
                     << "The program location path " << program_path
                     << " will be added for searching dynamic libraries by default."
-                    << " And you can add some search paths by '--ray-code-search-path'";
+                    << " And you can add some search paths by '--ray_code_search_path'";
       code_search_path.emplace_back(program_path.string());
     } else {
       // Convert all the paths to absolute path to support configuring relative paths in
