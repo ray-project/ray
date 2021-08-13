@@ -34,13 +34,17 @@ class Trainer:
             worker). Defaults to False.
         resources_per_worker (Optional[Dict]): If specified, the resources
             defined in this Dict will be reserved for each worker.
+        log_dir (Optional[str]): Path to the file directory where logs
+                should be persisted. If this is not specified, one will be
+                generated.
     """
 
     def __init__(self,
                  backend: Union[str, BackendConfig],
                  num_workers: int = 1,
                  use_gpu: bool = False,
-                 resources_per_worker: Optional[Dict[str, float]] = None):
+                 resources_per_worker: Optional[Dict[str, float]] = None,
+                 log_dir: Optional[str] = None):
         """A class for distributed training.
 
         Args:
@@ -54,6 +58,9 @@ class Trainer:
                 worker). Defaults to False.
             resources_per_worker (Optional[Dict]): If specified, the resources
                 defined in this Dict will be reserved for each worker.
+            log_dir (Optional[str]): Path to the file directory where logs
+                should be persisted. If this is not specified, one will be
+                generated.
         """
         # Setup executor.
         backend_config = self._get_backend_config(backend)
@@ -63,7 +70,7 @@ class Trainer:
                                       "supported yet.")
 
         self._executor = BackendExecutor(backend_config, num_workers, 1,
-                                         int(use_gpu))
+                                         int(use_gpu), log_dir)
 
     def _get_backend_config(
             self, backend: Union[str, BackendConfig]) -> BackendConfig:
@@ -112,7 +119,7 @@ class Trainer:
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
             callbacks: Optional[List[SGDCallback]] = None,
-            checkpoint: Optional[Dict] = None) -> List[T]:
+            checkpoint: Optional[Union[Dict, str]] = None) -> List[T]:
         """Runs a training function in a distributed manner.
 
         Args:
@@ -123,9 +130,11 @@ class Trainer:
             callbacks (Optional[List[SGDCallback]]): A list of Callbacks which
                 will be executed during training. If this is not set,
                 currently there are NO default Callbacks.
-            checkpoint (Optional[Dict]): The checkpoint data that should be
+            checkpoint (Optional[Dict|str]): The checkpoint data that should be
                 loaded onto each worker and accessed by the training function
-                via ``sgd.load_checkpoint()``.
+                via ``sgd.load_checkpoint()``. If this is a ``str`` then the
+                value is expected to be a path to a file that contains a
+                serialized checkpoint dict.
 
         Returns:
             A list of results from the training function. Each value in the
@@ -225,9 +234,25 @@ class Trainer:
         """
         raise NotImplementedError
 
-    def get_latest_checkpoint(self) -> Optional[Dict]:
-        """Gets the latest checkpoint for this Trainer."""
-        return self._executor.get_latest_checkpoint()
+    @property
+    def log_dir(self) -> str:
+        """Path to the log directory."""
+        return self._executor.log_dir
+
+    @property
+    def checkpoint_dir(self) -> str:
+        """Path to the checkpoint directory."""
+        return self._executor.checkpoint_dir
+
+    @property
+    def latest_checkpoint_path(self) -> Optional[str]:
+        """Path to the latest persisted checkpoint."""
+        return self._executor.latest_checkpoint_path
+
+    @property
+    def latest_checkpoint(self) -> Optional[Dict]:
+        """The latest saved checkpoint."""
+        return self._executor.latest_checkpoint
 
     def shutdown(self):
         """Shuts down the training execution service."""
