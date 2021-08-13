@@ -1,3 +1,4 @@
+import json
 import os
 from contextlib import contextmanager
 from typing import List
@@ -885,6 +886,32 @@ def test_runtime_env_inheritance_regression(shutdown_only):
         assert "working_dir" in env2
         with pytest.raises(NotImplementedError):
             t = Test.options(runtime_env=env2).remote()
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.")
+def test_runtime_env_logging_to_dirver(ray_start_regular_shared, log_pubsub):
+    @ray.remote(runtime_env={"pip": [f"requests=={REQUEST_VERSIONS[0]}"]})
+    def func():
+        pass
+
+    ray.get(func.remote())
+
+    # Check the stderr from the worker.
+    start = time.time()
+    while True:
+        if (time.time() - start) > 5:
+            assert False, "runtime_env log has not been propogated after 5s"
+
+        msg = log_pubsub.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            continue
+
+        log_data = json.loads(ray._private.utils.decode(msg["data"]))
+        if log_data["pid"] == "runtime_env":
+            break
 
 
 if __name__ == "__main__":

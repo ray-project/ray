@@ -145,7 +145,7 @@ if __name__ == "__main__":
     if args.smoke_test:
         ray.init(num_cpus=3)
     elif args.server_address:
-        ray.util.connect(args.server_address)
+        ray.init(f"ray://{args.server_address}")
     else:
         ray.init(address=args.address)
 

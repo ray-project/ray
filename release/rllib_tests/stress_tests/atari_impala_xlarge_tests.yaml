@@ -11,8 +11,9 @@ atari-impala:
     run: IMPALA
     stop:
         timesteps_total: 30000000
-        time_total_s: 6000
+        time_total_s: 3600
     config:
+        framework: tf
         num_cpus_for_driver: 0
         rollout_fragment_length: 50
         train_batch_size: 500

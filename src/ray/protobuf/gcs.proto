@@ -31,20 +31,19 @@ enum TablePrefix {
   ACTOR = 6;
   FUNCTION = 7;
   TASK_RECONSTRUCTION = 8;
-  HEARTBEAT = 9;
-  RESOURCE_USAGE_BATCH = 10;
-  JOB = 11;
-  PROFILE = 12;
-  TASK_LEASE = 13;
-  NODE_RESOURCE = 16;
-  DIRECT_ACTOR = 17;
+  RESOURCE_USAGE_BATCH = 9;
+  JOB = 10;
+  PROFILE = 11;
+  TASK_LEASE = 12;
+  NODE_RESOURCE = 13;
+  DIRECT_ACTOR = 14;
   // WORKER is already used in WorkerType, so use WORKERS here.
-  WORKERS = 18;
-  INTERNAL_CONFIG = 29;
-  TABLE_PREFIX_MAX = 20;
-  PLACEMENT_GROUP_SCHEDULE = 21;
-  PLACEMENT_GROUP = 22;
-  KV = 23;
+  WORKERS = 15;
+  INTERNAL_CONFIG = 16;
+  TABLE_PREFIX_MAX = 17;
+  PLACEMENT_GROUP_SCHEDULE = 18;
+  PLACEMENT_GROUP = 19;
+  KV = 20;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -56,14 +55,13 @@ enum TablePubsub {
   NODE_PUBSUB = 4;
   OBJECT_PUBSUB = 5;
   ACTOR_PUBSUB = 6;
-  HEARTBEAT_PUBSUB = 7;
-  RESOURCE_USAGE_BATCH_PUBSUB = 8;
-  TASK_LEASE_PUBSUB = 9;
-  JOB_PUBSUB = 10;
-  NODE_RESOURCE_PUBSUB = 11;
-  DIRECT_ACTOR_PUBSUB = 12;
-  WORKER_FAILURE_PUBSUB = 13;
-  TABLE_PUBSUB_MAX = 14;
+  RESOURCE_USAGE_BATCH_PUBSUB = 7;
+  TASK_LEASE_PUBSUB = 8;
+  JOB_PUBSUB = 9;
+  NODE_RESOURCE_PUBSUB = 10;
+  DIRECT_ACTOR_PUBSUB = 11;
+  WORKER_FAILURE_PUBSUB = 12;
+  TABLE_PUBSUB_MAX = 13;
 }
 
 enum GcsChangeMode {
@@ -465,6 +463,10 @@ message ResourcesData {
   // Indicates whether resource normal task is changed. Only used when
   // light heartbeat enabled.
   bool resources_normal_task_changed = 11;
+  // Whether this node has object pulls queued. This can happen if
+  // the node has more pull requests than available object store
+  // memory. This is a proxy for available object store memory.
+  bool object_pulls_queued = 12;
 }
 
 message ResourceUsageBatchData {

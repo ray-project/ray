@@ -12,6 +12,12 @@ Next steps
     import ray
     ray\.init\(address='auto', _redis_password='.+'\)
 
+  To connect to this Ray runtime from outside of the cluster, for example to
+  connect to a remote cluster from your laptop directly, use the following
+  Python code:
+    import ray
+    ray\.init\(address='ray://.*'\)
+
   If connection fails, check your firewall settings and network configuration.
 
   To terminate the Ray runtime, run

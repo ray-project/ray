@@ -129,20 +129,25 @@ A.options(name="hi", lifetime="detached").remote()
 
 assert len(ray.util.list_named_actors()) == 1
 assert ray.util.list_named_actors() == ["hi"]
-assert ray.util.list_named_actors(all_namespaces=True) == ["test/hi"]
+assert ray.util.list_named_actors(all_namespaces=True) == \
+    [dict(name="hi", namespace="test")]
 """.format(address)
 
     run_string_as_driver(driver_script_1)
 
     assert not ray.util.list_named_actors()
-    assert ray.util.list_named_actors(all_namespaces=True) == ["test/hi"]
+    assert ray.util.list_named_actors(all_namespaces=True) == [{
+        "name": "hi",
+        "namespace": "test"
+    }]
 
     driver_script_2 = """
 import ray
 ray.init(address="{}", namespace="test")
 
 assert ray.util.list_named_actors() == ["hi"]
-assert ray.util.list_named_actors(all_namespaces=True) == ["test/hi"]
+assert ray.util.list_named_actors(all_namespaces=True) == \
+    [dict(name="hi", namespace="test")]
 ray.kill(ray.get_actor("hi"), no_restart=True)
 assert not ray.util.list_named_actors()
 """.format(address)
