@@ -20,7 +20,8 @@ def get_module(f):
 
 
 def get_qualname(f):
-    return f.__qualname__ if hasattr(f, "__qualname__") else "__anonymous_func__"
+    return f.__qualname__ if hasattr(f,
+                                     "__qualname__") else "__anonymous_func__"
 
 
 @dataclass
