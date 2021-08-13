@@ -14,6 +14,7 @@ import io.ray.runtime.functionmanager.RayFunction;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.object.NativeRayObject;
 import io.ray.runtime.object.ObjectSerializer;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -134,10 +135,18 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
       // Execute the task.
       Object result;
-      if (!rayFunction.isConstructor()) {
-        result = rayFunction.getMethod().invoke(actor, args);
-      } else {
-        result = rayFunction.getConstructor().newInstance(args);
+      try {
+        if (!rayFunction.isConstructor()) {
+          result = rayFunction.getMethod().invoke(actor, args);
+        } else {
+          result = rayFunction.getConstructor().newInstance(args);
+        }
+      } catch (InvocationTargetException e) {
+        if (e.getCause() != null) {
+          throw e.getCause();
+        } else {
+          throw e;
+        }
       }
 
       // Set result
