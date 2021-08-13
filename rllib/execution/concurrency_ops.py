@@ -95,7 +95,7 @@ class Enqueue:
 
     def __call__(self, x: Any) -> Any:
         try:
-            self.queue.put_nowait(x)
+            self.queue.put(x, timeout=0.001)
         except queue.Full:
             return _NextValueNotReady()
         return x
@@ -128,7 +128,7 @@ def Dequeue(input_queue: queue.Queue,
     def base_iterator(timeout=None):
         while check():
             try:
-                item = input_queue.get_nowait()
+                item = input_queue.get(timeout=0.001)
                 yield item
             except queue.Empty:
                 yield _NextValueNotReady()
