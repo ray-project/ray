@@ -55,4 +55,5 @@ RUN pip install -r requirements.txt --extra-index-url=https://www.piwheels.org/s
 # Install ray
 RUN mkdir -p /tmp/ray-wheels
 COPY --from=raywheel /ray/python/dist/*.whl /tmp/ray-wheels
+RUN pip install tensorflow==2.5.1 || pip install https://github.com/bitsy-ai/tensorflow-arm-bin/releases/download/v2.4.0/tensorflow-2.4.0-cp37-none-linux_aarch64.whl
 RUN pip --no-cache-dir install --no-index --find-links="/tmp/ray-wheels/" ray[default]
