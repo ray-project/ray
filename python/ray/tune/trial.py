@@ -27,6 +27,7 @@ from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
 from ray.util import log_once
+from ray.util.annotations import DeveloperAPI
 from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
@@ -49,6 +50,7 @@ class Location:
             return "{}:{}".format(self.hostname, self.pid)
 
 
+@DeveloperAPI
 class ExportFormat:
     """Describes the format to import/export the trial Trainable.
 
@@ -113,11 +115,17 @@ class TrialInfo:
     Attributes:
         trial_name (str): String name of the current trial.
         trial_id (str): trial_id of the trial
+        trial_resources (Resources|PlacementGroupFactory): resources used
+            by trial.
     """
 
-    def __init__(self, trial):
+    def __init__(self, trial: "Trial"):
         self._trial_name = str(trial)
         self._trial_id = trial.trial_id
+        if trial.uses_placement_groups:
+            self._trial_resources = trial.placement_group_factory
+        else:
+            self._trial_resources = trial.resources
 
     @property
     def trial_name(self):
@@ -126,6 +134,15 @@ class TrialInfo:
     @property
     def trial_id(self):
         return self._trial_id
+
+    @property
+    def trial_resources(self) -> Union[Resources, PlacementGroupFactory]:
+        return self._trial_resources
+
+    @trial_resources.setter
+    def trial_resources(
+            self, new_resources: Union[Resources, PlacementGroupFactory]):
+        self._trial_resources = new_resources
 
 
 def create_logdir(dirname, local_dir):
@@ -141,6 +158,7 @@ def create_logdir(dirname, local_dir):
     return logdir
 
 
+@DeveloperAPI
 class Trial:
     """A trial object holds the state for one model training run.
 

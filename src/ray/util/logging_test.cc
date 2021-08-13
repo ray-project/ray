@@ -63,20 +63,104 @@ TEST(PrintLogTest, LogTestWithoutInit) {
 using testing::internal::CaptureStderr;
 using testing::internal::GetCapturedStderr;
 
-TEST(PrintLogTest, TestRayLogEveryN) {
+namespace {
+void VerifyOnlyNthOccurenceLogged(bool fallback_to_debug) {
+  const std::string kLogStr = "this is a test log";
   CaptureStderr();
-  for (int i = 0; i < 10; i++) {
-    RAY_LOG_EVERY_N(INFO, 3) << "this is a test log";
+  static int non_fallback_counter = 0;
+  static int fallback_counter = 0;
+  int &counter = fallback_to_debug ? fallback_counter : non_fallback_counter;
+  for (int i = 0; i < 9; i++) {
+    counter++;
+    if (fallback_to_debug) {
+      RAY_LOG_EVERY_N_OR_DEBUG(INFO, 3) << kLogStr;
+    } else {
+      RAY_LOG_EVERY_N(INFO, 3) << kLogStr;
+    }
   }
   std::string output = GetCapturedStderr();
-  for (int i = 0; i < 10; i++) {
+  for (int i = counter - 8; i <= counter; i++) {
     std::string expected_str = absl::StrFormat("[%d] this is a test log", i);
-    if (i % 3 == 0) {
+    if (i % 3 == 1) {
       EXPECT_THAT(output, HasSubstr(expected_str));
     } else {
       EXPECT_THAT(output, Not(HasSubstr(expected_str)));
     }
   }
+
+  size_t occurrences = 0;
+  std::string::size_type start = 0;
+
+  while ((start = output.find(kLogStr, start)) != std::string::npos) {
+    ++occurrences;
+    start += kLogStr.length();
+  }
+  EXPECT_EQ(occurrences, 3);
+}
+
+void VerifyAllOccurenceLogged() {
+  const std::string kLogStr = "this is a test log";
+  CaptureStderr();
+  for (int i = 0; i < 10; i++) {
+    RAY_LOG_EVERY_N_OR_DEBUG(INFO, 3) << kLogStr;
+  }
+  std::string output = GetCapturedStderr();
+  size_t occurrences = 0;
+  std::string::size_type start = 0;
+  while ((start = output.find("[0] this is a test log", start)) != std::string::npos) {
+    ++occurrences;
+    start += kLogStr.length();
+  }
+  EXPECT_EQ(occurrences, 10);
+}
+
+void VerifyNothingLogged(bool fallback_to_debug) {
+  const std::string kLogStr = "this is a test log";
+  CaptureStderr();
+  for (int i = 0; i < 10; i++) {
+    if (fallback_to_debug) {
+      RAY_LOG_EVERY_N_OR_DEBUG(INFO, 3) << kLogStr;
+    } else {
+      RAY_LOG_EVERY_N(INFO, 3) << kLogStr;
+    };
+  }
+  std::string output = GetCapturedStderr();
+
+  size_t occurrences = 0;
+  std::string::size_type start = 0;
+
+  while ((start = output.find(kLogStr, start)) != std::string::npos) {
+    ++occurrences;
+    start += kLogStr.length();
+  }
+  EXPECT_EQ(occurrences, 0);
+}
+}  // namespace
+
+TEST(PrintLogTest, TestRayLogEveryN) {
+  RayLog::severity_threshold_ = RayLogLevel::INFO;
+  VerifyOnlyNthOccurenceLogged(/*fallback_to_debug*/ false);
+
+  RayLog::severity_threshold_ = RayLogLevel::DEBUG;
+  VerifyOnlyNthOccurenceLogged(/*fallback_to_debug*/ false);
+
+  RayLog::severity_threshold_ = RayLogLevel::WARNING;
+  VerifyNothingLogged(/*fallback_to_debug*/ false);
+
+  RayLog::severity_threshold_ = RayLogLevel::INFO;
+}
+
+TEST(PrintLogTest, TestRayLogEveryNOrDebug) {
+  RayLog::severity_threshold_ = RayLogLevel::INFO;
+  VerifyOnlyNthOccurenceLogged(/*fallback_to_debug*/ true);
+
+  RayLog::severity_threshold_ = RayLogLevel::DEBUG;
+  VerifyAllOccurenceLogged();
+
+  RayLog::severity_threshold_ = RayLogLevel::WARNING;
+  VerifyNothingLogged(/*fallback_to_debug*/ true);
+
+  RayLog::severity_threshold_ = RayLogLevel::INFO;
 }
 
 TEST(PrintLogTest, TestRayLogEveryMs) {

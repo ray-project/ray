@@ -65,7 +65,11 @@ def build_trainer(
         mixins: Optional[List[type]] = None,
         execution_plan: Optional[Callable[[
             WorkerSet, TrainerConfigDict
-        ], Iterable[ResultDict]]] = default_execution_plan) -> Type[Trainer]:
+        ], Iterable[ResultDict]]] = default_execution_plan,
+        allow_unknown_configs: bool = False,
+        allow_unknown_subkeys: Optional[List[str]] = None,
+        override_all_subkeys_if_type_changes: Optional[List[str]] = None,
+) -> Type[Trainer]:
     """Helper function for defining a custom trainer.
 
     Functions will be run in this order to initialize the trainer:
@@ -106,6 +110,15 @@ def build_trainer(
         execution_plan (Optional[Callable[[WorkerSet, TrainerConfigDict],
             Iterable[ResultDict]]]): Optional callable that sets up the
             distributed execution workflow.
+        allow_unknown_configs (bool): Whether to allow unknown top-level config
+            keys.
+        allow_unknown_subkeys (Optional[List[str]]): List of top-level keys
+            with value=dict, for which new sub-keys are allowed to be added to
+            the value dict. Appends to Trainer class defaults.
+        override_all_subkeys_if_type_changes (Optional[List[str]]): List of top
+            level keys with value=dict, for which we always override the entire
+            value (dict), iff the "type" key in that value dict changes.
+            Appends to Trainer class defaults.
 
     Returns:
         Type[Trainer]: A Trainer sub-class configured by the specified args.
@@ -121,6 +134,16 @@ def build_trainer(
 
         def __init__(self, config=None, env=None, logger_creator=None):
             Trainer.__init__(self, config, env, logger_creator)
+
+        @override(base)
+        def setup(self, config: PartialTrainerConfigDict):
+            if allow_unknown_subkeys is not None:
+                self._allow_unknown_subkeys += allow_unknown_subkeys
+            self._allow_unknown_configs = allow_unknown_configs
+            if override_all_subkeys_if_type_changes is not None:
+                self._override_all_subkeys_if_type_changes += \
+                    override_all_subkeys_if_type_changes
+            super().setup(config)
 
         def _init(self, config: TrainerConfigDict,
                   env_creator: Callable[[EnvConfigDict], EnvType]):

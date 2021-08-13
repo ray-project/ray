@@ -424,6 +424,7 @@ class PlacementGroupManager:
         return actor_cls.options(
             placement_group=pg,
             placement_group_bundle_index=0,
+            placement_group_capture_child_tasks=True,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             resources=resources)

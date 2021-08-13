@@ -1,9 +1,8 @@
 import logging
 import urllib.parse as parse
 from ray.experimental.workflow.storage.base import Storage
-from ray.experimental.workflow.storage.base import DataLoadError, DataSaveError
-from ray.experimental.workflow.storage.filesystem import FilesystemStorageImpl
-from ray.experimental.workflow.storage.s3 import S3StorageImpl
+from ray.experimental.workflow.storage.base import (
+    DataLoadError, DataSaveError, KeyNotFoundError)
 
 logger = logging.getLogger(__name__)
 
@@ -32,14 +31,22 @@ def create_storage(storage_url: str) -> Storage:
     """
     parsed_url = parse.urlparse(storage_url)
     if parsed_url.scheme == "file" or parsed_url.scheme == "":
+        from ray.experimental.workflow.storage.filesystem import (
+            FilesystemStorageImpl)
         return FilesystemStorageImpl(parsed_url.path)
     elif parsed_url.scheme == "s3":
+        from ray.experimental.workflow.storage.s3 import S3StorageImpl
         bucket = parsed_url.netloc
         s3_path = parsed_url.path
         if not s3_path:
             raise ValueError(f"Invalid s3 path: {s3_path}")
         params = dict(parse.parse_qsl(parsed_url.query))
         return S3StorageImpl(bucket, s3_path, **params)
+    elif parsed_url.scheme == "debug":
+        from ray.experimental.workflow.storage.debug import DebugStorage
+        params = dict(parse.parse_qsl(parsed_url.query))
+        return DebugStorage(
+            create_storage(params["storage"]), path=parsed_url.path)
     else:
         raise ValueError(f"Invalid url: {storage_url}")
 
@@ -62,4 +69,5 @@ def set_global_storage(storage: Storage) -> None:
 
 
 __all__ = ("Storage", "get_global_storage", "create_storage",
-           "set_global_storage", "DataLoadError", "DataSaveError")
+           "set_global_storage", "DataLoadError", "DataSaveError",
+           "KeyNotFoundError")

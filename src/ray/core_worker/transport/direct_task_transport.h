@@ -32,6 +32,7 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
+namespace core {
 
 typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address,
                                                             int port)>
@@ -64,7 +65,7 @@ class CoreWorkerDirectTaskSubmitter {
       std::shared_ptr<TaskFinisherInterface> task_finisher, NodeID local_raylet_id,
       int64_t lease_timeout_ms, std::shared_ptr<ActorCreatorInterface> actor_creator,
       uint32_t max_tasks_in_flight_per_worker =
-          RayConfig::instance().max_tasks_in_flight_per_worker(),
+          ::RayConfig::instance().max_tasks_in_flight_per_worker(),
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
@@ -359,4 +360,5 @@ class CoreWorkerDirectTaskSubmitter {
   int64_t num_leases_requested_ GUARDED_BY(mu_) = 0;
 };
 
-};  // namespace ray
+}  // namespace core
+}  // namespace ray

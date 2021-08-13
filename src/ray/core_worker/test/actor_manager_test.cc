@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 namespace ray {
+namespace core {
 
 using ::testing::_;
 
@@ -34,7 +35,7 @@ class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
 
   ~MockActorInfoAccessor() {}
 
-  ray::Status AsyncSubscribe(
+  Status AsyncSubscribe(
       const ActorID &actor_id,
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const gcs::StatusCallback &done) {
@@ -137,16 +138,16 @@ class ActorManagerTest : public ::testing::Test {
     ActorID actor_id = ActorID::Of(job_id, task_id, 1);
     const auto caller_address = rpc::Address();
     const auto call_site = "";
-    RayFunction function(ray::Language::PYTHON,
-                         ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+    RayFunction function(Language::PYTHON,
+                         FunctionDescriptorBuilder::BuildPython("", "", "", ""));
 
     auto actor_handle = absl::make_unique<ActorHandle>(
         actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
         function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
     EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
         .WillRepeatedly(testing::Return(true));
-    actor_manager_->AddNewActorHandle(move(actor_handle), task_id, call_site,
-                                      caller_address, /*is_detached*/ false);
+    actor_manager_->AddNewActorHandle(move(actor_handle), call_site, caller_address,
+                                      /*is_detached*/ false);
     return actor_id;
   }
 
@@ -164,8 +165,8 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   ActorID actor_id = ActorID::Of(job_id, task_id, 1);
   const auto caller_address = rpc::Address();
   const auto call_site = "";
-  RayFunction function(ray::Language::PYTHON,
-                       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+  RayFunction function(Language::PYTHON,
+                       FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   auto actor_handle = absl::make_unique<ActorHandle>(
       actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
       function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
@@ -173,7 +174,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
       .WillRepeatedly(testing::Return(true));
 
   // Add an actor handle.
-  ASSERT_TRUE(actor_manager_->AddNewActorHandle(move(actor_handle), task_id, call_site,
+  ASSERT_TRUE(actor_manager_->AddNewActorHandle(move(actor_handle), call_site,
                                                 caller_address, false));
   // Make sure the subscription request is sent to GCS.
   ASSERT_TRUE(actor_info_accessor_->CheckSubscriptionRequested(actor_id));
@@ -183,7 +184,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
       actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
       function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
   // Make sure the same actor id adding will return false.
-  ASSERT_FALSE(actor_manager_->AddNewActorHandle(move(actor_handle2), task_id, call_site,
+  ASSERT_FALSE(actor_manager_->AddNewActorHandle(move(actor_handle2), call_site,
                                                  caller_address, false));
   // Make sure we can get an actor handle correctly.
   const std::shared_ptr<ActorHandle> actor_handle_to_get =
@@ -217,8 +218,8 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
   ActorID actor_id = ActorID::Of(job_id, task_id, 1);
   const auto caller_address = rpc::Address();
   const auto call_site = "";
-  RayFunction function(ray::Language::PYTHON,
-                       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
+  RayFunction function(Language::PYTHON,
+                       FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   auto actor_handle = absl::make_unique<ActorHandle>(
       actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
       function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
@@ -230,7 +231,7 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
   // make sure it borrows an object.
   EXPECT_CALL(*reference_counter_, AddBorrowedObject(_, _, _));
   ActorID returned_actor_id = actor_manager_->RegisterActorHandle(
-      std::move(actor_handle), outer_object_id, task_id, call_site, caller_address);
+      std::move(actor_handle), outer_object_id, call_site, caller_address);
   ASSERT_TRUE(returned_actor_id == actor_id);
   // Let's try to get the handle and make sure it works.
   const std::shared_ptr<ActorHandle> actor_handle_to_get =
@@ -287,6 +288,7 @@ TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
       actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

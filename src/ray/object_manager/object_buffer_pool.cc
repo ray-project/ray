@@ -72,9 +72,10 @@ ObjectBufferPool::CreateObjectReader(const ObjectID &object_id,
       ray::Status::OK());
 }
 
-std::pair<const ObjectBufferPool::ChunkInfo, ray::Status> ObjectBufferPool::CreateChunk(
-    const ObjectID &object_id, const rpc::Address &owner_address, uint64_t data_size,
-    uint64_t metadata_size, uint64_t chunk_index) {
+ray::Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
+                                          const rpc::Address &owner_address,
+                                          uint64_t data_size, uint64_t metadata_size,
+                                          uint64_t chunk_index) {
   std::unique_lock<std::mutex> lock(pool_mutex_);
   if (create_buffer_state_.count(object_id) == 0) {
     int64_t object_size = data_size - metadata_size;
@@ -96,8 +97,7 @@ std::pair<const ObjectBufferPool::ChunkInfo, ray::Status> ObjectBufferPool::Crea
         // Create failed. The object may already exist locally. If something else went
         // wrong, another chunk will succeed in creating the buffer, and this
         // chunk will eventually make it here via pull requests.
-        return std::pair<const ObjectBufferPool::ChunkInfo, ray::Status>(
-            errored_chunk_, ray::Status::IOError(s.message()));
+        return ray::Status::IOError(s.message());
       }
       // Read object into store.
       uint8_t *mutable_data = data->Data();
@@ -114,46 +114,29 @@ std::pair<const ObjectBufferPool::ChunkInfo, ray::Status> ObjectBufferPool::Crea
   if (create_buffer_state_[object_id].chunk_state[chunk_index] !=
       CreateChunkState::AVAILABLE) {
     // There can be only one reference to this chunk at any given time.
-    return std::pair<const ObjectBufferPool::ChunkInfo, ray::Status>(
-        errored_chunk_,
-        ray::Status::IOError("Chunk already received by a different thread."));
+    return ray::Status::IOError("Chunk already received by a different thread.");
   }
   create_buffer_state_[object_id].chunk_state[chunk_index] = CreateChunkState::REFERENCED;
-  return std::pair<const ObjectBufferPool::ChunkInfo, ray::Status>(
-      create_buffer_state_[object_id].chunk_info[chunk_index], ray::Status::OK());
+  return ray::Status::OK();
 }
 
-void ObjectBufferPool::AbortCreateChunk(const ObjectID &object_id,
-                                        const uint64_t chunk_index) {
-  std::lock_guard<std::mutex> lock(pool_mutex_);
-  RAY_CHECK(create_buffer_state_[object_id].chunk_state[chunk_index] ==
-            CreateChunkState::REFERENCED);
-  create_buffer_state_[object_id].chunk_state[chunk_index] = CreateChunkState::AVAILABLE;
-  if (create_buffer_state_[object_id].num_seals_remaining ==
-      create_buffer_state_[object_id].chunk_state.size()) {
-    // If chunk_state is AVAILABLE at every chunk_index and
-    // num_seals_remaining == num_chunks, this is back to the initial state
-    // right before the first CreateChunk.
-    bool abort = true;
-    for (auto chunk_state : create_buffer_state_[object_id].chunk_state) {
-      abort &= chunk_state == CreateChunkState::AVAILABLE;
-    }
-    if (abort) {
-      AbortCreate(object_id);
-    }
-  }
-}
-
-void ObjectBufferPool::SealChunk(const ObjectID &object_id, const uint64_t chunk_index) {
+void ObjectBufferPool::WriteChunk(const ObjectID &object_id, const uint64_t chunk_index,
+                                  const std::string &data) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   auto it = create_buffer_state_.find(object_id);
   if (it == create_buffer_state_.end() ||
-      it->second.chunk_state[chunk_index] != CreateChunkState::REFERENCED) {
+      it->second.chunk_state.at(chunk_index) != CreateChunkState::REFERENCED) {
     RAY_LOG(DEBUG) << "Object " << object_id << " aborted due to OOM before chunk "
                    << chunk_index << " could be sealed";
     return;
   }
-  it->second.chunk_state[chunk_index] = CreateChunkState::SEALED;
+  RAY_CHECK(it->second.chunk_info.size() > chunk_index);
+  auto &chunk_info = it->second.chunk_info.at(chunk_index);
+  RAY_CHECK(data.size() == chunk_info.buffer_length)
+      << "size mismatch!  data size: " << data.size()
+      << " chunk size: " << chunk_info.buffer_length;
+  std::memcpy(chunk_info.data, data.data(), chunk_info.buffer_length);
+  it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
   it->second.num_seals_remaining--;
   if (it->second.num_seals_remaining == 0) {
     RAY_CHECK_OK(store_client_.Seal(object_id));

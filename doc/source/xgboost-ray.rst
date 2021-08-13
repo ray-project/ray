@@ -165,7 +165,7 @@ Things to keep in mind:
 
 * ``n_jobs`` parameter controls the number of actors spawned.
   You can pass a ``RayParams`` object to the
-  ``fit``\ /\ ``predict``\ /\ ``predict_proba`` methods as the ``ray_params`` argument 
+  ``fit``\ /\ ``predict``\ /\ ``predict_proba`` methods as the ``ray_params`` argument
   for greater control over resource allocation. Doing
   so will override the value of ``n_jobs`` with the value of
   ``ray_params.num_actors`` attribute. For more information, refer

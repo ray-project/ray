@@ -124,7 +124,8 @@ class StatusReporter:
                  end_event,
                  trial_name=None,
                  trial_id=None,
-                 logdir=None):
+                 logdir=None,
+                 trial_resources=None):
         self._queue = result_queue
         self._last_report_time = None
         self._continue_semaphore = continue_semaphore
@@ -134,13 +135,19 @@ class StatusReporter:
         self._logdir = logdir
         self._last_checkpoint = None
         self._fresh_checkpoint = False
+        self._trial_resources = trial_resources
 
-    def reset(self, trial_name=None, trial_id=None, logdir=None):
+    def reset(self,
+              trial_name=None,
+              trial_id=None,
+              logdir=None,
+              trial_resources=None):
         self._trial_name = trial_name
         self._trial_id = trial_id
         self._logdir = logdir
         self._last_checkpoint = None
         self._fresh_checkpoint = False
+        self._trial_resources = trial_resources
 
     def __call__(self, _metric=None, **kwargs):
         """Report updated training status.
@@ -233,6 +240,11 @@ class StatusReporter:
         """Trial id for the corresponding trial of this Trainable."""
         return self._trial_id
 
+    @property
+    def trial_resources(self):
+        """Resources assigned to the trial of this Trainable."""
+        return self._trial_resources
+
 
 class _RunnerThread(threading.Thread):
     """Supervisor thread that runs your script."""
@@ -297,7 +309,8 @@ class FunctionRunner(Trainable):
             self._end_event,
             trial_name=self.trial_name,
             trial_id=self.trial_id,
-            logdir=self.logdir)
+            logdir=self.logdir,
+            trial_resources=self.trial_resources)
         self._last_result = {}
 
         session.init(self._status_reporter)
@@ -501,7 +514,8 @@ class FunctionRunner(Trainable):
         self._status_reporter.reset(
             trial_name=self.trial_name,
             trial_id=self.trial_id,
-            logdir=self.logdir)
+            logdir=self.logdir,
+            trial_resources=self.trial_resources)
 
         return True
 

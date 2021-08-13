@@ -23,6 +23,7 @@
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
+namespace core {
 
 using ::testing::_;
 using ::testing::ElementsAre;
@@ -66,6 +67,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     callbacks.push_back(callback);
   }
 
+  int64_t ClientProcessedUpToSeqno() override { return acked_seqno; }
+
   bool ReplyPushTask(Status status = Status::OK(), size_t index = 0) {
     if (callbacks.size() == 0) {
       return false;
@@ -79,6 +82,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   rpc::Address addr;
   std::vector<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
   std::vector<uint64_t> received_seq_nos;
+  int64_t acked_seqno = 0;
 };
 
 class MockTaskFinisher : public TaskFinisherInterface {
@@ -117,9 +121,12 @@ class DirectActorSubmitterTest : public ::testing::Test {
               num_clients_connected_++;
               return worker_client_;
             }),
-            store_, task_finisher_) {}
+            store_, task_finisher_, [this](const ActorID &actor_id, int64_t num_queued) {
+              last_queue_warning_ = num_queued;
+            }) {}
 
   int num_clients_connected_ = 0;
+  int64_t last_queue_warning_ = 0;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<MockTaskFinisher> task_finisher_;
@@ -157,6 +164,36 @@ TEST_F(DirectActorSubmitterTest, TestSubmitTask) {
   // not reset `received_seq_nos`.
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
+}
+
+TEST_F(DirectActorSubmitterTest, TestQueueingWarning) {
+  rpc::Address addr;
+  auto worker_id = WorkerID::FromRandom();
+  addr.set_worker_id(worker_id.Binary());
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  submitter_.AddActorQueueIfNotExists(actor_id);
+  submitter_.ConnectActor(actor_id, addr, 0);
+
+  for (int i = 0; i < 7500; i++) {
+    auto task = CreateActorTaskHelper(actor_id, worker_id, i);
+    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    worker_client_->acked_seqno = i;
+  }
+  ASSERT_EQ(last_queue_warning_, 0);
+
+  for (int i = 7500; i < 15000; i++) {
+    auto task = CreateActorTaskHelper(actor_id, worker_id, i);
+    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    /* no ack */
+  }
+  ASSERT_EQ(last_queue_warning_, 5000);
+
+  for (int i = 15000; i < 35000; i++) {
+    auto task = CreateActorTaskHelper(actor_id, worker_id, i);
+    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    /* no ack */
+  }
+  ASSERT_EQ(last_queue_warning_, 20000);
 }
 
 TEST_F(DirectActorSubmitterTest, TestDependencies) {
@@ -612,6 +649,7 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
   StopIOService();
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

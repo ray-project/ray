@@ -295,7 +295,13 @@ _bazel_build_before_install() {
     target="//:ray_pkg"
   fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-  bazel build "${target}"
+
+  # Build in debug mode if RAY_DEBUG_BUILD=1
+  if [ -z "${RAY_DEBUG_BUILD-}" ] || [ "${RAY_DEBUG_BUILD}" -ne "1" ]; then
+    bazel build "${target}"
+  else
+    bazel build --config debug "${target}"
+  fi
 }
 
 
@@ -330,6 +336,7 @@ build_wheels() {
         -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
         -e "BUILDKITE=${BUILDKITE:-}"
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
+        -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
       )
 
 
@@ -352,7 +359,7 @@ build_wheels() {
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
       keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
@@ -409,6 +416,12 @@ lint_web() {
   )
 }
 
+lint_copyright() {
+  (
+    "${ROOT_DIR}"/copyright-format.sh -c
+  )
+}
+
 _lint() {
   local platform=""
   case "${OSTYPE}" in
@@ -433,6 +446,9 @@ _lint() {
 
     # Run TypeScript and HTML linting.
     lint_web
+
+    # lint copyright
+    lint_copyright
   fi
 }
 

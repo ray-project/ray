@@ -29,7 +29,12 @@ DOCKER_HUB_DESCRIPTION = {
         "https://hub.docker.com/repository/docker/rayproject/ray-ml")
 }
 
-PY_MATRIX = {"-py36": "3.6.12", "-py37": "3.7.7", "-py38": "3.8.5"}
+PY_MATRIX = {
+    "-py36": "3.6.12",
+    "-py37": "3.7.7",
+    "-py38": "3.8.5",
+    "-py39": "3.9.5"
+}
 
 
 def _get_branch():
@@ -113,6 +118,14 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
     built_images = []
     for gpu in ["-cpu", "-gpu"]:
         for py_name, py_version in PY_MATRIX.items():
+            # TODO(https://github.com/ray-project/ray/issues/16599):
+            # remove below after supporting ray-ml images with Python 3.9
+            if image_name in ["ray-ml", "autoscaler"
+                              ] and py_version.startswith("3.9"):
+                print(f"{image_name} image is currently unsupported with "
+                      "Python 3.9")
+                continue
+
             build_args = {}
             build_args["PYTHON_VERSION"] = py_version
             # I.e. "-py36"[-1] == 6
@@ -145,24 +158,30 @@ def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
                     nocache=no_cache,
                     buildargs=build_args)
 
-                full_output = ""
+                cmd_output = []
                 try:
                     start = datetime.datetime.now()
                     current_iter = start
                     for line in output:
+                        cmd_output.append(line.decode("utf-8"))
                         if datetime.datetime.now(
                         ) - current_iter >= datetime.timedelta(minutes=5):
                             current_iter = datetime.datetime.now()
                             elapsed = datetime.datetime.now() - start
                             print(f"Still building {tagged_name} after "
                                   f"{elapsed.seconds} seconds")
-                        full_output += line.decode("utf-8")
+                            if elapsed >= datetime.timedelta(minutes=15):
+                                print("Additional build output:")
+                                print(*cmd_output, sep="\n")
+                                # Clear cmd_output after printing, so the next
+                                # iteration will not print out the same lines.
+                                cmd_output = []
                 except Exception as e:
                     print(f"FAILURE with error {e}")
 
                 if len(DOCKER_CLIENT.api.images(tagged_name)) == 0:
-                    print(f"ERROR building: {tagged_name} & error below:")
-                    print(full_output)
+                    print(f"ERROR building: {tagged_name}. Output below:")
+                    print(*cmd_output, sep="\n")
                     if (i == 1):
                         raise Exception("FAILED TO BUILD IMAGE")
                     print("TRYING AGAIN")
@@ -294,17 +313,25 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
         image_list.extend(["base-deps", "ray-deps"])
 
     for image in image_list:
-        for py_version in PY_MATRIX.keys():
+        for py_name, py_version in PY_MATRIX.items():
+            # TODO(https://github.com/ray-project/ray/issues/16599):
+            # remove below after supporting ray-ml images with Python 3.9
+            if image in ["ray-ml", "autoscaler"
+                         ] and py_version.startswith("3.9"):
+                print(
+                    f"{image} image is currently unsupported with Python 3.9")
+                continue
+
             full_image = f"rayproject/{image}"
 
             # Tag "nightly-py3x" from "nightly-py3x-cpu"
             DOCKER_CLIENT.api.tag(
-                image=f"{full_image}:nightly{py_version}-cpu",
+                image=f"{full_image}:nightly{py_name}-cpu",
                 repository=full_image,
-                tag=f"nightly{py_version}")
+                tag=f"nightly{py_name}")
 
             for arch_tag in ["-cpu", "-gpu", ""]:
-                full_arch_tag = f"nightly{py_version}{arch_tag}"
+                full_arch_tag = f"nightly{py_name}{arch_tag}"
 
                 # Tag and push rayproject/<image>:nightly<py_tag><arch_tag>
                 docker_push(full_image, full_arch_tag)
@@ -320,7 +347,7 @@ def push_and_tag_images(push_base_images: bool, merge_build: bool = False):
                     tag=specific_tag)
                 docker_push(full_image, specific_tag)
 
-                if "-py37" in py_version:
+                if "-py37" in py_name:
                     non_python_specific_tag = specific_tag.replace("-py37", "")
                     DOCKER_CLIENT.api.tag(
                         image=f"{full_image}:{full_arch_tag}",
@@ -385,10 +412,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--py-versions",
-        choices=["PY36", "PY37", "PY38"],
+        choices=["PY36", "PY37", "PY38", "PY39"],
         default="PY37",
         nargs="*",
-        help="Which python versions to build. Must be in (PY36, PY37, PY38)")
+        help="Which python versions to build. "
+        "Must be in (PY36, PY37, PY38, PY39)")
     parser.add_argument(
         "--build-type",
         choices=BUILD_TYPES,

@@ -167,6 +167,10 @@ class TorchTrainer:
             data_loader_args=None,
             apex_args=None,
     ):
+        if num_workers <= 0:
+            raise ValueError("The number of workers must be greater than 0. "
+                             f"Received num_workers={num_workers}")
+
         if (model_creator or data_creator or optimizer_creator
                 or scheduler_creator or loss_creator):
             raise DeprecationWarning(

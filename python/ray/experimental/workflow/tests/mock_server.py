@@ -19,7 +19,8 @@ def start_service(service_name, host, port):
     # For debugging
     # args = '{0} {1} -H {2} -p {3} 2>&1 | tee -a /tmp/moto.log'.format(moto_svr_path, service_name, host, port)
     process = sp.Popen(
-        args, stdin=sp.PIPE, stdout=sp.PIPE, stderr=sp.PIPE)  # shell=True
+        args, stdin=sp.PIPE, stdout=sp.DEVNULL,
+        stderr=sp.DEVNULL)  # shell=True
     url = "http://{host}:{port}".format(host=host, port=port)
 
     for i in range(0, 30):
@@ -83,5 +84,6 @@ def kms_server():
     port = 5003
     url = "http://{host}:{port}".format(host=host, port=port)
     process = start_service('kms', host, port)
+
     yield url
     stop_process(process)

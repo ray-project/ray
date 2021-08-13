@@ -1,3 +1,17 @@
+// Copyright 2019-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/common/task/task_spec.h"
 
 #include <boost/functional/hash.hpp>
@@ -316,6 +330,11 @@ int TaskSpecification::MaxActorConcurrency() const {
   return message_->actor_creation_task_spec().max_concurrency();
 }
 
+std::string TaskSpecification::ConcurrencyGroupName() const {
+  RAY_CHECK(IsActorTask());
+  return message_->concurrency_group_name();
+}
+
 bool TaskSpecification::IsAsyncioActor() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().is_asyncio();
@@ -436,5 +455,29 @@ std::size_t WorkerCacheKey::Hash() const {
 }
 
 int64_t WorkerCacheKey::IntHash() const { return (int64_t)Hash(); }
+
+std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
+  RAY_CHECK(IsActorCreationTask());
+  std::vector<ConcurrencyGroup> concurrency_groups;
+  auto &actor_creation_task_spec = message_->actor_creation_task_spec();
+  const auto size = actor_creation_task_spec.concurrency_groups().size();
+
+  for (auto i = 0; i < size; ++i) {
+    auto &curr_group_message = actor_creation_task_spec.concurrency_groups(i);
+    std::vector<ray::FunctionDescriptor> function_descriptors;
+    const auto func_descriptors_size = curr_group_message.function_descriptors_size();
+    for (auto j = 0; j < func_descriptors_size; ++j) {
+      function_descriptors.push_back(FunctionDescriptorBuilder::FromProto(
+          curr_group_message.function_descriptors(j)));
+    }
+
+    concurrency_groups.push_back(
+        {std::string{curr_group_message.name()},
+         static_cast<uint32_t>(curr_group_message.max_concurrency()),
+         function_descriptors});
+  }
+
+  return concurrency_groups;
+}
 
 }  // namespace ray

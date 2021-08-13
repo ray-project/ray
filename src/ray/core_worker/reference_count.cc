@@ -29,6 +29,7 @@
 namespace {}  // namespace
 
 namespace ray {
+namespace core {
 
 bool ReferenceCounter::OwnObjects() const {
   absl::MutexLock lock(&mutex_);
@@ -68,7 +69,7 @@ ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
     const ReferenceTableProto &proto) {
   ReferenceTable refs;
   for (const auto &ref : proto) {
-    refs.emplace(ray::ObjectID::FromBinary(ref.reference().object_id()),
+    refs.emplace(ObjectID::FromBinary(ref.reference().object_id()),
                  Reference::FromProto(ref));
   }
   return refs;
@@ -1059,11 +1060,10 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   }
 
   // The locations of this object.
-  // - If we own this object and the ownership-based object directory is enabled, this
-  // will contain the complete up-to-date set of object locations.
-  // - If we own this object and the ownership-based object directory is disabled, this
-  // will only contain the pinned location, if known.
-  // - If we don't own this object, this will be empty.
+  // - If we own this object, this will contain the complete up-to-date set of object
+  //   locations.
+  // - If we don't own this object, this will contain a snapshot of the object locations
+  //   at future resolution time.
   const auto &node_ids = it->second.locations;
 
   // We should only reach here if we have valid locality data to return.
@@ -1227,4 +1227,5 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref) const 
   }
 }
 
+}  // namespace core
 }  // namespace ray

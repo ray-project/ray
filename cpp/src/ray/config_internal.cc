@@ -1,3 +1,17 @@
+// Copyright 2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <boost/dll/runtime_symbol_info.hpp>
 #include "absl/strings/str_split.h"
 #include "gflags/gflags.h"
@@ -33,7 +47,7 @@ DEFINE_string(ray_logs_dir, "", "Logs dir for workers.");
 DEFINE_string(ray_node_ip_address, "", "The ip address for this node.");
 
 namespace ray {
-namespace api {
+namespace internal {
 
 void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
   if (!config.address.empty()) {
@@ -45,6 +59,15 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
   }
   if (config.redis_password_) {
     redis_password = *config.redis_password_;
+  }
+  if (config.num_cpus >= 0) {
+    num_cpus = config.num_cpus;
+  }
+  if (config.num_gpus >= 0) {
+    num_gpus = config.num_gpus;
+  }
+  if (!config.resources.empty()) {
+    resources = config.resources;
   }
   if (argc != nullptr && argv != nullptr) {
     // Parse config from command line.
@@ -118,5 +141,5 @@ void ConfigInternal::SetRedisAddress(const std::string address) {
   redis_ip = address.substr(0, pos);
   redis_port = std::stoi(address.substr(pos + 1, address.length()));
 }
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

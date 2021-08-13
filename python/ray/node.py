@@ -822,6 +822,8 @@ class Node:
             redis_password=self._ray_params.redis_password,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             metrics_export_port=self._metrics_export_port,
+            dashboard_agent_listen_port=self._ray_params.
+            dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
             stdout_file=stdout_file,
@@ -833,7 +835,9 @@ class Node:
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
             start_initial_python_workers_for_first_job=self._ray_params.
-            start_initial_python_workers_for_first_job)
+            start_initial_python_workers_for_first_job,
+            ray_debugger_external=self._ray_params.ray_debugger_external,
+        )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
