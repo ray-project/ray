@@ -34,7 +34,7 @@ class Trainer:
             worker). Defaults to False.
         resources_per_worker (Optional[Dict]): If specified, the resources
             defined in this Dict will be reserved for each worker.
-        log_dir (Optional[str]): Path to the file directory where logs
+        logdir (Optional[str]): Path to the file directory where logs
                 should be persisted. If this is not specified, one will be
                 generated.
     """
@@ -44,7 +44,7 @@ class Trainer:
                  num_workers: int = 1,
                  use_gpu: bool = False,
                  resources_per_worker: Optional[Dict[str, float]] = None,
-                 log_dir: Optional[str] = None):
+                 logdir: Optional[str] = None):
         """A class for distributed training.
 
         Args:
@@ -58,7 +58,7 @@ class Trainer:
                 worker). Defaults to False.
             resources_per_worker (Optional[Dict]): If specified, the resources
                 defined in this Dict will be reserved for each worker.
-            log_dir (Optional[str]): Path to the file directory where logs
+            logdir (Optional[str]): Path to the file directory where logs
                 should be persisted. If this is not specified, one will be
                 generated.
         """
@@ -70,7 +70,7 @@ class Trainer:
                                       "supported yet.")
 
         self._executor = BackendExecutor(backend_config, num_workers, 1,
-                                         int(use_gpu), log_dir)
+                                         int(use_gpu), logdir)
 
     def _get_backend_config(
             self, backend: Union[str, BackendConfig]) -> BackendConfig:
@@ -148,7 +148,7 @@ class Trainer:
 
         try:
             for callback in callbacks:
-                callback.start_training(logdir=self.log_dir)
+                callback.start_training(logdir=self.logdir)
             self._executor.start_training(train_func, checkpoint)
 
             while True:
@@ -235,9 +235,9 @@ class Trainer:
         raise NotImplementedError
 
     @property
-    def log_dir(self) -> str:
+    def logdir(self) -> str:
         """Path to the log directory."""
-        return self._executor.log_dir
+        return self._executor.logdir
 
     @property
     def checkpoint_dir(self) -> str:
