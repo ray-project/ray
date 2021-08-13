@@ -65,17 +65,14 @@ std::shared_ptr<msgpack::sbuffer> NativeObjectStore::GetRaw(const ObjectID &obje
 
 void NativeObjectStore::CheckException(const std::string &meta_str,
                                        const std::shared_ptr<Buffer> &data_buffer) {
-  std::string data_str =
-      data_buffer ? std::string((char *)data_buffer->Data(), data_buffer->Size()) : "";
-
   if (meta_str == std::to_string(ray::rpc::ErrorType::WORKER_DIED)) {
-    throw RayWorkerException(std::move(data_str));
+    throw RayWorkerException({(char *)data_buffer->Data(), data_buffer->Size()});
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::ACTOR_DIED)) {
-    throw RayActorException(std::move(data_str));
+    throw RayActorException({(char *)data_buffer->Data(), data_buffer->Size()});
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE)) {
-    throw UnreconstructableException(std::move(data_str));
+    throw UnreconstructableException({(char *)data_buffer->Data(), data_buffer->Size()});
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION)) {
-    throw RayTaskException(std::move(data_str));
+    throw RayTaskException({(char *)data_buffer->Data(), data_buffer->Size()});
   }
 }
 

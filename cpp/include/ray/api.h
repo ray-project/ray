@@ -39,7 +39,7 @@ void Init(ray::RayConfig &config);
 /// Initialize Ray runtime with config and command-line arguments.
 /// If a parameter is explicitly set in command-line arguments, the parameter value will
 /// be overwritten.
-void Init(ray::RayConfig &config, int argc, char **argv);
+void Init(ray::RayConfig &config, int *argc, char ***argv);
 
 /// Initialize Ray runtime with default config.
 void Init();

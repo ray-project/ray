@@ -1663,14 +1663,14 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
 
     command = [
         DEFAULT_WORKER_EXECUTABLE,
-        f"--ray_plasma_store_socket_name={plasma_store_name}",
-        f"--ray_raylet_socket_name={raylet_name}",
-        "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--ray_address={redis_address}",
-        f"--ray_redis_password={redis_password}",
-        f"--ray_session_dir={session_dir}",
-        f"--ray_logs_dir={log_dir}",
-        f"--ray_node_ip_address={node_ip_address}",
+        f"--ray-plasma-store-socket-name={plasma_store_name}",
+        f"--ray-raylet-socket-name={raylet_name}",
+        "--ray-node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--ray-address={redis_address}",
+        f"--ray-redis-password={redis_password}",
+        f"--ray-session-dir={session_dir}",
+        f"--ray-logs-dir={log_dir}",
+        f"--ray-node-ip-address={node_ip_address}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 

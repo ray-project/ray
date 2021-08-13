@@ -64,7 +64,7 @@ class ConfigInternal {
     return config;
   };
 
-  void Init(RayConfig &config, int argc, char **argv);
+  void Init(RayConfig &config, int *argc, char ***argv);
 
   void SetRedisAddress(const std::string address);
 

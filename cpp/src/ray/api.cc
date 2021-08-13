@@ -21,7 +21,7 @@ namespace ray {
 
 static bool is_init_;
 
-void Init(ray::RayConfig &config, int argc, char **argv) {
+void Init(RayConfig &config, int *argc, char ***argv) {
   if (!IsInitialized()) {
     internal::ConfigInternal::Instance().Init(config, argc, argv);
     auto runtime = internal::AbstractRayRuntime::DoInit();
@@ -30,11 +30,11 @@ void Init(ray::RayConfig &config, int argc, char **argv) {
   }
 }
 
-void Init(ray::RayConfig &config) { Init(config, 0, nullptr); }
+void Init(RayConfig &config) { Init(config, nullptr, nullptr); }
 
 void Init() {
   RayConfig config;
-  Init(config, 0, nullptr);
+  Init(config, nullptr, nullptr);
 }
 
 bool IsInitialized() { return is_init_; }
