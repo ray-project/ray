@@ -315,10 +315,14 @@ class _AgentCollector:
                 SampleBatch.OBS, SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                 "env_id", "t"
             ] else 0)
-            # Store all data as flattened lists.
-            self.buffers[col] = [[v for _ in range(shift)]
-                                 for v in tree.flatten(data)]
-            self.buffer_structs[col] = data
+
+            # Store all data as flattened lists, except INFOS.
+            if col == SampleBatch.INFOS:
+                self.buffers[col] = [[data]]
+            else:
+                self.buffers[col] = [[v for _ in range(shift)]
+                                     for v in tree.flatten(data)]
+                self.buffer_structs[col] = data
 
 
 class _PolicyCollector:
