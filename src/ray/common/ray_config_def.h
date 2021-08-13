@@ -297,8 +297,8 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 /// Whether put small objects in the local memory store.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
 
-// Max number bytes of inlined objects in a task execution result.
-RAY_CONFIG(int64_t, task_output_inlined_bytes_limit, 10 * 1024 * 1024)
+// Max number bytes of inlined objects in a task rpc request/response.
+RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
 /// Maximum number of tasks that can be in flight between an owner and a worker for which
 /// the owner has been granted a lease. A value >1 is used when we want to enable
@@ -456,3 +456,9 @@ RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 
 /// ServerCall instance number of each RPC service handler
 RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
+
+/// grpc keepalive sent interval
+RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000);
+
+/// grpc keepalive timeout
+RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
