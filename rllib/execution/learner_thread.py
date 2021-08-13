@@ -22,7 +22,6 @@ class LearnerThread(threading.Thread):
     addition, moving heavyweight gradient ops session runs off the main thread
     improves overall throughput.
     """
-
     def __init__(self, local_worker: RolloutWorker, minibatch_buffer_size: int,
                  num_sgd_iter: int, learner_queue_size: int,
                  learner_queue_timeout: int):
@@ -44,12 +43,11 @@ class LearnerThread(threading.Thread):
         self.local_worker = local_worker
         self.inqueue = queue.Queue(maxsize=learner_queue_size)
         self.outqueue = queue.Queue()
-        self.minibatch_buffer = MinibatchBuffer(
-            inqueue=self.inqueue,
-            size=minibatch_buffer_size,
-            timeout=learner_queue_timeout,
-            num_passes=num_sgd_iter,
-            init_num_passes=num_sgd_iter)
+        self.minibatch_buffer = MinibatchBuffer(inqueue=self.inqueue,
+                                                size=minibatch_buffer_size,
+                                                timeout=learner_queue_timeout,
+                                                num_passes=num_sgd_iter,
+                                                init_num_passes=num_sgd_iter)
         self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.load_timer = TimerStat()
@@ -85,7 +83,6 @@ class LearnerThread(threading.Thread):
 
     def add_learner_metrics(self, result: Dict) -> Dict:
         """Add internal metrics to a trainer result dict."""
-
         def timer_to_ms(timer):
             return round(1000 * timer.mean, 3)
 
