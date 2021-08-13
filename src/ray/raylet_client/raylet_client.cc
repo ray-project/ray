@@ -309,9 +309,11 @@ void raylet::RayletClient::RequestWorkerLease(
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
     const int64_t backlog_size) {
   google::protobuf::Arena arena;
-  auto request = google::protobuf::Arena::CreateMessage<rpc::RequestWorkerLeaseRequest>(&arena);
-  const auto& task_spec = resource_spec.GetMessage();
-  request->unsafe_arena_set_allocated_resource_spec(const_cast<rpc::TaskSpec*>(&task_spec));
+  auto request =
+      google::protobuf::Arena::CreateMessage<rpc::RequestWorkerLeaseRequest>(&arena);
+  const auto &task_spec = resource_spec.GetMessage();
+  request->unsafe_arena_set_allocated_resource_spec(
+      const_cast<rpc::TaskSpec *>(&task_spec));
   request->set_backlog_size(backlog_size);
   grpc_client_->RequestWorkerLease(*request, callback);
 }

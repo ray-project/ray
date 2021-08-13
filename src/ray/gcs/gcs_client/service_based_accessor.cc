@@ -219,8 +219,10 @@ Status ServiceBasedActorInfoAccessor::AsyncRegisterActor(
     const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
   google::protobuf::Arena arena;
-  auto request = google::protobuf::Arena::CreateMessage<rpc::RegisterActorRequest>(&arena);
-  request->unsafe_arena_set_allocated_task_spec(const_cast<rpc::TaskSpec*>(&task_spec.GetMessage()));
+  auto request =
+      google::protobuf::Arena::CreateMessage<rpc::RegisterActorRequest>(&arena);
+  request->unsafe_arena_set_allocated_task_spec(
+      const_cast<rpc::TaskSpec *>(&task_spec.GetMessage()));
   client_impl_->GetGcsRpcClient().RegisterActor(
       *request, [callback](const Status &, const rpc::RegisterActorReply &reply) {
         auto status =
@@ -257,7 +259,8 @@ Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
   google::protobuf::Arena arena;
   auto request = google::protobuf::Arena::CreateMessage<rpc::CreateActorRequest>(&arena);
-  request->unsafe_arena_set_allocated_task_spec(const_cast<rpc::TaskSpec*>(&task_spec.GetMessage()));
+  request->unsafe_arena_set_allocated_task_spec(
+      const_cast<rpc::TaskSpec *>(&task_spec.GetMessage()));
   client_impl_->GetGcsRpcClient().CreateActor(
       *request, [callback](const Status &, const rpc::CreateActorReply &reply) {
         auto status =

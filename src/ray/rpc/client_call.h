@@ -16,8 +16,8 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include <boost/asio.hpp>
 #include <google/protobuf/arena.h>
+#include <boost/asio.hpp>
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -69,8 +69,7 @@ class ClientCallImpl : public ClientCall {
   explicit ClientCallImpl(const ClientCallback<Reply> &callback,
                           std::shared_ptr<StatsHandle> stats_handle)
       : callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
-        stats_handle_(std::move(stats_handle)) {
-  }
+        stats_handle_(std::move(stats_handle)) {}
 
   Status GetStatus() override {
     absl::MutexLock lock(&mutex_);
@@ -96,7 +95,6 @@ class ClientCallImpl : public ClientCall {
   std::shared_ptr<StatsHandle> GetStatsHandle() override { return stats_handle_; }
 
  private:
-
   /// The reply message.
   Reply reply_;
 

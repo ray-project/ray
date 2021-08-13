@@ -215,7 +215,7 @@ class NodeInfoGcsServiceHandler {
                                     SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetAllNodeInfo(const GetAllNodeInfoRequest &request,
-                                    GetAllNodeInfoReply*& reply,
+                                    GetAllNodeInfoReply *&reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetInternalConfig(const GetInternalConfigRequest &request,

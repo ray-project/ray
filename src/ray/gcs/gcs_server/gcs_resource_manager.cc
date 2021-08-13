@@ -183,7 +183,7 @@ void GcsResourceManager::HandleGetAllAvailableResources(
 void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data) {
   NodeID node_id = NodeID::FromBinary(data.node_id());
   auto resources_data = std::make_shared<rpc::ResourcesData>();
-  resources_data->Swap(&const_cast<rpc::ResourcesData&>(data));
+  resources_data->Swap(&const_cast<rpc::ResourcesData &>(data));
 
   if (RayConfig::instance().gcs_task_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, *resources_data);

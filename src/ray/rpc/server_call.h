@@ -16,8 +16,8 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include <boost/asio.hpp>
 #include <google/protobuf/arena.h>
+#include <boost/asio.hpp>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
@@ -120,10 +120,7 @@ using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
 /// \tparam ServiceHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
-template <class ServiceHandler,
-          class Request,
-          class Reply,
-          class HandlerFunction>
+template <class ServiceHandler, class Request, class Reply, class HandlerFunction>
 class ServerCallImpl : public ServerCall {
  public:
   /// Constructor.
@@ -132,10 +129,9 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] service_handler The service handler that handles the request.
   /// \param[in] handle_request_function Pointer to the service handler function.
   /// \param[in] io_service The event loop.
-  ServerCallImpl(
-      const ServerCallFactory &factory, ServiceHandler &service_handler,
-      HandlerFunction handle_request_function,
-      instrumented_io_context &io_service, std::string call_name)
+  ServerCallImpl(const ServerCallFactory &factory, ServiceHandler &service_handler,
+                 HandlerFunction handle_request_function,
+                 instrumented_io_context &io_service, std::string call_name)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
@@ -235,10 +231,10 @@ class ServerCallImpl : public ServerCall {
   instrumented_io_context &io_service_;
 
   /// The request message.
-  Request* request_;
+  Request *request_;
 
   /// The reply message.
-  Reply* reply_;
+  Reply *reply_;
 
   /// Human-readable name for this RPC call.
   std::string call_name_;
@@ -272,10 +268,7 @@ using RequestCallFunction = void (GrpcService::AsyncService::*)(
 /// \tparam ServiceHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
-template <class GrpcService,
-          class ServiceHandler,
-          class Request,
-          class Reply,
+template <class GrpcService, class ServiceHandler, class Request, class Reply,
           class HandlerFunction>
 class ServerCallFactoryImpl : public ServerCallFactory {
   using AsyncService = typename GrpcService::AsyncService;
@@ -295,8 +288,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   ServerCallFactoryImpl(
       AsyncService &service,
       RequestCallFunction<GrpcService, Request, Reply> request_call_function,
-      ServiceHandler &service_handler,
-      HandlerFunction handle_request_function,
+      ServiceHandler &service_handler, HandlerFunction handle_request_function,
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       instrumented_io_context &io_service, std::string call_name, int64_t max_active_rpcs)
       : service_(service),
