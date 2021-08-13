@@ -95,9 +95,10 @@ test:asan --jobs=1
 test:asan --test_env=ASAN_OPTIONS="detect_leaks=0"
 
 build:asan-build --strip=never
+build:asan-build -c dbg
 build:asan-build --copt -fsanitize=address
 build:asan-build --copt -DADDRESS_SANITIZER
-build:asan --copt -O1
+build:asan-build --copt -O1
 build:asan-build --copt -g
 build:asan-build --copt -fno-omit-frame-pointer
 # build:asan-build --copt -static-libasan
