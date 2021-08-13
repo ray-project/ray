@@ -16,11 +16,11 @@ WorkflowOutputType = ObjectRef
 
 
 def get_module(f):
-    return f.__module__ if hasattr(f, "__module__") else "<?>"
+    return f.__module__ if hasattr(f, "__module__") else "__anonymous_module__"
 
 
 def get_qualname(f):
-    return f.__qualname__ if hasattr(f, "__qualname__") else "<?>"
+    return f.__qualname__ if hasattr(f, "__qualname__") else "__anonymous_func__"
 
 
 @dataclass
