@@ -235,7 +235,7 @@ Dependency Management
 =====================
 
 Ray Serve supports serving deployments with different (possibly conflicting)
-python dependencies.  For example, you can simultaneously serve one deployment
+Python dependencies.  For example, you can simultaneously serve one deployment
 that uses legacy Tensorflow 1 and another that uses Tensorflow 2.
 
 Currently this is supported on Mac OS and Linux using `conda <https://docs.conda.io/en/latest/>`_
@@ -244,7 +244,8 @@ As with all other actor options, pass these in via ``ray_actor_options`` in
 your deployment.
 You must have a conda environment set up for each set of
 dependencies you want to isolate.  If using a multi-node cluster, the
-desired conda environment must be present on all nodes.
+desired conda environment must be present on all nodes. Also, the Python patch version
+(e.g. 3.8.10) must be identical on all nodes (this is a requirement for any Ray cluster).
 See :ref:`runtime-environments` for details.
 
 Here's an example script.  For it to work, first create a conda
