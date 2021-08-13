@@ -112,6 +112,7 @@ py_test_module_list(
     "test_numba.py",
     "test_queue.py",
     "test_ray_shutdown.py",
+    "test_traceback.py",
     "test_unhandled_error.py",
     "test_top_level_api.py",
     "test_list_actors.py",
@@ -223,7 +224,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["flaky-mac"],
+  tags = ["flaky-mac", "exclusive"],
   deps = ["//:ray_lib"],
 )
 
@@ -311,4 +312,18 @@ py_test_module_list(
   tags = ["exclusive", "worker-container"],
   # Now we run this test in a container which has installed ray
   deps = [],
+)
+
+py_test_module_list(
+  files = [
+    "test_object_spilling.py",
+    "test_object_spilling_2.py",
+    "test_scheduling.py",
+    "test_array.py"
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  name_suffix = "_debug_mode",
+  tags = ["exclusive", "debug_tests"],
+  deps = ["//:ray_lib"],
 )

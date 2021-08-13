@@ -7,6 +7,7 @@ import socket
 import subprocess
 import sys
 import traceback
+import warnings
 
 import aioredis
 
@@ -21,6 +22,7 @@ from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS)
 from ray._private.metrics_agent import MetricsAgent, Gauge, Record
+from ray.util.debug import log_once
 import psutil
 
 logger = logging.getLogger(__name__)
@@ -32,10 +34,11 @@ try:
     import gpustat.core as gpustat
 except (ModuleNotFoundError, ImportError):
     gpustat = None
-    logger.warning("`gpustat` package is not installed. GPU monitoring is "
-                   "not available. In Ray 1.4+, the Ray CLI, autoscaler, and "
-                   "dashboard will only be usable via `pip install 'ray["
-                   "default]'`. Please update your install command")
+    if log_once("gpustat_import_warning"):
+        warnings.warn("`gpustat` package is not installed. GPU monitoring is "
+                      "not available. To have full functionality of the "
+                      "dashboard please install `pip install ray["
+                      "default]`.)")
 
 
 def recursive_asdict(o):

@@ -828,6 +828,10 @@ class AutoscalingTest(unittest.TestCase):
             x for x in commands_with_mount if "docker cp" in x[1]
         ]
         first_mkdir = min(x[0] for x in commands_with_mount if "mkdir" in x[1])
+        docker_run_cmd_indx = [
+            i for i, cmd in enumerate(runner.command_history())
+            if "docker run" in cmd
+        ][0]
         for file_to_check in [
                 "ray_bootstrap_config.yaml", "ray_bootstrap_key.pem"
         ]:
@@ -835,7 +839,12 @@ class AutoscalingTest(unittest.TestCase):
                               if "ray_bootstrap_config.yaml" in x[1])
             first_cp = min(
                 x[0] for x in docker_cp_commands if file_to_check in x[1])
+            # Ensures that `mkdir -p` precedes `docker run` because Docker
+            # will auto-create the folder with wrong permissions.
+            assert first_mkdir < docker_run_cmd_indx
+            # Ensures that the folder is created before running rsync.
             assert first_mkdir < first_rsync
+            # Checks that the file is present before copying into the container
             assert first_rsync < first_cp
 
     def testGetOrCreateHeadNodeFromStoppedRestartOnly(self):
@@ -2392,6 +2401,15 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.0", "start_ray_worker")
         runner.assert_has_call("172.0.0.0", "docker run")
 
+        docker_run_cmd_indx = [
+            i for i, cmd in enumerate(runner.command_history())
+            if "docker run" in cmd
+        ][0]
+        mkdir_cmd_indx = [
+            i for i, cmd in enumerate(runner.command_history())
+            if "mkdir -p" in cmd
+        ][0]
+        assert mkdir_cmd_indx < docker_run_cmd_indx
         runner.clear_history()
         autoscaler.update()
         runner.assert_not_has_call("172.0.0.0", "setup_cmd")
@@ -2664,6 +2682,18 @@ MemAvailable:   33000000 kB
             TAG_RAY_NODE_STATUS: "update-failed"
         }, 1)
 
+        # `_allow_uninitialized_state` should return the head node
+        # in the `update-failed` state.
+        allow_failed = commands._get_running_head_node(
+            config,
+            "/fake/path",
+            override_cluster_name=None,
+            create_if_needed=False,
+            _provider=self.provider,
+            _allow_uninitialized_state=True)
+
+        assert allow_failed == 0
+
         # Node 1 is okay.
         self.provider.create_node({}, {
             TAG_RAY_CLUSTER_NAME: "default",
@@ -2679,6 +2709,18 @@ MemAvailable:   33000000 kB
             _provider=self.provider)
 
         assert node == 1
+
+        # `_allow_uninitialized_state` should return the up-to-date head node
+        # if it is present.
+        optionally_failed = commands._get_running_head_node(
+            config,
+            "/fake/path",
+            override_cluster_name=None,
+            create_if_needed=False,
+            _provider=self.provider,
+            _allow_uninitialized_state=True)
+
+        assert optionally_failed == 1
 
     def testNodeTerminatedDuringUpdate(self):
         """

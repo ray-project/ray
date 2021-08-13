@@ -73,15 +73,13 @@ absl::optional<Allocation> BuildAllocation(void *addr, size_t size) {
 
 PlasmaAllocator::PlasmaAllocator(const std::string &plasma_directory,
                                  const std::string &fallback_directory,
-                                 bool hugepage_enabled, int64_t footprint_limit,
-                                 bool fallback_enabled)
+                                 bool hugepage_enabled, int64_t footprint_limit)
     : kFootprintLimit(footprint_limit),
       kAlignment(kAllocationAlignment),
-      kFallbackEnabled(fallback_enabled),
       allocated_(0),
       fallback_allocated_(0) {
   internal::SetDLMallocConfig(plasma_directory, fallback_directory, hugepage_enabled,
-                              fallback_enabled);
+                              /*fallback_enabled=*/true);
   RAY_CHECK(kFootprintLimit > kDlMallocReserved)
       << "Footprint limit has to be greater than " << kDlMallocReserved;
   auto allocation = Allocate(kFootprintLimit - kDlMallocReserved);
@@ -89,20 +87,11 @@ PlasmaAllocator::PlasmaAllocator(const std::string &plasma_directory,
       << "PlasmaAllocator initialization failed."
       << " It's likely we don't have enought space in " << plasma_directory;
   // This will unmap the file, but the next one created will be as large
-  // as this one (this is an implementation internal of dlmalloc).
+  // as this one (this is an implementation detail of dlmalloc).
   Free(std::move(allocation.value()));
 }
 
 absl::optional<Allocation> PlasmaAllocator::Allocate(size_t bytes) {
-  if (!kFallbackEnabled) {
-    // We only check against the footprint limit in when fallback allocation is disabled.
-    // In fallback disabled mode: the check is done here; dlmemalign never returns
-    // nullptr. In fallback enabled mode: dlmemalign returns nullptr once the initial
-    // /dev/shm block fills.
-    if (allocated_ + static_cast<int64_t>(bytes) > kFootprintLimit) {
-      return absl::nullopt;
-    }
-  }
   RAY_LOG(DEBUG) << "allocating " << bytes;
   void *mem = dlmemalign(kAlignment, bytes);
   RAY_LOG(DEBUG) << "allocated " << bytes << " at " << mem;
@@ -114,9 +103,6 @@ absl::optional<Allocation> PlasmaAllocator::Allocate(size_t bytes) {
 }
 
 absl::optional<Allocation> PlasmaAllocator::FallbackAllocate(size_t bytes) {
-  if (!kFallbackEnabled) {
-    return absl::nullopt;
-  }
   // Forces allocation as a separate file.
   RAY_CHECK(dlmallopt(M_MMAP_THRESHOLD, 0));
   RAY_LOG(DEBUG) << "fallback allocating " << bytes;
@@ -142,8 +128,7 @@ void PlasmaAllocator::Free(Allocation allocation) {
   RAY_LOG(DEBUG) << "deallocating " << allocation.size << " at " << allocation.address;
   dlfree(allocation.address);
   allocated_ -= allocation.size;
-  if (RayConfig::instance().plasma_unlimited() &&
-      internal::IsOutsideInitialAllocation(allocation.address)) {
+  if (internal::IsOutsideInitialAllocation(allocation.address)) {
     fallback_allocated_ -= allocation.size;
   }
 }

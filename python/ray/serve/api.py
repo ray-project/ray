@@ -3,15 +3,12 @@ import atexit
 import collections
 import inspect
 import logging
-import os
 import re
-import sys
 import time
 from dataclasses import dataclass
 from functools import wraps
 from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple,
                     Type, Union, overload)
-from warnings import warn
 from weakref import WeakValueDictionary
 
 from starlette.requests import Request
@@ -23,9 +20,8 @@ from ray.actor import ActorHandle
 from ray.util.annotations import Deprecated, PublicAPI
 from ray.serve.common import BackendInfo, GoalId
 from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
-from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-                                 HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
-from ray.serve.controller import BackendTag, ReplicaTag, ServeController
+from ray.serve.constants import (HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
+from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view)
@@ -60,21 +56,21 @@ def _set_global_client(client):
 @dataclass
 class ReplicaContext:
     """Stores data for Serve API calls from within the user's backend code."""
-    backend_tag: BackendTag
+    deployment: str
     replica_tag: ReplicaTag
     _internal_controller_name: str
     servable_object: Callable
 
 
 def _set_internal_replica_context(
-        backend_tag: BackendTag,
+        deployment: str,
         replica_tag: ReplicaTag,
         controller_name: str,
         servable_object: Callable,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        backend_tag, replica_tag, controller_name, servable_object)
+        deployment, replica_tag, controller_name, servable_object)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -102,7 +98,8 @@ class Client:
         self._controller_name = controller_name
         self._detached = detached
         self._shutdown = False
-        self._http_config = ray.get(controller.get_http_config.remote())
+        self._http_config: HTTPOptions = ray.get(
+            controller.get_http_config.remote())
 
         # Each handle has the overhead of long poll client, therefore cached.
         self.handle_cache = WeakValueDictionary()
@@ -116,6 +113,10 @@ class Client:
                 self.shutdown()
 
             atexit.register(shutdown_serve_client)
+
+    @property
+    def root_url(self):
+        return self._http_config.root_url
 
     def __del__(self):
         if not self._detached:
@@ -330,21 +331,6 @@ class Client:
         if ray_actor_options is None:
             ray_actor_options = {}
 
-        # If conda is activated and a conda env is not specified in runtime_env
-        # in ray_actor_options, default to conda env of this process (client).
-        # Without this code, the backend would run in the controller's conda
-        # env, which is likely different from that of the client.
-        # If using Ray client, skip this convenience feature because the local
-        # client env doesn't create the Ray cluster (so the client env is
-        # likely not present on the cluster.)
-        if not ray.util.client.ray.is_connected() and sys.platform != "win32":
-            if ray_actor_options.get("runtime_env") is None:
-                ray_actor_options["runtime_env"] = {}
-            if ray_actor_options["runtime_env"].get("conda") is None:
-                current_env = os.environ.get("CONDA_DEFAULT_ENV")
-                if current_env is not None and current_env != "":
-                    ray_actor_options["runtime_env"]["conda"] = current_env
-
         replica_config = ReplicaConfig(
             backend_def, *init_args, ray_actor_options=ray_actor_options)
 
@@ -358,7 +344,10 @@ class Client:
         self._wait_for_goal(
             ray.get(
                 self._controller.create_backend.remote(
-                    backend_tag, backend_config, replica_config)))
+                    backend_tag,
+                    backend_config,
+                    replica_config,
+                    deployer_job_id=ray.get_runtime_context().job_id)))
 
     @_ensure_connected
     def deploy(self,
@@ -370,6 +359,7 @@ class Client:
                version: Optional[str] = None,
                prev_version: Optional[str] = None,
                route_prefix: Optional[str] = None,
+               url: str = "",
                _blocking: Optional[bool] = True) -> Optional[GoalId]:
         if config is None:
             config = {}
@@ -403,9 +393,10 @@ class Client:
                 python_methods.append(method_name)
 
         goal_id, updating = ray.get(
-            self._controller.deploy.remote(
-                name, backend_config, replica_config, python_methods, version,
-                prev_version, route_prefix))
+            self._controller.deploy.remote(name, backend_config,
+                                           replica_config, python_methods,
+                                           version, prev_version, route_prefix,
+                                           ray.get_runtime_context().job_id))
 
         if updating:
             msg = f"Updating deployment '{name}'"
@@ -418,6 +409,9 @@ class Client:
 
         if _blocking:
             self._wait_for_goal(goal_id)
+            logger.info(
+                f"Deployment '{name}{':'+version if version else ''}' is ready"
+                f" at `{url}`.")
         else:
             return goal_id
 
@@ -582,11 +576,9 @@ class Client:
 @PublicAPI
 def start(
         detached: bool = False,
-        http_host: Optional[str] = DEFAULT_HTTP_HOST,
-        http_port: int = DEFAULT_HTTP_PORT,
-        http_middlewares: List[Any] = [],
         http_options: Optional[Union[dict, HTTPOptions]] = None,
         dedicated_cpu: bool = False,
+        **kwargs,
 ) -> Client:
     """Initialize a serve instance.
 
@@ -594,7 +586,7 @@ def start(
     Client object (or when the script exits). If detached is set to True, the
     instance will instead persist until serve.shutdown() is called. This is
     only relevant if connecting to a long-running Ray cluster (e.g., with
-    ray.init(address="auto") or ray.util.connect("<remote_addr>")).
+    ray.init(address="auto") or ray.init("ray://<remote_addr>")).
 
     Args:
         detached (bool): Whether not the instance should be detached from this
@@ -602,9 +594,6 @@ def start(
           explicitly stopped with serve.shutdown(). This should *not* be set in
           an anonymous Ray namespace because you will not be able to reconnect
           to the instance after the script exits.
-        http_host (Optional[str]): Deprecated, use http_options instead.
-        http_port (int): Deprecated, use http_options instead.
-        http_middlewares (list): Deprecated, use http_options instead.
         http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
@@ -628,21 +617,12 @@ def start(
         dedicated_cpu (bool): Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
-    if ((http_host != DEFAULT_HTTP_HOST) or (http_port != DEFAULT_HTTP_PORT)
-            or (len(http_middlewares) != 0)):
-        if http_options is not None:
+    http_deprecated_args = ["http_host", "http_port", "http_middlewares"]
+    for key in http_deprecated_args:
+        if key in kwargs:
             raise ValueError(
-                "You cannot specify both `http_options` and any of the "
-                "`http_host`, `http_port`, and `http_middlewares` arguments. "
-                "`http_options` is preferred.")
-        else:
-            warn(
-                "`http_host`, `http_port`, `http_middlewares` are deprecated. "
-                "Please use serve.start(http_options={'host': ..., "
-                "'port': ..., middlewares': ...}) instead.",
-                DeprecationWarning,
-            )
-
+                f"{key} is deprecated, please use serve.start(http_options="
+                f'{{"{key}": {kwargs[key]}}}) instead.')
     # Initialize ray if needed.
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
@@ -661,25 +641,23 @@ def start(
             )
 
     try:
-        _get_global_client()
+        client = _get_global_client()
         logger.info("Connecting to existing Serve instance in namespace "
                     f"'{current_namespace}'.")
-        return
+        return client
     except RayServeException:
         pass
 
-    # Try to get serve controller if it exists
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
     else:
-        controller_name = format_actor_name(SERVE_CONTROLLER_NAME,
-                                            get_random_letters())
+        controller_name = format_actor_name(get_random_letters(),
+                                            SERVE_CONTROLLER_NAME)
 
     if isinstance(http_options, dict):
         http_options = HTTPOptions.parse_obj(http_options)
     if http_options is None:
-        http_options = HTTPOptions(
-            host=http_host, port=http_port, middlewares=http_middlewares)
+        http_options = HTTPOptions()
 
     controller = ServeController.options(
         num_cpus=(1 if dedicated_cpu else 0),
@@ -987,19 +965,17 @@ def get_handle(
 
 @PublicAPI
 def get_replica_context() -> ReplicaContext:
-    """When called from a backend, returns the backend tag and replica tag.
-
-    When not called from a backend, returns None.
+    """If called from a deployment, returns the deployment and replica tag.
 
     A replica tag uniquely identifies a single replica for a Ray Serve
-    backend at runtime.  Replica tags are of the form
-    `<backend tag>#<random letters>`.
+    deployment at runtime.  Replica tags are of the form
+    `<deployment_name>#<random letters>`.
 
     Raises:
-        RayServeException: if not called from within a Ray Serve backend
+        RayServeException: if not called from within a Ray Serve deployment.
     Example:
-        >>> serve.get_replica_context().backend_tag # my_backend
-        >>> serve.get_replica_context().replica_tag # my_backend#krcwoa
+        >>> serve.get_replica_context().deployment # deployment_name
+        >>> serve.get_replica_context().replica_tag # deployment_name#krcwoa
     """
     if _INTERNAL_REPLICA_CONTEXT is None:
         raise RayServeException("`serve.get_replica_context()` "
@@ -1190,7 +1166,7 @@ class Deployment:
 
     @property
     def route_prefix(self) -> Optional[str]:
-        """HTTP route prefix that this deploymet is exposed under."""
+        """HTTP route prefix that this deployment is exposed under."""
         return self._route_prefix
 
     @property
@@ -1200,8 +1176,14 @@ class Deployment:
 
     @property
     def init_args(self) -> Tuple[Any]:
-        """Arguments passed to the underlying class' constructor."""
+        """Arguments passed to the underlying class's constructor."""
         return self._init_args
+
+    @property
+    def url(self):
+        """Full HTTP url for this deployment."""
+        return _get_global_client().root_url + (self._route_prefix
+                                                or f"/{self._name}")
 
     def __call__(self):
         raise RuntimeError("Deployments cannot be constructed directly. "
@@ -1227,6 +1209,7 @@ class Deployment:
             version=self._version,
             prev_version=self._prev_version,
             route_prefix=self._route_prefix,
+            url=self.url,
             _blocking=_blocking,
             _internal=True)
 

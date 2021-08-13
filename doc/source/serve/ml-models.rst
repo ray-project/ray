@@ -51,7 +51,7 @@ stacking or ensembles.
 To define a higher-level composed model you need to do three things:
 
 1. Define your underlying models (the ones that you will compose together) as
-   Ray Serve backends
+   Ray Serve deployments.
 2. Define your composed model, using the handles of the underlying models
    (see the example below).
 3. Define an endpoint representing this composed model and query it!
