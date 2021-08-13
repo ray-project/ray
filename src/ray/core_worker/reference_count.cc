@@ -33,7 +33,7 @@ namespace core {
 
 bool ReferenceCounter::OwnObjectsInBorrowerScope() const {
   absl::MutexLock lock(&mutex_);
-  return OwnObjectsInBorrowerScope();
+  return OwnObjectsInBorrowerScopeInternal();
 }
 
 bool ReferenceCounter::OwnObjectsInBorrowerScopeInternal() const {
