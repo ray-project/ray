@@ -678,7 +678,7 @@ def test_detached_actor(ray_start_regular):
     with pytest.raises(ValueError):
         DetachedActor._remote(lifetime="detached", name="hi", namespace="")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         DetachedActor._remote(lifetime="detached", name="hi", namespace=2)
 
     d = DetachedActor._remote(lifetime="detached", name="d_actor")
