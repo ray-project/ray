@@ -322,21 +322,21 @@ def test_load_checkpoint(ray_start_2_cpus):
 
 
 @pytest.mark.parametrize(
-    "log_dir", [None, "~/tmp/test/trainer/test_persisted_checkpoint"])
-def test_persisted_checkpoint(ray_start_2_cpus, log_dir):
+    "logdir", [None, "~/tmp/test/trainer/test_persisted_checkpoint"])
+def test_persisted_checkpoint(ray_start_2_cpus, logdir):
     config = TestConfig()
 
     def train():
         for i in range(2):
             sgd.save_checkpoint(epoch=i)
 
-    trainer = Trainer(config, num_workers=2, log_dir=log_dir)
+    trainer = Trainer(config, num_workers=2, logdir=logdir)
     trainer.start()
     trainer.run(train)
 
     assert trainer.latest_checkpoint_path is not None
-    if log_dir is not None:
-        assert trainer.log_dir == os.path.abspath(log_dir)
+    if logdir is not None:
+        assert trainer.logdir == os.path.abspath(logdir)
     assert os.path.isdir(trainer.checkpoint_dir)
     assert os.path.isfile(trainer.latest_checkpoint_path)
     assert os.path.basename(

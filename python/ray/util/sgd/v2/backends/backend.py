@@ -43,7 +43,7 @@ class BackendExecutor:
         num_workers (int): Number of workers to use for training.
         num_cpus_per_worker (float): Number of CPUs to use per worker.
         num_gpus_per_worker (float): Number of GPUs to use per worker.
-        log_dir (Optional[str]): Path to the file directory where logs
+        logdir (Optional[str]): Path to the file directory where logs
         should be persisted. If this is not specified, one will be generated.
     """
 
@@ -52,13 +52,13 @@ class BackendExecutor:
                  num_workers: int = 1,
                  num_cpus_per_worker: float = 1,
                  num_gpus_per_worker: float = 0,
-                 log_dir: Optional[str] = None):
+                 logdir: Optional[str] = None):
         self._backend_config = backend_config
         self._backend = self._backend_config.backend_cls()
         self._num_workers = num_workers
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
-        self._log_dir = log_dir
+        self._logdir = logdir
 
         self.worker_group = InactiveWorkerGroup()
         self.latest_checkpoint = None
@@ -66,8 +66,8 @@ class BackendExecutor:
         # Initialize timestamp for identifying this SGD training execution.
         self.timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
         # Create directory for logs.
-        os.makedirs(self.log_dir, exist_ok=True)
-        logger.info(f"Results will be logged in: {self.log_dir}")
+        os.makedirs(self.logdir, exist_ok=True)
+        logger.info(f"Results will be logged in: {self.logdir}")
 
         # Unique checkpoint ID.
         self.latest_checkpoint_id = 0
@@ -359,10 +359,10 @@ class BackendExecutor:
         self.worker_group = InactiveWorkerGroup()
 
     @property
-    def log_dir(self) -> str:
+    def logdir(self) -> str:
         """Path to the log directory."""
-        if self._log_dir is not None:
-            return os.path.abspath(self._log_dir)
+        if self._logdir is not None:
+            return os.path.abspath(self._logdir)
         else:
             directory_name = f"sgd_{self.timestr}"
             return os.path.join(DEFAULT_RESULTS_DIR, directory_name)
@@ -370,7 +370,7 @@ class BackendExecutor:
     @property
     def checkpoint_dir(self) -> str:
         """Path to the checkpoint directory."""
-        return os.path.join(self.log_dir, "checkpoints")
+        return os.path.join(self.logdir, "checkpoints")
 
     @property
     def latest_checkpoint_path(self) -> Optional[str]:
