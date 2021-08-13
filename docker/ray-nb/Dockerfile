@@ -50,7 +50,7 @@ RUN arch=$(uname -m); \
 RUN pip install opencv-python-headless
 # We need some build tools since some of this is compiled from source.
 RUN apt-get update && apt-get install -y gcc g++ make cmake wget
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt --extra-index-url=https://www.piwheels.org/simple
 
 # Install ray
 RUN mkdir -p /tmp/ray-wheels

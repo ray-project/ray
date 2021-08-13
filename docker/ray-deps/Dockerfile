@@ -31,4 +31,4 @@ RUN arch=$(uname -m); \
 # Install the opencv as a seperate step for caching happiness
 RUN $HOME/anaconda3/bin/pip install opencv-python-headless
 COPY requirements.txt .
-RUN $HOME/anaconda3/bin/pip install -r requirements.txt
+RUN $HOME/anaconda3/bin/pip install -r requirements.txt --extra-index-url=https://www.piwheels.org/simple
