@@ -22,7 +22,7 @@
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 LocalModeTaskSubmitter::LocalModeTaskSubmitter(
     LocalModeRayRuntime &local_mode_ray_tuntime)
@@ -119,5 +119,5 @@ ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
   return Submit(invocation, {});
 }
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

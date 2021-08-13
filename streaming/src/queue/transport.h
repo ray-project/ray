@@ -7,6 +7,8 @@
 namespace ray {
 namespace streaming {
 
+using namespace ray::core;
+
 /// Transport is the transfer endpoint to a specific actor, buffers can be sent to peer
 /// through direct actor call.
 class Transport {

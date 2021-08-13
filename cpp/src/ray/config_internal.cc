@@ -47,7 +47,7 @@ DEFINE_string(ray_logs_dir, "", "Logs dir for workers.");
 DEFINE_string(ray_node_ip_address, "", "The ip address for this node.");
 
 namespace ray {
-namespace api {
+namespace internal {
 
 void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
   if (!config.address.empty()) {
@@ -59,6 +59,15 @@ void ConfigInternal::Init(RayConfig &config, int *argc, char ***argv) {
   }
   if (config.redis_password_) {
     redis_password = *config.redis_password_;
+  }
+  if (config.num_cpus >= 0) {
+    num_cpus = config.num_cpus;
+  }
+  if (config.num_gpus >= 0) {
+    num_gpus = config.num_gpus;
+  }
+  if (!config.resources.empty()) {
+    resources = config.resources;
   }
   if (argc != nullptr && argv != nullptr) {
     // Parse config from command line.
@@ -132,5 +141,5 @@ void ConfigInternal::SetRedisAddress(const std::string address) {
   redis_ip = address.substr(0, pos);
   redis_port = std::stoi(address.substr(pos + 1, address.length()));
 }
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

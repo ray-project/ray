@@ -134,9 +134,8 @@ def cql_loss(policy: Policy, model: ModelV2,
     # Q-values for the batched actions.
     action_dist_tp1 = policy.dist_class(
         model.get_policy_output(model_out_tp1), policy.model)
-    policy_tp1, log_pis_tp1 = action_dist_tp1.sample_logp()
+    policy_tp1, _ = action_dist_tp1.sample_logp()
 
-    log_pis_tp1 = tf.expand_dims(log_pis_tp1, -1)
     q_t = model.get_q_values(model_out_t, actions)
     q_t_selected = tf.squeeze(q_t, axis=-1)
     if twin_q:

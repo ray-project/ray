@@ -1,11 +1,13 @@
 from typing import TYPE_CHECKING, Dict, List
 
 from ray.tune.checkpoint_manager import Checkpoint
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
 
 
+@PublicAPI(stability="beta")
 class Callback:
     """Tune base callback that can be extended and passed to a ``TrialRunner``
 
