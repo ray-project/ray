@@ -23,15 +23,6 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-DEFINE_stats(test_hist, "TestStats", ("method", "method2"), (1.0, 2.0, 3.0, 4.0),
-             ray::stats::HISTOGRAM);
-DEFINE_stats(test_2, "TestStats", ("method", "method2"), (1.0), ray::stats::COUNT,
-             ray::stats::SUM);
-DEFINE_stats(test, "TestStats", ("method"), (1.0), ray::stats::COUNT, ray::stats::SUM);
-DEFINE_stats(test_declare, "TestStats2", ("tag1"), (1.0), ray::stats::COUNT,
-             ray::stats::SUM);
-DECLARE_stats(test_declare);
-
 namespace ray {
 
 const int MetricsAgentPort = 10054;
@@ -211,15 +202,6 @@ TEST_F(StatsTest, TestShutdownTakesLongTime) {
   ray::stats::StatsConfig::instance().SetHarvestInterval(harvest_interval);
   ray::stats::Init(global_tags, MetricsAgentPort, exporter);
   ray::stats::Shutdown();
-}
-
-TEST_F(StatsTest, STAT_DEF) {
-  ray::stats::Shutdown();
-  std::shared_ptr<stats::MetricExporterClient> exporter(
-      new stats::StdoutExporterClient());
-  ray::stats::Init({}, MetricsAgentPort, exporter);
-  STATS_test.Record(1.0);
-  STATS_test_declare.Record(1.0, "Test");
 }
 
 }  // namespace ray
