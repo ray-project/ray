@@ -633,18 +633,17 @@ def start(
 
     current_namespace = ray.get_runtime_context().namespace
 
-    try:
-        client = _get_global_client()
-        if detached:
+    if detached:
+        # Only try reusing the global client if starting Serve with
+        # detached=True
+        try:
+            client = _get_global_client()
             assert client._controller_name == SERVE_CONTROLLER_NAME
-        else:
-            assert (client._controller_name.startswith(f"{SERVE_CONTROLLER_NAME}:") 
-                and len(client._controller_name) == len(SERVE_CONTROLLER_NAME) + 7)
-        logger.info("Connecting to existing Serve instance in namespace "
-                    f"'{current_namespace}'.")
-        return client
-    except (RayServeException, AssertionError):
-        pass
+            logger.info("Connecting to existing Serve instance in namespace "
+                        f"'{current_namespace}'.")
+            return client
+        except (RayServeException, AssertionError):
+            pass
 
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
@@ -657,23 +656,28 @@ def start(
     if http_options is None:
         http_options = HTTPOptions()
 
-    controller = ServeController.options(
-        num_cpus=(1 if dedicated_cpu else 0),
-        name=controller_name,
-        lifetime="detached" if detached else None,
-        max_restarts=-1,
-        max_task_retries=-1,
-        # Pin Serve controller on the head node.
-        resources={
-            get_current_node_resource_key(): 0.01
-        },
-        # Always start controller in "serve" namespace
-        namespace="serve",
-    ).remote(
-        controller_name,
-        http_options,
-        detached=detached,
-    )
+    try:
+        # If an actor with the controller name already exists (in the case when
+        # re-running serve.start(detached=True)), reuse that actor.
+        controller = ray.get_actor(controller_name, namespace="serve")
+    except ValueError:
+        controller = ServeController.options(
+            num_cpus=(1 if dedicated_cpu else 0),
+            name=controller_name,
+            lifetime="detached" if detached else None,
+            max_restarts=-1,
+            max_task_retries=-1,
+            # Pin Serve controller on the head node.
+            resources={
+                get_current_node_resource_key(): 0.01
+            },
+            # Always start controller in "serve" namespace
+            namespace="serve",
+        ).remote(
+            controller_name,
+            http_options,
+            detached=detached,
+        )
 
     proxy_handles = ray.get(controller.get_http_proxies.remote())
     if len(proxy_handles) > 0:

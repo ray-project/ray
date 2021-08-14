@@ -121,8 +121,7 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         # These are the keys we are interested in:
         # SERVE_CONTROLLER_NAME(+ optional random letters):SERVE_SNAPSHOT_KEY
 
-        serve_keys = _internal_kv_list(SERVE_CONTROLLER_NAME,
-                                       gcs_client)
+        serve_keys = _internal_kv_list(SERVE_CONTROLLER_NAME, gcs_client)
         serve_snapshot_keys = filter(lambda k: SERVE_SNAPSHOT_KEY in str(k),
                                      serve_keys)
 
