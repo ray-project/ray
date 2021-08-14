@@ -335,6 +335,24 @@ class CoreWorkerProcess {
 
   /// To protect accessing the `workers_` map.
   mutable absl::Mutex worker_map_mutex_;
+
+  std::pair<std::string, int> gcs_server_address_ GUARDED_BY(gcs_server_address_mutex_) =
+      std::make_pair<std::string, int>("", 0);
+  /// To protect accessing the `gcs_server_address_`.
+  absl::Mutex gcs_server_address_mutex_;
+  std::unique_ptr<GcsServerAddressUpdater> gcs_server_address_updater_;
+
+  // Thread that runs a boost::asio service to process IO events.
+  std::thread io_thread_;
+
+  /// Event loop where the IO events are handled. e.g. async GCS operations.
+  instrumented_io_context io_service_;
+
+  // Client to the GCS shared by core worker interfaces.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+
+  // Current node id.
+  NodeID current_node_id_;
 };
 
 /// The root class that contains all the core and language-independent functionalities

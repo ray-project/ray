@@ -124,7 +124,8 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
       global_worker_id_(
           options.worker_type == WorkerType::DRIVER
               ? ComputeDriverIdFromJob(options_.job_id)
-              : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())) {
+              : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())),
+      current_node_id_(NodeID::Nil()) {
   if (options_.enable_logging) {
     std::stringstream app_name;
     app_name << LanguageString(options_.language) << "-core-"
@@ -154,6 +155,37 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // NOTE(kfstorm): any initialization depending on RayConfig must happen after this line.
   InitializeSystemConfig();
 
+  // Begin to get gcs server address from raylet.
+  gcs_server_address_updater_ = std::make_unique<GcsServerAddressUpdater>(
+      options_.raylet_ip_address, options_.node_manager_port,
+      [this](std::string ip, int port) {
+        absl::MutexLock lock(&gcs_server_address_mutex_);
+        gcs_server_address_.first = ip;
+        gcs_server_address_.second = port;
+      });
+
+  // Initialize gcs client.
+  // As the synchronous and the asynchronous context of redis client is not used in this
+  // gcs client. We would not open connection for it by setting `enable_sync_conn` and
+  // `enable_async_conn` as false.
+  gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(
+      options_.gcs_options.server_ip_, options_.gcs_options.server_port_,
+      options_.gcs_options.password_,
+      /*enable_sync_conn=*/false, /*enable_async_conn=*/false,
+      /*enable_subscribe_conn=*/true);
+  gcs_client_ = std::make_shared<gcs::ServiceBasedGcsClient>(
+      gcs_options, [this](std::pair<std::string, int> *address) {
+        absl::MutexLock lock(&gcs_server_address_mutex_);
+        if (gcs_server_address_.second != 0) {
+          address->first = gcs_server_address_.first;
+          address->second = gcs_server_address_.second;
+          return true;
+        }
+        return false;
+      });
+
+  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+
   if (options_.num_workers == 1) {
     // We need to create the worker instance here if:
     // 1. This is a driver process. In this case, the driver is ready to use right after
@@ -179,7 +211,34 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
   // for java worker or in constructor of CoreWorker for python worker.
-  stats::Init(global_tags, options_.metrics_agent_port);
+  stats::Init(
+      global_tags, options_.node_ip_address, options_.metrics_agent_port,
+      [this](const stats::GetAgentAddressCallback &callback) {
+        if (current_node_id_.IsNil()) {
+          callback(ray::Status::Invalid("No core worker created."), std::string());
+          return;
+        }
+        auto key =
+            std::string(kDashboardAgentAddressPrefix) + ":" + current_node_id_.Hex();
+        ray::Status status = gcs_client_->InternalKV().AsyncInternalKVGet(key, callback);
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Get metrics agent port failed, key=" << key;
+          callback(status, std::string());
+        }
+      });
+
+  io_thread_ = std::thread([&] {
+#ifndef _WIN32
+    // Block SIGINT and SIGTERM so they will be handled by the main thread.
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &mask, NULL);
+#endif
+    SetThreadName("worker_process.io");
+    io_service_.run();
+  });
 
 #ifndef _WIN32
   // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
@@ -200,6 +259,10 @@ CoreWorkerProcess::~CoreWorkerProcess() {
   stats::Shutdown();
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
+  }
+  io_service_.stop();
+  if (io_thread_.joinable()) {
+    io_thread_.join();
   }
 }
 
@@ -307,6 +370,9 @@ std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
 
   absl::MutexLock lock(&worker_map_mutex_);
   workers_.emplace(worker->GetWorkerID(), worker);
+  if (current_node_id_.IsNil()) {
+    current_node_id_ = worker->GetCurrentNodeId();
+  }
   RAY_CHECK(workers_.size() <= static_cast<size_t>(options_.num_workers));
   return worker;
 }

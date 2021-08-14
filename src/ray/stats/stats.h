@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <boost/optional/optional.hpp>
 #include <exception>
 #include <string>
 #include <unordered_map>
@@ -24,6 +25,7 @@
 #include "opencensus/tags/tag_key.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/io_service_pool.h"
+#include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_exporter.h"
@@ -40,9 +42,13 @@ namespace stats {
 #include "ray/stats/metric_defs.h"
 
 // TODO(sang) Put all states and logic into a singleton class Stats.
-static std::shared_ptr<IOServicePool> metrics_io_service_pool;
-static std::shared_ptr<MetricExporterClient> exporter;
-static absl::Mutex stats_mutex;
+extern std::shared_ptr<IOServicePool> metrics_io_service_pool;
+extern std::shared_ptr<MetricExporterClient> exporter;
+extern absl::Mutex stats_mutex;
+
+typedef std::function<void(Status status, const boost::optional<std::string> &result)>
+    GetAgentAddressCallback;
+typedef std::function<void(const GetAgentAddressCallback &callback)> GetAgentAddressFn;
 
 /// Initialize stats for a process.
 /// NOTE:
@@ -55,7 +61,8 @@ static absl::Mutex stats_mutex;
 /// \param global_tags[in] Tags that will be appended to all metrics in this process.
 /// \param metrics_agent_port[in] The port to export metrics at each node.
 /// \param exporter_to_use[in] The exporter client you will use for this process' metrics.
-static inline void Init(const TagsType &global_tags, const int metrics_agent_port,
+static inline void Init(const TagsType &global_tags, const std::string &metrics_agent_ip,
+                        const int metrics_agent_port, GetAgentAddressFn get_agent_address,
                         std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
                         int64_t metrics_report_batch_size =
                             RayConfig::instance().metrics_report_batch_size()) {
@@ -81,6 +88,9 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
   instrumented_io_context *metrics_io_service = metrics_io_service_pool->Get();
   RAY_CHECK(metrics_io_service != nullptr);
 
+  std::shared_ptr<rpc::ClientCallManager> client_call_manager =
+      std::make_shared<rpc::ClientCallManager>(*metrics_io_service);
+
   // Default exporter is a metrics agent exporter.
   if (exporter_to_use == nullptr) {
     std::shared_ptr<MetricExporterClient> stdout_exporter(new StdoutExporterClient());
@@ -97,8 +107,30 @@ static inline void Init(const TagsType &global_tags, const int metrics_agent_por
                                   static_cast<uint64_t>(500))));
 
   MetricPointExporter::Register(exporter, metrics_report_batch_size);
-  OpenCensusProtoExporter::Register(metrics_agent_port, (*metrics_io_service),
-                                    "127.0.0.1");
+  OpenCensusProtoExporter::Register([metrics_agent_ip, metrics_agent_port,
+                                     get_agent_address, client_call_manager](
+                                        GetMetricsAgentClientCallback callback) {
+    if (metrics_agent_port != 0) {
+      RAY_LOG(INFO) << "Create metrics agent client to " << metrics_agent_ip << ":"
+                    << metrics_agent_port;
+      callback(Status::OK(),
+               std::make_unique<rpc::MetricsAgentClient>(
+                   metrics_agent_ip, metrics_agent_port, *client_call_manager));
+    }
+
+    get_agent_address([metrics_agent_ip, client_call_manager, callback](Status status,
+                                                                        auto &value) {
+      if (status.ok()) {
+        RAY_LOG(INFO) << "Discover metrics agent addresss " << metrics_agent_ip << ":"
+                      << *value;
+        callback(status, std::make_unique<rpc::MetricsAgentClient>(
+                             metrics_agent_ip, std::stoi(*value), *client_call_manager));
+      } else {
+        RAY_LOG(ERROR) << "Discover metrics agent address failed: " << status;
+        callback(status, std::unique_ptr<rpc::MetricsAgentClient>());
+      }
+    });
+  });
   opencensus::stats::StatsExporter::SetInterval(
       StatsConfig::instance().GetReportInterval());
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(

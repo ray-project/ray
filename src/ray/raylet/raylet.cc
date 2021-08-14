@@ -20,6 +20,7 @@
 #include <iostream>
 
 #include "ray/common/status.h"
+#include "ray/stats/stats.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -59,7 +60,8 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
                int redis_port, const std::string &redis_password,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
-               std::shared_ptr<gcs::GcsClient> gcs_client, int metrics_export_port)
+               std::shared_ptr<gcs::GcsClient> gcs_client, int metrics_export_port,
+               int metrics_agent_port)
     : main_service_(main_service),
       self_node_id_(NodeID::FromRandom()),
       gcs_client_(gcs_client),
@@ -77,6 +79,22 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
   self_node_info_.set_node_manager_port(node_manager_.GetServerPort());
   self_node_info_.set_node_manager_hostname(boost::asio::ip::host_name());
   self_node_info_.set_metrics_export_port(metrics_export_port);
+
+  // Initialize stats.
+  const ray::stats::TagsType global_tags = {
+      {ray::stats::ComponentKey, "raylet"},
+      {ray::stats::VersionKey, "2.0.0.dev0"},
+      {ray::stats::NodeAddressKey, node_ip_address}};
+  ray::stats::Init(
+      global_tags, node_ip_address, metrics_agent_port,
+      [this, gcs_client](const ray::stats::GetAgentAddressCallback &callback) {
+        auto key = std::string(kDashboardAgentAddressPrefix) + ":" + self_node_id_.Hex();
+        ray::Status status = gcs_client->InternalKV().AsyncInternalKVGet(key, callback);
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Get metrics agent port failed, key=" << key;
+          callback(status, std::string());
+        }
+      });
 }
 
 Raylet::~Raylet() {}

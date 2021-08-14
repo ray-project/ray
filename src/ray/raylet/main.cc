@@ -240,18 +240,12 @@ int main(int argc, char *argv[]) {
                        << object_manager_config.rpc_service_threads_number
                        << ", object_chunk_size = "
                        << object_manager_config.object_chunk_size;
-        // Initialize stats.
-        const ray::stats::TagsType global_tags = {
-            {ray::stats::ComponentKey, "raylet"},
-            {ray::stats::VersionKey, "2.0.0.dev0"},
-            {ray::stats::NodeAddressKey, node_ip_address}};
-        ray::stats::Init(global_tags, metrics_agent_port);
 
         // Initialize the node manager.
         raylet.reset(new ray::raylet::Raylet(
             main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
             redis_password, node_manager_config, object_manager_config, gcs_client,
-            metrics_export_port));
+            metrics_export_port, metrics_agent_port));
 
         raylet->Start();
       }));

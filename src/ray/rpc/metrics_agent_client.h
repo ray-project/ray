@@ -37,8 +37,8 @@ class MetricsAgentClient {
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   MetricsAgentClient(const std::string &address, const int port,
                      ClientCallManager &client_call_manager) {
-    RAY_LOG(DEBUG) << "Initiate the metrics client of address:" << address
-                   << " port:" << port;
+    RAY_LOG(DEBUG) << "Initiate the metrics client of address: " << address
+                   << " port: " << port;
     grpc_client_ =
         std::make_unique<GrpcClient<ReporterService>>(address, port, client_call_manager);
   };

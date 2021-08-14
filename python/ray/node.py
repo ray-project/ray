@@ -218,8 +218,7 @@ class Node:
             self._raylet_socket_name = self._prepare_socket_file(
                 self._ray_params.raylet_socket_name, default_prefix="raylet")
 
-        self.metrics_agent_port = self._get_cached_port(
-            "metrics_agent_port", default_port=ray_params.metrics_agent_port)
+        self.metrics_agent_port = ray_params.metrics_agent_port or 0
         self._metrics_export_port = self._get_cached_port(
             "metrics_export_port", default_port=ray_params.metrics_export_port)
 

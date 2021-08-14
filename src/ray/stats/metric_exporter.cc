@@ -105,11 +105,14 @@ void MetricPointExporter::ExportViewData(
   metric_exporter_client_->ReportMetrics(points);
 }
 
-OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
-                                                 instrumented_io_context &io_service,
-                                                 const std::string address)
-    : client_call_manager_(io_service) {
-  client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));
+OpenCensusProtoExporter::OpenCensusProtoExporter(
+    GetMetricsAgentClientFn get_metrics_agent_client)
+    : get_metrics_agent_client_(get_metrics_agent_client) {
+  get_metrics_agent_client(
+      [this](const Status &status, std::unique_ptr<rpc::MetricsAgentClient> client) {
+        RAY_UNUSED(status);
+        client_ = std::move(client);
+      });
 };
 
 void OpenCensusProtoExporter::ExportViewData(
@@ -199,16 +202,27 @@ void OpenCensusProtoExporter::ExportViewData(
     }
   }
 
-  client_->ReportOCMetrics(
-      request_proto, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
-        RAY_UNUSED(reply);
-        if (!status.ok()) {
-          RAY_LOG(WARNING)
-              << "Export metrics to agent failed: " << status
-              << ". This won't affect Ray, but you can lose metrics from the cluster.";
-        }
-      });
+  if (client_ == nullptr) {
+    get_metrics_agent_client_([this, request_proto](
+                                  const Status &status,
+                                  std::unique_ptr<rpc::MetricsAgentClient> client) {
+      RAY_UNUSED(status);
+      if (client) {
+        client_ = std::move(client);
+        client_->ReportOCMetrics(request_proto, [this](const Status &status,
+                                                       const rpc::ReportOCMetricsReply
+                                                           &reply) {
+          RAY_UNUSED(reply);
+          if (!status.ok()) {
+            RAY_LOG(WARNING)
+                << "Export metrics to agent failed: " << status
+                << ". This won't affect Ray, but you can lose metrics from the cluster.";
+            client_ = nullptr;
+          }
+        });
+      }
+    });
+  }
 }
-
 }  // namespace stats
 }  // namespace ray
