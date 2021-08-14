@@ -15,6 +15,16 @@ py_test(
     "--max_train_steps=2", "--start_local", "--num_workers=2"]
 )
 
+py_test(
+    name = "tune_linear",
+    size = "medium",
+    main = "examples/tune_linear.py",
+    srcs = ["examples/tune_linear.py"],
+    tags = ["exclusive"],
+    deps = [":sgd_v2_lib"],
+    args = ["--smoke-test"]
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/util/sgd/v2/tests directory.
 # Please keep these sorted alphabetically.
