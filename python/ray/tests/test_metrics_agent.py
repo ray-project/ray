@@ -59,9 +59,6 @@ _METRICS = [
     "ray_operation_run_time_ms",
     "ray_operation_queue_time_ms",
     "ray_operation_active_count",
-    "ray_async_pool_req_execution_time_ms",
-    "ray_async_pool_req_queue_time_ms",
-    "ray_async_pool_req_activate_num",
 ]
 
 # This list of metrics should be kept in sync with
