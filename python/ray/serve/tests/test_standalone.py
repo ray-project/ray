@@ -2,9 +2,10 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
-from typing import Optional
+import os
 import sys
 import socket
+from typing import Optional
 
 import pytest
 import requests
@@ -12,7 +13,7 @@ import requests
 import ray
 from ray import serve
 from ray.cluster_utils import Cluster
-from ray.serve.constants import SERVE_PROXY_NAME
+from ray.serve.constants import SERVE_ROOT_URL_ENV_KEY, SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)
@@ -39,7 +40,7 @@ def ray_cluster():
 
 def test_shutdown(ray_shutdown):
     ray.init(num_cpus=16)
-    serve.start(http_port=8003)
+    serve.start(http_options=dict(port=8003))
 
     @serve.deployment
     def f():
@@ -263,6 +264,30 @@ def test_middleware(ray_shutdown):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+def test_http_root_url(ray_shutdown):
+    @serve.deployment
+    def f(_):
+        pass
+
+    root_url = "https://my.domain.dev/prefix"
+
+    port = new_port()
+    os.environ[SERVE_ROOT_URL_ENV_KEY] = root_url
+    serve.start(http_options=dict(port=port))
+    f.deploy()
+    assert f.url == root_url + "/f"
+    serve.shutdown()
+    del os.environ[SERVE_ROOT_URL_ENV_KEY]
+
+    port = new_port()
+    serve.start(http_options=dict(port=port))
+    f.deploy()
+    assert f.url != root_url + "/f"
+    assert f.url == f"http://127.0.0.1:{port}/f"
+    serve.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_proxy_fail_loudly(ray_shutdown):
     # Test that if the http server fail to start, serve.start should fail.
     with pytest.raises(ValueError):
@@ -273,9 +298,6 @@ def test_http_proxy_fail_loudly(ray_shutdown):
 def test_no_http(ray_shutdown):
     # The following should have the same effect.
     options = [
-        {
-            "http_host": None
-        },
         {
             "http_options": {
                 "host": None

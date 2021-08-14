@@ -44,11 +44,11 @@ class RayConfig {
 
   // Number of CPUs the user wishes to assign to each raylet. By default, this is set
   // based on virtual cores.
-  int num_cpus = 0;
+  int num_cpus = -1;
 
   // Number of GPUs the user wishes to assign to each raylet. By default, this is set
   // based on detected GPUs.
-  int num_gpus = 0;
+  int num_gpus = -1;
 
   // A mapping the names of custom resources to the quantities for them available.
   std::unordered_map<std::string, int> resources;

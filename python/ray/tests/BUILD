@@ -224,7 +224,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["flaky-mac"],
+  tags = ["flaky-mac", "exclusive"],
   deps = ["//:ray_lib"],
 )
 
