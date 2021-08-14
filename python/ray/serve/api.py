@@ -591,12 +591,7 @@ def start(
     Args:
         detached (bool): Whether not the instance should be detached from this
           script. If set, the instance will live on the Ray cluster until it is
-          explicitly stopped with serve.shutdown(). This should *not* be set in
-          an anonymous Ray namespace because you will not be able to reconnect
-          to the instance after the script exits.
-        http_host (Optional[str]): Deprecated, use http_options instead.
-        http_port (int): Deprecated, use http_options instead.
-        http_middlewares (list): Deprecated, use http_options instead.
+          explicitly stopped with serve.shutdown().
         http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
