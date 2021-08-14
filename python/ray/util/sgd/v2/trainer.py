@@ -119,7 +119,8 @@ class Trainer:
     def run(self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
-            callbacks: Optional[List[SGDCallback]] = None) -> List[T]:
+            callbacks: Optional[List[SGDCallback]] = None,
+            checkpoint: Optional[Dict] = None) -> List[T]:
         """Runs a training function in a distributed manner.
 
         Args:
@@ -130,6 +131,9 @@ class Trainer:
             callbacks (Optional[List[SGDCallback]]): A list of Callbacks which
                 will be executed during training. If this is not set,
                 currently there are NO default Callbacks.
+            checkpoint (Optional[Dict]): The checkpoint data that should be
+                loaded onto each worker and accessed by the training function
+                via ``sgd.load_checkpoint()``.
 
         Returns:
             A list of results from the training function. Each value in the
@@ -144,7 +148,7 @@ class Trainer:
         try:
             for callback in callbacks:
                 callback.start_training()
-            self._executor.start_training(train_func)
+            self._executor.start_training(train_func, checkpoint)
 
             while True:
                 intermediate_results = self._executor.fetch_next_result()
@@ -228,6 +232,10 @@ class Trainer:
             The output of ``func`` from a single worker.
         """
         raise NotImplementedError
+
+    def get_latest_checkpoint(self) -> Optional[Dict]:
+        """Gets the latest checkpoint for this Trainer."""
+        return self._executor.get_latest_checkpoint()
 
     def shutdown(self):
         """Shuts down the training execution service."""

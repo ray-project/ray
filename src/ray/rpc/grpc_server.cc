@@ -19,16 +19,7 @@
 #include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"
-#include "ray/rpc/grpc_server.h"
-#include "ray/stats/metric.h"
 #include "ray/util/util.h"
-
-DEFINE_stats(grpc_server_req_latency_ms, "Request latency in grpc server", ("Method"), (),
-             ray::stats::GAUGE);
-DEFINE_stats(grpc_server_req_new, "New request number in grpc server", ("Method"), (),
-             ray::stats::COUNT);
-DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
-             ("Method"), (), ray::stats::COUNT);
 
 namespace ray {
 namespace rpc {
@@ -50,6 +41,12 @@ void GrpcServer::Run() {
                              RayConfig::instance().max_grpc_message_size());
   builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
                              RayConfig::instance().max_grpc_message_size());
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS,
+                             RayConfig::instance().grpc_keepalive_time_ms());
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
+                             RayConfig::instance().grpc_keepalive_timeout_ms());
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
+
   // TODO(hchen): Add options for authentication.
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.
