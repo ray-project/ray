@@ -5,7 +5,6 @@ import unittest
 import pytest
 import ray
 from ray import tune
-from ray.job_config import JobConfig
 from ray.rllib.agents import ppo
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -70,10 +69,8 @@ class TestRayClient(unittest.TestCase):
             check_learning_achieved(results, 150.0)
 
     def test_custom_experiment(self):
-        def ray_connect_handler(job_config: JobConfig = None):
-            ray.init(num_cpus=3)
 
-        with ray_start_client_server(ray_connect_handler=ray_connect_handler):
+        with ray_start_client_server(ray_init_kwargs={"num_cpus": 3}):
             assert ray.util.client.ray.is_connected()
 
             config = ppo.DEFAULT_CONFIG.copy()

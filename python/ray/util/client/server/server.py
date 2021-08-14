@@ -588,10 +588,11 @@ def decode_options(
 
 
 def serve(connection_str, ray_connect_handler=None):
-    def default_connect_handler(job_config: JobConfig = None):
+    def default_connect_handler(job_config: JobConfig = None,
+                                **ray_init_kwargs: Dict[str, Any]):
         with disable_client_hook():
             if not ray.is_initialized():
-                return ray.init(job_config=job_config)
+                return ray.init(job_config=job_config, **ray_init_kwargs)
 
     ray_connect_handler = ray_connect_handler or default_connect_handler
     server = grpc.server(
@@ -622,7 +623,7 @@ def init_and_serve(connection_str, *args, **kwargs):
         # Disable client mode inside the worker's environment
         info = ray.init(*args, **kwargs)
 
-    def ray_connect_handler(job_config=None):
+    def ray_connect_handler(job_config=None, **ray_init_kwargs):
         # Ray client will disconnect from ray when
         # num_clients == 0.
         if ray.is_initialized():
