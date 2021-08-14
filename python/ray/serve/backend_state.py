@@ -13,7 +13,7 @@ from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
                               ReplicaTag)
-from ray.serve.config import BackendConfig
+from ray.serve.generated.serve_pb2 import BackendConfig as BackendConfigProto
 from ray.serve.constants import RESERVED_VERSION_TAG
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
@@ -619,9 +619,9 @@ class BackendState:
     def get_backend_configs(
             self,
             filter_tag: Optional[BackendTag] = None,
-    ) -> Dict[BackendTag, BackendConfig]:
+    ) -> Dict[BackendTag, bytes]:
         return {
-            tag: info.backend_config
+            tag: info.backend_config_proto_bytes
             for tag, info in self._backend_metadata.items()
             if filter_tag is None or tag == filter_tag
         }

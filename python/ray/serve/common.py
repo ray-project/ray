@@ -1,13 +1,14 @@
-import ray
-
+import copy
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from uuid import UUID
 
 import numpy as np
 
+import ray
 from ray.actor import ActorClass
-from ray.serve.config import BackendConfig, ReplicaConfig
+from ray.serve.config import ReplicaConfig
+from ray.serve.generated.serve_pb2 import BackendConfig as BackendConfigProto
 
 BackendTag = str
 EndpointTag = str
@@ -27,16 +28,24 @@ class EndpointInfo:
 
 class BackendInfo:
     def __init__(self,
-                 backend_config: BackendConfig,
+                 backend_config_proto_bytes: bytes,
                  replica_config: ReplicaConfig,
                  actor_def: Optional[ActorClass] = None,
                  version: Optional[str] = None,
                  deployer_job_id: "Optional[ray._raylet.JobID]" = None):
-        self.backend_config = backend_config
+        self.backend_config_proto_bytes = backend_config_proto_bytes
         self.replica_config = replica_config
         self.actor_def = actor_def
         self.version = version
         self.deployer_job_id = deployer_job_id
+
+        self.backend_config = BackendConfigProto.FromString(
+            backend_config_proto_bytes)
+
+    def __reduce__(self):
+        constructor = copy.copy(self.__dict__)
+        del constructor["backend_config"]
+        return lambda kwargs: BackendInfo(**kwargs), (constructor, )
 
 
 class TrafficPolicy:

@@ -1,8 +1,9 @@
 import pytest
+from pydantic import ValidationError
 
+from ray.serve.generated.serve_pb2 import BackendConfig as BackendConfigProto
 from ray.serve.config import (BackendConfig, DeploymentMode, HTTPOptions,
                               ReplicaConfig)
-from pydantic import ValidationError
 
 
 def test_backend_config_validation():
@@ -101,6 +102,29 @@ def test_http_options():
     assert HTTPOptions(location=None).location == "NoServer"
     assert HTTPOptions(
         location=DeploymentMode.EveryNode).location == "EveryNode"
+
+
+def test_with_proto():
+    # Test roundtrip
+    config = BackendConfig(num_replicas=100, max_concurrent_queries=16)
+    assert config == BackendConfig.from_proto_bytes(config.to_proto_bytes())
+
+    # Test user_config object
+    config = BackendConfig(user_config={"python": ("native", ["objects"])})
+    assert config == BackendConfig.from_proto_bytes(config.to_proto_bytes())
+
+    # Test update
+    config = BackendConfig(num_replicas=100, user_config="abc")
+    update = BackendConfig(num_replicas=1, max_concurrent_queries=999)
+
+    config_proto = BackendConfigProto.FromString(config.to_proto_bytes())
+    update_proto = BackendConfigProto.FromString(
+        update.to_proto_bytes(update_only=True))
+    config_proto.MergeFrom(update_proto)
+
+    merged = config.copy(update=update.dict(exclude_unset=True))
+    assert merged == BackendConfig.from_proto_bytes(
+        config_proto.SerializeToString())
 
 
 if __name__ == "__main__":

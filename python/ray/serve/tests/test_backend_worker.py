@@ -27,7 +27,8 @@ def setup_worker(name,
             self.worker = object.__new__(
                 create_backend_replica(name, cloudpickle.dumps(backend_def)))
             await self.worker.__init__(name, name + ":tag", init_args,
-                                       backend_config, controller_name)
+                                       backend_config.to_proto(),
+                                       controller_name)
 
         def ready(self):
             pass

@@ -1,12 +1,16 @@
 import inspect
 from enum import Enum
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union
+import pickle
 
 import pydantic
 from pydantic import BaseModel, PositiveInt, validator, NonNegativeFloat
+from google.protobuf.json_format import MessageToDict
 
 from ray import cloudpickle as cloudpickle
 from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
+from ray.serve.generated.serve_pb2 import BackendConfig as BackendConfigProto
+from ray.serve.generated.serve_pb2 import BackendLanguage
 
 
 class BackendConfig(BaseModel):
@@ -52,6 +56,24 @@ class BackendConfig(BaseModel):
             if v <= 0:
                 raise ValueError("max_concurrent_queries must be >= 0")
         return v
+
+    def to_proto_bytes(self, update_only=False):
+        data = self.dict(exclude_unset=update_only)
+        if "user_config" in data:
+            data["user_config"] = pickle.dumps(data["user_config"])
+        return BackendConfigProto(
+            is_cross_language=False,
+            backend_language=BackendLanguage.PYTHON,
+            **data,
+        ).SerializeToString()
+
+    @classmethod
+    def from_proto_bytes(cls, proto_bytes: bytes):
+        proto = BackendConfigProto.FromString(proto_bytes)
+        data = MessageToDict(proto, preserving_proto_field_name=True)
+        if "user_config" in data:
+            data["user_config"] = pickle.loads(proto.user_config)
+        return cls(**data)
 
 
 class ReplicaConfig:

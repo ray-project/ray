@@ -10,6 +10,7 @@
 /python/build
 /python/dist
 /python/python-driver-*
+/python/ray/serve/generated
 /thirdparty/pkg/
 /build/java
 .jar

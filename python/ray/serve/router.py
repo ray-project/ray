@@ -7,7 +7,7 @@ import random
 
 from ray.actor import ActorHandle
 from ray.serve.common import BackendTag, EndpointTag, TrafficPolicy
-from ray.serve.config import BackendConfig
+from ray.serve.generated.serve_pb2 import BackendConfig as BackendConfigProto
 from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.utils import compute_iterable_delta, logger
@@ -102,8 +102,9 @@ class ReplicaSet:
             call_in_event_loop=event_loop,
         )
 
-    def set_max_concurrent_queries(self, backend_config: BackendConfig):
-        new_value: int = backend_config.max_concurrent_queries
+    def set_max_concurrent_queries(self,
+                                   backend_config_proto: BackendConfigProto):
+        new_value: int = backend_config_proto.max_concurrent_queries
         if new_value != self.max_concurrent_queries:
             self.max_concurrent_queries = new_value
             logger.debug(

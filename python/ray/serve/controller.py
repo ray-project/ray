@@ -18,7 +18,7 @@ from ray.serve.common import (
     ReplicaTag,
     TrafficPolicy,
 )
-from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
+from ray.serve.config import HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
     ALL_HTTP_METHODS,
     RESERVED_VERSION_TAG,
@@ -152,8 +152,9 @@ class ServeController:
         """Used for testing."""
         return self.backend_state.get_running_replica_handles()
 
-    def get_all_backends(self) -> Dict[BackendTag, BackendConfig]:
+    def get_all_backends(self) -> Dict[BackendTag, bytes]:
         """Returns a dictionary of backend tag to backend config."""
+        #TODO(simon): change backend state
         return self.backend_state.get_backend_configs()
 
     def get_all_endpoints(self) -> Dict[EndpointTag, Dict[BackendTag, Any]]:
@@ -232,7 +233,7 @@ class ServeController:
             self.endpoint_state.delete_endpoint(endpoint)
 
     async def create_backend(
-            self, backend_tag: BackendTag, backend_config: BackendConfig,
+            self, backend_tag: BackendTag, backend_config_proto_bytes: bytes,
             replica_config: ReplicaConfig) -> Optional[GoalId]:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
@@ -241,7 +242,7 @@ class ServeController:
                     create_backend_replica(
                         backend_tag, replica_config.serialized_backend_def)),
                 version=RESERVED_VERSION_TAG,
-                backend_config=backend_config,
+                backend_config_proto_bytes=backend_config_proto_bytes,
                 replica_config=replica_config)
             goal_id, _ = self.backend_state.deploy_backend(
                 backend_tag, backend_info)
@@ -261,8 +262,9 @@ class ServeController:
                                      "from all endpoints and try again.")
             return self.backend_state.delete_backend(backend_tag, force_kill)
 
-    async def update_backend_config(self, backend_tag: BackendTag,
-                                    config_options: BackendConfig) -> GoalId:
+    async def update_backend_config(
+            self, backend_tag: BackendTag,
+            config_options_proto_bytes: bytes) -> GoalId:
         """Set the config for the specified backend."""
         async with self.write_lock:
             existing_info = self.backend_state.get_backend(backend_tag)
@@ -272,18 +274,19 @@ class ServeController:
             backend_info = BackendInfo(
                 actor_def=existing_info.actor_def,
                 version=existing_info.version,
-                backend_config=existing_info.backend_config.copy(
-                    update=config_options.dict(exclude_unset=True)),
+                backend_config=existing_info.backend_config.MergeFromString(
+                    config_options_proto_bytes),
                 replica_config=existing_info.replica_config)
             goal_id, _ = self.backend_state.deploy_backend(
                 backend_tag, backend_info)
             return goal_id
 
-    def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
+    def get_backend_config_bytes(self, backend_tag: BackendTag) -> bytes:
         """Get the current config for the specified backend."""
         if self.backend_state.get_backend(backend_tag) is None:
             raise ValueError(f"Backend {backend_tag} is not registered.")
-        return self.backend_state.get_backend(backend_tag).backend_config
+        return self.backend_state.get_backend(
+            backend_tag).backend_config.SerializeToString()
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
@@ -300,7 +303,7 @@ class ServeController:
 
     async def deploy(self,
                      name: str,
-                     backend_config: BackendConfig,
+                     backend_config_proto_bytes: bytes,
                      replica_config: ReplicaConfig,
                      python_methods: List[str],
                      version: Optional[str],
@@ -330,7 +333,7 @@ class ServeController:
                     create_backend_replica(
                         name, replica_config.serialized_backend_def)),
                 version=version,
-                backend_config=backend_config,
+                backend_config_proto_bytes=backend_config_proto_bytes,
                 replica_config=replica_config,
                 deployer_job_id=deployer_job_id)
 

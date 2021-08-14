@@ -2011,6 +2011,13 @@ filegroup(
     ],
 )
 
+filegroup(
+    name = "serve_py_proto",
+    srcs = [
+        "//src/ray/protobuf:serve_py_proto",
+    ],
+)
+
 # This is a dummy test dependency that causes the python tests to be
 # re-run if any of these files changes.
 py_library(
@@ -2041,6 +2048,12 @@ copy_to_workspace(
 )
 
 copy_to_workspace(
+    name = "cp_serve_py_proto",
+    srcs = [":serve_py_proto"],
+    dstdir = "python/ray/serve/generated"
+)
+
+copy_to_workspace(
     name = "cp_redis",
     srcs = [
         ":redis-cli",
@@ -2065,6 +2078,7 @@ genrule(
     name = "install_py_proto",
     srcs = [
         ":cp_all_py_proto",
+        ":cp_serve_py_proto",
         "//streaming:copy_streaming_py_proto",
     ],
     outs = ["install_py_proto.out"],
@@ -2072,7 +2086,7 @@ genrule(
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
         # shellcheck disable=SC2006
-        files=(`ls python/ray/core/generated/*_pb2*.py`)
+        files=(`ls python/ray/core/generated/*_pb2*.py` `ls python/ray/serve/generated/*_pb2*.py`)
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
         sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
         sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
