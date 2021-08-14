@@ -13,7 +13,7 @@ from ray.experimental.workflow.workflow_context import get_step_status_info
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.workflow_access import (
-    MANAGEMENT_ACTOR_NAME, get_or_create_management_actor)
+    get_or_create_management_actor, get_management_actor)
 from ray.experimental.workflow.common import (
     Workflow, WorkflowStatus, WorkflowOutputType, WorkflowExecutionResult,
     StepType)
@@ -380,7 +380,7 @@ class _BakedWorkflowInputs:
 
 def _record_step_status(step_id: "StepID", status: "WorkflowStatus") -> None:
     workflow_id = workflow_context.get_current_workflow_id()
-    workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    workflow_manager = get_management_actor()
     ray.get(
         workflow_manager.update_step_status.remote(workflow_id, step_id,
                                                    status))

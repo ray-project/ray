@@ -95,20 +95,6 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
-/// Whether to never raise OOM. Instead, we fallback to allocating from the filesystem
-/// in /tmp, creating a new file per object. This degrades performance since filesystem
-/// backed objects are written to disk, but allows Ray to operate with degraded
-/// performance instead of crashing. Note that memory admission control is still in play,
-/// so Ray will still do its best to avoid running out of memory (i.e., via throttling and
-/// spilling).
-RAY_CONFIG(bool, plasma_unlimited, true)
-
-/// DEBUG-ONLY: Min number of pulls to keep active. Only supports values {0, 1}.
-RAY_CONFIG(int, pull_manager_min_active_pulls, 1)
-
-/// DEBUG-ONLY: Whether to exclude actively pulled objects from spilling and eviction.
-RAY_CONFIG(bool, pull_manager_pin_active_objects, true)
-
 /// Whether to use the hybrid scheduling policy, or one of the legacy spillback
 /// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
 /// then spread via weighted (by critical resource usage).
@@ -311,8 +297,8 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 /// Whether put small objects in the local memory store.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
 
-// Max number bytes of inlined objects in a task execution result.
-RAY_CONFIG(int64_t, task_output_inlined_bytes_limit, 10 * 1024 * 1024)
+// Max number bytes of inlined objects in a task rpc request/response.
+RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
 /// Maximum number of tasks that can be in flight between an owner and a worker for which
 /// the owner has been granted a lease. A value >1 is used when we want to enable
@@ -470,3 +456,9 @@ RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 
 /// ServerCall instance number of each RPC service handler
 RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
+
+/// grpc keepalive sent interval
+RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000);
+
+/// grpc keepalive timeout
+RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);

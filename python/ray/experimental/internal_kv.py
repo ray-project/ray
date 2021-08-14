@@ -27,7 +27,7 @@ def _internal_kv_get(key: Union[str, bytes], gcs_client=None) -> bytes:
     """Fetch the value of a binary key.
 
     Args:
-        gcs_client: The GCS client to use to fetch the key.  If not provided,
+        gcs_client: The GCS client to use to fetch the value.  If not provided,
             the global worker's GCS client is used.
     """
     if gcs_client:
@@ -80,9 +80,17 @@ def _internal_kv_del(key: Union[str, bytes]):
 
 
 @client_mode_hook
-def _internal_kv_list(prefix: Union[str, bytes]) -> List[bytes]:
-    """List all keys in the internal KV store that start with the prefix."""
-    if redis:
+def _internal_kv_list(prefix: Union[str, bytes],
+                      gcs_client=None) -> List[bytes]:
+    """List all keys in the internal KV store that start with the prefix.
+
+    Args:
+        gcs_client: The GCS client to use to fetch the keys.  If not provided,
+            the global worker's GCS client is used.
+    """
+    if gcs_client:
+        return gcs_client.kv_keys(prefix)
+    elif redis:
         if isinstance(prefix, bytes):
             pattern = prefix + b"*"
         else:

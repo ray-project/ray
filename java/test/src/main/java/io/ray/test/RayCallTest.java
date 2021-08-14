@@ -16,8 +16,14 @@ import org.testng.annotations.Test;
 /** Test Ray.call API */
 public class RayCallTest extends BaseTest {
 
-  private static final byte[] LARGE_RAW_DATA =
-      new byte[ArgumentsBuilder.LARGEST_SIZE_PASS_BY_VALUE + 100];
+  private static byte[] LARGE_RAW_DATA = null;
+
+  private static byte[] getLargeRawData() {
+    if (LARGE_RAW_DATA == null) {
+      LARGE_RAW_DATA = new byte[(int) ArgumentsBuilder.LARGEST_SIZE_PASS_BY_VALUE + 100];
+    }
+    return LARGE_RAW_DATA;
+  }
 
   private static int testInt(int val) {
     return val;
@@ -155,11 +161,11 @@ public class RayCallTest extends BaseTest {
   }
 
   private static Boolean testLargeRawData(byte[] data) {
-    return Arrays.equals(data, LARGE_RAW_DATA);
+    return Arrays.equals(data, getLargeRawData());
   }
 
   @Test
   public void testLargeRawDataArgument() {
-    Assert.assertTrue(Ray.task(RayCallTest::testLargeRawData, LARGE_RAW_DATA).remote().get());
+    Assert.assertTrue(Ray.task(RayCallTest::testLargeRawData, getLargeRawData()).remote().get());
   }
 }
