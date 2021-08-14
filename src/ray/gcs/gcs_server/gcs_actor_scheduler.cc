@@ -436,10 +436,13 @@ std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNodeRandomly(
     return nullptr;
   }
 
-  static std::mt19937_64 gen_(
-      std::chrono::high_resolution_clock::now().time_since_epoch().count());
-  std::uniform_int_distribution<int> distribution(0, alive_nodes.size() - 1);
-  int key_index = distribution(gen_);
+  // static std::mt19937_64 gen_(
+  //     std::chrono::high_resolution_clock::now().time_since_epoch().count());
+  // std::uniform_int_distribution<int> distribution(0, alive_nodes.size() - 1);
+  static int64_t __key_index = 0;
+  // int key_index = distribution(gen_);
+  __key_index += 1;
+  int64_t key_index = (__key_index++) % alive_nodes.size();
   int index = 0;
   auto iter = alive_nodes.begin();
   for (; index != key_index && iter != alive_nodes.end(); ++index, ++iter)
