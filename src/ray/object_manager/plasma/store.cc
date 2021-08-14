@@ -238,10 +238,6 @@ const LocalObject *PlasmaStore::CreateObjectInternal(const ray::ObjectInfo &obje
     }
   }
 
-  if (!RayConfig::instance().plasma_unlimited()) {
-    RAY_LOG(DEBUG) << "Fallback allocation is not enabled.";
-    return nullptr;
-  }
   if (!allow_fallback_allocation) {
     RAY_LOG(DEBUG) << "Fallback allocation not enabled for this request.";
     return nullptr;
@@ -893,6 +889,10 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
   // recursive mutex is used here to allow
   std::lock_guard<std::recursive_mutex> guard(mutex_);
   auto entry = object_store_.GetObject(object_id);
+  if (!entry) {
+    // Object already evicted or deleted.
+    return false;
+  }
   return entry->ref_count == 1;
 }
 
