@@ -125,7 +125,7 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
       auto memory_buffer = std::make_shared<ray::LocalMemoryBuffer>(
           reinterpret_cast<uint8_t *>(buffer.data()), buffer.size(), true);
       ray_arg = absl::make_unique<ray::TaskArgByValue>(std::make_shared<ray::RayObject>(
-          memory_buffer, nullptr, std::vector<ObjectID>()));
+          memory_buffer, nullptr, std::vector<rpc::ObjectReference>()));
     } else {
       RAY_CHECK(arg.id);
       ray_arg = absl::make_unique<ray::TaskArgByReference>(ObjectID::FromBinary(*arg.id),

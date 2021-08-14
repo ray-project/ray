@@ -95,7 +95,9 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
                                                  const ObjectID &outer_id,
                                                  const rpc::Address &owner_address) {
   auto it = object_id_refs_.find(object_id);
-  RAY_CHECK(it != object_id_refs_.end());
+  if (it == object_id_refs_.end()) {
+    it = object_id_refs_.emplace(object_id, Reference()).first;
+  }
 
   RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
   // Skip adding this object as a borrower if we already have ownership info.
@@ -848,7 +850,9 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
                      << owner_address.port << " to id " << inner_id
                      << ", borrower owns outer ID " << object_id;
       auto inner_it = object_id_refs_.find(inner_id);
-      RAY_CHECK(inner_it != object_id_refs_.end());
+      if (inner_it == object_id_refs_.end()) {
+        inner_it = object_id_refs_.emplace(inner_id, Reference()).first;
+      }
       // Add the task's caller as a borrower.
       if (inner_it->second.owned_by_us) {
         auto inserted = inner_it->second.borrowers.insert(owner_address).second;

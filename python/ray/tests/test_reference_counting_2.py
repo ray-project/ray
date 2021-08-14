@@ -533,13 +533,14 @@ def test_object_unpin_stress(ray_start_cluster):
     wait_for_condition(lambda: ((f"Plasma memory usage {total_size}"
                                  " MiB") in memory_summary(stats_only=True)))
 
+
 @pytest.mark.parametrize("inline_args", [True, False])
 def test_inlined_nested_refs(ray_start_cluster, inline_args):
     cluster = ray_start_cluster
     config = {}
-    if inline_args:
+    if not inline_args:
         config["max_direct_call_object_size"] = 0
-    head_node = cluster.add_node(
+    cluster.add_node(
         num_cpus=2,
         object_store_memory=100 * 1024 * 1024,
         _system_config=config)
@@ -551,7 +552,7 @@ def test_inlined_nested_refs(ray_start_cluster, inline_args):
             return
 
         def nested(self):
-            return ray.put('x')
+            return ray.put("x")
 
     @ray.remote
     def nested_nested(a):
@@ -566,6 +567,7 @@ def test_inlined_nested_refs(ray_start_cluster, inline_args):
     nested_nested_ref = nested_nested.remote(a)
     # We get nested_ref's value directly from its owner.
     nested_ref = ray.get(nested_nested_ref)
+
     del nested_nested_ref
     x = foo.remote(nested_ref)
     del nested_ref

@@ -34,7 +34,8 @@ void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
       reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
   auto status = core_worker.Put(
-      ::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()), {}, object_id);
+      ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()), {},
+      object_id);
   if (!status.ok()) {
     throw RayException("Put object error");
   }
@@ -47,7 +48,8 @@ void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
       reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
   auto status = core_worker.Put(
-      ::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()), {}, object_id);
+      ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()), {},
+      object_id);
   if (!status.ok()) {
     throw RayException("Put object error");
   }

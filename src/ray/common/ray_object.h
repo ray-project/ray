@@ -40,10 +40,10 @@ class RayObject {
   /// \param[in] nested_ids ObjectIDs that were serialized in data.
   /// \param[in] copy_data Whether this class should hold a copy of data.
   RayObject(const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata,
-            const std::vector<ObjectID> &nested_ids, bool copy_data = false)
+            const std::vector<rpc::ObjectReference> &nested_refs, bool copy_data = false)
       : data_(data),
         metadata_(metadata),
-        nested_ids_(nested_ids),
+        nested_refs_(nested_refs),
         has_data_copy_(copy_data),
         creation_time_nanos_(absl::GetCurrentTimeNanos()) {
     if (has_data_copy_) {
@@ -77,7 +77,7 @@ class RayObject {
   const std::shared_ptr<Buffer> &GetMetadata() const { return metadata_; }
 
   /// Return the object IDs that were serialized in data.
-  const std::vector<ObjectID> &GetNestedIds() const { return nested_ids_; }
+  const std::vector<rpc::ObjectReference> &GetNestedRefs() const { return nested_refs_; }
 
   uint64_t GetSize() const {
     uint64_t size = 0;
@@ -111,7 +111,7 @@ class RayObject {
  private:
   std::shared_ptr<Buffer> data_;
   std::shared_ptr<Buffer> metadata_;
-  const std::vector<ObjectID> nested_ids_;
+  const std::vector<rpc::ObjectReference> nested_refs_;
   /// Whether this class holds a data copy.
   bool has_data_copy_;
   /// Whether this object was accessed.

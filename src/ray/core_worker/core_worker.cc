@@ -658,7 +658,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
              uint64_t object_size) {
         reference_counter_->ReportLocalityData(object_id, locations, object_size);
       };
-  future_resolver_.reset(new FutureResolver(memory_store_,
+  future_resolver_.reset(new FutureResolver(memory_store_, reference_counter_,
                                             std::move(report_locality_data_callback),
                                             core_worker_client_pool_, rpc_address_));
 
@@ -1030,6 +1030,18 @@ rpc::Address CoreWorker::GetOwnerAddress(const ObjectID &object_id) const {
   return owner_address;
 }
 
+std::vector<rpc::ObjectReference> CoreWorker::GetObjectRefs(
+    const std::vector<ObjectID> &object_ids) const {
+  std::vector<rpc::ObjectReference> refs;
+  for (const auto &object_id : object_ids) {
+    rpc::ObjectReference ref;
+    ref.set_object_id(object_id.Binary());
+    ref.mutable_owner_address()->CopyFrom(GetOwnerAddress(object_id));
+    refs.push_back(ref);
+  }
+  return refs;
+}
+
 void CoreWorker::GetOwnershipInfo(const ObjectID &object_id, rpc::Address *owner_address,
                                   std::string *serialized_object_status) {
   auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
@@ -1065,7 +1077,8 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
 
   if (object_status.has_object() && !reference_counter_->OwnedByUs(object_id)) {
     // We already have the inlined object status, process it immediately.
-    future_resolver_->ProcessResolvedObject(object_id, Status::OK(), object_status);
+    future_resolver_->ProcessResolvedObject(object_id, owner_address, Status::OK(),
+                                            object_status);
   } else {
     // We will ask the owner about the object until the object is
     // created or we can no longer reach the owner.
@@ -2177,7 +2190,7 @@ void CoreWorker::RunTaskExecutionLoop() { task_execution_service_.run(); }
 Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                         const size_t &data_size,
                                         const std::shared_ptr<Buffer> &metadata,
-                                        const std::vector<ObjectID> &contained_object_id,
+                                        const std::vector<ObjectID> &contained_object_ids,
                                         int64_t &task_output_inlined_bytes,
                                         std::shared_ptr<RayObject> *return_object) {
   rpc::Address owner_address(options_.is_local_mode
@@ -2190,8 +2203,8 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
     RAY_LOG(DEBUG) << "Creating return object " << object_id;
     // Mark this object as containing other object IDs. The ref counter will
     // keep the inner IDs in scope until the outer one is out of scope.
-    if (!contained_object_id.empty() && !options_.is_local_mode) {
-      reference_counter_->AddNestedObjectIds(object_id, contained_object_id,
+    if (!contained_object_ids.empty() && !options_.is_local_mode) {
+      reference_counter_->AddNestedObjectIds(object_id, contained_object_ids,
                                              owner_address);
     }
 
@@ -2212,8 +2225,15 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
   }
   // Leave the return object as a nullptr if the object already exists.
   if (!object_already_exists) {
-    *return_object =
-        std::make_shared<RayObject>(data_buffer, metadata, contained_object_id);
+    std::vector<rpc::ObjectReference> contained_refs;
+    for (const auto &oid : contained_object_ids) {
+      RAY_LOG(DEBUG) << "Return object " << object_id << " contains ObjectRef " << oid;
+      rpc::ObjectReference ref;
+      ref.set_object_id(oid.Binary());
+      ref.mutable_owner_address()->CopyFrom(GetOwnerAddress(oid));
+      contained_refs.push_back(ref);
+    }
+    *return_object = std::make_shared<RayObject>(data_buffer, metadata, contained_refs);
   }
 
   return Status::OK();
@@ -2438,13 +2458,14 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       // test_inline_arg_memory_corruption.
       bool copy_data = options_.language == Language::PYTHON;
       args->at(i) =
-          std::make_shared<RayObject>(data, metadata, task.ArgInlinedIds(i), copy_data);
+          std::make_shared<RayObject>(data, metadata, task.ArgInlinedRefs(i), copy_data);
       arg_reference_ids->at(i) = ObjectID::Nil();
       // The task borrows all ObjectIDs that were serialized in the inlined
       // arguments. The task will receive references to these IDs, so it is
       // possible for the task to continue borrowing these arguments by the
       // time it finishes.
-      for (const auto &inlined_id : task.ArgInlinedIds(i)) {
+      for (const auto &inlined_ref : task.ArgInlinedRefs(i)) {
+        const auto inlined_id = ObjectID::FromBinary(inlined_ref.object_id());
         RAY_LOG(DEBUG) << "Incrementing ref for borrowed ID " << inlined_id;
         // We do not need to add the ownership information here because it will
         // get added once the language frontend deserializes the value, before
@@ -2602,8 +2623,8 @@ void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
     const auto &metadata = obj->GetMetadata();
     object->set_metadata(metadata->Data(), metadata->Size());
   }
-  for (const auto &nested_id : obj->GetNestedIds()) {
-    object->add_nested_inlined_ids(nested_id.Binary());
+  for (const auto &nested_ref : obj->GetNestedRefs()) {
+    object->add_nested_inlined_refs()->CopyFrom(nested_ref);
   }
   reply->set_status(rpc::GetObjectStatusReply::CREATED);
   // Set locality data.

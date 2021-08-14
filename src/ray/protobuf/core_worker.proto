@@ -67,7 +67,7 @@ message ReturnObject {
   // Metadata of the object.
   bytes metadata = 4;
   // ObjectIDs that were nested in data. This is only set for inlined objects.
-  repeated bytes nested_inlined_ids = 5;
+  repeated ObjectReference nested_inlined_refs = 5;
   // Size of this object.
   int64 size = 6;
 }
@@ -151,7 +151,7 @@ message RayObject {
   // Metadata of the object.
   bytes metadata = 2;
   // ObjectIDs that were nested in data. This is only set for inlined objects.
-  repeated bytes nested_inlined_ids = 3;
+  repeated ObjectReference nested_inlined_refs = 3;
 }
 
 message GetObjectStatusReply {

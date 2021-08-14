@@ -42,8 +42,9 @@ void TaskManager::AddPendingTask(const rpc::Address &caller_address,
       task_deps.push_back(spec.ArgId(i));
       RAY_LOG(DEBUG) << "Adding arg ID " << spec.ArgId(i);
     } else {
-      const auto &inlined_ids = spec.ArgInlinedIds(i);
-      for (const auto &inlined_id : inlined_ids) {
+      const auto &inlined_refs = spec.ArgInlinedRefs(i);
+      for (const auto &inlined_ref : inlined_refs) {
+        const auto inlined_id = ObjectID::FromBinary(inlined_ref.object_id());
         task_deps.push_back(inlined_id);
         RAY_LOG(DEBUG) << "Adding inlined ID " << inlined_id;
       }
@@ -109,9 +110,9 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
     if (spec.ArgByRef(i)) {
       task_deps->push_back(spec.ArgId(i));
     } else {
-      const auto &inlined_ids = spec.ArgInlinedIds(i);
-      for (const auto &inlined_id : inlined_ids) {
-        task_deps->push_back(inlined_id);
+      const auto &inlined_refs = spec.ArgInlinedRefs(i);
+      for (const auto &inlined_ref : inlined_refs) {
+        task_deps->push_back(ObjectID::FromBinary(inlined_ref.object_id()));
       }
     }
   }
@@ -221,10 +222,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                 reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
             return_object.metadata().size());
       }
-      bool stored_in_direct_memory = in_memory_store_->Put(
-          RayObject(data_buffer, metadata_buffer,
-                    IdVectorFromProtobuf<ObjectID>(return_object.nested_inlined_ids())),
-          object_id);
+      bool stored_in_direct_memory =
+          in_memory_store_->Put(RayObject(data_buffer, metadata_buffer,
+                                          VectorFromProtobuf<rpc::ObjectReference>(
+                                              return_object.nested_inlined_refs())),
+                                object_id);
       if (stored_in_direct_memory) {
         direct_return_ids.push_back(object_id);
       }
@@ -383,9 +385,10 @@ void TaskManager::RemoveFinishedTaskReferences(
     if (spec.ArgByRef(i)) {
       plasma_dependencies.push_back(spec.ArgId(i));
     } else {
-      const auto &inlined_ids = spec.ArgInlinedIds(i);
-      plasma_dependencies.insert(plasma_dependencies.end(), inlined_ids.begin(),
-                                 inlined_ids.end());
+      const auto &inlined_refs = spec.ArgInlinedRefs(i);
+      for (const auto &inlined_ref : inlined_refs) {
+        plasma_dependencies.push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+      }
     }
   }
   if (spec.IsActorTask()) {
@@ -425,9 +428,10 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
       if (it->second.spec.ArgByRef(i)) {
         released_objects->push_back(it->second.spec.ArgId(i));
       } else {
-        const auto &inlined_ids = it->second.spec.ArgInlinedIds(i);
-        released_objects->insert(released_objects->end(), inlined_ids.begin(),
-                                 inlined_ids.end());
+        const auto &inlined_refs = it->second.spec.ArgInlinedRefs(i);
+        for (const auto &inlined_ref : inlined_refs) {
+          released_objects->push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+        }
       }
     }
 
