@@ -5,11 +5,6 @@ cd ray
 bash -c "certutil -generateSSTFromWU roots.sst && certutil -addstore -f root roots.sst && rm roots.sst"
 bash -c ". ./ci/travis/ci.sh init"
 bash -c ". ./ci/travis/ci.sh build"
-#copy necessary java includes
-#bash -c "pwd"
-#bash -c "mkdir bazel-ray/external/local_jdk"
-#bash -c "cp -r /c/openjdk-16/include bazel-ray/external/local_jdk/"
-#bash -c ". ./ci/travis/ci.sh build"
 bash -c ". ./ci/travis/ci.sh test_core"
 bash -c ". ./ci/travis/ci.sh test_python"
 

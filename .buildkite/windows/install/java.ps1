@@ -1,4 +1,5 @@
-$Env:JAVA_HOME="C:\openjdk-16"
+$Env:JAVA_HOME="/c/openjdk-16"
+setx /M JAVA_HOME $Env:JAVA_HOME
 $newPath = ('{0}\bin;{1}' -f $env:JAVA_HOME, $env:PATH);
 Write-Host ('Updating PATH: {0}' -f $newPath);
 setx /M PATH $newPath;
