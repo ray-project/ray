@@ -2443,19 +2443,37 @@ Usage:
  2/2 GPU
  2.00/8.000 GiB memory
  3.14/16.000 GiB object_store_memory
-
+"""
+    demand = """
 Demands:
- {'CPU': 1}: 150+ pending tasks/actors
- {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
-""".strip()
-
+ 150 pending tasks/actors:
+  150.0 CPU
+ 420 pending placement groups:
+  8400.0 CPU
+ 100 pending resource requirements:
+  1600.0 CPU
+"""
     actual = format_info_string(
         lm_summary,
         autoscaler_summary,
         time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3))
     print(actual)
-    assert expected == actual
+    assert (expected + demand).strip() == actual
+
+    verbose_demand = """
+Demands:
+ {'CPU': 1}: 150+ pending tasks/actors
+ {'CPU': 4} * 5 (PACK): 420+ pending placement groups
+ {'CPU': 16}: 100+ from request_resources()
+"""
+
+    verbose_actual = format_info_string(
+        lm_summary,
+        autoscaler_summary,
+        time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3),
+        verbose=True)
+    print(verbose_actual)
+    assert (expected + verbose_demand).strip() == verbose_actual
 
 
 def test_info_string_failed_node_cap():
@@ -2466,11 +2484,16 @@ def test_info_string_failed_node_cap():
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
             "memory": (2 * 2**30, 2**33),
-            "object_store_memory": (3.14 * 2**30, 2**34)
+            "object_store_memory": (3.14 * 2**30, 2**34),
+            "CPU_group_4a82a217aadd8326a3a49f02700ac5c2": (2.0, 2.0)
         },
         resource_demand=[({
             "CPU": 1
-        }, 150)],
+        }, 150), ({
+            "CPU_group_4a82a217aadd8326a3a49f02700ac5c2": 2.0
+        }, 3), ({
+            "GPU_group_0_4a82a2add8326a3a49f02700ac5c2": 0.5
+        }, 100)],
         pg_demand=[({
             "bundles": [({
                 "CPU": 4
@@ -2525,7 +2548,9 @@ Recent failures:
 
 Resources
 --------------------------------------------------------
+"""
 
+    usage_and_demand = """
 Usage:
  0/2 AcceleratorType:V100
  530/544 CPU
@@ -2534,17 +2559,45 @@ Usage:
  3.14/16.000 GiB object_store_memory
 
 Demands:
- {'CPU': 1}: 150+ pending tasks/actors
- {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
-""".strip()
+ 253 pending tasks/actors:
+  156.0 CPU
+  50.0 GPU
+ 420 pending placement groups:
+  8400.0 CPU
+ 100 pending resource requirements:
+  1600.0 CPU
+"""
 
     actual = format_info_string(
         lm_summary,
         autoscaler_summary,
         time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3))
     print(actual)
-    assert expected == actual
+    assert (expected + usage_and_demand).strip() == actual
+
+    verbose_usage_and_demand = """
+Usage:
+ 0/2 AcceleratorType:V100
+ 530/544 CPU
+ 2.0/2.0 CPU_group_4a82a217aadd8326a3a49f02700ac5c2
+ 2/2 GPU
+ 2.00/8.000 GiB memory
+ 3.14/16.000 GiB object_store_memory
+
+Demands:
+ {'CPU': 1}: 150+ pending tasks/actors
+ {'CPU_group_4a82a217aadd8326a3a49f02700ac5c2': 2.0}: 3+ pending tasks/actors
+ {'GPU_group_0_4a82a2add8326a3a49f02700ac5c2': 0.5}: 100+ pending tasks/actors
+ {'CPU': 4} * 5 (PACK): 420+ pending placement groups
+ {'CPU': 16}: 100+ from request_resources()
+"""
+    verbose_actual = format_info_string(
+        lm_summary,
+        autoscaler_summary,
+        time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3),
+        verbose=True)
+    print(verbose_actual)
+    assert (expected + verbose_usage_and_demand).strip() == verbose_actual
 
 
 def test_info_string_no_node_type():
@@ -2555,11 +2608,16 @@ def test_info_string_no_node_type():
             "GPU": (2, 2),
             "AcceleratorType:V100": (0, 2),
             "memory": (2 * 2**30, 2**33),
-            "object_store_memory": (3.14 * 2**30, 2**34)
+            "object_store_memory": (3.14 * 2**30, 2**34),
+            "CPU_group_4a82a217aadd8326a3a49f02700ac5c2": (2.0, 2.0)
         },
         resource_demand=[({
             "CPU": 1
-        }, 150)],
+        }, 150), ({
+            "CPU_group_4a82a217aadd8326a3a49f02700ac5c2": 2.0
+        }, 3), ({
+            "GPU_group_0_4a82a217aadd8326a3a02700ac5c2": 0.5
+        }, 100)],
         pg_demand=[({
             "bundles": [({
                 "CPU": 4
@@ -2580,7 +2638,9 @@ Node status
  1 node(s) with resources: {'CPU': 16}
 
 Resources
------------------------------------------------------
+-----------------------------------------------------"""
+
+    usage_and_demand = """
 Usage:
  0/2 AcceleratorType:V100
  530/544 CPU
@@ -2589,16 +2649,43 @@ Usage:
  3.14/16.000 GiB object_store_memory
 
 Demands:
- {'CPU': 1}: 150+ pending tasks/actors
- {'CPU': 4} * 5 (PACK): 420+ pending placement groups
- {'CPU': 16}: 100+ from request_resources()
-""".strip()
+ 253 pending tasks/actors:
+  156.0 CPU
+  50.0 GPU
+ 420 pending placement groups:
+  8400.0 CPU
+ 100 pending resource requirements:
+  1600.0 CPU
+"""
 
     actual = format_info_string_no_node_types(
         lm_summary,
         time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3))
     print(actual)
-    assert expected == actual
+    assert (expected + usage_and_demand).strip() == actual
+
+    verbose_usage_and_demand = """
+Usage:
+ 0/2 AcceleratorType:V100
+ 530/544 CPU
+ 2.0/2.0 CPU_group_4a82a217aadd8326a3a49f02700ac5c2
+ 2/2 GPU
+ 2.00/8.000 GiB memory
+ 3.14/16.000 GiB object_store_memory
+
+Demands:
+ {'CPU': 1}: 150+ pending tasks/actors
+ {'CPU_group_4a82a217aadd8326a3a49f02700ac5c2': 2.0}: 3+ pending tasks/actors
+ {'GPU_group_0_4a82a217aadd8326a3a02700ac5c2': 0.5}: 100+ pending tasks/actors
+ {'CPU': 4} * 5 (PACK): 420+ pending placement groups
+ {'CPU': 16}: 100+ from request_resources()
+"""
+    verbose_actual = format_info_string_no_node_types(
+        lm_summary,
+        time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3),
+        verbose=True)
+    print(verbose_actual)
+    assert (expected + verbose_usage_and_demand).strip() == verbose_actual
 
 
 if __name__ == "__main__":

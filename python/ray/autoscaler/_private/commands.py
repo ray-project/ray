@@ -100,7 +100,7 @@ def try_reload_log_state(provider_config: Dict[str, Any],
         return reload_log_state(log_state)
 
 
-def debug_status(status, error) -> str:
+def debug_status(status, error, verbose) -> str:
     """Return a debug string for the autoscaler."""
     if not status:
         status = "No cluster status."
@@ -113,9 +113,10 @@ def debug_status(status, error) -> str:
             autoscaler_summary = AutoscalerSummary(
                 **as_dict["autoscaler_report"])
             status = format_info_string(
-                lm_summary, autoscaler_summary, time=time)
+                lm_summary, autoscaler_summary, time=time, verbose=verbose)
         else:
-            status = format_info_string_no_node_types(lm_summary, time=time)
+            status = format_info_string_no_node_types(
+                lm_summary, time=time, verbose=verbose)
     if error:
         status += "\n"
         status += error.decode("utf-8")

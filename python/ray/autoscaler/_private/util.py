@@ -5,8 +5,9 @@ import logging
 import hashlib
 import json
 import os
+import re
 import threading
-from typing import Any, Dict, List
+from typing import Any, Dict, Optional, Tuple, List
 
 import ray
 import ray.ray_constants
@@ -26,6 +27,9 @@ RAY_SCHEMA_PATH = os.path.join(
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
 DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
+PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN = re.compile(
+    r"(.+)_group_(\d+)_([0-9a-zA-Z]+)")
+PLACEMENT_GROUP_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
 
 HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE = "Setting `max_workers` for node type"\
     " `{node_type}` to the global `max_workers` value of {max_workers}. To"\
@@ -447,11 +451,42 @@ def format_pg(pg):
     return f"{bundles_str} ({strategy})"
 
 
-def get_usage_report(lm_summary) -> str:
+def parse_placement_group_resource_str(
+        placement_group_resource_str: str) -> Tuple[str, Optional[str]]:
+    """Parse placement group resource in the form of following 3 cases:
+    {resource_name}_group_{bundle_id}_{group_name};
+    {resource_name}_group_{group_name};
+    {resource_name}
+
+    Returns:
+        Tuple of (resource_name, placement_group_name). placement_group_name
+        could be None
+    """
+    result = PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN.match(
+        placement_group_resource_str)
+    if result:
+        return (result.group(1), result.group(3))
+    result = PLACEMENT_GROUP_RESOURCE_PATTERN.match(
+        placement_group_resource_str)
+    if result:
+        return (result.group(1), result.group(2))
+    return (placement_group_resource_str, None)
+
+
+def get_usage_report(lm_summary, verbose=False) -> str:
     usage_lines = []
     for resource, (used, total) in sorted(lm_summary.usage.items()):
         if "node:" in resource:
             continue  # Skip the auto-added per-node "node:<ip>" resource.
+
+        # Skip placement group related resource, in the form of
+        # {resource_name}_group_{bundle_id}_{group_name} or
+        # {resource_name}_group_{group_name};
+        (_,
+         placement_group_name) = parse_placement_group_resource_str(resource)
+        if placement_group_name and not verbose:
+            continue
+
         line = f" {used}/{total} {resource}"
         if resource in ["memory", "object_store_memory"]:
             to_GiB = 1 / 2**30
@@ -463,7 +498,64 @@ def get_usage_report(lm_summary) -> str:
     return usage_report
 
 
-def get_demand_report(lm_summary):
+def format_resource_requirement(
+        resource_requirement: Dict[str, float]) -> List[str]:
+    demand_lines = []
+    for resource, required in sorted(resource_requirement.items()):
+        if resource in ["memory", "object_store_memory"]:
+            to_GiB = 1 / 2**30
+            required *= to_GiB
+            demand_lines.append(f"  {required:.3f} GiB {resource}")
+        else:
+            demand_lines.append(f"  {required:.1f} {resource}")
+    return demand_lines
+
+
+def format_resource_demand_summary(resource_demand: List[Any]) -> List[str]:
+    resource_requirement = collections.defaultdict(float)
+    sum_count = 0
+    for bundle, count in resource_demand:
+        sum_count += count
+        for pg_resource_str, resource_count in bundle.items():
+            (resource_name,
+             _) = parse_placement_group_resource_str(pg_resource_str)
+            resource_requirement[resource_name] += resource_count * count
+    demand_lines = [f" {sum_count} pending tasks/actors:"]
+    demand_lines.extend(format_resource_requirement(resource_requirement))
+    return demand_lines
+
+
+def format_pg_demand_summary(pg_demand: List[Any]) -> List[str]:
+    resource_requirement = collections.defaultdict(float)
+    sum_count = 0
+    for pg, count in pg_demand:
+        sum_count += count
+        for bundle, bundle_count in pg["bundles"]:
+            for resource_name, resource_count in bundle.items():
+                resource_requirement[
+                    resource_name] += resource_count * count * bundle_count
+    demand_lines = [f" {sum_count} pending placement groups:"]
+    demand_lines.extend(format_resource_requirement(resource_requirement))
+    return demand_lines
+
+
+def format_request_resources_summary(
+        request_resources: List[Any]) -> List[str]:
+    resource_requirement = collections.defaultdict(float)
+    sum_count = 0
+    for bundle, count in request_resources:
+        sum_count += count
+        for resource_name, resource_count in bundle.items():
+            resource_requirement[resource_name] += resource_count * count
+    demand_lines = [f" {sum_count} pending resource requirements:"]
+    demand_lines.extend(format_resource_requirement(resource_requirement))
+    return demand_lines
+
+
+def get_demand_report(lm_summary, verbose):
+    if not verbose:
+        return get_demand_report_summary(lm_summary)
+
     demand_lines = []
     for bundle, count in lm_summary.resource_demand:
         line = f" {bundle}: {count}+ pending tasks/actors"
@@ -483,7 +575,27 @@ def get_demand_report(lm_summary):
     return demand_report
 
 
-def format_info_string(lm_summary, autoscaler_summary, time=None):
+def get_demand_report_summary(lm_summary: Any) -> str:
+    demand_lines = []
+
+    if lm_summary.resource_demand:
+        demand_lines.extend(
+            format_resource_demand_summary(lm_summary.resource_demand))
+    if lm_summary.pg_demand:
+        demand_lines.extend(format_pg_demand_summary(lm_summary.pg_demand))
+    if lm_summary.request_demand:
+        demand_lines.extend(
+            format_request_resources_summary(lm_summary.request_demand))
+
+    if not demand_lines:
+        return " (no resource demands)"
+    return "\n".join(demand_lines)
+
+
+def format_info_string(lm_summary,
+                       autoscaler_summary,
+                       time=None,
+                       verbose=False):
     if time is None:
         time = datetime.now()
     header = "=" * 8 + f" Autoscaler status: {time} " + "=" * 8
@@ -519,8 +631,8 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     else:
         failure_report += " (no failures)"
 
-    usage_report = get_usage_report(lm_summary)
-    demand_report = get_demand_report(lm_summary)
+    usage_report = get_usage_report(lm_summary, verbose)
+    demand_report = get_demand_report(lm_summary, verbose)
 
     formatted_output = f"""{header}
 Node status
@@ -542,7 +654,7 @@ Demands:
     return formatted_output
 
 
-def format_info_string_no_node_types(lm_summary, time=None):
+def format_info_string_no_node_types(lm_summary, time=None, verbose=False):
     if time is None:
         time = datetime.now()
     header = "=" * 8 + f" Cluster status: {time} " + "=" * 8
@@ -554,8 +666,8 @@ def format_info_string_no_node_types(lm_summary, time=None):
         node_lines.append(line)
     node_report = "\n".join(node_lines)
 
-    usage_report = get_usage_report(lm_summary)
-    demand_report = get_demand_report(lm_summary)
+    usage_report = get_usage_report(lm_summary, verbose)
+    demand_report = get_demand_report(lm_summary, verbose)
 
     formatted_output = f"""{header}
 Node status
