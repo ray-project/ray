@@ -196,7 +196,7 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
     }
   }
 
-  UpdateNodeResourceUsage(node_id, data);
+  UpdateNodeResourceUsage(node_id, *resources_data);
 
   if (resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
       resources_data->resources_available_changed() ||

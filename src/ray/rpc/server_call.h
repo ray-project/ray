@@ -139,7 +139,6 @@ class ServerCallImpl : public ServerCall {
         response_writer_(&context_),
         io_service_(io_service),
         call_name_(std::move(call_name)) {
-    request_ = google::protobuf::Arena::CreateMessage<Request>(&arena_);
     reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
   }
 
@@ -171,7 +170,7 @@ class ServerCallImpl : public ServerCall {
       factory.CreateCall();
     }
     (service_handler_.*handle_request_function_)(
-        *request_, reply_,
+        request_, reply_,
         [this](Status status, std::function<void()> success,
                std::function<void()> failure) {
           // These two callbacks must be set before `SendReply`, because `SendReply`
@@ -234,7 +233,7 @@ class ServerCallImpl : public ServerCall {
   instrumented_io_context &io_service_;
 
   /// The request message.
-  Request *request_;
+  Request request_;
 
   /// The reply message.
   Reply *reply_;
@@ -310,7 +309,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         *this, service_handler_, handle_request_function_, io_service_, call_name_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
-    (service_.*request_call_function_)(&call->context_, call->request_,
+    (service_.*request_call_function_)(&call->context_, &call->request_,
                                        &call->response_writer_, cq_.get(), cq_.get(),
                                        call);
   }
