@@ -222,7 +222,7 @@ class HTTPProxy:
             default=self._fallback_to_prefix_router)
         self.prefix_router = LongestPrefixRouter()
         self.long_poll_client = LongPollClient(
-            ray.get_actor(controller_name), {
+            ray.get_actor(controller_name, namespace="serve"), {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
             },
             call_in_event_loop=asyncio.get_event_loop())

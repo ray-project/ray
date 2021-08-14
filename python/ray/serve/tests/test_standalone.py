@@ -48,8 +48,9 @@ def test_shutdown(ray_shutdown):
 
     f.deploy()
 
+    serve_controller_name = serve.api._global_client._controller_name
     actor_names = [
-        serve.api._global_client._controller_name,
+        serve_controller_name,
         format_actor_name(SERVE_PROXY_NAME,
                           serve.api._global_client._controller_name,
                           get_all_node_ids()[0][0])
@@ -59,7 +60,10 @@ def test_shutdown(ray_shutdown):
         alive = True
         for actor_name in actor_names:
             try:
-                ray.get_actor(actor_name)
+                if actor_name == serve_controller_name:
+                    ray.get_actor(actor_name, namespace="serve")
+                else:
+                    ray.get_actor(actor_name)
             except ValueError:
                 alive = False
         return alive
@@ -73,7 +77,10 @@ def test_shutdown(ray_shutdown):
     def check_dead():
         for actor_name in actor_names:
             try:
-                ray.get_actor(actor_name)
+                if actor_name == serve_controller_name:
+                    ray.get_actor(actor_name, namespace="serve")
+                else:
+                    ray.get_actor(actor_name)
                 return False
             except ValueError:
                 pass
@@ -411,8 +418,7 @@ def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
     serve.start(detached=detached)
     client = serve.api._global_client
     assert ray.get_runtime_context().namespace != "serve"
-    assert client._controller_name.startswith("serve/")
-    assert ray.get_actor(client._controller_name)
+    assert ray.get_actor(client._controller_name, namespace="serve")
 
 
 if __name__ == "__main__":

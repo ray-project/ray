@@ -80,7 +80,8 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
                 servable_object=_callable)
 
             assert controller_name, "Must provide a valid controller_name"
-            controller_handle = ray.get_actor(controller_name)
+            controller_handle = ray.get_actor(
+                controller_name, namespace="serve")
             self.backend = RayServeReplica(_callable, backend_config,
                                            is_function, controller_handle)
 

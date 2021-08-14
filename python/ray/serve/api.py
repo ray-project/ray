@@ -146,7 +146,7 @@ class Client:
             started = time.time()
             while True:
                 try:
-                    ray.get_actor(self._controller_name)
+                    ray.get_actor(self._controller_name, namespace="serve")
                     if time.time() - started > 5:
                         logger.warning(
                             "Waited 5s for Serve to shutdown gracefully but "
@@ -637,11 +637,6 @@ def start(
         client = _get_global_client()
         logger.info("Connecting to existing Serve instance in namespace "
                     f"'{current_namespace}'.")
-        if client._http_config != http_options:
-            logger.info(
-                "HTTP config of existing Serve instance doesn't match. "
-                "Starting new Serve instance.")
-            raise RayServeException
         return client
     except RayServeException:
         pass
@@ -651,8 +646,6 @@ def start(
     else:
         controller_name = format_actor_name(get_random_letters(),
                                             SERVE_CONTROLLER_NAME)
-    # Always start controller in "serve" namespace
-    controller_name = f"serve/{controller_name}"
 
     if isinstance(http_options, dict):
         http_options = HTTPOptions.parse_obj(http_options)
@@ -669,6 +662,8 @@ def start(
         resources={
             get_current_node_resource_key(): 0.01
         },
+        # Always start controller in "serve" namespace
+        namespace="serve",
     ).remote(
         controller_name,
         http_options,
@@ -712,13 +707,13 @@ def connect() -> Client:
     # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
     if _INTERNAL_REPLICA_CONTEXT is None:
-        controller_name = f"serve/{SERVE_CONTROLLER_NAME}"
+        controller_name = SERVE_CONTROLLER_NAME
     else:
         controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
 
     # Try to get serve controller if it exists
     try:
-        controller = ray.get_actor(controller_name)
+        controller = ray.get_actor(controller_name, namespace="serve")
     except ValueError:
         raise RayServeException("Called `serve.connect()` but there is no "
                                 "instance running on this Ray cluster. Please "
