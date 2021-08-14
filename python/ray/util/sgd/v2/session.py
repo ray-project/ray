@@ -176,12 +176,12 @@ class Session:
         # Update session checkpoint to latest checkpoint.
         self.loaded_checkpoint = kwargs
 
-        # Only store checkpoints on worker with rank 0.
-        if self.world_rank != 0:
+        if self.world_rank == 0:
+            if self.convert_checkpoint_func is not None:
+                kwargs = self.convert_checkpoint_func(kwargs)
+        else:
+            # Only store checkpoints on worker with rank 0.
             kwargs = {}
-
-        if self.convert_checkpoint_func is not None:
-            kwargs = self.convert_checkpoint_func(kwargs)
 
         result = TrainingResult(TrainingResultType.CHECKPOINT, kwargs)
         # Add result to a thread-safe queue.
