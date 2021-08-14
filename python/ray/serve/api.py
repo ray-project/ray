@@ -635,10 +635,15 @@ def start(
 
     try:
         client = _get_global_client()
+        if detached:
+            assert client._controller_name == SERVE_CONTROLLER_NAME
+        else:
+            assert (client._controller_name.startswith(f"{SERVE_CONTROLLER_NAME}:") 
+                and len(client._controller_name) == len(SERVE_CONTROLLER_NAME) + 7)
         logger.info("Connecting to existing Serve instance in namespace "
                     f"'{current_namespace}'.")
         return client
-    except RayServeException:
+    except (RayServeException, AssertionError):
         pass
 
     if detached:
