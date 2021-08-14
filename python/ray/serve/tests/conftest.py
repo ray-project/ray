@@ -94,7 +94,7 @@ def mock_controller_with_name():
             ])
 
     name = f"MockController{random.randint(0,10e4)}"
-    yield name, MockControllerActor.options(name=name).remote()
+    yield name, MockControllerActor.options(name=name, namespace="serve").remote()
 
 
 @pytest.fixture

@@ -119,10 +119,9 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
 
         # Serve wraps Ray's internal KV store and specially formats the keys.
         # These are the keys we are interested in:
-        # serve/SERVE_CONTROLLER_NAME(+
-        #   optional random letters):SERVE_SNAPSHOT_KEY
+        # SERVE_CONTROLLER_NAME(+ optional random letters):SERVE_SNAPSHOT_KEY
 
-        serve_keys = _internal_kv_list(f"serve/{SERVE_CONTROLLER_NAME}",
+        serve_keys = _internal_kv_list(SERVE_CONTROLLER_NAME,
                                        gcs_client)
         serve_snapshot_keys = filter(lambda k: SERVE_SNAPSHOT_KEY in str(k),
                                      serve_keys)
