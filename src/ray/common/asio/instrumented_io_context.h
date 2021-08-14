@@ -92,7 +92,7 @@ struct StatsHandle {
 };
 
 /// A proxy for boost::asio::io_context that collects statistics about posted handlers.
-class instrumented_io_context : public boost::asio::io_context {
+class instrumented_io_context  : public boost::asio::io_context {
  public:
   /// Initializes the global stats struct after calling the base contructor.
   instrumented_io_context() : global_stats_(std::make_shared<GuardedGlobalStats>()) {}

@@ -230,7 +230,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   // backlog in GCS.
   int backlog_size = report_worker_backlog_ ? 0 : -1;
   lease_client->RequestWorkerLease(
-      actor->GetCreationTaskSpecification(),
+      actor->GetActorTableData().task_spec(),
       [this, actor, node](const Status &status,
                           const rpc::RequestWorkerLeaseReply &reply) {
         HandleWorkerLeaseReply(actor, node, status, reply);
