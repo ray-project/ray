@@ -540,7 +540,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         # Not all Operations support this.
                         torch.use_deterministic_algorithms(True)
                     else:
-                        torch.set_determinstic(True)
+                        torch.set_deterministic(True)
                 # This is only for Convolution no problem.
                 torch.backends.cudnn.deterministic = True
             # Tf2.x.
