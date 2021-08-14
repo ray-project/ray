@@ -141,22 +141,6 @@ class NodeProvider:
             self.terminate_node(node_id)
         return None
 
-    @property
-    def max_terminate_nodes(self) -> Optional[int]:
-        """The maximum number of nodes which can be terminated in one single
-        API request. By default, this is "None", which means that the node
-        provider's underlying API allows infinite requests to be terminated
-        with one request.
-
-        For example, AWS only allows 1000 nodes to be terminated
-        at once; to terminate more, we must issue multiple separate API
-        requests. If the limit is infinity, then simply set this to None.
-
-        This may be overridden. The value may be useful when overriding the
-        "terminate_nodes" method.
-        """
-        return None
-
     @staticmethod
     def bootstrap_config(cluster_config: Dict[str, Any]) -> Dict[str, Any]:
         """Bootstraps the cluster config by adding env defaults if needed."""
