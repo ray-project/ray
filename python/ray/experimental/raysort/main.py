@@ -35,25 +35,25 @@ def get_args(*args, **kwargs):
     )
     parser.add_argument(
         "--total_data_size",
-        default=1 * 1000 * 1024 * 1024 * 1024,
+        default=100 * 1000 * 1024 * 1024 * 1024,
         type=ByteCount,
         help="total data size in bytes",
     )
     parser.add_argument(
         "--num_mappers",
-        default=256,
+        default=25 * 1024,
         type=int,
         help="number of map tasks",
     )
     parser.add_argument(
         "--num_mappers_per_round",
-        default=16,
+        default=128,
         type=int,
         help="number of map tasks per first-stage merge tasks",
     )
     parser.add_argument(
         "--num_reducers",
-        default=16,
+        default=128,
         type=int,
         help="number of second-stage reduce tasks",
     )
@@ -438,7 +438,7 @@ def init(args: Args):
 
 def main(args: Args):
     # Keep the actor handle in scope for the duration of the program.
-    _progress_tracker = init(args)
+    _progress_tracker = init(args)  # noqa F841
 
     if args.generate_input:
         generate_input(args)
