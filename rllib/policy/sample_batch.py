@@ -61,13 +61,32 @@ class SampleBatch(dict):
 
     @PublicAPI
     def __init__(self, *args, **kwargs):
-        """Constructs a sample batch (same params as dict constructor)."""
+        """Constructs a sample batch (same params as dict constructor).
+
+        Note: All *args and those **kwargs not listed below will be passed
+        as-is to the parent dict constructor. 
+
+        Keyword Args:
+            _time_major (Optinal[bool]): Whether data in this sample batch
+                is time-major. This is False by default and only relevant
+                if the data contains sequences.
+            _max_seq_len (Optional[bool]): The max sequence chunk length
+                if the data contains sequences.
+            _zero_padded (Optional[bool]): Whether the data in this batch
+                contains sequences AND these sequences are right-zero-padded
+                according to the `_max_seq_len` setting.
+            _is_training (Optional[bool]): Whether this batch is used for
+                training. If False, batch may be used for e.g. action
+                computations (inference).
+        """
 
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
-
+        # Maximum seq len value.
         self.max_seq_len = kwargs.pop("_max_seq_len", None)
+        # Is alredy right-zero-padded?
         self.zero_padded = kwargs.pop("_zero_padded", False)
+        # Whether this batch is used for training (vs inference).
         self.is_training = kwargs.pop("_is_training", None)
 
         # Call super constructor. This will make the actual data accessible

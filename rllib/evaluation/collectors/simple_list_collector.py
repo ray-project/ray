@@ -49,7 +49,8 @@ class _AgentCollector:
 
     _next_unroll_id = 0  # disambiguates unrolls within a single episode
 
-    def __init__(self, view_reqs):
+    def __init__(self, view_reqs, policy):
+        self.policy = policy
         # Determine the size of the buffer we need for data before the actual
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
         # or internal state inputs.
@@ -277,6 +278,17 @@ class _AgentCollector:
         # Due to possible batch-repeats > 1, columns in the resulting batch
         # may not all have the same batch size.
         batch = SampleBatch(batch_data)
+
+        # Adjust the seq-lens array depending on the incoming agent sequences.
+        if self.policy.is_recurrent():
+            seq_lens = []
+            max_seq_len = self.policy.config["model"]["max_seq_len"]
+            count = batch.count
+            while count > 0:
+                seq_lens.append(min(count, max_seq_len))
+                count -= max_seq_len
+            batch["seq_lens"] = np.array(seq_lens)
+            batch.max_seq_len = max_seq_len
 
         # Add EPS_ID and UNROLL_ID to batch.
         batch[SampleBatch.EPS_ID] = np.repeat(self.episode_id, batch.count)
@@ -507,7 +519,7 @@ class SimpleListCollector(SampleCollector):
         # Add initial obs to Trajectory.
         assert agent_key not in self.agent_collectors
         # TODO: determine exact shift-before based on the view-req shifts.
-        self.agent_collectors[agent_key] = _AgentCollector(view_reqs)
+        self.agent_collectors[agent_key] = _AgentCollector(view_reqs, policy)
         self.agent_collectors[agent_key].add_init_obs(
             episode_id=episode.episode_id,
             agent_index=episode._agent_index(agent_id),
