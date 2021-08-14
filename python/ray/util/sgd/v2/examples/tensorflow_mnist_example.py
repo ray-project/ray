@@ -6,9 +6,16 @@ import json
 import os
 
 import numpy as np
-import ray.util.sgd.v2 as sgd
 import tensorflow as tf
+from tensorflow.keras.callbacks import Callback
+
+import ray.util.sgd.v2 as sgd
 from ray.util.sgd.v2 import Trainer
+
+
+class SGDReportCallback(Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        sgd.report(**logs)
 
 
 def mnist_dataset(batch_size):
@@ -57,9 +64,11 @@ def train_func(config):
         multi_worker_model = build_and_compile_cnn_model(config)
 
     history = multi_worker_model.fit(
-        multi_worker_dataset, epochs=epochs, steps_per_epoch=steps_per_epoch)
+        multi_worker_dataset,
+        epochs=epochs,
+        steps_per_epoch=steps_per_epoch,
+        callbacks=[SGDReportCallback()])
     results = history.history
-    sgd.report(loss=results["loss"][-1], accuracy=results["accuracy"][-1])
     return results
 
 

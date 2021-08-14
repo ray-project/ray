@@ -2,15 +2,27 @@ import inspect
 import logging
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, Type
 
-from ray.tune import PlacementGroupFactory
-from ray.tune import Trainable
-from ray.tune.result import RESULT_DUPLICATE
-from ray.tune.trainable import DistributedTrainable
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
     InactiveWorkerGroupError, SGDBackendError
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.backends.torch import TorchConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
+
+# Ray SGD should be usable even if Tune is not installed.
+try:
+    TUNE_INSTALLED = True
+    from ray import tune
+    from ray.tune import Trainable
+    from ray.tune import PlacementGroupFactory
+    from ray.tune.function_runner import wrap_function
+except ImportError:
+    TUNE_INSTALLED = False
+    tune = PlacementGroupFactory = Trainable = object
+
+    def noop():
+        return
+
+    wrap_function = noop
 
 T = TypeVar("T")
 S = TypeVar("S")
@@ -252,6 +264,10 @@ class Trainer:
         Returns:
             A Trainable that can directly be passed into ``tune.run()``.
         """
+        if not TUNE_INSTALLED:
+            raise ValueError("Tune is not installed. Please install ray["
+                             "tune] to use the Tune integration.")
+
         return _create_tune_trainable(train_func, self._backend,
                                       self._num_workers, self._use_gpu,
                                       self._resources_per_worker)
@@ -273,53 +289,6 @@ class _TuneTrainer(Trainer):
         return self._executor.finish_training()
 
 
-class _SgdTrainable(DistributedTrainable):
-    _function = None
-    _backend = None
-    _num_workers = None
-    _use_gpu = None
-    _resources_per_worker = None
-
-    _started = False
-    _finished = False
-
-    def setup(self, config: Dict):
-        # Create a new Trainer with the same configuration.
-        self._trainer = _TuneTrainer(self._backend, self._num_workers,
-                                     self._use_gpu, self._resources_per_worker)
-        # TODO(matt): use placement group resource allocation
-        self._trainer.start()  # Move this to step?
-        self._config = config
-
-    def step(self) -> Dict:
-        if self._finished:
-            raise RuntimeError("Training has already finished.")
-        if not self._started:
-            # Explicitly use __class__ attribute to avoid recursive
-            # serialization issues.
-            self._trainer.start_training(self.__class__._function,
-                                         self._config)
-            self._started = True
-
-        report = self._trainer.fetch_next_report()
-        if report is None:
-            self._trainer.finish_training()
-            self._finished = True
-            return {RESULT_DUPLICATE: True}
-        # Currently return the value from first worker.
-        # TODO(matt): add support for aggregation function.
-        return report[0]
-
-    def save_checkpoint(self, tmp_checkpoint_dir):
-        raise NotImplementedError
-
-    def load_checkpoint(self, checkpoint):
-        raise NotImplementedError
-
-    def cleanup(self):
-        self._trainer.shutdown()
-
-
 def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
                            resources_per_worker):
     """Creates a Tune Trainable class for SGD training.
@@ -327,21 +296,43 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
     This function populates class attributes and methods.
     """
 
-    class _WrappedSgdTrainable(_SgdTrainable):
+    # TODO(amog): Implement checkpointing for Tune.
+    def tune_function(config, checkpoint_dir=None):
+        trainer = _TuneTrainer(
+            backend=backend,
+            num_workers=num_workers,
+            use_gpu=use_gpu,
+            resources_per_worker=resources_per_worker)
+
+        trainer.start()
+
+        trainer.start_training(train_func, config)
+        while True:
+            results = trainer.fetch_next_report()
+            if results is None:
+                trainer.finish_training()
+                break
+            else:
+                first_worker_results = results[0]
+                tune.report(**first_worker_results)
+
+    trainable_cls = wrap_function(tune_function)
+
+    class _WrappedSgdTrainable(trainable_cls):
         """Wrapper around ``_SgdTrainable`` with class attributes."""
-        _function = train_func
-        _backend = backend
-        _num_workers = num_workers
-        _use_gpu = use_gpu
-        _resources_per_worker = resources_per_worker
 
         @classmethod
         def default_resource_request(cls,
                                      config: Dict) -> PlacementGroupFactory:
-            bundles = []
-            bundles += [{"CPU": 1}]  # driver
+            head_bundle = [{"CPU": 1}]  # driver
             worker_resources = {"CPU": 1, "GPU": int(use_gpu)}
-            bundles += num_workers * [worker_resources]
+            worker_resources_extra = {} if resources_per_worker is None else\
+                resources_per_worker
+            worker_bundles = [{
+                **worker_resources,
+                **worker_resources_extra
+            } for _ in range(num_workers)]
+            bundles = head_bundle + worker_bundles
             return PlacementGroupFactory(bundles, strategy="PACK")
 
     return _WrappedSgdTrainable

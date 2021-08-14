@@ -45,6 +45,14 @@ py_test(
 )
 
 py_test(
+    name = "test_tune",
+    size = "medium",
+    srcs = ["tests/test_tune.py"],
+    tags = ["exclusive"],
+    deps = [":sgd_v2_lib"]
+)
+
+py_test(
     name = "test_worker_group",
     size = "small",
     srcs = ["tests/test_worker_group.py"],
