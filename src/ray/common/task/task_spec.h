@@ -31,8 +31,29 @@ extern "C" {
 }
 
 namespace ray {
-typedef ResourceSet SchedulingClassDescriptor;
+/* typedef ResourceSet SchedulingClassDescriptor; */
 typedef int SchedulingClass;
+
+struct SchedulingClassDescriptor {
+ public:
+  explicit SchedulingClassDescriptor(ResourceSet &rs, FunctionDescriptor &fd)
+      : resource_set(rs), function_descriptor(fd) {}
+  ResourceSet resource_set;
+  FunctionDescriptor function_descriptor;
+
+  bool operator==(const SchedulingClassDescriptor &other) const {
+    bool resource_sets_match = resource_set == other.resource_set;
+    bool functions_match = function_descriptor == other.function_descriptor;
+    return resource_sets_match && functions_match;
+  }
+  struct hash_fn {
+    std::size_t operator()(const SchedulingClassDescriptor &sched_cls) const {
+      std::size_t hash = std::hash<ResourceSet>()(sched_cls.resource_set);
+      hash ^= sched_cls.function_descriptor->Hash();
+      return hash;
+    }
+  };
+};
 
 /// ConcurrencyGroup is a group of actor methods that shares
 /// a executing thread pool.
@@ -231,7 +252,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
 
   // Compute a static key that represents the given resource shape.
-  static SchedulingClass GetSchedulingClass(const ResourceSet &sched_cls);
+  static SchedulingClass GetSchedulingClass(const SchedulingClassDescriptor &sched_cls);
 
   // Placement Group bundle that this task or actor creation is associated with.
   const BundleID PlacementGroupBundleId() const;
@@ -260,9 +281,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// multi-threading, we need a mutex to protect it.
   static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
-  static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
-      GUARDED_BY(mutex_);
-  static std::unordered_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
+  static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass,
+                             SchedulingClassDescriptor::hash_fn>
+      sched_cls_to_id_ GUARDED_BY(mutex_);
+  static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
       GUARDED_BY(mutex_);
   static int next_sched_id_ GUARDED_BY(mutex_);
 };
