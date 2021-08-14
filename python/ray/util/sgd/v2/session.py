@@ -33,12 +33,16 @@ class Session:
                  training_func: Callable,
                  world_rank: int,
                  checkpoint: Optional[Dict] = None,
-                 detailed_autofilled_metrics: bool = False):
+                 detailed_autofilled_metrics: bool = False,
+                 convert_checkpoint_func: Callable = None):
         # The Thread object that is running the training function.
         self.training_thread = PropagatingThread(
             target=training_func, daemon=True)
         self.world_rank = world_rank
         self.loaded_checkpoint = checkpoint
+
+        # Function to process the checkpoint before sending it to driver.
+        self.convert_checkpoint_func = convert_checkpoint_func
 
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
@@ -175,6 +179,9 @@ class Session:
         # Only store checkpoints on worker with rank 0.
         if self.world_rank != 0:
             kwargs = {}
+
+        if self.convert_checkpoint_func is not None:
+            kwargs = self.convert_checkpoint_func(kwargs)
 
         result = TrainingResult(TrainingResultType.CHECKPOINT, kwargs)
         # Add result to a thread-safe queue.

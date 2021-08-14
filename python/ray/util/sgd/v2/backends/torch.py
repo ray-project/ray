@@ -1,9 +1,10 @@
+import io
 from dataclasses import dataclass
 import logging
 import os
 
 from datetime import timedelta
-from typing import Optional
+from typing import Optional, Dict, Any
 
 import ray
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
@@ -140,3 +141,26 @@ class TorchBackend(BackendInterface):
         if len(worker_group) > 1:
             worker_group.execute(dist.destroy_process_group)
         worker_group.execute(shutdown_torch)
+
+    def convert_checkpoint(self, checkpoint: Dict) -> Any:
+        """Convert checkpoint to stream of bytes.
+
+        This prevents deserialization errors if driver is CPU only but
+        workers are on GPU.
+        """
+        _buffer = io.BytesIO()
+        torch.save(checkpoint, _buffer)
+        return _buffer.getvalue()
+
+    def unconvert_checkpoint(self, data: Any, to_gpu: bool = False) -> Dict:
+        """Converts stream of bytes back to a checkpoint Dict.
+
+        Converts to GPU if ``to_gpu`` is True and CUDA is available.
+        """
+        _buffer = io.BytesIO(data)
+        to_gpu = to_gpu and torch.cuda.is_available()
+        state_dict = torch.load(
+            _buffer,
+            map_location=("cpu" if not to_gpu else
+                          lambda storage, loc: storage.cuda()))
+        return state_dict

@@ -122,6 +122,32 @@ def test_checkpoint():
         save_checkpoint(epoch=2)
 
 
+def test_convert_checkpoint():
+    def train():
+        for i in range(2):
+            save_checkpoint(epoch=i)
+
+    def convert_checkpoint(checkpoint):
+        checkpoint.update({"converted": True})
+        return checkpoint
+
+    def validate_converted():
+        next = session.get_next()
+        assert next is not None
+        assert next.type == TrainingResultType.CHECKPOINT
+        assert next.data["converted"] is True
+
+    init_session(
+        training_func=train,
+        world_rank=0,
+        convert_checkpoint_func=convert_checkpoint)
+    session = get_session()
+    session.start()
+    validate_converted()
+    session.finish()
+    shutdown_session()
+
+
 def test_load_checkpoint_after_save():
     def train():
         for i in range(2):

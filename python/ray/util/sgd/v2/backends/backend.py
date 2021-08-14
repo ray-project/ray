@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, TypeVar, List, Optional, Dict
+from typing import Callable, TypeVar, List, Optional, Dict, Any
 
 import ray
 from ray.exceptions import RayActorError
@@ -88,6 +88,7 @@ class BackendExecutor:
                     training_func=train_func,
                     world_rank=world_rank,
                     checkpoint=checkpoint,
+                    process_checkpoint_func=self._backend.convert_checkpoint,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics
                 )
             except ValueError:
@@ -177,8 +178,11 @@ class BackendExecutor:
         return results
 
     def _process_checkpoint(self, results):
-        # Process checkpoint
-        self.latest_checkpoint = results[0].data
+        # Process checkpoint.
+        data = results[0].data
+        checkpoint = self._backend.unconvert_checkpoint(
+            data, to_gpu=self._num_gpus_per_worker > 0)
+        self.latest_checkpoint = checkpoint
 
     def fetch_next_result(self) -> Optional[List[Dict]]:
         """Fetch next results produced by ``sgd.report()`` from each worker.
@@ -328,6 +332,12 @@ class BackendInterface:
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: BackendConfig):
         raise NotImplementedError
+
+    def convert_checkpoint(self, checkpoint: Dict) -> Any:
+        pass
+
+    def unconvert_checkpoint(self, data: Any, to_gpu: bool = False) -> Dict:
+        pass
 
 
 class InactiveWorkerGroupError(Exception):
