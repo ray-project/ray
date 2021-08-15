@@ -576,7 +576,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
         num_redis_shards = None
         # Start Ray on the head node.
-        if redis_shard_ports is not None:
+        if redis_shard_ports is not None and address is None:
             redis_shard_ports = redis_shard_ports.split(",")
             # Infer the number of Redis shards from the ports if the number is
             # not provided.
@@ -604,8 +604,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             if reachable:
                 ray_params.update_if_absent(
                     external_addresses=external_addresses)
-                if len(external_addresses) > 1:
-                    num_redis_shards = len(external_addresses) - 1
+                num_redis_shards = len(external_addresses)
                 if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
                     cli_logger.warning(
                         "`{}` should not be specified as empty string if "

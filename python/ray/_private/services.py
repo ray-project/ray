@@ -816,17 +816,6 @@ def start_redis(node_ip_address,
             addresses for the remaining shards, and the processes that were
             started.
     """
-
-    if len(redirect_files) != 1 + num_redis_shards:
-        raise ValueError("The number of redirect file pairs should be equal "
-                         "to the number of redis shards (including the "
-                         "primary shard) we will start.")
-    if redis_shard_ports is None:
-        redis_shard_ports = num_redis_shards * [None]
-    elif len(redis_shard_ports) != num_redis_shards:
-        raise RuntimeError("The number of Redis shard ports does not match "
-                           "the number of Redis shards.")
-
     processes = []
 
     if external_addresses is not None:
@@ -839,6 +828,15 @@ def start_redis(node_ip_address,
         # Deleting the key to avoid duplicated rpush.
         primary_redis_client.delete("RedisShards")
     else:
+        if len(redirect_files) != 1 + num_redis_shards:
+            raise ValueError("The number of redirect file pairs should be equal "
+                            "to the number of redis shards (including the "
+                            "primary shard) we will start.")
+        if redis_shard_ports is None:
+            redis_shard_ports = num_redis_shards * [None]
+        elif len(redis_shard_ports) != num_redis_shards:
+            raise RuntimeError("The number of Redis shard ports does not match "
+                            "the number of Redis shards.")
         redis_executable = REDIS_EXECUTABLE
 
         redis_stdout_file, redis_stderr_file = redirect_files[0]
@@ -894,8 +892,8 @@ def start_redis(node_ip_address,
     # other Redis shards at a high, random port.
     last_shard_port = new_port(denylist=port_denylist) - 1
     for i in range(num_redis_shards):
-        if external_addresses is not None and len(external_addresses) > 1:
-            shard_address = external_addresses[i + 1]
+        if external_addresses is not None:
+            shard_address = external_addresses[i]
         else:
             redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
             redis_executable = REDIS_EXECUTABLE
@@ -1210,7 +1208,7 @@ def start_dashboard(require_dashboard,
             f"--log-dir={logdir}", f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}"
         ]
-        if redis_password:
+        if redis_password is not None:
             command += ["--redis-password", redis_password]
         process_info = start_ray_process(
             command,
