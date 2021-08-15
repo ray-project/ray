@@ -15,6 +15,7 @@
 #pragma once
 
 #include <boost/asio.hpp>
+#include <boost/lockfree/queue.hpp>
 #include <limits>
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
@@ -103,7 +104,7 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler. Defaults to UNKNOWN.
-  void post(std::function<void()> handler, const std::string name = "UNKNOWN")
+  void post(std::function<void()> handler, const std::string name = "UNKNOWN", bool hi_pri = false)
       LOCKS_EXCLUDED(mutex_);
 
   /// A proxy post function where the operation start is manually recorded. For example,
@@ -111,7 +112,7 @@ class instrumented_io_context : public boost::asio::io_context {
   ///
   /// \param handler The handler to be posted to the event loop.
   /// \param handle The stats handle returned by RecordStart() previously.
-  void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle)
+  void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle, bool hi_pri = false)
       LOCKS_EXCLUDED(mutex_);
 
   /// Sets the queueing start time, increments the current and cumulative counts and
@@ -167,6 +168,8 @@ class instrumented_io_context : public boost::asio::io_context {
   std::string StatsString() const LOCKS_EXCLUDED(mutex_);
 
  private:
+  void internal_post(std::function<void()> handler, bool hi_pri);
+
   using HandlerStatsTable =
       absl::flat_hash_map<std::string, std::shared_ptr<GuardedHandlerStats>>;
   /// Get the mutex-guarded stats for this handler if it exists, otherwise create the
@@ -185,4 +188,6 @@ class instrumented_io_context : public boost::asio::io_context {
 
   /// Protects access to the per-handler post stats table.
   mutable absl::Mutex mutex_;
+
+  boost::lockfree::queue<std::function<void()>*> hi_pri_queue_;
 };

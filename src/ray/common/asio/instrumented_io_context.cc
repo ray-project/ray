@@ -55,10 +55,31 @@ std::string to_human_readable(int64_t duration) {
 
 }  // namespace
 
+void instrumented_io_context::internal_post(std::function<void()> handler, bool hi_pri) {
+  if(hi_pri) {
+    hi_pri_queue_.push(new std::function<void()>(std::move(handler)));
+    handler = nullptr;
+  }
+  auto f = [handler = std::move(handler), this] () {
+    std::function<void()>* f = nullptr;
+    while(hi_pri_queue_.pop(f)) {
+      (*f)();
+      delete f;
+      f = nullptr;
+    }
+    if(handler) {
+      handler();
+    }
+  };
+  boost::asio::io_context::post(f);
+}
+
 void instrumented_io_context::post(std::function<void()> handler,
-                                   const std::string name) {
+                                   const std::string name,
+                                   bool hi_pri) {
   if (!RayConfig::instance().event_stats()) {
-    return boost::asio::io_context::post(std::move(handler));
+    internal_post(std::move(handler), hi_pri);
+    return;
   }
   const auto stats_handle = RecordStart(name);
   // References are only invalidated upon deletion of the corresponding item from the
@@ -66,16 +87,19 @@ void instrumented_io_context::post(std::function<void()> handler,
   // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
   // handler stats it->second from multiple threads without acquiring a table-level
   // readers lock in the callback.
-  boost::asio::io_context::post(
-      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
+  internal_post(
+      [handler = std::move(handler),
+       stats_handle = std::move(stats_handle)]() {
         RecordExecution(handler, std::move(stats_handle));
-      });
+      },
+      hi_pri);
 }
 
 void instrumented_io_context::post(std::function<void()> handler,
-                                   std::shared_ptr<StatsHandle> stats_handle) {
+                                   std::shared_ptr<StatsHandle> stats_handle,
+                                   bool hi_pri) {
   if (!RayConfig::instance().event_stats()) {
-    return boost::asio::io_context::post(std::move(handler));
+    return internal_post(std::move(handler), hi_pri);
   }
   // Reset the handle start time, so that we effectively measure the queueing
   // time only and not the time delay from RecordStart().
