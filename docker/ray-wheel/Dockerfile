@@ -24,6 +24,7 @@ ADD git-rev /ray/git-rev
 # The result of bazel build is reused in pip install. It if run first to allow
 # for failover to serial build if parallel build requires too much resources.
 RUN bazel build //:ray_pkg || bazel build --jobs 1 //:ray_pkg
+RUN cd python/ray/new_dashboard/client && npm install && npm ci && npm run build && cd -
 WORKDIR /ray/python/
 RUN python3 setup.py bdist_wheel
 #cpp version has some weird deps that aren't solveable so skip it
