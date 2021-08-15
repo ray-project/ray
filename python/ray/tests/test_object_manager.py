@@ -283,12 +283,7 @@ def test_pull_request_retry(shutdown_only):
         remote_ref = put.remote()
 
         ready, _ = ray.wait([remote_ref], timeout=30)
-
-        if ray.worker.global_worker.core_worker.plasma_unlimited():
-            # Sadly, the test cannot work in this mode.
-            assert len(ready) == 1
-        else:
-            assert len(ready) == 0
+        assert len(ready) == 1
 
         del local_ref
 
@@ -336,7 +331,6 @@ def test_pull_bundles_admission_control(shutdown_only):
     ray.get(tasks)
 
 
-# Will hang if RAY_pull_manager_pin_active_objects=0 due to an eviction loop.
 def test_pull_bundles_pinning(shutdown_only):
     cluster = Cluster()
     object_size = int(50e6)

@@ -24,7 +24,9 @@
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
-namespace api {
+namespace internal {
+
+using ray::core::CoreWorkerProcess;
 
 void NativeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
                                ObjectID *object_id) {
@@ -63,14 +65,17 @@ std::shared_ptr<msgpack::sbuffer> NativeObjectStore::GetRaw(const ObjectID &obje
 
 void NativeObjectStore::CheckException(const std::string &meta_str,
                                        const std::shared_ptr<Buffer> &data_buffer) {
+  std::string data_str =
+      data_buffer ? std::string((char *)data_buffer->Data(), data_buffer->Size()) : "";
+
   if (meta_str == std::to_string(ray::rpc::ErrorType::WORKER_DIED)) {
-    throw RayWorkerException({(char *)data_buffer->Data(), data_buffer->Size()});
+    throw RayWorkerException(std::move(data_str));
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::ACTOR_DIED)) {
-    throw RayActorException({(char *)data_buffer->Data(), data_buffer->Size()});
+    throw RayActorException(std::move(data_str));
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE)) {
-    throw UnreconstructableException({(char *)data_buffer->Data(), data_buffer->Size()});
+    throw UnreconstructableException(std::move(data_str));
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION)) {
-    throw RayTaskException({(char *)data_buffer->Data(), data_buffer->Size()});
+    throw RayTaskException(std::move(data_str));
   }
 }
 
@@ -127,5 +132,5 @@ void NativeObjectStore::RemoveLocalReference(const std::string &id) {
     core_worker.RemoveLocalReference(ObjectID::FromBinary(id));
   }
 }
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

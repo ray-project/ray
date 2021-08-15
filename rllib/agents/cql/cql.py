@@ -50,6 +50,13 @@ def validate_config(config: TrainerConfigDict):
     if config["num_gpus"] > 1:
         raise ValueError("`num_gpus` > 1 not yet supported for CQL!")
 
+    # CQL-torch performs the optimizer steps inside the loss function.
+    # Using the multi-GPU optimizer will therefore not work (see multi-GPU
+    # check above) and we must use the simple optimizer for now.
+    if config["simple_optimizer"] is not True and \
+            config["framework"] == "torch":
+        config["simple_optimizer"] = True
+
 
 replay_buffer = None
 

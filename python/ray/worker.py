@@ -696,7 +696,9 @@ def init(
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
-        runtime_env (dict): The runtime environment to use for this job.
+        runtime_env (dict): The runtime environment to use for this job (see
+                :ref:`runtime-environments` for details).  This API is in beta
+                and may change before becoming stable.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -1795,12 +1797,17 @@ def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
 
 @PublicAPI
 @client_mode_hook
-def get_actor(name):
+def get_actor(name: str, namespace: str = None):
     """Get a handle to a named actor.
 
     Gets a handle to an actor with the given name. The actor must
     have been created with Actor.options(name="name").remote(). This
     works for both detached & non-detached actors.
+
+    Args:
+        name: The name of the actor.
+        namespace: The namespace of the actor, or None to specify the current
+            namespace.
 
     Returns:
         ActorHandle to the actor.
@@ -1812,14 +1819,7 @@ def get_actor(name):
         raise ValueError("Please supply a non-empty value to get_actor")
     worker = global_worker
     worker.check_connected()
-    split_names = name.split("/", maxsplit=1)
-    if len(split_names) <= 1:
-        name = split_names[0]
-        namespace = ""
-    else:
-        # must be length 2
-        namespace, name = split_names
-    return worker.core_worker.get_named_actor_handle(name, namespace)
+    return worker.core_worker.get_named_actor_handle(name, namespace or "")
 
 
 @PublicAPI
@@ -2067,7 +2067,8 @@ def remote(*args, **kwargs):
             infinite retries.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
-            :ref:`runtime-environments` for detailed documentation.
+            :ref:`runtime-environments` for detailed documentation. This API is
+            in beta and may change before becoming stable.
         override_environment_variables (Dict[str, str]): (Deprecated in Ray
             1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
             field of :ref:`runtime-environments` instead.) This specifies

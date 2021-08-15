@@ -1,15 +1,32 @@
-import logging
+from pathlib import Path
+from typing import Any, Dict
 try:  # py3
     from shlex import quote
 except ImportError:  # py2
     from pipes import quote
 
-logger = logging.getLogger(__name__)
+from ray.autoscaler._private.cli_logger import cli_logger
 
 
-def validate_docker_config(config):
+def _check_docker_file_mounts(file_mounts: Dict[str, str]) -> None:
+    """Checks if files are passed as file_mounts. This is a problem for Docker
+    based clusters because when a file is bind-mounted in Docker, updates to
+    the file on the host do not always propagate to the container. Using
+    directories is recommended.
+    """
+    for remote, local in file_mounts.items():
+        if Path(local).is_file():
+            cli_logger.warning(
+                f"File Mount: ({remote}:{local}) refers to a file.\n To ensure"
+                "this mount updates properly, please use a directory.")
+
+
+def validate_docker_config(config: Dict[str, Any]) -> None:
+    """Checks whether the Docker configuration is valid."""
     if "docker" not in config:
-        return config
+        return
+
+    _check_docker_file_mounts(config.get("file_mounts", {}))
 
     docker_image = config["docker"].get("image")
     cname = config["docker"].get("container_name")
@@ -24,7 +41,7 @@ def validate_docker_config(config):
     else:
         assert cname and image_present, "Must provide a container & image name"
 
-    return config
+    return None
 
 
 def with_docker_exec(cmds,
