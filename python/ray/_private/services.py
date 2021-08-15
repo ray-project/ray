@@ -829,14 +829,16 @@ def start_redis(node_ip_address,
         primary_redis_client.delete("RedisShards")
     else:
         if len(redirect_files) != 1 + num_redis_shards:
-            raise ValueError("The number of redirect file pairs should be equal "
-                            "to the number of redis shards (including the "
-                            "primary shard) we will start.")
+            raise ValueError(
+                "The number of redirect file pairs should be equal "
+                "to the number of redis shards (including the "
+                "primary shard) we will start.")
         if redis_shard_ports is None:
             redis_shard_ports = num_redis_shards * [None]
         elif len(redis_shard_ports) != num_redis_shards:
-            raise RuntimeError("The number of Redis shard ports does not match "
-                            "the number of Redis shards.")
+            raise RuntimeError(
+                "The number of Redis shard ports does not match "
+                "the number of Redis shards.")
         redis_executable = REDIS_EXECUTABLE
 
         redis_stdout_file, redis_stderr_file = redirect_files[0]
