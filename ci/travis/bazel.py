@@ -85,7 +85,7 @@ class Bazel(object):
 
     def _call(self, command, *args):
         return subprocess.check_output(
-            self.argv + (command, ) + args[:1] + self.extra_args + args[1:],
+            self.argv + ("--output_user_root=\"c:/tmp\"", ) + (command, ) + args[:1] + self.extra_args + args[1:],
             stdin=subprocess.PIPE)
 
     def info(self, *args):
