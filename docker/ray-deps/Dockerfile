@@ -1,5 +1,5 @@
 ARG GPU=""
-ARG DOCKER_PREFIX
+ARG DOCKER_PREFIX="rayproject/"
 FROM "$DOCKER_PREFIX"base-deps:nightly"$GPU"
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
 ARG AUTOSCALER="autoscaler"

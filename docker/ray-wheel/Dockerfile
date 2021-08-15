@@ -1,5 +1,5 @@
 ARG GPU
-ARG DOCKER_PREFIX
+ARG DOCKER_PREFIX="rayproject/"
 
 FROM "$DOCKER_PREFIX"ray-deps:nightly"$GPU"
 # For Click

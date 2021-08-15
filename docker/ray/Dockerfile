@@ -1,5 +1,5 @@
 ARG GPU
-ARG DOCKER_PREFIX
+ARG DOCKER_PREFIX="rayproject/"
 
 # Pull the wheel from the ray-wheel build
 FROM "$DOCKER_PREFIX"ray-wheel:nightly"$GPU" AS raywheel

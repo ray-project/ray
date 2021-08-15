@@ -1,5 +1,5 @@
 ARG GPU
-ARG DOCKER_PREFIX
+ARG DOCKER_PREFIX="rayproject/"
 
 # We will steal our cross-built wheel from here
 FROM "$DOCKER_PREFIX"ray-wheel:nightly"$GPU" AS raywheel
