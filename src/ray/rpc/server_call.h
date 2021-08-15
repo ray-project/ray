@@ -120,7 +120,8 @@ using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
 /// \tparam ServiceHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
-template <class ServiceHandler, class Request, class Reply, class HandlerFunction, bool HiPri>
+template <class ServiceHandler, class Request, class Reply, class HandlerFunction,
+          bool HiPri>
 class ServerCallImpl : public ServerCall {
  public:
   /// Constructor.
@@ -131,8 +132,7 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] io_service The event loop.
   ServerCallImpl(const ServerCallFactory &factory, ServiceHandler &service_handler,
                  HandlerFunction handle_request_function,
-                 instrumented_io_context &io_service,
-                 std::string call_name)
+                 instrumented_io_context &io_service, std::string call_name)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
@@ -306,8 +306,9 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
     // `GrpcServer::PollEventsFromCompletionQueue`.
-    auto call = new ServerCallImpl<ServiceHandler, Request, Reply, HandlerFunction, HiPri>(
-        *this, service_handler_, handle_request_function_, io_service_, call_name_);
+    auto call =
+        new ServerCallImpl<ServiceHandler, Request, Reply, HandlerFunction, HiPri>(
+            *this, service_handler_, handle_request_function_, io_service_, call_name_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
     (service_.*request_call_function_)(&call->context_, &call->request_,

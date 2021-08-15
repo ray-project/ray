@@ -56,26 +56,25 @@ std::string to_human_readable(int64_t duration) {
 }  // namespace
 
 void instrumented_io_context::internal_post(std::function<void()> handler, bool hi_pri) {
-  if(hi_pri) {
+  if (hi_pri) {
     hi_pri_queue_.push(new std::function<void()>(std::move(handler)));
     handler = nullptr;
   }
-  auto f = [handler = std::move(handler), this] () {
-    std::function<void()>* f = nullptr;
-    while(hi_pri_queue_.pop(f)) {
+  auto f = [handler = std::move(handler), this]() {
+    std::function<void()> *f = nullptr;
+    while (hi_pri_queue_.pop(f)) {
       (*f)();
       delete f;
       f = nullptr;
     }
-    if(handler) {
+    if (handler) {
       handler();
     }
   };
   boost::asio::io_context::post(f);
 }
 
-void instrumented_io_context::post(std::function<void()> handler,
-                                   const std::string name,
+void instrumented_io_context::post(std::function<void()> handler, const std::string name,
                                    bool hi_pri) {
   if (!RayConfig::instance().event_stats()) {
     internal_post(std::move(handler), hi_pri);
@@ -88,8 +87,7 @@ void instrumented_io_context::post(std::function<void()> handler,
   // handler stats it->second from multiple threads without acquiring a table-level
   // readers lock in the callback.
   internal_post(
-      [handler = std::move(handler),
-       stats_handle = std::move(stats_handle)]() {
+      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
         RecordExecution(handler, std::move(stats_handle));
       },
       hi_pri);

@@ -104,16 +104,16 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param handler The handler to be posted to the event loop.
   /// \param name A human-readable name for the handler, to be used for viewing stats
   /// for the provided handler. Defaults to UNKNOWN.
-  void post(std::function<void()> handler, const std::string name = "UNKNOWN", bool hi_pri = false)
-      LOCKS_EXCLUDED(mutex_);
+  void post(std::function<void()> handler, const std::string name = "UNKNOWN",
+            bool hi_pri = false) LOCKS_EXCLUDED(mutex_);
 
   /// A proxy post function where the operation start is manually recorded. For example,
   /// this is useful for tracking the number of active outbound RPC calls.
   ///
   /// \param handler The handler to be posted to the event loop.
   /// \param handle The stats handle returned by RecordStart() previously.
-  void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle, bool hi_pri = false)
-      LOCKS_EXCLUDED(mutex_);
+  void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle,
+            bool hi_pri = false) LOCKS_EXCLUDED(mutex_);
 
   /// Sets the queueing start time, increments the current and cumulative counts and
   /// returns an opaque handle for these stats. This is used in conjunction with
@@ -189,5 +189,5 @@ class instrumented_io_context : public boost::asio::io_context {
   /// Protects access to the per-handler post stats table.
   mutable absl::Mutex mutex_;
 
-  boost::lockfree::queue<std::function<void()>*> hi_pri_queue_;
+  boost::lockfree::queue<std::function<void()> *> hi_pri_queue_;
 };
