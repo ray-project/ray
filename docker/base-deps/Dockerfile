@@ -17,13 +17,16 @@ ARG RAY_UID=1000
 ARG RAY_GID=100
 
 RUN apt-get update -y \
-    && apt-get install -y sudo tzdata bash libhdf5-dev pkg-config \
+    && apt-get install -y sudo tzdata bash libhdf5-dev pkg-config apt-transport-https ca-certificates curl \
     && (apt-get install -y libhdf5-100 || apt-get install -y libhdf5-103) \
     && useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID \
     && usermod -aG sudo ray \
     && echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+RUN sudo curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
+
 
 USER $RAY_UID
 ENV HOME=/home/ray
@@ -83,7 +86,7 @@ RUN  export arch=$(uname -m); \
     && (if [ "$AUTOSCALER" = "autoscaler" ]; \
 	then wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add - \
 	&& sudo touch /etc/apt/sources.list.d/kubernetes.list \
-	&& echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list \
+	&& echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list \
 	&& sudo apt-get update \
 	&& sudo apt-get install kubectl; \
     else sudo apt-get autoremove -y wget; \

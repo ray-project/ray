@@ -13,7 +13,8 @@ ENV USE_BAZEL_VERSION=3.7.2
 # Install dependencies needed to build ray
 USER root
 RUN wget -nv  -O - https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
-RUN apt-get update && apt-get install -y curl unzip cmake gcc g++ build-essential libunwind8 libunwind-dev libunwind8-dev openjdk-11-jdk && apt-get clean
+RUN curl -fsSL https://deb.nodesource.com/setup_16.x | bash -
+RUN apt-get update && apt-get install -y curl unzip cmake gcc g++ build-essential libunwind8 libunwind-dev libunwind8-dev openjdk-11-jdk nodejs && apt-get clean
 #RUN cd /ray && git init && ./ci/travis/install-bazel.sh --system
 ENV PATH=$PATH:/home/ray/bin
 RUN echo 'build --remote_cache="https://storage.googleapis.com/ray-bazel-cache"' >> $HOME/.bazelrc
