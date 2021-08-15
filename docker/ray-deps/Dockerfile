@@ -31,5 +31,5 @@ RUN arch=$(uname -m); \
 # Install the opencv as a seperate step for caching happiness
 RUN $HOME/anaconda3/bin/pip install opencv-python-headless
 COPY requirements.txt .
-RUN pip install tensorflow==2.5.1 || pip install https://github.com/bitsy-ai/tensorflow-arm-bin/releases/download/v2.4.0/tensorflow-2.4.0-cp37-none-linux_aarch64.whl
+RUN pip install tensorflow==2.5.1 || (pip install h5py && pip install https://github.com/bitsy-ai/tensorflow-arm-bin/releases/download/v2.4.0/tensorflow-2.4.0-cp37-none-linux_aarch64.whl)
 RUN $HOME/anaconda3/bin/pip install -r requirements.txt --extra-index-url=https://www.piwheels.org/simple
