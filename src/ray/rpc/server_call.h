@@ -120,7 +120,7 @@ using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
 /// \tparam ServiceHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
-template <class ServiceHandler, class Request, class Reply, class HandlerFunction>
+template <class ServiceHandler, class Request, class Reply, class HandlerFunction, bool HiPri>
 class ServerCallImpl : public ServerCall {
  public:
   /// Constructor.
@@ -131,7 +131,8 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] io_service The event loop.
   ServerCallImpl(const ServerCallFactory &factory, ServiceHandler &service_handler,
                  HandlerFunction handle_request_function,
-                 instrumented_io_context &io_service, std::string call_name)
+                 instrumented_io_context &io_service,
+                 std::string call_name)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
@@ -148,7 +149,7 @@ class ServerCallImpl : public ServerCall {
 
   void HandleRequest() override {
     if (!io_service_.stopped()) {
-      io_service_.post([this] { HandleRequestImpl(); }, call_name_);
+      io_service_.post([this] { HandleRequestImpl(); }, call_name_, HiPri);
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
@@ -250,7 +251,7 @@ class ServerCallImpl : public ServerCall {
   /// The ts when the request created
   int64_t start_time_;
 
-  template <class T1, class T2, class T3, class T4, class T5>
+  template <class T1, class T2, class T3, class T4, class T5, bool T6>
   friend class ServerCallFactoryImpl;
 };
 
@@ -271,7 +272,7 @@ using RequestCallFunction = void (GrpcService::AsyncService::*)(
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class ServiceHandler, class Request, class Reply,
-          class HandlerFunction>
+          class HandlerFunction, bool HiPri = false>
 class ServerCallFactoryImpl : public ServerCallFactory {
   using AsyncService = typename GrpcService::AsyncService;
 
@@ -305,7 +306,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
     // `GrpcServer::PollEventsFromCompletionQueue`.
-    auto call = new ServerCallImpl<ServiceHandler, Request, Reply, HandlerFunction>(
+    auto call = new ServerCallImpl<ServiceHandler, Request, Reply, HandlerFunction, HiPri>(
         *this, service_handler_, handle_request_function_, io_service_, call_name_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
