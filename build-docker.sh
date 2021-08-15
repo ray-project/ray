@@ -8,7 +8,7 @@ set -ex
 GPU=""
 BASE_IMAGE=${BASE_IMAGE:-"ubuntu:focal"}
 DOCKER_PREFIX=${DOCKER_PREFIX:-"rayproject/"}
-PYTHON_VERSION=3.9.6
+PYTHON_VERSION=3.7
 
 while [[ $# -gt 0 ]]
 do
@@ -36,9 +36,9 @@ case $key in
     exit 1
     ;;
     --python-version)
-    # Python version to install. e.g. 3.9.6
+    # Python version to install. e.g. 3.7
     # Changing python versions may require a different wheel.
-    # If not provided defaults to 3.9.6
+    # If not provided defaults to 3.7
     shift
     PYTHON_VERSION=$1
     ;;
