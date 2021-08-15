@@ -101,6 +101,7 @@ operatorNamespace: default
 # operatorImage - The image used in the operator deployment.
 operatorImage: rayproject/ray:latest
 # `rayproject/ray:latest` contains the latest official release version of Ray.
+# `rayproject/ray:nightly` runs the current master version of Ray.
 # For a particular official release version of Ray, use `rayproject/ray:1.x.y`.
 # For a specific master commit, use the first 6 characters of the commit SHA, e.g. `rayproject/ray:050a07`.
 # The operator and Ray cluster can use different Ray versions, provided both versions are >= 1.2.0
