@@ -27,8 +27,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(JobInfoGcsService, HANDLER, \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, MAX_ACTIVE_RPCS) \
-  RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER, MAX_ACTIVE_RPCS)
+#define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, MAX_ACTIVE_RPCS, ...) \
+  RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER, MAX_ACTIVE_RPCS, ##__VA_ARGS__)
 
 #define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER)     \
   RPC_SERVICE_HANDLER(NodeInfoGcsService, HANDLER, \
@@ -180,7 +180,7 @@ class ActorInfoGrpcService : public GrpcService {
     /// Register/Create Actor RPC takes long time, we shouldn't limit them to avoid
     /// distributed deadlock.
     ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActor, -1);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor, -1);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor, -1, true);
 
     /// Others need back pressure.
     ACTOR_INFO_SERVICE_RPC_HANDLER(

@@ -28,11 +28,11 @@ namespace ray {
 namespace rpc {
 /// \param MAX_ACTIVE_RPCS Maximum number of RPCs to handle at the same time. -1 means no
 /// limit.
-#define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS)                  \
+#define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, ...)             \
   std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                    \
-      new ServerCallFactoryImpl<SERVICE, SERVICE##Handler, HANDLER##Request,    \
-                                HANDLER##Reply,                                 \
-                                decltype(&SERVICE##Handler::Handle##HANDLER)>(  \
+      new ServerCallFactoryImpl<                                                \
+          SERVICE, SERVICE##Handler, HANDLER##Request, HANDLER##Reply,          \
+          decltype(&SERVICE##Handler::Handle##HANDLER), ##__VA_ARGS__>(         \
           service_, &SERVICE::AsyncService::Request##HANDLER, service_handler_, \
           &SERVICE##Handler::Handle##HANDLER, cq, main_service_,                \
           #SERVICE ".grpc_server." #HANDLER, MAX_ACTIVE_RPCS));                 \
