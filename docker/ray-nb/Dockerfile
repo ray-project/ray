@@ -31,6 +31,13 @@ COPY requirements.txt .
 # Use multiple cores to compile the C code :)
 ENV MAKEFLAGS -j 4
 
+RUN apt-get update -y \
+    && apt-get install -y tzdata bash libhdf5-dev \
+    && (apt-get install -y libhdf5-100 || apt-get install -y libhdf5-103) \
+    && apt-get install -y gcc g++ make cmake wget \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
 RUN mamba install --yes scipy pandas numba scikit-learn numpy
 # Install the generic requirements.
 RUN  mamba install --yes pyarrow
@@ -48,8 +55,7 @@ RUN arch=$(uname -m); \
     export PATH=$PATH:/usr/bin;
 # Install the opencv as a seperate step for caching happiness
 RUN pip install opencv-python-headless
-# We need some build tools since some of this is compiled from source.
-RUN apt-get update && apt-get install -y gcc g++ make cmake wget
+RUN pip install tensorflow==2.5.1 || (pip install h5py && pip install https://github.com/bitsy-ai/tensorflow-arm-bin/releases/download/v2.4.0/tensorflow-2.4.0-cp37-none-linux_aarch64.whl)
 RUN pip install -r requirements.txt --extra-index-url=https://www.piwheels.org/simple
 
 # Install ray
