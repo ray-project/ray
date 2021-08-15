@@ -18,9 +18,7 @@ from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 logger = logging.getLogger(__name__)
 
 
-def ParallelRollouts(workers: WorkerSet,
-                     *,
-                     mode="bulk_sync",
+def ParallelRollouts(workers: WorkerSet, *, mode="bulk_sync",
                      num_async=1) -> LocalIterator[SampleBatch]:
     """Operator to collect experiences in parallel from rollout workers.
 
@@ -154,6 +152,7 @@ class ConcatBatches:
         >>> print(next(rollouts).count)
         10000
     """
+
     def __init__(self, min_batch_size: int, count_steps_by: str = "env_steps"):
         self.min_batch_size = min_batch_size
         self.count_steps_by = count_steps_by
@@ -206,6 +205,7 @@ class SelectExperiences:
         >>> print(next(rollouts).policy_batches.keys())
         {"pol1", "pol2"}
     """
+
     def __init__(self, policy_ids: List[PolicyID]):
         assert isinstance(policy_ids, list), policy_ids
         self.policy_ids = policy_ids
@@ -214,12 +214,11 @@ class SelectExperiences:
         _check_sample_batch_type(samples)
 
         if isinstance(samples, MultiAgentBatch):
-            samples = MultiAgentBatch(
-                {
-                    k: v
-                    for k, v in samples.policy_batches.items()
-                    if k in self.policy_ids
-                }, samples.count)
+            samples = MultiAgentBatch({
+                k: v
+                for k, v in samples.policy_batches.items()
+                if k in self.policy_ids
+            }, samples.count)
 
         return samples
 
@@ -236,6 +235,7 @@ class StandardizeFields:
         >>> print(np.std(next(rollouts)["advantages"]))
         1.0
     """
+
     def __init__(self, fields: List[str]):
         self.fields = fields
 
@@ -244,8 +244,9 @@ class StandardizeFields:
         wrapped = False
 
         if isinstance(samples, SampleBatch):
-            samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples},
-                                      samples.count)
+            samples = MultiAgentBatch({
+                DEFAULT_POLICY_ID: samples
+            }, samples.count)
             wrapped = True
 
         for policy_id in samples.policy_batches:

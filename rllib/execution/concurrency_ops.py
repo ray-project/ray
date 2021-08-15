@@ -6,13 +6,12 @@ from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.utils.typing import SampleBatchType
 
 
-def Concurrently(
-    ops: List[LocalIterator],
-    *,
-    mode: str = "round_robin",
-    output_indexes: Optional[List[int]] = None,
-    round_robin_weights: Optional[List[int]] = None
-) -> LocalIterator[SampleBatchType]:
+def Concurrently(ops: List[LocalIterator],
+                 *,
+                 mode: str = "round_robin",
+                 output_indexes: Optional[List[int]] = None,
+                 round_robin_weights: Optional[List[int]] = None
+                 ) -> LocalIterator[SampleBatchType]:
     """Operator that runs the given parent iterators concurrently.
 
     Args:
@@ -59,9 +58,10 @@ def Concurrently(
 
         ops = [tag(op, i) for i, op in enumerate(ops)]
 
-    output = ops[0].union(*ops[1:],
-                          deterministic=deterministic,
-                          round_robin_weights=round_robin_weights)
+    output = ops[0].union(
+        *ops[1:],
+        deterministic=deterministic,
+        round_robin_weights=round_robin_weights)
 
     if output_indexes:
         output = (output.filter(lambda tup: tup[0] in output_indexes).for_each(
@@ -86,6 +86,7 @@ class Enqueue:
         >>> next(combined_op)
         SampleBatch(...)
     """
+
     def __init__(self, output_queue: queue.Queue):
         if not isinstance(output_queue, queue.Queue):
             raise ValueError("Expected queue.Queue, got {}".format(
