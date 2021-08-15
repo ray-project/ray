@@ -5,18 +5,21 @@ import logging
 import traceback
 
 from ray.util.debug import log_once
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 _session = None
 
 
+@PublicAPI
 def is_session_enabled() -> bool:
     """Returns True if running within an Tune process."""
     global _session
     return _session is not None
 
 
+@PublicAPI
 def get_session():
     global _session
     if not _session:
@@ -67,6 +70,7 @@ def shutdown():
     _session = None
 
 
+@PublicAPI
 def report(_metric=None, **kwargs):
     """Logs all keyword arguments.
 
@@ -116,6 +120,7 @@ def save_checkpoint(checkpoint):
         "Deprecated method. Use `tune.checkpoint_dir` instead.")
 
 
+@PublicAPI
 @contextmanager
 def checkpoint_dir(step):
     """Returns a checkpoint dir inside a context.
@@ -181,6 +186,7 @@ def checkpoint_dir(step):
         _session.set_checkpoint(_checkpoint_dir)
 
 
+@DeveloperAPI
 def get_trial_dir():
     """Returns the directory where trial results are saved.
 
@@ -191,6 +197,7 @@ def get_trial_dir():
         return _session.logdir
 
 
+@DeveloperAPI
 def get_trial_name():
     """Trial name for the corresponding trial.
 
@@ -201,6 +208,7 @@ def get_trial_name():
         return _session.trial_name
 
 
+@DeveloperAPI
 def get_trial_id():
     """Trial id for the corresponding trial.
 
@@ -211,4 +219,21 @@ def get_trial_id():
         return _session.trial_id
 
 
-__all__ = ["report", "get_trial_dir", "get_trial_name", "get_trial_id"]
+@DeveloperAPI
+def get_trial_resources():
+    """Trial resources for the corresponding trial.
+
+    Will be a PlacementGroupFactory if trial uses those,
+    otherwise a Resources instance.
+
+    For function API use only.
+    """
+    _session = get_session()
+    if _session:
+        return _session.trial_resources
+
+
+__all__ = [
+    "report", "get_trial_dir", "get_trial_name", "get_trial_id",
+    "get_trial_resources"
+]

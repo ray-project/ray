@@ -147,7 +147,7 @@ You can also define supervised model losses over offline data. This requires def
         supervised_loss = some_function_of(input_ops)
         return policy_loss + supervised_loss
 
-See `custom_loss.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_loss.py>`__ for a runnable example of using these TF input ops in a custom loss.
+See `custom_model_loss_and_metrics.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__ for a runnable example of using these TF input ops in a custom loss.
 
 
 Input API
@@ -164,6 +164,40 @@ The interface for a custom input reader is as follows:
 
 .. autoclass:: ray.rllib.offline.InputReader
     :members:
+
+Example Custom Input API
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can create a custom input reader like the following:
+
+.. code-block:: python
+
+    from ray.rllib.offline import InputReader, IOContext, ShuffledInput
+    from ray.tune.registry import register_input
+
+    class CustomInputReader(InputReader):
+        def __init__(self, ioctx: IOContext): ...
+        def next(self): ...
+
+    def input_creator(ioctx: IOContext) -> InputReader:
+        return ShuffledInput(CustomInputReader(ioctx))
+
+    register_input("custom_input", input_creator)
+
+    config = {
+        "input": "custom_input",
+        "input_config": {},
+        ...
+    }
+
+You can pass arguments from the config to the custom input api through the
+``input_config`` option which can be accessed with the ``IOContext``.
+The interface for the ``IOContext`` is the following:
+
+.. autoclass:: ray.rllib.offline.IOContext
+    :members:
+
+See `custom_input_api.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_input_api.py>`__ for a runnable example.
 
 Output API
 ----------

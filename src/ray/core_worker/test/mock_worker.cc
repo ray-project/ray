@@ -20,6 +20,7 @@
 using namespace std::placeholders;
 
 namespace ray {
+namespace core {
 
 /// A mock C++ worker used by core_worker_test.cc to verify the task submission/execution
 /// interfaces in both single node and cross-nodes scenarios. As the raylet client can
@@ -65,11 +66,10 @@ class MockWorker {
                      const std::string &debugger_breakpoint,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
-    const ray::FunctionDescriptor function_descriptor =
-        ray_function.GetFunctionDescriptor();
+    const FunctionDescriptor function_descriptor = ray_function.GetFunctionDescriptor();
     RAY_CHECK(function_descriptor->Type() ==
-              ray::FunctionDescriptorType::kPythonFunctionDescriptor);
-    auto typed_descriptor = function_descriptor->As<ray::PythonFunctionDescriptor>();
+              FunctionDescriptorType::kPythonFunctionDescriptor);
+    auto typed_descriptor = function_descriptor->As<PythonFunctionDescriptor>();
 
     if ("actor creation task" == typed_descriptor->ModuleName()) {
       return Status::OK();
@@ -142,16 +142,18 @@ class MockWorker {
   int64_t prev_seq_no_ = 0;
 };
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  RAY_CHECK(argc == 4);
+  RAY_CHECK(argc >= 4);
   auto store_socket = std::string(argv[1]);
   auto raylet_socket = std::string(argv[2]);
   auto node_manager_port = std::stoi(std::string(argv[3]));
 
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
-  ray::MockWorker worker(store_socket, raylet_socket, node_manager_port, gcs_options);
+  ray::core::MockWorker worker(store_socket, raylet_socket, node_manager_port,
+                               gcs_options);
   worker.RunTaskExecutionLoop();
   return 0;
 }

@@ -19,8 +19,6 @@ from ray.rllib.agents.sac.sac_tf_policy import \
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, \
-    MAX_LOG_NN_OUTPUT
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.exploration.random import Random
@@ -126,34 +124,18 @@ def cql_loss(policy: Policy, model: ModelV2,
         actor_loss = tf.reduce_mean(
             tf.stop_gradient(alpha) * log_pis_t - min_q)
     else:
-
-        def bc_log(model, obs, actions):
-            z = tf.math.atanh(actions)
-            logits = model.get_policy_output(obs)
-            mean, log_std = tf.split(logits, 2, axis=-1)
-            # Mean Clamping for Stability
-            mean = tf.clip_by_value(mean, MEAN_MIN, MEAN_MAX)
-            log_std = tf.clip_by_value(log_std, MIN_LOG_NN_OUTPUT,
-                                       MAX_LOG_NN_OUTPUT)
-            std = tf.math.exp(log_std)
-            normal_dist = tfp.distributions.Normal(mean, std)
-            return tf.reduce_sum(
-                normal_dist.log_prob(z) -
-                tf.math.log(1 - actions * actions + SMALL_NUMBER),
-                axis=-1)
-
-        bc_logp = bc_log(model, model_out_t, actions)
+        bc_logp = action_dist_t.logp(actions)
         actor_loss = tf.reduce_mean(
             tf.stop_gradient(alpha) * log_pis_t - bc_logp)
+        # actor_loss = -tf.reduce_mean(bc_logp)
 
     # Critic Loss (Standard SAC Critic L2 Loss + CQL Entropy Loss)
     # SAC Loss:
     # Q-values for the batched actions.
     action_dist_tp1 = policy.dist_class(
         model.get_policy_output(model_out_tp1), policy.model)
-    policy_tp1, log_pis_tp1 = action_dist_tp1.sample_logp()
+    policy_tp1, _ = action_dist_tp1.sample_logp()
 
-    log_pis_tp1 = tf.expand_dims(log_pis_tp1, -1)
     q_t = model.get_q_values(model_out_t, actions)
     q_t_selected = tf.squeeze(q_t, axis=-1)
     if twin_q:

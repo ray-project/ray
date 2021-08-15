@@ -41,13 +41,12 @@ class LocalObjectManager {
       size_t free_objects_batch_size, int64_t free_objects_period_ms,
       IOWorkerPoolInterface &io_worker_pool,
       gcs::ObjectInfoAccessor &object_info_accessor,
-      rpc::CoreWorkerClientPool &owner_client_pool,
-      bool automatic_object_deletion_enabled, int max_io_workers,
+      rpc::CoreWorkerClientPool &owner_client_pool, int max_io_workers,
       int64_t min_spilling_size, bool is_external_storage_type_fs,
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
-      std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber)
+      pubsub::SubscriberInterface *core_worker_subscriber)
       : self_node_id_(node_id),
         self_node_address_(self_node_address),
         self_node_port_(self_node_port),
@@ -56,7 +55,6 @@ class LocalObjectManager {
         io_worker_pool_(io_worker_pool),
         object_info_accessor_(object_info_accessor),
         owner_client_pool_(owner_client_pool),
-        automatic_object_deletion_enabled_(automatic_object_deletion_enabled),
         on_objects_freed_(on_objects_freed),
         last_free_objects_at_ms_(current_time_ms()),
         min_spilling_size_(min_spilling_size),
@@ -209,9 +207,6 @@ class LocalObjectManager {
   /// this node.
   rpc::CoreWorkerClientPool &owner_client_pool_;
 
-  /// Whether to enable automatic deletion when refs are gone out of scope.
-  bool automatic_object_deletion_enabled_;
-
   /// A callback to call when an object has been freed.
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
 
@@ -289,7 +284,7 @@ class LocalObjectManager {
 
   /// The raylet client to initiate the pubsub to core workers (owners).
   /// It is used to subscribe objects to evict.
-  std::shared_ptr<pubsub::SubscriberInterface> core_worker_subscriber_;
+  pubsub::SubscriberInterface *core_worker_subscriber_;
 
   ///
   /// Stats

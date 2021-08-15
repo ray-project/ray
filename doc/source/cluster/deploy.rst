@@ -13,4 +13,5 @@ Ray with Cluster Managers
    kubernetes.rst
    yarn.rst
    slurm.rst
+   lsf.rst
 

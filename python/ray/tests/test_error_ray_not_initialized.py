@@ -5,7 +5,7 @@ import pytest
 import ray
 
 
-def test_errors_before_initializing_ray():
+def test_errors_before_initializing_ray(set_enable_auto_connect):
     @ray.remote
     def f():
         pass

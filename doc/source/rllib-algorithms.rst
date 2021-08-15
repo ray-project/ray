@@ -1,3 +1,7 @@
+.. important:: The ML team at `Anyscale Inc. <https://anyscale.io>`__, the company behind Ray, is looking for interns and full-time **reinforcement learning engineers** to help advance and maintain RLlib.
+ If you have a background in ML/RL and are interested in making RLlib **the** industry-leading open-source RL library, `apply here today <https://jobs.lever.co/anyscale/186d9b8d-3fee-4e07-bb8e-49e85cf33d6b>`__.
+ We'd be thrilled to welcome you on the team!
+
 RLlib Algorithms
 ================
 
@@ -785,7 +789,7 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
 Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG)
 ---------------------------------------------------------------
 |tensorflow|
-`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized/shared critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/justinkterry/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
+`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a DDPG centralized/shared critic algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/jkterry1/maddpg-rllib>`__ for examples and more information. Note that the implementation here is based on OpenAI's, and is intended for use with the discrete MPE environments. Please also note that people typically find this method difficult to get to work, even with all applicable optimizations for their environment applied. This method should be viewed as for research purposes, and for reproducing the results of the paper introducing it.
 
 **MADDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 

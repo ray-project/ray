@@ -7,6 +7,8 @@ from ray.tune.schedulers.async_hyperband import (AsyncHyperBandScheduler,
 from ray.tune.schedulers.median_stopping_rule import MedianStoppingRule
 from ray.tune.schedulers.pbt import (PopulationBasedTraining,
                                      PopulationBasedTrainingReplay)
+from ray.tune.schedulers.resource_changing_scheduler import \
+    ResourceChangingScheduler
 
 
 def _pb2_importer(*args, **kwargs):
@@ -14,6 +16,21 @@ def _pb2_importer(*args, **kwargs):
     # lazily.
     from ray.tune.schedulers.pb2 import PB2
     return PB2(*args, **kwargs)
+
+
+SCHEDULER_IMPORT = {
+    "fifo": FIFOScheduler,
+    "async_hyperband": AsyncHyperBandScheduler,
+    "asynchyperband": AsyncHyperBandScheduler,
+    "median_stopping_rule": MedianStoppingRule,
+    "medianstopping": MedianStoppingRule,
+    "hyperband": HyperBandScheduler,
+    "hb_bohb": HyperBandForBOHB,
+    "pbt": PopulationBasedTraining,
+    "pbt_replay": PopulationBasedTrainingReplay,
+    "pb2": _pb2_importer,
+    "resource_changing": ResourceChangingScheduler
+}
 
 
 def create_scheduler(
@@ -35,18 +52,6 @@ def create_scheduler(
         >>> scheduler = tune.create_scheduler('pbt', **pbt_kwargs)
     """
 
-    SCHEDULER_IMPORT = {
-        "fifo": FIFOScheduler,
-        "async_hyperband": AsyncHyperBandScheduler,
-        "asynchyperband": AsyncHyperBandScheduler,
-        "median_stopping_rule": MedianStoppingRule,
-        "medianstopping": MedianStoppingRule,
-        "hyperband": HyperBandScheduler,
-        "hb_bohb": HyperBandForBOHB,
-        "pbt": PopulationBasedTraining,
-        "pbt_replay": PopulationBasedTrainingReplay,
-        "pb2": _pb2_importer,
-    }
     scheduler = scheduler.lower()
     if scheduler not in SCHEDULER_IMPORT:
         raise ValueError(
@@ -65,5 +70,5 @@ __all__ = [
     "TrialScheduler", "HyperBandScheduler", "AsyncHyperBandScheduler",
     "ASHAScheduler", "MedianStoppingRule", "FIFOScheduler",
     "PopulationBasedTraining", "PopulationBasedTrainingReplay",
-    "HyperBandForBOHB"
+    "HyperBandForBOHB", "ResourceChangingScheduler"
 ]

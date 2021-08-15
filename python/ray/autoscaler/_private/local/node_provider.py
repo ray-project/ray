@@ -6,12 +6,14 @@ import socket
 import logging
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import (
-    TAG_RAY_NODE_KIND,
-    NODE_KIND_WORKER,
-    NODE_KIND_HEAD,
-)
+from ray.autoscaler.tags import (TAG_RAY_NODE_KIND, NODE_KIND_WORKER,
+                                 NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE,
+                                 TAG_RAY_NODE_NAME, TAG_RAY_NODE_STATUS,
+                                 STATUS_UP_TO_DATE)
 from ray.autoscaler._private.local.config import bootstrap_local
+from ray.autoscaler._private.local.config import get_lock_path
+from ray.autoscaler._private.local.config import get_state_path
+from ray.autoscaler._private.local.config import LOCAL_CLUSTER_NODE_TYPE
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,14 @@ class ClusterState:
                 for worker_ip in list(workers):
                     if worker_ip not in list_of_node_ips:
                         del workers[worker_ip]
+
+                # Set external head ip, if provided by user.
+                # Necessary if calling `ray up` from outside the network.
+                # Refer to LocalNodeProvider.external_ip function.
+                external_head_ip = provider_config.get("external_head_ip")
+                if external_head_ip:
+                    head = workers[provider_config["head_ip"]]
+                    head["external_ip"] = external_head_ip
 
                 assert len(workers) == len(provider_config["worker_ips"]) + 1
                 with open(self.save_path, "w") as f:
@@ -158,9 +168,11 @@ class LocalNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
 
         if cluster_name:
+            lock_path = get_lock_path(cluster_name)
+            state_path = get_state_path(cluster_name)
             self.state = ClusterState(
-                "/tmp/cluster-{}.lock".format(cluster_name),
-                "/tmp/cluster-{}.state".format(cluster_name),
+                lock_path,
+                state_path,
                 provider_config,
             )
             self.use_coordinator = False
@@ -196,7 +208,21 @@ class LocalNodeProvider(NodeProvider):
         return self.state.get()[node_id]["tags"]
 
     def external_ip(self, node_id):
-        return socket.gethostbyname(node_id)
+        """Returns an external ip if the user has supplied one.
+        Otherwise, use the same logic as internal_ip below.
+
+        This can be used to call ray up from outside the network, for example
+        if the Ray cluster exists in an AWS VPC and we're interacting with
+        the cluster from a laptop (where using an internal_ip will not work).
+
+        Useful for debugging the local node provider with cloud VMs."""
+
+        node_state = self.state.get()[node_id]
+        ext_ip = node_state.get("external_ip")
+        if ext_ip:
+            return ext_ip
+        else:
+            return socket.gethostbyname(node_id)
 
     def internal_ip(self, node_id):
         return socket.gethostbyname(node_id)
@@ -232,3 +258,30 @@ class LocalNodeProvider(NodeProvider):
     @staticmethod
     def bootstrap_config(cluster_config):
         return bootstrap_local(cluster_config)
+
+
+def record_local_head_state_if_needed(
+        local_provider: LocalNodeProvider) -> None:
+    """This function is called on the Ray head from StandardAutoscaler.reset
+    to record the head node's own existence in the cluster state file.
+
+    This is necessary because `provider.create_node` in
+    `commands.get_or_create_head_node` records the head state on the
+    cluster-launching machine but not on the head.
+    """
+    head_ip = local_provider.provider_config["head_ip"]
+    cluster_name = local_provider.cluster_name
+    # If the head node is not marked as created in the cluster state file,
+    if head_ip not in local_provider.non_terminated_nodes({}):
+        # These tags are based on the ones in commands.get_or_create_head_node;
+        # keep in sync.
+        head_tags = {
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_USER_NODE_TYPE: LOCAL_CLUSTER_NODE_TYPE,
+            TAG_RAY_NODE_NAME: "ray-{}-head".format(cluster_name),
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+        }
+        # Mark the head node as created in the cluster state file.
+        local_provider.create_node(node_config={}, tags=head_tags, count=1)
+
+        assert head_ip in local_provider.non_terminated_nodes({})

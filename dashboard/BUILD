@@ -13,19 +13,21 @@ py_library(
 py_test_run_all_subdirectory(
     size = "small",
     include = ["**/test*.py"],
-    exclude = ["modules/test/**", "modules/stats_collector/tests/test_stats_collector.py", "tests/test_dashboard.py"],
+    exclude = ["modules/test/**", "modules/node/tests/test_node.py", "tests/test_dashboard.py"],
     extra_srcs = [],
     tags = ["exclusive"],
 )
 
 py_test(
-    name = "test_stats_collector",
+    name = "test_node",
     size = "medium",
-    srcs = ["modules/stats_collector/tests/test_stats_collector.py"],
+    srcs = ["modules/node/tests/test_node.py"],
+    tags = ["exclusive"],
 )
 
 py_test(
     name = "test_dashboard",
     size = "medium",
     srcs = ["tests/test_dashboard.py"],
+    tags = ["exclusive"],
 )

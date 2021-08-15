@@ -70,6 +70,48 @@ ray.get(actor.ping.remote())
         Actor.options(name="Pinger", lifetime="detached").remote()
 
 
+def test_placement_groups(shutdown_only):
+    info = ray.init(namespace="namespace")
+
+    address = info["redis_address"]
+
+    # First param of template is the namespace. Second is the redis address.
+    driver_template = """
+import ray
+
+ray.init(address="{}", namespace="{}")
+
+pg = ray.util.placement_group(bundles=[dict(CPU=1)], name="hello",
+    lifetime="detached")
+ray.get(pg.ready())
+    """
+
+    # Start a detached placement group in a different namespace.
+    run_string_as_driver(driver_template.format(address, "different"))
+
+    # Create an actor. This should succeed because the other actor is in a
+    # different namespace.
+    probe = ray.util.placement_group(bundles=[{"CPU": 1}], name="hello")
+    ray.get(probe.ready())
+    ray.util.remove_placement_group(probe)
+
+    removed = False
+    for _ in range(50):  # Timeout after 5s
+        try:
+            ray.util.get_placement_group("hello")
+        except ValueError:
+            removed = True
+            # This means the actor was removed.
+            break
+        else:
+            time.sleep(0.1)
+
+    assert removed, "This is an anti-flakey test measure"
+
+    # Now make the actor in this namespace, from a different job.
+    run_string_as_driver(driver_template.format(address, "namespace"))
+
+
 def test_default_namespace(shutdown_only):
     info = ray.init(namespace="namespace")
 

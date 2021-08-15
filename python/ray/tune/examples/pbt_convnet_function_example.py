@@ -87,7 +87,7 @@ if __name__ == "__main__":
 
     if args.server_address:
         import ray
-        ray.util.connect(args.server_address)
+        ray.init(f"ray://{args.server_address}")
 
     # __pbt_begin__
     scheduler = PopulationBasedTraining(
@@ -139,6 +139,11 @@ if __name__ == "__main__":
     if args.server_address:
         # If using Ray Client, we want to make sure checkpoint access
         # happens on the server. So we wrap `test_best_model` in a Ray task.
-        ray.get(ray.remote(test_best_model).remote(analysis))
+        # We have to make sure it gets executed on the same node that
+        # ``tune.run`` is called on.
+        from ray.tune.utils.util import force_on_current_node
+
+        remote_fn = force_on_current_node(ray.remote(test_best_model))
+        ray.get(remote_fn.remote(analysis))
     else:
         test_best_model(analysis)

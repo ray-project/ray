@@ -39,13 +39,19 @@ void BundleSpecification::ComputeBundleResourceLabels() {
     /// With bundle index (e.g., CPU_group_i_zzz).
     const std::string &resource_label =
         FormatPlacementGroupResource(resource_pair.first, PlacementGroupId(), Index());
-    bundle_resource_labels_.insert(std::make_pair(resource_label, resource_value));
+    bundle_resource_labels_[resource_label] = resource_value;
 
     /// Without bundle index (e.g., CPU_group_zzz).
     const std::string &wildcard_label =
         FormatPlacementGroupResource(resource_pair.first, PlacementGroupId(), -1);
-    bundle_resource_labels_.insert(std::make_pair(wildcard_label, resource_value));
+    bundle_resource_labels_[wildcard_label] = resource_value;
   }
+  auto bundle_label =
+      FormatPlacementGroupResource(kBundle_ResourceLabel, PlacementGroupId(), -1);
+  auto index_bundle_label =
+      FormatPlacementGroupResource(kBundle_ResourceLabel, PlacementGroupId(), Index());
+  bundle_resource_labels_[index_bundle_label] = bundle_resource_labels_[bundle_label] =
+      1000;
 }
 
 const ResourceSet &BundleSpecification::GetRequiredResources() const {

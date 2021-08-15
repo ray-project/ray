@@ -9,10 +9,12 @@ from ray._raylet import (
 )  # noqa: E402
 # Sum is used for CythonCount because it allows incrementing by positive
 # values that are different from one.
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class Metric:
     """The parent class of custom metrics.
 
@@ -146,6 +148,7 @@ class Metric:
         }
 
 
+@DeveloperAPI
 class Counter(Metric):
     """A cumulative metric that is monotonically increasing.
 
@@ -188,6 +191,7 @@ class Counter(Metric):
         self.record(value, tags=tags, _internal=True)
 
 
+@DeveloperAPI
 class Count(Counter):
     """The count of the number of metric points.
 
@@ -211,6 +215,7 @@ class Count(Counter):
         super().__init__(name, description, tag_keys)
 
 
+@DeveloperAPI
 class Histogram(Metric):
     """Tracks the size and number of events in buckets.
 
@@ -270,6 +275,7 @@ class Histogram(Metric):
         return info
 
 
+@DeveloperAPI
 class Gauge(Metric):
     """Gauges keep the last recorded value and drop everything before.
 

@@ -21,7 +21,6 @@ from ray.actor import ActorHandle
 from ray.rllib.agents.dqn.dqn import calculate_rr_weights, \
     DEFAULT_CONFIG as DQN_CONFIG, DQNTrainer, validate_config
 from ray.rllib.agents.dqn.learner_thread import LearnerThread
-from ray.rllib.agents.trainer import Trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (STEPS_TRAINED_COUNTER,
                                         _get_global_vars, _get_shared_metrics)
@@ -77,7 +76,6 @@ class OverrideDefaultResourceRequest:
     @override(Trainable)
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
-        Trainer._validate_config(cf)
 
         eval_config = cf["evaluation_config"]
 
@@ -133,6 +131,8 @@ class UpdateWorkerWeights:
                 self.weights = ray.put(
                     self.workers.local_worker().get_weights())
             actor.set_weights.remote(self.weights, _get_global_vars())
+            # Also update global vars of the local worker.
+            self.workers.local_worker().set_global_vars(_get_global_vars())
             self.steps_since_update[actor] = 0
             # Update metrics.
             metrics = _get_shared_metrics()
@@ -222,7 +222,7 @@ def apex_execution_plan(workers: WorkerSet,
         replay_stats = ray.get(replay_actors[0].stats.remote(
             config["optimizer"].get("debug")))
         exploration_infos = workers.foreach_trainable_policy(
-            lambda p, _: p.get_exploration_info())
+            lambda p, _: p.get_exploration_state())
         result["info"].update({
             "exploration_infos": exploration_infos,
             "learner_queue": learner_thread.learner_queue_size.stats(),

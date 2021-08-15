@@ -218,7 +218,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "pol0": (EpisodeEnvAwareLSTMPolicy, obs_space, action_space, {}),
         }
 
-        def policy_fn(agent_id):
+        def policy_fn(agent_id, episode, **kwargs):
             return "pol0"
 
         config = {
@@ -269,7 +269,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                      {}),
         }
 
-        def policy_fn(agent_id):
+        def policy_fn(agent_id, episode, **kwargs):
             return "pol0"
 
         config = {
@@ -309,7 +309,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 "p0": (None, obs_space, action_space, {}),
                 "p1": (None, obs_space, action_space, {}),
             },
-            "policy_mapping_fn": lambda aid: "p{}".format(aid),
+            "policy_mapping_fn": lambda aid, **kwargs: "p{}".format(aid),
             "count_steps_by": "agent_steps",
         }
         tune.register_env(

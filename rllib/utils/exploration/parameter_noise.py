@@ -269,7 +269,7 @@ class ParameterNoise(Exploration):
                     noise_free_action_dist *
                     np.log(noise_free_action_dist /
                            (noisy_action_dist + SMALL_NUMBER)), 1))
-            current_epsilon = self.sub_exploration.get_info(
+            current_epsilon = self.sub_exploration.get_state(
                 sess=tf_sess)["cur_epsilon"]
             delta = -np.log(1 - current_epsilon +
                             current_epsilon / self.action_space.n)
@@ -277,7 +277,7 @@ class ParameterNoise(Exploration):
             # Calculate MSE between noisy and non-noisy output (see [2]).
             distance = np.sqrt(
                 np.mean(np.square(noise_free_action_dist - noisy_action_dist)))
-            current_scale = self.sub_exploration.get_info(
+            current_scale = self.sub_exploration.get_state(
                 sess=tf_sess)["cur_scale"]
             delta = getattr(self.sub_exploration, "ou_sigma", 0.2) * \
                 current_scale
@@ -288,11 +288,8 @@ class ParameterNoise(Exploration):
         else:
             self.stddev_val /= 1.01
 
-        # Set self.stddev to calculated value.
-        if self.framework == "tf":
-            self.stddev.load(self.stddev_val, session=tf_sess)
-        else:
-            self.stddev = self.stddev_val
+        # Update our state (self.stddev and self.stddev_val).
+        self.set_state(self.get_state(), sess=tf_sess)
 
         return sample_batch
 
@@ -417,5 +414,15 @@ class ParameterNoise(Exploration):
             return tf.no_op()
 
     @override(Exploration)
-    def get_info(self, sess=None):
+    def get_state(self, sess=None):
         return {"cur_stddev": self.stddev_val}
+
+    @override(Exploration)
+    def set_state(self, state: dict,
+                  sess: Optional["tf.Session"] = None) -> None:
+        self.stddev_val = state["cur_stddev"]
+        # Set self.stddev to calculated value.
+        if self.framework == "tf":
+            self.stddev.load(self.stddev_val, session=sess)
+        else:
+            self.stddev = self.stddev_val

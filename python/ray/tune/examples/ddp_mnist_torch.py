@@ -71,9 +71,9 @@ if __name__ == "__main__":
         help="Sets number of workers for training.")
     parser.add_argument(
         "--num-gpus-per-worker",
-        action="store_true",
-        default=False,
-        help="enables CUDA training")
+        type=int,
+        default=0,
+        help="Sets number of gpus each worker uses.")
     parser.add_argument(
         "--cluster",
         action="store_true",

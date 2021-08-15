@@ -143,6 +143,7 @@ test_python() {
       -python/ray/serve:test_router # timeout
       -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
       -python/ray/serve:test_backend_worker # memory error
+      -python/ray/serve:test_controller_crashes # timeout
       -python/ray/tests:test_actor_advanced # timeout
       -python/ray/tests:test_actor_failures # flaky
       -python/ray/tests:test_advanced_2
@@ -170,11 +171,14 @@ test_python() {
       -python/ray/tests:test_multi_node_2
       -python/ray/tests:test_multi_node_3
       -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
+      -python/ray/tests:test_multiprocessing_client_mode  # timeout
       -python/ray/tests:test_node_manager
       -python/ray/tests:test_object_manager
       -python/ray/tests:test_placement_group # timeout and OOM
       -python/ray/tests:test_ray_init  # test_redis_port() seems to fail here, but pass in isolation
       -python/ray/tests:test_resource_demand_scheduler
+      -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
+      -python/ray/tests:test_runtime_env_complicated # conda install slow leading to timeout
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_k8s_operator_unit_tests
@@ -198,9 +202,12 @@ test_cpp() {
   bazel build --config=ci //cpp:all
   # shellcheck disable=SC2046
   bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
-  # run the cpp example
-  bazel run //cpp/example:example
+  # run cluster mode test with external cluster
+  bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
+    --test_arg=--ray_redis_password="1234"
 
+  # run the cpp example
+  cd cpp/example && sh run.sh
 }
 
 test_wheels() {
@@ -235,7 +242,8 @@ build_dashboard_front_end() {
     (
       cd ray/new_dashboard/client
 
-      if [ -z "${BUILDKITE-}" ]; then
+      # skip nvm activation on buildkite linux instances.
+      if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
         set +x  # suppress set -x since it'll get very noisy here
         . "${HOME}/.nvm/nvm.sh"
         nvm use --silent node
@@ -287,7 +295,13 @@ _bazel_build_before_install() {
     target="//:ray_pkg"
   fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
-  bazel build "${target}"
+
+  # Build in debug mode if RAY_DEBUG_BUILD=1
+  if [ -z "${RAY_DEBUG_BUILD-}" ] || [ "${RAY_DEBUG_BUILD}" -ne "1" ]; then
+    bazel build "${target}"
+  else
+    bazel build --config debug "${target}"
+  fi
 }
 
 
@@ -322,6 +336,7 @@ build_wheels() {
         -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
         -e "BUILDKITE=${BUILDKITE:-}"
         -e "BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL:-}"
+        -e "RAY_DEBUG_BUILD=${RAY_DEBUG_BUILD:-}"
       )
 
 
@@ -331,6 +346,7 @@ build_wheels() {
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
         quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
       else
+        rm -rf /ray-mount/*
         cp -rT /ray /ray-mount
         ls /ray-mount
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
@@ -343,7 +359,6 @@ build_wheels() {
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      # Remove suppress_output for now to avoid timeout
       "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
@@ -401,6 +416,12 @@ lint_web() {
   )
 }
 
+lint_copyright() {
+  (
+    "${ROOT_DIR}"/copyright-format.sh -c
+  )
+}
+
 _lint() {
   local platform=""
   case "${OSTYPE}" in
@@ -425,6 +446,9 @@ _lint() {
 
     # Run TypeScript and HTML linting.
     lint_web
+
+    # lint copyright
+    lint_copyright
   fi
 }
 
@@ -525,7 +549,7 @@ build() {
     install_cython_examples
   fi
 
-  if [ "${RAY_DEFAULT_BUILD-}" = 1 ] || [ "${LINT-}" = 1 ]; then
+  if [ "${LINT-}" = 1 ]; then
     install_go
   fi
 

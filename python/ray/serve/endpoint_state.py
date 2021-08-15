@@ -1,10 +1,10 @@
 from typing import Dict, Any, Optional
 
-import ray.cloudpickle as pickle
+from ray import cloudpickle
 from ray.serve.common import (BackendTag, EndpointInfo, EndpointTag,
                               TrafficPolicy)
 from ray.serve.long_poll import LongPollNamespace
-from ray.serve.kv_store import RayInternalKVStore
+from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
 
 CHECKPOINT_KEY = "serve-endpoint-state-checkpoint"
@@ -27,7 +27,7 @@ class EndpointState:
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
             (self._endpoints,
-             self._traffic_policies) = pickle.loads(checkpoint)
+             self._traffic_policies) = cloudpickle.loads(checkpoint)
 
         self._notify_route_table_changed()
         self._notify_traffic_policies_changed()
@@ -38,7 +38,7 @@ class EndpointState:
     def _checkpoint(self):
         self._kv_store.put(
             CHECKPOINT_KEY,
-            pickle.dumps((self._endpoints, self._traffic_policies)))
+            cloudpickle.dumps((self._endpoints, self._traffic_policies)))
 
     def _notify_route_table_changed(self):
         self._long_poll_host.notify_changed(LongPollNamespace.ROUTE_TABLE,

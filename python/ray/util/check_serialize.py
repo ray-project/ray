@@ -2,8 +2,13 @@
 from typing import Any, Tuple, Set, Optional
 import inspect
 import ray.cloudpickle as cp
-import colorama
 from contextlib import contextmanager
+
+# Import ray first to use the bundled colorama
+import ray  # noqa: F401
+from ray.util.annotations import DeveloperAPI
+
+import colorama
 
 
 @contextmanager
@@ -128,6 +133,7 @@ def _inspect_generic_serialization(base_obj, depth, parent, failure_set):
     return found
 
 
+@DeveloperAPI
 def inspect_serializability(
         base_obj: Any,
         name: Optional[str] = None,

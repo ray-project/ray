@@ -72,9 +72,14 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_resource_manager_ =
         std::make_shared<gcs::GcsResourceManager>(io_service_, nullptr, nullptr, true);
-    gcs_placement_group_manager_.reset(
-        new gcs::GcsPlacementGroupManager(io_service_, mock_placement_group_scheduler_,
-                                          gcs_table_storage_, *gcs_resource_manager_));
+    gcs_placement_group_manager_.reset(new gcs::GcsPlacementGroupManager(
+        io_service_, mock_placement_group_scheduler_, gcs_table_storage_,
+        *gcs_resource_manager_,
+        [this](const JobID &job_id) { return job_namespace_table_[job_id]; }));
+    for (int i = 1; i <= 10; i++) {
+      auto job_id = JobID::FromInt(i);
+      job_namespace_table_[job_id] = "";
+    }
   }
 
   void SetUp() override {
@@ -95,8 +100,10 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   void RegisterPlacementGroup(const ray::rpc::CreatePlacementGroupRequest &request,
                               StatusCallback callback) {
     std::promise<void> promise;
+    JobID job_id = JobID::FromBinary(request.placement_group_spec().creator_job_id());
+    std::string ray_namespace = job_namespace_table_[job_id];
     gcs_placement_group_manager_->RegisterPlacementGroup(
-        std::make_shared<gcs::GcsPlacementGroup>(request),
+        std::make_shared<gcs::GcsPlacementGroup>(request, ray_namespace),
         [&callback, &promise](Status status) {
           RAY_CHECK_OK(status);
           callback(status);
@@ -128,6 +135,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
 
   std::shared_ptr<MockPlacementGroupScheduler> mock_placement_group_scheduler_;
   std::unique_ptr<gcs::GcsPlacementGroupManager> gcs_placement_group_manager_;
+  std::unordered_map<JobID, std::string> job_namespace_table_;
 
  private:
   std::unique_ptr<std::thread> thread_io_service_;
@@ -191,7 +199,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestGetPlacementGroupIDByName) {
   OnPlacementGroupCreationSuccess(placement_group);
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
   ASSERT_EQ(
-      gcs_placement_group_manager_->GetPlacementGroupIDByName("test_name"),
+      gcs_placement_group_manager_->GetPlacementGroupIDByName("test_name", ""),
       PlacementGroupID::FromBinary(request.placement_group_spec().placement_group_id()));
 }
 
@@ -214,7 +222,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemoveNamedPlacementGroup) {
   gcs_placement_group_manager_->RemovePlacementGroup(
       placement_group->GetPlacementGroupID(),
       [](const Status &status) { ASSERT_TRUE(status.ok()); });
-  ASSERT_EQ(gcs_placement_group_manager_->GetPlacementGroupIDByName("test_name"),
+  ASSERT_EQ(gcs_placement_group_manager_->GetPlacementGroupIDByName("test_name", ""),
             PlacementGroupID::Nil());
 }
 
@@ -500,6 +508,68 @@ TEST_F(GcsPlacementGroupManagerTest,
   gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(different_job_id);
   gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(different_job_id);
   gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(different_job_id);
+}
+
+TEST_F(GcsPlacementGroupManagerTest, TestRayNamespace) {
+  auto request1 = Mocker::GenCreatePlacementGroupRequest("test_name");
+  job_namespace_table_[JobID::FromInt(11)] = "another_namespace";
+  auto request2 = Mocker::GenCreatePlacementGroupRequest(
+      "test_name", rpc::PlacementStrategy::SPREAD, 2, 1.0, JobID::FromInt(11));
+  auto request3 = Mocker::GenCreatePlacementGroupRequest("test_name");
+  {  // Create a placement group in the empty namespace.
+    std::atomic<int> registered_placement_group_count(0);
+    RegisterPlacementGroup(request1, [&registered_placement_group_count](Status status) {
+      ++registered_placement_group_count;
+    });
+
+    ASSERT_EQ(registered_placement_group_count, 1);
+    WaitForExpectedPgCount(1);
+    auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+    mock_placement_group_scheduler_->placement_groups_.pop_back();
+
+    OnPlacementGroupCreationSuccess(placement_group);
+    ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
+    ASSERT_EQ(gcs_placement_group_manager_->GetPlacementGroupIDByName("test_name", ""),
+              PlacementGroupID::FromBinary(
+                  request1.placement_group_spec().placement_group_id()));
+  }
+  {  // Create a placement group in the empty namespace.
+    job_namespace_table_[JobID::FromInt(11)] = "another_namespace";
+    std::atomic<int> registered_placement_group_count(0);
+    RegisterPlacementGroup(request2, [&registered_placement_group_count](Status status) {
+      ++registered_placement_group_count;
+    });
+
+    ASSERT_EQ(registered_placement_group_count, 1);
+    WaitForExpectedPgCount(1);
+    auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+    mock_placement_group_scheduler_->placement_groups_.pop_back();
+
+    OnPlacementGroupCreationSuccess(placement_group);
+    ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
+    ASSERT_EQ(gcs_placement_group_manager_->GetPlacementGroupIDByName(
+                  "test_name", "another_namespace"),
+              PlacementGroupID::FromBinary(
+                  request2.placement_group_spec().placement_group_id()));
+    ASSERT_NE(gcs_placement_group_manager_->GetPlacementGroupIDByName(
+                  "test_name", "another_namespace"),
+              PlacementGroupID::FromBinary(
+                  request1.placement_group_spec().placement_group_id()));
+  }
+  {  // Placement groups with the same namespace, different jobs should still collide.
+    std::promise<void> promise;
+    gcs_placement_group_manager_->RegisterPlacementGroup(
+        std::make_shared<gcs::GcsPlacementGroup>(request3, ""),
+        [&promise](Status status) {
+          ASSERT_FALSE(status.ok());
+          promise.set_value();
+        });
+    promise.get_future().get();
+
+    ASSERT_EQ(gcs_placement_group_manager_->GetPlacementGroupIDByName("test_name", ""),
+              PlacementGroupID::FromBinary(
+                  request1.placement_group_spec().placement_group_id()));
+  }
 }
 
 }  // namespace ray

@@ -50,7 +50,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     const auto &cluster_resource = gcs_resource_manager_->GetClusterResources();
     auto iter = cluster_resource.find(node_id);
     ASSERT_TRUE(iter != cluster_resource.end());
-    ASSERT_EQ(iter->second.GetAvailableResources().GetResource(resource_name).ToDouble(),
+    ASSERT_EQ(iter->second.GetAvailableResources().GetResource(resource_name).Double(),
               resource_value);
   }
 

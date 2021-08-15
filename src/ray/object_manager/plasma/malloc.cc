@@ -32,29 +32,25 @@ static ptrdiff_t pointer_distance(void const *pfrom, void const *pto) {
   return (unsigned char const *)pto - (unsigned char const *)pfrom;
 }
 
-void GetMallocMapinfo(void *addr, MEMFD_TYPE *fd, int64_t *map_size, ptrdiff_t *offset) {
+bool GetMallocMapinfo(const void *const addr, MEMFD_TYPE *fd, int64_t *map_size,
+                      ptrdiff_t *offset) {
   // TODO(rshin): Implement a more efficient search through mmap_records.
   for (const auto &entry : mmap_records) {
     if (addr >= entry.first && addr < pointer_advance(entry.first, entry.second.size)) {
-      *fd = entry.second.fd;
+      fd->first = entry.second.fd.first;
+      fd->second = entry.second.fd.second;
       *map_size = entry.second.size;
       *offset = pointer_distance(entry.first, addr);
-      return;
+      return true;
     }
   }
-  *fd = INVALID_FD;
+
+  fd->first = INVALID_FD;
+  fd->second = INVALID_UNIQUE_FD_ID;
   *map_size = 0;
   *offset = 0;
-}
 
-int64_t GetMmapSize(MEMFD_TYPE fd) {
-  for (const auto &entry : mmap_records) {
-    if (entry.second.fd == fd) {
-      return entry.second.size;
-    }
-  }
-  RAY_LOG(FATAL) << "failed to find entry in mmap_records for fd " << fd;
-  return -1;  // This code is never reached.
+  return false;
 }
 
 }  // namespace plasma

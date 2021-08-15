@@ -1,3 +1,17 @@
+// Copyright 2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/stats/stats.h"
 
@@ -6,7 +20,7 @@ namespace gcs {
 
 GrpcBasedResourceBroadcaster::GrpcBasedResourceBroadcaster(
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-    std::function<void(rpc::ResourceUsageBatchData &)>
+    std::function<void(rpc::ResourceUsageBroadcastData &)>
         get_resource_usage_batch_for_broadcast,
     std::function<void(const rpc::Address &,
                        std::shared_ptr<rpc::NodeManagerClientPool> &, std::string &,
@@ -14,7 +28,8 @@ GrpcBasedResourceBroadcaster::GrpcBasedResourceBroadcaster(
         send_batch
 
     )
-    : ticker_(broadcast_service_),
+    : seq_no_(0),
+      ticker_(broadcast_service_),
       raylet_client_pool_(raylet_client_pool),
       get_resource_usage_batch_for_broadcast_(get_resource_usage_batch_for_broadcast),
       send_batch_(send_batch),
@@ -89,8 +104,14 @@ std::string GrpcBasedResourceBroadcaster::DebugString() {
 }
 
 void GrpcBasedResourceBroadcaster::SendBroadcast() {
-  rpc::ResourceUsageBatchData batch;
+  rpc::ResourceUsageBroadcastData batch;
   get_resource_usage_batch_for_broadcast_(batch);
+
+  if (batch.batch_size() == 0) {
+    return;
+  }
+
+  batch.set_seq_no(seq_no_++);
 
   // Serializing is relatively expensive on large batches, so we should only do it once.
   std::string serialized_batch = batch.SerializeAsString();

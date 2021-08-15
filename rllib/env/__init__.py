@@ -12,6 +12,7 @@ from ray.rllib.env.wrappers.dm_env_wrapper import DMEnv
 from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
 from ray.rllib.env.wrappers.group_agents_wrapper import GroupAgentsWrapper
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
+from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "GroupAgentsWrapper",
     "MultiAgentEnv",
     "PettingZooEnv",
+    "ParallelPettingZooEnv",
     "PolicyClient",
     "PolicyServerInput",
     "RemoteVectorEnv",

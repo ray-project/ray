@@ -18,6 +18,14 @@ py_test(
  tags = ["exclusive"]
 )
 
+py_test(
+    name = "test_client",
+    size = "small",
+    srcs = ["tests/test_client.py"],
+    deps = [":xgb_lib"],
+    tags = ["exclusive", "client"]
+)
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(

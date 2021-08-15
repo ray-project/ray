@@ -24,6 +24,7 @@
 #include "ray/pubsub/mock_pubsub.h"
 
 namespace ray {
+namespace core {
 
 TaskSpecification CreateTaskHelper(uint64_t num_returns,
                                    std::vector<ObjectID> dependencies) {
@@ -43,9 +44,9 @@ class TaskManagerTest : public ::testing::Test {
       : store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
         subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
-        reference_counter_(std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
-            rpc::Address(), publisher_.get(), subscriber_.get(),
-            /*distributed_ref_counting_enabled=*/true, lineage_pinning_enabled))),
+        reference_counter_(std::shared_ptr<ReferenceCounter>(
+            new ReferenceCounter(rpc::Address(), publisher_.get(), subscriber_.get(),
+                                 lineage_pinning_enabled))),
         manager_(store_, reference_counter_,
                  [this](TaskSpecification &spec, bool delay) {
                    num_retries_++;
@@ -523,6 +524,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_EQ(num_retries_, 1);
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

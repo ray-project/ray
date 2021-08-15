@@ -1,9 +1,11 @@
 import json
 import os
 import random
+import re
 import platform
 import subprocess
 import sys
+import time
 from collections import defaultdict
 
 import numpy as np
@@ -271,14 +273,15 @@ def test_fusion_objects(object_spilling_config, shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/12912
-def do_test_release_resource(object_spilling_config, expect_released):
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_release_resource(object_spilling_config, shutdown_only):
     object_spilling_config, temp_folder = object_spilling_config
     address = ray.init(
         num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 1,
-            "release_resources_during_plasma_fetch": expect_released,
             "automatic_object_spilling_enabled": True,
             "object_spilling_config": object_spilling_config,
         })
@@ -301,22 +304,12 @@ def do_test_release_resource(object_spilling_config, expect_released):
     done = f.remote([plasma_obj])  # noqa
     canary = sneaky_task_tries_to_steal_released_resources.remote()
     ready, _ = ray.wait([canary], timeout=2)
-    if expect_released:
-        assert ready
-    else:
-        assert not ready
+    assert not ready
     assert_no_thrashing(address["redis_address"])
 
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_no_release_during_plasma_fetch(object_spilling_config, shutdown_only):
-    do_test_release_resource(object_spilling_config, expect_released=False)
-
-
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
-@pytest.mark.timeout(30)
 def test_spill_objects_on_object_transfer(object_spilling_config,
                                           ray_start_cluster):
     object_spilling_config, _ = object_spilling_config
@@ -494,6 +487,55 @@ def test_multiple_directories(tmp_path, shutdown_only):
     ray.shutdown()
     for temp_dir in temp_dirs:
         wait_for_condition(lambda: is_dir_empty(temp_dir, append_path=""))
+
+
+def _check_spilled(num_objects_spilled=0):
+    def ok():
+        s = ray.internal.internal_api.memory_summary(stats_only=True)
+        if num_objects_spilled == 0:
+            return "Spilled " not in s
+
+        m = re.search(r"Spilled (\d+) MiB, (\d+) objects", s)
+        if m is not None:
+            actual_num_objects = int(m.group(2))
+            return actual_num_objects >= num_objects_spilled
+
+        return False
+
+    ray.test_utils.wait_for_condition(ok, timeout=30, retry_interval_ms=5000)
+
+
+def _test_object_spilling_threshold(thres, num_objects, num_objects_spilled):
+    try:
+        ray.init(
+            object_store_memory=2_200_000_000,
+            _system_config={"object_spilling_threshold": thres}
+            if thres else {})
+        objs = []
+        for _ in range(num_objects):
+            objs.append(ray.put(np.empty(200_000_000, dtype=np.uint8)))
+        time.sleep(10)  # Wait for spilling to happen
+        _check_spilled(num_objects_spilled)
+    finally:
+        ray.shutdown()
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_object_spilling_threshold_default():
+    _test_object_spilling_threshold(None, 10, 0)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_object_spilling_threshold_1_0():
+    _test_object_spilling_threshold(1.0, 10, 0)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_object_spilling_threshold_0_1():
+    _test_object_spilling_threshold(0.1, 10, 5)
 
 
 if __name__ == "__main__":

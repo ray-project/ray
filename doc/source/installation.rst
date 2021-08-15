@@ -32,19 +32,27 @@ You can install the nightly Ray wheels via the following links. These daily rele
 ===================  ===================  ======================
        Linux                MacOS         Windows (experimental)
 ===================  ===================  ======================
+`Linux Python 3.9`_  `MacOS Python 3.9`_  `Windows Python 3.9`_
 `Linux Python 3.8`_  `MacOS Python 3.8`_  `Windows Python 3.8`_
 `Linux Python 3.7`_  `MacOS Python 3.7`_  `Windows Python 3.7`_
 `Linux Python 3.6`_  `MacOS Python 3.6`_  `Windows Python 3.6`_
 ===================  ===================  ======================
 
+.. note::
+
+  Python 3.9 support is currently experimental.
+
+.. _`Linux Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
 .. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
 .. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 .. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
 
-.. _`MacOS Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-macosx_10_13_x86_64.whl
-.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-macosx_10_13_intel.whl
-.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-macosx_10_13_intel.whl
+.. _`MacOS Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-macosx_10_15_x86_64.whl
+.. _`MacOS Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-macosx_10_15_x86_64.whl
+.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
+.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-macosx_10_15_intel.whl
 
+.. _`Windows Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-win_amd64.whl
 .. _`Windows Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-win_amd64.whl
 .. _`Windows Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-win_amd64.whl
 .. _`Windows Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-win_amd64.whl
@@ -185,12 +193,12 @@ on the AUR page of ``python-ray`` `here`_.
 .. _`yay`: https://aur.archlinux.org/packages/yay
 .. _`here`: https://aur.archlinux.org/packages/python-ray
 
-
+.. _ray_anaconda:
 
 Installing Ray with Anaconda
 ----------------------------
 
-If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
+If you use `Anaconda`_ (`installation instructions`_) and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
 
 .. code-block:: bash
 
@@ -202,6 +210,7 @@ If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray`
 Use ``pip list`` to confirm that ``ray`` is installed.
 
 .. _`Anaconda`: https://www.anaconda.com/
+.. _`installation instructions`: https://docs.anaconda.com/anaconda/install/index.html
 
 
 
@@ -302,6 +311,12 @@ Replace ``<shm-size>`` with a limit appropriate for your system, for example
 ``512M`` or ``2G``. A good estimate for this is to use roughly 30% of your available memory (this is
 what Ray uses internally for its Object Store). The ``-t`` and ``-i`` options here are required to support
 interactive use of the container.
+
+If you use a GPU version Docker image, remember to add ``--gpus all`` option. Replace ``<ray-version>`` with your target ray version in the following command:
+
+.. code-block:: bash
+
+  docker run --shm-size=<shm-size> -t -i --gpus all rayproject/ray:<ray-version>-gpu
 
 **Note:** Ray requires a **large** amount of shared memory because each object
 store keeps all of its objects in shared memory, so the amount of shared memory

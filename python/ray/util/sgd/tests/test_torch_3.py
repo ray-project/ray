@@ -45,39 +45,6 @@ Operator = TrainingOperator.from_creators(
 
 @pytest.mark.parametrize("num_workers", [2] if dist.is_available() else [1])
 @pytest.mark.parametrize("use_local", [True, False])
-def test_tune_train(ray_start_4_cpus, num_workers, use_local):  # noqa: F811
-    TorchTrainable = TorchTrainer.as_trainable(
-        **{
-            "training_operator_cls": Operator,
-            "num_workers": num_workers,
-            "use_gpu": False,
-            "backend": "gloo",
-            "use_local": use_local,
-            "config": {
-                "batch_size": 512,
-                "lr": 0.001
-            }
-        })
-
-    analysis = tune.run(
-        TorchTrainable,
-        num_samples=2,
-        stop={"training_iteration": 2},
-        verbose=1)
-
-    # checks loss decreasing for every trials
-    for path, df in analysis.trial_dataframes.items():
-        mean_train_loss1 = df.loc[0, "train_loss"]
-        mean_train_loss2 = df.loc[1, "train_loss"]
-        mean_val_loss1 = df.loc[0, "val_loss"]
-        mean_val_loss2 = df.loc[1, "val_loss"]
-
-        assert mean_train_loss2 <= mean_train_loss1
-        assert mean_val_loss2 <= mean_val_loss1
-
-
-@pytest.mark.parametrize("num_workers", [2] if dist.is_available() else [1])
-@pytest.mark.parametrize("use_local", [True, False])
 def test_tune_custom_train(ray_start_4_cpus, num_workers,
                            use_local):  # noqa: F811
     def custom_train_func(trainer, info):

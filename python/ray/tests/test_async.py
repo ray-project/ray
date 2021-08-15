@@ -113,12 +113,12 @@ async def test_garbage_collection(ray_start_regular_shared):
 
     @ray.remote
     def f():
-        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
+        return np.zeros(20 * 1024 * 1024, dtype=np.uint8)
 
     for _ in range(10):
         await f.remote()
     for _ in range(10):
-        put_id = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+        put_id = ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8))
         await put_id
 
 

@@ -15,7 +15,8 @@ from libcpp.memory cimport (
 
 from ray.includes.common cimport (
     CBuffer,
-    CRayObject
+    CRayObject,
+    CAddress,
 )
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
@@ -104,7 +105,10 @@ cdef class CoreWorker:
                             size_t data_size, ObjectRef object_ref,
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
-                            owner_address=*)
+                            c_bool created_by_worker,
+                            owner_address=*,
+                            c_bool inline_small_object=*)
+    cdef unique_ptr[CAddress] _convert_python_address(self, address=*)
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)

@@ -24,8 +24,9 @@ namespace mock_pubsub {
 
 class MockSubscriber : public pubsub::SubscriberInterface {
  public:
-  MOCK_METHOD5(Subscribe,
-               void(const rpc::ChannelType channel_type,
+  MOCK_METHOD6(Subscribe,
+               void(std::unique_ptr<rpc::SubMessage> sub_message,
+                    const rpc::ChannelType channel_type,
                     const rpc::Address &owner_address, const std::string &key_id_binary,
                     pubsub::SubscriptionCallback subscription_callback,
                     pubsub::SubscriptionFailureCallback subscription_failure_callback));
@@ -33,6 +34,8 @@ class MockSubscriber : public pubsub::SubscriberInterface {
   MOCK_METHOD3(Unsubscribe, bool(const rpc::ChannelType channel_type,
                                  const rpc::Address &publisher_address,
                                  const std::string &key_id_binary));
+
+  MOCK_CONST_METHOD0(DebugString, std::string());
 };
 
 class MockPublisher : public pubsub::PublisherInterface {
@@ -48,6 +51,9 @@ class MockPublisher : public pubsub::PublisherInterface {
   MOCK_METHOD3(UnregisterSubscription, bool(const rpc::ChannelType channel_type,
                                             const pubsub::SubscriberID &subscriber_id,
                                             const std::string &key_id_binary));
+
+  MOCK_METHOD2(PublishFailure, void(const rpc::ChannelType channel_type,
+                                    const std::string &key_id_binary));
 };
 
 }  // namespace mock_pubsub

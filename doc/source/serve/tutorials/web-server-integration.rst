@@ -11,6 +11,11 @@ We give two examples, one using a `FastAPI <https://fastapi.tiangolo.com/>`__ we
 Scaling Up a FastAPI Application
 --------------------------------
 
+.. warning::
+
+  With the introduction of the new Deployments API in Ray 1.4.0, this tutorial no longer describes the best practice for integrating Ray Serve with FastAPI, and will soon be removed.
+  For details on the new and improved FastAPI integration, please see :ref:`serve-fastapi-http`.
+
 For this example, you must have either `Pytorch <https://pytorch.org/>`_ or `Tensorflow <https://www.tensorflow.org/>`_ installed, as well as `Huggingface Transformers <https://github.com/huggingface/transformers>`_ and `FastAPI <https://fastapi.tiangolo.com/>`_.  For example:
 
 .. code-block:: bash
@@ -19,9 +24,9 @@ For this example, you must have either `Pytorch <https://pytorch.org/>`_ or `Ten
 
 Here’s a simple FastAPI web server. It uses Huggingface Transformers to auto-generate text based on a short initial input using `OpenAI’s GPT-2 model <https://openai.com/blog/better-language-models/>`_.
 
-.. literalinclude:: ../../../../python/ray/serve/examples/doc/fastapi/fastapi.py
+.. literalinclude:: ../../../../python/ray/serve/examples/doc/fastapi/fastapi_simple.py
 
-To scale this up, we define a Ray Serve backend containing our text model and call it from Python using a ServeHandle:
+To scale this up, we define a Ray Serve deployment containing our text model and call it from Python:
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/fastapi/servehandle_fastapi.py
 
@@ -47,7 +52,7 @@ The terminal should then print the generated text:
 To clean up the Ray cluster, run ``ray stop`` in the terminal.
 
 .. tip::
-  According to the backend configuration parameter ``num_replicas``, Ray Serve will place multiple replicas of your model across multiple CPU cores and multiple machines (provided you have :ref:`started a multi-node Ray cluster <cluster-index>`), which will correspondingly multiply your throughput.
+  According to the deployment configuration parameter ``num_replicas``, Ray Serve will place multiple replicas of your model across multiple CPU cores and multiple machines (provided you have :ref:`started a multi-node Ray cluster <cluster-index>`), which will correspondingly multiply your throughput.
 
 Scaling Up an AIOHTTP Application
 ---------------------------------
