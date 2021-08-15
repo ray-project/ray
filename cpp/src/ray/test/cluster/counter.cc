@@ -42,7 +42,7 @@ int Counter::Add(int x) {
 }
 
 int Counter::Exit() {
-  ray::api::Ray::ExitActor();
+  ray::ExitActor();
   return 1;
 }
 
