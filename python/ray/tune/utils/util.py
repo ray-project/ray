@@ -2,10 +2,8 @@ import socket
 from contextlib import closing
 from typing import Dict, List, Union
 import copy
-import json
 import glob
 import logging
-import numbers
 import os
 import inspect
 import threading
@@ -20,6 +18,8 @@ from typing import Optional
 import numpy as np
 import ray
 import psutil
+
+from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
 
 logger = logging.getLogger(__name__)
 
@@ -284,7 +284,12 @@ def deep_update(original,
 
 
 def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
-    dt = copy.deepcopy(dt)
+    """Flatten dict.
+
+    Output and input are of the same dict type.
+    Input dict remains the same after the operation.
+    """
+    dt = copy.copy(dt)
     if prevent_delimiter and any(delimiter in key for key in dt):
         # Raise if delimiter is any of the keys
         raise ValueError(
@@ -297,7 +302,7 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
             if isinstance(value, dict):
                 for subkey, v in value.items():
                     if prevent_delimiter and delimiter in subkey:
-                        # Raise  if delimiter is in any of the subkeys
+                        # Raise if delimiter is in any of the subkeys
                         raise ValueError(
                             "Found delimiter `{}` in key when trying to "
                             "flatten array. Please avoid using the delimiter "
@@ -319,6 +324,12 @@ def unflatten_dict(dt, delimiter="/"):
         item = out
         for k in path[:-1]:
             item = item.setdefault(k, dict_type())
+            if not isinstance(item, dict_type):
+                raise TypeError(
+                    f"Cannot unflatten dict due the key '{key}' "
+                    f"having a parent key '{k}', which value is not "
+                    f"of type {dict_type} (got {type(item)}). "
+                    "Change the key names to resolve the conflict.")
         item[path[-1]] = val
     return out
 
@@ -760,10 +771,15 @@ def create_logdir(dirname: str, local_dir: str):
 
 def validate_warmstart(parameter_names: List[str],
                        points_to_evaluate: List[Union[List, Dict]],
-                       evaluated_rewards: List):
+                       evaluated_rewards: List,
+                       validate_point_name_lengths: bool = True):
     """Generic validation of a Searcher's warm start functionality.
-    Raises exceptions in case of type and length mismatches betwee
+    Raises exceptions in case of type and length mismatches between
     parameters.
+
+    If ``validate_point_name_lengths`` is False, the equality of lengths
+    between ``points_to_evaluate`` and ``parameter_names`` will not be
+    validated.
     """
     if points_to_evaluate:
         if not isinstance(points_to_evaluate, list):
@@ -776,7 +792,8 @@ def validate_warmstart(parameter_names: List[str],
                     f"points_to_evaluate expected to include list or dict, "
                     f"got {point}.")
 
-            if not len(point) == len(parameter_names):
+            if validate_point_name_lengths and (
+                    not len(point) == len(parameter_names)):
                 raise ValueError("Dim of point {}".format(point) +
                                  " and parameter_names {}".format(
                                      parameter_names) + " do not match.")
@@ -830,31 +847,6 @@ def force_on_current_node(task_or_actor):
     node_resource_key = get_current_node_resource_key()
     options = {"resources": {node_resource_key: 0.01}}
     return task_or_actor.options(**options)
-
-
-class SafeFallbackEncoder(json.JSONEncoder):
-    def __init__(self, nan_str="null", **kwargs):
-        super(SafeFallbackEncoder, self).__init__(**kwargs)
-        self.nan_str = nan_str
-
-    def default(self, value):
-        try:
-            if np.isnan(value):
-                return self.nan_str
-
-            if (type(value).__module__ == np.__name__
-                    and isinstance(value, np.ndarray)):
-                return value.tolist()
-
-            if issubclass(type(value), numbers.Integral):
-                return int(value)
-            if issubclass(type(value), numbers.Number):
-                return float(value)
-
-            return super(SafeFallbackEncoder, self).default(value)
-
-        except Exception:
-            return str(value)  # give up, just stringify it (ok for logs)
 
 
 if __name__ == "__main__":

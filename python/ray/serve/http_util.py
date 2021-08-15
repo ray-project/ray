@@ -173,17 +173,6 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         if isinstance(route, APIRoute) and route.endpoint in member_methods
     ]
 
-    # If there is a response model, FastAPI creates a copy of the fields.
-    # But FastAPI creates the field incorrectly by missing the outer_type_.
-    for route in fastapi_app.routes:
-        if isinstance(route, APIRoute) and route.response_model:
-            original_resp_fields = (
-                route.response_field.outer_type_.__fields__)
-            cloned_resp_fields = (
-                route.secure_cloned_response_field.outer_type_.__fields__)
-            for key, field in cloned_resp_fields.items():
-                field.outer_type_ = original_resp_fields[key].outer_type_
-
     # Modify these routes and mount it to a new APIRouter.
     # We need to to this (instead of modifying in place) because we want to use
     # the laster fastapi_app.include_router to re-run the dependency analysis
@@ -219,11 +208,22 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         new_router.routes.append(route)
     fastapi_app.include_router(new_router)
 
-    # Remove endpoints that belong to other class based views.
     routes = fastapi_app.routes
     for route in routes:
         if not isinstance(route, APIRoute):
             continue
+
+        # If there is a response model, FastAPI creates a copy of the fields.
+        # But FastAPI creates the field incorrectly by missing the outer_type_.
+        if route.response_model:
+            original_resp_fields = (
+                route.response_field.outer_type_.__fields__)
+            cloned_resp_fields = (
+                route.secure_cloned_response_field.outer_type_.__fields__)
+            for key, field in cloned_resp_fields.items():
+                field.outer_type_ = original_resp_fields[key].outer_type_
+
+        # Remove endpoints that belong to other class based views.
         serve_cls = getattr(route.endpoint, "_serve_cls", None)
         if serve_cls is not None and serve_cls != cls:
             routes.remove(route)

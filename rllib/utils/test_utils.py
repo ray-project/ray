@@ -264,10 +264,14 @@ def check_learning_achieved(tune_results, min_reward, evaluation=False):
     Raises:
         ValueError: If `min_reward` not reached.
     """
-    last_result = tune_results.trials[0].last_result
-    avg_reward = last_result["episode_reward_mean"] if not evaluation else \
-        last_result["evaluation"]["episode_reward_mean"]
-    if avg_reward < min_reward:
+    # Get maximum reward of all trials
+    # (check if at least one trial achieved some learning)
+    avg_rewards = [(trial.last_result["episode_reward_mean"]
+                    if not evaluation else
+                    trial.last_result["evaluation"]["episode_reward_mean"])
+                   for trial in tune_results.trials]
+    best_avg_reward = max(avg_rewards)
+    if best_avg_reward < min_reward:
         raise ValueError("`stop-reward` of {} not reached!".format(min_reward))
     print("ok")
 

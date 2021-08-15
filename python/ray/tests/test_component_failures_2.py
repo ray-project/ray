@@ -160,27 +160,26 @@ def test_raylet_failed(ray_start_cluster):
     _test_component_failed(cluster, ray_constants.PROCESS_TYPE_RAYLET)
 
 
-def test_get_address_info_after_raylet_died(ray_start_cluster_head):
+def test_get_node_info_after_raylet_died(ray_start_cluster_head):
     cluster = ray_start_cluster_head
 
-    def get_address_info():
-        return ray._private.services.get_address_info_from_redis(
+    def get_node_info():
+        return ray._private.services.get_node_to_connect_for_driver(
             cluster.redis_address,
             cluster.head_node.node_ip_address,
-            num_retries=1,
             redis_password=cluster.redis_password)
 
-    assert get_address_info()[
-        "raylet_socket_name"] == cluster.head_node.raylet_socket_name
+    assert get_node_info(
+    ).raylet_socket_name == cluster.head_node.raylet_socket_name
 
     cluster.head_node.kill_raylet()
     wait_for_condition(
         lambda: not cluster.global_state.node_table()[0]["Alive"], timeout=30)
     with pytest.raises(RuntimeError):
-        get_address_info()
+        get_node_info()
 
     node2 = cluster.add_node()
-    assert get_address_info()["raylet_socket_name"] == node2.raylet_socket_name
+    assert get_node_info().raylet_socket_name == node2.raylet_socket_name
 
 
 if __name__ == "__main__":

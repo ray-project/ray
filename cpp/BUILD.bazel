@@ -45,11 +45,13 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//:core_worker_lib",
+        "//:global_state_accessor_lib",
         "//:ray_common",
         "//:ray_util",
         "@boost//:callable_traits",
         "@boost//:dll",
-        "@com_github_gflags_gflags//:gflags",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
         "@msgpack",
     ],
     alwayslink = True,
@@ -81,12 +83,12 @@ genrule(
         cp -f $(location default_worker) "$$WORK_DIR/python/ray/core/src/ray/cpp/default_worker" &&
         cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
         cp -f $(locations libray_api.so) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
-        TEMP_DIR="$$WORK_DIR/cpp/example" &&
-        rm -rf $$TEMP_DIR/thirdparty &&
-        BOOST_DIR="$$TEMP_DIR/thirdparty/include/boost/" &&
+        PY_CPP_DIR="$$WORK_DIR/python/ray/cpp" &&
+        rm -rf $$PY_CPP_DIR &&
+        BOOST_DIR="$$PY_CPP_DIR/include/boost/" &&
         mkdir -p "$$BOOST_DIR" &&
-        mkdir -p "$$TEMP_DIR/thirdparty/lib/" &&
-        cp -f -r $$WORK_DIR/external/msgpack/include/* "$$TEMP_DIR/thirdparty/include" &&
+        mkdir -p "$$PY_CPP_DIR/lib/" &&
+        cp -f -r $$WORK_DIR/external/msgpack/include/* "$$PY_CPP_DIR/include" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/archive" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/bind" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/callable_traits" "$$BOOST_DIR" &&
@@ -112,8 +114,14 @@ genrule(
         cp -f -r "$$WORK_DIR/external/boost/boost/type_traits" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/utility" "$$BOOST_DIR" &&
         cp -f -r $$WORK_DIR/external/boost/boost/*.hpp "$$BOOST_DIR" &&
-        cp -f $(locations libray_api.so) "$$TEMP_DIR/thirdparty/lib/" &&
-        cp -f -r "$$WORK_DIR/cpp/include/ray" "$$TEMP_DIR/thirdparty/include" &&
+        cp -f $(locations libray_api.so) "$$PY_CPP_DIR/lib/" &&
+        cp -f -r "$$WORK_DIR/cpp/include/ray" "$$PY_CPP_DIR/include" &&
+        THIRDPARTY_DIR="$$WORK_DIR/cpp/example/thirdparty" &&
+        rm -rf $$THIRDPARTY_DIR &&
+        mkdir $$THIRDPARTY_DIR &&
+        ln -s "$$PY_CPP_DIR/include" $$THIRDPARTY_DIR &&
+        ln -s "$$PY_CPP_DIR/lib" $$THIRDPARTY_DIR &&
+        cp -f -r "$$WORK_DIR/cpp/example" "$$PY_CPP_DIR" &&
         echo "$$WORK_DIR" > $@
     """,
     local = 1,
@@ -137,37 +145,52 @@ cc_test(
 
 cc_test(
     name = "cluster_mode_test",
-    testonly = 0,
     srcs = glob([
         "src/ray/test/cluster/*.cc",
+        "src/ray/test/cluster/*.h",
     ]),
     args = [
-        "--ray-dynamic-library-path=$(location cluster_mode_test.so)",
+        "--ray_code_search_path=$(location plus.so):$(location counter.so)",
     ],
     copts = COPTS,
     data = [
-        "cluster_mode_test.so",
+        "counter.so",
+        "plus.so",
         "ray_cpp_pkg",
     ],
     linkstatic = True,
     deps = [
         "ray_api",
-        "@com_github_gflags_gflags//:gflags",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_binary(
-    name = "cluster_mode_test.so",
-    srcs = glob([
-        "src/ray/test/cluster/*.cc",
-    ]),
+    name = "plus.so",
+    testonly = True,
+    srcs = [
+        "src/ray/test/cluster/plus.cc",
+        "src/ray/test/cluster/plus.h",
+    ],
     copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
         "ray_api",
-        "@com_github_gflags_gflags//:gflags",
-        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "counter.so",
+    testonly = True,
+    srcs = [
+        "src/ray/test/cluster/counter.cc",
+        "src/ray/test/cluster/counter.h",
+    ],
+    copts = COPTS,
+    linkopts = ["-shared"],
+    linkstatic = True,
+    deps = [
+        "ray_api",
     ],
 )

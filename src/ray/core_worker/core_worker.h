@@ -54,6 +54,7 @@
 /// 4) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
 
 namespace ray {
+namespace core {
 
 class CoreWorker;
 
@@ -506,13 +507,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods related to storing and retrieving objects.
   ///
 
-  /// Set options for this client's interactions with the object store.
-  ///
-  /// \param[in] name Unique name for this object store client.
-  /// \param[in] limit The maximum amount of memory in bytes that this client
-  /// can use in the object store.
-  Status SetClientOptions(std::string name, int64_t limit_bytes);
-
   /// Put an object into object store.
   ///
   /// \param[in] object The ray object.
@@ -543,11 +537,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
+  /// \param[in] object create by worker or not.
+  /// \param[in] owner_address The address of object's owner. If not provided,
+  /// defaults to this worker.
+  /// \param[in] inline_small_object wether to inline create this object if it's
+  /// small.
   /// \return Status.
   Status CreateOwned(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                      const std::vector<ObjectID> &contained_object_ids,
                      ObjectID *object_id, std::shared_ptr<Buffer> *data,
-                     bool created_by_worker);
+                     bool created_by_worker,
+                     const std::unique_ptr<rpc::Address> &owner_address = nullptr,
+                     bool inline_small_object = true);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -570,8 +571,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id Object ID corresponding to the object.
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
+  /// \param[in] The address of object's owner. If not provided,
+  /// defaults to this worker.
   /// \return Status.
-  Status SealOwned(const ObjectID &object_id, bool pin_object);
+  Status SealOwned(const ObjectID &object_id, bool pin_object,
+                   const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateExisting()` call and then writing into the returned buffer.
@@ -582,7 +586,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the raylet if the object is pinned. If not provided, defaults to this worker.
   /// \return Status.
   Status SealExisting(const ObjectID &object_id, bool pin_object,
-                      const absl::optional<rpc::Address> &owner_address = absl::nullopt);
+                      const std::unique_ptr<rpc::Address> &owner_address = nullptr);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -590,11 +594,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results Result list of objects data.
-  /// \param[in] plasma_objects_only Only get objects from Plasma Store.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results,
-             bool plasma_objects_only = false);
+             std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Get objects directly from the local plasma store, without waiting for the
   /// objects to be fetched from another node. This should only be used
@@ -688,14 +690,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status
   Status SetResource(const std::string &resource_name, const double capacity,
                      const NodeID &node_id);
-
-  /// Request an object to be spilled to external storage.
-  /// \param[in] object_ids The objects to be spilled.
-  /// \return Status. Returns Status::Invalid if any of the objects are not
-  /// eligible for spilling (they have gone out of scope or we do not own the
-  /// object). Otherwise, the return status is ok and we will use best effort
-  /// to spill the object.
-  Status SpillObjects(const std::vector<ObjectID> &object_ids);
 
   /// Submit a normal task.
   ///
@@ -840,6 +834,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
 
+  int64_t GetNumTasksSubmitted() const {
+    return direct_task_submitter_->GetNumTasksSubmitted();
+  }
+
+  int64_t GetNumLeasesRequested() const {
+    return direct_task_submitter_->GetNumLeasesRequested();
+  }
+
  public:
   /// Allocate the return object for an executing task. The caller should write into the
   /// data buffer of the allocated buffer, then call SealReturnObject() to seal it.
@@ -849,11 +851,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] data_size Size of the return value.
   /// \param[in] metadata Metadata buffer of the return value.
   /// \param[in] contained_object_id ID serialized within each return object.
+  /// \param[in][out] task_output_inlined_bytes Store the total size of all inlined
+  /// objects of a task. It is used to decide if the current object should be inlined. If
+  /// the current object is inlined, the task_output_inlined_bytes will be updated.
   /// \param[out] return_object RayObject containing buffers to write results into.
   /// \return Status.
   Status AllocateReturnObject(const ObjectID &object_id, const size_t &data_size,
                               const std::shared_ptr<Buffer> &metadata,
                               const std::vector<ObjectID> &contained_object_id,
+                              int64_t &task_output_inlined_bytes,
                               std::shared_ptr<RayObject> *return_object);
 
   /// Seal a return object for an executing task. The caller should already have
@@ -880,11 +886,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// NOTE: The actor_handle obtained by this function should not be stored anywhere.
   ///
   /// \param[in] name The name of the actor whose handle to get.
+  /// \param[in] ray_namespace The namespace of the requested actor.
   /// \param[out] actor_handle A handle to the requested actor.
   /// \return The shared_ptr to the actor handle if found, nullptr otherwise.
   /// The second pair contains the status of getting a named actor handle.
   std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandle(
-      const std::string &name);
+      const std::string &name, const std::string &ray_namespace);
+
+  /// Returns a list of the named actors currently in the system.
+  ///
+  /// Each actor is returned as a pair of <namespace, name>.
+  /// This includes actors that are pending placement or being restarted.
+  ///
+  /// \param all_namespaces Whether or not to include actors from all namespaces.
+  /// \return The list of <namespace, name> pairs and a status.
+  std::pair<std::vector<std::pair<std::string, std::string>>, Status> ListNamedActors(
+      bool all_namespaces);
 
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
@@ -1001,6 +1018,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
                   rpc::SendReplyCallback send_reply_callback) override;
 
+  // Set local worker as the owner of object.
+  // Request by borrower's worker, execute by owner's worker.
+  void HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &request,
+                               rpc::AssignObjectOwnerReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
@@ -1112,6 +1135,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Get a handle to a named actor for local mode.
   std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandleLocalMode(
       const std::string &name);
+
+  /// Get all named actors in local mode.
+  std::pair<std::vector<std::pair<std::string, std::string>>, Status>
+  ListNamedActorsLocalMode();
 
   /// Get the values of the task arguments for the executor. Values are
   /// retrieved from the local plasma store or, if the value is inlined, from
@@ -1391,4 +1418,5 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unique_ptr<rpc::JobConfig> job_config_;
 };
 
+}  // namespace core
 }  // namespace ray

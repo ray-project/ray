@@ -29,6 +29,7 @@
 namespace {}  // namespace
 
 namespace ray {
+namespace core {
 
 bool ReferenceCounter::OwnObjects() const {
   absl::MutexLock lock(&mutex_);
@@ -68,7 +69,7 @@ ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
     const ReferenceTableProto &proto) {
   ReferenceTable refs;
   for (const auto &ref : proto) {
-    refs.emplace(ray::ObjectID::FromBinary(ref.reference().object_id()),
+    refs.emplace(ObjectID::FromBinary(ref.reference().object_id()),
                  Reference::FromProto(ref));
   }
   return refs;
@@ -952,8 +953,9 @@ bool ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    RAY_LOG(INFO) << "Tried to add an object location for an object " << object_id
-                  << " that doesn't exist in the reference table";
+    RAY_LOG(DEBUG) << "Tried to add an object location for an object " << object_id
+                   << " that doesn't exist in the reference table. It can happen if the "
+                      "object is already evicted.";
     return false;
   }
   AddObjectLocationInternal(it, node_id);
@@ -975,8 +977,9 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    RAY_LOG(INFO) << "Tried to remove an object location for an object " << object_id
-                  << " that doesn't exist in the reference table";
+    RAY_LOG(DEBUG) << "Tried to remove an object location for an object " << object_id
+                   << " that doesn't exist in the reference table. It can happen if the "
+                      "object is already evicted.";
     return false;
   }
   it->second.locations.erase(node_id);
@@ -1057,11 +1060,10 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   }
 
   // The locations of this object.
-  // - If we own this object and the ownership-based object directory is enabled, this
-  // will contain the complete up-to-date set of object locations.
-  // - If we own this object and the ownership-based object directory is disabled, this
-  // will only contain the pinned location, if known.
-  // - If we don't own this object, this will be empty.
+  // - If we own this object, this will contain the complete up-to-date set of object
+  //   locations.
+  // - If we don't own this object, this will contain a snapshot of the object locations
+  //   at future resolution time.
   const auto &node_ids = it->second.locations;
 
   // We should only reach here if we have valid locality data to return.
@@ -1076,9 +1078,9 @@ bool ReferenceCounter::ReportLocalityData(const ObjectID &object_id,
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    RAY_LOG(INFO) << "Tried to report locality data for an object " << object_id
-                  << " that doesn't exist in the reference table."
-                  << " The object has probably already been freed.";
+    RAY_LOG(DEBUG) << "Tried to report locality data for an object " << object_id
+                   << " that doesn't exist in the reference table."
+                   << " The object has probably already been freed.";
     return false;
   }
   RAY_CHECK(!it->second.owned_by_us)
@@ -1090,6 +1092,27 @@ bool ReferenceCounter::ReportLocalityData(const ObjectID &object_id,
     it->second.object_size = object_size;
   }
   return true;
+}
+
+void ReferenceCounter::AddBorrowerAddress(const ObjectID &object_id,
+                                          const rpc::Address &borrower_address) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end());
+
+  RAY_CHECK(it->second.owned_by_us)
+      << "AddBorrowerAddress should only be used for owner references.";
+
+  rpc::WorkerAddress borrower_worker_address = rpc::WorkerAddress(borrower_address);
+  RAY_CHECK(borrower_worker_address.worker_id != rpc_address_.worker_id)
+      << "The borrower cannot be the owner itself";
+
+  RAY_LOG(DEBUG) << "Add borrower " << borrower_address.DebugString() << " for object "
+                 << object_id;
+  auto inserted = it->second.borrowers.insert(borrower_worker_address).second;
+  if (inserted) {
+    WaitForRefRemoved(it, borrower_worker_address);
+  }
 }
 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
@@ -1143,9 +1166,9 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    RAY_LOG(INFO) << "Tried to register a location subscriber for an object " << object_id
-                  << " that doesn't exist in the reference table."
-                  << " The object has probably already been freed.";
+    RAY_LOG(DEBUG) << "Tried to register a location subscriber for an object "
+                   << object_id << " that doesn't exist in the reference table."
+                   << " The object has probably already been freed.";
     // Consider the object is already freed, and not subscribeable.
     object_info_publisher_->PublishFailure(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, object_id.Binary());
@@ -1204,4 +1227,5 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref) const 
   }
 }
 
+}  // namespace core
 }  // namespace ray

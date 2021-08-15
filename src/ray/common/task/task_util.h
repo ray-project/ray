@@ -1,3 +1,17 @@
+// Copyright 2019-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
 
 #include "ray/common/buffer.h"
@@ -90,7 +104,8 @@ class TaskSpecBuilder {
       const std::string &debugger_breakpoint,
       const std::string &serialized_runtime_env = "{}",
       const std::unordered_map<std::string, std::string> &override_environment_variables =
-          {}) {
+          {},
+      const std::string &concurrency_group_name = "") {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
@@ -112,6 +127,7 @@ class TaskSpecBuilder {
         placement_group_capture_child_tasks);
     message_->set_debugger_breakpoint(debugger_breakpoint);
     message_->set_serialized_runtime_env(serialized_runtime_env);
+    message_->set_concurrency_group_name(concurrency_group_name);
     for (const auto &env : override_environment_variables) {
       (*message_->mutable_override_environment_variables())[env.first] = env.second;
     }
@@ -150,10 +166,13 @@ class TaskSpecBuilder {
   ///
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetActorCreationTaskSpec(
-      const ActorID &actor_id, int64_t max_restarts = 0, int64_t max_task_retries = 0,
+      const ActorID &actor_id, const std::string &serialized_actor_handle,
+      int64_t max_restarts = 0, int64_t max_task_retries = 0,
       const std::vector<std::string> &dynamic_worker_options = {},
       int max_concurrency = 1, bool is_detached = false, std::string name = "",
-      bool is_asyncio = false, const std::string &extension_data = "") {
+      std::string ray_namespace = "", bool is_asyncio = false,
+      const std::vector<ConcurrencyGroup> &concurrency_groups = {},
+      const std::string &extension_data = "") {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -165,8 +184,20 @@ class TaskSpecBuilder {
     actor_creation_spec->set_max_concurrency(max_concurrency);
     actor_creation_spec->set_is_detached(is_detached);
     actor_creation_spec->set_name(name);
+    actor_creation_spec->set_ray_namespace(ray_namespace);
     actor_creation_spec->set_is_asyncio(is_asyncio);
     actor_creation_spec->set_extension_data(extension_data);
+    actor_creation_spec->set_serialized_actor_handle(serialized_actor_handle);
+    for (const auto &concurrency_group : concurrency_groups) {
+      rpc::ConcurrencyGroup *group = actor_creation_spec->add_concurrency_groups();
+      group->set_name(concurrency_group.name);
+      group->set_max_concurrency(concurrency_group.max_concurrency);
+      // Fill into function descriptor.
+      for (auto &item : concurrency_group.function_descriptors) {
+        rpc::FunctionDescriptor *fd = group->add_function_descriptors();
+        *fd = item->GetMessage();
+      }
+    }
     return *this;
   }
 

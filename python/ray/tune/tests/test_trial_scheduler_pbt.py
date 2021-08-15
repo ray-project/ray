@@ -1,7 +1,6 @@
 import numpy as np
 import os
 import pickle
-import psutil
 import random
 import unittest
 import sys
@@ -13,6 +12,9 @@ from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.test_utils import object_memory_usage
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 MB = 1024**2
 

@@ -19,8 +19,16 @@ import ray._private.services
 import ray._private.utils
 from ray.util.queue import Queue, _QueueActor, Empty
 import requests
-from prometheus_client.parser import text_string_to_metric_families
 from ray.scripts.scripts import main as ray_main
+from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
+                                               get_hook_logger)
+try:
+    from prometheus_client.parser import text_string_to_metric_families
+except (ImportError, ModuleNotFoundError):
+
+    def text_string_to_metric_families(*args, **kwargs):
+        raise ModuleNotFoundError("`prometheus_client` not found")
+
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -375,6 +383,7 @@ def generate_system_config_map(**kwargs):
 class SignalActor:
     def __init__(self):
         self.ready_event = asyncio.Event()
+        self.num_waiters = 0
 
     def send(self, clear=False):
         self.ready_event.set()
@@ -383,7 +392,12 @@ class SignalActor:
 
     async def wait(self, should_wait=True):
         if should_wait:
+            self.num_waiters += 1
             await self.ready_event.wait()
+            self.num_waiters -= 1
+
+    async def cur_num_waiters(self):
+        return self.num_waiters
 
 
 @ray.remote(num_cpus=0)
@@ -579,6 +593,15 @@ def load_test_config(config_file_name):
 def set_setup_func():
     import ray._private.runtime_env as runtime_env
     runtime_env.VAR = "hello world"
+
+
+def sleep_setup_runtime_env(runtime_env: dict, session_dir):
+    logger = get_hook_logger()
+    logger.info(f"Setting up runtime environment {runtime_env}")
+    logger.info("Simulating long runtime env setup.  Sleeping for 15s...")
+    time.sleep(15)
+    logger.info("Finished sleeping for 15s")
+    return RuntimeEnvContext()
 
 
 class BatchQueue(Queue):

@@ -140,7 +140,7 @@ Here's an example covering all search space functions. Again,
         "uniform": tune.uniform(-5, -1),  # Uniform float between -5 and -1
         "quniform": tune.quniform(3.2, 5.4, 0.2),  # Round to increments of 0.2
         "loguniform": tune.loguniform(1e-4, 1e-1),  # Uniform float in log space
-        "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-4),  # Round to increments of 0.0005
+        "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-5),  # Round to increments of 0.00005
         "randn": tune.randn(10, 2),  # Normal distribution with mean 10 and sd 2
         "qrandn": tune.qrandn(10, 2, 0.2),  # Round to increments of 0.2
         "randint": tune.randint(-9, 15),  # Random integer between -9 and 15
@@ -159,31 +159,31 @@ To optimize the hyperparameters of your training process, you will want to use a
 
 .. code-block:: python
 
-    # Be sure to first run `pip install hyperopt`
+    # Be sure to first run `pip install bayesian-optimization`
 
-    import hyperopt as hp
-    from ray.tune.suggest.hyperopt import HyperOptSearch
+    from ray.tune.suggest import ConcurrencyLimiter
+    from ray.tune.suggest.bayesopt import BayesOptSearch
 
-    # Create a HyperOpt search space
+    # Define the search space
     config = {
         "a": tune.uniform(0, 1),
         "b": tune.uniform(0, 20)
-
-        # Note: Arbitrary HyperOpt search spaces should be supported!
-        # "foo": tune.randn(0, 1))
     }
 
-    # Specify the search space and maximize score
-    hyperopt = HyperOptSearch(metric="score", mode="max")
-
-    # Execute 20 trials using HyperOpt and stop after 20 iterations
+    # Execute 20 trials using BayesOpt and stop after 20 iterations
     tune.run(
         trainable,
         config=config,
-        search_alg=hyperopt,
+        metric="score",
+        mode="max",
+        # Limit to two concurrent trials (otherwise we end up with random search)
+        search_alg=ConcurrencyLimiter(
+            BayesOptSearch(random_search_steps=4),
+            max_concurrent=2),
         num_samples=20,
-        stop={"training_iteration": 20}
-    )
+        stop={"training_iteration": 20},
+        verbose=2)
+
 
 Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as :ref:`Nevergrad <nevergrad>` and :ref:`Hyperopt <tune-hyperopt>`. Tune automatically converts the provided search space into the search
 spaces the search algorithms/underlying library expect.

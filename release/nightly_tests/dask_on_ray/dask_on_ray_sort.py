@@ -43,6 +43,9 @@ def load_dataset(client, data_dir, s3_bucket, nbytes, npartitions):
     x = []
     for i in range(npartitions):
         x.append(generate_s3_file(i, data_dir, s3_bucket))
+    # from ray.util.dask import ProgressBarCallback
+    # with ProgressBarCallback():
+    # dask.compute(x, _ray_enable_progress_bar=True)
     dask.compute(x)
 
     filenames = [
@@ -81,6 +84,9 @@ def load_dataset_files(client, data_dir, file_path, nbytes, npartitions):
     x = []
     for i in range(npartitions):
         x.append(generate_file(i, data_dir, file_path))
+    # from ray.util.dask import ProgressBarCallback
+    # with ProgressBarCallback():
+    #     dask.compute(x, _ray_enable_progress_bar=True)
     dask.compute(x)
 
     filenames = [
@@ -113,9 +119,15 @@ def trial(client,
         print("Trial {} start".format(i))
         trial_start = time.time()
 
+        # from ray.util.dask import ProgressBarCallback
+        # with ProgressBarCallback():
+        #     print(
+        #         df.set_index("a", shuffle="tasks",
+        #                      max_branch=float("inf")).compute(
+        #                          _ray_enable_progress_bar=True).head(10))
         print(
-            df.set_index("a", shuffle="tasks", max_branch=float("inf")).head(
-                10, npartitions=-1))
+            df.set_index("a", shuffle="tasks",
+                         max_branch=float("inf")).compute().head(10))
 
         trial_end = time.time()
         duration = trial_end - trial_start
@@ -185,31 +197,24 @@ if __name__ == "__main__":
     if args.nbytes // npartitions > args.max_partition_size:
         npartitions = args.nbytes // args.max_partition_size
 
-    success = 1
     duration = []
-    try:
-        output = trial(
-            client,
-            args.data_dir,
-            args.nbytes,
-            npartitions,
-            args.generate_only,
-            s3_bucket=args.s3_bucket,
-            file_path=args.file_path)
-        print("mean over {} trials: {} +- {}".format(
-            len(output), np.mean(output), np.std(output)))
-    except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        print(e)
-        success = 0
-        duration = []
+    print("Start the main trial")
+    output = trial(
+        client,
+        args.data_dir,
+        args.nbytes,
+        npartitions,
+        args.generate_only,
+        s3_bucket=args.s3_bucket,
+        file_path=args.file_path)
+    print("mean over {} trials: {} +- {}".format(
+        len(output), np.mean(output), np.std(output)))
 
     print(ray.internal.internal_api.memory_summary(stats_only=True))
     duration = np.mean(output)
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
-        f.write(json.dumps({"duration": duration, "success": success}))
+        f.write(json.dumps({"duration": duration, "success": 1}))
 
     write_header = not os.path.exists("output.csv") or os.path.getsize(
         "output.csv") == 0

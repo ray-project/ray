@@ -61,17 +61,25 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR -e python/ray/new_dashboard/client -e dashboard/client
 
   # Install Python.
-  INST_PATH=python_downloads/$PY_INST
-  curl $MACPYTHON_URL/"$PY_VERSION"/"$PY_INST" > "$INST_PATH"
-  sudo installer -pkg "$INST_PATH" -target /
-
+  # In Buildkite, the Python packages are installed on the machien before the build has ran.
   PYTHON_EXE=$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM
   PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
 
-  pushd /tmp
-    # Install latest version of pip to avoid brownouts.
-    curl https://bootstrap.pypa.io/get-pip.py | $PYTHON_EXE
-  popd
+  if [ -z "${BUILDKITE}" ]; then
+    INST_PATH=python_downloads/$PY_INST
+    curl $MACPYTHON_URL/"$PY_VERSION"/"$PY_INST" > "$INST_PATH"
+    sudo installer -pkg "$INST_PATH" -target /
+    installer -pkg "$INST_PATH" -target /
+
+    pushd /tmp
+      # Install latest version of pip to avoid brownouts.
+      curl https://bootstrap.pypa.io/get-pip.py | $PYTHON_EXE
+    popd
+  fi
+
+  if [ -z "${TRAVIS_COMMIT}" ]; then
+    TRAVIS_COMMIT=${BUILDKITE_COMMIT}
+  fi
 
   pushd python
     # Setuptools on CentOS is too old to install arrow 0.9.0, therefore we upgrade.
@@ -93,7 +101,10 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     fi
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
+    # build ray wheel
     PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel
+    # build ray-cpp wheel
+    RAY_INSTALL_CPP=1 PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel
     mv dist/*.whl ../.whl/
   popd
 done

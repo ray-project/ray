@@ -81,20 +81,26 @@ class SubscribeChannelInterface {
   virtual bool Unsubscribe(const rpc::Address &publisher_address,
                            const std::string &key_id_binary) = 0;
 
-  /// Get a subscription callback that corresponds to a pub message.
+  /// Run a success callback for the given pub message.
+  /// Note that this will ensure that the callback is running on a designated IO service.
   ///
   /// \param publisher_address The address of the publisher.
   /// \param pub_message The message to handle from the publisher.
-  /// \return the subscription callback registered. nullptr otherwise.
-  virtual SubscriptionCallback GetCallbackForPubMessage(
-      const rpc::Address &publisher_address,
-      const rpc::PubMessage &pub_message) const = 0;
+  virtual void HandlePublishedMessage(const rpc::Address &publisher_address,
+                                      const rpc::PubMessage &pub_message) const = 0;
+
+  /// Handle the failure of the given publisher.
+  /// Note that this will ensure that the callback is running on a designated IO service.
+  ///
+  /// \param publisher_address The address of the publisher.
+  virtual void HandlePublisherFailure(const rpc::Address &publisher_address) = 0;
 
   /// Handle the failure of the given publisher.
   ///
   /// \param publisher_address The address of the publisher.
-  /// \param pub_message The message to handle from the publisher.
-  virtual void HandlePublisherFailure(const rpc::Address &publisher_address) = 0;
+  /// \param key_id_binary The specific key id that fails.
+  virtual void HandlePublisherFailure(const rpc::Address &publisher_address,
+                                      const std::string &key_id_binary) = 0;
 
   /// Return true if the subscription exists for a given publisher id.
   virtual bool SubscriptionExists(const PublisherID &publisher_id) = 0;
@@ -112,7 +118,8 @@ class SubscribeChannelInterface {
 template <typename KeyIdType>
 class SubscriberChannel : public SubscribeChannelInterface {
  public:
-  SubscriberChannel() {}
+  SubscriberChannel(instrumented_io_context *callback_service)
+      : callback_service_(callback_service) {}
   ~SubscriberChannel() = default;
 
   void Subscribe(const rpc::Address &publisher_address, const std::string &key_id,
@@ -124,11 +131,13 @@ class SubscriberChannel : public SubscribeChannelInterface {
 
   bool CheckNoLeaks() const override;
 
-  SubscriptionCallback GetCallbackForPubMessage(
-      const rpc::Address &publisher_address,
-      const rpc::PubMessage &pub_message) const override;
+  void HandlePublishedMessage(const rpc::Address &publisher_address,
+                              const rpc::PubMessage &pub_message) const override;
 
   void HandlePublisherFailure(const rpc::Address &publisher_address) override;
+
+  void HandlePublisherFailure(const rpc::Address &publisher_address,
+                              const std::string &key_id_binary) override;
 
   bool SubscriptionExists(const PublisherID &publisher_id) override {
     return subscription_map_.count(publisher_id);
@@ -140,6 +149,12 @@ class SubscriberChannel : public SubscribeChannelInterface {
 
  protected:
   rpc::ChannelType channel_type_;
+
+  /// Invoke the publisher failure callback to the designated IO service for the given key
+  /// id. \return Return true if the given key id needs to be unsubscribed. False
+  /// otherwise.
+  bool HandlePublisherFailureInternal(const rpc::Address &publisher_address,
+                                      const KeyIdType &key_id);
 
   /// Returns a subscription callback; Returns a nullopt if the object id is not
   /// subscribed.
@@ -178,6 +193,10 @@ class SubscriberChannel : public SubscribeChannelInterface {
   /// Mapping of the publisher ID -> subscription info.
   absl::flat_hash_map<PublisherID, SubscriptionInfo<KeyIdType>> subscription_map_;
 
+  /// An event loop to execute RPC callbacks. This should be equivalent to the client
+  /// pool's io service.
+  instrumented_io_context *callback_service_;
+
   ///
   /// Statistics attributes.
   ///
@@ -191,7 +210,8 @@ class SubscriberChannel : public SubscribeChannelInterface {
 
 class WaitForObjectEvictionChannel : public SubscriberChannel<ObjectID> {
  public:
-  WaitForObjectEvictionChannel() : SubscriberChannel() {
+  WaitForObjectEvictionChannel(instrumented_io_context *callback_service)
+      : SubscriberChannel(callback_service) {
     channel_type_ = rpc::ChannelType::WORKER_OBJECT_EVICTION;
   }
   ~WaitForObjectEvictionChannel() = default;
@@ -199,7 +219,8 @@ class WaitForObjectEvictionChannel : public SubscriberChannel<ObjectID> {
 
 class WaitForRefRemovedChannel : public SubscriberChannel<ObjectID> {
  public:
-  WaitForRefRemovedChannel() : SubscriberChannel() {
+  WaitForRefRemovedChannel(instrumented_io_context *callback_service)
+      : SubscriberChannel(callback_service) {
     channel_type_ = rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL;
   }
   ~WaitForRefRemovedChannel() = default;
@@ -207,7 +228,8 @@ class WaitForRefRemovedChannel : public SubscriberChannel<ObjectID> {
 
 class ObjectLocationsChannel : public SubscriberChannel<ObjectID> {
  public:
-  ObjectLocationsChannel() : SubscriberChannel() {
+  ObjectLocationsChannel(instrumented_io_context *callback_service)
+      : SubscriberChannel(callback_service) {
     channel_type_ = rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL;
   }
   ~ObjectLocationsChannel() = default;
@@ -296,17 +318,16 @@ class Subscriber : public SubscriberInterface {
       std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
           get_client,
       instrumented_io_context *callback_service)
-      : callback_service_(callback_service),
-        subscriber_id_(subscriber_id),
+      : subscriber_id_(subscriber_id),
         max_command_batch_size_(max_command_batch_size),
         get_client_(get_client) {
     /// This is used to define new channel_type -> Channel abstraction.
     channels_.emplace(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                      std::make_unique<WaitForObjectEvictionChannel>());
+                      std::make_unique<WaitForObjectEvictionChannel>(callback_service));
     channels_.emplace(rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                      std::make_unique<WaitForRefRemovedChannel>());
+                      std::make_unique<WaitForRefRemovedChannel>(callback_service));
     channels_.emplace(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
-                      std::make_unique<ObjectLocationsChannel>());
+                      std::make_unique<ObjectLocationsChannel>(callback_service));
   }
 
   ~Subscriber() = default;
@@ -392,10 +413,6 @@ class Subscriber : public SubscriberInterface {
       return p.second->SubscriptionExists(publisher_id);
     });
   }
-
-  /// An event loop to execute RPC callbacks. This should be equivalent to the client
-  /// pool's io service.
-  instrumented_io_context *callback_service_;
 
   /// Self node's identifying information.
   const SubscriberID subscriber_id_;

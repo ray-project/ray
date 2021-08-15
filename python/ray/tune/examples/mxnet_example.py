@@ -91,7 +91,7 @@ if __name__ == "__main__":
 
     if args.server_address and not args.smoke_test:
         import ray
-        ray.util.connect(args.server_address)
+        ray.init(f"ray://{args.server_address}")
 
     if args.smoke_test:
         analysis = tune_mnist_mxnet(num_samples=1, num_epochs=1)

@@ -13,6 +13,9 @@ from ray.tune.sample import Domain
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, \
     TimeoutStopper
 from ray.tune.utils import date_str, detect_checkpoint_function
+
+from ray.util.annotations import DeveloperAPI
+
 logger = logging.getLogger(__name__)
 
 
@@ -74,6 +77,7 @@ def _validate_log_to_file(log_to_file):
     return stdout_file, stderr_file
 
 
+@DeveloperAPI
 class Experiment:
     """Tracks experiment specifications.
 
@@ -115,6 +119,7 @@ class Experiment:
                  loggers=None,
                  log_to_file=False,
                  sync_to_driver=None,
+                 sync_to_cloud=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  sync_on_checkpoint=True,
@@ -217,6 +222,7 @@ class Experiment:
             "loggers": loggers,
             "log_to_file": (stdout_file, stderr_file),
             "sync_to_driver": sync_to_driver,
+            "sync_to_cloud": sync_to_cloud,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
             "sync_on_checkpoint": sync_on_checkpoint,

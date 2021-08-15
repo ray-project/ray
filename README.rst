@@ -8,6 +8,9 @@
 
 .. image:: https://img.shields.io/badge/Discuss-Ask%20Questions-blue
     :target: https://discuss.ray.io/
+    
+.. image:: https://img.shields.io/twitter/follow/raydistributed.svg?style=social&logo=twitter
+    :target: https://twitter.com/raydistributed
 
 |
 
@@ -20,6 +23,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `RLlib`_: Scalable Reinforcement Learning
 - `RaySGD <https://docs.ray.io/en/master/raysgd/raysgd.html>`__: Distributed Training Wrappers
 - `Ray Serve`_: Scalable and Programmable Serving
+- `Datasets`_: Distributed Arrow on Ray (preview)
 
 There are also many `community integrations <https://docs.ray.io/en/master/ray-libraries.html>`_ with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the `full list of Ray distributed libraries here <https://docs.ray.io/en/master/ray-libraries.html>`_.
 
@@ -32,7 +36,7 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 .. _`Dask`: https://docs.ray.io/en/master/dask-on-ray.html
 .. _`Horovod`: https://horovod.readthedocs.io/en/stable/ray_include.html
 .. _`Scikit-learn`: joblib.html
-
+.. _`Datasets`: https://docs.ray.io/en/master/data/dataset.html
 
 
 Quick Start
@@ -285,11 +289,9 @@ More Information
 
 - `Ray paper`_
 - `Ray HotOS paper`_
-- `Blog (old)`_
 
 .. _`Documentation`: http://docs.ray.io/en/master/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
-.. _`Blog (old)`: https://ray-project.github.io/
 .. _`Blog`: https://medium.com/distributed-computing-with-ray
 .. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Ray Design Patterns`: https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit
@@ -305,6 +307,7 @@ Getting Involved
 - `Forum`_: For discussions about development, questions about usage, and feature requests.
 - `GitHub Issues`_: For reporting bugs.
 - `Twitter`_: Follow updates on Twitter.
+- `Slack`_: Join our Slack channel.
 - `Meetup Group`_: Join our meetup group.
 - `StackOverflow`_: For questions about how to use Ray.
 
@@ -313,3 +316,5 @@ Getting Involved
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
 .. _`Twitter`: https://twitter.com/raydistributed
+.. _`Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
+

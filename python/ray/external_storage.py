@@ -125,6 +125,8 @@ class ExternalStorage(metaclass=abc.ABCMeta):
                 object_refs, ray_object_pairs, owner_addresses):
             address_len = len(owner_address)
             metadata_len = len(metadata)
+            if buf is None:
+                raise ValueError(f"object ref {ref.hex()} does not exist.")
             buf_len = len(buf)
             payload = address_len.to_bytes(8, byteorder="little") + \
                 metadata_len.to_bytes(8, byteorder="little") + \
@@ -133,15 +135,11 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             # 24 bytes to store owner address, metadata, and buffer lengths.
             assert self.HEADER_LENGTH + address_len + metadata_len + buf_len \
                 == len(payload)
-            # TODO (yic): Considering add retry here to avoid transient issue
-            try:
-                written_bytes = f.write(payload)
-                url_with_offset = create_url_with_offset(
-                    url=url, offset=offset, size=written_bytes)
-                keys.append(url_with_offset.encode())
-                offset = f.tell()
-            except IOError:
-                return keys
+            written_bytes = f.write(payload)
+            url_with_offset = create_url_with_offset(
+                url=url, offset=offset, size=written_bytes)
+            keys.append(url_with_offset.encode())
+            offset = f.tell()
         return keys
 
     def _size_check(self, address_len, metadata_len, buffer_len,
@@ -383,6 +381,9 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             # This will lead us to call a Object.get when it is not necessary,
             # so defer seek and call seek before reading objects instead.
             self.transport_params = {"defer_seek": True, "resource": self.s3}
+        else:
+            self.transport_params = {}
+
         self.transport_params.update(self.override_transport_params)
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:

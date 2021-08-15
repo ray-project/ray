@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "ray/common/status.h"
+#include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -62,18 +63,6 @@ flatbuffers::Offset<flatbuffers::Vector<int64_t>> ToFlatbuffer(
 Status PlasmaReceive(const std::shared_ptr<StoreConn> &store_conn,
                      MessageType message_type, std::vector<uint8_t> *buffer);
 
-/* Set options messages. */
-
-Status SendSetOptionsRequest(const std::shared_ptr<StoreConn> &store_conn,
-                             const std::string &client_name, int64_t output_memory_limit);
-
-Status ReadSetOptionsRequest(uint8_t *data, size_t size, std::string *client_name,
-                             int64_t *output_memory_quota);
-
-Status SendSetOptionsReply(const std::shared_ptr<Client> &client, PlasmaError error);
-
-Status ReadSetOptionsReply(uint8_t *data, size_t size);
-
 /* Debug string messages. */
 
 Status SendGetDebugStringRequest(const std::shared_ptr<StoreConn> &store_conn);
@@ -93,11 +82,8 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID 
                          int64_t metadata_size, flatbuf::ObjectSource source,
                          int device_num, bool try_immediately);
 
-void ReadCreateRequest(uint8_t *data, size_t size, ObjectID *object_id,
-                       NodeID *owner_raylet_id, std::string *owner_ip_address,
-                       int *owner_port, WorkerID *owner_worker_id, int64_t *data_size,
-                       int64_t *metadata_size, flatbuf::ObjectSource *source,
-                       int *device_num);
+void ReadCreateRequest(uint8_t *data, size_t size, ray::ObjectInfo *object_info,
+                       flatbuf::ObjectSource *source, int *device_num);
 
 Status SendUnfinishedCreateReply(const std::shared_ptr<Client> &client,
                                  ObjectID object_id, uint64_t retry_with_request_id);

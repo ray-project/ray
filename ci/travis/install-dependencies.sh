@@ -310,6 +310,9 @@ install_dependencies() {
     fi
   fi
 
+  # Default requirements
+  pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_default.txt
+
   if [ "${LINT-}" = 1 ]; then
     install_linters
     # readthedocs has an antiquated build env.
@@ -346,6 +349,9 @@ install_dependencies() {
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements.txt
   fi
+  if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/data_processing/requirements_dataset.txt
+  fi
 
   # Remove this entire section once Serve dependencies are fixed.
   if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ] && [ "${RLLIB_TESTING-}" != 1 ]; then
@@ -373,7 +379,7 @@ install_dependencies() {
     HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git
   fi
 
-  CC=gcc pip install psutil setproctitle==1.2.2 --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 
 install_dependencies "$@"

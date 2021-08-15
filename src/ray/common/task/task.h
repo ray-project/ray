@@ -1,3 +1,17 @@
+// Copyright 2019-2020 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
 
 #include <inttypes.h>
@@ -18,28 +32,28 @@ typedef std::function<void(const NodeID &, const std::string &, int)>
 
 typedef std::function<void()> CancelTaskCallback;
 
-/// \class Task
+/// \class RayTask
 ///
-/// A Task represents a Ray task and a specification of its execution (e.g.,
+/// A RayTask represents a Ray task and a specification of its execution (e.g.,
 /// resource demands). The task's specification contains both immutable fields,
 /// determined at submission time, and mutable fields, determined at execution
 /// time.
-class Task {
+class RayTask {
  public:
   /// Construct an empty task. This should only be used to pass a task
   /// as an out parameter to a function or method.
-  Task() {}
+  RayTask() {}
 
-  /// Construct a `Task` object from a protobuf message.
+  /// Construct a `RayTask` object from a protobuf message.
   ///
   /// \param message The protobuf message.
   /// \param backlog_size The size of the task owner's backlog size for this
   ///  task's shape.
-  explicit Task(const rpc::Task &message, int64_t backlog_size = -1);
+  explicit RayTask(const rpc::Task &message, int64_t backlog_size = -1);
 
-  /// Construct a `Task` object from a `TaskSpecification` and a
+  /// Construct a `RayTask` object from a `TaskSpecification` and a
   /// `TaskExecutionSpecification`.
-  Task(TaskSpecification task_spec, TaskExecutionSpecification task_execution_spec);
+  RayTask(TaskSpecification task_spec, TaskExecutionSpecification task_execution_spec);
 
   /// Override dispatch behaviour.
   void OnDispatchInstead(const DispatchTaskCallback &callback) {
@@ -77,8 +91,8 @@ class Task {
   const std::vector<rpc::ObjectReference> &GetDependencies() const;
 
   /// Update the dynamic/mutable information for this task.
-  /// \param task Task structure with updated dynamic information.
-  void CopyTaskExecutionSpec(const Task &task);
+  /// \param task RayTask structure with updated dynamic information.
+  void CopyTaskExecutionSpec(const RayTask &task);
 
   /// Returns the override dispatch task callback, or nullptr.
   const DispatchTaskCallback &OnDispatch() const { return on_dispatch_; }
@@ -98,11 +112,11 @@ class Task {
  private:
   void ComputeDependencies();
 
-  /// Task specification object, consisting of immutable information about this
+  /// RayTask specification object, consisting of immutable information about this
   /// task determined at submission time. Includes resource demand, object
   /// dependencies, etc.
   TaskSpecification task_spec_;
-  /// Task execution specification, consisting of all dynamic/mutable
+  /// RayTask execution specification, consisting of all dynamic/mutable
   /// information about this task determined at execution time.
   TaskExecutionSpecification task_execution_spec_;
   /// A cached copy of the task's object dependencies, including arguments from

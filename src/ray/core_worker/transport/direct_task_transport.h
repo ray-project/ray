@@ -32,6 +32,7 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 
 namespace ray {
+namespace core {
 
 typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address,
                                                             int port)>
@@ -45,8 +46,12 @@ typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &i
 // would always request a new worker lease. We need this to let raylet know about
 // direct actor creation task, and reconstruct the actor if it dies. Otherwise if
 // the actor creation task just reuses an existing worker, then raylet will not
-// be aware of the actor and is not able to manage it.
-using SchedulingKey = std::tuple<SchedulingClass, std::vector<ObjectID>, ActorID>;
+// be aware of the actor and is not able to manage it.  It is also keyed on
+// RuntimeEnvHash, because a worker can only run a task if the worker's RuntimeEnvHash
+// matches the RuntimeEnvHash required by the task spec.
+typedef int RuntimeEnvHash;
+using SchedulingKey =
+    std::tuple<SchedulingClass, std::vector<ObjectID>, ActorID, RuntimeEnvHash>;
 
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
@@ -60,7 +65,7 @@ class CoreWorkerDirectTaskSubmitter {
       std::shared_ptr<TaskFinisherInterface> task_finisher, NodeID local_raylet_id,
       int64_t lease_timeout_ms, std::shared_ptr<ActorCreatorInterface> actor_creator,
       uint32_t max_tasks_in_flight_per_worker =
-          RayConfig::instance().max_tasks_in_flight_per_worker(),
+          ::RayConfig::instance().max_tasks_in_flight_per_worker(),
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
@@ -93,6 +98,13 @@ class CoreWorkerDirectTaskSubmitter {
   bool CheckNoSchedulingKeyEntriesPublic() {
     absl::MutexLock lock(&mu_);
     return scheduling_key_entries_.empty();
+  }
+
+  int64_t GetNumTasksSubmitted() const { return num_tasks_submitted_; }
+
+  int64_t GetNumLeasesRequested() {
+    absl::MutexLock lock(&mu_);
+    return num_leases_requested_;
   }
 
  private:
@@ -246,7 +258,7 @@ class CoreWorkerDirectTaskSubmitter {
         google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> assigned_resources =
             google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>(),
         SchedulingKey scheduling_key = std::make_tuple(0, std::vector<ObjectID>(),
-                                                       ActorID::Nil()))
+                                                       ActorID::Nil(), 0))
         : lease_client(lease_client),
           lease_expiration_time(lease_expiration_time),
           assigned_resources(assigned_resources),
@@ -343,6 +355,10 @@ class CoreWorkerDirectTaskSubmitter {
 
   // Retries cancelation requests if they were not successful.
   absl::optional<boost::asio::steady_timer> cancel_retry_timer_;
+
+  int64_t num_tasks_submitted_ = 0;
+  int64_t num_leases_requested_ GUARDED_BY(mu_) = 0;
 };
 
-};  // namespace ray
+}  // namespace core
+}  // namespace ray

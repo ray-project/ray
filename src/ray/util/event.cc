@@ -57,10 +57,22 @@ LogEventReporter::~LogEventReporter() { Flush(); }
 
 void LogEventReporter::Flush() { log_sink_->flush(); }
 
-std::string LogEventReporter::EventToString(const rpc::Event &event) {
-  std::stringstream result;
+std::string LogEventReporter::replaceLineFeed(std::string message) {
+  std::stringstream ss;
+  // If the message has \n or \r, we will replace with \\n
+  for (int i = 0, len = message.size(); i < len; ++i) {
+    if (message[i] == '\n' || message[i] == '\r') {
+      ss << "\\n";
+    } else {
+      ss << message[i];
+    }
+  }
+  return ss.str();
+}
 
-  boost::property_tree::ptree pt;
+std::string LogEventReporter::EventToString(const rpc::Event &event,
+                                            const json &custom_fields) {
+  json j;
 
   auto time_stamp = event.timestamp();
   std::stringstream time_stamp_buffer;
@@ -73,39 +85,29 @@ std::string LogEventReporter::EventToString(const rpc::Event &event) {
   time_stamp_buffer << std::string(time_buffer) << std::setw(6) << std::setfill('0')
                     << time_stamp % 1000000;
 
-  pt.put("time_stamp", time_stamp_buffer.str());
-  pt.put("severity", Event_Severity_Name(event.severity()));
-  pt.put("label", event.label());
-  pt.put("event_id", event.event_id());
-  pt.put("source_type", Event_SourceType_Name(event.source_type()));
-  pt.put("host_name", event.source_hostname());
-  pt.put("pid", std::to_string(event.source_pid()));
-  pt.put("message", event.message());
-
-  boost::property_tree::ptree pt_child;
-  for (auto &ele : event.custom_fields()) {
-    pt_child.put(ele.first, ele.second);
-  }
-
-  pt.add_child("custom_fields", pt_child);
-
-  std::stringstream ss;
-  boost::property_tree::json_parser::write_json(ss, pt, false);
+  j["time_stamp"] = time_stamp_buffer.str();
+  j["severity"] = Event_Severity_Name(event.severity());
+  j["label"] = event.label();
+  j["event_id"] = event.event_id();
+  j["source_type"] = Event_SourceType_Name(event.source_type());
+  j["host_name"] = event.source_hostname();
+  j["pid"] = std::to_string(event.source_pid());
+  // Make sure the serialized json is one line in the event log.
+  j["message"] = replaceLineFeed(event.message());
+  j["custom_fields"] = custom_fields;
 
   // the final string is like:
   // {"time_stamp":"2020-08-29 14:18:15.998084","severity":"INFO","label":"label
   // 1","event_id":"de150792ceb151c815d359d4b675fcc6266a","source_type":"CORE_WORKER","host_name":"Macbool.local","pid":"20830","message":"send
   // message 1","custom_fields":{"task_id":"task 1","job_id":"job 1","node_id":"node 1"}}
 
-  return ss.str();
+  return j.dump();
 }
 
-void LogEventReporter::Report(const rpc::Event &event) {
+void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields) {
   RAY_CHECK(Event_SourceType_IsValid(event.source_type()));
   RAY_CHECK(Event_Severity_IsValid(event.severity()));
-  std::string result = EventToString(event);
-  // Pop the last character from the result string because it is breakline '\n'.
-  result.pop_back();
+  std::string result = EventToString(event, custom_fields);
 
   log_sink_->info(result);
   if (force_flush_) {
@@ -123,9 +125,9 @@ EventManager &EventManager::Instance() {
 
 bool EventManager::IsEmpty() { return reporter_map_.empty(); }
 
-void EventManager::Publish(const rpc::Event &event) {
+void EventManager::Publish(const rpc::Event &event, const json &custom_fields) {
   for (const auto &element : reporter_map_) {
-    (element.second)->Report(event);
+    (element.second)->Report(event, custom_fields);
   }
 }
 
@@ -203,9 +205,12 @@ void RayEvent::SendMessage(const std::string &message) {
   event.set_timestamp(current_sys_time_us());
 
   auto mp = RayEventContext::Instance().GetCustomFields();
+  for (const auto &pair : mp) {
+    custom_fields_[pair.first] = pair.second;
+  }
   event.mutable_custom_fields()->insert(mp.begin(), mp.end());
 
-  EventManager::Instance().Publish(event);
+  EventManager::Instance().Publish(event, custom_fields_);
 }
 
 }  // namespace ray

@@ -1,6 +1,8 @@
 import numpy as np
+import json
 import random
 import os
+import shutil
 import platform
 import pytest
 
@@ -12,10 +14,7 @@ MB = 1024 * 1024
 
 
 def _init_ray():
-    return ray.init(
-        num_cpus=2,
-        object_store_memory=700e6,
-        _system_config={"plasma_unlimited": 1})
+    return ray.init(num_cpus=2, object_store_memory=700e6)
 
 
 def _check_spilled_mb(address, spilled=None, restored=None, fallback=None):
@@ -193,6 +192,36 @@ def test_fd_reuse_no_memory_corruption(shutdown_only):
     for i in range(20):
         x_id = a.produce.remote(i)
         ray.get(b.consume.remote(x_id, i))
+
+
+@pytest.mark.skipif(
+    platform.system() != "Linux",
+    reason="Only Linux handles fallback allocation disk full error.")
+def test_fallback_allocation_failure(shutdown_only):
+    file_system_config = {
+        "type": "filesystem",
+        "params": {
+            "directory_path": "/tmp",
+        }
+    }
+    ray.init(
+        object_store_memory=100e6,
+        _temp_dir="/dev/shm",
+        _system_config={
+            "object_spilling_config": json.dumps(file_system_config),
+        })
+    shm_size = shutil.disk_usage("/dev/shm").total
+    object_size = max(100e6, shm_size // 5)
+    num_exceptions = 0
+    refs = []
+    for i in range(8):
+        print("Start put", i)
+        try:
+            refs.append(
+                ray.get(ray.put(np.zeros(object_size, dtype=np.uint8))))
+        except ray.exceptions.ObjectStoreFullError:
+            num_exceptions = num_exceptions + 1
+    assert num_exceptions > 0
 
 
 # TODO(ekl) enable this test once we implement this behavior.

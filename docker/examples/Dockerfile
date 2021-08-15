@@ -6,7 +6,7 @@ FROM rayproject/ray:latest
 RUN apt-get update && apt-get install -y zlib1g-dev libgl1-mesa-dev libgtk2.0-dev && apt-get clean
 RUN pip install --no-cache-dir -U pip \
     gym[atari] \
-    opencv-python-headless==4.3.0.36 \
+    scikit-image \
     tensorflow \
     lz4 \
     pytest-timeout \

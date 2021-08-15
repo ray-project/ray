@@ -355,8 +355,11 @@ Handling Large Datasets
 You often will want to compute a large object (e.g., training data, model weights) on the driver and use that object within each trial.
 
 Tune provides a wrapper function ``tune.with_parameters()`` that allows you to broadcast large objects to your trainable.
-Objects passed with this wrapper will be stored on the Ray object store and will be automatically fetched
+Objects passed with this wrapper will be stored on the :ref:`Ray object store <objects-in-ray>` and will be automatically fetched
 and passed to your trainable as a parameter.
+
+.. tip:: If the objects are small in size or already exist in the :ref:`Ray Object Store <objects-in-ray>`, there's no need to use ``tune.with_parameters()``. You can use `partials <https://docs.python.org/3/library/functools.html#functools.partial>`__ or pass in directly to ``config`` instead.
+
 
 .. code-block:: python
 
@@ -769,6 +772,8 @@ By default, ``tune.run`` will continue executing until all trials have terminate
 
 This is useful when you are trying to setup a large hyperparameter experiment.
 
+.. _tune-env-vars:
+
 Environment variables
 ---------------------
 Some of Ray Tune's behavior can be configured using environment variables.
@@ -841,6 +846,13 @@ These are the environment variables Ray Tune currently considers:
   trial startups. After the grace period, Tune will block until a result from a running trial is received. Can
   be disabled by setting this to lower or equal to 0.
 * **TUNE_WARN_THRESHOLD_S**: Threshold for logging if an Tune event loop operation takes too long. Defaults to 0.5 (seconds).
+* **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S**: Threshold for throwing a warning if no active trials are in ``RUNNING`` state
+  for this amount of seconds. If the Ray Tune job is stuck in this state (most likely due to insufficient resources),
+  the warning message is printed repeatedly every this amount of seconds. Defaults to 1 (seconds).
+* **TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER**: Threshold for throwing a warning, when the autoscaler is enabled,
+  if no active trials are in ``RUNNING`` state for this amount of seconds.
+  If the Ray Tune job is stuck in this state (most likely due to insufficient resources), the warning message is printed
+  repeatedly every this amount of seconds. Defaults to 60 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
 
 

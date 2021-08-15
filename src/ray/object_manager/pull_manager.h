@@ -1,3 +1,16 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #pragma once
 
@@ -52,9 +65,8 @@ class PullManager {
       const std::function<void(const ObjectID &)> cancel_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
       const std::function<double()> get_time, int pull_timeout_ms,
-      int64_t num_bytes_available, std::function<void()> object_store_full_callback,
-      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-      int min_active_pulls = RayConfig::instance().pull_manager_min_active_pulls());
+      int64_t num_bytes_available,
+      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object);
 
   /// Add a new pull request for a bundle of objects. The objects in the
   /// request will get pulled once:
@@ -133,6 +145,11 @@ class PullManager {
   /// likely inactive due to lack of memory. This can also return false if an
   /// earlier request is waiting for metadata.
   bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const;
+
+  /// Whether we are have requests queued that are not currently active. This
+  /// can happen when we are at capacity in the object store or temporarily, if
+  /// there are object sizes missing.
+  bool HasPullsQueued() const;
 
   std::string DebugString() const;
 
@@ -247,11 +264,6 @@ class PullManager {
                                       uint64_t *highest_id_for_bundle,
                                       std::unordered_set<ObjectID> *objects_to_cancel);
 
-  /// Trigger out-of-memory handling if the first request in the queue needs
-  /// more space than the bytes available. This is needed to make room for the
-  /// request.
-  void TriggerOutOfMemoryHandlingIfNeeded();
-
   /// Return debug info about this bundle queue.
   std::string BundleInfo(const Queue &bundles, uint64_t highest_id_being_pulled) const;
 
@@ -267,8 +279,6 @@ class PullManager {
   const std::function<void(const ObjectID &)> cancel_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
   const std::function<double()> get_time_;
-  /// The minimum number of pull bundles to keep active.
-  const int min_active_pulls_;
   uint64_t pull_timeout_ms_;
 
   /// The next ID to assign to a bundle pull request, so that the caller can
@@ -306,10 +316,6 @@ class PullManager {
 
   /// The number of currently active bundles.
   int64_t num_active_bundles_ = 0;
-
-  /// Triggered when the first request in the queue can't be pulled due to
-  /// out-of-memory. This callback should try to make more bytes available.
-  std::function<void()> object_store_full_callback_;
 
   /// Callback to pin plasma objects.
   std::function<std::unique_ptr<RayObject>(const ObjectID &object_ids)> pin_object_;

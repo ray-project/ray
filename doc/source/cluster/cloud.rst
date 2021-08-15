@@ -278,7 +278,7 @@ on each machine. To install Ray, follow the `installation instructions`_.
 Starting Ray on each machine
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-On the head node (just choose some node to be the head node), run the following.
+On the head node (just choose one node to be the head node), run the following.
 If the ``--port`` argument is omitted, Ray will choose port 6379, falling back to a
 random port.
 
@@ -294,6 +294,10 @@ random port.
 
 The command will print out the address of the Redis server that was started
 (the local node IP address plus the port number you specified).
+
+.. note::
+
+    If you already has remote redis instances, you can specify `--address=ip1:port1,ip2:port2...` to use them. The first one is primary and rest are shards. Ray will create a redis instance if the default is unreachable.
 
 **Then on each of the other nodes**, run the following. Make sure to replace
 ``<address>`` with the value printed by the command on the head node (it
@@ -413,6 +417,18 @@ To run a distributed Ray program, you'll need to execute your program on the sam
               <classname> <args>
 
     .. note:: Specifying ``auto`` as the address hasn't been implemented in Java yet. You need to provide the actual address. You can find the address of the server from the output of the ``ray up`` command.
+
+  .. group-tab:: C++
+
+    You need to add the ``RAY_ADDRESS`` env var to your command line (like ``RAY_ADDRESS=...``).
+
+    To connect your program to the Ray cluster, run it like this:
+
+        .. code-block:: bash
+
+            RAY_ADDRESS=<address> ./<binary> <args>
+
+    .. note:: Specifying ``auto`` as the address hasn't been implemented in C++ yet. You need to provide the actual address. You can find the address of the server from the output of the ``ray up`` command.
 
 
 .. note:: A common mistake is setting the address to be a cluster node while running the script on your laptop. This will not work because the script needs to be started/executed on one of the Ray nodes.

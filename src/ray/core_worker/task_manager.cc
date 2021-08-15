@@ -21,6 +21,7 @@
 #include "msgpack.hpp"
 
 namespace ray {
+namespace core {
 
 // Start throttling task failure logs once we hit this threshold.
 const int64_t kTaskFailureThrottlingThreshold = 50;
@@ -196,8 +197,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         RAY_CHECK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                         object_id));
       } else {
-        RAY_LOG(INFO) << "Task " << task_id << " returned object " << object_id
-                      << " in plasma on a dead node, attempting to recover";
+        RAY_LOG(DEBUG) << "Task " << task_id << " returned object " << object_id
+                       << " in plasma on a dead node, attempting to recover.";
         reconstruct_object_callback_(object_id);
       }
     } else {
@@ -466,8 +467,8 @@ void TaskManager::MarkPendingTaskFailed(
       packer.pack_bin(pb_serialized_exception.size());
       packer.pack_bin_body(pb_serialized_exception.data(),
                            pb_serialized_exception.size());
-      ray::LocalMemoryBuffer final_buffer(msgpack_serialized_exception.size() +
-                                          kMessagePackOffset);
+      LocalMemoryBuffer final_buffer(msgpack_serialized_exception.size() +
+                                     kMessagePackOffset);
       // copy msgpack-serialized bytes
       std::memcpy(final_buffer.Data() + kMessagePackOffset,
                   msgpack_serialized_exception.data(),
@@ -505,4 +506,5 @@ std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
   return ret_vec;
 }
 
+}  // namespace core
 }  // namespace ray
