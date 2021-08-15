@@ -17,7 +17,8 @@ ARG RAY_UID=1000
 ARG RAY_GID=100
 
 RUN apt-get update -y \
-    && apt-get install -y sudo tzdata bash \
+    && apt-get install -y sudo tzdata bash libhdf5-dev pkg-config \
+    && (apt-get install -y libhdf5-100 || apt-get install -y libhdf5-103) \
     && useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID \
     && usermod -aG sudo ray \
     && echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers \
