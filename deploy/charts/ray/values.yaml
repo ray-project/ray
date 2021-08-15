@@ -32,7 +32,7 @@ podTypes:
         # Optionally, set a node selector for this podType: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector
         nodeSelector: {}
 
-        # tolerations for Ray pods of this podType (the head's podType in this example)
+        # tolerations for Ray pods of this podType (the head's podType in this case)
         #   ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
         #   Note that it is often not necessary to manually specify tolerations for GPU
         #   usage on managed platforms such as AKS, EKS, and GKE.
