@@ -26,7 +26,7 @@ mlflow==1.19.0
 mock==4.0.3
 mxnet==1.8.0.post0
 nevergrad==0.4.3.post7
-optuna==2.8.0
+optuna==2.9.1
 pytest-remotedata==0.3.2
 pytorch-lightning-bolts==0.2.5
 pytorch-lightning==1.0.3
