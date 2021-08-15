@@ -88,7 +88,7 @@ class BackendExecutor:
                     training_func=train_func,
                     world_rank=world_rank,
                     checkpoint=checkpoint,
-                    process_checkpoint_func=self._backend.convert_checkpoint,
+                    convert_checkpoint_func=self._backend.convert_checkpoint,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics
                 )
             except ValueError:
