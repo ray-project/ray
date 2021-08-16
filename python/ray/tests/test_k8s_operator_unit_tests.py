@@ -1,6 +1,9 @@
 import copy
 import os
 import unittest
+import sys
+
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
@@ -10,7 +13,6 @@ import yaml
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, NODE_KIND_HEAD
 from ray.autoscaler.node_provider import NodeProvider
 from ray.ray_constants import DEFAULT_PORT
-from ray.ray_operator.operator import RayCluster
 from ray.ray_operator.operator_utils import cr_to_config
 from ray.ray_operator.operator_utils import check_redis_password_not_specified
 from ray.ray_operator.operator_utils import get_head_service
@@ -19,6 +21,9 @@ from ray.autoscaler._private._kubernetes.node_provider import\
     KubernetesNodeProvider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.providers import _get_default_config
+
+sys.modules["kopf"] = MagicMock()
+from ray.ray_operator.operator import RayCluster  # noqa: E402
 """
 Tests that, when the K8s operator launches a cluster, no files are mounted onto
 the head node.
@@ -166,7 +171,6 @@ class OperatorTest(unittest.TestCase):
                 cluster2.start_head()
 
     def test_operator_redis_password(self):
-        cluster_identifier = ("name", "namespace")
         stop_cmd = "ray stop"
         start_cmd = "ulimit -n 65536; ray start --head --no-monitor"\
             " --dashboard-host 0.0.0.0 --redis-password 1234567"
@@ -175,12 +179,12 @@ class OperatorTest(unittest.TestCase):
                             " not support setting a custom Redis password in"\
                             " Ray start commands."
         with pytest.raises(ValueError, match=exception_message):
-            check_redis_password_not_specified(cluster_config,
-                                               cluster_identifier)
+            check_redis_password_not_specified(cluster_config, "name",
+                                               "namespace")
         start_cmd = "ulimit -n 65536; ray start --head --no-monitor"\
             " --dashboard-host 0.0.0.0"
         cluster_config = {"head_start_ray_commands": [stop_cmd, start_cmd]}
-        check_redis_password_not_specified(cluster_config, cluster_identifier)
+        check_redis_password_not_specified(cluster_config, "name", "namespace")
 
     def test_operator_infer_port(self):
         stop_cmd = "ray stop"

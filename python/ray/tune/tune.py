@@ -9,13 +9,14 @@ import sys
 import time
 
 import ray
+from ray.util.annotations import PublicAPI
+
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.logger import Logger
-from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter, \
-    ProgressReporter
+from ray.tune.progress_reporter import detect_reporter, ProgressReporter
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls
 from ray.tune.stopper import Stopper
@@ -29,18 +30,13 @@ from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
+from ray.tune.utils import force_on_current_node
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
-
-try:
-    class_name = get_ipython().__class__.__name__
-    IS_NOTEBOOK = True if "Terminal" not in class_name else False
-except NameError:
-    IS_NOTEBOOK = False
 
 
 def _check_default_resources_override(run_identifier):
@@ -68,6 +64,7 @@ def _report_progress(runner, reporter, done=False):
         reporter.report(trials, done, sched_debug_str, executor_debug_str)
 
 
+@PublicAPI
 def run(
         run_or_experiment: Union[str, Callable, Type],
         name: Optional[str] = None,
@@ -81,8 +78,8 @@ def run(
             float, int, Mapping]], PlacementGroupFactory] = None,
         num_samples: int = 1,
         local_dir: Optional[str] = None,
-        search_alg: Optional[Union[Searcher, SearchAlgorithm]] = None,
-        scheduler: Optional[TrialScheduler] = None,
+        search_alg: Optional[Union[Searcher, SearchAlgorithm, str]] = None,
+        scheduler: Optional[Union[TrialScheduler, str]] = None,
         keep_checkpoints_num: Optional[int] = None,
         checkpoint_score_attr: Optional[str] = None,
         checkpoint_freq: int = 0,
@@ -121,6 +118,11 @@ def run(
     When a SIGINT signal is received (e.g. through Ctrl+C), the tuning run
     will gracefully shut down and checkpoint the latest experiment state.
     Sending SIGINT again (or SIGKILL/SIGTERM instead) will skip this step.
+
+    Many aspects of Tune, such as the frequency of global checkpointing,
+    maximum pending placement group trials and the path of the result
+    directory be configured through environment variables. Refer to
+    :ref:`tune-env-vars` for a list of environment variables available.
 
     Examples:
 
@@ -195,12 +197,13 @@ def run(
             samples are generated until a stopping condition is met.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
-        search_alg (Searcher|SearchAlgorithm): Search algorithm for
-            optimization.
-        scheduler (TrialScheduler): Scheduler for executing
+        search_alg (Searcher|SearchAlgorithm|str): Search algorithm for
+            optimization. You can also use the name of the algorithm.
+        scheduler (TrialScheduler|str): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
-            ray.tune.schedulers for more options.
+            ray.tune.schedulers for more options. You can also use the
+            name of the scheduler.
         keep_checkpoints_num (int): Number of checkpoints to keep. A value of
             `None` keeps all checkpoints. Defaults to `None`. If set, need
             to provide `checkpoint_score_attr`.
@@ -253,9 +256,10 @@ def run(
         server_port (int): Port number for launching TuneServer.
         resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY",
             or bool. LOCAL/True restores the checkpoint from the
-            local_checkpoint_dir, determined
-            by `name` and `local_dir`. REMOTE restores the checkpoint
-            from remote_checkpoint_dir. PROMPT provides CLI feedback.
+            local experiment directory, determined
+            by ``name`` and ``local_dir``. REMOTE restores the checkpoint
+            from ``upload_dir`` (as passed to ``sync_config``).
+            PROMPT provides CLI feedback.
             False forces a new experiment. ERRORED_ONLY resets and reruns
             ERRORED trials upon resume - previous trial artifacts will
             be left untouched.  If resume is set but checkpoint does not exist,
@@ -297,8 +301,13 @@ def run(
         _ray_auto_init()
 
     if _remote:
+        remote_run = ray.remote(num_cpus=0)(run)
+
+        # Make sure tune.run is called on the sever node.
+        remote_run = force_on_current_node(remote_run)
+
         return ray.get(
-            ray.remote(num_cpus=0)(run).remote(
+            remote_run.remote(
                 run_or_experiment,
                 name,
                 metric,
@@ -397,6 +406,7 @@ def run(
                 local_dir=local_dir,
                 upload_dir=sync_config.upload_dir,
                 sync_to_driver=sync_config.sync_to_driver,
+                sync_to_cloud=sync_config.sync_to_cloud,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
                 log_to_file=log_to_file,
@@ -418,6 +428,16 @@ def run(
 
     if fail_fast and max_failures != 0:
         raise ValueError("max_failures must be 0 if fail_fast=True.")
+
+    if isinstance(search_alg, str):
+        # importing at top level causes a recursive dependency
+        from ray.tune.suggest import create_searcher
+        search_alg = create_searcher(search_alg)
+
+    if isinstance(scheduler, str):
+        # importing at top level causes a recursive dependency
+        from ray.tune.schedulers import create_scheduler
+        scheduler = create_scheduler(scheduler)
 
     if issubclass(type(search_alg), Searcher):
         search_alg = SearchGenerator(search_alg)
@@ -466,12 +486,7 @@ def run(
     else:
         logger.info("TrialRunner resumed, ignoring new add_experiment.")
 
-    if progress_reporter is None:
-        if IS_NOTEBOOK:
-            progress_reporter = JupyterNotebookReporter(
-                overwrite=not has_verbosity(Verbosity.V2_TRIAL_NORM))
-        else:
-            progress_reporter = CLIReporter()
+    progress_reporter = progress_reporter or detect_reporter()
 
     if not progress_reporter.set_search_properties(metric, mode):
         raise ValueError(
@@ -563,6 +578,7 @@ def run(
         default_mode=mode)
 
 
+@PublicAPI
 def run_experiments(
         experiments: Union[Experiment, Mapping, Sequence[Union[Experiment,
                                                                Mapping]]],
@@ -601,8 +617,13 @@ def run_experiments(
         _ray_auto_init()
 
     if _remote:
+        remote_run = ray.remote(num_cpus=0)(run_experiments)
+
+        # Make sure tune.run_experiments is run on the server node.
+        remote_run = force_on_current_node(remote_run)
+
         return ray.get(
-            ray.remote(num_cpus=0)(run_experiments).remote(
+            remote_run.remote(
                 experiments,
                 scheduler,
                 server_port,

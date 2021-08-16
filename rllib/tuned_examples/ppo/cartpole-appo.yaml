@@ -7,9 +7,14 @@ cartpole-appo:
     config:
         # Works for both torch and tf.
         framework: tf
-        rollout_fragment_length: 10
-        train_batch_size: 10
         num_envs_per_worker: 5
         num_workers: 1
         num_gpus: 0
+        observation_filter: MeanStdFilter
+        num_sgd_iter: 6
+        vf_loss_coeff: 0.01
         vtrace: false
+        model:
+            fcnet_hiddens: [32]
+            fcnet_activation: linear
+            vf_share_layers: true

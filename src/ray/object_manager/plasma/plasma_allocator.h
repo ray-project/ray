@@ -17,45 +17,75 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include "ray/object_manager/plasma/allocator.h"
 
 namespace plasma {
 
-class PlasmaAllocator {
+// PlasmaAllocator that allocates memory from mmaped file to
+// enable memory sharing between processes. It's not thread
+// safe and can only be created once per process.
+//
+// PlasmaAllocator is optimized for linux. On linux,
+// the Allocate call allocates memory from a pre-mmap file
+// from /dev/shm. On other system, it allocates memory from
+// a pre-mmap file on disk.
+//
+// The FallbackAllocate always allocates memory from a disk
+// based mmapped file.
+class PlasmaAllocator : public IAllocator {
  public:
-  /// Allocates size bytes and returns a pointer to the allocated memory. The
-  /// memory address will be a multiple of alignment, which must be a power of two.
+  PlasmaAllocator(const std::string &plasma_directory,
+                  const std::string &fallback_directory, bool hugepage_enabled,
+                  int64_t footprint_limit);
+
+  /// On linux, it allocates memory from a pre-mmapped file from /dev/shm.
+  /// On other system, it allocates memory from a pre-mmapped file on disk.
+  /// NOTE: due to fragmentation, there is a possibility that the
+  /// allocator has the capacity but fails to fulfill the allocation
+  /// request.
   ///
-  /// \param alignment Memory alignment.
   /// \param bytes Number of bytes.
-  /// \return Pointer to allocated memory.
-  static void *Memalign(size_t alignment, size_t bytes);
+  /// \return allocated memory. returns empty if not enough space.
+  absl::optional<Allocation> Allocate(size_t bytes) override;
+
+  /// Fallback allocate memory from disk mmaped file. This is useful
+  /// when we running out of memory but still want to allocate memory
+  /// with sub-optimal peformance.
+  ///
+  /// On linux with fallocate support, it returns null if running out of
+  /// space; On linux without fallocate it raises SIGBUS interrupt.
+  /// TODO(scv119): On other system the behavior of running out of space is
+  /// undefined.
+  ///
+  /// \param bytes Number of bytes.
+  /// \return allocated memory. returns empty if not enough space.
+  absl::optional<Allocation> FallbackAllocate(size_t bytes) override;
 
   /// Frees the memory space pointed to by mem, which must have been returned by
-  /// a previous call to Memalign()
+  /// a previous call to Allocate/FallbackAllocate or it yields undefined behavior.
   ///
-  /// \param mem Pointer to memory to free.
-  /// \param bytes Number of bytes to be freed.
-  static void Free(void *mem, size_t bytes);
+  /// \param allocation allocation to free.
+  void Free(Allocation allocation) override;
 
-  /// Sets the memory footprint limit for Plasma.
-  ///
-  /// \param bytes Plasma memory footprint limit in bytes.
-  static void SetFootprintLimit(size_t bytes);
+  /// Get the memory footprint limit for this allocator.
+  int64_t GetFootprintLimit() const override;
 
-  /// Get the memory footprint limit for Plasma.
-  ///
-  /// \return Plasma memory footprint limit in bytes.
-  static int64_t GetFootprintLimit();
+  /// Get the number of bytes allocated so far.
+  int64_t Allocated() const override;
 
-  /// Get the number of bytes allocated by Plasma so far.
-  /// \return Number of bytes allocated by Plasma so far.
-  static int64_t Allocated();
+  /// Get the number of bytes fallback allocated so far.
+  int64_t FallbackAllocated() const override;
 
  private:
-  static int64_t allocated_;
-  static int64_t footprint_limit_;
+  const int64_t kFootprintLimit;
+  const size_t kAlignment;
+  int64_t allocated_;
+  // TODO(scv119): once we refactor object_manager this no longer
+  // need to be atomic.
+  std::atomic<int64_t> fallback_allocated_;
 };
 
 }  // namespace plasma

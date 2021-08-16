@@ -25,9 +25,9 @@ struct RayRuntimeHolder {
     return instance;
   }
 
-  void Init(std::shared_ptr<api::RayRuntime> runtime) { runtime_ = runtime; }
+  void Init(std::shared_ptr<RayRuntime> runtime) { runtime_ = runtime; }
 
-  std::shared_ptr<api::RayRuntime> Runtime() { return runtime_; }
+  std::shared_ptr<RayRuntime> Runtime() { return runtime_; }
 
  private:
   RayRuntimeHolder() = default;
@@ -37,10 +37,10 @@ struct RayRuntimeHolder {
   RayRuntimeHolder &operator=(RayRuntimeHolder const &) = delete;
   RayRuntimeHolder &operator=(RayRuntimeHolder &&) = delete;
 
-  std::shared_ptr<api::RayRuntime> runtime_;
+  std::shared_ptr<RayRuntime> runtime_;
 };
 
-inline static std::shared_ptr<api::RayRuntime> RayRuntime() {
+inline static std::shared_ptr<RayRuntime> GetRayRuntime() {
   return RayRuntimeHolder::Instance().Runtime();
 }
 

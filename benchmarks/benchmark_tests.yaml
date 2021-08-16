@@ -1,0 +1,126 @@
+- name: single_node
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Alex Wu"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: single_node.yaml
+
+  run:
+    timeout: 12000
+    prepare: sleep 0
+    script: python single_node/test_single_node.py
+
+- name: object_store
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Alex Wu"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: object_store.yaml
+
+  run:
+    timeout: 3600
+    prepare: sleep 0
+    script: python object_store/test_object_store.py
+
+- name: many_actors
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Alex Wu"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: distributed.yaml
+
+  run:
+    timeout: 3600 # 1hr
+    prepare: python distributed/wait_cluster.py --num-nodes=65
+    script: python distributed/test_many_actors.py
+
+- name: many_actors_smoke_test
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Alex Wu"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: distributed_smoke_test.yaml
+
+  run:
+    timeout: 3600 # 1hr
+    prepare: python distributed/wait_cluster.py --num-nodes=2
+    script: SMOKE_TEST=1 python distributed/test_many_actors.py
+
+- name: many_tasks
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Alex Wu"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: distributed.yaml
+
+  run:
+    timeout: 3600 # 1hr
+    prepare: python distributed/wait_cluster.py --num-nodes=65
+    script: python distributed/test_many_tasks.py --num-tasks=10000
+
+- name: many_tasks_smoke_test
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Alex Wu"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: distributed_smoke_test.yaml
+
+  run:
+    timeout: 3600 # 1hr
+    prepare: python distributed/wait_cluster.py --num-nodes=2
+    script: python distributed/test_many_tasks.py --num-tasks=100
+
+- name: many_pgs
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Alex Wu"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: distributed.yaml
+
+  run:
+    timeout: 3600 # 1hr
+    prepare: python distributed/wait_cluster.py --num-nodes=65
+    script: python distributed/test_many_pgs.py
+
+- name: many_pgs_smoke_test
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Alex Wu"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: distributed_smoke_test.yaml
+
+  run:
+    timeout: 3600 # 1hr
+    prepare: python distributed/wait_cluster.py --num-nodes=2
+    script: SMOKE_TEST=1 python distributed/test_many_pgs.py
+
+# NOTE: No smoke test since this shares a script with the many_tasks_smoke_test
+- name: many_nodes
+  owner:
+    mail: "core@anyscale.com"
+    slack: "@Alex Wu"
+
+  cluster:
+    app_config: app_config.yaml
+    compute_template: many_nodes.yaml
+
+  run:
+    timeout: 3600 # 1hr
+    prepare: python distributed/wait_cluster.py --num-nodes=250
+    script: python distributed/test_many_tasks.py --num-tasks=1000

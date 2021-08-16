@@ -25,6 +25,7 @@
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/util/process.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -225,13 +226,14 @@ class RayletClient : public RayletClientInterface {
   /// \param serialized_job_config If this is a driver connection, the job config
   /// provided by driver will be passed to Raylet. If this is a worker connection,
   /// this will be populated with the current job config.
+  /// \param worker_shim_pid The PID of the process for setup worker runtime env.
   RayletClient(instrumented_io_context &io_service,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id,
                const int &runtime_env_hash, const Language &language,
                const std::string &ip_address, Status *status, NodeID *raylet_id,
-               int *port, std::string *serialized_job_config);
+               int *port, std::string *serialized_job_config, pid_t worker_shim_pid);
 
   /// Connect to the raylet via grpc only.
   ///

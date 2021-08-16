@@ -55,9 +55,9 @@ def _ray_start(**kwargs):
 @pytest.fixture
 def ray_start_with_dashboard(request):
     param = getattr(request, "param", {})
-
-    with _ray_start(
-            num_cpus=1, include_dashboard=True, **param) as address_info:
+    if param.get("num_cpus") is None:
+        param["num_cpus"] = 1
+    with _ray_start(include_dashboard=True, **param) as address_info:
         yield address_info
 
 
@@ -221,6 +221,15 @@ def enable_pickle_debug():
     os.environ["RAY_PICKLE_VERBOSE_DEBUG"] = "1"
     yield
     del os.environ["RAY_PICKLE_VERBOSE_DEBUG"]
+
+
+@pytest.fixture
+def set_enable_auto_connect(enable_auto_connect: str = "0"):
+    try:
+        os.environ["RAY_ENABLE_AUTO_CONNECT"] = enable_auto_connect
+        yield enable_auto_connect
+    finally:
+        del os.environ["RAY_ENABLE_AUTO_CONNECT"]
 
 
 @pytest.fixture()

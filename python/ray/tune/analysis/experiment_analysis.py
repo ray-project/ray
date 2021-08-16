@@ -17,14 +17,19 @@ except ImportError:
 
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC, EXPR_PROGRESS_FILE, \
-    EXPR_PARAM_FILE, CONFIG_PREFIX, TRAINING_ITERATION
+    EXPR_RESULT_FILE, EXPR_PARAM_FILE, CONFIG_PREFIX, TRAINING_ITERATION
 from ray.tune.trial import Trial
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
+from ray.util.annotations import PublicAPI
+
 logger = logging.getLogger(__name__)
 
+DEFAULT_FILE_TYPE = "csv"
 
+
+@PublicAPI(stability="beta")
 class Analysis:
     """Analyze all results from a directory of experiments.
 
@@ -39,12 +44,15 @@ class Analysis:
         default_mode (str): Default mode for comparing results. Has to be one
             of [min, max]. Can be overwritten with the ``mode`` parameter
             in the respective functions.
+        file_type (str): Read results from json or csv files. Has to be one
+            of [None, json, csv]. Defaults to csv.
     """
 
     def __init__(self,
                  experiment_dir: str,
                  default_metric: Optional[str] = None,
-                 default_mode: Optional[str] = None):
+                 default_mode: Optional[str] = None,
+                 file_type: Optional[str] = None):
         experiment_dir = os.path.expanduser(experiment_dir)
         if not os.path.isdir(experiment_dir):
             raise ValueError(
@@ -58,6 +66,7 @@ class Analysis:
             raise ValueError(
                 "`default_mode` has to be None or one of [min, max]")
         self.default_mode = default_mode
+        self._file_type = self._validate_filetype(file_type)
 
         if self.default_metric is None and self.default_mode:
             # If only a mode was passed, use anonymous metric
@@ -69,6 +78,23 @@ class Analysis:
                 "Analysis utilities.")
         else:
             self.fetch_trial_dataframes()
+
+    def _validate_filetype(self, file_type: Optional[str] = None):
+        if file_type not in {None, "json", "csv"}:
+            raise ValueError(
+                "`file_type` has to be None or one of [json, csv].")
+        return file_type or DEFAULT_FILE_TYPE
+
+    def set_filetype(self, file_type: Optional[str] = None):
+        """Overrides the existing file type.
+
+        Args:
+            file_type (str): Read results from json or csv files. Has to be one
+                of [None, json, csv]. Defaults to csv.
+        """
+        self._file_type = self._validate_filetype(file_type)
+        self.fetch_trial_dataframes()
+        return True
 
     def _validate_metric(self, metric: str) -> str:
         if not metric and not self.default_metric:
@@ -169,11 +195,24 @@ class Analysis:
             return None
 
     def fetch_trial_dataframes(self) -> Dict[str, DataFrame]:
+        """Fetches trial dataframes from files.
+
+        Returns:
+            A dictionary containing "trial dir" to Dataframe.
+        """
         fail_count = 0
+        force_dtype = {"trial_id": str}  # Never convert trial_id to float.
         for path in self._get_trial_paths():
             try:
-                self.trial_dataframes[path] = pd.read_csv(
-                    os.path.join(path, EXPR_PROGRESS_FILE))
+                if self._file_type == "json":
+                    with open(os.path.join(path, EXPR_RESULT_FILE), "r") as f:
+                        json_list = [json.loads(line) for line in f if line]
+                    df = pd.json_normalize(json_list, sep="/")
+                elif self._file_type == "csv":
+                    df = pd.read_csv(
+                        os.path.join(path, EXPR_PROGRESS_FILE),
+                        dtype=force_dtype)
+                self.trial_dataframes[path] = df
             except Exception:
                 fail_count += 1
 
@@ -325,7 +364,10 @@ class Analysis:
     def _get_trial_paths(self) -> List[str]:
         _trial_paths = []
         for trial_path, _, files in os.walk(self._experiment_dir):
-            if EXPR_PROGRESS_FILE in files:
+            if (self._file_type == "json"
+                and EXPR_RESULT_FILE in files) \
+                    or (self._file_type == "csv"
+                        and EXPR_PROGRESS_FILE in files):
                 _trial_paths += [trial_path]
 
         if not _trial_paths:
@@ -339,6 +381,7 @@ class Analysis:
         return self._trial_dataframes
 
 
+@PublicAPI(stability="beta")
 class ExperimentAnalysis(Analysis):
     """Analyze results from a Tune experiment.
 

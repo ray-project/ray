@@ -25,8 +25,7 @@ Ray Serve is an easy-to-use scalable model serving library built on Ray.  Ray Se
 - **Framework-agnostic**: Use a single toolkit to serve everything from deep learning models
   built with frameworks like :ref:`PyTorch <serve-pytorch-tutorial>`,
   :ref:`Tensorflow, and Keras <serve-tensorflow-tutorial>`, to :ref:`Scikit-Learn <serve-sklearn-tutorial>` models, to arbitrary Python business logic.
-- **Python-first**: Configure your model serving with pure Python code---no more YAML or
-  JSON configs.
+- **Python-first**: Configure your model serving declaratively in pure Python, without needing YAML or JSON configs.
 
 Since Ray Serve is built on Ray, it allows you to easily scale to many machines, both in your datacenter and in the cloud.
 
@@ -77,7 +76,7 @@ lack of flexibility.
 Ray Serve solves these problems by giving you a simple web server (and the ability to :ref:`use your own <serve-web-server-integration-tutorial>`) while still handling the complex routing, scaling, and testing logic
 necessary for production deployments.
 
-Beyond scaling up your backends with multiple replicas, Ray Serve also enables:
+Beyond scaling up your deployments with multiple replicas, Ray Serve also enables:
 
 - :ref:`serve-model-composition`---ability to flexibly compose multiple models and independently scale and update each.
 - :ref:`serve-batching`---built in request batching to help you meet your performance objectives.

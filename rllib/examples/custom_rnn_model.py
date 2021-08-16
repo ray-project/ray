@@ -103,7 +103,7 @@ if __name__ == "__main__":
     # .. ]
     # >>
     # >> while True:
-    # >>     a, state_out, _ = trainer.compute_action(obs, state)
+    # >>     a, state_out, _ = trainer.compute_single_action(obs, state)
     # >>     obs, reward, done, _ = env.step(a)
     # >>     if done:
     # >>         obs = env.reset()

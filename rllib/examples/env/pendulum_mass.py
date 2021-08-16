@@ -1,10 +1,11 @@
-import numpy as np
-import gym
 from gym.envs.classic_control.pendulum import PendulumEnv
+from gym.utils import EzPickle
+import numpy as np
+
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 
 
-class PendulumMassEnv(PendulumEnv, gym.utils.EzPickle, TaskSettableEnv):
+class PendulumMassEnv(PendulumEnv, EzPickle, TaskSettableEnv):
     """PendulumMassEnv varies the weight of the pendulum
 
     Tasks are defined to be weight uniformly sampled between [0.5,2]

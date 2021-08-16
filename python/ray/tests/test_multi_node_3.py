@@ -42,8 +42,8 @@ def test_calling_start_ray_head(call_ray_stop_only):
 
     # Test starting Ray with the worker port range specified.
     check_call_ray([
-        "start", "--head", "--min-worker-port", "50000", "--max-worker-port",
-        "51000", "--port", "0"
+        "start", "--head", "--min-worker-port", "51000", "--max-worker-port",
+        "51050", "--port", "0"
     ])
     check_call_ray(["stop"])
 
@@ -84,10 +84,10 @@ def test_calling_start_ray_head(call_ray_stop_only):
     ])
     check_call_ray(["stop"])
 
-    # Test starting Ray with invalid arguments.
-    with pytest.raises(subprocess.CalledProcessError):
-        check_call_ray(
-            ["start", "--head", "--address", "127.0.0.1:6379", "--port", "0"])
+    # Test starting Ray with invalid external address.
+    # It will fall back to creating a new one.
+    check_call_ray(
+        ["start", "--head", "--address", "127.0.0.1:6379", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test --block. Killing a child process should cause the command to exit.

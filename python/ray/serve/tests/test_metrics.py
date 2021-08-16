@@ -33,19 +33,19 @@ def test_serve_metrics(serve_instance):
             # counter
             "num_router_requests_total",
             "num_http_requests_total",
-            "backend_queued_queries_total",
-            "backend_request_counter_requests_total",
-            "backend_worker_starts_restarts_total",
+            "deployment_queued_queries_total",
+            "deployment_request_counter_requests_total",
+            "deployment_worker_starts_restarts_total",
             # histogram
-            "backend_processing_latency_ms_bucket",
-            "backend_processing_latency_ms_count",
-            "backend_processing_latency_ms_sum",
+            "deployment_processing_latency_ms_bucket",
+            "deployment_processing_latency_ms_count",
+            "deployment_processing_latency_ms_sum",
             # gauge
             "replica_processing_queries",
             # handle
             "serve_handle_request_counter",
             # ReplicaSet
-            "backend_queued_queries"
+            "deployment_queued_queries"
         ]
         for metric in expected_metrics:
             # For the final error round
@@ -63,8 +63,8 @@ def test_serve_metrics(serve_instance):
         verify_metrics()
 
 
-def test_backend_logger(serve_instance):
-    # Tests that backend tag and replica tag appear in Serve log output.
+def test_deployment_logger(serve_instance):
+    # Tests that deployment tag and replica tag appear in Serve log output.
     logger = logging.getLogger("ray")
 
     @serve.deployment(name="counter")
@@ -83,7 +83,7 @@ def test_backend_logger(serve_instance):
 
         def counter_log_success():
             s = f.getvalue()
-            return "backend" in s and "replica" in s and "count" in s
+            return "deployment" in s and "replica" in s and "count" in s
 
         wait_for_condition(counter_log_success)
 

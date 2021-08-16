@@ -48,6 +48,10 @@ public class FailureTest extends BaseTest {
     return 0;
   }
 
+  public static int echo(int obj) {
+    return obj;
+  }
+
   public static class BadActor {
 
     public BadActor(boolean failOnCreation) {
@@ -183,5 +187,16 @@ public class FailureTest extends BaseTest {
             });
     Assert.assertEquals(ex3.getCause().getClass(), UnreconstructableException.class);
     Assert.assertEquals(((UnreconstructableException) ex3.getCause()).objectId, objectId);
+  }
+
+  public void testTaskChainWithException() {
+    ObjectRef<Integer> obj1 = Ray.task(FailureTest::badFunc).remote();
+    ObjectRef<Integer> obj2 = Ray.task(FailureTest::echo, obj1).remote();
+    RayTaskException ex = Assert.expectThrows(RayTaskException.class, () -> Ray.get(obj2));
+    Assert.assertTrue(ex.getCause() instanceof RayTaskException);
+    RayTaskException ex2 = (RayTaskException) ex.getCause();
+    Assert.assertTrue(ex2.getCause() instanceof RuntimeException);
+    RuntimeException ex3 = (RuntimeException) ex2.getCause();
+    Assert.assertEquals(EXCEPTION_MESSAGE, ex3.getMessage());
   }
 }

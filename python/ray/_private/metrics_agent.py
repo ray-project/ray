@@ -21,6 +21,7 @@ from opencensus.tags import tag_map as tag_map_module
 from opencensus.tags import tag_value as tag_value_module
 
 import ray
+from ray._private import services
 
 import ray._private.prometheus_exporter as prometheus_exporter
 from ray.core.generated.metrics_pb2 import Metric
@@ -185,18 +186,25 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
     def __init__(self, redis_address, redis_password, temp_dir):
         ray.state.state._initialize_global_state(
             redis_address=redis_address, redis_password=redis_password)
+        self.redis_address = redis_address
+        self.redis_password = redis_password
         self.temp_dir = temp_dir
         self.default_service_discovery_flush_period = 5
         super().__init__()
 
     def get_file_discovery_content(self):
-        """Return the content for Prometheus serivce discovery."""
+        """Return the content for Prometheus service discovery."""
         nodes = ray.nodes()
         metrics_export_addresses = [
             "{}:{}".format(node["NodeManagerAddress"],
                            node["MetricsExportPort"]) for node in nodes
             if node["alive"] is True
         ]
+        redis_client = services.create_redis_client(self.redis_address,
+                                                    self.redis_password)
+        autoscaler_addr = redis_client.get("AutoscalerMetricsAddress")
+        if autoscaler_addr:
+            metrics_export_addresses.append(autoscaler_addr.decode("utf-8"))
         return json.dumps([{
             "labels": {
                 "job": "ray"

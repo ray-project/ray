@@ -1,0 +1,16 @@
+base_image: "anyscale/ray:1.4.0"
+env_vars: { }
+debian_packages:
+  - curl
+
+python:
+  pip_packages:
+    - pytest
+    - modin
+    - s3fs
+  conda_packages: [ ]
+
+post_build_cmds:
+  - pip uninstall -y ray || true
+  - pip install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip install git+https://github.com/ray-project/xgboost_ray.git#xgboost_ray

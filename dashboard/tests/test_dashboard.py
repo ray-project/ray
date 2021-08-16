@@ -2,7 +2,6 @@ import os
 import sys
 import copy
 import json
-import jsonschema
 import time
 import logging
 import asyncio
@@ -13,7 +12,6 @@ import collections
 import numpy as np
 import aiohttp.web
 import ray
-import pprint
 import psutil
 import pytest
 import redis
@@ -177,52 +175,6 @@ def test_dashboard_address(ray_start_with_dashboard):
     ]
 
 
-def test_nodes_update(enable_test_module, ray_start_with_dashboard):
-    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
-            is True)
-    webui_url = ray_start_with_dashboard["webui_url"]
-    webui_url = format_web_url(webui_url)
-
-    timeout_seconds = 10
-    start_time = time.time()
-    while True:
-        time.sleep(1)
-        try:
-            response = requests.get(webui_url + "/test/dump")
-            response.raise_for_status()
-            try:
-                dump_info = response.json()
-            except Exception as ex:
-                logger.info("failed response: %s", response.text)
-                raise ex
-            assert dump_info["result"] is True
-            dump_data = dump_info["data"]
-            assert len(dump_data["nodes"]) == 1
-            assert len(dump_data["agents"]) == 1
-            assert len(dump_data["nodeIdToIp"]) == 1
-            assert len(dump_data["nodeIdToHostname"]) == 1
-            assert dump_data["nodes"].keys() == dump_data[
-                "nodeIdToHostname"].keys()
-
-            response = requests.get(webui_url + "/test/notified_agents")
-            response.raise_for_status()
-            try:
-                notified_agents = response.json()
-            except Exception as ex:
-                logger.info("failed response: %s", response.text)
-                raise ex
-            assert notified_agents["result"] is True
-            notified_agents = notified_agents["data"]
-            assert len(notified_agents) == 1
-            assert notified_agents == dump_data["agents"]
-            break
-        except (AssertionError, requests.exceptions.ConnectionError) as e:
-            logger.info("Retry because of %s", e)
-        finally:
-            if time.time() > start_time + timeout_seconds:
-                raise Exception("Timed out while testing.")
-
-
 def test_http_get(enable_test_module, ray_start_with_dashboard):
     assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
             is True)
@@ -367,6 +319,22 @@ def test_async_loop_forever():
     loop.call_later(1, loop.stop)
     loop.run_forever()
     assert counter[0] > 2
+
+    counter2 = [0]
+    task = None
+
+    @dashboard_utils.async_loop_forever(interval_seconds=0.1, cancellable=True)
+    async def bar():
+        nonlocal task
+        counter2[0] += 1
+        if counter2[0] > 2:
+            task.cancel()
+
+    loop = asyncio.new_event_loop()
+    task = loop.create_task(bar())
+    with pytest.raises(asyncio.CancelledError):
+        loop.run_until_complete(task)
+    assert counter2[0] == 3
 
 
 def test_dashboard_module_decorator(enable_test_module):
@@ -516,63 +484,6 @@ def test_get_cluster_status(ray_start_with_dashboard):
     assert response.json()["data"]["autoscalingError"] == "world"
     assert "clusterStatus" in response.json()["data"]
     assert "loadMetricsReport" in response.json()["data"]["clusterStatus"]
-
-
-def test_snapshot(ray_start_with_dashboard):
-    driver_template = """
-import ray
-
-ray.init(address="{address}", namespace="my_namespace")
-
-@ray.remote
-class Pinger:
-    def ping(self):
-        return "pong"
-
-a = Pinger.options(lifetime={lifetime}, name={name}).remote()
-ray.get(a.ping.remote())
-    """
-
-    detached_driver = driver_template.format(
-        address=ray_start_with_dashboard["redis_address"],
-        lifetime="'detached'",
-        name="'abc'")
-    named_driver = driver_template.format(
-        address=ray_start_with_dashboard["redis_address"],
-        lifetime="None",
-        name="'xyz'")
-    unnamed_driver = driver_template.format(
-        address=ray_start_with_dashboard["redis_address"],
-        lifetime="None",
-        name="None")
-
-    run_string_as_driver(detached_driver)
-    run_string_as_driver(named_driver)
-    run_string_as_driver(unnamed_driver)
-
-    webui_url = ray_start_with_dashboard["webui_url"]
-    webui_url = format_web_url(webui_url)
-    response = requests.get(f"{webui_url}/api/snapshot")
-    response.raise_for_status()
-    data = response.json()
-    schema_path = os.path.join(
-        os.path.dirname(dashboard.__file__),
-        "modules/snapshot/snapshot_schema.json")
-    pprint.pprint(data)
-    jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
-
-    assert len(data["data"]["snapshot"]["actors"]) == 3
-    assert len(data["data"]["snapshot"]["jobs"]) == 4
-
-    for actor_id, entry in data["data"]["snapshot"]["actors"].items():
-        assert entry["jobId"] in data["data"]["snapshot"]["jobs"]
-        assert entry["actorClass"] == "Pinger"
-        assert entry["startTime"] >= 0
-        if entry["isDetached"]:
-            assert entry["endTime"] == 0, entry
-        else:
-            assert entry["endTime"] > 0, entry
-        assert "runtimeEnv" in entry
 
 
 def test_immutable_types():
@@ -728,6 +639,26 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         finally:
             if time.time() > start_time + timeout_seconds:
                 raise Exception("Timed out while testing.")
+
+
+def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
+    assert (wait_until_server_available(ray_start_with_dashboard["webui_url"])
+            is True)
+
+    all_processes = ray.worker._global_node.all_processes
+    dashboard_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
+    dashboard_proc = psutil.Process(dashboard_info.process.pid)
+    gcs_server_info = all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0]
+    gcs_server_proc = psutil.Process(gcs_server_info.process.pid)
+
+    assert dashboard_proc.status() in [
+        psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING, psutil.STATUS_DISK_SLEEP
+    ]
+
+    gcs_server_proc.kill()
+    gcs_server_proc.wait()
+    # The dashboard exits by os._exit(-1)
+    assert dashboard_proc.wait(10) == 255
 
 
 if __name__ == "__main__":

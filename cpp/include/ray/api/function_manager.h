@@ -14,46 +14,38 @@
 
 #pragma once
 
+#include <ray/api/common_types.h>
 #include <ray/api/serializer.h>
 
 #include <boost/callable_traits.hpp>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <unordered_map>
-
-#include "absl/utility/utility.h"
-#include "ray/core.h"
 
 namespace ray {
 namespace internal {
 
 template <typename T>
-inline static absl::enable_if_t<!std::is_pointer<T>::value, msgpack::sbuffer>
+inline static std::enable_if_t<!std::is_pointer<T>::value, msgpack::sbuffer>
 PackReturnValue(T result) {
-  return ray::api::Serializer::Serialize(std::move(result));
+  return Serializer::Serialize(std::move(result));
 }
 
 template <typename T>
-inline static absl::enable_if_t<std::is_pointer<T>::value, msgpack::sbuffer>
+inline static std::enable_if_t<std::is_pointer<T>::value, msgpack::sbuffer>
 PackReturnValue(T result) {
-  return ray::api::Serializer::Serialize((uint64_t)result);
+  return Serializer::Serialize((uint64_t)result);
 }
 
 inline static msgpack::sbuffer PackVoid() {
-  return ray::api::Serializer::Serialize(msgpack::type::nil_t());
+  return Serializer::Serialize(msgpack::type::nil_t());
 }
 
-inline static msgpack::sbuffer PackError(std::string error_msg) {
-  msgpack::sbuffer sbuffer;
-  msgpack::packer<msgpack::sbuffer> packer(sbuffer);
-  packer.pack(msgpack::type::nil_t());
-  packer.pack(std::make_tuple((int)ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
-                              std::move(error_msg)));
-
-  return sbuffer;
-}
+msgpack::sbuffer PackError(std::string error_msg);
 
 template <typename>
 struct RemoveFirst;
@@ -66,65 +58,73 @@ struct RemoveFirst<std::tuple<First, Second...>> {
 template <class Tuple>
 using RemoveFirst_t = typename RemoveFirst<Tuple>::type;
 
+template <typename>
+struct RemoveReference;
+
+template <class... T>
+struct RemoveReference<std::tuple<T...>> {
+  using type = std::tuple<std::remove_const_t<std::remove_reference_t<T>>...>;
+};
+
+template <class Tuple>
+using RemoveReference_t = typename RemoveReference<Tuple>::type;
+
+using RemoteFunction =
+    std::function<msgpack::sbuffer(const std::vector<msgpack::sbuffer> &)>;
+using RemoteFunctionMap_t = std::unordered_map<std::string, RemoteFunction>;
+
+using RemoteMemberFunction = std::function<msgpack::sbuffer(
+    msgpack::sbuffer *, const std::vector<msgpack::sbuffer> &)>;
+using RemoteMemberFunctionMap_t = std::unordered_map<std::string, RemoteMemberFunction>;
+
 /// It's help to invoke functions and member functions, the class Invoker<Function> help
 /// do type erase.
 template <typename Function>
 struct Invoker {
   /// Invoke functions by networking stream, at first deserialize the binary data to a
   /// tuple, then call function with tuple.
-  static inline msgpack::sbuffer Apply(
-      const Function &func, const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
-    using ArgsTuple = boost::callable_traits::args_t<Function>;
+  static inline msgpack::sbuffer Apply(const Function &func,
+                                       const std::vector<msgpack::sbuffer> &args_buffer) {
+    using RetrunType = boost::callable_traits::return_type_t<Function>;
+    using ArgsTuple = RemoveReference_t<boost::callable_traits::args_t<Function>>;
     if (std::tuple_size<ArgsTuple>::value != args_buffer.size()) {
-      return PackError("Arguments number not match");
+      throw std::invalid_argument("Arguments number not match");
     }
 
     msgpack::sbuffer result;
     ArgsTuple tp{};
-    try {
-      bool is_ok =
-          GetArgsTuple(tp, args_buffer,
-                       absl::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
-      if (!is_ok) {
-        return PackError("arguments error");
-      }
-      result = Invoker<Function>::Call(func, std::move(tp));
-    } catch (msgpack::type_error &e) {
-      result = PackError(std::string("invalid arguments: ") + e.what());
-    } catch (const std::exception &e) {
-      result = PackError(std::string("function execute exception: ") + e.what());
-    } catch (...) {
-      result = PackError("unknown exception");
+    bool is_ok = GetArgsTuple(
+        tp, args_buffer, std::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
+    if (!is_ok) {
+      throw std::invalid_argument("Arguments error");
     }
 
+    result = Invoker<Function>::Call<RetrunType>(func, std::move(tp));
     return result;
   }
 
   static inline msgpack::sbuffer ApplyMember(
       const Function &func, msgpack::sbuffer *ptr,
-      const std::vector<std::shared_ptr<RayObject>> &args_buffer) {
-    using ArgsTuple = RemoveFirst_t<boost::callable_traits::args_t<Function>>;
+      const std::vector<msgpack::sbuffer> &args_buffer) {
+    using RetrunType = boost::callable_traits::return_type_t<Function>;
+    using ArgsTuple =
+        RemoveReference_t<RemoveFirst_t<boost::callable_traits::args_t<Function>>>;
     if (std::tuple_size<ArgsTuple>::value != args_buffer.size()) {
-      return PackError("Arguments number not match");
+      throw std::invalid_argument("Arguments number not match");
     }
 
     msgpack::sbuffer result;
     ArgsTuple tp{};
-    try {
-      bool is_ok =
-          GetArgsTuple(tp, args_buffer,
-                       absl::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
-      if (!is_ok) {
-        return PackError("arguments error");
-      }
-      result = Invoker<Function>::CallMember(func, ptr, std::move(tp));
-    } catch (msgpack::type_error &e) {
-      result = PackError(std::string("invalid arguments: ") + e.what());
-    } catch (const std::exception &e) {
-      result = PackError(std::string("function execute exception: ") + e.what());
-    } catch (...) {
-      result = PackError("unknown exception");
+    bool is_ok = GetArgsTuple(
+        tp, args_buffer, std::make_index_sequence<std::tuple_size<ArgsTuple>::value>{});
+    if (!is_ok) {
+      throw std::invalid_argument("Arguments error");
     }
+
+    uint64_t actor_ptr = Serializer::Deserialize<uint64_t>(ptr->data(), ptr->size());
+    using Self = boost::callable_traits::class_of_t<Function>;
+    Self *self = (Self *)actor_ptr;
+    result = Invoker<Function>::CallMember<RetrunType>(func, self, std::move(tp));
 
     return result;
   }
@@ -132,82 +132,75 @@ struct Invoker {
  private:
   template <typename T>
   static inline T ParseArg(char *data, size_t size, bool &is_ok) {
-    auto pair = ray::api::Serializer::DeserializeWhenNil<T>(data, size);
+    auto pair = Serializer::DeserializeWhenNil<T>(data, size);
     is_ok = pair.first;
     return pair.second;
   }
 
-  static inline bool GetArgsTuple(
-      std::tuple<> &tup, const std::vector<std::shared_ptr<RayObject>> &args_buffer,
-      absl::index_sequence<>) {
+  static inline bool GetArgsTuple(std::tuple<> &tup,
+                                  const std::vector<msgpack::sbuffer> &args_buffer,
+                                  std::index_sequence<>) {
     return true;
   }
 
   template <size_t... I, typename... Args>
-  static inline bool GetArgsTuple(
-      std::tuple<Args...> &tp, const std::vector<std::shared_ptr<RayObject>> &args_buffer,
-      absl::index_sequence<I...>) {
+  static inline bool GetArgsTuple(std::tuple<Args...> &tp,
+                                  const std::vector<msgpack::sbuffer> &args_buffer,
+                                  std::index_sequence<I...>) {
     bool is_ok = true;
     (void)std::initializer_list<int>{
-        (std::get<I>(tp) = ParseArg<Args>((char *)args_buffer.at(I)->GetData()->Data(),
-                                          args_buffer.at(I)->GetData()->Size(), is_ok),
+        (std::get<I>(tp) = ParseArg<Args>((char *)args_buffer.at(I).data(),
+                                          args_buffer.at(I).size(), is_ok),
          0)...};
     return is_ok;
   }
 
-  template <typename F, typename... Args>
-  static absl::enable_if_t<std::is_void<absl::result_of_t<F(Args...)>>::value,
-                           msgpack::sbuffer>
-  Call(const F &f, std::tuple<Args...> args) {
-    CallInternal(f, absl::make_index_sequence<sizeof...(Args)>{}, std::move(args));
+  template <typename R, typename F, typename... Args>
+  static std::enable_if_t<std::is_void<R>::value, msgpack::sbuffer> Call(
+      const F &f, std::tuple<Args...> args) {
+    CallInternal<R>(f, std::make_index_sequence<sizeof...(Args)>{}, std::move(args));
     return PackVoid();
   }
 
-  template <typename F, typename... Args>
-  static absl::enable_if_t<!std::is_void<absl::result_of_t<F(Args...)>>::value,
-                           msgpack::sbuffer>
-  Call(const F &f, std::tuple<Args...> args) {
+  template <typename R, typename F, typename... Args>
+  static std::enable_if_t<!std::is_void<R>::value, msgpack::sbuffer> Call(
+      const F &f, std::tuple<Args...> args) {
     auto r =
-        CallInternal(f, absl::make_index_sequence<sizeof...(Args)>{}, std::move(args));
+        CallInternal<R>(f, std::make_index_sequence<sizeof...(Args)>{}, std::move(args));
     return PackReturnValue(r);
   }
 
-  template <typename F, size_t... I, typename... Args>
-  static absl::result_of_t<F(Args...)> CallInternal(const F &f,
-                                                    const absl::index_sequence<I...> &,
-                                                    std::tuple<Args...> args) {
+  template <typename R, typename F, size_t... I, typename... Args>
+  static R CallInternal(const F &f, const std::index_sequence<I...> &,
+                        std::tuple<Args...> args) {
     (void)args;
-    return f(std::move(std::get<I>(args))...);
+    using ArgsTuple = boost::callable_traits::args_t<F>;
+    return f(((typename std::tuple_element<I, ArgsTuple>::type)std::get<I>(args))...);
   }
 
-  template <typename F, typename... Args>
-  static absl::enable_if_t<std::is_void<boost::callable_traits::return_type_t<F>>::value,
-                           msgpack::sbuffer>
-  CallMember(const F &f, msgpack::sbuffer *ptr, std::tuple<Args...> args) {
-    CallMemberInternal(f, ptr, absl::make_index_sequence<sizeof...(Args)>{},
-                       std::move(args));
+  template <typename R, typename F, typename Self, typename... Args>
+  static std::enable_if_t<std::is_void<R>::value, msgpack::sbuffer> CallMember(
+      const F &f, Self *self, std::tuple<Args...> args) {
+    CallMemberInternal<R>(f, self, std::make_index_sequence<sizeof...(Args)>{},
+                          std::move(args));
     return PackVoid();
   }
 
-  template <typename F, typename... Args>
-  static absl::enable_if_t<!std::is_void<boost::callable_traits::return_type_t<F>>::value,
-                           msgpack::sbuffer>
-  CallMember(const F &f, msgpack::sbuffer *ptr, std::tuple<Args...> args) {
-    auto r = CallMemberInternal(f, ptr, absl::make_index_sequence<sizeof...(Args)>{},
-                                std::move(args));
+  template <typename R, typename F, typename Self, typename... Args>
+  static std::enable_if_t<!std::is_void<R>::value, msgpack::sbuffer> CallMember(
+      const F &f, Self *self, std::tuple<Args...> args) {
+    auto r = CallMemberInternal<R>(f, self, std::make_index_sequence<sizeof...(Args)>{},
+                                   std::move(args));
     return PackReturnValue(r);
   }
 
-  template <typename F, size_t... I, typename... Args>
-  static boost::callable_traits::return_type_t<F> CallMemberInternal(
-      const F &f, msgpack::sbuffer *ptr, const absl::index_sequence<I...> &,
-      std::tuple<Args...> args) {
+  template <typename R, typename F, typename Self, size_t... I, typename... Args>
+  static R CallMemberInternal(const F &f, Self *self, const std::index_sequence<I...> &,
+                              std::tuple<Args...> args) {
     (void)args;
-    uint64_t actor_ptr =
-        ray::api::Serializer::Deserialize<uint64_t>(ptr->data(), ptr->size());
-    using Self = boost::callable_traits::class_of_t<F>;
-    Self *self = (Self *)actor_ptr;
-    return (self->*f)(std::move(std::get<I>(args))...);
+    using ArgsTuple = boost::callable_traits::args_t<F>;
+    return (self->*f)(
+        ((typename std::tuple_element<I + 1, ArgsTuple>::type) std::get<I>(args))...);
   }
 };
 
@@ -220,8 +213,13 @@ class FunctionManager {
     return instance;
   }
 
-  std::function<msgpack::sbuffer(const std::vector<std::shared_ptr<RayObject>> &)>
-      *GetFunction(const std::string &func_name) {
+  std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>
+  GetRemoteFunctions() {
+    return std::pair<const RemoteFunctionMap_t &, const RemoteMemberFunctionMap_t &>(
+        map_invokers_, map_mem_func_invokers_);
+  }
+
+  RemoteFunction *GetFunction(const std::string &func_name) {
     auto it = map_invokers_.find(func_name);
     if (it == map_invokers_.end()) {
       return nullptr;
@@ -231,39 +229,42 @@ class FunctionManager {
   }
 
   template <typename Function>
-  absl::enable_if_t<!std::is_member_function_pointer<Function>::value, bool>
+  std::enable_if_t<!std::is_member_function_pointer<Function>::value, bool>
   RegisterRemoteFunction(std::string const &name, const Function &f) {
     auto pair = func_ptr_to_key_map_.emplace(GetAddress(f), name);
     if (!pair.second) {
-      throw ray::api::RayException("Duplicate RAY_REMOTE function: " + name);
+      throw RayException("Duplicate RAY_REMOTE function: " + name);
     }
 
     bool ok = RegisterNonMemberFunc(name, f);
     if (!ok) {
-      throw ray::api::RayException("Duplicate RAY_REMOTE function: " + name);
+      throw RayException("Duplicate RAY_REMOTE function: " + name);
     }
 
     return true;
   }
 
   template <typename Function>
-  absl::enable_if_t<std::is_member_function_pointer<Function>::value, bool>
+  std::enable_if_t<std::is_member_function_pointer<Function>::value, bool>
   RegisterRemoteFunction(std::string const &name, const Function &f) {
-    auto pair = func_ptr_to_key_map_.emplace(GetAddress(f), name);
+    using Self = boost::callable_traits::class_of_t<Function>;
+    auto key = std::make_pair(typeid(Self).name(), GetAddress(f));
+    auto pair = mem_func_to_key_map_.emplace(std::move(key), name);
     if (!pair.second) {
-      throw ray::api::RayException("Duplicate RAY_REMOTE function: " + name);
+      throw RayException("Duplicate RAY_REMOTE function: " + name);
     }
 
     bool ok = RegisterMemberFunc(name, f);
     if (!ok) {
-      throw ray::api::RayException("Duplicate RAY_REMOTE function: " + name);
+      throw RayException("Duplicate RAY_REMOTE function: " + name);
     }
 
     return true;
   }
 
   template <typename Function>
-  std::string GetFunctionName(const Function &f) {
+  std::enable_if_t<!std::is_member_function_pointer<Function>::value, std::string>
+  GetFunctionName(const Function &f) {
     auto it = func_ptr_to_key_map_.find(GetAddress(f));
     if (it == func_ptr_to_key_map_.end()) {
       return "";
@@ -272,9 +273,20 @@ class FunctionManager {
     return it->second;
   }
 
-  std::function<msgpack::sbuffer(msgpack::sbuffer *,
-                                 const std::vector<std::shared_ptr<RayObject>> &)>
-      *GetMemberFunction(const std::string &func_name) {
+  template <typename Function>
+  std::enable_if_t<std::is_member_function_pointer<Function>::value, std::string>
+  GetFunctionName(const Function &f) {
+    using Self = boost::callable_traits::class_of_t<Function>;
+    auto key = std::make_pair(typeid(Self).name(), GetAddress(f));
+    auto it = mem_func_to_key_map_.find(key);
+    if (it == mem_func_to_key_map_.end()) {
+      return "";
+    }
+
+    return it->second;
+  }
+
+  RemoteMemberFunction *GetMemberFunction(const std::string &func_name) {
     auto it = map_mem_func_invokers_.find(func_name);
     if (it == map_mem_func_invokers_.end()) {
       return nullptr;
@@ -321,14 +333,10 @@ class FunctionManager {
     return std::string(arr.data(), arr.size());
   }
 
-  std::unordered_map<std::string, std::function<msgpack::sbuffer(
-                                      const std::vector<std::shared_ptr<RayObject>> &)>>
-      map_invokers_;
-  std::unordered_map<std::string, std::function<msgpack::sbuffer(
-                                      msgpack::sbuffer *,
-                                      const std::vector<std::shared_ptr<RayObject>> &)>>
-      map_mem_func_invokers_;
+  RemoteFunctionMap_t map_invokers_;
+  RemoteMemberFunctionMap_t map_mem_func_invokers_;
   std::unordered_map<std::string, std::string> func_ptr_to_key_map_;
+  std::map<std::pair<std::string, std::string>, std::string> mem_func_to_key_map_;
 };
 }  // namespace internal
 }  // namespace ray

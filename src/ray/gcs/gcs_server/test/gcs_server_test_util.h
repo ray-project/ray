@@ -22,7 +22,6 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
-#include "ray/gcs/gcs_server/gcs_actor_schedule_strategy.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
@@ -278,9 +277,9 @@ struct GcsServerMocker {
     std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};
   };
 
-  class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
+  class MockedRayletBasedActorScheduler : public gcs::RayletBasedActorScheduler {
    public:
-    using gcs::GcsActorScheduler::GcsActorScheduler;
+    using gcs::RayletBasedActorScheduler::RayletBasedActorScheduler;
 
     void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
                                      std::shared_ptr<rpc::GcsNodeInfo> node) {

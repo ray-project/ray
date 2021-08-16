@@ -1,25 +1,14 @@
-# Bazel development build for C++ API.
-# C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
-
-load("//bazel:ray.bzl", "COPTS")
-
 cc_binary(
     name = "example",
     srcs = glob([
         "*.cc",
     ]),
-    args = [
-        "--dynamic-library-path $(location example.so)",
-    ],
-    copts = COPTS,
     data = [
         "example.so",
-        "//cpp:ray_cpp_pkg",
     ],
     linkstatic = True,
     deps = [
-        "//cpp:ray_api",
-        "@com_github_gflags_gflags//:gflags",
+        ":ray_api",
     ],
 )
 
@@ -28,11 +17,23 @@ cc_binary(
     srcs = glob([
         "*.cc",
     ]),
-    copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
     deps = [
-        "//cpp:ray_api",
-        "@com_github_gflags_gflags//:gflags",
+        ":ray_api",
     ],
+)
+
+cc_library(
+    name = "ray_api",
+    srcs = [
+        "thirdparty/lib/libray_api.so",
+    ],
+    hdrs = glob([
+        "thirdparty/include/**/*.h",
+        "thirdparty/include/**/*.hpp",
+    ]),
+    linkopts = ["-Wl,-rpath, ./"],
+    strip_include_prefix = "thirdparty/include",
+    visibility = ["//visibility:public"],
 )

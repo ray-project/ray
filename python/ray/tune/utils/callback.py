@@ -109,8 +109,15 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
             callbacks.append(JsonLoggerCallback())
             last_logger_index = len(callbacks) - 1
         if not has_tbx_logger:
-            callbacks.append(TBXLoggerCallback())
-            last_logger_index = len(callbacks) - 1
+            try:
+                callbacks.append(TBXLoggerCallback())
+                last_logger_index = len(callbacks) - 1
+            except ImportError:
+                logger.warning(
+                    "The TensorboardX logger cannot be instantiated because "
+                    "either TensorboardX or one of it's dependencies is not "
+                    "installed. Please make sure you have the latest version "
+                    "of TensorboardX installed: `pip install -U tensorboardx`")
 
     # If no SyncerCallback was found, add
     if not has_syncer_callback and os.environ.get(

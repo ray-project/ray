@@ -1,7 +1,9 @@
 import logging
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.memory_utils as memory_utils
-from ray.new_dashboard.actor_utils import actor_classname_from_task_spec
+# TODO(fyrestone): Not import from dashboard module.
+from ray.new_dashboard.modules.actor.actor_utils import \
+    actor_classname_from_task_spec
 from ray.new_dashboard.utils import Dict, Signal, async_loop_forever
 
 logger = logging.getLogger(__name__)
@@ -43,6 +45,8 @@ class DataSource:
     job_actors = Dict()
     # {worker id(str): core worker stats}
     core_worker_stats = Dict()
+    # {job id hex(str): {event id(str): event dict}}
+    events = Dict()
     # {node ip (str): log entries by pid
     # (dict from pid to list of latest log entries)}
     ip_and_pid_to_logs = Dict()

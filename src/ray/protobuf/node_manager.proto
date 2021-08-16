@@ -38,8 +38,11 @@ message RequestWorkerLeaseReply {
   // Whether this lease request was canceled. In this case, the
   // client should try again if the resources are still required.
   bool canceled = 4;
+  // Whether creating the runtime environment for this lease request failed.
+  // If this is true, the corresponding task should be failed by the client.
+  bool runtime_env_setup_failed = 5;
   // PID of the worker process.
-  uint32 worker_pid = 5;
+  uint32 worker_pid = 6;
 }
 
 message PrepareBundleResourcesRequest {
@@ -137,10 +140,18 @@ message ObjectStoreStats {
   int64 object_store_bytes_used = 7;
   // The max capacity of the object store.
   int64 object_store_bytes_avail = 8;
+  // The number of bytes pinned as the primary copy of objects.
+  int64 object_store_bytes_primary_copy = 9;
+  // The number of bytes allocated from the filesystem (fallback allocs).
+  int64 object_store_bytes_fallback = 10;
   // The number of local objects total.
-  int64 num_local_objects = 9;
+  int64 num_local_objects = 11;
   // The number of plasma object bytes that are consumed by core workers.
-  int64 consumed_bytes = 10;
+  int64 consumed_bytes = 12;
+  // Whether this node has object pulls queued. This can happen if
+  // the node has more pull requests than available object store
+  // memory.
+  bool object_pulls_queued = 13;
 }
 
 message GetNodeStatsReply {

@@ -19,7 +19,7 @@ from ray import ray_constants
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray._private.utils import (
-    check_oversized_pickle,
+    check_oversized_function,
     decode,
     ensure_str,
     format_error_message,
@@ -136,9 +136,9 @@ class FunctionActorManager:
         function = remote_function._function
         pickled_function = pickle.dumps(function)
 
-        check_oversized_pickle(pickled_function,
-                               remote_function._function_name,
-                               "remote function", self._worker)
+        check_oversized_function(pickled_function,
+                                 remote_function._function_name,
+                                 "remote function", self._worker)
         key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
                + remote_function._function_descriptor.function_id.binary())
         self._worker.redis_client.hset(
@@ -195,14 +195,11 @@ class FunctionActorManager:
                 # of the failure.
                 traceback_str = format_error_message(traceback.format_exc())
                 # Log the error message.
-                push_error_to_driver(
-                    self._worker,
-                    ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR,
-                    "Failed to unpickle the remote function "
-                    f"'{function_name}' with "
-                    f"function ID {function_id.hex()}. "
-                    f"Traceback:\n{traceback_str}",
-                    job_id=job_id)
+                logger.debug("Failed to unpickle the remote function "
+                             f"'{function_name}' with "
+                             f"function ID {function_id.hex()}. "
+                             f"Job ID:{job_id}."
+                             f"Traceback:\n{traceback_str}. ")
             else:
                 # The below line is necessary. Because in the driver process,
                 # if the function is defined in the file where the python
@@ -370,9 +367,9 @@ class FunctionActorManager:
             "actor_method_names": json.dumps(list(actor_method_names))
         }
 
-        check_oversized_pickle(actor_class_info["class"],
-                               actor_class_info["class_name"], "actor",
-                               self._worker)
+        check_oversized_function(actor_class_info["class"],
+                                 actor_class_info["class_name"], "actor",
+                                 self._worker)
 
         self._publish_actor_class_to_key(key, actor_class_info)
         # TODO(rkn): Currently we allow actor classes to be defined

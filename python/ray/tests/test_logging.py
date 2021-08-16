@@ -1,6 +1,7 @@
 import os
-from collections import defaultdict
+from collections import defaultdict, Counter
 from pathlib import Path
+import re
 
 import ray
 from ray import ray_constants
@@ -104,12 +105,12 @@ def test_log_rotation(shutdown_only):
             f"backup count {backup_count}, file count: {file_cnt}")
 
 
-def test_periodic_asio_stats(shutdown_only):
+def test_periodic_event_stats(shutdown_only):
     ray.init(
         num_cpus=1,
         _system_config={
-            "asio_stats_print_interval_ms": 100,
-            "asio_event_loop_stats_collection_enabled": True
+            "event_stats_print_interval_ms": 100,
+            "event_stats": True
         })
     session_dir = ray.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
@@ -127,7 +128,7 @@ def test_periodic_asio_stats(shutdown_only):
     def is_event_loop_stats_found(path):
         found = False
         with open(path) as f:
-            event_loop_stats_identifier = "Event loop stats"
+            event_loop_stats_identifier = "Event stats"
             for line in f.readlines():
                 if event_loop_stats_identifier in line:
                     found = True
@@ -141,6 +142,43 @@ def test_periodic_asio_stats(shutdown_only):
             wait_for_condition(lambda: is_event_loop_stats_found(path))
         if "gcs_server.out" in str(path):
             wait_for_condition(lambda: is_event_loop_stats_found(path))
+
+
+def test_worker_id_names(shutdown_only):
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            "event_stats_print_interval_ms": 100,
+            "event_stats": True
+        })
+    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    # Run the basic workload.
+    @ray.remote
+    def f():
+        print("hello")
+
+    ray.get(f.remote())
+
+    paths = list(log_dir_path.iterdir())
+
+    ids = []
+    for path in paths:
+        if "python-core-worker" in str(path):
+            pattern = ".*-([a-f0-9]*).*"
+        elif "worker" in str(path):
+            pattern = ".*worker-([a-f0-9]*)-.*-.*"
+        else:
+            continue
+        worker_id = re.match(pattern, str(path)).group(1)
+        ids.append(worker_id)
+    counts = Counter(ids).values()
+    for count in counts:
+        # There should be a "python-core-.*.log", "worker-.*.out",
+        # and "worker-.*.err"
+        assert count == 3
 
 
 if __name__ == "__main__":

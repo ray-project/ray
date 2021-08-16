@@ -107,7 +107,7 @@ void ServerConnection::WriteBufferAsync(
     const std::vector<boost::asio::const_buffer> &buffer,
     const std::function<void(const ray::Status &)> &handler) {
   // Wait for the message to be written.
-  if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+  if (RayConfig::instance().event_stats()) {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
     const auto stats_handle =
@@ -155,7 +155,7 @@ void ServerConnection::ReadBufferAsync(
     const std::vector<boost::asio::mutable_buffer> &buffer,
     const std::function<void(const ray::Status &)> &handler) {
   // Wait for the message to be read.
-  if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+  if (RayConfig::instance().event_stats()) {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
     const auto stats_handle =
@@ -287,7 +287,7 @@ void ServerConnection::DoAsyncWrites() {
     return;
   }
   auto this_ptr = this->shared_from_this();
-  if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+  if (RayConfig::instance().event_stats()) {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
     const auto stats_handle =
@@ -378,7 +378,7 @@ void ClientConnection::ProcessMessages() {
       boost::asio::buffer(&read_type_, sizeof(read_type_)),
       boost::asio::buffer(&read_length_, sizeof(read_length_)),
   };
-  if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+  if (RayConfig::instance().event_stats()) {
     auto this_ptr = shared_ClientConnection_from_this();
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());
@@ -419,7 +419,7 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
   read_message_.resize(read_length_);
   ServerConnection::bytes_read_ += read_length_;
   // Wait for the message to be read.
-  if (RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+  if (RayConfig::instance().event_stats()) {
     auto this_ptr = shared_ClientConnection_from_this();
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());

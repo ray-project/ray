@@ -669,13 +669,21 @@ async def get_aioredis_client(redis_address, redis_password,
         address=redis_address, password=redis_password)
 
 
-def async_loop_forever(interval_seconds):
+def async_loop_forever(interval_seconds, cancellable=False):
     def _wrapper(coro):
         @functools.wraps(coro)
         async def _looper(*args, **kwargs):
             while True:
                 try:
                     await coro(*args, **kwargs)
+                except asyncio.CancelledError as ex:
+                    if cancellable:
+                        logger.info(f"An async loop forever coroutine "
+                                    f"is cancelled {coro}.")
+                        raise ex
+                    else:
+                        logger.exception(f"Can not cancel the async loop "
+                                         f"forever coroutine {coro}.")
                 except Exception:
                     logger.exception(f"Error looping coroutine {coro}.")
                 await asyncio.sleep(interval_seconds)

@@ -1,5 +1,4 @@
 import os
-import psutil
 import tracemalloc
 from typing import Dict, Optional, TYPE_CHECKING
 
@@ -10,6 +9,9 @@ from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import AgentID, PolicyID
+
+# Import psutil after ray so the packaged version is used.
+import psutil
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
@@ -212,8 +214,7 @@ class DefaultCallbacks:
 
 
 class MemoryTrackingCallbacks(DefaultCallbacks):
-    """
-    MemoryTrackingCallbacks can be used to trace and track memory usage
+    """MemoryTrackingCallbacks can be used to trace and track memory usage
     in rollout workers.
 
     The Memory Tracking Callbacks uses tracemalloc and psutil to track
@@ -224,12 +225,13 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
     can therefore be viewed in tensorboard
     (or in WandB etc..)
 
-    Warning: This class is meant for debugging and should not be used
-    in production code as tracemalloc incurs
-    a significant slowdown in execution speed.
-
     Add MemoryTrackingCallbacks callback to the tune config
     e.g. { ...'callbacks': MemoryTrackingCallbacks ...}
+
+    Note:
+        This class is meant for debugging and should not be used
+        in production code as tracemalloc incurs
+        a significant slowdown in execution speed.
     """
 
     def __init__(self):
@@ -268,18 +270,19 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
 
 
 class MultiCallbacks(DefaultCallbacks):
-    """
-    MultiCallback allows multiple callbacks to be registered at the same
-    time in the config of the environment
+    """MultiCallbacks allows multiple callbacks to be registered at
+    the same time in the config of the environment.
 
-    For example:
+    Example:
 
-    'callbacks': MultiCallbacks([
-        MyCustomStatsCallbacks,
-        MyCustomVideoCallbacks,
-        MyCustomTraceCallbacks,
-        ....
-    ])
+        .. code-block:: python
+
+            'callbacks': MultiCallbacks([
+                MyCustomStatsCallbacks,
+                MyCustomVideoCallbacks,
+                MyCustomTraceCallbacks,
+                ....
+            ])
     """
 
     def __init__(self, callback_class_list):

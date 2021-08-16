@@ -52,11 +52,11 @@ spec:
         containers:
         - name: ray-node
           imagePullPolicy: Always
-          image: rayproject/ray:1.3.0
+          image: rayproject/ray:latest
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
-          args: ['trap : TERM INT; sleep infinity & wait;']
+          args: ["trap : TERM INT; touch /tmp/raylogs; tail -f /tmp/raylogs; sleep infinity & wait;"]
           ports:
           - containerPort: 6379  # Redis port
           - containerPort: 10001  # Used by Ray Client
@@ -105,9 +105,9 @@ spec:
         containers:
         - name: ray-node
           imagePullPolicy: Always
-          image: rayproject/ray:1.3.0
+          image: rayproject/ray:latest
           command: ["/bin/bash", "-c", "--"]
-          args: ["trap : TERM INT; sleep infinity & wait;"]
+          args: ["trap : TERM INT; touch /tmp/raylogs; tail -f /tmp/raylogs; sleep infinity & wait;"]
           # This volume allocates shared memory for Ray to use for its plasma
           # object store. If you do not provide this, Ray will fall back to
           # /tmp which cause slowdowns if is not a shared memory volume.
@@ -131,8 +131,8 @@ spec:
   # Note dashboard-host is set to 0.0.0.0 so that Kubernetes can port forward.
   headStartRayCommands:
     - ray stop
-    - ulimit -n 65536; ray start --head --no-monitor --dashboard-host 0.0.0.0
+    - ulimit -n 65536; ray start --head --no-monitor --dashboard-host 0.0.0.0 &> /tmp/raylogs
   # Commands to start Ray on worker nodes. You don't need to change this.
   workerStartRayCommands:
     - ray stop
-    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 &> /tmp/raylogs

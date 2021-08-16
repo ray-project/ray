@@ -6,7 +6,6 @@ via a custom training workflow.
 """
 
 import argparse
-import gym
 import os
 
 import ray
@@ -124,20 +123,17 @@ if __name__ == "__main__":
     # Simple environment with 4 independent cartpole entities
     register_env("multi_agent_cartpole",
                  lambda _: MultiAgentCartPole({"num_agents": 4}))
-    single_env = gym.make("CartPole-v0")
-    obs_space = single_env.observation_space
-    act_space = single_env.action_space
 
     # Note that since the trainer below does not include a default policy or
     # policy configs, we have to explicitly set it in the multiagent config:
     policies = {
         "ppo_policy": (PPOTorchPolicy if args.torch or args.mixed_torch_tf else
-                       PPOTFPolicy, obs_space, act_space, PPO_CONFIG),
-        "dqn_policy": (DQNTorchPolicy if args.torch else DQNTFPolicy,
-                       obs_space, act_space, DQN_CONFIG),
+                       PPOTFPolicy, None, None, PPO_CONFIG),
+        "dqn_policy": (DQNTorchPolicy
+                       if args.torch else DQNTFPolicy, None, None, DQN_CONFIG),
     }
 
-    def policy_mapping_fn(agent_id):
+    def policy_mapping_fn(agent_id, episode, **kwargs):
         if agent_id % 2 == 0:
             return "ppo_policy"
         else:

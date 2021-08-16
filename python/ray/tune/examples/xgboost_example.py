@@ -80,7 +80,7 @@ if __name__ == "__main__":
 
     if args.server_address:
         import ray
-        ray.util.connect(args.server_address)
+        ray.init(f"ray://{args.server_address}")
 
     analysis = tune_xgboost()
 
@@ -88,8 +88,12 @@ if __name__ == "__main__":
     if args.server_address:
         # If connecting to a remote server with Ray Client, checkpoint loading
         # should be wrapped in a task so it will execute on the server.
-        best_bst = ray.get(
-            ray.remote(get_best_model_checkpoint.remote(analysis)))
+        # We have to make sure it gets executed on the same node that
+        # ``tune.run`` is called on.
+        from ray.tune.utils import force_on_current_node
+        remote_fn = force_on_current_node(
+            ray.remote(get_best_model_checkpoint))
+        best_bst = ray.get(remote_fn.remote(analysis))
     else:
         best_bst = get_best_model_checkpoint(analysis)
 

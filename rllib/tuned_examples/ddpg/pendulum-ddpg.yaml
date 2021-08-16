@@ -3,7 +3,7 @@ pendulum-ddpg:
     env: Pendulum-v0
     run: DDPG
     stop:
-        episode_reward_mean: -700
+        episode_reward_mean: -500
         timesteps_total: 100000
     config:
         # Works for both torch and tf.
@@ -14,7 +14,6 @@ pendulum-ddpg:
         n_step: 1
         model: {}
         gamma: 0.99
-        env_config: {}
 
         # === Exploration ===
         exploration_config:
@@ -50,10 +49,4 @@ pendulum-ddpg:
 
         # === Parallelism ===
         num_workers: 0
-        num_gpus_per_worker: 0
-        #per_worker_exploration: False
         worker_side_prioritization: False
-
-        # === Evaluation ===
-        evaluation_interval: 5
-        evaluation_num_episodes: 10

@@ -10,10 +10,12 @@ from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune.logger import NoopLogger
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.function_runner import with_parameters, wrap_function, \
     FuncCheckpointUtil
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from ray.tune.schedulers import ResourceChangingScheduler
 
 
 def creator_generator(logdir):
@@ -486,6 +488,65 @@ class FunctionApiTest(unittest.TestCase):
         import cloudpickle as cp
         dumped = cp.dumps(trainable)
         assert sys.getsizeof(dumped) < 100 * 1024
+
+    def testNewResources(self):
+        sched = ResourceChangingScheduler(
+            resources_allocation_function=(
+                lambda a, b, c, d: PlacementGroupFactory([{"CPU": 2}])
+            )
+        )
+
+        def train(config, checkpoint_dir=None):
+            tune.report(metric=1, resources=tune.get_trial_resources())
+
+        analysis = tune.run(
+            train,
+            scheduler=sched,
+            stop={"training_iteration": 2},
+            resources_per_trial=PlacementGroupFactory([{
+                "CPU": 1
+            }]),
+            num_samples=1)
+
+        results_list = list(analysis.results.values())
+        assert results_list[0]["resources"].head_cpus == 2.0
+
+    def testWithParametersTwoRuns1(self):
+        # Makes sure two runs in the same script but different ray sessions
+        # pass (https://github.com/ray-project/ray/issues/16609)
+        def train_fn(config, extra=4):
+            tune.report(metric=extra)
+
+        trainable = tune.with_parameters(train_fn, extra=8)
+        out = tune.run(trainable, metric="metric", mode="max")
+        self.assertEquals(out.best_result["metric"], 8)
+
+        self.tearDown()
+        self.setUp()
+
+        def train_fn_2(config, extra=5):
+            tune.report(metric=extra)
+
+        trainable = tune.with_parameters(train_fn_2, extra=9)
+        out = tune.run(trainable, metric="metric", mode="max")
+        self.assertEquals(out.best_result["metric"], 9)
+
+    def testWithParametersTwoRuns2(self):
+        # Makes sure two runs in the same script
+        # pass (https://github.com/ray-project/ray/issues/16609)
+        def train_fn(config, extra=4):
+            tune.report(metric=extra)
+
+        def train_fn_2(config, extra=5):
+            tune.report(metric=extra)
+
+        trainable1 = tune.with_parameters(train_fn, extra=8)
+        trainable2 = tune.with_parameters(train_fn_2, extra=9)
+
+        out1 = tune.run(trainable1, metric="metric", mode="max")
+        out2 = tune.run(trainable2, metric="metric", mode="max")
+        self.assertEquals(out1.best_result["metric"], 8)
+        self.assertEquals(out2.best_result["metric"], 9)
 
     def testReturnAnonymous(self):
         def train(config):

@@ -6,19 +6,29 @@ import os
 import subprocess
 import sys
 import time
+import timeit
 import socket
 import math
 import traceback
-from typing import Dict
+from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
 
 import ray
 import ray._private.services
 import ray._private.utils
+from ray.util.queue import Queue, _QueueActor, Empty
 import requests
-from prometheus_client.parser import text_string_to_metric_families
 from ray.scripts.scripts import main as ray_main
+from ray.workers.pluggable_runtime_env import (RuntimeEnvContext,
+                                               get_hook_logger)
+try:
+    from prometheus_client.parser import text_string_to_metric_families
+except (ImportError, ModuleNotFoundError):
+
+    def text_string_to_metric_families(*args, **kwargs):
+        raise ModuleNotFoundError("`prometheus_client` not found")
+
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -245,6 +255,34 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
+def wait_for_num_nodes(num_nodes: int, timeout_s: int):
+    curr_nodes = 0
+    start = time.time()
+    next_feedback = start
+    max_time = start + timeout_s
+    while not curr_nodes >= num_nodes:
+        now = time.time()
+
+        if now >= max_time:
+            raise RuntimeError(
+                f"Maximum wait time reached, but only "
+                f"{curr_nodes}/{num_nodes} nodes came up. Aborting.")
+
+        if now >= next_feedback:
+            passed = now - start
+            print(f"Waiting for more nodes to come up: "
+                  f"{curr_nodes}/{num_nodes} "
+                  f"({passed:.0f} seconds passed)")
+            next_feedback = now + 10
+
+        time.sleep(5)
+        curr_nodes = len(ray.nodes())
+
+    passed = time.time() - start
+    print(f"Cluster is up: {curr_nodes}/{num_nodes} nodes online after "
+          f"{passed:.0f} seconds")
+
+
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     actor_id = actor._actor_id.hex()
     current_num_restarts = ray.state.actors(actor_id)["NumRestarts"]
@@ -345,6 +383,7 @@ def generate_system_config_map(**kwargs):
 class SignalActor:
     def __init__(self):
         self.ready_event = asyncio.Event()
+        self.num_waiters = 0
 
     def send(self, clear=False):
         self.ready_event.set()
@@ -353,7 +392,12 @@ class SignalActor:
 
     async def wait(self, should_wait=True):
         if should_wait:
+            self.num_waiters += 1
             await self.ready_event.wait()
+            self.num_waiters -= 1
+
+    async def cur_num_waiters(self):
+        return self.num_waiters
 
 
 @ray.remote(num_cpus=0)
@@ -506,6 +550,13 @@ def client_test_enabled() -> bool:
     return os.environ.get("RAY_CLIENT_MODE") is not None
 
 
+def object_memory_usage() -> bool:
+    """Returns the number of bytes used in the object store."""
+    total = ray.cluster_resources().get("object_store_memory", 0)
+    avail = ray.available_resources().get("object_store_memory", 0)
+    return total - avail
+
+
 def fetch_prometheus(prom_addresses):
     components_dict = {}
     metric_names = set()
@@ -544,52 +595,74 @@ def set_setup_func():
     runtime_env.VAR = "hello world"
 
 
-def get_wheel_filename(
-        sys_platform: str = sys.platform,
-        ray_version: str = ray.__version__,
-        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
-) -> str:
-    """Returns the filename used for the nightly Ray wheel.
-
-    Args:
-        sys_platform (str): The platform as returned by sys.platform. Examples:
-            "darwin", "linux", "win32"
-        ray_version (str): The Ray version as returned by ray.__version__ or
-            `ray --version`.  Examples: "2.0.0.dev0"
-        py_version (str):
-            The major and minor Python versions concatenated.  Examples: "36",
-            "37", "38"
-    Returns:
-        The wheel file name.  Examples:
-            ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
-    """
-    assert py_version in ["36", "37", "38"], ("py_version must be one of '36',"
-                                              " '37', or '38'")
-
-    os_strings = {
-        "darwin": "macosx_10_13_x86_64"
-        if py_version == "38" else "macosx_10_13_intel",
-        "linux": "manylinux2014_x86_64",
-        "win32": "win_amd64"
-    }
-
-    assert sys_platform in os_strings, ("sys_platform must be one of 'darwin',"
-                                        " 'linux', or 'win32'")
-
-    wheel_filename = (f"ray-{ray_version}-cp{py_version}-"
-                      f"cp{py_version}{'m' if py_version != '38' else ''}"
-                      f"-{os_strings[sys_platform]}.whl")
-
-    return wheel_filename
+def sleep_setup_runtime_env(runtime_env: dict, session_dir):
+    logger = get_hook_logger()
+    logger.info(f"Setting up runtime environment {runtime_env}")
+    logger.info("Simulating long runtime env setup.  Sleeping for 15s...")
+    time.sleep(15)
+    logger.info("Finished sleeping for 15s")
+    return RuntimeEnvContext()
 
 
-def get_master_wheel_url(
-        ray_commit: str = ray.__commit__,
-        sys_platform: str = sys.platform,
-        ray_version: str = ray.__version__,
-        py_version: str = f"{sys.version_info.major}{sys.version_info.minor}"
-) -> str:
-    """Return the URL for the wheel from a specific commit."""
+class BatchQueue(Queue):
+    def __init__(self, maxsize: int = 0,
+                 actor_options: Optional[Dict] = None) -> None:
+        actor_options = actor_options or {}
+        self.maxsize = maxsize
+        self.actor = ray.remote(_BatchQueueActor).options(
+            **actor_options).remote(self.maxsize)
 
-    return (f"https://s3-us-west-2.amazonaws.com/ray-wheels/master/"
-            f"{ray_commit}/{get_wheel_filename()}")
+    def get_batch(self,
+                  batch_size: int = None,
+                  total_timeout: Optional[float] = None,
+                  first_timeout: Optional[float] = None) -> List[Any]:
+        """Gets batch of items from the queue and returns them in a
+        list in order.
+
+        Raises:
+            Empty: if the queue does not contain the desired number of items
+        """
+        return ray.get(
+            self.actor.get_batch.remote(batch_size, total_timeout,
+                                        first_timeout))
+
+
+class _BatchQueueActor(_QueueActor):
+    async def get_batch(self,
+                        batch_size=None,
+                        total_timeout=None,
+                        first_timeout=None):
+        start = timeit.default_timer()
+        try:
+            first = await asyncio.wait_for(self.queue.get(), first_timeout)
+            batch = [first]
+            if total_timeout:
+                end = timeit.default_timer()
+                total_timeout = max(total_timeout - (end - start), 0)
+        except asyncio.TimeoutError:
+            raise Empty
+        if batch_size is None:
+            if total_timeout is None:
+                total_timeout = 0
+            while True:
+                try:
+                    start = timeit.default_timer()
+                    batch.append(await asyncio.wait_for(
+                        self.queue.get(), total_timeout))
+                    if total_timeout:
+                        end = timeit.default_timer()
+                        total_timeout = max(total_timeout - (end - start), 0)
+                except asyncio.TimeoutError:
+                    break
+        else:
+            for _ in range(batch_size - 1):
+                try:
+                    start = timeit.default_timer()
+                    batch.append(await asyncio.wait_for(
+                        self.queue.get(), total_timeout))
+                    if total_timeout:
+                        end = timeit.default_timer()
+                        total_timeout = max(total_timeout - (end - start), 0)
+                except asyncio.TimeoutError:
+                    break
+        return batch

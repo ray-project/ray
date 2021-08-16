@@ -1,9 +1,9 @@
+import socket
+from contextlib import closing
 from typing import Dict, List, Union
 import copy
-import json
 import glob
 import logging
-import numbers
 import os
 import inspect
 import threading
@@ -18,6 +18,8 @@ from typing import Optional
 import numpy as np
 import ray
 import psutil
+
+from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +169,10 @@ class Tee(object):
         self.stream1 = stream1
         self.stream2 = stream2
 
+    def seek(self, *args, **kwargs):
+        self.stream1.seek(*args, **kwargs)
+        self.stream2.seek(*args, **kwargs)
+
     def write(self, *args, **kwargs):
         self.stream1.write(*args, **kwargs)
         self.stream2.write(*args, **kwargs)
@@ -174,6 +180,36 @@ class Tee(object):
     def flush(self, *args, **kwargs):
         self.stream1.flush(*args, **kwargs)
         self.stream2.flush(*args, **kwargs)
+
+    @property
+    def encoding(self):
+        if hasattr(self.stream1, "encoding"):
+            return self.stream1.encoding
+        return self.stream2.encoding
+
+    @property
+    def error(self):
+        if hasattr(self.stream1, "error"):
+            return self.stream1.error
+        return self.stream2.error
+
+    @property
+    def newlines(self):
+        if hasattr(self.stream1, "newlines"):
+            return self.stream1.newlines
+        return self.stream2.newlines
+
+    def detach(self):
+        raise NotImplementedError
+
+    def read(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def readline(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def tell(self, *args, **kwargs):
+        raise NotImplementedError
 
 
 def date_str():
@@ -248,7 +284,12 @@ def deep_update(original,
 
 
 def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
-    dt = copy.deepcopy(dt)
+    """Flatten dict.
+
+    Output and input are of the same dict type.
+    Input dict remains the same after the operation.
+    """
+    dt = copy.copy(dt)
     if prevent_delimiter and any(delimiter in key for key in dt):
         # Raise if delimiter is any of the keys
         raise ValueError(
@@ -261,7 +302,7 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
             if isinstance(value, dict):
                 for subkey, v in value.items():
                     if prevent_delimiter and delimiter in subkey:
-                        # Raise  if delimiter is in any of the subkeys
+                        # Raise if delimiter is in any of the subkeys
                         raise ValueError(
                             "Found delimiter `{}` in key when trying to "
                             "flatten array. Please avoid using the delimiter "
@@ -283,6 +324,12 @@ def unflatten_dict(dt, delimiter="/"):
         item = out
         for k in path[:-1]:
             item = item.setdefault(k, dict_type())
+            if not isinstance(item, dict_type):
+                raise TypeError(
+                    f"Cannot unflatten dict due the key '{key}' "
+                    f"having a parent key '{k}', which value is not "
+                    f"of type {dict_type} (got {type(item)}). "
+                    "Change the key names to resolve the conflict.")
         item[path[-1]] = val
     return out
 
@@ -482,6 +529,14 @@ def atomic_save(state: Dict, checkpoint_dir: str, file_name: str,
         cloudpickle.dump(state, f)
 
     os.replace(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
+
+
+def find_free_port():
+    """Finds a free port on the current node."""
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(("", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
 
 
 def load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> dict:
@@ -716,10 +771,15 @@ def create_logdir(dirname: str, local_dir: str):
 
 def validate_warmstart(parameter_names: List[str],
                        points_to_evaluate: List[Union[List, Dict]],
-                       evaluated_rewards: List):
+                       evaluated_rewards: List,
+                       validate_point_name_lengths: bool = True):
     """Generic validation of a Searcher's warm start functionality.
-    Raises exceptions in case of type and length mismatches betwee
+    Raises exceptions in case of type and length mismatches between
     parameters.
+
+    If ``validate_point_name_lengths`` is False, the equality of lengths
+    between ``points_to_evaluate`` and ``parameter_names`` will not be
+    validated.
     """
     if points_to_evaluate:
         if not isinstance(points_to_evaluate, list):
@@ -732,7 +792,8 @@ def validate_warmstart(parameter_names: List[str],
                     f"points_to_evaluate expected to include list or dict, "
                     f"got {point}.")
 
-            if not len(point) == len(parameter_names):
+            if validate_point_name_lengths and (
+                    not len(point) == len(parameter_names)):
                 raise ValueError("Dim of point {}".format(point) +
                                  " and parameter_names {}".format(
                                      parameter_names) + " do not match.")
@@ -749,29 +810,43 @@ def validate_warmstart(parameter_names: List[str],
                 " do not match.")
 
 
-class SafeFallbackEncoder(json.JSONEncoder):
-    def __init__(self, nan_str="null", **kwargs):
-        super(SafeFallbackEncoder, self).__init__(**kwargs)
-        self.nan_str = nan_str
+def get_current_node_resource_key() -> str:
+    """Get the Ray resource key for current node.
+    It can be used for actor placement.
 
-    def default(self, value):
-        try:
-            if np.isnan(value):
-                return self.nan_str
+    If using Ray Client, this will return the resource key for the node that
+    is running the client server.
 
-            if (type(value).__module__ == np.__name__
-                    and isinstance(value, np.ndarray)):
-                return value.tolist()
+    Returns:
+        (str) A string of the format node:<CURRENT-NODE-IP-ADDRESS>
+    """
+    current_node_id = ray.get_runtime_context().node_id.hex()
+    for node in ray.nodes():
+        if node["NodeID"] == current_node_id:
+            # Found the node.
+            for key in node["Resources"].keys():
+                if key.startswith("node:"):
+                    return key
+    else:
+        raise ValueError("Cannot found the node dictionary for current node.")
 
-            if issubclass(type(value), numbers.Integral):
-                return int(value)
-            if issubclass(type(value), numbers.Number):
-                return float(value)
 
-            return super(SafeFallbackEncoder, self).default(value)
+def force_on_current_node(task_or_actor):
+    """Given a task or actor, place it on the current node.
 
-        except Exception:
-            return str(value)  # give up, just stringify it (ok for logs)
+    If using Ray Client, the current node is the client server node.
+
+    Args:
+        task_or_actor: A Ray remote function or class to place on the
+            current node.
+
+    Returns:
+        The provided task or actor, but with options modified to force
+            placement on the current node.
+    """
+    node_resource_key = get_current_node_resource_key()
+    options = {"resources": {node_resource_key: 0.01}}
+    return task_or_actor.options(**options)
 
 
 if __name__ == "__main__":

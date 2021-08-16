@@ -113,55 +113,6 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
     ray.get(signal2.send.remote())
 
 
-def test_fail_importing_remote_function(ray_start_2_cpus, error_pubsub):
-    p = error_pubsub
-    # Create the contents of a temporary Python file.
-    temporary_python_file = """
-def temporary_helper_function():
-    return 1
-"""
-
-    f = tempfile.NamedTemporaryFile(suffix=".py")
-    f.write(temporary_python_file.encode("ascii"))
-    f.flush()
-    directory = os.path.dirname(f.name)
-    # Get the module name and strip ".py" from the end.
-    module_name = os.path.basename(f.name)[:-3]
-    sys.path.append(directory)
-    module = __import__(module_name)
-
-    # Define a function that closes over this temporary module. This should
-    # fail when it is unpickled.
-    @ray.remote
-    def g(x, y=3):
-        try:
-            module.temporary_python_file()
-        except Exception:
-            # This test is not concerned with the error from running this
-            # function. Only from unpickling the remote function.
-            pass
-
-    # Invoke the function so that the definition is exported.
-    g.remote(1, y=2)
-
-    errors = get_error_message(
-        p, 2, ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR)
-    assert errors[0].type == ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR
-    assert "No module named" in errors[0].error_message
-    assert "No module named" in errors[1].error_message
-
-    # Check that if we try to call the function it throws an exception and
-    # does not hang.
-    for _ in range(10):
-        with pytest.raises(
-                Exception, match="This function was not imported properly."):
-            ray.get(g.remote(1, y=2))
-
-    f.close()
-    # Clean up the junk we added to sys.path.
-    sys.path.pop(-1)
-
-
 def test_failed_function_to_run(ray_start_2_cpus, error_pubsub):
     p = error_pubsub
 
@@ -573,7 +524,8 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     p = error_pubsub
     import ray.ray_constants as ray_constants
 
-    large_object = np.zeros(2 * ray_constants.PICKLE_OBJECT_WARNING_SIZE)
+    large_object = np.zeros(
+        2 * ray_constants.FUNCTION_SIZE_WARN_THRESHOLD, dtype=np.uint8)
 
     @ray.remote
     def f():
@@ -624,6 +576,30 @@ def test_warning_all_tasks_blocked(shutdown_only):
     errors = get_error_message(p, 1, ray_constants.RESOURCE_DEADLOCK_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR
+
+
+def test_warning_many_actor_tasks_queued(shutdown_only):
+    ray.init(num_cpus=1)
+    p = init_error_pubsub()
+
+    @ray.remote(num_cpus=1)
+    class Foo:
+        def f(self):
+            import time
+            time.sleep(1)
+
+    a = Foo.remote()
+    [a.f.remote() for _ in range(50000)]
+    errors = get_error_message(p, 4, ray_constants.EXCESS_QUEUEING_WARNING)
+    msgs = [e.error_message for e in errors]
+    assert ("Warning: More than 5000 tasks are pending submission to actor" in
+            msgs[0])
+    assert ("Warning: More than 10000 tasks are pending submission to actor" in
+            msgs[1])
+    assert ("Warning: More than 20000 tasks are pending submission to actor" in
+            msgs[2])
+    assert ("Warning: More than 40000 tasks are pending submission to actor" in
+            msgs[3])
 
 
 def test_warning_actor_waiting_on_actor(shutdown_only):

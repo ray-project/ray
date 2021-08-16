@@ -3,6 +3,7 @@ from ray.job_config import JobConfig
 import os
 import sys
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +63,16 @@ class RayAPIStub:
             # If we're calling a client connect specifically and we're not
             # currently in client mode, ensure we are.
             ray._private.client_mode_hook._explicitly_enable_client_mode()
-
         if namespace is not None:
             job_config = job_config or JobConfig()
             job_config.set_ray_namespace(namespace)
-
+        if job_config is not None:
+            runtime_env = json.loads(job_config.get_serialized_runtime_env())
+            if runtime_env.get("pip") or runtime_env.get("conda"):
+                logger.warning("The 'pip' or 'conda' field was specified in "
+                               "the runtime env, so it may take some time to "
+                               "install the environment before ray.connect() "
+                               "returns.")
         try:
             self.client_worker = Worker(
                 conn_str,
@@ -137,10 +143,14 @@ class RayAPIStub:
         return self.api.remote(*args, **kwargs)
 
     def __getattr__(self, key: str):
-        if not self.is_connected():
+        if self.is_connected():
+            return getattr(self.api, key)
+        elif key in ["is_initialized", "_internal_kv_initialized"]:
+            # Client is not connected, thus Ray is not considered initialized.
+            return lambda: False
+        else:
             raise Exception("Ray Client is not connected. "
                             "Please connect by calling `ray.connect`.")
-        return getattr(self.api, key)
 
     def is_connected(self) -> bool:
         if self.client_worker is None:

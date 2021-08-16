@@ -31,6 +31,28 @@ def test_ignore_http_proxy(shutdown_only):
     assert ray.get(f.remote()) == 1
 
 
+# https://github.com/ray-project/ray/issues/16025
+def test_release_resources_race(shutdown_only):
+    # This test fails with the flag set to false.
+    ray.init(
+        num_cpus=2,
+        object_store_memory=700e6,
+        _system_config={"inline_object_status_in_refs": True})
+    refs = []
+    for _ in range(10):
+        refs.append(ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8)))
+
+    @ray.remote
+    def consume(refs):
+        # Should work without releasing resources!
+        ray.get(refs)
+        return os.getpid()
+
+    pids = set(ray.get([consume.remote(refs) for _ in range(1000)]))
+    # Should not have started multiple workers.
+    assert len(pids) <= 2, pids
+
+
 # https://github.com/ray-project/ray/issues/7263
 def test_grpc_message_size(shutdown_only):
     ray.init(num_cpus=1)
@@ -80,6 +102,12 @@ def test_submit_api(shutdown_only):
     ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=0.05)
     assert len(ready_ids) == 0
     assert len(remaining_ids) == 1
+
+    # Check mismatch with num_returns.
+    with pytest.raises(ValueError):
+        ray.get(f.options(num_returns=2).remote(3))
+    with pytest.raises(ValueError):
+        ray.get(f.options(num_returns=3).remote(2))
 
     @ray.remote
     class Actor:
@@ -188,6 +216,25 @@ print("local", ray._private.runtime_env.VAR)
     assert local_out == "local hello world"
 
 
+# https://github.com/ray-project/ray/issues/17842
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+def test_disable_cuda_devices():
+    script = """
+import ray
+ray.init()
+
+@ray.remote
+def check():
+    import os
+    assert "CUDA_VISIBLE_DEVICES" not in os.environ
+
+print("remote", ray.get(check.remote()))
+"""
+
+    run_string_as_driver(script,
+                         {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"})
+
+
 def test_put_get(shutdown_only):
     ray.init(num_cpus=0)
 
@@ -274,6 +321,7 @@ def test_ray_options(shutdown_only):
 
     to_check = ["CPU", "GPU", "memory", "custom1"]
     for key in to_check:
+        print(key, without_options[key], with_options[key])
         assert without_options[key] != with_options[key], key
     assert without_options != with_options
 
@@ -588,6 +636,26 @@ def test_args_named_and_star(ray_start_shared_local_modes):
     local_method = local_actor.hello
     test_function(local_method, actor_method)
     ray.get(remote_test_function.remote(local_method, actor_method))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+def test_oversized_function(ray_start_shared_local_modes):
+    bar = np.zeros(100 * 1024 * 1024)
+
+    @ray.remote
+    class Actor:
+        def foo(self):
+            return len(bar)
+
+    @ray.remote
+    def f():
+        return len(bar)
+
+    with pytest.raises(ValueError):
+        f.remote()
+
+    with pytest.raises(ValueError):
+        Actor.remote()
 
 
 def test_args_stars_after(ray_start_shared_local_modes):

@@ -1,4 +1,3 @@
-from gym.spaces import Box, Discrete
 import os
 from pathlib import Path
 import re
@@ -38,7 +37,7 @@ def rollout_test(algo, env="CartPole-v0", test_episode_rollout=False):
                   ", \"timesteps_per_iteration\": 5,\"min_iter_time_s\": 0.1, "
                   "\"model\": {\"fcnet_hiddens\": [10]}"
                   "}' --stop='{\"training_iteration\": 1}'" +
-                  " --env={}".format(env))
+                  " --env={} --no-ray-ui".format(env))
 
         checkpoint_path = os.popen("ls {}/default/*/checkpoint_000001/"
                                    "checkpoint-1".format(tmp_dir)).read()[:-1]
@@ -147,11 +146,8 @@ def learn_test_multi_agent_plus_rollout(algo):
         print("RLlib dir = {}\nexists={}".format(rllib_dir,
                                                  os.path.exists(rllib_dir)))
 
-        def policy_fn(agent):
-            return "pol{}".format(agent)
-
-        observation_space = Box(float("-inf"), float("inf"), (4, ))
-        action_space = Discrete(2)
+        def policy_fn(agent_id, episode, **kwargs):
+            return "pol{}".format(agent_id)
 
         config = {
             "num_gpus": 0,
@@ -162,10 +158,7 @@ def learn_test_multi_agent_plus_rollout(algo):
             "framework": fw,
             "env": MultiAgentCartPole,
             "multiagent": {
-                "policies": {
-                    "pol0": (None, observation_space, action_space, {}),
-                    "pol1": (None, observation_space, action_space, {}),
-                },
+                "policies": {"pol0", "pol1"},
                 "policy_mapping_fn": policy_fn,
             },
         }

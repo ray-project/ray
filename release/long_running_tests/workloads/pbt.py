@@ -4,6 +4,7 @@ import ray
 from ray.tune import run_experiments
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.cluster_utils import Cluster
+from ray.tune.utils.release_test_util import ProgressCallback
 
 num_redis_shards = 5
 redis_max_memory = 10**8
@@ -52,5 +53,6 @@ run_experiments(
             },
         }
     },
+    callbacks=[ProgressCallback()],
     scheduler=pbt,
     verbose=False)

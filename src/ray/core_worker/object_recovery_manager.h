@@ -23,6 +23,7 @@
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
+namespace core {
 
 typedef std::function<std::shared_ptr<PinObjectsInterface>(const std::string &ip_address,
                                                            int port)>
@@ -146,4 +147,5 @@ class ObjectRecoveryManager {
   absl::flat_hash_set<ObjectID> objects_pending_recovery_ GUARDED_BY(mu_);
 };
 
+}  // namespace core
 }  // namespace ray

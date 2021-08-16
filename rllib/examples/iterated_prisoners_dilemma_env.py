@@ -61,7 +61,7 @@ def get_rllib_config(seeds, debug=False, stop_iters=200, tf=False):
                     None, IteratedPrisonersDilemma.OBSERVATION_SPACE,
                     IteratedPrisonersDilemma.ACTION_SPACE, {}),
             },
-            "policy_mapping_fn": lambda agent_id: agent_id,
+            "policy_mapping_fn": lambda agent_id, **kwargs: agent_id,
         },
         "seed": tune.grid_search(seeds),
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),

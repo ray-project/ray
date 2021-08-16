@@ -94,7 +94,10 @@ bool SubscriptionIndex<KeyIdType>::EraseEntry(const std::string &key_id_binary,
   auto &objects = subscribers_to_message_it->second;
   auto object_it = objects.find(key_id);
   if (object_it == objects.end()) {
-    RAY_CHECK(key_id_to_subscribers_.count(key_id) == 0);
+    auto it = key_id_to_subscribers_.find(key_id);
+    if (it != key_id_to_subscribers_.end()) {
+      RAY_CHECK(it->second.count(subscriber_id) == 0);
+    }
     return false;
   }
   objects.erase(object_it);
@@ -246,12 +249,23 @@ void Publisher::Publish(const rpc::ChannelType channel_type,
     return;
   }
 
+  cum_pub_message_cnt_[channel_type]++;
+
   for (const auto &subscriber_id : maybe_subscribers.value().get()) {
     auto it = subscribers_.find(subscriber_id);
     RAY_CHECK(it != subscribers_.end());
     auto &subscriber = it->second;
     subscriber->QueueMessage(pub_message);
   }
+}
+
+void Publisher::PublishFailure(const rpc::ChannelType channel_type,
+                               const std::string &key_id_binary) {
+  rpc::PubMessage pub_message;
+  pub_message.set_key_id(key_id_binary);
+  pub_message.set_channel_type(channel_type);
+  pub_message.mutable_failure_message();
+  Publish(channel_type, pub_message, key_id_binary);
 }
 
 bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
@@ -289,6 +303,8 @@ bool Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) 
 
 void Publisher::CheckDeadSubscribers() {
   absl::MutexLock lock(&mutex_);
+  std::vector<SubscriberID> dead_subscribers;
+
   for (const auto &it : subscribers_) {
     const auto &subscriber = it.second;
 
@@ -297,12 +313,15 @@ void Publisher::CheckDeadSubscribers() {
     RAY_CHECK(!(disconnected && active_connection_timed_out));
 
     if (disconnected) {
-      const auto &subscriber_id = it.first;
-      UnregisterSubscriberInternal(subscriber_id);
+      dead_subscribers.push_back(it.first);
     } else if (active_connection_timed_out) {
       // Refresh the long polling connection. The subscriber will send it again.
       subscriber->PublishIfPossible(/*force*/ true);
     }
+  }
+
+  for (const auto &subscriber_id : dead_subscribers) {
+    UnregisterSubscriberInternal(subscriber_id);
   }
 }
 
@@ -320,6 +339,20 @@ bool Publisher::CheckNoLeaks() const {
     }
   }
   return true;
+}
+
+std::string Publisher::DebugString() const {
+  absl::MutexLock lock(&mutex_);
+  std::stringstream result;
+  result << "Publisher:";
+  for (const auto &it : cum_pub_message_cnt_) {
+    auto channel_type = it.first;
+    const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
+    const auto &channel_name = descriptor->FindValueByNumber(channel_type)->name();
+    result << "\n" << channel_name;
+    result << "\n- cumulative published messages: " << it.second;
+  }
+  return result.str();
 }
 
 }  // namespace pubsub

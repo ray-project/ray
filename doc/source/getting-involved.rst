@@ -34,6 +34,21 @@ What can I work on?
 We use Github to track issues, feature requests, and bugs. Take a look at the
 ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22>`__ and `"help wanted" <https://github.com/ray-project/ray/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22>`__ for a place to start.
 
+
+Examples of features to contribute
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Tune
+####
+
+We encourage both the developers and users of optimization libraries to contribute
+:ref:`tune-search-alg` to Tune wrapping around them. Search Algorithms allow Tune's users
+to take advantage of algorithms contained in external libraries while benefitting from 
+a unified API and other Tune features.
+
+For implementation details, please refer to :ref:`byo-algo`.
+
+
 Setting up your development environment
 ---------------------------------------
 
@@ -70,10 +85,17 @@ Even though we have hooks to run unit tests automatically for each pull request,
 we recommend you to run unit tests locally beforehand to reduce reviewers’
 burden and speedup review process.
 
+If you are running tests for the first time, you can install the required dependencies with:
 
 .. code-block:: shell
 
-    pytest ray/python/ray/tests/
+    pip install -r python/requirements.txt
+
+To run all Python tests:
+
+.. code-block:: shell
+
+    pytest python/ray/tests/
 
 Documentation should be documented in `Google style <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__ format.
 
@@ -128,11 +150,13 @@ Lint and Formatting
 .. note:: Python 3.7 is recommended. You will run into flake8 `issues <https://github.com/ray-project/ray/pull/11588>`_ with Python 3.8.
 
 We also have tests for code formatting and linting that need to pass before merge.
-Install ``yapf==0.23, flake8, flake8-quotes``.
 
-* `yapf <https://github.com/google/yapf>`_ version ``0.23.0`` (``pip install yapf==0.23.0``)
-* `flake8 <https://flake8.pycqa.org/en/latest/>`_ version ``3.7.7`` (``pip install flake8==3.7.7``)
-* `flake8-quotes <https://github.com/zheller/flake8-quotes>`_ (``pip install flake8-quotes``)
+* For Python formatting, install the `required dependencies <https://github.com/ray-project/ray/blob/master/python/requirements_linters.txt>`_ first with:
+
+.. code-block:: shell
+
+  pip install -r python/requirements_linters.txt
+
 * If developing for C++, you will need `clang-format <https://www.kernel.org/doc/html/latest/process/clang-format.html>`_ version ``7.0.0`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
 
 
@@ -172,10 +196,10 @@ Understanding CI test jobs
 --------------------------
 
 The Ray project automatically runs continuous integration (CI) tests once a PR
-is opened using `Travis-CI <https://travis-ci.com/ray-project/ray/>`_ with
+is opened using `Buildkite <https://buildkite.com/ray-project/>`_ with
 multiple CI test jobs.
 
-The `Travis CI`_ test folder contains all integration test scripts and they
+The `CI`_ test folder contains all integration test scripts and they
 invoke other test scripts via ``pytest``, ``bazel``-based test or other bash
 scripts. Some of the examples include:
 
@@ -189,11 +213,11 @@ scripts. Some of the examples include:
     * ``pytest python/ray/serve/tests``
     * ``python python/ray/serve/examples/echo_full.py``
 
-If a Travis-CI build exception doesn't appear to be related to your change,
-please visit `this link <https://ray-travis-tracker.herokuapp.com/>`_ to
+If a CI build exception doesn't appear to be related to your change,
+please visit `this link <https://flakey-tests.ray.io/>`_ to
 check recent tests known to be flaky.
 
-.. _`Travis CI`: https://github.com/ray-project/ray/tree/master/ci/travis
+.. _`CI`: https://github.com/ray-project/ray/tree/master/ci/travis
 
 
 Becoming a Reviewer

@@ -57,7 +57,7 @@ std::string to_human_readable(int64_t duration) {
 
 void instrumented_io_context::post(std::function<void()> handler,
                                    const std::string name) {
-  if (!RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+  if (!RayConfig::instance().event_stats()) {
     return boost::asio::io_context::post(std::move(handler));
   }
   const auto stats_handle = RecordStart(name);
@@ -72,21 +72,43 @@ void instrumented_io_context::post(std::function<void()> handler,
       });
 }
 
-std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(const std::string &name,
-                                                                  int64_t pad_start_ns) {
+void instrumented_io_context::post(std::function<void()> handler,
+                                   std::shared_ptr<StatsHandle> stats_handle) {
+  if (!RayConfig::instance().event_stats()) {
+    return boost::asio::io_context::post(std::move(handler));
+  }
+  // Reset the handle start time, so that we effectively measure the queueing
+  // time only and not the time delay from RecordStart().
+  // TODO(ekl) it would be nice to track this delay too,.
+  stats_handle->ZeroAccumulatedQueuingDelay();
+  boost::asio::io_context::post(
+      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
+        RecordExecution(handler, std::move(stats_handle));
+      });
+}
+
+std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(
+    const std::string &name, int64_t expected_queueing_delay_ns) {
   auto stats = GetOrCreate(name);
   {
     absl::MutexLock lock(&(stats->mutex));
     stats->stats.cum_count++;
     stats->stats.curr_count++;
   }
-  return std::make_shared<StatsHandle>(name, absl::GetCurrentTimeNanos() + pad_start_ns,
-                                       stats, global_stats_);
+  return std::make_shared<StatsHandle>(
+      name, absl::GetCurrentTimeNanos() + expected_queueing_delay_ns, stats,
+      global_stats_);
 }
 
 void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
                                               std::shared_ptr<StatsHandle> handle) {
   int64_t start_execution = absl::GetCurrentTimeNanos();
+  // Update running count
+  {
+    auto &stats = handle->handler_stats;
+    absl::MutexLock lock(&(stats->mutex));
+    stats->stats.running_count++;
+  }
   // Execute actual handler.
   fn();
   int64_t end_execution = absl::GetCurrentTimeNanos();
@@ -100,6 +122,8 @@ void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
     stats->stats.cum_execution_time += execution_time_ns;
     // Handler-specific current count.
     stats->stats.curr_count--;
+    // Handler-specific running count.
+    stats->stats.running_count--;
   }
   // Update global stats.
   const auto queue_time_ns = start_execution - handle->start_time;
@@ -175,9 +199,9 @@ instrumented_io_context::get_handler_stats() const {
 }
 
 std::string instrumented_io_context::StatsString() const {
-  if (!RayConfig::instance().asio_event_loop_stats_collection_enabled()) {
+  if (!RayConfig::instance().event_stats()) {
     return "Stats collection disabled, turn on "
-           "asio_event_loop_stats_collection_enabled "
+           "event_stats "
            "flag to enable event loop stats collection";
   }
   auto stats = get_handler_stats();
@@ -196,8 +220,11 @@ std::string instrumented_io_context::StatsString() const {
     curr_count += entry.second.curr_count;
     cum_execution_time += entry.second.cum_execution_time;
     handler_stats_stream << "\n\t" << entry.first << " - " << entry.second.cum_count
-                         << " total (" << entry.second.curr_count
-                         << " active), CPU time: mean = "
+                         << " total (" << entry.second.curr_count << " active";
+    if (entry.second.running_count > 0) {
+      handler_stats_stream << ", " << entry.second.running_count << " running";
+    }
+    handler_stats_stream << "), CPU time: mean = "
                          << to_human_readable(entry.second.cum_execution_time /
                                               static_cast<double>(entry.second.cum_count))
                          << ", total = "

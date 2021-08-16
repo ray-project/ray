@@ -29,9 +29,13 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
  public:
   ServiceBasedGcsClientTest() {
     RayConfig::instance().initialize(
-        "ping_gcs_rpc_server_max_retries,60;maximum_gcs_destroyed_actor_cached_count,10;"
-        "maximum_gcs_dead_node_cached_count,10;"
-        "grpc_based_resource_broadcast,false");
+        R"(
+{
+  "ping_gcs_rpc_server_max_retries": 60,
+  "maximum_gcs_destroyed_actor_cached_count": 10,
+  "maximum_gcs_dead_node_cached_count": 10
+}
+  )");
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -140,6 +144,13 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncMarkFinished(
         job_id, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  JobID GetNextJobID() {
+    std::promise<JobID> promise;
+    RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetNextJobID(
+        [&promise](const JobID &job_id) { promise.set_value(job_id); }));
+    return promise.get_future().get();
   }
 
   bool SubscribeActor(
@@ -576,6 +587,12 @@ TEST_F(ServiceBasedGcsClientTest, TestJobInfo) {
   ASSERT_TRUE(AddJob(job_table_data));
   ASSERT_TRUE(MarkJobFinished(add_job_id));
   WaitForExpectedCount(job_updates, 2);
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestGetNextJobID) {
+  JobID job_id1 = GetNextJobID();
+  JobID job_id2 = GetNextJobID();
+  ASSERT_TRUE(job_id1.ToInt() + 1 == job_id2.ToInt());
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
@@ -1426,9 +1443,8 @@ int main(int argc, char **argv) {
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 4);
+  RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
   ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

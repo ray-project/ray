@@ -88,6 +88,13 @@ void GcsHeartbeatManager::HandleReportHeartbeat(
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
+void GcsHeartbeatManager::HandleCheckAlive(const rpc::CheckAliveRequest &request,
+                                           rpc::CheckAliveReply *reply,
+                                           rpc::SendReplyCallback send_reply_callback) {
+  reply->set_seq(request.seq());
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
 void GcsHeartbeatManager::DetectDeadNodes() {
   for (auto it = heartbeats_.begin(); it != heartbeats_.end();) {
     auto current = it++;

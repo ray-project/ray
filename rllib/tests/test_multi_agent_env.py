@@ -16,6 +16,7 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
+from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check
 
@@ -77,20 +78,15 @@ class TestMultiAgentEnv(unittest.TestCase):
         env = _MultiAgentEnvToBaseEnv(lambda v: BasicMultiAgent(2), [], 2)
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
-        self.assertEqual(rew, {0: {0: None, 1: None}, 1: {0: None, 1: None}})
-        self.assertEqual(
-            dones, {
-                0: {
-                    0: False,
-                    1: False,
-                    "__all__": False
-                },
-                1: {
-                    0: False,
-                    1: False,
-                    "__all__": False
-                }
-            })
+        self.assertEqual(rew, {0: {}, 1: {}})
+        self.assertEqual(dones, {
+            0: {
+                "__all__": False
+            },
+            1: {
+                "__all__": False
+            },
+        })
         for _ in range(24):
             env.send_actions({0: {0: 0, 1: 0}, 1: {0: 0, 1: 0}})
             obs, rew, dones, _, _ = env.poll()
@@ -161,7 +157,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         env = _MultiAgentEnvToBaseEnv(lambda v: RoundRobinMultiAgent(2), [], 2)
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
-        self.assertEqual(rew, {0: {0: None}, 1: {0: None}})
+        self.assertEqual(rew, {0: {}, 1: {}})
         env.send_actions({0: {0: 0}, 1: {0: 0}})
         obs, rew, dones, _, _ = env.poll()
         self.assertEqual(obs, {0: {1: 0}, 1: {1: 0}})
@@ -172,13 +168,17 @@ class TestMultiAgentEnv(unittest.TestCase):
     def test_multi_agent_sample(self):
         act_space = gym.spaces.Discrete(2)
         obs_space = gym.spaces.Discrete(2)
+
+        def policy_mapping_fn(agent_id, episode, **kwargs):
+            return "p{}".format(agent_id % 2)
+
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
             policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
-            policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
+            policy_mapping_fn=policy_mapping_fn,
             rollout_fragment_length=50)
         batch = ev.sample()
         self.assertEqual(batch.count, 50)
@@ -198,7 +198,10 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
-            policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
+            # This signature will raise a soft-deprecation warning due
+            # to the new signature we are using (agent_id, episode, **kwargs),
+            # but should not break this test.
+            policy_mapping_fn=(lambda agent_id: "p{}".format(agent_id % 2)),
             rollout_fragment_length=50,
             num_envs=4,
             remote_worker_envs=True,
@@ -217,7 +220,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
-            policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
+            policy_mapping_fn=(lambda aid, **kwargs: "p{}".format(aid % 2)),
             rollout_fragment_length=50,
             num_envs=4,
             remote_worker_envs=True)
@@ -233,7 +236,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
-            policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
+            policy_mapping_fn=(lambda aid, **kwarg: "p{}".format(aid % 2)),
             episode_horizon=10,  # test with episode horizon set
             rollout_fragment_length=50)
         batch = ev.sample()
@@ -248,12 +251,23 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
-            policy_mapping_fn=lambda agent_id: "p{}".format(agent_id % 2),
+            policy_mapping_fn=(lambda aid, **kwargs: "p{}".format(aid % 2)),
             batch_mode="complete_episodes",
             rollout_fragment_length=1)
-        self.assertRaisesRegexp(ValueError,
-                                ".*don't have a last observation.*",
-                                lambda: ev.sample())
+        # This used to raise an Error due to the EarlyDoneMultiAgent
+        # terminating at e.g. agent0 w/o publishing the observation for
+        # agent1 anymore. This limitation is fixed and an env may
+        # terminate at any time (as well as return rewards for any agent
+        # at any time, even when that agent doesn't have an obs returned
+        # in the same call to `step()`).
+        ma_batch = ev.sample()
+        # Make sure that agents took the correct (alternating timesteps)
+        # path. Except for the last timestep, where both agents got
+        # terminated.
+        ag0_ts = ma_batch.policy_batches["p0"]["t"]
+        ag1_ts = ma_batch.policy_batches["p1"]["t"]
+        self.assertTrue(np.all(np.abs(ag0_ts[:-1] - ag1_ts[:-1]) == 1.0))
+        self.assertTrue(ag0_ts[-1] == ag1_ts[-1])
 
     def test_multi_agent_with_flex_agents(self):
         register_env("flex_agents_multi_agent_cartpole",
@@ -277,7 +291,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
             },
-            policy_mapping_fn=lambda agent_id: "p0",
+            policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
             rollout_fragment_length=50)
         batch = ev.sample()
         self.assertEqual(batch.count, 50)
@@ -340,7 +354,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                     # the extra trajectory.
                     env_id = episodes[0].env_id
                     fake_eps = MultiAgentEpisode(
-                        episodes[0]._policies, episodes[0]._policy_mapping_fn,
+                        episodes[0].policy_map, episodes[0]._policy_mapping_fn,
                         lambda: None, lambda x: None, env_id)
                     builder = get_global_worker().sampler.sample_collector
                     agent_id = "extra_0"
@@ -377,7 +391,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p0": (ModelBasedPolicy, obs_space, act_space, {}),
                 "p1": (ModelBasedPolicy, obs_space, act_space, {}),
             },
-            policy_mapping_fn=lambda agent_id: "p0",
+            policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
             rollout_fragment_length=5)
         batch = ev.sample()
         # 5 environment steps (rollout_fragment_length).
@@ -410,16 +424,13 @@ class TestMultiAgentEnv(unittest.TestCase):
         n = 10
         register_env("multi_agent_cartpole",
                      lambda _: MultiAgentCartPole({"num_agents": n}))
-        single_env = gym.make("CartPole-v0")
 
         def gen_policy():
             config = {
                 "gamma": random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
                 "n_step": random.choice([1, 2, 3, 4, 5]),
             }
-            obs_space = single_env.observation_space
-            act_space = single_env.action_space
-            return (None, obs_space, act_space, config)
+            return PolicySpec(config=config)
 
         pg = PGTrainer(
             env="multi_agent_cartpole",
@@ -430,7 +441,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                         "policy_1": gen_policy(),
                         "policy_2": gen_policy(),
                     },
-                    "policy_mapping_fn": lambda agent_id: "policy_1",
+                    "policy_mapping_fn": lambda aid, **kwargs: "policy_1",
                 },
                 "framework": "tf",
             })
@@ -441,12 +452,15 @@ class TestMultiAgentEnv(unittest.TestCase):
             print("Iteration {}, reward {}, timesteps {}".format(
                 i, result["episode_reward_mean"], result["timesteps_total"]))
         self.assertTrue(
-            pg.compute_action([0, 0, 0, 0], policy_id="policy_1") in [0, 1])
+            pg.compute_single_action([0, 0, 0, 0], policy_id="policy_1") in
+            [0, 1])
         self.assertTrue(
-            pg.compute_action([0, 0, 0, 0], policy_id="policy_2") in [0, 1])
+            pg.compute_single_action([0, 0, 0, 0], policy_id="policy_2") in
+            [0, 1])
         self.assertRaises(
             KeyError,
-            lambda: pg.compute_action([0, 0, 0, 0], policy_id="policy_3"))
+            lambda: pg.compute_single_action(
+                [0, 0, 0, 0], policy_id="policy_3"))
 
 
 if __name__ == "__main__":

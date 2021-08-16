@@ -21,7 +21,8 @@ docker:
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
     pull_before_run: True
-    run_options: []  # Extra options to pass into "docker run"
+    run_options:   # Extra options to pass into "docker run"
+        - --ulimit nofile=65536:65536
 
     # Example of running a GPU head with CPU workers
     # head_image: "rayproject/ray-ml:latest-gpu"
@@ -77,7 +78,7 @@ available_node_types:
                 imagePublisher: microsoft-dsvm
                 imageOffer: ubuntu-1804
                 imageSku: 1804-gen2
-                imageVersion: 20.07.06
+                imageVersion: 21.01.21
 
     ray.worker.default:
         # The minimum number of worker nodes of this type to launch.
@@ -96,7 +97,7 @@ available_node_types:
                 imagePublisher: microsoft-dsvm
                 imageOffer: ubuntu-1804
                 imageSku: 1804-gen2
-                imageVersion: 20.07.06
+                imageVersion: 21.01.21
                 # optionally set priority to use Spot instances
                 priority: Spot
                 # set a maximum price for spot instances if desired
@@ -139,24 +140,26 @@ rsync_filter:
 # enabled, these commands will run outside the container and before docker
 # is setup.
 initialization_commands:
-    # get rid of annoying Ubuntu message
+    # enable docker setup
     - sudo usermod -aG docker $USER || true
+    - sleep 10  # delay to avoid docker permission denied errors
+    # get rid of annoying Ubuntu message
     - touch ~/.sudo_as_admin_successful
 
 # List of shell commands to run to set up nodes.
-setup_commands:
+# NOTE: rayproject/ray-ml:latest has ray latest bundled
+setup_commands: []
     # Note: if you're developing Ray, you probably want to create a Docker image that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
     # To run the nightly version of ray (as opposed to the latest), either use a rayproject docker image
     # that has the "nightly" (e.g. "rayproject/ray-ml:nightly-gpu") or uncomment the following line:
-    - echo 'eval "$(conda shell.bash hook)"' >> ~/.bashrc
-    - echo 'conda activate py37_tensorflow' >> ~/.bashrc
-    - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+    # - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands:
-    - pip install azure-cli-core==2.22.0 azure-mgmt-compute==14.0.0 azure-mgmt-msi==1.0.0 azure-mgmt-network==10.2.0
+# NOTE: rayproject/ray-ml:latest has azure packages bundled
+head_setup_commands: []
+    # - pip install -U azure-cli-core==2.22.0 azure-mgmt-compute==14.0.0 azure-mgmt-msi==1.0.0 azure-mgmt-network==10.2.0 azure-mgmt-resource==13.0.0
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
@@ -164,12 +167,12 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
 
 head_node: {}
 worker_nodes: {}

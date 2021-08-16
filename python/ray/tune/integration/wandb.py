@@ -1,6 +1,6 @@
 import os
 import pickle
-from collections.abc import Iterable
+from collections.abc import Sequence
 from multiprocessing import Process, Queue
 from numbers import Number
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -23,15 +23,15 @@ except ImportError:
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 _WANDB_QUEUE_END = (None, )
-_VALID_TYPES = (Number, wandb.data_types.Video)
-_VALID_ITERABLE_TYPES = (wandb.data_types.Video)
+_VALID_TYPES = (Number, wandb.data_types.Video, wandb.data_types.Image)
+_VALID_ITERABLE_TYPES = (wandb.data_types.Video, wandb.data_types.Image)
 
 
 def _is_allowed_type(obj):
     """Return True if type is allowed for logging to wandb"""
     if isinstance(obj, np.ndarray) and obj.size == 1:
         return isinstance(obj.item(), Number)
-    if isinstance(obj, Iterable) and len(obj) > 0:
+    if isinstance(obj, Sequence) and len(obj) > 0:
         return isinstance(obj[0], _VALID_ITERABLE_TYPES)
     return isinstance(obj, _VALID_TYPES)
 
@@ -194,6 +194,7 @@ class _WandbLoggingProcess(Process):
         self.kwargs = kwargs
 
     def run(self):
+        os.environ["WANDB_START_METHOD"] = "fork"
         wandb.init(*self.args, **self.kwargs)
         while True:
             result = self.queue.get()
@@ -559,6 +560,7 @@ class WandbTrainableMixin:
             config=_config)
         wandb_init_kwargs.update(wandb_config)
 
+        os.environ["WANDB_START_METHOD"] = "fork"
         self.wandb = self._wandb.init(**wandb_init_kwargs)
 
     def stop(self):

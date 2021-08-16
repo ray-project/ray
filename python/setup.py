@@ -14,6 +14,7 @@ import zipfile
 
 from itertools import chain
 from itertools import takewhile
+from enum import Enum
 
 import urllib.error
 import urllib.parse
@@ -21,13 +22,7 @@ import urllib.request
 
 logger = logging.getLogger(__name__)
 
-# Ideally, we could include these files by putting them in a
-# MANIFEST.in or using the package_data argument to setup, but the
-# MANIFEST.in gets applied at the very beginning when setup.py runs
-# before these files have been created, so we have to move the files
-# manually.
-
-SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8)]
+SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
 SUPPORTED_BAZEL = (3, 2, 0)
 
 ROOT_DIR = os.path.dirname(__file__)
@@ -45,12 +40,74 @@ exe_suffix = ".exe" if sys.platform == "win32" else ""
 pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
 pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
-               "c0c1a158f59366696161e0dffdd10cfe17601372.tar.gz")
+               "e6117502435aba2901585cc6c692fb9582545f08.tar.gz")
+
+
+def find_version(*filepath):
+    # Extract version information from filepath
+    with open(os.path.join(ROOT_DIR, *filepath)) as fp:
+        version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
+                                  fp.read(), re.M)
+        if version_match:
+            return version_match.group(1)
+        raise RuntimeError("Unable to find version string.")
+
+
+class SetupType(Enum):
+    RAY = 1
+    RAY_CPP = 2
+
+
+class BuildType(Enum):
+    DEFAULT = 1
+    DEBUG = 2
+
+
+class SetupSpec:
+    def __init__(self, type: SetupType, name: str, description: str,
+                 build_type: BuildType):
+        self.type: SetupType = type
+        self.name: str = name
+        version = find_version("ray", "__init__.py")
+        # add .dbg suffix if debug mode is on.
+        self.version: str = f"{version}+dbg" \
+            if build_type == BuildType.DEBUG else version
+        self.description: str = description
+        self.build_type: BuildType = build_type
+        self.files_to_include: list = []
+        self.install_requires: list = []
+        self.extras: dict = {}
+
+    def get_packages(self):
+        if self.type == SetupType.RAY:
+            return setuptools.find_packages()
+        else:
+            return []
+
+
+BUILD_TYPE = BuildType.DEBUG if os.getenv(
+    "RAY_DEBUG_BUILD") == "1" else BuildType.DEFAULT
+
+if os.getenv("RAY_INSTALL_CPP") == "1":
+    # "ray-cpp" wheel package.
+    setup_spec = SetupSpec(SetupType.RAY_CPP, "ray-cpp",
+                           "A subpackage of Ray which provide Ray C++ API.",
+                           BUILD_TYPE)
+else:
+    # "ray" primary wheel package.
+    setup_spec = SetupSpec(
+        SetupType.RAY, "ray", "Ray provides a simple, "
+        "universal API for building distributed applications.", BUILD_TYPE)
+
+# Ideally, we could include these files by putting them in a
+# MANIFEST.in or using the package_data argument to setup, but the
+# MANIFEST.in gets applied at the very beginning when setup.py runs
+# before these files have been created, so we have to move the files
+# manually.
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
-    "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
@@ -60,6 +117,15 @@ ray_files = [
 if BUILD_JAVA or os.path.exists(
         os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
     ray_files.append("ray/jars/ray_dist.jar")
+
+if setup_spec.type == SetupType.RAY_CPP:
+    setup_spec.files_to_include += ["ray/core/src/ray/cpp/default_worker"]
+    # C++ API library and project template files.
+    setup_spec.files_to_include += [
+        os.path.join(dirpath, filename)
+        for dirpath, dirnames, filenames in os.walk("ray/cpp")
+        for filename in filenames
+    ]
 
 # These are the directories where automatically generated Python protobuf
 # bindings are created.
@@ -74,8 +140,8 @@ ray_files.append("ray/nightly-wheels.yaml")
 ray_files += [
     "ray/autoscaler/aws/defaults.yaml",
     "ray/autoscaler/azure/defaults.yaml",
-    "ray/autoscaler/_private/azure/azure-vm-template.json",
-    "ray/autoscaler/_private/azure/azure-config-template.json",
+    "ray/autoscaler/_private/_azure/azure-vm-template.json",
+    "ray/autoscaler/_private/_azure/azure-config-template.json",
     "ray/autoscaler/gcp/defaults.yaml",
     "ray/autoscaler/local/defaults.yaml",
     "ray/autoscaler/kubernetes/defaults.yaml",
@@ -93,52 +159,64 @@ ray_files += [
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements/requirements.txt
 # in this directory
-extras = {
-    "default": ["colorful"],
-    "serve": ["uvicorn", "requests", "starlette", "fastapi"],
-    "tune": ["pandas", "tabulate", "tensorboardX>=1.9"],
-    "k8s": ["kubernetes"]
-}
+if setup_spec.type == SetupType.RAY:
+    setup_spec.extras = {
+        "default": [
+            "aiohttp",  # noqa
+            "aiohttp_cors",  # noqa
+            "aioredis < 2",  # noqa
+            "colorful",  # noqa
+            "py-spy >= 0.2.0",  # noqa
+            "jsonschema",  # noqa
+            "requests",  # noqa
+            "gpustat",  # noqa
+            "opencensus",  # noqa
+            "prometheus_client >= 0.7.1",  # noqa
+        ],
+        "serve": ["uvicorn", "requests", "starlette", "fastapi"],
+        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
+        "k8s": ["kubernetes", "urllib3"],
+        "observability": [
+            "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
+            "opentelemetry-exporter-otlp==1.1.0"
+        ],
+        "cpp": ["ray-cpp==" + setup_spec.version]
+    }
+    if sys.version_info >= (3, 7, 0):
+        setup_spec.extras["k8s"].append("kopf")
 
-extras["rllib"] = extras["tune"] + [
-    "dm_tree",
-    "gym",
-    "lz4",
-    "opencv-python-headless<=4.3.0.36",
-    "pyyaml",
-    "scipy",
-]
+    setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
+        "dm_tree",
+        "gym",
+        "lz4",
+        # matplotlib (dependency of scikit-image) 3.4.3 breaks docker build
+        # Todo: Remove this when safe?
+        "matplotlib!=3.4.3",
+        "scikit-image",
+        "pyyaml",
+        "scipy",
+    ]
 
-extras["all"] = list(set(chain.from_iterable(extras.values())))
+    setup_spec.extras["all"] = list(
+        set(chain.from_iterable(setup_spec.extras.values())))
 
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
 # the change in the matching section of requirements/requirements.txt
-install_requires = [
-    # TODO(alex) Pin the version once this PR is
-    # included in the stable release.
-    # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
-    "aiohttp",
-    "aiohttp_cors",
-    "aioredis",
-    "click >= 7.0",
-    "colorama",
-    "dataclasses; python_version < '3.7'",
-    "filelock",
-    "gpustat",
-    "grpcio >= 1.28.1",
-    "jsonschema",
-    "msgpack >= 1.0.0, < 2.0.0",
-    "numpy >= 1.16",
-    "protobuf >= 3.15.3",
-    "py-spy >= 0.2.0",
-    "pydantic >= 1.8",
-    "pyyaml",
-    "requests",
-    "redis >= 3.5.0",
-    "opencensus",
-    "prometheus_client >= 0.7.1",
-]
+if setup_spec.type == SetupType.RAY:
+    setup_spec.install_requires = [
+        "attrs",
+        "click >= 7.0",
+        "dataclasses; python_version < '3.7'",
+        "filelock",
+        "grpcio >= 1.28.1",
+        "msgpack >= 1.0.0, < 2.0.0",
+        "numpy >= 1.16; python_version < '3.9'",
+        "numpy >= 1.19.3; python_version >= '3.9'",
+        "protobuf >= 3.15.3",
+        "pyyaml",
+        "redis >= 3.5.0",
+    ]
 
 
 def is_native_windows_or_msys():
@@ -213,7 +291,7 @@ def download_pickle5(pickle5_dir):
                 wzf.close()
 
 
-def build(build_python, build_java):
+def build(build_python, build_java, build_cpp):
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
         msg = ("Detected Python version {}, which is not supported. "
                "Only Python {} are supported.").format(
@@ -262,7 +340,7 @@ def build(build_python, build_java):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
-        pip_packages = ["psutil", "setproctitle==1.1.10"]
+        pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
         subprocess.check_call(
             [
                 sys.executable, "-m", "pip", "install", "-q",
@@ -283,10 +361,16 @@ def build(build_python, build_java):
 
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
+    bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
+
+    bazel_flags = ["--verbose_failures"]
+    if setup_spec.build_type == BuildType.DEBUG:
+        bazel_flags.extend(["--config", "debug"])
+
     return bazel_invoke(
         subprocess.check_call,
-        ["build", "--verbose_failures", "--"] + bazel_targets,
+        ["build"] + bazel_flags + ["--"] + bazel_targets,
         env=bazel_env)
 
 
@@ -298,12 +382,13 @@ def walk_directory(directory):
     return file_list
 
 
-def move_file(target_dir, filename):
+def copy_file(target_dir, filename, rootdir):
     # TODO(rkn): This feels very brittle. It may not handle all cases. See
     # https://github.com/apache/arrow/blob/master/python/setup.py for an
     # example.
-    source = filename
-    destination = os.path.join(target_dir, filename)
+    # File names can be absolute paths, e.g. from walk_directory().
+    source = os.path.relpath(filename, rootdir)
+    destination = os.path.join(target_dir, source)
     # Create the target directory if it doesn't already exist.
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     if not os.path.exists(destination):
@@ -313,39 +398,36 @@ def move_file(target_dir, filename):
         else:
             # Preserves file mode (needed to copy executable bit)
             shutil.copy(source, destination, follow_symlinks=True)
-
-
-def find_version(*filepath):
-    # Extract version information from filepath
-    with open(os.path.join(ROOT_DIR, *filepath)) as fp:
-        version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
-                                  fp.read(), re.M)
-        if version_match:
-            return version_match.group(1)
-        raise RuntimeError("Unable to find version string.")
+        return 1
+    return 0
 
 
 def pip_run(build_ext):
-    build(True, BUILD_JAVA)
+    build(True, BUILD_JAVA, True)
 
-    files_to_include = list(ray_files)
+    if setup_spec.type == SetupType.RAY:
+        setup_spec.files_to_include += ray_files
+        # We also need to install pickle5 along with Ray, so make sure that the
+        # relevant non-Python pickle5 files get copied.
+        pickle5_dir = os.path.join(ROOT_DIR, PICKLE5_SUBDIR)
+        setup_spec.files_to_include += walk_directory(
+            os.path.join(pickle5_dir, "pickle5"))
 
-    # We also need to install pickle5 along with Ray, so make sure that the
-    # relevant non-Python pickle5 files get copied.
-    pickle5_dir = os.path.join(ROOT_DIR, PICKLE5_SUBDIR)
-    files_to_include += walk_directory(os.path.join(pickle5_dir, "pickle5"))
+        thirdparty_dir = os.path.join(ROOT_DIR, THIRDPARTY_SUBDIR)
+        setup_spec.files_to_include += walk_directory(thirdparty_dir)
 
-    thirdparty_dir = os.path.join(ROOT_DIR, THIRDPARTY_SUBDIR)
-    files_to_include += walk_directory(thirdparty_dir)
+        # Copy over the autogenerated protobuf Python bindings.
+        for directory in generated_python_directories:
+            for filename in os.listdir(directory):
+                if filename[-3:] == ".py":
+                    setup_spec.files_to_include.append(
+                        os.path.join(directory, filename))
 
-    # Copy over the autogenerated protobuf Python bindings.
-    for directory in generated_python_directories:
-        for filename in os.listdir(directory):
-            if filename[-3:] == ".py":
-                files_to_include.append(os.path.join(directory, filename))
-
-    for filename in files_to_include:
-        move_file(build_ext.build_lib, filename)
+    copied_files = 0
+    for filename in setup_spec.files_to_include:
+        copied_files += copy_file(build_ext.build_lib, filename, ROOT_DIR)
+    print("# of files copied to {}: {}".format(build_ext.build_lib,
+                                               copied_files))
 
 
 def api_main(program, *args):
@@ -355,7 +437,7 @@ def api_main(program, *args):
     parser.add_argument(
         "-l",
         "--language",
-        default="python",
+        default="python,cpp",
         type=str,
         help="A list of languages to build native libraries. "
         "Supported languages include \"python\" and \"java\". "
@@ -365,12 +447,14 @@ def api_main(program, *args):
     result = None
 
     if parsed_args.command == "build":
-        kwargs = dict(build_python=False, build_java=False)
+        kwargs = dict(build_python=False, build_java=False, build_cpp=False)
         for lang in parsed_args.language.split(","):
             if "python" in lang:
                 kwargs.update(build_python=True)
             elif "java" in lang:
                 kwargs.update(build_java=True)
+            elif "cpp" in lang:
+                kwargs.update(build_cpp=True)
             else:
                 raise ValueError("invalid language: {!r}".format(lang))
         result = build(**kwargs)
@@ -416,13 +500,17 @@ if __name__ == "__main__":
             return True
 
 
+# Ensure no remaining lib files.
+build_dir = os.path.join(ROOT_DIR, "build")
+if os.path.isdir(build_dir):
+    shutil.rmtree(build_dir)
+
 setuptools.setup(
-    name="ray",
-    version=find_version("ray", "__init__.py"),
+    name=setup_spec.name,
+    version=setup_spec.version,
     author="Ray Team",
     author_email="ray-dev@googlegroups.com",
-    description=("Ray provides a simple, universal API for building "
-                 "distributed applications."),
+    description=(setup_spec.description),
     long_description=io.open(
         os.path.join(ROOT_DIR, os.path.pardir, "README.rst"),
         "r",
@@ -430,13 +518,19 @@ setuptools.setup(
     url="https://github.com/ray-project/ray",
     keywords=("ray distributed parallel machine-learning hyperparameter-tuning"
               "reinforcement-learning deep-learning serving python"),
-    packages=setuptools.find_packages(),
+    classifiers=[
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+    ],
+    packages=setup_spec.get_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
-    install_requires=install_requires,
-    setup_requires=["cython >= 0.29.14", "wheel"],
-    extras_require=extras,
+    install_requires=setup_spec.install_requires,
+    setup_requires=["cython >= 0.29.15", "wheel"],
+    extras_require=setup_spec.extras,
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",

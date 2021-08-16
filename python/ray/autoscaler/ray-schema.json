@@ -160,6 +160,10 @@
                       }
                     }
                 },
+				"disable_node_updaters": {
+					"type": "boolean",
+					"description": "Disables node updaters if set to True. Default is False. (For Kubernetes operator usage.)"
+				},
                 "gcp_credentials": {
                     "type": "object",
                     "description": "Credentials for authenticating with the GCP client",
@@ -337,6 +341,7 @@
                        "min_workers": {"type": "integer"},
                        "max_workers": {"type": "integer"},
                        "resources": {
+						   "type": "object",
 						   "patternProperties": {
 							   ".*":{
 								   "type": "integer",

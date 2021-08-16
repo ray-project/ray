@@ -17,6 +17,8 @@ Test owner: krfricke
 Acceptance criteria: Should run faster than 2600 seconds. Should run without
 errors.
 """
+from collections import Counter
+import json
 import os
 import time
 
@@ -27,9 +29,8 @@ from xgboost_ray import train, RayParams, RayDMatrix
 
 
 def xgboost_train(config, ray_params, num_boost_round=200):
-    train_set = RayDMatrix(
-        os.path.expanduser("~/data/train.parquet"), "labels")
-    test_set = RayDMatrix(os.path.expanduser("~/data/test.parquet"), "labels")
+    train_set = RayDMatrix(os.path.expanduser("/data/train.parquet"), "labels")
+    test_set = RayDMatrix(os.path.expanduser("/data/test.parquet"), "labels")
 
     evals_result = {}
 
@@ -53,7 +54,7 @@ def main():
 
     ray.init(address="auto")
 
-    num_samples = 32
+    num_samples = 31  # So that we fit on 1024 CPUs with 1 head bundle
     num_actors_per_sample = 32
 
     max_runtime = 3500
@@ -74,7 +75,7 @@ def main():
         num_actors=num_actors_per_sample)
 
     start_time = time.monotonic()
-    tune.run(
+    analysis = tune.run(
         tune.with_parameters(
             xgboost_train, ray_params=ray_params, num_boost_round=100),
         config=config,
@@ -82,17 +83,28 @@ def main():
         resources_per_trial=ray_params.get_tune_resources())
     time_taken = time.monotonic() - start_time
 
-    assert time_taken < max_runtime, \
-        f"The {name} test took {time_taken:.2f} seconds, but should not " \
-        f"have exceeded {max_runtime:.2f} seconds. Test failed. \n\n" \
-        f"--- FAILED: {name.upper()} ::: " \
-        f"{time_taken:.2f} > {max_runtime:.2f} ---"
+    result = {
+        "time_taken": time_taken,
+        "trial_states": dict(
+            Counter([trial.status for trial in analysis.trials])),
+        "last_update": time.time()
+    }
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
+                                      "/tmp/tune_test.json")
+    with open(test_output_json, "wt") as f:
+        json.dump(result, f)
 
-    print(f"The {name} test took {time_taken:.2f} seconds, which "
-          f"is below the budget of {max_runtime:.2f} seconds. "
-          f"Test successful. \n\n"
-          f"--- PASSED: {name.upper()} ::: "
-          f"{time_taken:.2f} <= {max_runtime:.2f} ---")
+    if time_taken > max_runtime:
+        print(f"The {name} test took {time_taken:.2f} seconds, but should not "
+              f"have exceeded {max_runtime:.2f} seconds. Test failed. \n\n"
+              f"--- FAILED: {name.upper()} ::: "
+              f"{time_taken:.2f} > {max_runtime:.2f} ---")
+    else:
+        print(f"The {name} test took {time_taken:.2f} seconds, which "
+              f"is below the budget of {max_runtime:.2f} seconds. "
+              f"Test successful. \n\n"
+              f"--- PASSED: {name.upper()} ::: "
+              f"{time_taken:.2f} <= {max_runtime:.2f} ---")
 
 
 if __name__ == "__main__":

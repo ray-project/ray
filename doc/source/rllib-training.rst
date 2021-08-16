@@ -1,3 +1,8 @@
+
+.. important:: The ML team at `Anyscale Inc. <https://anyscale.io>`__, the company behind Ray, is looking for interns and full-time **reinforcement learning engineers** to help advance and maintain RLlib.
+ If you have a background in ML/RL and are interested in making RLlib **the** industry-leading open-source RL library, `apply here today <https://jobs.lever.co/anyscale/186d9b8d-3fee-4e07-bb8e-49e85cf33d6b>`__.
+ We'd be thrilled to welcome you on the team!
+
 RLlib Training APIs
 ===================
 
@@ -81,9 +86,30 @@ In an example below, we train A2C by specifying 8 workers through the config fla
 Specifying Resources
 ~~~~~~~~~~~~~~~~~~~~
 
-You can control the degree of parallelism used by setting the ``num_workers`` hyperparameter for most algorithms. The number of GPUs the driver should use can be set via the ``num_gpus`` option. Similarly, the resource allocation to workers can be controlled via ``num_cpus_per_worker``, ``num_gpus_per_worker``, and ``custom_resources_per_worker``. The number of GPUs can be a fractional quantity to allocate only a fraction of a GPU. For example, with DQN you can pack five trainers onto one GPU by setting ``num_gpus: 0.2``.
+You can control the degree of parallelism used by setting the ``num_workers``
+hyperparameter for most algorithms. The Trainer will construct that many
+"remote worker" instances (`see RolloutWorker class <https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`__)
+that are constructed as ray.remote actors, plus exactly one "local worker", a ``RolloutWorker`` object that is not a
+ray actor, but lives directly inside the Trainer.
+For most algorithms, learning updates are performed on the local worker and sample collection from
+one or more environments is performed by the remote workers (in parallel).
+For example, setting ``num_workers=0`` will only create the local worker, in which case both
+sample collection and training will be done by the local worker.
+On the other hand, setting ``num_workers=5`` will create the local worker (responsible for training updates)
+and 5 remote workers (responsible for sample collection).
 
-For synchronous algorithms like PPO and A2C, the driver and workers can make use of the same GPU. To do this for an amount of ``n`` GPUS:
+Since learning is most of the time done on the local worker, it may help to provide one or more GPUs
+to that worker via the ``num_gpus`` setting.
+Similarly, the resource allocation to remote workers can be controlled via ``num_cpus_per_worker``, ``num_gpus_per_worker``, and ``custom_resources_per_worker``.
+
+The number of GPUs can be fractional quantities (e.g. 0.5) to allocate only a fraction
+of a GPU. For example, with DQN you can pack five trainers onto one GPU by setting
+``num_gpus: 0.2``. Check out `this fractional GPU example here <https://github.com/ray-project/ray/blob/master/rllib/examples/fractional_gpus.py>`__
+as well that also demonstrates how environments (running on the remote workers) that
+require a GPU can benefit from the ``num_gpus_per_worker`` setting.
+
+For synchronous algorithms like PPO and A2C, the driver and workers can make use of
+the same GPU. To do this for an amount of ``n`` GPUS:
 
 .. code-block:: python
 
@@ -94,8 +120,15 @@ For synchronous algorithms like PPO and A2C, the driver and workers can make use
 .. Original image: https://docs.google.com/drawings/d/14QINFvx3grVyJyjAnjggOCEVN-Iq6pYVJ3jA2S6j8z0/edit?usp=sharing
 .. image:: rllib-config.svg
 
+If you specify ``num_gpus`` and your machine does not have the required number of GPUs
+available, a RuntimeError will be thrown by the respective worker. On the other hand,
+if you set ``num_gpus=0``, your policies will be built solely on the CPU, even if
+GPUs are available on the machine.
+
 Scaling Guide
 ~~~~~~~~~~~~~
+
+.. _rllib-scaling-guide:
 
 Here are some rules of thumb for scaling training with RLlib.
 
@@ -557,6 +590,15 @@ User-defined state can be stored for the `episode <https://github.com/ray-projec
 
 .. autoclass:: ray.rllib.agents.callbacks.DefaultCallbacks
     :members:
+
+
+Chaining Callbacks
+~~~~~~~~~~~~~~~~~~
+
+Use the ``MultiCallbacks`` class to chaim multiple callbacks together.
+
+.. autoclass:: ray.rllib.agents.callbacks.MultiCallbacks
+
 
 Visualizing Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

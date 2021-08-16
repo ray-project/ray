@@ -5,6 +5,7 @@
 from collections import namedtuple
 import logging
 import numpy as np
+import random
 import time
 
 import ray
@@ -16,6 +17,7 @@ from ray.rllib.agents.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.torch_ops import set_torch_seed
 from ray.rllib.utils import FilterManager
 
 logger = logging.getLogger(__name__)
@@ -84,6 +86,18 @@ class Worker:
                  noise,
                  worker_index,
                  min_task_runtime=0.2):
+
+        # Set Python random, numpy, env, and torch/tf seeds.
+        seed = config.get("seed")
+        if seed is not None:
+            # Python random module.
+            random.seed(seed)
+            # Numpy.
+            np.random.seed(seed)
+            # Torch.
+            if config.get("framework") == "torch":
+                set_torch_seed(seed)
+
         self.min_task_runtime = min_task_runtime
         self.config = config
         self.config["single_threaded"] = True
@@ -91,6 +105,13 @@ class Worker:
 
         env_context = EnvContext(config["env_config"] or {}, worker_index)
         self.env = env_creator(env_context)
+        # Seed the env, if gym.Env.
+        if not hasattr(self.env, "seed"):
+            logger.info("Env doesn't support env.seed(): {}".format(self.env))
+        # Gym.env.
+        else:
+            self.env.seed(seed)
+
         from ray.rllib import models
         self.preprocessor = models.ModelCatalog.get_preprocessor(self.env)
 

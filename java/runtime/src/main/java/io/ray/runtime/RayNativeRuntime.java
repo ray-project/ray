@@ -10,8 +10,8 @@ import io.ray.runtime.context.NativeWorkerContext;
 import io.ray.runtime.exception.RayIntentionalSystemExitException;
 import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.gcs.GcsClientOptions;
-import io.ray.runtime.gcs.RedisClient;
 import io.ray.runtime.generated.Common.WorkerType;
+import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.JobConfig;
 import io.ray.runtime.object.NativeObjectStore;
 import io.ray.runtime.runner.RunManager;
@@ -46,14 +46,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     super(rayConfig);
   }
 
-  private void updateSessionDir() {
-    if (rayConfig.workerMode == WorkerType.DRIVER) {
-      // Fetch session dir from GCS if this is a driver.
-      RedisClient client = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-      final String sessionDir = client.get("session_dir", null);
-      Preconditions.checkNotNull(sessionDir);
-      rayConfig.setSessionDir(sessionDir);
-    }
+  private void updateSessionDir(GcsClient gcsClient) {
+    // Fetch session dir from GCS.
+    final String sessionDir = gcsClient.getInternalKV("session_dir");
+    Preconditions.checkNotNull(sessionDir);
+    rayConfig.setSessionDir(sessionDir);
   }
 
   @Override
@@ -67,19 +64,31 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       }
       Preconditions.checkNotNull(rayConfig.getRedisAddress());
 
-      updateSessionDir();
-
-      // Expose ray ABI symbols which may be depended by other shared
-      // libraries such as libstreaming_java.so.
-      // See BUILD.bazel:libcore_worker_library_java.so
-      Preconditions.checkNotNull(rayConfig.sessionDir);
-      JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
-
+      // In order to remove redis dependency in Java lang, we use a temp dir to load library
+      // instead of getting session dir from redis.
       if (rayConfig.workerMode == WorkerType.DRIVER) {
-        RunManager.getAddressInfoAndFillConfig(rayConfig);
+        String tmpDir = "/tmp/ray/".concat(String.valueOf(System.currentTimeMillis()));
+        JniUtils.loadLibrary(tmpDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
+        gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+        updateSessionDir(gcsClient);
+        Preconditions.checkNotNull(rayConfig.sessionDir);
+      } else {
+        // Expose ray ABI symbols which may be depended by other shared
+        // libraries such as libstreaming_java.so.
+        // See BUILD.bazel:libcore_worker_library_java.so
+        Preconditions.checkNotNull(rayConfig.sessionDir);
+        JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
+        gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
       }
 
       gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+
+      if (rayConfig.workerMode == WorkerType.DRIVER) {
+        GcsNodeInfo nodeInfo = gcsClient.getNodeToConnectForDriver(rayConfig.nodeIp);
+        rayConfig.rayletSocketName = nodeInfo.getRayletSocketName();
+        rayConfig.objectStoreSocketName = nodeInfo.getObjectStoreSocketName();
+        rayConfig.nodeManagerPort = nodeInfo.getNodeManagerPort();
+      }
 
       if (rayConfig.getJobId() == JobId.NIL) {
         rayConfig.setJobId(gcsClient.nextJobId());

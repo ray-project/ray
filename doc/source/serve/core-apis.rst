@@ -114,7 +114,7 @@ Deployments can be updated simply by updating the code or configuration options 
 By default, each call to ``.deploy()`` will cause a redeployment, even if the underlying code and options didn't change.
 This could be detrimental if you have many deployments in a script and and only want to update one: if you re-run the script, all of the deployments will be redeployed, not just the one you updated.
 To prevent this, you may provide a ``version`` string for the deployment as a keyword argument in the decorator or ``Deployment.options()``.
-If provided, the replicas will only be updated if the value of ``version`` is updated; if the value of ``version`` is unchanged, the call to ``.deploy()`` will be a no-op."
+If provided, the replicas will only be updated if the value of ``version`` is updated; if the value of ``version`` is unchanged, the call to ``.deploy()`` will be a no-op.
 When a redeployment happens, Serve will perform a rolling update, bringing down at most 20% of the replicas at any given time.
 
 .. _configuring-a-deployment:
@@ -244,8 +244,8 @@ As with all other actor options, pass these in via ``ray_actor_options`` in
 your deployment.
 You must have a conda environment set up for each set of
 dependencies you want to isolate.  If using a multi-node cluster, the
-desired conda environment must be present on all nodes.  
-See :ref:`conda-environments-for-tasks-and-actors` for details.
+desired conda environment must be present on all nodes.
+See :ref:`runtime-environments` for details.
 
 Here's an example script.  For it to work, first create a conda
 environment named ``ray-tf1`` with Ray Serve and Tensorflow 1 installed,
