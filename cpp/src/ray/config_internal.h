@@ -53,9 +53,9 @@ class ConfigInternal {
 
   std::string node_ip_address = "";
 
-  int num_cpus = 0;
+  int num_cpus = -1;
 
-  int num_gpus = 0;
+  int num_gpus = -1;
 
   std::unordered_map<std::string, int> resources;
 
@@ -64,7 +64,7 @@ class ConfigInternal {
     return config;
   };
 
-  void Init(RayConfig &config, int *argc, char ***argv);
+  void Init(RayConfig &config, int argc, char **argv);
 
   void SetRedisAddress(const std::string address);
 

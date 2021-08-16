@@ -1,12 +1,13 @@
 import asyncio
 import json
+import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
-from ray.serve.backend_state import BackendState
+from ray.serve.backend_state import BackendState, ReplicaState
 from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
@@ -139,11 +140,31 @@ class ServeController:
             entry["version"] = backend_info.version or "Unversioned"
             # TODO(architkulkarni): When we add the feature to allow
             # deployments with no HTTP route, update the below line.
-            # Or refactor the route_prefix logic in the Deployment class now.
+            # Or refactor the route_prefix logic in the Deployment class.
             entry["http_route"] = route_prefix or f"/{deployment_name}"
             entry["status"] = "RUNNING"
-            entry["start_time"] = 0
+            entry["start_time"] = backend_info.start_time_ms
             entry["end_time"] = 0
+
+            entry["actors"] = dict()
+            replica_state_container = self.backend_state._replicas[
+                deployment_name]
+            running_replicas = replica_state_container.get(
+                [ReplicaState.RUNNING])
+            for replica in running_replicas:
+                try:
+                    actor_handle = replica.actor_handle
+                except ValueError:
+                    # Actor died or hasn't yet been created.
+                    continue
+                actor_id = actor_handle._ray_actor_id.hex()
+                replica_tag = replica.replica_tag
+                replica_version = replica.version.code_version
+                entry["actors"][actor_id] = {
+                    "replica_tag": replica_tag,
+                    "version": replica_version
+                }
+
             val[deployment_name] = entry
         self.kv_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
@@ -232,8 +253,12 @@ class ServeController:
             self.endpoint_state.delete_endpoint(endpoint)
 
     async def create_backend(
-            self, backend_tag: BackendTag, backend_config: BackendConfig,
-            replica_config: ReplicaConfig) -> Optional[GoalId]:
+            self,
+            backend_tag: BackendTag,
+            backend_config: BackendConfig,
+            replica_config: ReplicaConfig,
+            deployer_job_id: Optional["Optional[ray._raylet.JobID]"] = None
+    ) -> Optional[GoalId]:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
             backend_info = BackendInfo(
@@ -242,7 +267,9 @@ class ServeController:
                         backend_tag, replica_config.serialized_backend_def)),
                 version=RESERVED_VERSION_TAG,
                 backend_config=backend_config,
-                replica_config=replica_config)
+                replica_config=replica_config,
+                start_time_ms=int(time.time() * 1000),
+                deployer_job_id=deployer_job_id)
             goal_id, _ = self.backend_state.deploy_backend(
                 backend_tag, backend_info)
             return goal_id
@@ -274,7 +301,9 @@ class ServeController:
                 version=existing_info.version,
                 backend_config=existing_info.backend_config.copy(
                     update=config_options.dict(exclude_unset=True)),
-                replica_config=existing_info.replica_config)
+                replica_config=existing_info.replica_config,
+                deployer_job_id=existing_info.deployer_job_id,
+                start_time_ms=existing_info.start_time_ms)
             goal_id, _ = self.backend_state.deploy_backend(
                 backend_tag, backend_info)
             return goal_id
@@ -332,7 +361,8 @@ class ServeController:
                 version=version,
                 backend_config=backend_config,
                 replica_config=replica_config,
-                deployer_job_id=deployer_job_id)
+                deployer_job_id=deployer_job_id,
+                start_time_ms=int(time.time() * 1000))
 
             goal_id, updating = self.backend_state.deploy_backend(
                 name, backend_info)
