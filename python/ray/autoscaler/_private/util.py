@@ -261,7 +261,8 @@ def fill_node_type_min_max_workers(config):
     """Sets default per-node max workers to global max_workers.
     This equivalent to setting the default per-node max workers to infinity,
     with the only upper constraint coming from the global max_workers.
-    Also sets default min_workers for the head node to 0.
+    Sets default per-node max workers to zero.
+    Also sets default max_workers for the head node to zero.
     """
     assert "max_workers" in config, "Global max workers should be set."
     node_types = config["available_node_types"]
