@@ -36,20 +36,23 @@ typedef int SchedulingClass;
 
 struct SchedulingClassDescriptor {
  public:
-  explicit SchedulingClassDescriptor(ResourceSet &rs, FunctionDescriptor &fd)
-      : resource_set(rs), function_descriptor(fd) {}
+  explicit SchedulingClassDescriptor(ResourceSet &rs, FunctionDescriptor &fd, int64_t d)
+      : resource_set(rs), function_descriptor(fd), depth(d) {}
   ResourceSet resource_set;
   FunctionDescriptor function_descriptor;
+  int64_t depth;
 
   bool operator==(const SchedulingClassDescriptor &other) const {
     bool resource_sets_match = resource_set == other.resource_set;
     bool functions_match = function_descriptor == other.function_descriptor;
-    return resource_sets_match && functions_match;
+    bool depth_match = depth == other.depth;
+    return resource_sets_match && functions_match && depth_match;
   }
   struct hash_fn {
     std::size_t operator()(const SchedulingClassDescriptor &sched_cls) const {
       std::size_t hash = std::hash<ResourceSet>()(sched_cls.resource_set);
       hash ^= sched_cls.function_descriptor->Hash();
+      hash ^= sched_cls.depth;
       return hash;
     }
   };
@@ -190,6 +193,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
       bool add_dummy_dependency = true) const;
 
   std::string GetDebuggerBreakpoint() const;
+
+  /// Return the depth of this task. The depth of a graph, is the number of
+  /// `f.remote()` calls from the driver.
+  /// \return The depth.
+  int64_t GetDepth() const;
 
   std::unordered_map<std::string, std::string> OverrideEnvironmentVariables() const;
 

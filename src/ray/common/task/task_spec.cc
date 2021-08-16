@@ -96,7 +96,9 @@ void TaskSpecification::ComputeResources() {
     // the actor tasks need not be scheduled.
     auto resource_set = GetRequiredResources();
     auto function_descriptor = FunctionDescriptor();
-    auto sched_cls_desc = SchedulingClassDescriptor(resource_set, function_descriptor);
+    auto depth = GetDepth();
+    auto sched_cls_desc =
+        SchedulingClassDescriptor(resource_set, function_descriptor, depth);
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }
@@ -239,6 +241,8 @@ const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
 std::string TaskSpecification::GetDebuggerBreakpoint() const {
   return message_->debugger_breakpoint();
 }
+
+int64_t TaskSpecification::GetDepth() const { return message_->depth(); }
 
 std::unordered_map<std::string, std::string>
 TaskSpecification::OverrideEnvironmentVariables() const {

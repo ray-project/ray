@@ -101,7 +101,7 @@ class TaskSpecBuilder {
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       const BundleID &bundle_id, bool placement_group_capture_child_tasks,
-      const std::string &debugger_breakpoint,
+      const std::string &debugger_breakpoint, int64_t depth,
       const std::string &serialized_runtime_env = "{}",
       const std::unordered_map<std::string, std::string> &override_environment_variables =
           {},
