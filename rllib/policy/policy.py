@@ -933,16 +933,18 @@ class Policy(metaclass=ABCMeta):
                     fw.all(state == 0.0) else state
             else:
                 space = state
-            for vr in view_reqs:
-                vr["state_in_{}".format(i)] = ViewRequirement(
-                    "state_out_{}".format(i),
-                    shift=view_reqs['state_in_{}'.format(i)].shift,
-                    used_for_compute_actions=True,
-                    batch_repeat_value=self.config.get("model", {}).get(
-                        "max_seq_len", 1),
-                    space=space)
-                vr["state_out_{}".format(i)] = ViewRequirement(
-                    space=space, used_for_training=True)
+            for vr in view_reqs:            
+                if "state_in_{}".format(i) not in view_reqs:
+                    vr["state_in_{}".format(i)] = ViewRequirement(
+                        "state_out_{}".format(i),
+                        shift=-1,
+                        used_for_compute_actions=True,
+                        batch_repeat_value=self.config.get("model", {}).get(
+                            "max_seq_len", 1),
+                        space=space)
+                if "state_out_{}".format(i) not in view_reqs:
+                    vr["state_out_{}".format(i)] = ViewRequirement(
+                        space=space, used_for_training=True)
 
     @Deprecated(new="save", error=False)
     def export_checkpoint(self, export_dir: str) -> None:
