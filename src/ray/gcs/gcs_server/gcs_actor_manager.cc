@@ -95,7 +95,8 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
-std::shared_ptr<GcsActorWorkerAssignment> GcsActor::GetActorWorkerAssignment() const {
+std::shared_ptr<const GcsActorWorkerAssignment> GcsActor::GetActorWorkerAssignment()
+    const {
   return assignment_ptr_;
 }
 

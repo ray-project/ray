@@ -126,7 +126,7 @@ class GcsActor {
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
 
-  std::shared_ptr<GcsActorWorkerAssignment> GetActorWorkerAssignment() const;
+  std::shared_ptr<const GcsActorWorkerAssignment> GetActorWorkerAssignment() const;
 
   void SetActorWorkerAssignment(std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr);
 
