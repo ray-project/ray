@@ -477,7 +477,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                               task: ray_client_pb2.ClientTask,
                               context=None) -> ray_client_pb2.ClientTaskTicket:
         assert len(task.payload_id) == 0
-        actor = ray.get_actor(task.name)
+        actor = ray.get_actor(task.name, task.namespace or None)
         bin_actor_id = actor._actor_id.binary()
         self.actor_refs[bin_actor_id] = actor
         self.actor_owners[task.client_id].add(bin_actor_id)

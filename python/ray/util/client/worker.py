@@ -401,10 +401,12 @@ class Worker:
         self.server = None
         self.closed = True
 
-    def get_actor(self, name: str) -> ClientActorHandle:
+    def get_actor(self, name: str,
+                  namespace: Optional[str] = None) -> ClientActorHandle:
         task = ray_client_pb2.ClientTask()
         task.type = ray_client_pb2.ClientTask.NAMED_ACTOR
         task.name = name
+        task.namespace = namespace
         ids = self._call_schedule_for_task(task)
         assert len(ids) == 1
         return ClientActorHandle(ClientActorRef(ids[0]))
