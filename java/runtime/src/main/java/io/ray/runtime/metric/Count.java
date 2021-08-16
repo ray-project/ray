@@ -10,6 +10,7 @@ public class Count extends Metric {
 
   private DoubleAdder count;
 
+  @Deprecated
   public Count(String name, String description, String unit, Map<TagKey, String> tags) {
     super(name, tags);
     count = new DoubleAdder();

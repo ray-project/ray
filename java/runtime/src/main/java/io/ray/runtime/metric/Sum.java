@@ -13,6 +13,7 @@ public class Sum extends Metric {
 
   private DoubleAdder sum;
 
+  @Deprecated
   public Sum(String name, String description, String unit, Map<TagKey, String> tags) {
     super(name, tags);
     metricNativePointer =

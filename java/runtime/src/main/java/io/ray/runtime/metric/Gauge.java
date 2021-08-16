@@ -7,6 +7,7 @@ import java.util.stream.Collectors;
 /** Gauge measurement is mapped to gauge object in stats and is recording the last value. */
 public class Gauge extends Metric {
 
+  @Deprecated
   public Gauge(String name, String description, String unit, Map<TagKey, String> tags) {
     super(name, tags);
     metricNativePointer =

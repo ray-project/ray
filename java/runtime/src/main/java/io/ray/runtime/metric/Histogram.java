@@ -17,6 +17,7 @@ public class Histogram extends Metric {
   private List<Double> histogramWindow;
   public static final int HISTOGRAM_WINDOW_SIZE = 100;
 
+  @Deprecated
   public Histogram(
       String name,
       String description,
