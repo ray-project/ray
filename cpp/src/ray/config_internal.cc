@@ -48,7 +48,7 @@ ABSL_FLAG(std::string, ray_logs_dir, "", "Logs dir for workers.");
 
 ABSL_FLAG(std::string, ray_node_ip_address, "", "The ip address for this node.");
 
-DEFINE_string(serialized_runtime_env, "{}", "The serialized parsed runtime env dict.");
+ABSL_FLAG(std::string, serialized_runtime_env, "{}", "The serialized parsed runtime env dict.");
 
 namespace ray {
 namespace internal {
