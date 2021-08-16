@@ -73,7 +73,7 @@ void GcsServer::Start() {
                        return;
                      }
                      auto selected_node_id = all_alive_nodes.begin()->first;
-                     FindAgentAddress(redis_client_, selected_node_id, callback);
+                     GetAgentAddress(redis_client_, selected_node_id, callback);
                    });
 
   // Init redis failure detector.

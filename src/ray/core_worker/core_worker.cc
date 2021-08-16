@@ -219,7 +219,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
                            std::string());
                   return;
                 }
-                FindAgentAddress(gcs_client_, current_node_id_, callback);
+                GetAgentAddress(gcs_client_, current_node_id_, callback);
               });
 
   io_thread_ = std::thread([&] {

@@ -15,7 +15,6 @@
 #pragma once
 
 #include <boost/optional/optional.hpp>
-#include <exception>
 #include <string>
 
 #include "ray/common/constants.h"
@@ -29,10 +28,10 @@ namespace ray {
 typedef std::function<void(Status status, const boost::optional<std::string> &result)>
     GetAgentAddressCallback;
 typedef std::function<void(Status status, const boost::optional<int> &result)>
-    UpdateAgentAddressCallback;
+    PutAgentAddressCallback;
 
-static inline void FindAgentAddress(std::shared_ptr<gcs::RedisClient> redis_client,
-                                    NodeID node_id, GetAgentAddressCallback callback) {
+static inline void GetAgentAddress(std::shared_ptr<gcs::RedisClient> redis_client,
+                                   NodeID node_id, GetAgentAddressCallback callback) {
   auto key = std::string(kDashboardAgentAddressPrefix) + ":" + node_id.Hex();
   ray::Status status = redis_client->GetPrimaryContext()->RunArgvAsync(
       {"HGET", key, "value"}, [key, callback](auto redis_reply) {
@@ -48,8 +47,8 @@ static inline void FindAgentAddress(std::shared_ptr<gcs::RedisClient> redis_clie
   }
 }
 
-static inline void FindAgentAddress(std::shared_ptr<gcs::GcsClient> gcs_client,
-                                    NodeID node_id, GetAgentAddressCallback callback) {
+static inline void GetAgentAddress(std::shared_ptr<gcs::GcsClient> gcs_client,
+                                   NodeID node_id, GetAgentAddressCallback callback) {
   auto key = std::string(kDashboardAgentAddressPrefix) + ":" + node_id.Hex();
   ray::Status status = gcs_client->InternalKV().AsyncInternalKVGet(key, callback);
   if (!status.ok()) {
@@ -58,9 +57,9 @@ static inline void FindAgentAddress(std::shared_ptr<gcs::GcsClient> gcs_client,
   }
 }
 
-static inline void UpdateAgentAddress(std::shared_ptr<gcs::GcsClient> gcs_client,
-                                      NodeID node_id, const std::string &value,
-                                      UpdateAgentAddressCallback callback) {
+static inline void PutAgentAddress(std::shared_ptr<gcs::GcsClient> gcs_client,
+                                   NodeID node_id, const std::string &value,
+                                   PutAgentAddressCallback callback) {
   auto key = std::string(kDashboardAgentAddressPrefix) + ":" + node_id.Hex();
   ray::Status status = gcs_client->InternalKV().AsyncInternalKVPut(
       key, value, /*overwrite=*/true, callback);

@@ -212,8 +212,6 @@ async def test_metrics_export_end_to_end(_setup_cluster_for_test):
             test_cases()
             return True
         except AssertionError:
-            import traceback
-            traceback.print_exc()
             return False
 
     try:

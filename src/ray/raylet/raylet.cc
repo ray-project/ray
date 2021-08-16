@@ -88,7 +88,7 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(global_tags, node_ip_address, metrics_agent_port,
                    [this, gcs_client](const ray::GetAgentAddressCallback &callback) {
-                     FindAgentAddress(gcs_client, self_node_id_, callback);
+                     GetAgentAddress(gcs_client, self_node_id_, callback);
                    });
 }
 

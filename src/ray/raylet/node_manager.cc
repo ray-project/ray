@@ -369,9 +369,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
         return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
       },
-      /*update_agent_address=*/
-      [this](const std::string &value, const UpdateAgentAddressCallback &callback) {
-        UpdateAgentAddress(gcs_client_, self_node_id_, value, callback);
+      /*put_agent_address=*/
+      [this](const std::string &value, const PutAgentAddressCallback &callback) {
+        PutAgentAddress(gcs_client_, self_node_id_, value, callback);
       });
   worker_pool_.SetAgentManager(agent_manager_);
 }

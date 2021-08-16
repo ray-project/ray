@@ -32,7 +32,7 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
       runtime_env_agent_client_factory_(agent_ip_address_, agent_port_);
   RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address_
                 << ", port: " << agent_port_ << ", pid: " << agent_pid_;
-  update_agent_address_(
+  put_agent_address_(
       std::to_string(agent_port_),
       [this, request](ray::Status status, const boost::optional<int> &result) {
         RAY_UNUSED(result);
