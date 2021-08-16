@@ -91,8 +91,9 @@ class ActorReplicaWrapper:
                     self._placement_group_name)
             except ValueError:
                 logger.debug(
-                    "Creating placement group '{}' for backend '{}'".format(
-                        self._placement_group_name, self._backend_tag))
+                    "Creating placement group '{}' for deployment '{}'".format(
+                        self._placement_group_name, self._backend_tag) +
+                    f" component=serve deployment={self._backend_tag}")
                 self._placement_group = ray.util.placement_group(
                     [self._actor_resources],
                     lifetime="detached" if self._detached else None,
@@ -101,8 +102,10 @@ class ActorReplicaWrapper:
         try:
             self._actor_handle = ray.get_actor(self._actor_name)
         except ValueError:
-            logger.debug("Starting replica '{}' for backend '{}'.".format(
-                self._replica_tag, self._backend_tag))
+            logger.debug("Starting replica '{}' for deployment '{}'.".format(
+                self._replica_tag, self._backend_tag) +
+                         f" component=serve deployment={self._backend_tag} "
+                         f"replica={self._replica_tag}")
             self._actor_handle = backend_info.actor_def.options(
                 name=self._actor_name,
                 lifetime="detached" if self._detached else None,
@@ -363,7 +366,9 @@ class BackendReplica(VersionedReplica):
             # This will be called repeatedly until the replica shuts down.
             logger.debug(
                 f"Replica {self._replica_tag} did not shutdown after "
-                f"{self._graceful_shutdown_timeout_s}s, force-killing.")
+                f"{self._graceful_shutdown_timeout_s}s, force-killing. "
+                f"component=serve deployment={self._backend_tag} "
+                f"replica={self._replica_tag}")
 
             self._actor.force_stop()
         return False
@@ -679,6 +684,9 @@ class BackendState:
         # Ensures this method is idempotent.
         existing_info = self._backend_metadata.get(backend_tag)
         if existing_info is not None:
+            # Redeploying should not reset the deployment's start time.
+            backend_info.start_time_ms = existing_info.start_time_ms
+
             # Old codepath. We use RESERVED_VERSION_TAG to distinguish that
             # we shouldn't use versions at all to determine redeployment
             # because `None` is used to indicate always redeploying.
@@ -811,12 +819,15 @@ class BackendState:
                 assert False, "Update must be code version or user config."
 
         if code_version_changes > 0:
-            logger.info(f"Stopping {code_version_changes} replicas of backend "
-                        f"'{backend_tag}' with outdated versions.")
+            logger.info(f"Stopping {code_version_changes} replicas of "
+                        f"deployment '{backend_tag}' with outdated versions. "
+                        f"component=serve deployment={backend_tag}")
 
         if user_config_changes > 0:
-            logger.info(f"Updating {user_config_changes} replicas of backend "
-                        f"'{backend_tag}' with outdated user_configs.")
+            logger.info(f"Updating {user_config_changes} replicas of "
+                        f"deployment '{backend_tag}' with outdated "
+                        f"user_configs. component=serve "
+                        f"deployment={backend_tag}")
 
         return len(replicas_to_update)
 
@@ -866,8 +877,9 @@ class BackendState:
             ])
             to_add = max(delta_replicas - stopping_replicas, 0)
             if to_add > 0:
-                logger.info(f"Adding {to_add} replicas "
-                            f"to backend '{backend_tag}'.")
+                logger.info(f"Adding {to_add} replicas to deployment "
+                            f"'{backend_tag}'. component=serve "
+                            f"deployment={backend_tag}")
             for _ in range(to_add):
                 replica_tag = "{}#{}".format(backend_tag, get_random_letters())
                 self._replicas[backend_tag].add(
@@ -877,8 +889,9 @@ class BackendState:
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
-            logger.info(f"Removing {to_remove} replicas "
-                        f"from backend '{backend_tag}'.")
+            logger.info(f"Removing {to_remove} replicas from deployment "
+                        f"'{backend_tag}'. component=serve "
+                        f"deployment={backend_tag}")
             replicas_to_stop = self._replicas[backend_tag].pop(
                 states=[
                     ReplicaState.SHOULD_START,
@@ -958,8 +971,10 @@ class BackendState:
                     replicas.add(ReplicaState.RUNNING, replica)
                 else:
                     logger.warning(
-                        f"Replica {replica.replica_tag} of backend "
-                        f"{backend_tag} failed health check, stopping it.")
+                        f"Replica {replica.replica_tag} of deployment "
+                        f"{backend_tag} failed health check, stopping it. "
+                        f"component=serve deployment={backend_tag} "
+                        f"replica={replica.replica_tag}")
                     replica.set_should_stop(0)
                     replicas.add(ReplicaState.SHOULD_STOP, replica)
 
@@ -994,13 +1009,13 @@ class BackendState:
                 required, available = slow_start_replicas[
                     0].resource_requirements()
                 logger.warning(
-                    f"Backend '{backend_tag}' has {len(slow_start_replicas)} "
-                    "replicas that have taken more than "
-                    f"{SLOW_STARTUP_WARNING_S}s to start up. This may be "
-                    "caused by waiting for the cluster to auto-scale or "
-                    "because the constructor is slow. Resources required "
+                    f"Deployment '{backend_tag}' has "
+                    f"{len(slow_start_replicas)} replicas that have taken "
+                    f"more than {SLOW_STARTUP_WARNING_S}s to start up. This "
+                    "may be caused by waiting for the cluster to auto-scale "
+                    "or because the constructor is slow. Resources required "
                     f"for each replica: {required}, resources available: "
-                    f"{available}.")
+                    f"{available}. component=serve deployment={backend_tag}")
 
                 self._prev_startup_warnings[backend_tag] = time.time()
 

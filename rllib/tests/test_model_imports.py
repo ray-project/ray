@@ -96,30 +96,36 @@ class MyTorchModel(TorchModelV2, nn.Module):
     def import_from_h5(self, import_file):
         # Override this to define custom weight loading behavior from h5 files.
         f = h5py.File(import_file)
-        self.layer_1.load_state_dict({
-            "weight": torch.Tensor(
-                np.transpose(f["layer1"][DEFAULT_POLICY_ID]["layer1"][
-                    "kernel:0"].value)),
-            "bias": torch.Tensor(
-                np.transpose(
-                    f["layer1"][DEFAULT_POLICY_ID]["layer1"]["bias:0"].value)),
-        })
-        self.layer_out.load_state_dict({
-            "weight": torch.Tensor(
-                np.transpose(
-                    f["out"][DEFAULT_POLICY_ID]["out"]["kernel:0"].value)),
-            "bias": torch.Tensor(
-                np.transpose(
-                    f["out"][DEFAULT_POLICY_ID]["out"]["bias:0"].value)),
-        })
-        self.value_branch.load_state_dict({
-            "weight": torch.Tensor(
-                np.transpose(
-                    f["value"][DEFAULT_POLICY_ID]["value"]["kernel:0"].value)),
-            "bias": torch.Tensor(
-                np.transpose(
-                    f["value"][DEFAULT_POLICY_ID]["value"]["bias:0"].value)),
-        })
+        layer1 = f["layer1"][DEFAULT_POLICY_ID]["layer1"]
+        out = f["out"][DEFAULT_POLICY_ID]["out"]
+        value = f["value"][DEFAULT_POLICY_ID]["value"]
+
+        try:
+            self.layer_1.load_state_dict({
+                "weight": torch.Tensor(np.transpose(layer1["kernel:0"])),
+                "bias": torch.Tensor(np.transpose(layer1["bias:0"])),
+            })
+            self.layer_out.load_state_dict({
+                "weight": torch.Tensor(np.transpose(out["kernel:0"])),
+                "bias": torch.Tensor(np.transpose(out["bias:0"])),
+            })
+            self.value_branch.load_state_dict({
+                "weight": torch.Tensor(np.transpose(value["kernel:0"])),
+                "bias": torch.Tensor(np.transpose(value["bias:0"])),
+            })
+        except AttributeError:
+            self.layer_1.load_state_dict({
+                "weight": torch.Tensor(np.transpose(layer1["kernel:0"].value)),
+                "bias": torch.Tensor(np.transpose(layer1["bias:0"].value)),
+            })
+            self.layer_out.load_state_dict({
+                "weight": torch.Tensor(np.transpose(out["kernel:0"].value)),
+                "bias": torch.Tensor(np.transpose(out["bias:0"].value)),
+            })
+            self.value_branch.load_state_dict({
+                "weight": torch.Tensor(np.transpose(value["kernel:0"].value)),
+                "bias": torch.Tensor(np.transpose(value["bias:0"].value)),
+            })
 
 
 def model_import_test(algo, config, env):
