@@ -1,5 +1,3 @@
-import sys
-
 from ray import workflow
 
 
@@ -11,4 +9,4 @@ def hello(msg: str) -> None:
 
 if __name__ == "__main__":
     workflow.init()
-    hello.step(sys.argv[1]).run()
+    hello.step("hello world").run()
