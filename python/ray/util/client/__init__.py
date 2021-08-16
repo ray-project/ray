@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 from ray.job_config import JobConfig
 import os
 import sys
@@ -36,7 +36,9 @@ class RayAPIStub:
                 connection_retries: int = 3,
                 namespace: str = None,
                 *,
-                ignore_version: bool = False) -> Dict[str, Any]:
+                ignore_version: bool = False,
+                ray_init_kwargs: Optional[Dict[str, Any]] = None
+                ) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
 
         Args:
@@ -80,7 +82,7 @@ class RayAPIStub:
                 metadata=metadata,
                 connection_retries=connection_retries)
             self.api.worker = self.client_worker
-            self.client_worker._server_init(job_config)
+            self.client_worker._server_init(job_config, ray_init_kwargs)
             conn_info = self.client_worker.connection_info()
             self._check_versions(conn_info, ignore_version)
             self._register_serializers()
