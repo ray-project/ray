@@ -178,7 +178,7 @@ def setup_worker(input_args):
             len(remaining_args) - 1, "-D{}={}".format(
                 "serialized-runtime-env", f"'{args.serialized_runtime_env}'"))
         worker_command += remaining_args
-    else:
+    elif worker_executable == "python":
         worker_command += remaining_args
         # Pass the runtime for working_dir setup.
         # We can't do it in shim process here because it requires
