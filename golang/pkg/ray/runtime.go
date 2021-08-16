@@ -26,7 +26,7 @@ const sessionDir = "session_dir"
 
 var typesMap = make(map[string]reflect.Type)
 
-func init(){
+func init() {
     typesMap["int"] = reflect.TypeOf(0)
     typesMap["string"] = reflect.TypeOf("")
 }
@@ -184,7 +184,11 @@ type ID unsafe.Pointer
 // 发出调用
 func (atc *ActorTaskCaller) Remote() *ObjectRef {
     returnNum := atc.invokeMethod.NumOut()
-    returObjectIds := make([]unsafe.Pointer, returnNum, returnNum)
+    returObjectIdSize := returnNum
+    if returnNum == 0 {
+        returObjectIdSize += 1
+    }
+    returObjectIds := make([]unsafe.Pointer, returnNum, returObjectIdSize)
     success := C.go_worker_SubmitActorTask(unsafe.Pointer(atc.actorHandle.actorId), C.CString(atc.invokeMethodName), C.int(returnNum), &returObjectIds[0])
     if success != 0 {
         panic("failed to submit task")
@@ -215,6 +219,9 @@ type ObjectId []byte
 func (or *ObjectRef) Get() []interface{} {
     //returnObjectIdsSize := len(or.returnObjectIds)
     util.Logger.Debugf("get :%v", or.returnObjectIds)
+    if or.returnObjectNum == 0 {
+        return nil
+    }
     returnValues := make([]unsafe.Pointer, or.returnObjectNum, or.returnObjectNum)
     success := C.go_worker_Get((*unsafe.Pointer)(or.returnObjectIds), C.int(or.returnObjectNum), C.int(-1), &returnValues[0])
     if success != 0 {
