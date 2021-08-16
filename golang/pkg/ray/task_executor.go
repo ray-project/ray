@@ -55,12 +55,12 @@ func create_data_buffer(callResult interface{}) *C.struct_DataBuffer {
     if err != nil {
         panic(fmt.Errorf("failed to marshall msgpack:%v %v", callResult, err))
     }
-    dataSize := len(b)
+    dataSize := C.ulong(len(b))
 
     p := C.malloc(dataSize)
     C.memcpy(p, unsafe.Pointer(&b[0]), dataSize)
     return &C.struct_DataBuffer{
-        size: dataSize,
+        size: C.int(len(b)),
         p:    p,
     }
 }
@@ -68,11 +68,11 @@ func create_data_buffer(callResult interface{}) *C.struct_DataBuffer {
 func create_meta_buffer(callResult interface{}) *C.struct_DataBuffer {
     typeString := getInterfaceType(callResult)
     typeStringBytes := []byte(typeString)
-    dataSize := len(typeStringBytes)
+    dataSize := C.ulong(len(typeStringBytes))
     p := C.malloc(dataSize)
     C.memcpy(p, unsafe.Pointer(&typeStringBytes[0]), dataSize)
     return &C.struct_DataBuffer{
-        size: dataSize,
+        size: C.int(len(typeStringBytes)),
         p:    p,
     }
 }
