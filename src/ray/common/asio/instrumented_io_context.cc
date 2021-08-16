@@ -64,7 +64,7 @@ void instrumented_io_context::internal_post(std::function<void()> handler, bool 
   auto f = [handler = std::move(handler), this]() {
     std::function<void()> *f = nullptr;
     while (hi_pri_queue_.pop(f)) {
-      RAY_LOG(INFO) << "DBG: HiPri executed";
+      RAY_LOG(INFO) << "DBG: HiPri executed ";
       (*f)();
       delete f;
       f = nullptr;
