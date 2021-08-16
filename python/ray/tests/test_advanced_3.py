@@ -20,7 +20,7 @@ import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 import ray.test_utils
-from ray import resource_spec
+import ray._private.resource_spec as resource_spec
 import setproctitle
 
 from ray.test_utils import (check_call_ray, wait_for_condition,

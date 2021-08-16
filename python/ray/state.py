@@ -10,6 +10,7 @@ from ray.util.annotations import DeveloperAPI
 from google.protobuf.json_format import MessageToDict
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.utils import (decode, binary_to_hex, hex_to_binary)
+from ray._private.resource_spec import NODE_ID_PREFIX
 
 from ray._raylet import GlobalStateAccessor
 
@@ -839,7 +840,7 @@ def current_node_id():
     Returns:
         Id of the current node.
     """
-    return (ray.resource_spec.NODE_ID_PREFIX + ray.util.get_node_ip_address())
+    return NODE_ID_PREFIX + ray.util.get_node_ip_address()
 
 
 def node_ids():
@@ -855,7 +856,7 @@ def node_ids():
     node_ids = []
     for node in nodes():
         for k, v in node["Resources"].items():
-            if k.startswith(ray.resource_spec.NODE_ID_PREFIX):
+            if k.startswith(NODE_ID_PREFIX):
                 node_ids.append(k)
     return node_ids
 
