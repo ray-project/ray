@@ -19,6 +19,10 @@ func (c *Count) Init() {
 
 }
 
+func (c *Count) Increase1() {
+    c.Increase(1)
+}
+
 func (c *Count) Increase(i int) {
     c.value += i
 }
@@ -32,5 +36,3 @@ func (c *Count) Hello() string {
     util.Logger.Debugf("invoke actor hello method")
     return "hello"
 }
-
-

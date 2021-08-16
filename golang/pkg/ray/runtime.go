@@ -145,7 +145,7 @@ type Convert func(a, i Param)
 
 // 缺少泛型的支持，所以只能传入参数名
 // 参数填这里
-func (ah *ActorHandle) Task(f interface{}) *ActorTaskCaller {
+func (ah *ActorHandle) Task(f interface{}, args ...interface{}) *ActorTaskCaller {
     methodType := reflect.TypeOf(f)
     methodName := GetFunctionName(f)
     lastIndex := strings.LastIndex(methodName, ".")
