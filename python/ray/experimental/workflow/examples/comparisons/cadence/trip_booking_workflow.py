@@ -80,6 +80,8 @@ if __name__ == "__main__":
     hotel_req_id = generate_request_id.step()
     flight_req_id = generate_request_id.step()
 
+    # TODO(ekl) we could create a Saga helper function that automates this
+    # pattern of compensation workflows.
     saga_result = book_all.options(catch_exceptions=True) \
         .step(car_req_id, hotel_req_id, flight_req_id)
 
