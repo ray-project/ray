@@ -4,8 +4,8 @@
     compute_template: compute_tpl.yaml
 
   run:
-    timeout: 900
-    script: python workloads/dask_xgboost_test.py
+    timeout: 1800
+    script: python workloads/dask_xgboost_test.py --smoke-test
 
 - name: modin_xgboost_test
   cluster:
@@ -14,8 +14,8 @@
 
   run:
     use_connect: True
-    timeout: 1800
-    script: python workloads/modin_xgboost_test.py
+    timeout: 3600
+    script: python workloads/modin_xgboost_test.py --smoke-test
 
 - name: torch_tune_serve_test
   owner:
@@ -28,6 +28,6 @@
 
   run:
     use_connect: True
-    timeout: 2700
-    script: python workloads/torch_tune_serve_test.py
+    timeout: 4200
+    script: python workloads/torch_tune_serve_test.py --smoke-test
 
