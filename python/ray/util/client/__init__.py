@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2021-05-20"
+CURRENT_PROTOCOL_VERSION = "2021-08-16"
 
 
 class RayAPIStub:
