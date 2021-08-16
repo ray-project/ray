@@ -329,7 +329,7 @@ class _AgentCollector:
             ] else 0)
 
             # Store all data as flattened lists, except INFOS and state-out
-            # lists. Reason: These are monolithic items (infos is a dict that
+            # lists. These are monolithic items (infos is a dict that
             # should not be further split, same for state-out items, which could
             # be custom dicts as well).
             if col == SampleBatch.INFOS or col.startswith("state_out_"):
