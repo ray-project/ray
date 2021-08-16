@@ -4,6 +4,7 @@ import ray
 from ray import workflow
 
 
+# Note: we take a List of object refs to avoid using too much memory.
 @workflow.step
 def upload_all(file_contents: List[ray.ObjectRef]) -> None:
     @workflow.step
@@ -20,6 +21,7 @@ def upload_all(file_contents: List[ray.ObjectRef]) -> None:
     return wait_all.step(*children)
 
 
+# Note: we take a List of object refs to avoid using too much memory.
 @workflow.step
 def process_all(file_contents: List[ray.ObjectRef]) -> None:
     @workflow.step
