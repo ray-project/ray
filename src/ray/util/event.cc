@@ -120,10 +120,9 @@ void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields
 /// EventManager
 ///
 EventManager::EventManager() {
-  RayLog::AddExposeLogCallbacks(
-      {[](const std::string &label, const std::string &content) {
-        RayEvent::ReportEvent("FATAL", label, content);
-      }});
+  RayLog::AddFatalLogCallbacks({[](const std::string &label, const std::string &content) {
+    RayEvent::ReportEvent("FATAL", label, content);
+  }});
 }
 
 EventManager &EventManager::Instance() {

@@ -166,7 +166,7 @@ static int GetMappedSeverity(RayLogLevel severity) {
   }
 }
 
-std::vector<ExposeLogCallback> RayLog::expose_log_callbacks_;
+std::vector<FatalLogCallback> RayLog::fatal_log_callbacks_;
 
 void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_threshold,
                          const std::string &log_dir) {
@@ -341,18 +341,18 @@ std::string RayLog::GetLogFormatPattern() { return log_format_pattern_; }
 
 std::string RayLog::GetLoggerName() { return logger_name_; }
 
-void RayLog::AddExposeLogCallbacks(
-    const std::vector<ExposeLogCallback> &expose_log_callbacks) {
-  expose_log_callbacks_.insert(expose_log_callbacks_.end(), expose_log_callbacks.begin(),
-                               expose_log_callbacks.end());
+void RayLog::AddFatalLogCallbacks(
+    const std::vector<FatalLogCallback> &expose_log_callbacks) {
+  fatal_log_callbacks_.insert(fatal_log_callbacks_.end(), expose_log_callbacks.begin(),
+                              expose_log_callbacks.end());
 }
 
 RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
     : logging_provider_(nullptr),
       is_enabled_(severity >= severity_threshold_),
       severity_(severity),
-      is_exposed_(severity == RayLogLevel::FATAL) {
-  if (is_exposed_) {
+      is_fatal_(severity == RayLogLevel::FATAL) {
+  if (is_fatal_) {
     expose_osstream_ = std::make_shared<std::ostringstream>();
     *expose_osstream_ << file_name << ":" << line_number << ":";
   }
@@ -371,7 +371,7 @@ std::ostream &RayLog::Stream() {
 
 bool RayLog::IsEnabled() const { return is_enabled_; }
 
-bool RayLog::IsExposed() const { return is_exposed_; }
+bool RayLog::IsFatal() const { return is_fatal_; }
 
 std::ostream &RayLog::ExposeStream() { return *expose_osstream_; }
 
@@ -381,7 +381,7 @@ RayLog::~RayLog() {
     logging_provider_ = nullptr;
   }
   if (expose_osstream_ != nullptr) {
-    for (const auto &callback : expose_log_callbacks_) {
+    for (const auto &callback : fatal_log_callbacks_) {
       callback(EL_RAY_FATAL_CHECK_FAILED, expose_osstream_->str());
     }
   }

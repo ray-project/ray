@@ -19,6 +19,7 @@
 #include <fstream>
 #include <set>
 #include <thread>
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/util/event_label.h"
 
@@ -155,14 +156,6 @@ std::string GenerateLogDir() {
   FillRandom(&log_dir_generate);
   std::string log_dir = "event" + StringToHex(log_dir_generate);
   return log_dir;
-}
-
-bool StringContains(std::string seq, std::string pattern) {
-  if (seq.find(pattern) != seq.npos) {
-    return true;
-  } else {
-    return false;
-  }
 }
 
 TEST(EVENT_TEST, TEST_BASIC) {
@@ -380,9 +373,10 @@ TEST(EVENT_TEST, TEST_RAY_CHECK_ABORT) {
 
   CheckEventDetail(ele_1, "job 1", "node 1", "task 1", "RAYLET", "FATAL",
                    EL_RAY_FATAL_CHECK_FAILED, "NULL");
-  EXPECT_TRUE(StringContains(ele_1.message(), "Check failed: 1 < 0 incorrect test case"));
-  EXPECT_TRUE(StringContains(ele_1.message(), "*** StackTrace Information ***"));
-  EXPECT_TRUE(StringContains(ele_1.message(), "ray::RayLog::~RayLog()"));
+  EXPECT_THAT(ele_1.message(),
+              testing::HasSubstr("Check failed: 1 < 0 incorrect test case"));
+  EXPECT_THAT(ele_1.message(), testing::HasSubstr("*** StackTrace Information ***"));
+  EXPECT_THAT(ele_1.message(), testing::HasSubstr("ray::RayLog::~RayLog()"));
 
   boost::filesystem::remove_all(log_dir.c_str());
 }
