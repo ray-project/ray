@@ -47,7 +47,7 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
       });
   reply->set_status(rpc::AGENT_RPC_STATUS_OK);
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
-}  // namespace raylet
+}
 
 void AgentManager::StartAgent() {
   if (options_.agent_commands.empty()) {
