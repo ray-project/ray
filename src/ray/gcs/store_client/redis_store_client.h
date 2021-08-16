@@ -30,7 +30,7 @@ class RedisStoreClient : public StoreClient {
       : redis_client_(std::move(redis_client)) {}
 
   Status AsyncPut(const std::string &table_name, const std::string &key,
-                  const std::string &data, const StatusCallback &callback) override;
+                  const std::string &data, const StatusCallback &callback, bool hi_pri) override;
 
   Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
                            const std::string &index_key, const std::string &data,
@@ -109,7 +109,7 @@ class RedisStoreClient : public StoreClient {
   };
 
   Status DoPut(const std::string &key, const std::string &data,
-               const StatusCallback &callback);
+               const StatusCallback &callback, bool hi_pri = false);
 
   Status DeleteByKeys(const std::vector<std::string> &keys,
                       const StatusCallback &callback);

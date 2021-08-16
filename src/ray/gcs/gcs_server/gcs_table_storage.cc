@@ -23,9 +23,9 @@ namespace gcs {
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Put(const Key &key, const Data &value,
-                                const StatusCallback &callback) {
+                                const StatusCallback &callback, bool hi_pri) {
   return store_client_->AsyncPut(table_name_, key.Binary(), value.SerializeAsString(),
-                                 callback);
+                                 callback, hi_pri);
 }
 
 template <typename Key, typename Data>

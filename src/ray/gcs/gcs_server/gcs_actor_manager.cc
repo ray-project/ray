@@ -122,6 +122,7 @@ void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &reque
                                           rpc::RegisterActorReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(request.task_spec().type() == TaskType::ACTOR_CREATION_TASK);
+  auto st = absl::GetCurrentTimeNanos();
   auto actor_id =
       ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
 
@@ -139,6 +140,8 @@ void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &reque
                    << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   }
+  auto et = absl::GetCurrentTimeNanos();
+  RAY_LOG(INFO) << "RegisterActor:All " << (et - st);
   ++counts_[CountType::REGISTER_ACTOR_REQUEST];
 }
 
@@ -294,6 +297,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   // NOTE: After the abnormal recovery of the network between GCS client and GCS server or
   // the GCS server is restarted, it is required to continue to register actor
   // successfully.
+  auto st = absl::GetCurrentTimeNanos();
   RAY_CHECK(success_callback);
   const auto &actor_creation_task_spec = request.task_spec().actor_creation_task_spec();
   auto actor_id = ActorID::FromBinary(actor_creation_task_spec.actor_id());
@@ -376,10 +380,14 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
     }
   }
 
+  auto et = absl::GetCurrentTimeNanos();
+  RAY_LOG(INFO) << "RegisterActor:BeforeWriting: " << (et - st);
   // The backend storage is supposed to be reliable, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(), *actor->GetMutableActorTableData(),
-      [this, actor](const Status &status) {
+      [this, actor, st = et](const Status &status) {
+        auto et = absl::GetCurrentTimeNanos();
+        RAY_LOG(INFO) << "RegisterActor:Put: " << (et - st);
         // The backend storage is supposed to be reliable, so the status must be ok.
         RAY_CHECK_OK(status);
         // If a creator dies before this callback is called, the actor could have been
@@ -407,7 +415,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
         for (auto &callback : callbacks) {
           callback(actor);
         }
-      }));
+      }, true));
   return Status::OK();
 }
 

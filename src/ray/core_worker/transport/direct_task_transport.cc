@@ -31,12 +31,15 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     // passed to other workers. In this case, the actor tasks will hang forever.
     // So we fixed this issue by synchronously registering the actor. If the owner dies
     // before dependencies are resolved, GCS will notice this and mark the actor as dead.
+    auto ct = absl::GetCurrentTimeNanos();
     auto status = actor_creator_->RegisterActor(task_spec);
+    auto et = absl::GetCurrentTimeNanos();
+    RAY_LOG(INFO) << "CreateActor:Register " << (et - ct);
     if (!status.ok()) {
       return status;
     }
   }
-
+  auto ct = absl::GetCurrentTimeNanos();
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
     if (task_spec.IsActorCreationTask()) {
@@ -114,6 +117,8 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
           task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
     }
   });
+  auto et = absl::GetCurrentTimeNanos();
+  RAY_LOG(INFO) << "CreateActor:ResolveDeps " << (et - ct);
   return Status::OK();
 }
 

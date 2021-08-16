@@ -29,8 +29,9 @@ std::string RedisStoreClient::index_table_separator_ = "&";
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::string &key,
                                   const std::string &data,
-                                  const StatusCallback &callback) {
-  return DoPut(GenRedisKey(table_name, key), data, callback);
+                                  const StatusCallback &callback,
+                                  bool hi_pri) {
+  return DoPut(GenRedisKey(table_name, key), data, callback, hi_pri);
 }
 
 Status RedisStoreClient::AsyncPutWithIndex(const std::string &table_name,
@@ -203,7 +204,7 @@ Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
 }
 
 Status RedisStoreClient::DoPut(const std::string &key, const std::string &data,
-                               const StatusCallback &callback) {
+                               const StatusCallback &callback, bool hi_pri) {
   std::vector<std::string> args = {"SET", key, data};
   RedisCallback write_callback = nullptr;
   if (callback) {
@@ -214,7 +215,7 @@ Status RedisStoreClient::DoPut(const std::string &key, const std::string &data,
   }
 
   auto shard_context = redis_client_->GetShardContext(key);
-  return shard_context->RunArgvAsync(args, write_callback);
+  return shard_context->RunArgvAsync(args, write_callback, hi_pri);
 }
 
 Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,

@@ -62,7 +62,7 @@ class GcsTable {
   /// \param value The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  virtual Status Put(const Key &key, const Data &value, const StatusCallback &callback);
+  virtual Status Put(const Key &key, const Data &value, const StatusCallback &callback, bool hi_pri = false);
 
   /// Get data from the table asynchronously.
   ///

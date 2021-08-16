@@ -20,11 +20,12 @@ namespace gcs {
 
 Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
                                      const std::string &key, const std::string &data,
-                                     const StatusCallback &callback) {
+                                     const StatusCallback &callback,
+                                     bool hi_pri) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   table->records_[key] = data;
-  main_io_service_.post([callback]() { callback(Status::OK()); }, "GcsInMemoryStore.Put");
+  main_io_service_.post([callback]() { callback(Status::OK()); }, "GcsInMemoryStore.Put", hi_pri);
   return Status::OK();
 }
 

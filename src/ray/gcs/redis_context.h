@@ -121,17 +121,18 @@ class RedisCallbackManager {
     CallbackItem() = default;
 
     CallbackItem(const RedisCallback &callback, bool is_subscription, int64_t start_time,
-                 instrumented_io_context &io_service)
+                 instrumented_io_context &io_service, bool hi_pri = false)
         : callback_(callback),
           is_subscription_(is_subscription),
           start_time_(start_time),
-          io_service_(&io_service) {}
+          io_service_(&io_service),
+          hi_pri_(hi_pri) {}
 
     void Dispatch(std::shared_ptr<CallbackReply> &reply) {
       std::shared_ptr<CallbackItem> self = shared_from_this();
       if (callback_ != nullptr) {
         io_service_->post([self, reply]() { self->callback_(std::move(reply)); },
-                          "RedisCallbackManager.DispatchCallback");
+                          "RedisCallbackManager.DispatchCallback", hi_pri_);
       }
     }
 
@@ -139,6 +140,7 @@ class RedisCallbackManager {
     bool is_subscription_;
     int64_t start_time_;
     instrumented_io_context *io_service_;
+    bool hi_pri_ = false;
   };
 
   /// Allocate an index at which we can add a callback later on.
@@ -146,7 +148,8 @@ class RedisCallbackManager {
 
   /// Add a callback at an optionally specified index.
   int64_t AddCallback(const RedisCallback &function, bool is_subscription,
-                      instrumented_io_context &io_service, int64_t callback_index = -1);
+                      instrumented_io_context &io_service, int64_t callback_index = -1,
+                      bool hi_pri = false);
 
   /// Remove a callback.
   void RemoveCallback(int64_t callback_index);
@@ -162,7 +165,7 @@ class RedisCallbackManager {
   mutable std::mutex mutex_;
 
   int64_t num_callbacks_ = 0;
-  std::unordered_map<int64_t, std::shared_ptr<CallbackItem>> callback_items_;
+  absl::flat_hash_map<int64_t, std::shared_ptr<CallbackItem>> callback_items_;
 };
 
 class RedisContext {
@@ -195,7 +198,8 @@ class RedisContext {
   /// \param redis_callback The Redis callback function.
   /// \return Status.
   Status RunArgvAsync(const std::vector<std::string> &args,
-                      const RedisCallback &redis_callback = nullptr);
+                      const RedisCallback &redis_callback = nullptr,
+                      bool hi_pri = false);
 
   /// Subscribe to a specific Pub-Sub channel.
   ///
