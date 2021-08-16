@@ -44,8 +44,8 @@ func go_worker_execute(taskType int, rayFunctionInfo []*C.char, args []C.struct_
         util.Logger.Debugf("invoke result:%v %v", callResults, returnValue)
         for index, callResult := range callResults {
             rv := returnValue[index]
-            rv.data = createDataBuffer(callResult)
-            rv.meta = createMetaBuffer(callResult)
+            rv.data = createDataBuffer(callResult.Interface())
+            rv.meta = createMetaBuffer(callResult.Interface())
         }
     }
 }
