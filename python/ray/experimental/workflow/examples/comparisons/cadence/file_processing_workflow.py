@@ -26,6 +26,7 @@ def process_all(file_contents: List[ray.ObjectRef]) -> None:
     def process_one(ref: ray.ObjectRef) -> ray.ObjectRef:
         import custom_processing
         result = custom_processing.process(ray.get(ref))
+        # Result is too large to return directly; put in the object store.
         return ray.put(result)
 
     children = [process_one.step(f) for f in file_contents]
@@ -37,6 +38,7 @@ def download_all(urls: List[str]) -> None:
     @workflow.step
     def download_one(url: str) -> ray.ObjectRef:
         import requests
+        # Result is too large to return directly; put in the object store.
         return ray.put(requests.get(url).text)
 
     children = [download_one.step(u) for u in urls]
