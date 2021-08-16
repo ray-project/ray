@@ -1,12 +1,13 @@
 import asyncio
 import json
+import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
-from ray.serve.backend_state import BackendState
+from ray.serve.backend_state import BackendState, ReplicaState
 from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
@@ -137,11 +138,31 @@ class ServeController:
             entry["version"] = backend_info.version or "Unversioned"
             # TODO(architkulkarni): When we add the feature to allow
             # deployments with no HTTP route, update the below line.
-            # Or refactor the route_prefix logic in the Deployment class now.
+            # Or refactor the route_prefix logic in the Deployment class.
             entry["http_route"] = route_prefix or f"/{deployment_name}"
             entry["status"] = "RUNNING"
-            entry["start_time"] = 0
+            entry["start_time"] = backend_info.start_time_ms
             entry["end_time"] = 0
+
+            entry["actors"] = dict()
+            replica_state_container = self.backend_state._replicas[
+                deployment_name]
+            running_replicas = replica_state_container.get(
+                [ReplicaState.RUNNING])
+            for replica in running_replicas:
+                try:
+                    actor_handle = replica.actor_handle
+                except ValueError:
+                    # Actor died or hasn't yet been created.
+                    continue
+                actor_id = actor_handle._ray_actor_id.hex()
+                replica_tag = replica.replica_tag
+                replica_version = replica.version.code_version
+                entry["actors"][actor_id] = {
+                    "replica_tag": replica_tag,
+                    "version": replica_version
+                }
+
             val[deployment_name] = entry
         self.kv_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
@@ -201,7 +222,8 @@ class ServeController:
                 version=version,
                 backend_config=backend_config,
                 replica_config=replica_config,
-                deployer_job_id=deployer_job_id)
+                deployer_job_id=deployer_job_id,
+                start_time_ms=int(time.time() * 1000))
 
             goal_id, updating = self.backend_state.deploy_backend(
                 name, backend_info)

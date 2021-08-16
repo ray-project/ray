@@ -24,12 +24,11 @@
 
 namespace plasma {
 
-// ObjectStore stores objects with unique object id. It uses IAllocator
-// to allocate memory for object creation.
-// ObjectStore is not thread safe.
-class ObjectStore {
+// IObjectStore stores objects with unique object id.
+// It's not thread safe.
+class IObjectStore {
  public:
-  explicit ObjectStore(IAllocator &allocator);
+  virtual ~IObjectStore() = default;
 
   /// Create a new object given object's info. Caller need to decide
   /// to use primary allocation or fallback allocation by setting
@@ -41,9 +40,9 @@ class ObjectStore {
   /// \param fallback_allocate Whether to use fallback allocation.
   /// \return
   ///   - pointer to created object or nullptr when out of space.
-  const LocalObject *CreateObject(const ray::ObjectInfo &object_info,
-                                  plasma::flatbuf::ObjectSource source,
-                                  bool fallback_allocate);
+  virtual const LocalObject *CreateObject(const ray::ObjectInfo &object_info,
+                                          plasma::flatbuf::ObjectSource source,
+                                          bool fallback_allocate) = 0;
 
   /// Get object by id.
   ///
@@ -51,31 +50,56 @@ class ObjectStore {
   /// \return
   ///   - nullptr if such object doesn't exist.
   ///   - otherwise, pointer to the object.
-  const LocalObject *GetObject(const ObjectID &object_id) const;
+  virtual const LocalObject *GetObject(const ObjectID &object_id) const = 0;
 
   /// Seal created object by id.
   ///
   /// \param object_id Object ID of the object to be sealed.
   /// \return
   ///   - nulltpr if such object doesn't exist, or the object has already been sealed.
-  ///   - otherise, pointer to the sealed object..
-  const LocalObject *SealObject(const ObjectID &object_id);
+  ///   - otherise, pointer to the sealed object.
+  virtual const LocalObject *SealObject(const ObjectID &object_id) = 0;
 
   /// Delete an existing object.
   ///
   /// \param object_id Object ID of the object to be sealed.
   /// \return
   ///   - false if such object doesn't exist.
-  ///   - true if abort successfuly.
-  bool DeleteObject(const ObjectID &object_id);
+  ///   - true if deleted.
+  virtual bool DeleteObject(const ObjectID &object_id) = 0;
 
-  int64_t GetNumBytesCreatedTotal() const;
+  virtual int64_t GetNumBytesCreatedTotal() const = 0;
 
-  int64_t GetNumBytesUnsealed() const;
+  virtual int64_t GetNumBytesUnsealed() const = 0;
 
-  int64_t GetNumObjectsUnsealed() const;
+  virtual int64_t GetNumObjectsUnsealed() const = 0;
 
-  void GetDebugDump(std::stringstream &buffer) const;
+  virtual void GetDebugDump(std::stringstream &buffer) const = 0;
+};
+
+// ObjectStore implements IObjectStore. It uses IAllocator
+// to allocate memory for object creation.
+class ObjectStore : public IObjectStore {
+ public:
+  explicit ObjectStore(IAllocator &allocator);
+
+  const LocalObject *CreateObject(const ray::ObjectInfo &object_info,
+                                  plasma::flatbuf::ObjectSource source,
+                                  bool fallback_allocate) override;
+
+  const LocalObject *GetObject(const ObjectID &object_id) const override;
+
+  const LocalObject *SealObject(const ObjectID &object_id) override;
+
+  bool DeleteObject(const ObjectID &object_id) override;
+
+  int64_t GetNumBytesCreatedTotal() const override;
+
+  int64_t GetNumBytesUnsealed() const override;
+
+  int64_t GetNumObjectsUnsealed() const override;
+
+  void GetDebugDump(std::stringstream &buffer) const override;
 
  private:
   LocalObject *GetMutableObject(const ObjectID &object_id);

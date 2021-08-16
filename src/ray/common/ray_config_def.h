@@ -95,20 +95,6 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
-/// Whether to never raise OOM. Instead, we fallback to allocating from the filesystem
-/// in /tmp, creating a new file per object. This degrades performance since filesystem
-/// backed objects are written to disk, but allows Ray to operate with degraded
-/// performance instead of crashing. Note that memory admission control is still in play,
-/// so Ray will still do its best to avoid running out of memory (i.e., via throttling and
-/// spilling).
-RAY_CONFIG(bool, plasma_unlimited, true)
-
-/// DEBUG-ONLY: Min number of pulls to keep active. Only supports values {0, 1}.
-RAY_CONFIG(int, pull_manager_min_active_pulls, 1)
-
-/// DEBUG-ONLY: Whether to exclude actively pulled objects from spilling and eviction.
-RAY_CONFIG(bool, pull_manager_pin_active_objects, true)
-
 /// Whether to use the hybrid scheduling policy, or one of the legacy spillback
 /// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
 /// then spread via weighted (by critical resource usage).
@@ -255,9 +241,6 @@ RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
 // The number of concurrent polls to polls to GCS.
 RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
-// Feature flag to turn on resource report polling. Polling and raylet pushing are
-// mutually exlusive.
-RAY_CONFIG(bool, pull_based_resource_reporting, true)
 // Feature flag to use grpc instead of redis for resource broadcast.
 // TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
 RAY_CONFIG(bool, grpc_based_resource_broadcast, false)
@@ -266,9 +249,6 @@ RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
-
-/// The amount of time to wait between logging plasma space usage debug messages.
-RAY_CONFIG(uint64_t, object_store_usage_log_interval_s, 10 * 60)
 
 /// The threshold to trigger a global gc
 RAY_CONFIG(double, high_plasma_storage_usage, 0.7)
@@ -311,8 +291,8 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 /// Whether put small objects in the local memory store.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
 
-// Max number bytes of inlined objects in a task execution result.
-RAY_CONFIG(int64_t, task_output_inlined_bytes_limit, 10 * 1024 * 1024)
+// Max number bytes of inlined objects in a task rpc request/response.
+RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
 /// Maximum number of tasks that can be in flight between an owner and a worker for which
 /// the owner has been granted a lease. A value >1 is used when we want to enable
@@ -470,3 +450,9 @@ RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 
 /// ServerCall instance number of each RPC service handler
 RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
+
+/// grpc keepalive sent interval
+RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000);
+
+/// grpc keepalive timeout
+RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
