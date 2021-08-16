@@ -114,7 +114,7 @@ class HeartbeatSender {
   ///
   /// \param self_node_id ID of this node.
   /// \param gcs_client_options options to create a GCS client.
-  HeartbeatSender(NodeID self_node_id, const GcsClientOptions &gcs_client_options);
+  HeartbeatSender(NodeID self_node_id, const gcs::GcsClientOptions &gcs_client_options);
 
   ~HeartbeatSender();
 

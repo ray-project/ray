@@ -117,7 +117,7 @@ std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
 }
 
 HeartbeatSender::HeartbeatSender(NodeID self_node_id,
-                                 const GcsClientOptions &gcs_client_options)
+                                 const gcs::GcsClientOptions &gcs_client_options)
     : self_node_id_(self_node_id) {
   // Init heartbeat thread and run its io service.
   heartbeat_thread_.reset(new std::thread([this] {
@@ -126,8 +126,8 @@ HeartbeatSender::HeartbeatSender(NodeID self_node_id,
     boost::asio::io_service::work io_service_work_(heartbeat_io_service_);
     heartbeat_io_service_.run();
   }));
-  gcs_client_ = std::make_shared<ServiceBasedGcsClient>(gcs_client_.GetOptions());
-  gcs_clinet_->Connect(heartbeat_io_service_);
+  gcs_client_ = std::make_shared<gcs::ServiceBasedGcsClient>(gcs_client_.GetOptions());
+  gcs_client_->Connect(heartbeat_io_service_);
   heartbeat_runner_.reset(new PeriodicalRunner(heartbeat_io_service_));
 
   // Start sending heartbeats to the GCS.
@@ -375,7 +375,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
 
 ray::Status NodeManager::RegisterGcs() {
   // Start sending heartbeat here to ensure it happening after raylet being registered.
-  heartbeat_sender_.reset(new HeartbeatSender(self_node_id_, hearbeat_gcs_client));
+  heartbeat_sender_.reset(new HeartbeatSender(self_node_id_, gcs_client_->GetOptions()));
   auto on_node_change = [this](const NodeID &node_id, const GcsNodeInfo &data) {
     if (data.state() == GcsNodeInfo::ALIVE) {
       NodeAdded(data);
