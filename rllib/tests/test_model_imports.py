@@ -115,8 +115,7 @@ class MyTorchModel(TorchModelV2, nn.Module):
             })
         except AttributeError:
             self.layer_1.load_state_dict({
-                "weight": torch.Tensor(
-                    np.transpose(layer1["kernel:0"].value)),
+                "weight": torch.Tensor(np.transpose(layer1["kernel:0"].value)),
                 "bias": torch.Tensor(np.transpose(layer1["bias:0"].value)),
             })
             self.layer_out.load_state_dict({
