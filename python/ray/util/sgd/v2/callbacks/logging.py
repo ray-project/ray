@@ -39,6 +39,7 @@ class SGDSingleFileLoggingCallback(SGDCallback, metaclass=abc.ABCMeta):
         self._logdir = logdir
         self._filename = filename
         self._workers_to_log = self._validate_workers_to_log(workers_to_log)
+        self._log_path = None
 
     def _validate_workers_to_log(self, workers_to_log) -> List[int]:
         if isinstance(workers_to_log, int):
@@ -72,12 +73,17 @@ class SGDSingleFileLoggingCallback(SGDCallback, metaclass=abc.ABCMeta):
 
         if not self._filename:
             filename = self._default_filename
+        else:
+            filename = self._filename
 
         self._log_path = self._create_log_path(logdir_path, filename)
 
     @property
-    def log_path(self) -> Path:
-        """Path to the log file."""
+    def log_path(self) -> Optional[Path]:
+        """Path to the log file.
+
+        Will be None before `start_training` is called for the first time.
+        """
         return self._log_path
 
 
