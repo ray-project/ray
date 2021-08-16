@@ -227,6 +227,7 @@ func (or *ObjectRef) Get() []interface{} {
     if success != 0 {
         panic("failed to get task result")
     }
+    returnGoValues := make([]interface{}, 0, or.returnObjectNum)
     for index, returnValue := range returnValues {
         rv := (*C.struct_ReturnValue)(returnValue)
         metaBytes := C.GoBytes(unsafe.Pointer(rv.meta.p), rv.meta.size)
@@ -241,9 +242,9 @@ func (or *ObjectRef) Get() []interface{} {
         if err != nil {
             panic(fmt.Errorf("failed to unmarshal %d return value", index))
         }
-        return []interface{}{dataBytes[0]}
+        returnGoValues[index] = returnGoValue
     }
-    return nil
+    return returnGoValues
 }
 
 //export SayHello
