@@ -384,7 +384,7 @@ class Worker:
 
     def _release_server(self, id: bytes) -> None:
         if self.data_client is not None:
-            logger.debug(f"Releasing {id}")
+            logger.debug(f"Releasing {id.hex()}")
             self.data_client.ReleaseObject(
                 ray_client_pb2.ReleaseRequest(ids=[id]))
 

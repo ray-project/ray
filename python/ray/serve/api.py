@@ -344,7 +344,10 @@ class Client:
         self._wait_for_goal(
             ray.get(
                 self._controller.create_backend.remote(
-                    backend_tag, backend_config, replica_config)))
+                    backend_tag,
+                    backend_config,
+                    replica_config,
+                    deployer_job_id=ray.get_runtime_context().job_id)))
 
     @_ensure_connected
     def deploy(self,
@@ -648,8 +651,8 @@ def start(
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
     else:
-        controller_name = format_actor_name(SERVE_CONTROLLER_NAME,
-                                            get_random_letters())
+        controller_name = format_actor_name(get_random_letters(),
+                                            SERVE_CONTROLLER_NAME)
 
     if isinstance(http_options, dict):
         http_options = HTTPOptions.parse_obj(http_options)
