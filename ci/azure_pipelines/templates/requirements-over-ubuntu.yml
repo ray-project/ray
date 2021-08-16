@@ -12,6 +12,14 @@ steps:
 
     export DEBIAN_FRONTEND=noninteractive
 
+    # Reset open-ssh server configurations to default settings
+    sudo service ssh stop
+    # sudo apt-get purge openssh-server
+    sudo dpkg -P walinuxagent
+    sudo dpkg -P openssh-server
+    sudo rm /private/etc/ssh/sshd_config || true
+    sudo rm /etc/ssh/sshd_config || true
+    
     # Install apt-get packages.
     sudo apt-get update
     sudo apt-get -yq upgrade

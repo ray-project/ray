@@ -104,7 +104,9 @@ class SampleBatch(dict):
                 batch_size = len_
             lengths.append(len_)
             if isinstance(v, list):
-                if len(v) == 0 or not isinstance(v[0], dict):
+                if k != SampleBatch.EPS_ID and (
+                    len(v) == 0 or not isinstance(v[0], dict)
+                ) and None not in np.array(v):
                     self[k] = np.array(v, dtype=np.float32)
                 else:
                     # If we have field of type dict, let's keep it as np.object
