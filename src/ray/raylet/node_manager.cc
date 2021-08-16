@@ -26,6 +26,7 @@
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
 #include "ray/common/status.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
@@ -126,7 +127,7 @@ HeartbeatSender::HeartbeatSender(NodeID self_node_id,
     boost::asio::io_service::work io_service_work_(heartbeat_io_service_);
     heartbeat_io_service_.run();
   }));
-  gcs_client_ = std::make_shared<gcs::ServiceBasedGcsClient>(gcs_client_.GetOptions());
+  gcs_client_ = std::make_shared<gcs::ServiceBasedGcsClient>(gcs_client_->GetOptions());
   gcs_client_->Connect(heartbeat_io_service_);
   heartbeat_runner_.reset(new PeriodicalRunner(heartbeat_io_service_));
 
