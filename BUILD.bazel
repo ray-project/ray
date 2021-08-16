@@ -40,6 +40,7 @@ cc_library(
     deps = [
         ":ray_common",
         "@boost//:asio",
+        "@boost//:lockfree",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_protobuf//:protobuf",
     ],

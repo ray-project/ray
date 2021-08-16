@@ -26,6 +26,8 @@ namespace core {
 class ActorCreatorInterface {
  public:
   virtual ~ActorCreatorInterface() = default;
+  virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                                    const gcs::StatusCallback &callback) = 0;
   /// Register actor to GCS synchronously.
   ///
   /// \param task_spec The specification for the actor creation task.
@@ -48,6 +50,7 @@ class DefaultActorCreator : public ActorCreatorInterface {
 
   Status RegisterActor(const TaskSpecification &task_spec) override {
     auto promise = std::make_shared<std::promise<void>>();
+
     auto status = gcs_client_->Actors().AsyncRegisterActor(
         task_spec, [promise](const Status &status) { promise->set_value(); });
     if (status.ok() &&
@@ -60,6 +63,11 @@ class DefaultActorCreator : public ActorCreatorInterface {
       return Status::TimedOut(stream.str());
     }
     return status;
+  }
+
+  Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                            const gcs::StatusCallback &callback) override {
+    return gcs_client_->Actors().AsyncRegisterActor(task_spec, callback);
   }
 
   Status AsyncCreateActor(const TaskSpecification &task_spec,
