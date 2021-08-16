@@ -424,8 +424,8 @@ Status RedisContext::RunArgvAsync(const std::vector<std::string> &args,
     argv.push_back(args[i].data());
     argc.push_back(args[i].size());
   }
-  int64_t callback_index =
-      RedisCallbackManager::instance().AddCallback(redis_callback, false, io_service_, -1, hi_pri);
+  int64_t callback_index = RedisCallbackManager::instance().AddCallback(
+      redis_callback, false, io_service_, -1, hi_pri);
   // Run the Redis command.
   Status status = redis_async_context_->RedisAsyncCommandArgv(
       reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),

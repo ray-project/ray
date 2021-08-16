@@ -80,9 +80,9 @@ Status GcsTable<Key, Data>::BatchDelete(const std::vector<Key> &keys,
 template <typename Key, typename Data>
 Status GcsTableWithJobId<Key, Data>::Put(const Key &key, const Data &value,
                                          const StatusCallback &callback, bool hi_pri) {
-  return this->store_client_->AsyncPutWithIndex(this->table_name_, key.Binary(),
-                                                GetJobIdFromKey(key).Binary(),
-                                                value.SerializeAsString(), callback, hi_pri);
+  return this->store_client_->AsyncPutWithIndex(
+      this->table_name_, key.Binary(), GetJobIdFromKey(key).Binary(),
+      value.SerializeAsString(), callback, hi_pri);
 }
 
 template <typename Key, typename Data>

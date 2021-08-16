@@ -29,11 +29,9 @@ Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
   return Status::OK();
 }
 
-Status InMemoryStoreClient::AsyncPutWithIndex(const std::string &table_name,
-                                              const std::string &key,
-                                              const std::string &index_key,
-                                              const std::string &data,
-                                              const StatusCallback &callback, bool hi_pri) {
+Status InMemoryStoreClient::AsyncPutWithIndex(
+    const std::string &table_name, const std::string &key, const std::string &index_key,
+    const std::string &data, const StatusCallback &callback, bool hi_pri) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   table->records_[key] = data;
