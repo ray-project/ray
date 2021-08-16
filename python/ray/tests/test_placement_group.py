@@ -16,6 +16,7 @@ from ray.test_utils import (generate_system_config_map, get_other_nodes,
 import ray.cluster_utils
 from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID
+import ray._private.gcs_utils as gcs_utils
 from ray.util.placement_group import (PlacementGroup, placement_group,
                                       remove_placement_group,
                                       get_current_placement_group)
@@ -983,7 +984,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # (why? The placement group has STRICT_PACK strategy).
         node_id_set = set()
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
                 node_id = actor_info["Address"]["NodeID"]
                 node_id_set.add(node_id)
 
@@ -1006,7 +1007,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # placement group.
         node_id_set = set()
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
                 node_id = actor_info["Address"]["NodeID"]
                 node_id_set.add(node_id)
 
@@ -1029,7 +1030,7 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # placement group.
         node_id_set = set()
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
                 node_id = actor_info["Address"]["NodeID"]
                 node_id_set.add(node_id)
 
@@ -1476,7 +1477,7 @@ ray.shutdown()
     def assert_alive_num_actor(expected_num_actor):
         alive_num_actor = 0
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == ray.gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
                 alive_num_actor += 1
         return alive_num_actor == expected_num_actor
 

@@ -8,6 +8,7 @@ import time
 import ray
 import ray.ray_constants
 import ray.test_utils
+import ray._private.gcs_utils as gcs_utils
 
 from ray._raylet import GlobalStateAccessor
 
@@ -101,7 +102,7 @@ def test_global_state_actor_table(ray_start_regular):
     def get_state():
         return list(ray.state.actors().values())[0]["State"]
 
-    dead_state = ray.gcs_utils.ActorTableData.DEAD
+    dead_state = gcs_utils.ActorTableData.DEAD
     for _ in range(10):
         if get_state() == dead_state:
             break
@@ -136,10 +137,10 @@ def test_global_state_actor_entry(ray_start_regular):
     b_actor_id = b._actor_id.hex()
     assert ray.state.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
     assert ray.state.actors(
-        actor_id=a_actor_id)["State"] == ray.gcs_utils.ActorTableData.ALIVE
+        actor_id=a_actor_id)["State"] == gcs_utils.ActorTableData.ALIVE
     assert ray.state.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
     assert ray.state.actors(
-        actor_id=b_actor_id)["State"] == ray.gcs_utils.ActorTableData.ALIVE
+        actor_id=b_actor_id)["State"] == gcs_utils.ActorTableData.ALIVE
 
 
 @pytest.mark.parametrize("max_shapes", [0, 2, -1])
@@ -175,7 +176,7 @@ def test_load_report(shutdown_only, max_shapes):
             if message is None:
                 return False
 
-            resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            resource_usage = gcs_utils.ResourceUsageBatchData.FromString(
                 message)
             self.report = \
                 resource_usage.resource_load_by_shape.resource_demands
@@ -258,7 +259,7 @@ def test_placement_group_load_report(ray_start_cluster):
             if message is None:
                 return False
 
-            resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            resource_usage = gcs_utils.ResourceUsageBatchData.FromString(
                 message)
             return resource_usage
 
@@ -304,8 +305,7 @@ def test_backlog_report(shutdown_only):
         if message is None:
             return False
 
-        resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
-            message)
+        resource_usage = gcs_utils.ResourceUsageBatchData.FromString(message)
         aggregate_resource_load = \
             resource_usage.resource_load_by_shape.resource_demands
         if len(aggregate_resource_load) == 1:
@@ -348,8 +348,7 @@ def test_heartbeat_ip(shutdown_only):
         if message is None:
             return False
 
-        resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
-            message)
+        resource_usage = gcs_utils.ResourceUsageBatchData.FromString(message)
         resources_data = resource_usage.batch[0]
         return resources_data.node_manager_address == self_ip
 

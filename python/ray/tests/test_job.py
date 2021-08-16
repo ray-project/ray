@@ -3,6 +3,7 @@ import os
 
 import ray
 from ray.job_config import JobConfig
+import ray._private.gcs_utils as gcs_utils
 from ray.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
@@ -76,7 +77,7 @@ ray.get(_.value.remote())
 
     p = run_string_as_driver_nonblocking(driver)
     # Wait for actor to be created
-    wait_for_num_actors(1, ray.gcs_utils.ActorTableData.ALIVE)
+    wait_for_num_actors(1, gcs_utils.ActorTableData.ALIVE)
 
     actor_table = ray.state.actors()
     assert len(actor_table) == 1

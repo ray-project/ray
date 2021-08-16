@@ -17,6 +17,7 @@ from ray.new_dashboard import k8s_utils
 import ray.ray_constants as ray_constants
 import ray.util.accelerators
 import ray._private.utils
+import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 import ray.test_utils
 from ray import resource_spec
@@ -747,7 +748,7 @@ def test_sync_job_config(shutdown_only):
         return job_config.SerializeToString()
 
     # Check that the job config is synchronized at the worker side.
-    job_config = ray.gcs_utils.JobConfig()
+    job_config = gcs_utils.JobConfig()
     job_config.ParseFromString(ray.get(get_job_config.remote()))
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)

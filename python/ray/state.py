@@ -5,7 +5,7 @@ import os
 
 import ray
 
-from ray import gcs_utils
+import ray._private.gcs_utils as gcs_utils
 from ray.util.annotations import DeveloperAPI
 from google.protobuf.json_format import MessageToDict
 from ray._private.client_mode_hook import client_mode_hook
@@ -372,9 +372,9 @@ class GlobalState:
         from ray.core.generated.common_pb2 import PlacementStrategy
 
         def get_state(state):
-            if state == ray.gcs_utils.PlacementGroupTableData.PENDING:
+            if state == gcs_utils.PlacementGroupTableData.PENDING:
                 return "PENDING"
-            elif state == ray.gcs_utils.PlacementGroupTableData.CREATED:
+            elif state == gcs_utils.PlacementGroupTableData.CREATED:
                 return "CREATED"
             else:
                 return "REMOVED"
@@ -673,14 +673,14 @@ class GlobalState:
 
         Args:
             worker_id: ID of this worker. Type is bytes.
-            worker_type: Type of this worker. Value is ray.gcs_utils.DRIVER or
-                ray.gcs_utils.WORKER.
+            worker_type: Type of this worker. Value is gcs_utils.DRIVER or
+                gcs_utils.WORKER.
             worker_info: Info of this worker. Type is dict{str: str}.
 
         Returns:
              Is operation success
         """
-        worker_data = ray.gcs_utils.WorkerTableData()
+        worker_data = gcs_utils.WorkerTableData()
         worker_data.is_alive = True
         worker_data.worker_address.worker_id = worker_id
         worker_data.worker_type = worker_type
@@ -724,7 +724,7 @@ class GlobalState:
         all_available_resources = \
             self.global_state_accessor.get_all_available_resources()
         for available_resource in all_available_resources:
-            message = ray.gcs_utils.AvailableResources.FromString(
+            message = gcs_utils.AvailableResources.FromString(
                 available_resource)
             # Calculate available resources for this node.
             dynamic_resources = {}
