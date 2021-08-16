@@ -38,6 +38,7 @@ class TargetNetworkMixin:
             # Update_target_fn will be called periodically to copy Q network to
             # target Q networks.
             state_dict = self.model.state_dict()
+            print(state_dict["_logits._model.0.bias"])
             for target in self.target_models:
                 target.load_state_dict(state_dict)
 
