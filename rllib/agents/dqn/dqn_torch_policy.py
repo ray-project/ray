@@ -256,7 +256,7 @@ def build_q_losses(policy: Policy, model, _,
                                   policy.action_space.n)
     q_t_selected = torch.sum(
         torch.where(q_t > FLOAT_MIN, q_t,
-                    torch.tensor(0.0, device=policy.device)) *
+                    torch.tensor(0.0, device=q_t.device)) *
         one_hot_selection, 1)
     q_logits_t_selected = torch.sum(
         q_logits_t * torch.unsqueeze(one_hot_selection, -1), 1)
@@ -275,7 +275,7 @@ def build_q_losses(policy: Policy, model, _,
                                                  policy.action_space.n)
         q_tp1_best = torch.sum(
             torch.where(q_tp1 > FLOAT_MIN, q_tp1,
-                        torch.tensor(0.0, device=policy.device)) *
+                        torch.tensor(0.0, device=q_tp1.device)) *
             q_tp1_best_one_hot_selection, 1)
         q_probs_tp1_best = torch.sum(
             q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
@@ -284,7 +284,7 @@ def build_q_losses(policy: Policy, model, _,
             torch.argmax(q_tp1, 1), policy.action_space.n)
         q_tp1_best = torch.sum(
             torch.where(q_tp1 > FLOAT_MIN, q_tp1,
-                        torch.tensor(0.0, device=policy.device)) *
+                        torch.tensor(0.0, device=q_tp1.device)) *
             q_tp1_best_one_hot_selection, 1)
         q_probs_tp1_best = torch.sum(
             q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)

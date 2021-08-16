@@ -76,6 +76,8 @@ def build_q_losses(policy: Policy, model, dist_class,
     Returns:
         TensorType: A single loss tensor.
     """
+    target_model = policy.target_models[model]
+
     # q network evaluation
     q_t = compute_q_values(
         policy,
@@ -87,7 +89,7 @@ def build_q_losses(policy: Policy, model, dist_class,
     # target q network evalution
     q_tp1 = compute_q_values(
         policy,
-        policy.target_q_model,
+        target_model,
         train_batch[SampleBatch.NEXT_OBS],
         explore=False,
         is_training=True)

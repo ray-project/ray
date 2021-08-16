@@ -45,7 +45,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
     Args:
         policy (Policy): The Policy to calculate the loss for.
         model (ModelV2): The Model to calculate the loss for.
-        dist_class (Type[ActionDistribution]: The action distr. class.
+        dist_class (Type[ActionDistribution]): The action distr. class.
         train_batch (SampleBatch): The training data.
 
     Returns:
@@ -272,7 +272,10 @@ class TargetNetworkMixin:
             assert len(self.model_variables) == \
                 len(self.target_model_variables), \
                 (self.model_variables, self.target_model_variables)
-            self.target_model.load_state_dict(self.model.state_dict())
+
+            state_dict = self.model.state_dict()
+            for target in self.target_models:
+                target.load_state_dict(state_dict)
 
         self.update_target = do_update
 
