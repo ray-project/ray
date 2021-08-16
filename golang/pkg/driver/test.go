@@ -27,13 +27,13 @@ func main() {
     }
     fmt.Println("ok!")
     values = actor_ref.Task((*actor.Count).Hello).Remote().Get()
-    fmt.Println("get values:%v", values)
+    fmt.Printf("get values:%v\n", values)
 
     hello, ok := values[0].(*string)
     if !ok {
-        fmt.Println("failed to get string:%v", hello)
+        fmt.Printf("failed to get string:%v\n", hello)
     }
-    fmt.Println("get string:%s", *hello)
+    fmt.Printf("get string:%s\n", *hello)
 
     time.Sleep(time.Minute * 5)
 }
