@@ -61,6 +61,24 @@ appo-cartpole-v0-vtrace:
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
+ddpg-repeat-after-me-env:
+    env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
+    run: DDPG
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 40.0
+        timesteps_total: 100000
+    stop:
+        time_total_s: 600
+    config:
+        env_config:
+            config:
+                repeat_delay: 0
+
+        num_gpus: 2
+        # Double batch size (2 GPUs).
+        train_batch_size: 512
+
 dqn-cartpole-v0:
     env: CartPole-v0
     run: DQN
@@ -170,3 +188,21 @@ simpleq-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
+
+td3-repeat-after-me-env:
+    env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
+    run: TD3
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 40.0
+        timesteps_total: 100000
+    stop:
+        time_total_s: 600
+    config:
+        env_config:
+            config:
+                repeat_delay: 0
+
+        num_gpus: 2
+        # Double batch size (2 GPUs).
+        train_batch_size: 200
