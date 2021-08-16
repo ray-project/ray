@@ -56,11 +56,12 @@ if __name__ == "__main__":
 
     start = time.time()
 
-    client_builder = ray.client()
-    if is_anyscale_connect():
-        job_name = os.environ.get("RAY_JOB_NAME", "modin_xgboost_test")
-        client_builder.job_name(job_name)
-    client_builder.connect()
+    addr = os.environ.get("RAY_ADDRESS")
+    job_name = os.environ.get("RAY_JOB_NAME", "modin_xgboost_test")
+    if is_anyscale_connect(addr):
+        ray.client(address=addr).job_name(job_name).connect()
+    else:
+        ray.init(address="auto")
 
     main()
 

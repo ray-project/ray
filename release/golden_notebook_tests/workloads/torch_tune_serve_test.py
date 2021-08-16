@@ -88,7 +88,8 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
 
 
 def get_remote_model(remote_model_checkpoint_path):
-    if is_anyscale_connect():
+    addr = os.environ.get("RAY_ADDRESS")
+    if is_anyscale_connect(addr):
         # Download training results to local client.
         local_dir = "~/ray_results"
         # TODO(matt): remove the following line when Anyscale Connect
@@ -211,11 +212,12 @@ if __name__ == "__main__":
 
     start = time.time()
 
-    client_builder = ray.client()
-    if is_anyscale_connect():
-        job_name = os.environ.get("RAY_JOB_NAME", "torch_tune_serve_test")
-        client_builder.job_name(job_name)
-    client_builder.connect()
+    addr = os.environ.get("RAY_ADDRESS")
+    job_name = os.environ.get("RAY_JOB_NAME", "torch_tune_serve_test")
+    if is_anyscale_connect(addr):
+        ray.client(address=addr).job_name(job_name).connect()
+    else:
+        ray.init(address="auto")
 
     num_workers = 2
     use_gpu = True
