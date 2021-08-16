@@ -431,6 +431,7 @@ def timeslice_along_seq_lens_with_overlap(
     # Zero-pad each slice if necessary.
     if zero_pad_max_seq_len > 0:
         for ts in timeslices:
-            ts.zero_pad(max_seq_len=zero_pad_max_seq_len, exclude_states=True)
+            ts.right_zero_pad(
+                max_seq_len=zero_pad_max_seq_len, exclude_states=True)
 
     return timeslices

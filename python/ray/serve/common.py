@@ -1,3 +1,5 @@
+import ray
+
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from uuid import UUID
@@ -27,12 +29,17 @@ class BackendInfo:
     def __init__(self,
                  backend_config: BackendConfig,
                  replica_config: ReplicaConfig,
+                 start_time_ms: int,
                  actor_def: Optional[ActorClass] = None,
-                 version: Optional[str] = None):
+                 version: Optional[str] = None,
+                 deployer_job_id: "Optional[ray._raylet.JobID]" = None):
         self.backend_config = backend_config
         self.replica_config = replica_config
+        # The time when .deploy() was first called for this deployment.
+        self.start_time_ms = start_time_ms
         self.actor_def = actor_def
         self.version = version
+        self.deployer_job_id = deployer_job_id
 
 
 class TrafficPolicy:

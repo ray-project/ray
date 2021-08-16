@@ -11,8 +11,8 @@ from ray.experimental.workflow.common import (Workflow, WorkflowStatus,
 from ray.experimental.workflow.step_executor import commit_step
 from ray.experimental.workflow.storage import get_global_storage
 from ray.experimental.workflow.workflow_access import (
-    MANAGEMENT_ACTOR_NAME, flatten_workflow_output,
-    get_or_create_management_actor)
+    flatten_workflow_output, get_or_create_management_actor,
+    get_management_actor)
 
 if TYPE_CHECKING:
     from ray.experimental.workflow.step_executor import WorkflowExecutionResult
@@ -78,7 +78,7 @@ def get_output(workflow_id: str, step_name: Optional[str]) -> ray.ObjectRef:
     """
     assert ray.is_initialized()
     try:
-        workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+        workflow_manager = get_management_actor()
     except ValueError as e:
         raise ValueError(
             "Failed to connect to the workflow management "
@@ -91,7 +91,7 @@ def get_output(workflow_id: str, step_name: Optional[str]) -> ray.ObjectRef:
 
 def cancel(workflow_id: str) -> None:
     try:
-        workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+        workflow_manager = get_management_actor()
         ray.get(workflow_manager.cancel_workflow.remote(workflow_id))
     except ValueError:
         wf_store = workflow_storage.get_workflow_storage(workflow_id)
@@ -100,7 +100,7 @@ def cancel(workflow_id: str) -> None:
 
 def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
     try:
-        workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+        workflow_manager = get_management_actor()
         running = ray.get(
             workflow_manager.is_workflow_running.remote(workflow_id))
     except Exception:
@@ -117,7 +117,7 @@ def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
 def list_all(status_filter: Set[WorkflowStatus]
              ) -> List[Tuple[str, WorkflowStatus]]:
     try:
-        workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+        workflow_manager = get_management_actor()
     except ValueError:
         workflow_manager = None
 
@@ -146,7 +146,7 @@ def resume_all(with_failed: bool) -> List[Tuple[str, ray.ObjectRef]]:
         filter_set.add(WorkflowStatus.FAILED)
     all_failed = list_all(filter_set)
     try:
-        workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+        workflow_manager = get_management_actor()
     except Exception as e:
         raise RuntimeError("Failed to get management actor") from e
 

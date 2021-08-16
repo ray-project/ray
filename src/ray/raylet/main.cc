@@ -171,8 +171,6 @@ int main(int argc, char *argv[]) {
         node_manager_config.min_worker_port = min_worker_port;
         node_manager_config.max_worker_port = max_worker_port;
         node_manager_config.worker_ports = worker_ports;
-        node_manager_config.pull_based_resource_reporting =
-            RayConfig::instance().pull_based_resource_reporting();
 
         if (!python_worker_command.empty()) {
           node_manager_config.worker_commands.emplace(

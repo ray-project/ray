@@ -16,7 +16,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # The name contains the namespace "workflow".
-MANAGEMENT_ACTOR_NAME = "workflow/WorkflowManagementActor"
+MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
+MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 
 
 class WorkflowExecutionError(Exception):
@@ -64,7 +65,7 @@ def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef) -> Any:
         The resolved physical object.
     """
     try:
-        actor = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+        actor = get_management_actor()
     except ValueError as e:
         raise ValueError(
             "Failed to connect to the workflow management actor.") from e
@@ -324,7 +325,7 @@ def init_management_actor() -> None:
     """Initialize WorkflowManagementActor"""
     store = storage.get_global_storage()
     try:
-        workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+        workflow_manager = get_management_actor()
         storage_url = ray.get(workflow_manager.get_storage_url.remote())
         if storage_url != store.storage_url:
             raise RuntimeError("The workflow is using a storage "
@@ -334,7 +335,14 @@ def init_management_actor() -> None:
         logger.info("Initializing workflow manager...")
         # the actor does not exist
         WorkflowManagementActor.options(
-            name=MANAGEMENT_ACTOR_NAME, lifetime="detached").remote(store)
+            name=MANAGEMENT_ACTOR_NAME,
+            namespace=MANAGEMENT_ACTOR_NAMESPACE,
+            lifetime="detached").remote(store)
+
+
+def get_management_actor() -> "ActorHandle":
+    return ray.get_actor(
+        MANAGEMENT_ACTOR_NAME, namespace=MANAGEMENT_ACTOR_NAMESPACE)
 
 
 def get_or_create_management_actor() -> "ActorHandle":
@@ -344,7 +352,7 @@ def get_or_create_management_actor() -> "ActorHandle":
     # actor seems not enough to resume the actor, because there is no
     # aliveness detection for an actor.
     try:
-        workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+        workflow_manager = get_management_actor()
     except ValueError:
         store = storage.get_global_storage()
         # the actor does not exist
@@ -353,5 +361,7 @@ def get_or_create_management_actor() -> "ActorHandle":
                        "workflow manager is being created with storage "
                        f"'{store}'.")
         workflow_manager = WorkflowManagementActor.options(
-            name=MANAGEMENT_ACTOR_NAME, lifetime="detached").remote(store)
+            name=MANAGEMENT_ACTOR_NAME,
+            namespace=MANAGEMENT_ACTOR_NAMESPACE,
+            lifetime="detached").remote(store)
     return workflow_manager
