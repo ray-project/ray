@@ -20,7 +20,7 @@ func main() {
     //var f ray.Convert = actor.Count.Increase
     //reflect.ValueOf(actor.Count)
     // reflect.ValueOf(actor.Count.Get)
-    _ = actor_ref.Task((*actor.Count).Increase).Remote().Get()
+    _ = actor_ref.Task((*actor.Count).Increase1).Remote().Get()
     values := actor_ref.Task((*actor.Count).Get).Remote().Get()
     for _, v := range values {
         fmt.Println("v:", v)
