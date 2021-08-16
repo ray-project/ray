@@ -1,7 +1,6 @@
 import gym
 from gym.spaces import Box, Discrete
 import numpy as np
-import random
 
 
 class RepeatAfterMeEnv(gym.Env):
@@ -39,6 +38,9 @@ class RepeatAfterMeEnv(gym.Env):
         return self._next_obs(), reward, done, {}
 
     def _next_obs(self):
-        token = random.choice([0, 1])
+        if isinstance(self.observation_space, Box):
+            token = np.random.random(size=(2,))
+        else:
+            token = np.random.choice([0, 1])
         self.history.append(token)
         return token
