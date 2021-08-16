@@ -198,8 +198,7 @@ class RedisContext {
   /// \param redis_callback The Redis callback function.
   /// \return Status.
   Status RunArgvAsync(const std::vector<std::string> &args,
-                      const RedisCallback &redis_callback = nullptr,
-                      bool hi_pri = false);
+                      const RedisCallback &redis_callback = nullptr, bool hi_pri = false);
 
   /// Subscribe to a specific Pub-Sub channel.
   ///

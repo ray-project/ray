@@ -28,8 +28,7 @@ std::string RedisStoreClient::table_separator_ = ":";
 std::string RedisStoreClient::index_table_separator_ = "&";
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name, const std::string &key,
-                                  const std::string &data,
-                                  const StatusCallback &callback,
+                                  const std::string &data, const StatusCallback &callback,
                                   bool hi_pri) {
   return DoPut(GenRedisKey(table_name, key), data, callback, hi_pri);
 }

@@ -108,7 +108,8 @@ void instrumented_io_context::post(std::function<void()> handler,
   internal_post(
       [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
         RecordExecution(handler, std::move(stats_handle));
-      }, hi_pri);
+      },
+      hi_pri);
 }
 
 std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(

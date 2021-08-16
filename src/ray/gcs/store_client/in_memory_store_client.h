@@ -33,7 +33,8 @@ class InMemoryStoreClient : public StoreClient {
       : main_io_service_(main_io_service) {}
 
   Status AsyncPut(const std::string &table_name, const std::string &key,
-                  const std::string &data, const StatusCallback &callback, bool hi_pri) override;
+                  const std::string &data, const StatusCallback &callback,
+                  bool hi_pri) override;
 
   Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
                            const std::string &index_key, const std::string &data,

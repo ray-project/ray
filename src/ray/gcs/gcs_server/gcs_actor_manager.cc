@@ -415,7 +415,8 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
         for (auto &callback : callbacks) {
           callback(actor);
         }
-      }, true));
+      },
+      true));
   return Status::OK();
 }
 

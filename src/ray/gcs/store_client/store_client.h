@@ -41,10 +41,8 @@ class StoreClient {
   /// \param data The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  virtual Status AsyncPut(const std::string &table_name,
-                          const std::string &key,
-                          const std::string &data,
-                          const StatusCallback &callback,
+  virtual Status AsyncPut(const std::string &table_name, const std::string &key,
+                          const std::string &data, const StatusCallback &callback,
                           bool hi_pri = false) = 0;
 
   /// Write data to the given table asynchronously.

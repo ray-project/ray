@@ -212,8 +212,7 @@ int64_t RedisCallbackManager::AllocateCallbackIndex() {
 int64_t RedisCallbackManager::AddCallback(const RedisCallback &function,
                                           bool is_subscription,
                                           instrumented_io_context &io_service,
-                                          int64_t callback_index,
-                                          bool hi_pri) {
+                                          int64_t callback_index, bool hi_pri) {
   auto start_time = absl::GetCurrentTimeNanos() / 1000;
 
   std::lock_guard<std::mutex> lock(mutex_);
@@ -222,12 +221,8 @@ int64_t RedisCallbackManager::AddCallback(const RedisCallback &function,
     callback_index = num_callbacks_;
     num_callbacks_++;
   }
-  auto callback_item = std::make_shared<CallbackItem>(
-      function,
-      is_subscription,
-      start_time,
-      io_service,
-      hi_pri);
+  auto callback_item = std::make_shared<CallbackItem>(function, is_subscription,
+                                                      start_time, io_service, hi_pri);
   callback_items_.emplace(callback_index, callback_item);
   return callback_index;
 }
@@ -420,8 +415,7 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
 }
 
 Status RedisContext::RunArgvAsync(const std::vector<std::string> &args,
-                                  const RedisCallback &redis_callback,
-                                  bool hi_pri) {
+                                  const RedisCallback &redis_callback, bool hi_pri) {
   RAY_CHECK(redis_async_context_);
   // Build the arguments.
   std::vector<const char *> argv;
