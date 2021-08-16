@@ -410,9 +410,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void SetCallerCreationTimestamp();
 
-  /// Increase the reference count for this object ID.
   /// Increase the local reference count for this object ID. Should be called
   /// by the language frontend when a new reference is created.
+  ///
+  /// \param[in] object_id The object ID to increase the reference count for.
+  /// \param[in] call_site The call site from the language frontend, for debugging.
+  void AddLocalReference(const ObjectID &object_id, const std::string &call_site) {
+    reference_counter_->AddLocalReference(object_id, call_site);
+  }
+
+  /// Same as above, except getting the call site from language frontend via
+  /// `CoreWorkerOptions.get_lang_stack`.
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
   void AddLocalReference(const ObjectID &object_id) {
@@ -1084,15 +1092,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// Private methods related to task submission.
   ///
-
-  /// Increase the local reference count for this object ID. Should be called
-  /// by the language frontend when a new reference is created.
-  ///
-  /// \param[in] object_id The object ID to increase the reference count for.
-  /// \param[in] call_site The call site from the language frontend.
-  void AddLocalReference(const ObjectID &object_id, std::string call_site) {
-    reference_counter_->AddLocalReference(object_id, call_site);
-  }
 
   /// Stops the children tasks from the given TaskID
   ///

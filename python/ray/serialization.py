@@ -11,8 +11,10 @@ from ray.exceptions import (RayError, PlasmaObjectNotAvailable, RayTaskError,
                             WorkerCrashedError, ObjectLostError,
                             RaySystemError, RuntimeEnvSetupError)
 from ray._raylet import (
+    object_ref_deserializer,
     split_buffer,
     unpack_pickle5_buffers,
+    DeserializationInfo,
     Pickle5Writer,
     Pickle5SerializedObject,
     MessagePackSerializer,
@@ -28,41 +30,13 @@ class DeserializationError(Exception):
     pass
 
 
-def _object_ref_deserializer(binary, owner_address, object_status):
-    # NOTE(suquark): This function should be a global function so
-    # cloudpickle can access it directly. Otherwise cloudpickle
-    # has to dump the whole function definition, which is inefficient.
-
-    # NOTE(swang): Must deserialize the object first before asking
-    # the core worker to resolve the value. This is to make sure
-    # that the ref count for the ObjectRef is greater than 0 by the
-    # time the core worker resolves the value of the object.
-    obj_ref = ray.ObjectRef(binary)
-
-    # TODO(edoakes): we should be able to just capture a reference
-    # to 'self' here instead, but this function is itself pickled
-    # somewhere, which causes an error.
-    if owner_address:
-        worker = ray.worker.global_worker
-        worker.check_connected()
-        context = worker.get_serialization_context()
-        outer_id = context.get_outer_object_ref()
-        # outer_id is None in the case that this ObjectRef was closed
-        # over in a function or pickled directly using pickle.dumps().
-        if outer_id is None:
-            outer_id = ray.ObjectRef.nil()
-        worker.core_worker.deserialize_and_register_object_ref(
-            obj_ref.binary(), outer_id, owner_address, object_status)
-    return obj_ref
-
-
 def _actor_handle_deserializer(serialized_obj):
     # If this actor handle was stored in another object, then tell the
     # core worker.
     context = ray.worker.global_worker.get_serialization_context()
-    outer_id = context.get_outer_object_ref()
+    info = context.get_deserialization_info()
     return ray.actor.ActorHandle._deserialization_helper(
-        serialized_obj, outer_id)
+        serialized_obj, info.outer_object_ref if info else None)
 
 
 class SerializationContext:
@@ -91,7 +65,7 @@ class SerializationContext:
             worker.check_connected()
             obj, owner_address, object_status = (
                 worker.core_worker.serialize_and_promote_object_ref(obj))
-            return _object_ref_deserializer, \
+            return object_ref_deserializer, \
                 (obj.binary(), owner_address, object_status)
 
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
@@ -120,10 +94,6 @@ class SerializationContext:
     def set_out_of_band_serialization(self):
         self._thread_local.in_band = False
 
-    def get_outer_object_ref(self):
-        stack = getattr(self._thread_local, "object_ref_stack", [])
-        return stack[-1] if stack else None
-
     def get_and_clear_contained_object_refs(self):
         if not hasattr(self._thread_local, "object_refs"):
             self._thread_local.object_refs = set()
@@ -132,6 +102,14 @@ class SerializationContext:
         object_refs = self._thread_local.object_refs
         self._thread_local.object_refs = set()
         return object_refs
+
+    def get_deserialization_info(self):
+        return getattr(self._thread_local, "deserialization_info", None)
+
+    def switch_deserialization_info(self, info: DeserializationInfo):
+        current = getattr(self._thread_local, "deserialization_info", None)
+        self._thread_local.deserialization_info = info
+        return current
 
     def add_contained_object_ref(self, object_ref):
         if self.is_in_band_serialization():
@@ -147,7 +125,7 @@ class SerializationContext:
             # then pin the object for the lifetime of this worker by adding
             # a local reference that won't ever be removed.
             ray.worker.global_worker.core_worker.add_object_ref_reference(
-                object_ref)
+                object_ref, "")
 
     def _deserialize_pickle5_data(self, data):
         try:
@@ -241,24 +219,23 @@ class SerializationContext:
 
     def deserialize_objects(self, data_metadata_pairs, object_refs):
         assert len(data_metadata_pairs) == len(object_refs)
-        # initialize the thread-local field
-        if not hasattr(self._thread_local, "object_ref_stack"):
-            self._thread_local.object_ref_stack = []
         results = []
         for object_ref, (data, metadata) in zip(object_refs,
                                                 data_metadata_pairs):
             try:
-                # Push the object ref to the stack, so the object under
-                # the object ref knows where it comes from.
-                self._thread_local.object_ref_stack.append(object_ref)
+                # Store the outer object ref in thread local, so inner object
+                # refs know where they come from.
+                prev = self.switch_deserialization_info(
+                    DeserializationInfo(object_ref))
                 obj = self._deserialize_object(data, metadata, object_ref)
             except Exception as e:
                 logger.exception(e)
                 obj = RaySystemError(e, traceback.format_exc())
             finally:
-                # Must clear ObjectRef to not hold a reference.
-                if self._thread_local.object_ref_stack:
-                    self._thread_local.object_ref_stack.pop()
+                # Restore previous thread local for correctness and avoiding
+                # keeping the outer object ref.
+                info = self.switch_deserialization_info(prev)
+                assert info.outer_object_ref == object_ref
             results.append(obj)
         return results
 

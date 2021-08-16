@@ -166,6 +166,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         pair[c_vector[c_pair[c_string, c_string]], CRayStatus] ListNamedActors(
             c_bool all_namespaces)
         void AddLocalReference(const CObjectID &object_id)
+        void AddLocalReference(const CObjectID &object_id,
+                               const c_string &call_site)
         void RemoveLocalReference(const CObjectID &object_id)
         void PutObjectIntoPlasma(const CRayObject &object,
                                  const CObjectID &object_id)
