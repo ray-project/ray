@@ -179,7 +179,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             pg = ray.util.placement_group(bundles, strategy="SPREAD")
             logger.debug("Waiting for placement group to start.")
             ready, _ = ray.wait(
-                [pg.ready()], timeout=SGD_PLACExMENT_GROUP_TIMEOUT_S)
+                [pg.ready()], timeout=SGD_PLACEMENT_GROUP_TIMEOUT_S)
             if ready:
                 logger.debug("Placement group has started.")
             else:
