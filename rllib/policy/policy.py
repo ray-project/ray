@@ -936,7 +936,7 @@ class Policy(metaclass=ABCMeta):
             for vr in view_reqs:
                 vr["state_in_{}".format(i)] = ViewRequirement(
                     "state_out_{}".format(i),
-                    shift=-1,
+                    shift=view_reqs['state_in_{}'.format(i)].shift,
                     used_for_compute_actions=True,
                     batch_repeat_value=self.config.get("model", {}).get(
                         "max_seq_len", 1),
