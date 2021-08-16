@@ -27,6 +27,8 @@ func main() {
     }
     fmt.Println("ok!")
     values = actor_ref.Task((*actor.Count).Hello).Remote().Get()
+    fmt.Println("get values:%v", values)
+
     hello, ok := values[0].(*string)
     if !ok {
         fmt.Println("failed to get string:%v", hello)
