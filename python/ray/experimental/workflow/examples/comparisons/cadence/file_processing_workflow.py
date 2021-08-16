@@ -7,9 +7,9 @@ from ray import workflow
 @workflow.step
 def upload_all(file_contents: List[ray.ObjectRef]) -> None:
     @workflow.step
-    def upload_one(ref: ray.ObjectRef) -> None:
+    def upload_one(contents: bytes) -> None:
         import custom_processing
-        custom_processing.upload(ray.get(ref))
+        custom_processing.upload(ref)
 
     children = [upload_one.step(f) for f in file_contents]
 
@@ -23,9 +23,9 @@ def upload_all(file_contents: List[ray.ObjectRef]) -> None:
 @workflow.step
 def process_all(file_contents: List[ray.ObjectRef]) -> None:
     @workflow.step
-    def process_one(ref: ray.ObjectRef) -> ray.ObjectRef:
+    def process_one(contents: bytes) -> ray.ObjectRef:
         import custom_processing
-        result = custom_processing.process(ray.get(ref))
+        result = custom_processing.process(contents)
         # Result is too large to return directly; put in the object store.
         return ray.put(result)
 
