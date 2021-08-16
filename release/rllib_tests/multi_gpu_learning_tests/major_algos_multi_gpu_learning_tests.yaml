@@ -11,6 +11,9 @@ a2c-cartpole-v0:
     config:
         num_gpus: 2
         lr: 0.001
+        # TODO: Test w/ LSTMs.
+        model:
+            use_lstm: false
 
 appo-cartpole-v0-no-vtrace:
     env: CartPole-v0
@@ -33,7 +36,8 @@ appo-cartpole-v0-no-vtrace:
             fcnet_hiddens: [32]
             fcnet_activation: linear
             vf_share_layers: true
-            use_lstm: true
+            # TODO: Test w/ LSTMs.
+            use_lstm: false
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
@@ -57,7 +61,8 @@ appo-cartpole-v0-vtrace:
             fcnet_hiddens: [32]
             fcnet_activation: linear
             vf_share_layers: true
-            use_lstm: true
+            # TODO: Test w/ LSTMs.
+            use_lstm: false
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
@@ -113,9 +118,9 @@ impala-cartpole-v0:
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
-        # Test w/ LSTMs.
+        # TODO: Test w/ LSTMs.
         model:
-            use_lstm: true
+            use_lstm: false
 
 pg-cartpole-v0:
     env: CartPole-v0
@@ -133,6 +138,8 @@ pg-cartpole-v0:
         model:
             fcnet_hiddens: [64]
             fcnet_activation: linear
+            # TODO: Test w/ LSTMs.
+            use_lstm: false
 
 ppo-cartpole-v0:
     env: CartPole-v0
@@ -154,7 +161,8 @@ ppo-cartpole-v0:
             fcnet_hiddens: [32]
             fcnet_activation: linear
             vf_share_layers: true
-            use_lstm: true
+            # TODO: Test w/ LSTMs.
+            use_lstm: false
         # Double batch size (2 GPUs).
         train_batch_size: 8000
 
