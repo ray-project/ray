@@ -44,13 +44,13 @@ func go_worker_execute(taskType int, rayFunctionInfo []*C.char, args []C.struct_
         util.Logger.Debugf("invoke result:%v %v", callResults, returnValue)
         for index, callResult := range callResults {
             rv := returnValue[index]
-            rv.data = create_data_buffer(callResult)
-            rv.meta = create_meta_buffer(callResult)
+            rv.data = createDataBuffer(callResult)
+            rv.meta = createMetaBuffer(callResult)
         }
     }
 }
 
-func create_data_buffer(callResult interface{}) *C.struct_DataBuffer {
+func createDataBuffer(callResult interface{}) *C.struct_DataBuffer {
     b, err := msgpack.Marshal(callResult)
     if err != nil {
         panic(fmt.Errorf("failed to marshall msgpack:%v %v", callResult, err))
@@ -65,10 +65,11 @@ func create_data_buffer(callResult interface{}) *C.struct_DataBuffer {
     }
 }
 
-func create_meta_buffer(callResult interface{}) *C.struct_DataBuffer {
+func createMetaBuffer(callResult interface{}) *C.struct_DataBuffer {
     typeString := getInterfaceType(callResult)
     typeStringBytes := []byte(typeString)
     dataSize := C.ulong(len(typeStringBytes))
+    util.Logger.Infof("return type %s ,size %d", typeStringBytes, dataSize)
     p := C.malloc(dataSize)
     C.memcpy(p, unsafe.Pointer(&typeStringBytes[0]), dataSize)
     return &C.struct_DataBuffer{
