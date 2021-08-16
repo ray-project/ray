@@ -59,10 +59,12 @@ void instrumented_io_context::internal_post(std::function<void()> handler, bool 
   if (hi_pri) {
     hi_pri_queue_.push(new std::function<void()>(std::move(handler)));
     handler = nullptr;
+    RAY_LOG(INFO) << "DBG: HiPri pushed";
   }
   auto f = [handler = std::move(handler), this]() {
     std::function<void()> *f = nullptr;
     while (hi_pri_queue_.pop(f)) {
+      RAY_LOG(INFO) << "DBG: HiPri executed";
       (*f)();
       delete f;
       f = nullptr;
@@ -71,7 +73,7 @@ void instrumented_io_context::internal_post(std::function<void()> handler, bool 
       handler();
     }
   };
-  boost::asio::io_context::post(f);
+  boost::asio::io_context::post(std::move(f));
 }
 
 void instrumented_io_context::post(std::function<void()> handler, const std::string name,
@@ -103,10 +105,10 @@ void instrumented_io_context::post(std::function<void()> handler,
   // time only and not the time delay from RecordStart().
   // TODO(ekl) it would be nice to track this delay too,.
   stats_handle->ZeroAccumulatedQueuingDelay();
-  boost::asio::io_context::post(
+  internal_post(
       [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
         RecordExecution(handler, std::move(stats_handle));
-      });
+      }, hi_pri);
 }
 
 std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(

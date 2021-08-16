@@ -179,7 +179,7 @@ class ActorInfoGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     /// Register/Create Actor RPC takes long time, we shouldn't limit them to avoid
     /// distributed deadlock.
-    ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActor, -1);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActor, -1, true);
     ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor, -1, true);
 
     /// Others need back pressure.
