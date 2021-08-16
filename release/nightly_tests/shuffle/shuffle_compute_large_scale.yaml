@@ -19,4 +19,3 @@ worker_node_types:
       max_workers: 19
       use_spot: false
       resources: {"object_store_memory": 21474836480}
-
