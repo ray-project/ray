@@ -37,7 +37,7 @@ class RayObject {
   ///
   /// \param[in] data Data of the ray object.
   /// \param[in] metadata Metadata of the ray object.
-  /// \param[in] nested_ids ObjectIDs that were serialized in data.
+  /// \param[in] nested_rfs ObjectRefs that were serialized in data.
   /// \param[in] copy_data Whether this class should hold a copy of data.
   RayObject(const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata,
             const std::vector<rpc::ObjectReference> &nested_refs, bool copy_data = false)
@@ -76,7 +76,7 @@ class RayObject {
   /// Return the metadata of the ray object.
   const std::shared_ptr<Buffer> &GetMetadata() const { return metadata_; }
 
-  /// Return the object IDs that were serialized in data.
+  /// Return the ObjectRefs that were serialized in data.
   const std::vector<rpc::ObjectReference> &GetNestedRefs() const { return nested_refs_; }
 
   uint64_t GetSize() const {

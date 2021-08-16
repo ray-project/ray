@@ -522,7 +522,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Generated ID of the object.
   /// \return Status.
-  Status Put(const RayObject &object, const std::vector<ObjectID> &contained_object_refs,
+  Status Put(const RayObject &object, const std::vector<ObjectID> &contained_object_ids,
              ObjectID *object_id);
 
   /// Put an object with specified ID into object store.
