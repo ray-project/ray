@@ -18,7 +18,7 @@ import (
 )
 
 var actor interface{}
-var actorType reflect.Value
+var actorReflectValue reflect.Value
 
 //export go_worker_execute
 func go_worker_execute(taskType int, rayFunctionInfo []*C.char, args []C.struct_DataBuffer, returnValue []*C.struct_ReturnValue) {
@@ -31,12 +31,12 @@ func go_worker_execute(taskType int, rayFunctionInfo []*C.char, args []C.struct_
             panic(fmt.Errorf("type not found:%s", goTypeName))
         }
         actor = reflect.New(goType).Interface()
-        actorType = reflect.ValueOf(actor)
+        actorReflectValue = reflect.ValueOf(actor)
         util.Logger.Debugf("created actor for:%s", goTypeName)
     } else if taskType == int(generated.TaskType_ACTOR_TASK) {
         methodName := C.GoString(rayFunctionInfo[0])
         util.Logger.Debugf("invoke %s", methodName)
-        methodValue := actorType.MethodByName(methodName)
+        methodValue := actorReflectValue.MethodByName(methodName)
         //if methodValue == nil {
         //    panic(fmt.Errorf("method not found:%s", methodName))
         //}

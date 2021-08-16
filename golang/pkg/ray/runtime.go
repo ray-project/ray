@@ -26,6 +26,10 @@ const sessionDir = "session_dir"
 
 var typesMap = make(map[string]reflect.Type)
 
+func init(){
+    typesMap["int"] = reflect.TypeOf(0)
+}
+
 func Init(address, _redis_password string) {
     innerInit(address, _redis_password, ray_rpc.WorkerType_DRIVER)
 }
