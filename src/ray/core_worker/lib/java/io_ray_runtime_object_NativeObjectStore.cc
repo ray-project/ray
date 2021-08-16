@@ -39,8 +39,8 @@ Status PutSerializedObject(JNIEnv *env, jobject obj, ObjectID object_id,
       nested_ids.push_back(ObjectID::FromBinary(ref.object_id()));
     }
     status = CoreWorkerProcess::GetCoreWorker().CreateOwned(
-        native_ray_object->GetMetadata(), data_size, nested_ids,
-        out_object_id, &data, /*created_by_worker=*/true,
+        native_ray_object->GetMetadata(), data_size, nested_ids, out_object_id, &data,
+        /*created_by_worker=*/true,
         /*owner_address=*/owner_address);
   } else {
     status = CoreWorkerProcess::GetCoreWorker().CreateExisting(
