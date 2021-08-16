@@ -72,7 +72,7 @@ class TestDDPG(unittest.TestCase):
             for i in range(num_iterations):
                 results = trainer.train()
                 print(f"R={results['episode_reward_mean']}")
-                if results["episode_reward_mean"] > 75.0:
+                if results["episode_reward_mean"] > 70.0:
                     learnt = True
                     break
             assert learnt, \
