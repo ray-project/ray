@@ -35,6 +35,11 @@ parser.add_argument(
     type=str,
     help="the worker entrypoint: python,java etc. ")
 
+parser.add_argument(
+    "--worker-language",
+    type=str,
+    help="the worker entrypoint: python,java,cpp etc.")
+
 args, remaining_args = parser.parse_known_args()
 
 # add worker-shim-pid argument

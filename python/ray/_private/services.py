@@ -1479,6 +1479,7 @@ def start_raylet(redis_address,
         f"--worker-setup-hook={worker_setup_hook}",
         f"--session-dir={session_dir}",
         f"--worker-entrypoint={python_executable}",
+        "--worker-language=python",
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1640,6 +1641,7 @@ def build_java_worker_command(
     command = [sys.executable, setup_worker_path]
     command += [f"--worker-setup-hook={worker_setup_hook}"]
     command += [f"--session-dir={session_dir}"]
+    command += ["--worker-language=cpp"]
     command += ["--worker-entrypoint=java"
                 ] + ["-D{}={}".format(*pair) for pair in pairs]
 
@@ -1679,6 +1681,7 @@ def build_cpp_worker_command(cpp_worker_options, setup_worker_path,
         f"--worker-setup-hook={worker_setup_hook}",
         f"--session-dir={session_dir}",
         f"--worker-entrypoint={DEFAULT_WORKER_EXECUTABLE}",
+        f"--worker-language=cpp",
         f"--ray_plasma_store_socket_name={plasma_store_name}",
         f"--ray_raylet_socket_name={raylet_name}",
         "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",

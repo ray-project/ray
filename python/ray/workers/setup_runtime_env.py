@@ -31,6 +31,11 @@ parser.add_argument(
     help="the worker entrypoint: python,java etc. ")
 
 parser.add_argument(
+    "--worker-language",
+    type=str,
+    help="the worker entrypoint: python,java,cpp etc.")
+
+parser.add_argument(
     "--serialized-runtime-env",
     type=str,
     help="the serialized parsed runtime env dict")
@@ -145,6 +150,7 @@ def setup_worker(input_args):
 
     commands = []
     worker_executable: str = args.worker_entrypoint
+    worker_language: str = args.worker_language
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
     runtime_env_context: RuntimeEnvContext = None
 
@@ -172,13 +178,19 @@ def setup_worker(input_args):
             args.serialized_runtime_env_context)
 
     worker_command = [f"exec {worker_executable}"]
-    if worker_executable == "java":
+    if worker_language == "java":
         # Java worker don't parse the command parameters, add option.
         remaining_args.insert(
             len(remaining_args) - 1, "-D{}={}".format(
                 "serialized-runtime-env", f"'{args.serialized_runtime_env}'"))
         worker_command += remaining_args
-    elif worker_executable == "python":
+    elif worker_language == "cpp":
+        worker_command += remaining_args
+        # cpp worker flags must use underscore
+        worker_command += [
+            "--serialized_runtime_env", f"'{args.serialized_runtime_env}'"
+        ]
+    else:
         worker_command += remaining_args
         # Pass the runtime for working_dir setup.
         # We can't do it in shim process here because it requires
