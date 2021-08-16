@@ -55,7 +55,7 @@ class StoreClient {
   /// \return Status
   virtual Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
                                    const std::string &index_key, const std::string &data,
-                                   const StatusCallback &callback) = 0;
+                                   const StatusCallback &callback, bool hi_pri = false) = 0;
 
   /// Get data from the given table asynchronously.
   ///

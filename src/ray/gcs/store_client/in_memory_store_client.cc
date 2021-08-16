@@ -33,13 +33,13 @@ Status InMemoryStoreClient::AsyncPutWithIndex(const std::string &table_name,
                                               const std::string &key,
                                               const std::string &index_key,
                                               const std::string &data,
-                                              const StatusCallback &callback) {
+                                              const StatusCallback &callback, bool hi_pri) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   table->records_[key] = data;
   table->index_keys_[index_key].emplace_back(key);
   main_io_service_.post([callback]() { callback(Status::OK()); },
-                        "GcsInMemoryStore.PutWithIndex");
+                        "GcsInMemoryStore.PutWithIndex", hi_pri);
   return Status::OK();
 }
 

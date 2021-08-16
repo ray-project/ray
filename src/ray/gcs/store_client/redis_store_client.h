@@ -35,7 +35,7 @@ class RedisStoreClient : public StoreClient {
 
   Status AsyncPutWithIndex(const std::string &table_name, const std::string &key,
                            const std::string &index_key, const std::string &data,
-                           const StatusCallback &callback) override;
+                           const StatusCallback &callback, bool hi_pri) override;
 
   Status AsyncGet(const std::string &table_name, const std::string &key,
                   const OptionalItemCallback<std::string> &callback) override;

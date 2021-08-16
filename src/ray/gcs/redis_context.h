@@ -129,10 +129,13 @@ class RedisCallbackManager {
           hi_pri_(hi_pri) {}
 
     void Dispatch(std::shared_ptr<CallbackReply> &reply) {
-      std::shared_ptr<CallbackItem> self = shared_from_this();
       if (callback_ != nullptr) {
-        io_service_->post([self, reply]() { self->callback_(std::move(reply)); },
-                          "RedisCallbackManager.DispatchCallback", hi_pri_);
+        std::shared_ptr<CallbackItem> self = shared_from_this();
+        io_service_->post(
+            [self, reply]() {
+              self->callback_(std::move(reply));
+            },
+            "RedisCallbackManager.DispatchCallback", self->hi_pri_);
       }
     }
 
