@@ -846,7 +846,9 @@ class _EnvRunner(Iterator[SampleBatch]):
                 worker=self.worker,
                 base_env=self.base_env,
                 episode=episode,
-                env_index=env_id)
+                env_index=env_id,
+                sample_collector=self.sample_collector,
+            )
 
             # Episode is done for all agents (dones[__all__] == True)
             # or we hit the horizon.
