@@ -933,8 +933,8 @@ class Policy(metaclass=ABCMeta):
                     fw.all(state == 0.0) else state
             else:
                 space = state
-            for vr in view_reqs:            
-                if "state_in_{}".format(i) not in view_reqs:
+            for vr in view_reqs:
+                if "state_in_{}".format(i) not in vr:
                     vr["state_in_{}".format(i)] = ViewRequirement(
                         "state_out_{}".format(i),
                         shift=-1,
@@ -942,7 +942,7 @@ class Policy(metaclass=ABCMeta):
                         batch_repeat_value=self.config.get("model", {}).get(
                             "max_seq_len", 1),
                         space=space)
-                if "state_out_{}".format(i) not in view_reqs:
+                if "state_out_{}".format(i) not in vr:
                     vr["state_out_{}".format(i)] = ViewRequirement(
                         space=space, used_for_training=True)
 
