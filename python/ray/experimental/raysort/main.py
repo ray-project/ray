@@ -117,11 +117,10 @@ def get_args(*args, **kwargs):
 def _get_mount_points():
     default_ret = [tempfile.gettempdir()]
     mnt = "/mnt"
-    if not os.path.exists(mnt):
-        return default_ret
-    ret = [os.path.join(mnt, d) for d in os.listdir(mnt)]
-    if len(ret) > 0:
-        return ret
+    if os.path.exists(mnt):
+        ret = [os.path.join(mnt, d) for d in os.listdir(mnt)]
+        if len(ret) > 0:
+            return ret
     return default_ret
 
 
