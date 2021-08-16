@@ -172,8 +172,7 @@ class TuneReportCallback(TuneCallback):
             metrics = [metrics]
         self._metrics = metrics
 
-    def _get_report_dict(self, trainer: Trainer,
-                         pl_module: LightningModule):
+    def _get_report_dict(self, trainer: Trainer, pl_module: LightningModule):
         # Don't report if just doing initial validation sanity checks.
         if trainer.running_sanity_check:
             return

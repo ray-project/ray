@@ -336,6 +336,7 @@ Papers
    joblib.rst
    xgboost-ray.rst
    lightgbm-ray.rst
+   ray-lightning.rst
    ray-collective.rst
 
 .. toctree::
