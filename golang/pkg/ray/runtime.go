@@ -19,6 +19,7 @@ import (
     "github.com/golang/protobuf/proto"
     ray_rpc "github.com/ray-project/ray-go-worker/pkg/ray/generated"
     "github.com/ray-project/ray-go-worker/pkg/util"
+    "github.com/vmihailenco/msgpack/v5"
 )
 
 const sessionDir = "session_dir"
@@ -212,11 +213,22 @@ func (or *ObjectRef) Get() []interface{} {
     returnValues := make([]unsafe.Pointer, or.returnObjectNum, or.returnObjectNum)
     success := C.go_worker_Get((*unsafe.Pointer)(or.returnObjectIds), C.int(or.returnObjectNum), C.int(-1), &returnValues[0])
     if success != 0 {
-        panic("failed to submit task")
+        panic("failed to get task result")
     }
-    for _, returnValue := range returnValues {
+    for index, returnValue := range returnValues {
         rv := (*C.struct_ReturnValue)(returnValue)
+        metaBytes := C.GoBytes(unsafe.Pointer(rv.meta.p), rv.meta.size)
+        typeString := string(metaBytes)
+        goType, ok := typesMap[typeString]
+        if !ok {
+            panic(fmt.Errorf("failed to get type:%s", typeString))
+        }
+        returnGoValue := reflect.New(goType).Interface()
         dataBytes := C.GoBytes(unsafe.Pointer(rv.data.p), rv.data.size)
+        err := msgpack.Unmarshal(dataBytes, returnGoValue)
+        if err != nil {
+            panic(fmt.Errorf("failed to unmarshal %d return value", index))
+        }
         return []interface{}{dataBytes[0]}
     }
     return nil

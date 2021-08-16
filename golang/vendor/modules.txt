@@ -1,6 +1,14 @@
 # github.com/golang/protobuf v1.5.2
 ## explicit
 github.com/golang/protobuf/proto
+# github.com/vmihailenco/msgpack/v5 v5.3.4
+## explicit
+github.com/vmihailenco/msgpack/v5
+github.com/vmihailenco/msgpack/v5/msgpcode
+# github.com/vmihailenco/tagparser/v2 v2.0.0
+github.com/vmihailenco/tagparser/v2
+github.com/vmihailenco/tagparser/v2/internal
+github.com/vmihailenco/tagparser/v2/internal/parser
 # go.uber.org/atomic v1.7.0
 go.uber.org/atomic
 # go.uber.org/multierr v1.6.0

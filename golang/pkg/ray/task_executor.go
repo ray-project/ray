@@ -1,7 +1,7 @@
 package ray
 
 /*
-   #cgo CFLAGS: -I/root/ray/src/ray/core_worker/lib/golang
+   #cgo CFLAGS: -I../../../ray/src/ray/core_worker/lib/golang
    #cgo LDFLAGS: -shared  -L/root/ray/bazel-bin/ -lcore_worker_library_go -lstdc++
    #include <string.h>
    #include "go_worker.h"
@@ -14,6 +14,7 @@ import (
 
     "github.com/ray-project/ray-go-worker/pkg/ray/generated"
     "github.com/ray-project/ray-go-worker/pkg/util"
+    "github.com/vmihailenco/msgpack/v5"
 )
 
 var actor interface{}
@@ -41,19 +42,41 @@ func go_worker_execute(taskType int, rayFunctionInfo []*C.char, args []C.struct_
         //}
         callResults := methodValue.Call([]reflect.Value{})
         util.Logger.Debugf("invoke result:%v %v", callResults, returnValue)
-        for index, _ := range callResults {
+        for index, callResult := range callResults {
             rv := returnValue[index]
-            rv.data = create_data_buffer()
-            rv.meta = create_data_buffer()
+            rv.data = create_data_buffer(callResult)
+            rv.meta = create_meta_buffer(callResult)
         }
     }
 }
 
-func create_data_buffer() *C.struct_DataBuffer {
-    p := C.malloc(1)
-    C.memset(p, 1, 1)
+func create_data_buffer(callResult interface{}) *C.struct_DataBuffer {
+    b, err := msgpack.Marshal(callResult)
+    if err != nil {
+        panic(fmt.Errorf("failed to marshall msgpack:%v %v", callResult, err))
+    }
+    dataSize := len(b)
+
+    p := C.malloc(dataSize)
+    C.memcpy(p, unsafe.Pointer(&b[0]), dataSize)
     return &C.struct_DataBuffer{
-        size: 1,
+        size: dataSize,
         p:    p,
     }
+}
+
+func create_meta_buffer(callResult interface{}) *C.struct_DataBuffer {
+    typeString := getInterfaceType(callResult)
+    typeStringBytes := []byte(typeString)
+    dataSize := len(typeStringBytes)
+    p := C.malloc(dataSize)
+    C.memcpy(p, unsafe.Pointer(&typeStringBytes[0]), dataSize)
+    return &C.struct_DataBuffer{
+        size: dataSize,
+        p:    p,
+    }
+}
+
+func getInterfaceType(v interface{}) string {
+    return reflect.TypeOf(v).String()
 }
