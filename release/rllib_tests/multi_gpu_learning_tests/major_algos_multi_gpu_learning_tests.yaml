@@ -10,6 +10,7 @@ a2c-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
+        num_workers: 31
         lr: 0.001
         # TODO: Test w/ LSTMs.
         model:
@@ -27,7 +28,7 @@ appo-cartpole-v0-no-vtrace:
     config:
         vtrace: false
         num_gpus: 2
-        num_workers: 1
+        num_workers: 31
         lr: 0.0003
         observation_filter: MeanStdFilter
         num_sgd_iter: 6
@@ -52,7 +53,7 @@ appo-cartpole-v0-vtrace:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 1
+        num_workers: 31
         lr: 0.0003
         observation_filter: MeanStdFilter
         num_sgd_iter: 6
@@ -82,6 +83,7 @@ ddpg-repeat-after-me-env:
                 repeat_delay: 0
 
         num_gpus: 2
+        num_workers: 31
         # Double batch size (2 GPUs).
         train_batch_size: 512
 
@@ -96,6 +98,7 @@ dqn-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
+        num_workers: 31
         # Double batch size (2 GPUs).
         train_batch_size: 64
         # Mimic tuned_example for DQN CartPole.
@@ -115,6 +118,7 @@ impala-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
+        num_workers: 31
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
@@ -133,6 +137,7 @@ pg-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
+        num_workers: 31
         # Double batch size (2 GPUs).
         train_batch_size: 400
         model:
@@ -152,7 +157,7 @@ ppo-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 1
+        num_workers: 31
         lr: 0.0003
         observation_filter: MeanStdFilter
         num_sgd_iter: 6
@@ -180,6 +185,7 @@ sac-repeat-after-me-env:
             config:
                 repeat_delay: 0
         num_gpus: 2
+        num_workers: 31
         initial_alpha: 0.001
         prioritized_replay: true
 
@@ -201,6 +207,7 @@ sac-repeat-after-me-env-continuous:
                 continuous: true
                 repeat_delay: 0
         num_gpus: 2
+        num_workers: 31
         initial_alpha: 0.001
         prioritized_replay: true
 
@@ -218,6 +225,7 @@ simpleq-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
+        num_workers: 31
 
 td3-repeat-after-me-env:
     env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
@@ -235,5 +243,6 @@ td3-repeat-after-me-env:
                 repeat_delay: 0
 
         num_gpus: 2
+        num_workers: 31
         # Double batch size (2 GPUs).
         train_batch_size: 200
