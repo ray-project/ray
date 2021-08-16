@@ -113,8 +113,8 @@ class HeartbeatSender {
   /// Create a heartbeat sender.
   ///
   /// \param self_node_id ID of this node.
-  /// \param gcs_client GCS client to send heartbeat.
-  HeartbeatSender(NodeID self_node_id, std::shared_ptr<gcs::GcsClient> gcs_client);
+  /// \param gcs_client_options options to create a GCS client.
+  HeartbeatSender(NodeID self_node_id, const GcsClientOptions &gcs_client_options);
 
   ~HeartbeatSender();
 

@@ -162,6 +162,8 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// This function is thread safe.
   InternalKVAccessor &InternalKV() { return *internal_kv_accessor_; }
 
+  const GcsClientOptions &GetOptions() { return options_; }
+
  protected:
   /// Constructor of GcsClient.
   ///

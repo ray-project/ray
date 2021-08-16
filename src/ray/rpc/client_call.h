@@ -176,7 +176,7 @@ class ClientCallManager {
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
   explicit ClientCallManager(instrumented_io_context &main_service, int num_threads = 1)
-      : main_service_(main_service), num_threads_(num_threads), shutdown_(false) {
+      : reply_service_(main_service), num_threads_(num_threads), shutdown_(false) {
     rr_index_ = rand() % num_threads_;
     // Start the polling threads.
     cqs_.reserve(num_threads_);
@@ -216,7 +216,7 @@ class ClientCallManager {
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback,
       std::string call_name) {
-    auto stats_handle = main_service_.RecordStart(call_name);
+    auto stats_handle = reply_service_.RecordStart(call_name);
     auto call =
         std::make_shared<ClientCallImpl<Reply>>(callback, std::move(stats_handle));
     // Send request.
@@ -264,9 +264,9 @@ class ClientCallManager {
         tag->GetCall()->SetReturnStatus();
         std::shared_ptr<StatsHandle> stats_handle = tag->GetCall()->GetStatsHandle();
         RAY_CHECK(stats_handle != nullptr);
-        if (ok && !main_service_.stopped() && !shutdown_) {
+        if (ok && !reply_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
-          main_service_.post(
+          reply_service_.post(
               [tag]() {
                 tag->GetCall()->OnReplyReceived();
                 // The call is finished, and we can delete this tag now.
@@ -281,7 +281,7 @@ class ClientCallManager {
   }
 
   /// The main event loop, to which the callback functions will be posted.
-  instrumented_io_context &main_service_;
+  instrumented_io_context &reply_service_;
 
   /// The number of polling threads.
   int num_threads_;
