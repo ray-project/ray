@@ -218,7 +218,7 @@ type ObjectId []byte
 
 func (or *ObjectRef) Get() []interface{} {
     //returnObjectIdsSize := len(or.returnObjectIds)
-    util.Logger.Debugf("get :%v", or.returnObjectIds)
+    util.Logger.Debugf("get result:%v %d", or.returnObjectIds, or.returnObjectNum)
     if or.returnObjectNum == 0 {
         return nil
     }
@@ -227,7 +227,7 @@ func (or *ObjectRef) Get() []interface{} {
     if success != 0 {
         panic("failed to get task result")
     }
-    returnGoValues := make([]interface{}, 0, or.returnObjectNum)
+    returnGoValues := make([]interface{}, or.returnObjectNum, or.returnObjectNum)
     for index, returnValue := range returnValues {
         rv := (*C.struct_ReturnValue)(returnValue)
         metaBytes := C.GoBytes(unsafe.Pointer(rv.meta.p), rv.meta.size)

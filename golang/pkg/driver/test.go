@@ -21,7 +21,9 @@ func main() {
     //reflect.ValueOf(actor.Count)
     // reflect.ValueOf(actor.Count.Get)
     _ = actor_ref.Task((*actor.Count).Increase1).Remote().Get()
+    util.Logger.Infof("invoke increase")
     values := actor_ref.Task((*actor.Count).Get).Remote().Get()
+    util.Logger.Infof("invoke get")
     for _, v := range values {
         fmt.Println("v:", v)
     }
