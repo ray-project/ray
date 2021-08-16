@@ -1,3 +1,5 @@
+import requests
+
 from ray import workflow
 
 
