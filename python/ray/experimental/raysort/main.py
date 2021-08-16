@@ -35,25 +35,25 @@ def get_args(*args, **kwargs):
     )
     parser.add_argument(
         "--total_data_size",
-        default=100 * 1000 * 1024 * 1024 * 1024,
+        default=8 * 1000 * 1024 * 1024 * 1024,
         type=ByteCount,
         help="total data size in bytes",
     )
     parser.add_argument(
         "--num_mappers",
-        default=25 * 1024,
+        default=2 * 1024,
         type=int,
         help="number of map tasks",
     )
     parser.add_argument(
         "--num_mappers_per_round",
-        default=128,
+        default=64,
         type=int,
         help="number of map tasks per first-stage merge tasks",
     )
     parser.add_argument(
         "--num_reducers",
-        default=128,
+        default=64,
         type=int,
         help="number of second-stage reduce tasks",
     )
@@ -115,10 +115,14 @@ def get_args(*args, **kwargs):
 
 
 def _get_mount_points():
+    default_ret = [tempfile.gettempdir()]
     mnt = "/mnt"
     if not os.path.exists(mnt):
-        return [tempfile.gettempdir()]
-    return [os.path.join(mnt, d) for d in os.listdir(mnt)]
+        return default_ret
+    ret = [os.path.join(mnt, d) for d in os.listdir(mnt)]
+    if len(ret) > 0:
+        return ret
+    return default_ret
 
 
 # ------------------------------------------------------------
@@ -324,7 +328,7 @@ def sort_main(args: Args):
 
     mapper_opt = {
         "num_returns": args.num_reducers,
-        "num_cpus": 4,  # concurrency = 2
+        "num_cpus": 2,  # concurrency = 2
     }
     merge_results = np.empty(
         (args.num_rounds, args.num_reducers), dtype=object)
