@@ -103,8 +103,6 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_password = redis_password;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
-  gcs_server_config.pull_based_resource_reporting =
-      RayConfig::instance().pull_based_resource_reporting();
   gcs_server_config.grpc_based_resource_broadcast =
       RayConfig::instance().grpc_based_resource_broadcast();
   gcs_server_config.grpc_pubsub_enabled = RayConfig::instance().gcs_grpc_based_pubsub();
