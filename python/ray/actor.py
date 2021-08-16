@@ -437,6 +437,7 @@ class ActorClass:
                 max_restarts=None,
                 max_task_retries=None,
                 name=None,
+                namespace=None,
                 lifetime=None,
                 placement_group="default",
                 placement_group_bundle_index=-1,
@@ -478,6 +479,7 @@ class ActorClass:
                     max_restarts=max_restarts,
                     max_task_retries=max_task_retries,
                     name=name,
+                    namespace=namespace,
                     lifetime=lifetime,
                     placement_group=placement_group,
                     placement_group_bundle_index=placement_group_bundle_index,
@@ -503,6 +505,7 @@ class ActorClass:
                 max_restarts=None,
                 max_task_retries=None,
                 name=None,
+                namespace=None,
                 lifetime=None,
                 placement_group="default",
                 placement_group_bundle_index=-1,
@@ -532,7 +535,10 @@ class ActorClass:
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor, which can be used
                 to retrieve the actor via ray.get_actor(name) as long as the
-                actor is still alive. Names may not contain '/'.
+                actor is still alive.
+            namespace: Override the namespace to use for the actor. By default,
+                actors are created in an anonymous namespace. The actor can
+                be retrieved via ray.get_actor(name=name, namespace=namespace).
             lifetime: Either `None`, which defaults to the actor will fate
                 share with its creator and will be deleted once its refcount
                 drops to zero, or "detached", which means the actor will live
@@ -593,6 +599,7 @@ class ActorClass:
                 max_restarts=max_restarts,
                 max_task_retries=max_task_retries,
                 name=name,
+                namespace=namespace,
                 lifetime=lifetime,
                 placement_group=placement_group,
                 placement_group_bundle_index=placement_group_bundle_index,
@@ -611,17 +618,12 @@ class ActorClass:
                     f"name must be None or a string, got: '{type(name)}'.")
             elif name == "":
                 raise ValueError("Actor name cannot be an empty string.")
-            split_names = name.split("/", maxsplit=1)
-            if len(split_names) <= 1:
-                name = split_names[0]
-                namespace = ""
-            else:
-                # must be length 2
-                namespace, name = split_names
-            if "/" in name:
-                raise ValueError("Actor name may not contain '/'.")
-        else:
-            namespace = ""
+        if namespace is not None:
+            if not isinstance(namespace, str):
+                raise TypeError(f"namespace must be None or a string, "
+                                f"got: '{type(namespace)}'.")
+            elif namespace == "":
+                raise ValueError("Actor namespace cannot be an empty string.")
 
         # Check whether the name is already taken.
         # TODO(edoakes): this check has a race condition because two drivers
@@ -630,14 +632,15 @@ class ActorClass:
         # async call.
         if name is not None:
             try:
-                ray.get_actor(name)
+                ray.get_actor(name, namespace=namespace)
             except ValueError:  # Name is not taken.
                 pass
             else:
                 raise ValueError(
-                    f"The name {name} is already taken. Please use "
+                    f"The name {name} (namespace={namespace}) is already "
+                    "taken. Please use "
                     "a different name or get the existing actor using "
-                    f"ray.get_actor('{name}')")
+                    f"ray.get_actor('{name}', namespace='{namespace}')")
 
         if lifetime is None:
             detached = False
@@ -753,7 +756,7 @@ class ActorClass:
             max_concurrency,
             detached,
             name if name is not None else "",
-            namespace,
+            namespace if namespace is not None else "",
             is_asyncio,
             placement_group.id,
             placement_group_bundle_index,

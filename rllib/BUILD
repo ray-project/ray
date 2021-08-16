@@ -567,7 +567,7 @@ py_test(
 py_test(
     name = "test_trainer",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/tests/test_trainer.py"]
 )
 
