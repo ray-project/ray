@@ -33,7 +33,9 @@ DUMMY_ROW = {
 
 
 def create_parser():
-    parser = argparse.ArgumentParser(description="Test script to evaluate distributed shuffling with consumers")
+    parser = argparse.ArgumentParser(
+        description="Test script to evaluate distributed "
+        "shuffling with consumers")
     parser.add_argument("--address")
     parser.add_argument("--num-rows", type=int, default=8 * (10**8))
     parser.add_argument("--num-files", type=int, default=50)
@@ -82,7 +84,5 @@ if __name__ == "__main__":
     run_consume(args, data_dir=None)
     if "TEST_OUTPUT_JSON" in os.environ:
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-        results = {
-            "success": 1
-        }
+        results = {"success": 1}
         json.dump(results, out_file)
