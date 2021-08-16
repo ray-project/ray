@@ -20,11 +20,19 @@ func main() {
     //var f ray.Convert = actor.Count.Increase
     //reflect.ValueOf(actor.Count)
     // reflect.ValueOf(actor.Count.Get)
+    _ = actor_ref.Task((*actor.Count).Increase).Remote().Get()
     values := actor_ref.Task((*actor.Count).Get).Remote().Get()
-    for _,v := range values {
-        fmt.Println("v:",v)
+    for _, v := range values {
+        fmt.Println("v:", v)
     }
     fmt.Println("ok!")
+    values = actor_ref.Task((*actor.Count).Hello).Remote().Get()
+    hello, ok := values[0].(*string)
+    if !ok {
+        fmt.Println("failed to get string:")
+    }
+    fmt.Println("get string:%s", *hello)
+
     time.Sleep(time.Minute * 5)
 }
 

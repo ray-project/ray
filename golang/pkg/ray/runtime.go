@@ -28,6 +28,7 @@ var typesMap = make(map[string]reflect.Type)
 
 func init(){
     typesMap["int"] = reflect.TypeOf(0)
+    typesMap["string"] = reflect.TypeOf("")
 }
 
 func Init(address, _redis_password string) {

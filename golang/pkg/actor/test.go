@@ -28,4 +28,9 @@ func (c *Count) Get() int {
     return c.value
 }
 
+func (c *Count) Hello() string {
+    util.Logger.Debugf("invoke actor hello method")
+    return "hello"
+}
+
 
