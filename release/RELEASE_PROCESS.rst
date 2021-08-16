@@ -309,26 +309,26 @@ to proceed with the final stages of the release!
    of the docs, trigger a new build of the "latest" branch in
    readthedocs to see if that fixes it.
 
-7. **Update ML Docker Image:** Upgrade the ``requirements_ml_docker.txt`` dependencies to use the same Tensorflow version as
-``requirements.txt`` and Torch version as minimum of ``requirements_tune.txt`` and ``requirements_rllib.txt``. Make any changes to the CUDA
-version so that it is compatible with these Tensorflow (https://www.tensorflow.org/install/source#gpu) or Torch (https://pytorch.org/get-started/locally/, https://pytorch.org/get-started/previous-versions/)
-versions. If there is no CUDA version that is compatible, then downgrade either Tensorflow or Torch. Ping @ijrsvt or @amogkam for assistance.
+7. **Update ML Docker Image:** Upgrade the ``requirements_ml_docker.txt`` dependencies to use the same Tensorflow and Torch version as
+   minimum of ``requirements_tune.txt`` and ``requirements_rllib.txt``. Make any changes to the CUDA
+   version so that it is compatible with these Tensorflow (https://www.tensorflow.org/install/source#gpu) or Torch (https://pytorch.org/get-started/locally/, https://pytorch.org/get-started/previous-versions/)
+   versions. Ping @ijrsvt or @amogkam for assistance.
 
-7. **Update latest Docker Image:** SET THE VERSION NUMBER IN `docker/fix-docker-latest.sh`, then run the script ot update the "latest" tag
+8. **Update latest Docker Image:** SET THE VERSION NUMBER IN `docker/fix-docker-latest.sh`, then run the script ot update the "latest" tag
    in Dockerhub for the 
    ``rayproject/ray`` and ``rayproject/ray-ml`` Docker images to point to the Docker images built from the release. (Make sure there is no permission denied error, you will likely have to ask Thomas for permissions).
    
    Check the dockerhub to verify the update worked. https://hub.docker.com/repository/docker/rayproject/ray/tags?page=1&name=latest&ordering=last_updated
 
-8. **Send out an email announcing the release** to the employees@anyscale.com
+9. **Send out an email announcing the release** to the employees@anyscale.com
    Google group, and post a slack message in the Announcements channel of the
    Ray slack (message a team lead if you do not have permissions.)
 
-9. **Improve the release process:** Find some way to improve the release
-   process so that whoever manages the release next will have an easier time.
-   If you had to make any changes to tests or cluster configurations, make
-   sure they are contributed back! If you've noticed anything in the docs that
-   was out-of-date, please patch them.
+10. **Improve the release process:** Find some way to improve the release
+    process so that whoever manages the release next will have an easier time.
+    If you had to make any changes to tests or cluster configurations, make
+    sure they are contributed back! If you've noticed anything in the docs that
+    was out-of-date, please patch them.
 
 **You're done! Congratulations and good job!**
 
