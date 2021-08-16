@@ -73,6 +73,7 @@ ddpg-repeat-after-me-env:
     config:
         env_config:
             config:
+                continuous: true
                 repeat_delay: 0
 
         num_gpus: 2
@@ -169,6 +170,7 @@ sac-repeat-after-me-env:
     config:
         env_config:
             config:
+                continuous: true
                 repeat_delay: 0
         num_gpus: 2
         initial_alpha: 0.001
@@ -201,6 +203,7 @@ td3-repeat-after-me-env:
     config:
         env_config:
             config:
+                continuous: true
                 repeat_delay: 0
 
         num_gpus: 2
