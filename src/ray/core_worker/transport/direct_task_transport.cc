@@ -111,13 +111,13 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     // before dependencies are resolved, GCS will notice this and mark the actor as dead.
     auto ct = absl::GetCurrentTimeNanos();
     auto status = actor_creator_->AsyncRegisterActor(
-        task_spec, [ct, actor_id = task_spec.ActorId(),
-                    after_resolver_cb = std::move(after_resolver_cb)](Status status) {
+        task_spec, [ct, task_spec, after_resolver_cb = std::move(after_resolver_cb),
+                    this](Status status) mutable {
           if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to register actor: " << actor_id
+            RAY_LOG(ERROR) << "Failed to register actor: " << task_spec.ActorCreationId()
                            << ". Error message: " << status.ToString();
           } else {
-            after_resolver_cb();
+            resolver_.ResolveDependencies(task_spec, std::move(after_resolver_cb));
             auto et = absl::GetCurrentTimeNanos();
             RAY_LOG(INFO) << "CreateActor:Register " << (et - ct);
           }
