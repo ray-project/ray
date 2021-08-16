@@ -253,9 +253,6 @@ RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 
-/// The amount of time to wait between logging plasma space usage debug messages.
-RAY_CONFIG(uint64_t, object_store_usage_log_interval_s, 10 * 60)
-
 /// The threshold to trigger a global gc
 RAY_CONFIG(double, high_plasma_storage_usage, 0.7)
 
