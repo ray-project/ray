@@ -40,7 +40,6 @@ cc_library(
     deps = [
         ":ray_common",
         "@boost//:asio",
-        "@boost//:lockfree",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_protobuf//:protobuf",
     ],
@@ -407,6 +406,7 @@ cc_library(
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
         "@boost//:asio",
+        "@boost//:lockfree",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
