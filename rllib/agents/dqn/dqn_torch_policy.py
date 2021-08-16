@@ -211,8 +211,7 @@ def get_distribution_inputs_and_class(
         **kwargs) -> Tuple[TensorType, type, List[TensorType]]:
     q_vals = compute_q_values(
         policy,
-        model,
-        {"obs": obs_batch},
+        model, {"obs": obs_batch},
         explore=explore,
         is_training=is_training)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
@@ -238,8 +237,7 @@ def build_q_losses(policy: Policy, model, _,
     # Q-network evaluation.
     q_t, q_logits_t, q_probs_t, _ = compute_q_values(
         policy,
-        model,
-        {"obs": train_batch[SampleBatch.CUR_OBS]},
+        model, {"obs": train_batch[SampleBatch.CUR_OBS]},
         explore=False,
         is_training=True)
 
@@ -255,9 +253,8 @@ def build_q_losses(policy: Policy, model, _,
     one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS].long(),
                                   policy.action_space.n)
     q_t_selected = torch.sum(
-        torch.where(q_t > FLOAT_MIN, q_t,
-                    torch.tensor(0.0, device=q_t.device)) *
-        one_hot_selection, 1)
+        torch.where(q_t > FLOAT_MIN, q_t, torch.tensor(0.0, device=q_t.device))
+        * one_hot_selection, 1)
     q_logits_t_selected = torch.sum(
         q_logits_t * torch.unsqueeze(one_hot_selection, -1), 1)
 
@@ -311,7 +308,6 @@ def adam_optimizer(policy: Policy,
     # can define our optimizers using the correct CUDA variables.
     if not hasattr(policy, "q_func_vars"):
         policy.q_func_vars = policy.model.variables()
-        #policy.target_q_func_vars = policy.target_q_model.variables()
 
     return torch.optim.Adam(
         policy.q_func_vars, lr=policy.cur_lr, eps=config["adam_epsilon"])
@@ -333,9 +329,6 @@ def before_loss_init(policy: Policy, obs_space: gym.spaces.Space,
                      config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
-    ## Move target net to device (this is done automatically for the
-    ## policy.model, but not for any other models the policy has).
-    #policy.target_q_model = policy.target_q_model.to(policy.device)
 
 
 def compute_q_values(policy: Policy,

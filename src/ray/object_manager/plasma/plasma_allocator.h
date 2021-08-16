@@ -20,7 +20,10 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+
+#include "absl/types/optional.h"
 #include "ray/object_manager/plasma/allocator.h"
+#include "ray/object_manager/plasma/common.h"
 
 namespace plasma {
 
@@ -78,6 +81,9 @@ class PlasmaAllocator : public IAllocator {
 
   /// Get the number of bytes fallback allocated so far.
   int64_t FallbackAllocated() const override;
+
+ private:
+  absl::optional<Allocation> BuildAllocation(void *addr, size_t size);
 
  private:
   const int64_t kFootprintLimit;

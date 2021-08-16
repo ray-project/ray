@@ -419,7 +419,9 @@ class DynamicTFPolicy(TFPolicy):
             existing_inputs=input_dict,
             existing_model=[
                 self.model,
-                #("target_q_model", getattr(self, "target_q_model", None)),
+                # Deprecated: Target models should all reside under
+                # `policy.target_model` now.
+                ("target_q_model", getattr(self, "target_q_model", None)),
                 ("target_model", getattr(self, "target_model", None)),
             ])
 

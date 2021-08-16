@@ -463,8 +463,8 @@ class TargetNetworkMixin:
             for k, v in target_state_dict.items()
         }
 
-        for t in self.target_models.values():
-            t.load_state_dict(model_state_dict)
+        for target in self.target_models.values():
+            target.load_state_dict(model_state_dict)
 
 
 def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,

@@ -16,10 +16,11 @@
 // under the License.
 
 #include "ray/object_manager/plasma/eviction_policy.h"
-#include "ray/object_manager/plasma/plasma_allocator.h"
 
 #include <algorithm>
 #include <sstream>
+
+#include "ray/object_manager/plasma/plasma_allocator.h"
 
 namespace plasma {
 
@@ -90,7 +91,7 @@ int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
   return bytes_evicted;
 }
 
-EvictionPolicy::EvictionPolicy(const ObjectStore &object_store,
+EvictionPolicy::EvictionPolicy(const IObjectStore &object_store,
                                const IAllocator &allocator)
     : pinned_memory_bytes_(0),
       cache_("global lru", allocator.GetFootprintLimit()),

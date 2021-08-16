@@ -274,7 +274,7 @@ class TargetNetworkMixin:
                 (self.model_variables, self.target_model_variables)
 
             state_dict = self.model.state_dict()
-            for target in self.target_models:
+            for target in self.target_models.values():
                 target.load_state_dict(state_dict)
 
         self.update_target = do_update

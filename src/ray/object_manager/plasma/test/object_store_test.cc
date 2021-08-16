@@ -13,7 +13,9 @@
 // limitations under the License.
 
 #include "ray/object_manager/plasma/object_store.h"
+
 #include <limits>
+
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
@@ -30,13 +32,11 @@ T Random(T max = std::numeric_limits<T>::max()) {
   return absl::Uniform(bitgen, 0, max);
 }
 
-Allocation CreateAllocation(int64_t size) {
-  return Allocation(
-      /* address */ nullptr, size,
-      /* fd */ MEMFD_TYPE(),
-      /* offset */ Random<ptrdiff_t>(),
-      /* device_num */ 0,
-      /* mmap_size */ Random<int64_t>());
+Allocation CreateAllocation(Allocation alloc, int64_t size) {
+  alloc.size = size;
+  alloc.offset = Random<ptrdiff_t>();
+  alloc.mmap_size = Random<int64_t>();
+  return alloc;
 }
 
 const std::string Serialize(const Allocation &allocation) {
@@ -82,7 +82,7 @@ TEST(ObjectStoreTest, PassThroughTest) {
   ObjectStore store(allocator);
   {
     auto info = CreateObjectInfo(kId1, 10);
-    auto allocation = CreateAllocation(10);
+    auto allocation = CreateAllocation(Allocation(), 10);
     auto alloc_str = Serialize(allocation);
 
     EXPECT_CALL(allocator, Allocate(10)).Times(1).WillOnce(Invoke([&](size_t bytes) {
@@ -134,7 +134,7 @@ TEST(ObjectStoreTest, PassThroughTest) {
   }
 
   {
-    auto allocation = CreateAllocation(12);
+    auto allocation = CreateAllocation(Allocation(), 12);
     auto alloc_str = Serialize(allocation);
     auto info = CreateObjectInfo(kId2, 12);
     // allocation failure

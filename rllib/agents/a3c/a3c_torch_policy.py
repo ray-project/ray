@@ -67,9 +67,8 @@ def actor_critic_loss(policy: Policy, model: ModelV2,
 
     entropy = torch.sum(torch.masked_select(dist.entropy(), valid_mask))
 
-    total_loss = (
-        pi_err + value_err * policy.config["vf_loss_coeff"] -
-        entropy * policy.config["entropy_coeff"])
+    total_loss = (pi_err + value_err * policy.config["vf_loss_coeff"] -
+                  entropy * policy.config["entropy_coeff"])
 
     policy.entropy = entropy
     policy.pi_err = pi_err
