@@ -66,7 +66,7 @@ ddpg-repeat-after-me-env:
     run: DDPG
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: -10.0
+        episode_reward_mean: -50.0
         timesteps_total: 100000
     stop:
         time_total_s: 600
@@ -183,7 +183,7 @@ sac-repeat-after-me-env-continuous:
     run: SAC
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: -10.0
+        episode_reward_mean: -50.0
         timesteps_total: 50000
     stop:
         time_total_s: 600
@@ -216,7 +216,7 @@ td3-repeat-after-me-env:
     run: TD3
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: -10.0
+        episode_reward_mean: -50.0
         timesteps_total: 100000
     stop:
         time_total_s: 600
