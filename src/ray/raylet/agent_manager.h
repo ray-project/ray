@@ -20,7 +20,6 @@
 #include <vector>
 
 #include "ray/common/id.h"
-#include "ray/gcs/gcs_client.h"
 #include "ray/rpc/agent_manager/agent_manager_client.h"
 #include "ray/rpc/agent_manager/agent_manager_server.h"
 #include "ray/rpc/runtime_env/runtime_env_client.h"
@@ -43,6 +42,12 @@ typedef std::function<void(bool successful,
 
 typedef std::function<void()> DeleteRuntimeEnvCallback;
 
+typedef std::function<void(ray::Status status, const boost::optional<int> &result)>
+    UpdateAgentAddressCallback;
+typedef std::function<void(const std::string &value,
+                           const UpdateAgentAddressCallback &callback)>
+    UpdateAgentAddressFn;
+
 class AgentManager : public rpc::AgentManagerServiceHandler {
  public:
   struct Options {
@@ -50,14 +55,14 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
     std::vector<std::string> agent_commands;
   };
 
-  explicit AgentManager(Options options, std::shared_ptr<gcs::GcsClient> gcs_client,
-                        DelayExecutorFn delay_executor,
+  explicit AgentManager(Options options, DelayExecutorFn delay_executor,
                         RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory,
+                        UpdateAgentAddressFn update_agent_address,
                         bool start_agent = true /* for test */)
       : options_(std::move(options)),
-        gcs_client_(gcs_client),
         delay_executor_(std::move(delay_executor)),
-        runtime_env_agent_client_factory_(std::move(runtime_env_agent_client_factory)) {
+        runtime_env_agent_client_factory_(std::move(runtime_env_agent_client_factory)),
+        update_agent_address_(update_agent_address) {
     if (start_agent) {
       StartAgent();
     }
@@ -83,12 +88,12 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
 
  private:
   Options options_;
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
   pid_t agent_pid_ = 0;
   int agent_port_ = 0;
   std::string agent_ip_address_;
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;
+  UpdateAgentAddressFn update_agent_address_;
   std::shared_ptr<rpc::RuntimeEnvAgentClientInterface> runtime_env_agent_client_;
 };
 

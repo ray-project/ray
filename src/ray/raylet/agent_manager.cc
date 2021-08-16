@@ -17,8 +17,6 @@
 #include <thread>
 
 #include "ray/common/ray_config.h"
-#include "ray/stats/stats.h"
-#include "ray/util/agent_finder.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
 
@@ -34,16 +32,15 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
       runtime_env_agent_client_factory_(agent_ip_address_, agent_port_);
   RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address_
                 << ", port: " << agent_port_ << ", pid: " << agent_pid_;
-  UpdateAgentAddress(
-      gcs_client_, options_.node_id, std::to_string(agent_port_),
+  update_agent_address_(
+      std::to_string(agent_port_),
       [this, request](ray::Status status, const boost::optional<int> &result) {
         RAY_UNUSED(result);
         if (status.ok()) {
           // We update the agent_pid_ when the address is updated.
           agent_pid_ = request.agent_pid();
-          RAY_LOG(INFO) << "Update agent address key=" << kDashboardAgentAddressPrefix
-                        << ":" << options_.node_id.Hex()
-                        << ", value=" << request.agent_port() << " success.";
+          RAY_LOG(INFO) << "Update agent address success, node id = " << options_.node_id
+                        << ", port = " << request.agent_port();
         } else {
           RAY_LOG(ERROR) << "Failed to update agent address.";
         }

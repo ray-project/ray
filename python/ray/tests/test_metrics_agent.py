@@ -1,3 +1,4 @@
+import asyncio
 import json
 import pathlib
 import platform
@@ -70,7 +71,7 @@ _AUTOSCALER_METRICS = [
 
 
 @pytest.fixture
-def _setup_cluster_for_test(ray_start_cluster):
+async def _setup_cluster_for_test(ray_start_cluster):
     NUM_NODES = 2
     cluster = ray_start_cluster
     # Add a head node.
@@ -106,7 +107,12 @@ def _setup_cluster_for_test(ray_start_cluster):
             ray.get(worker_should_exit.wait.remote())
 
     a = A.remote()
-    obj_refs = [f.remote(), a.ping.remote()]
+    obj_refs = []
+
+    async def _metrics_gen():
+        while True:
+            obj_refs.extend([f.remote(), a.ping.remote()])
+            await asyncio.sleep(0.1)
 
     node_info_list = ray.nodes()
     prom_addresses = []
@@ -116,7 +122,9 @@ def _setup_cluster_for_test(ray_start_cluster):
         prom_addresses.append(f"{addr}:{metrics_export_port}")
     autoscaler_export_addr = "{}:{}".format(cluster.head_node.node_ip_address,
                                             AUTOSCALER_METRIC_PORT)
+    task = asyncio.create_task(_metrics_gen())
     yield prom_addresses, autoscaler_export_addr
+    task.cancel()
 
     ray.get(worker_should_exit.send.remote())
     ray.get(obj_refs)
@@ -127,8 +135,9 @@ def _setup_cluster_for_test(ray_start_cluster):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.skipif(
     prometheus_client is None, reason="Prometheus not installed")
-def test_metrics_export_end_to_end(_setup_cluster_for_test):
-    TEST_TIMEOUT_S = 20
+@pytest.mark.asyncio
+async def test_metrics_export_end_to_end(_setup_cluster_for_test):
+    TEST_TIMEOUT_S = 30
 
     prom_addresses, autoscaler_export_addr = _setup_cluster_for_test
 
@@ -203,6 +212,8 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             test_cases()
             return True
         except AssertionError:
+            import traceback
+            traceback.print_exc()
             return False
 
     try:
