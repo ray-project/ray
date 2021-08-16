@@ -116,7 +116,8 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// from the key. \param value The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  Status Put(const Key &key, const Data &value, const StatusCallback &callback) override;
+  Status Put(const Key &key, const Data &value, const StatusCallback &callback,
+             bool hi_pri = false) override;
 
   /// Get all the data of the specified job id from the table asynchronously.
   ///

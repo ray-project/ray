@@ -168,7 +168,7 @@ class instrumented_io_context : public boost::asio::io_context {
   std::string StatsString() const LOCKS_EXCLUDED(mutex_);
 
  private:
-  void internal_post(std::function<void()> handler, bool hi_pri);
+  void internal_post(std::function<void()> handler, bool hi_pri, const std::string &name);
 
   using HandlerStatsTable =
       absl::flat_hash_map<std::string, std::shared_ptr<GuardedHandlerStats>>;

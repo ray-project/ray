@@ -55,16 +55,21 @@ std::string to_human_readable(int64_t duration) {
 
 }  // namespace
 
-void instrumented_io_context::internal_post(std::function<void()> handler, bool hi_pri) {
+void instrumented_io_context::internal_post(std::function<void()> handler, bool hi_pri,
+                                            const std::string &name) {
   if (hi_pri) {
-    hi_pri_queue_.push(new std::function<void()>(std::move(handler)));
+    auto s = absl::GetCurrentTimeNanos();
+    auto h = [s = s, name, handler = std::move(handler)]() {
+      handler();
+      auto e = absl::GetCurrentTimeNanos();
+      RAY_LOG(INFO) << "HiPri [" << name << "] " << (e - s);
+    };
+    hi_pri_queue_.push(new std::function<void()>(std::move(h)));
     handler = nullptr;
-    RAY_LOG(INFO) << "DBG: HiPri pushed";
   }
   auto f = [handler = std::move(handler), this]() {
     std::function<void()> *f = nullptr;
     while (hi_pri_queue_.pop(f)) {
-      RAY_LOG(INFO) << "DBG: HiPri executed ";
       (*f)();
       delete f;
       f = nullptr;
@@ -79,7 +84,7 @@ void instrumented_io_context::internal_post(std::function<void()> handler, bool 
 void instrumented_io_context::post(std::function<void()> handler, const std::string name,
                                    bool hi_pri) {
   if (!RayConfig::instance().event_stats()) {
-    internal_post(std::move(handler), hi_pri);
+    internal_post(std::move(handler), hi_pri, name);
     return;
   }
   const auto stats_handle = RecordStart(name);
@@ -92,14 +97,14 @@ void instrumented_io_context::post(std::function<void()> handler, const std::str
       [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
         RecordExecution(handler, std::move(stats_handle));
       },
-      hi_pri);
+      hi_pri, name);
 }
 
 void instrumented_io_context::post(std::function<void()> handler,
                                    std::shared_ptr<StatsHandle> stats_handle,
                                    bool hi_pri) {
   if (!RayConfig::instance().event_stats()) {
-    return internal_post(std::move(handler), hi_pri);
+    return internal_post(std::move(handler), hi_pri, "<>");
   }
   // Reset the handle start time, so that we effectively measure the queueing
   // time only and not the time delay from RecordStart().
@@ -109,7 +114,7 @@ void instrumented_io_context::post(std::function<void()> handler,
       [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
         RecordExecution(handler, std::move(stats_handle));
       },
-      hi_pri);
+      hi_pri, "<>");
 }
 
 std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(
