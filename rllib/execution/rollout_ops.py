@@ -158,7 +158,7 @@ class ConcatBatches:
         self.count_steps_by = count_steps_by
         self.buffer = []
         self.count = 0
-        self.last_batch_time = None
+        self.last_batch_time = time.perf_counter()
 
     def __call__(self, batch: SampleBatchType) -> List[SampleBatchType]:
         _check_sample_batch_type(batch)
@@ -183,8 +183,7 @@ class ConcatBatches:
 
             perf_counter = time.perf_counter()
             timer = _get_shared_metrics().timers[SAMPLE_TIMER]
-            if self.last_batch_time is not None:
-                timer.push(perf_counter - self.last_batch_time)
+            timer.push(perf_counter - self.last_batch_time)
             timer.push_units_processed(self.count)
 
             self.last_batch_time = perf_counter
