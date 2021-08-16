@@ -99,9 +99,6 @@ def build_q_models(policy: Policy, obs_space: gym.spaces.Space,
         framework=config["framework"],
         name=Q_TARGET_SCOPE)
 
-    policy.q_func_vars = model.variables()
-    #policy.target_q_func_vars = policy.target_model.variables()
-
     return model
 
 

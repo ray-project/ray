@@ -37,8 +37,6 @@ class TargetNetworkMixin:
         def do_update():
             # Update_target_fn will be called periodically to copy Q network to
             # target Q networks.
-            #assert len(self.q_func_vars) == len(self.target_q_func_vars), \
-            #    (self.q_func_vars, self.target_q_func_vars)
             state_dict = self.model.state_dict()
             for target in self.target_models:
                 target.load_state_dict(state_dict)
