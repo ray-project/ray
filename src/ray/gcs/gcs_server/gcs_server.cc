@@ -27,6 +27,7 @@
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/task_info_handler_impl.h"
 #include "ray/stats/stats.h"
+#include "ray/util/agent_finder.h"
 
 namespace ray {
 namespace gcs {
@@ -58,36 +59,22 @@ void GcsServer::Start() {
       {ray::stats::ComponentKey, "gcs_server"},
       {ray::stats::VersionKey, "2.0.0.dev0"},
       {ray::stats::NodeAddressKey, config_.node_ip_address}};
-  ray::stats::Init(
-      global_tags, config_.node_ip_address, config_.metrics_agent_port,
-      [this](const ray::stats::GetAgentAddressCallback &callback) {
-        if (!gcs_node_manager_) {
-          callback(ray::Status::Invalid("The GcsNodeManager is not initialized."),
-                   std::string());
-          return;
-        }
-        auto all_alive_nodes = gcs_node_manager_->GetAllAliveNodes();
-        if (all_alive_nodes.empty()) {
-          callback(ray::Status::Invalid("No alive nodes."), std::string());
-          return;
-        }
-        auto selected_node_id = all_alive_nodes.begin()->first;
-        auto key =
-            std::string(kDashboardAgentAddressPrefix) + ":" + selected_node_id.Hex();
-        ray::Status status = redis_client_->GetPrimaryContext()->RunArgvAsync(
-            {"HGET", key, "value"}, [key, callback](auto redis_reply) {
-              if (!redis_reply->IsNil()) {
-                callback(Status::OK(), redis_reply->ReadAsString());
-              } else {
-                RAY_LOG(ERROR) << "Get metrics agent port failed, key=" << key;
-                callback(Status::NotFound("Failed to find the key"), std::string());
-              }
-            });
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Get metrics agent port failed, key=" << key;
-          callback(status, std::string());
-        }
-      });
+  ray::stats::Init(global_tags, config_.node_ip_address, config_.metrics_agent_port,
+                   [this](const ray::stats::GetAgentAddressCallback &callback) {
+                     if (!gcs_node_manager_) {
+                       callback(
+                           ray::Status::Invalid("The GcsNodeManager is not initialized."),
+                           std::string());
+                       return;
+                     }
+                     auto all_alive_nodes = gcs_node_manager_->GetAllAliveNodes();
+                     if (all_alive_nodes.empty()) {
+                       callback(ray::Status::Invalid("No alive nodes."), std::string());
+                       return;
+                     }
+                     auto selected_node_id = all_alive_nodes.begin()->first;
+                     FindAgentAddress(redis_client_, selected_node_id, callback);
+                   });
 
   // Init redis failure detector.
   gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(

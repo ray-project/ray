@@ -22,6 +22,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/stats/stats.h"
+#include "ray/util/agent_finder.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 
@@ -211,21 +212,15 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
   // for java worker or in constructor of CoreWorker for python worker.
-  stats::Init(
-      global_tags, options_.node_ip_address, options_.metrics_agent_port,
-      [this](const stats::GetAgentAddressCallback &callback) {
-        if (current_node_id_.IsNil()) {
-          callback(ray::Status::Invalid("No core worker created."), std::string());
-          return;
-        }
-        auto key =
-            std::string(kDashboardAgentAddressPrefix) + ":" + current_node_id_.Hex();
-        ray::Status status = gcs_client_->InternalKV().AsyncInternalKVGet(key, callback);
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Get metrics agent port failed, key=" << key;
-          callback(status, std::string());
-        }
-      });
+  stats::Init(global_tags, options_.node_ip_address, options_.metrics_agent_port,
+              [this](const stats::GetAgentAddressCallback &callback) {
+                if (current_node_id_.IsNil()) {
+                  callback(ray::Status::Invalid("No core worker created."),
+                           std::string());
+                  return;
+                }
+                FindAgentAddress(gcs_client_, current_node_id_, callback);
+              });
 
   io_thread_ = std::thread([&] {
 #ifndef _WIN32

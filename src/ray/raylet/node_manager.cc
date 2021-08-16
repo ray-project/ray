@@ -357,7 +357,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
 
   auto options = AgentManager::Options({self_node_id, agent_command_line});
   agent_manager_ = std::make_shared<AgentManager>(
-      std::move(options),
+      std::move(options), gcs_client_,
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(io_service_, task, delay_ms);
@@ -367,16 +367,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
         RAY_CHECK(!ip_address.empty() && port != 0);
         return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
-      },
-      /*update_agent_address=*/
-      [this](const std::string &key, const std::string &value,
-             const UpdateAgentAddressCallback &callback) {
-        ray::Status status = gcs_client_->InternalKV().AsyncInternalKVPut(
-            key, value, /*overwrite=*/true, callback);
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to update the agent address " << key << ": " << value;
-          callback(status, 0);
-        }
       });
   worker_pool_.SetAgentManager(agent_manager_);
 }

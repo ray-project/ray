@@ -21,6 +21,7 @@
 
 #include "ray/common/status.h"
 #include "ray/stats/stats.h"
+#include "ray/util/agent_finder.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -85,16 +86,10 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
       {ray::stats::ComponentKey, "raylet"},
       {ray::stats::VersionKey, "2.0.0.dev0"},
       {ray::stats::NodeAddressKey, node_ip_address}};
-  ray::stats::Init(
-      global_tags, node_ip_address, metrics_agent_port,
-      [this, gcs_client](const ray::stats::GetAgentAddressCallback &callback) {
-        auto key = std::string(kDashboardAgentAddressPrefix) + ":" + self_node_id_.Hex();
-        ray::Status status = gcs_client->InternalKV().AsyncInternalKVGet(key, callback);
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "Get metrics agent port failed, key=" << key;
-          callback(status, std::string());
-        }
-      });
+  ray::stats::Init(global_tags, node_ip_address, metrics_agent_port,
+                   [this, gcs_client](const ray::GetAgentAddressCallback &callback) {
+                     FindAgentAddress(gcs_client, self_node_id_, callback);
+                   });
 }
 
 Raylet::~Raylet() {}
