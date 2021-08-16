@@ -39,7 +39,6 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":ray_common",
-        ":stats_metric",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_protobuf//:protobuf",
@@ -335,6 +334,7 @@ cc_library(
         "src/ray/object_manager/plasma/create_request_queue.cc",
         "src/ray/object_manager/plasma/dlmalloc.cc",
         "src/ray/object_manager/plasma/eviction_policy.cc",
+        "src/ray/object_manager/plasma/object_lifecycle_manager.cc",
         "src/ray/object_manager/plasma/object_store.cc",
         "src/ray/object_manager/plasma/plasma_allocator.cc",
         "src/ray/object_manager/plasma/store.cc",
@@ -345,6 +345,7 @@ cc_library(
         "src/ray/object_manager/plasma/allocator.h",
         "src/ray/object_manager/plasma/create_request_queue.h",
         "src/ray/object_manager/plasma/eviction_policy.h",
+        "src/ray/object_manager/plasma/object_lifecycle_manager.h",
         "src/ray/object_manager/plasma/object_store.h",
         "src/ray/object_manager/plasma/plasma_allocator.h",
         "src/ray/object_manager/plasma/store.h",
@@ -404,7 +405,6 @@ cc_library(
     deps = [
         ":node_manager_fbs",
         ":ray_util",
-        ":stats_metric",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
         "@boost//:asio",
@@ -562,41 +562,20 @@ cc_library(
 )
 
 cc_library(
-    name = "stats_metric",
-    srcs = [
-        "src/ray/stats/metric.cc",
-    ],
-    hdrs = [
-        "src/ray/stats/metric.h",
-        "src/ray/stats/tag_defs.h",
-    ],
-    strip_include_prefix = "src",
-    deps = [
-        ":ray_util",
-        "@com_github_jupp0r_prometheus_cpp//pull",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
-        "@io_opencensus_cpp//opencensus/exporters/stats/stdout:stdout_exporter",
-        "@io_opencensus_cpp//opencensus/stats",
-        "@io_opencensus_cpp//opencensus/tags",
-    ],
-)
-
-cc_library(
     name = "stats_lib",
-    srcs = [
-        "src/ray/stats/metric_exporter.cc",
-        "src/ray/stats/metric_exporter_client.cc",
-    ],
-    hdrs = [
-        "src/ray/stats/metric_defs.h",
-        "src/ray/stats/metric_exporter.h",
-        "src/ray/stats/metric_exporter_client.h",
-        "src/ray/stats/stats.h",
-    ],
+    srcs = glob(
+        [
+            "src/ray/stats/*.cc",
+        ],
+        exclude = [
+            "src/ray/stats/*_test.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/stats/*.h",
+        ],
+    ),
     copts = COPTS,
     linkopts = select({
         "@bazel_tools//src/conditions:windows": [
@@ -607,8 +586,17 @@ cc_library(
     }),
     strip_include_prefix = "src",
     deps = [
+        ":ray_util",
         ":reporter_rpc",
-        ":stats_metric",
+        "@com_github_jupp0r_prometheus_cpp//pull",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
+        "@io_opencensus_cpp//opencensus/exporters/stats/stdout:stdout_exporter",
+        "@io_opencensus_cpp//opencensus/stats",
+        "@io_opencensus_cpp//opencensus/tags",
     ],
 )
 
@@ -977,20 +965,6 @@ cc_test(
 )
 
 cc_test(
-    name = "allocator_test",
-    srcs = [
-        "src/ray/object_manager/plasma/test/allocator_test.cc",
-    ],
-    copts = COPTS,
-    deps = [
-        ":plasma_store_server_lib",
-        "@boost//:filesystem",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "fallback_allocator_test",
     srcs = [
         "src/ray/object_manager/plasma/test/fallback_allocator_test.cc",
@@ -1008,6 +982,20 @@ cc_test(
     name = "object_store_test",
     srcs = [
         "src/ray/object_manager/plasma/test/object_store_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":plasma_store_server_lib",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "object_lifecycle_manager_test",
+    srcs = [
+        "src/ray/object_manager/plasma/test/object_lifecycle_manager_test.cc",
     ],
     copts = COPTS,
     deps = [

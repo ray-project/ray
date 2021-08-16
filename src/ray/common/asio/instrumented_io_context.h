@@ -29,6 +29,7 @@ struct HandlerStats {
 
   // Execution stats.
   int64_t cum_execution_time = 0;
+  int64_t running_count = 0;
 };
 
 /// Count and queueing statistics over all asio handlers.
@@ -63,7 +64,6 @@ struct GuardedGlobalStats {
 
 /// An opaque stats handle, used to manually instrument event loop handlers that don't
 /// hook into a .post() call.
-// TODO Pull out the tracker from ASIO
 struct StatsHandle {
   std::string handler_name;
   int64_t start_time;
