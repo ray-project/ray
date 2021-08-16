@@ -184,12 +184,12 @@ type ID unsafe.Pointer
 // 发出调用
 func (atc *ActorTaskCaller) Remote() *ObjectRef {
     returnNum := atc.invokeMethod.NumOut()
-    returObjectIdSize := returnNum
-    if returnNum == 0 {
-        returObjectIdSize += 1
+    returObjectIds := make([]unsafe.Pointer, returnNum, returnNum)
+    var returObjectIdArrayPointer *unsafe.Pointer = nil
+    if returnNum != 0 {
+        returObjectIdArrayPointer = &returObjectIds[0]
     }
-    returObjectIds := make([]unsafe.Pointer, returnNum, returObjectIdSize)
-    success := C.go_worker_SubmitActorTask(unsafe.Pointer(atc.actorHandle.actorId), C.CString(atc.invokeMethodName), C.int(returnNum), &returObjectIds[0])
+    success := C.go_worker_SubmitActorTask(unsafe.Pointer(atc.actorHandle.actorId), C.CString(atc.invokeMethodName), C.int(returnNum), returObjectIdArrayPointer)
     if success != 0 {
         panic("failed to submit task")
     }
@@ -202,7 +202,7 @@ func (atc *ActorTaskCaller) Remote() *ObjectRef {
     //    resultIds = append(resultIds, ID(objectId))
     //}
     return &ObjectRef{
-        returnObjectIds: unsafe.Pointer(&returObjectIds[0]),
+        returnObjectIds: unsafe.Pointer(returObjectIdArrayPointer),
         returnObjectNum: returnNum,
         returnTypes:     atc.invokeMethodReturnTypes,
     }
