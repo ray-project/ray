@@ -1,6 +1,5 @@
 import sys
 
-import ray
 from ray import workflow
 
 
