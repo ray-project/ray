@@ -3,7 +3,6 @@ This module is higher-level abstraction of storage directly used by
 workflows.
 """
 
-import abc
 import asyncio
 import functools
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
@@ -17,8 +16,7 @@ from ray.experimental.workflow.common import (Workflow, WorkflowData, StepID,
                                               WorkflowRef, StepType)
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
-from ray.experimental.workflow.storage import (DataLoadError, DataSaveError,
-                                               KeyNotFoundError)
+from ray.experimental.workflow.storage import (DataLoadError, DataSaveError)
 
 ArgsType = Tuple[List[Any], Dict[str, Any]]  # args and kwargs
 
@@ -149,7 +147,10 @@ class WorkflowStorage:
         if isinstance(ret, Workflow):
             # This workflow step returns a nested workflow.
             assert step_id != ret.id
-            tasks.append(self._put(self._key_step_output_metadata(step_id),  {"output_step_id": ret.id}, True))
+            tasks.append(
+                self._put(
+                    self._key_step_output_metadata(step_id),
+                    {"output_step_id": ret.id}, True))
             dynamic_output_id = ret.id
         else:
             # This workflow step returns a object.
@@ -195,7 +196,8 @@ class WorkflowStorage:
         """
         with serialization_context.workflow_args_resolving_context(
                 workflows, object_refs, workflow_refs):
-            flattened_args = asyncio_run(self._get(self._key_step_args(step_id)))
+            flattened_args = asyncio_run(
+                self._get(self._key_step_args(step_id)))
             return signature.recover_args(flattened_args)
 
     def save_object_ref(self, obj_ref: ray.ObjectRef) -> None:
@@ -207,9 +209,11 @@ class WorkflowStorage:
         Returns:
             None
         """
+
         async def _save_object_ref():
             data = await obj_ref
             await self._put(self._key_obj_id(obj_ref.hex()), data)
+
         return asyncio_run(_save_object_ref())
 
     def load_object_ref(self, object_id: str) -> ray.ObjectRef:
@@ -221,10 +225,12 @@ class WorkflowStorage:
         Returns:
             The object ref.
         """
+
         async def _load_obj_ref() -> ray.ObjectRef:
-                data = await self._get(self._key_obj_id(object_id))
-                ref = ray.put(data)
-                return ref
+            data = await self._get(self._key_obj_id(object_id))
+            ref = ray.put(data)
+            return ref
+
         return asyncio_run(_load_obj_ref())
 
     async def _update_dynamic_output(self, outer_most_step_id: StepID,
@@ -250,15 +256,19 @@ class WorkflowStorage:
                 "step_executor.execute_workflow" for explanation.
             dynamic_output_step_id: ID of dynamic_step.
         """
-        metadata = await self._get(self._key_step_output_metadata(step_id), True)
+        metadata = await self._get(
+            self._key_step_output_metadata(outer_most_step_id), True)
         if (dynamic_output_step_id != metadata["output_step_id"]
                 and dynamic_output_step_id !=
                 metadata.get("dynamic_output_step_id")):
             metadata["dynamic_output_step_id"] = dynamic_output_step_id
-            await self._put(self._key_step_output_metadata(outer_most_step_id), metadata, True)
+            await self._put(
+                self._key_step_output_metadata(outer_most_step_id), metadata,
+                True)
 
     async def _locate_output_step_id(self, step_id: StepID) -> str:
-        metadata = await self._get(self._key_step_output_metadata(step_id), True)
+        metadata = await self._get(
+            self._key_step_output_metadata(step_id), True)
         return (metadata.get("dynamic_output_step_id")
                 or metadata["output_step_id"])
 
@@ -307,7 +317,8 @@ class WorkflowStorage:
 
         # read inputs metadata
         try:
-            metadata = await self._get(self._key_step_input_metadata(step_id), True)
+            metadata = await self._get(
+                self._key_step_input_metadata(step_id), True)
             return StepInspectResult(
                 args_valid=field_list.args_exists,
                 func_body_valid=field_list.func_body_exists,
@@ -416,7 +427,9 @@ class WorkflowStorage:
             DataSaveError: if we fail to save the progress.
         """
         asyncio_run(
-            self._put(self._key_workflow_progress(), {"step_id": finished_step_id,}, True))
+            self._put(self._key_workflow_progress(), {
+                "step_id": finished_step_id,
+            }, True))
 
     def get_latest_progress(self) -> "StepID":
         """Load the latest progress of a workflow. This is used by a
@@ -428,7 +441,8 @@ class WorkflowStorage:
         Returns:
             The step that contains the latest output.
         """
-        return asyncio_run(self._get(self._key_workflow_progress(), True))["step_id"]
+        return asyncio_run(self._get(self._key_workflow_progress(),
+                                     True))["step_id"]
 
     @data_save_error
     async def _put(self, paths: List[str], data: Any,
@@ -446,8 +460,9 @@ class WorkflowStorage:
         prefix = self._storage.make_key(*paths)
         return await self._storage.scan_prefix(prefix)
 
-    """The following functions are helper functions to get the key for a specific fields
-    """
+    # The following functions are helper functions to get the key
+    # for a specific fields
+
     def _key_workflow_progress(self):
         return [self._workflow_id, STEPS_DIR, WORKFLOW_PROGRESS]
 
@@ -470,7 +485,7 @@ class WorkflowStorage:
         return [self._workflow_id, OBJECTS_DIR, object_id]
 
     def _key_step_prefix(self, step_id):
-        return [self._workflow_id, STEPS_DIR, step_id, '']
+        return [self._workflow_id, STEPS_DIR, step_id, ""]
 
     def _key_class_body(self):
         return [self._workflow_id, CLASS_BODY]
