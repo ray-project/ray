@@ -48,7 +48,8 @@ ABSL_FLAG(std::string, ray_logs_dir, "", "Logs dir for workers.");
 
 ABSL_FLAG(std::string, ray_node_ip_address, "", "The ip address for this node.");
 
-ABSL_FLAG(std::string, serialized_runtime_env, "{}",
+/// flag serialized-runtime-env is added in setup_runtime_env.py.
+ABSL_FLAG(std::string, serialized-runtime-env, "{}",
           "The serialized parsed runtime env dict.");
 
 namespace ray {
