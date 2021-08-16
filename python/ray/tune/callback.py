@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import (TYPE_CHECKING, Dict, List, Union, Mapping, Optional)
 from abc import ABC
 import warnings
 
@@ -7,7 +7,8 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
-    from ray.tune.experiment import Experiment
+    from ray.tune.stopper import Stopper
+    from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
 @PublicAPI(stability="beta")
@@ -46,15 +47,35 @@ class Callback(ABC):
 
     """
 
-    def setup(self, experiment: Optional["Experiment"] = None, **info):
+    # arguments here match Experiment.public_spec
+    def setup(self,
+              stop: Optional["Stopper"] = None,
+              resources_per_trial: Union[None, Mapping[str, Union[
+                  float, int, Mapping]], "PlacementGroupFactory"] = None,
+              num_samples: Optional[int] = None,
+              **info):
         """Called once at the very beginning of training.
 
         Any Callback setup should be added here (setting environment
         variables, etc.)
 
         Arguments:
-            experiment (Optional[Experiment]): Experiment setting set
-                by Ray Tune.
+            stop (dict | callable | :class:`Stopper`): Stopping criteria.
+                If ``time_budget_s`` was passed to ``tune.run``, a
+                ``TimeoutStopper`` will be passed here, either by itself
+                or as a part of a ``CombinedStopper``.
+            resources_per_trial (dict|PlacementGroupFactory): Machine resources
+                to allocate per trial, e.g. ``{"cpu": 64, "gpu": 8}``.
+                Note that GPUs will not be assigned unless you specify them
+                here. Defaults to 1 CPU and 0 GPUs in
+                ``Trainable.default_resource_request()``. This can also
+                be a PlacementGroupFactory object wrapping arguments to
+                create a per-trial placement group.
+            num_samples (int): Number of times to sample from the
+                hyperparameter space. Defaults to 1. If `grid_search` is
+                provided as an argument, the grid will be repeated
+                `num_samples` of times. If this is -1, (virtually) infinite
+                samples are generated until a stopping condition is met.
             **info: Kwargs dict for forward compatibility.
         """
         pass
@@ -194,17 +215,16 @@ class CallbackList:
     def __init__(self, callbacks: List[Callback]):
         self._callbacks = callbacks
 
-    def setup(self, experiment: Optional["Experiment"] = None, **info):
+    def setup(self, **info):
         for callback in self._callbacks:
             try:
-                callback.setup(experiment=experiment)
+                callback.setup(**info)
             except TypeError as e:
                 if "argument" in str(e):
                     warnings.warn(
                         "Please update ``setup`` method in callback "
-                        f"{callback.__class__} to take in an ``experiment`` "
-                        "optional argument (as ``setup(experiment=None)``.)",
-                        FutureWarning)
+                        f"{callback.__class__} to match the method signature "
+                        "in ``ray.tune.callback.Callback``.", FutureWarning)
                     callback.setup()
                 else:
                     raise e

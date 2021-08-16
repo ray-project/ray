@@ -22,14 +22,15 @@ from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune import Callback
 from ray.tune.utils.callback import create_default_callbacks
+from ray.tune.experiment import Experiment
 
 
 class TestCallback(Callback):
     def __init__(self):
         self.state = OrderedDict()
 
-    def setup(self, experiment=None):
-        self.state["setup"] = experiment
+    def setup(self, **info):
+        self.state["setup"] = info
 
     def on_step_begin(self, **info):
         self.state["step_begin"] = info
@@ -210,6 +211,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         self.assertIn("setup", self.callback.state)
         self.assertTrue(self.callback.state["setup"] is not None)
+        for key in Experiment.PUBLIC_KEYS:
+            self.assertIn(key, self.callback.state["setup"])
         # check if it was added first
         self.assertTrue(list(self.callback.state)[0] == "setup")
         self.assertEqual(
@@ -284,13 +287,13 @@ class TrialRunnerCallbacks(unittest.TestCase):
     @patch.object(warnings, "warn")
     def testCallbackSetupBackwardsCompatible(self, mocked_warning_method):
         class NoExperimentInSetupCallback(Callback):
-            # Old method definition didn't take in experiment
+            # Old method definition didn't take in **experiment.public_spec
             def setup(self):
                 return
 
         callback = NoExperimentInSetupCallback()
         trial_runner = TrialRunner(callbacks=[callback])
-        trial_runner.setup_callbacks(experiment=None)
+        trial_runner.setup_callbacks(experiment=Experiment("", lambda x: x))
         mocked_warning_method.assert_called_once()
         self.assertIn("Please update",
                       mocked_warning_method.call_args_list[0][0][0])

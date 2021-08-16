@@ -333,10 +333,11 @@ class TrialRunner:
         """Calls ``setup`` method in callbacks.
 
         Args:
-            experiment (Experiment): Experiment passed to callback ``setup``
-                methods. Not persisted.
+            experiment (Experiment): Experiment which ``public.spec`` is
+                passed to callback ``setup`` methods.
         """
-        self._callbacks.setup(experiment=experiment)
+        spec = experiment.public_spec if experiment else {}
+        self._callbacks.setup(**spec)
 
     def end_experiment_callbacks(self) -> None:
         """Calls ``on_experiment_end`` method in callbacks."""
