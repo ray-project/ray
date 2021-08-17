@@ -267,6 +267,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   std::unordered_map<SchedulingClass, std::deque<std::shared_ptr<Work>>>
       tasks_to_schedule_;
 
+  absl::flat_hash_map<SchedulingClass, int64_t> scheduling_backpressure_tracker_;
+
   /// Queue of lease requests that should be scheduled onto workers.
   /// Tasks move from scheduled | waiting -> dispatch.
   /// Tasks can also move from dispatch -> waiting if one of their arguments is
