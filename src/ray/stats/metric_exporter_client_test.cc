@@ -31,7 +31,10 @@ namespace ray {
 using namespace stats;
 
 const size_t kMockReportBatchSize = 10;
-const int MetricsAgentPort = 10054;
+
+auto GetMetricsAgentAddress = [](const ray::stats::GetAgentAddressCallback &callback) {
+  callback(Status::OK(), std::string("[\"127.0.0.1\", 10054]"));
+};
 
 class MockExporterClient1 : public MetricExporterDecorator {
  public:
@@ -124,7 +127,7 @@ class MetricExporterClientTest : public ::testing::Test {
     exporter.reset(new stats::StdoutExporterClient());
     mock1.reset(new MockExporterClient1(exporter));
     mock2.reset(new MockExporterClient2(mock1));
-    ray::stats::Init(global_tags, MetricsAgentPort, mock2, kMockReportBatchSize);
+    ray::stats::Init(global_tags, GetMetricsAgentAddress, mock2, kMockReportBatchSize);
   }
 
   virtual void TearDown() override { Shutdown(); }

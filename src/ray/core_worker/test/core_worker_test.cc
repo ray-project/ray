@@ -147,7 +147,6 @@ class CoreWorkerTest : public ::testing::Test {
       options.driver_name = "core_worker_test";
       options.ref_counting_enabled = true;
       options.num_workers = 1;
-      options.metrics_agent_port = -1;
       CoreWorkerProcess::Initialize(options);
     }
   }

@@ -20,6 +20,7 @@
 #include <unordered_map>
 
 #include "absl/synchronization/mutex.h"
+#include "nlohmann/json.hpp"
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
@@ -31,6 +32,8 @@
 #include "ray/stats/metric_exporter.h"
 #include "ray/stats/metric_exporter_client.h"
 #include "ray/util/logging.h"
+
+using json = nlohmann::json;
 
 namespace ray {
 
@@ -59,10 +62,8 @@ typedef std::function<void(const GetAgentAddressCallback &callback)> GetAgentAdd
 /// We recommend you to use this only once inside a main script and add Shutdown() method
 /// to any signal handler.
 /// \param global_tags[in] Tags that will be appended to all metrics in this process.
-/// \param metrics_agent_port[in] The port to export metrics at each node.
 /// \param exporter_to_use[in] The exporter client you will use for this process' metrics.
-static inline void Init(const TagsType &global_tags, const std::string &metrics_agent_ip,
-                        const int metrics_agent_port, GetAgentAddressFn get_agent_address,
+static inline void Init(const TagsType &global_tags, GetAgentAddressFn get_agent_address,
                         std::shared_ptr<MetricExporterClient> exporter_to_use = nullptr,
                         int64_t metrics_report_batch_size =
                             RayConfig::instance().metrics_report_batch_size()) {
@@ -81,7 +82,8 @@ static inline void Init(const TagsType &global_tags, const std::string &metrics_
     RAY_LOG(INFO) << "Disabled stats.";
     return;
   }
-  RAY_LOG(DEBUG) << "Initialized stats";
+  RAY_LOG(INFO) << "Initialized stats with report interval "
+                << RayConfig::instance().metrics_report_interval_ms() << "ms.";
 
   metrics_io_service_pool = std::make_shared<IOServicePool>(1);
   metrics_io_service_pool->Run();
@@ -107,30 +109,28 @@ static inline void Init(const TagsType &global_tags, const std::string &metrics_
                                   static_cast<uint64_t>(500))));
 
   MetricPointExporter::Register(exporter, metrics_report_batch_size);
-  OpenCensusProtoExporter::Register([metrics_agent_ip, metrics_agent_port,
-                                     get_agent_address, client_call_manager](
-                                        GetMetricsAgentClientCallback callback) {
-    if (metrics_agent_port != 0) {
-      RAY_LOG(INFO) << "Create metrics agent client to " << metrics_agent_ip << ":"
-                    << metrics_agent_port;
-      callback(Status::OK(),
-               std::make_unique<rpc::MetricsAgentClient>(
-                   metrics_agent_ip, metrics_agent_port, *client_call_manager));
-    }
-
-    get_agent_address([metrics_agent_ip, client_call_manager, callback](Status status,
-                                                                        auto &value) {
-      if (status.ok()) {
-        RAY_LOG(INFO) << "Discover metrics agent addresss " << metrics_agent_ip << ":"
-                      << *value;
-        callback(status, std::make_unique<rpc::MetricsAgentClient>(
-                             metrics_agent_ip, std::stoi(*value), *client_call_manager));
-      } else {
-        RAY_LOG(ERROR) << "Discover metrics agent address failed: " << status;
-        callback(status, std::unique_ptr<rpc::MetricsAgentClient>());
-      }
-    });
-  });
+  OpenCensusProtoExporter::Register(
+      [get_agent_address, client_call_manager](GetMetricsAgentClientCallback callback) {
+        get_agent_address([client_call_manager, callback](Status status, auto &value) {
+          if (status.ok()) {
+            RAY_LOG(INFO) << "Discover metrics agent addresss " << *value;
+            try {
+              json address = json::parse(*value);
+              RAY_CHECK(address.size() == 2);
+              const std::string ip = address[0].get<std::string>();
+              const int port = address[1].get<int>();
+              callback(status, std::make_shared<rpc::MetricsAgentClient>(
+                                   ip, port, *client_call_manager));
+            } catch (json::exception &ex) {
+              RAY_LOG(ERROR) << "Discover metrics agent address failed: " << ex.what();
+              callback(status, std::shared_ptr<rpc::MetricsAgentClient>());
+            }
+          } else {
+            RAY_LOG(ERROR) << "Discover metrics agent address failed: " << status;
+            callback(status, std::shared_ptr<rpc::MetricsAgentClient>());
+          }
+        });
+      });
   opencensus::stats::StatsExporter::SetInterval(
       StatsConfig::instance().GetReportInterval());
   opencensus::stats::DeltaProducer::Get()->SetHarvestInterval(
@@ -147,6 +147,7 @@ static inline void Shutdown() {
     // Return if stats had never been initialized.
     return;
   }
+  RAY_LOG(INFO) << "Shutdown stats.";
   metrics_io_service_pool->Stop();
   opencensus::stats::DeltaProducer::Get()->Shutdown();
   opencensus::stats::StatsExporter::Shutdown();

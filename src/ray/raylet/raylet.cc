@@ -61,8 +61,7 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
                int redis_port, const std::string &redis_password,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
-               std::shared_ptr<gcs::GcsClient> gcs_client, int metrics_export_port,
-               int metrics_agent_port)
+               std::shared_ptr<gcs::GcsClient> gcs_client, int metrics_export_port)
     : main_service_(main_service),
       self_node_id_(NodeID::FromRandom()),
       gcs_client_(gcs_client),
@@ -86,7 +85,7 @@ Raylet::Raylet(instrumented_io_context &main_service, const std::string &socket_
       {ray::stats::ComponentKey, "raylet"},
       {ray::stats::VersionKey, "2.0.0.dev0"},
       {ray::stats::NodeAddressKey, node_ip_address}};
-  ray::stats::Init(global_tags, node_ip_address, metrics_agent_port,
+  ray::stats::Init(global_tags,
                    [this, gcs_client](const ray::GetAgentAddressCallback &callback) {
                      GetAgentAddress(gcs_client, self_node_id_, callback);
                    });

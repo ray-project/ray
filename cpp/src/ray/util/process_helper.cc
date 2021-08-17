@@ -195,7 +195,6 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.driver_name = "cpp_worker";
   options.ref_counting_enabled = true;
   options.num_workers = 1;
-  options.metrics_agent_port = -1;
   options.task_execution_callback = callback;
   rpc::JobConfig job_config;
   for (const auto &path : ConfigInternal::Instance().code_search_path) {

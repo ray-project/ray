@@ -234,7 +234,6 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     options.driver_name = "queue_tests";
     options.ref_counting_enabled = true;
     options.num_workers = 1;
-    options.metrics_agent_port = -1;
     InitShutdownRAII core_worker_raii(CoreWorkerProcess::Initialize,
                                       CoreWorkerProcess::Shutdown, options);
 

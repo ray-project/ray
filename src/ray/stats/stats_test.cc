@@ -25,7 +25,9 @@
 
 namespace ray {
 
-const int MetricsAgentPort = 10054;
+auto GetMetricsAgentAddress = [](const ray::stats::GetAgentAddressCallback &callback) {
+  callback(Status::OK(), std::string("[\"127.0.0.1\", 10054]"));
+};
 
 class MockExporter : public opencensus::stats::StatsExporter::Handler {
  public:
@@ -70,7 +72,7 @@ class StatsTest : public ::testing::Test {
     const stats::TagsType global_tags = {{stats::ResourceNameKey, "CPU"}};
     std::shared_ptr<stats::MetricExporterClient> exporter(
         new stats::StdoutExporterClient());
-    ray::stats::Init(global_tags, MetricsAgentPort, exporter);
+    ray::stats::Init(global_tags, GetMetricsAgentAddress, exporter);
     MockExporter::Register();
   }
 
@@ -95,7 +97,7 @@ TEST_F(StatsTest, InitializationTest) {
     std::shared_ptr<stats::MetricExporterClient> exporter(
         new stats::StdoutExporterClient());
     ray::stats::Init({{stats::LanguageKey, test_tag_value_that_shouldnt_be_applied}},
-                     MetricsAgentPort, exporter);
+                     GetMetricsAgentAddress, exporter);
   }
 
   auto &first_tag = ray::stats::StatsConfig::instance().GetGlobalTags()[0];
@@ -110,7 +112,7 @@ TEST_F(StatsTest, InitializationTest) {
   std::shared_ptr<stats::MetricExporterClient> exporter(
       new stats::StdoutExporterClient());
 
-  ray::stats::Init(global_tags, MetricsAgentPort, exporter);
+  ray::stats::Init(global_tags, GetMetricsAgentAddress, exporter);
   ASSERT_TRUE(ray::stats::StatsConfig::instance().IsInitialized());
   auto &new_first_tag = ray::stats::StatsConfig::instance().GetGlobalTags()[0];
   ASSERT_TRUE(new_first_tag.second == test_tag_value_that_shouldnt_be_applied);
@@ -120,7 +122,7 @@ TEST(Metric, MultiThreadMetricRegisterViewTest) {
   ray::stats::Shutdown();
   std::shared_ptr<stats::MetricExporterClient> exporter(
       new stats::StdoutExporterClient());
-  ray::stats::Init({}, MetricsAgentPort, exporter);
+  ray::stats::Init({}, GetMetricsAgentAddress, exporter);
   std::vector<std::thread> threads;
   const stats::TagKeyType tag1 = stats::TagKeyType::Register("k1");
   const stats::TagKeyType tag2 = stats::TagKeyType::Register("k2");
@@ -165,7 +167,7 @@ TEST_F(StatsTest, MultiThreadedInitializationTest) {
         unsigned int upper_bound = 100;
         unsigned int init_or_shutdown = (rand() % upper_bound);
         if (init_or_shutdown >= (upper_bound / 2)) {
-          ray::stats::Init(global_tags, MetricsAgentPort, exporter);
+          ray::stats::Init(global_tags, GetMetricsAgentAddress, exporter);
         } else {
           ray::stats::Shutdown();
         }
@@ -179,7 +181,7 @@ TEST_F(StatsTest, MultiThreadedInitializationTest) {
   ASSERT_FALSE(ray::stats::StatsConfig::instance().IsInitialized());
   std::shared_ptr<stats::MetricExporterClient> exporter(
       new stats::StdoutExporterClient());
-  ray::stats::Init(global_tags, MetricsAgentPort, exporter);
+  ray::stats::Init(global_tags, GetMetricsAgentAddress, exporter);
   ASSERT_TRUE(ray::stats::StatsConfig::instance().IsInitialized());
 }
 
@@ -200,7 +202,7 @@ TEST_F(StatsTest, TestShutdownTakesLongTime) {
   absl::Duration harvest_interval = absl::Milliseconds(kReportFlushInterval);
   ray::stats::StatsConfig::instance().SetReportInterval(report_interval);
   ray::stats::StatsConfig::instance().SetHarvestInterval(harvest_interval);
-  ray::stats::Init(global_tags, MetricsAgentPort, exporter);
+  ray::stats::Init(global_tags, GetMetricsAgentAddress, exporter);
   ray::stats::Shutdown();
 }
 

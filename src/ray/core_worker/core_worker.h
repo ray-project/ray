@@ -99,7 +99,6 @@ struct CoreWorkerOptions {
         num_workers(0),
         terminate_asyncio_thread(nullptr),
         serialized_job_config(""),
-        metrics_agent_port(-1),
         connect_on_start(true),
         runtime_env_hash(0),
         worker_shim_pid(0) {}
@@ -179,9 +178,6 @@ struct CoreWorkerOptions {
   std::function<void()> terminate_asyncio_thread;
   /// Serialized representation of JobConfig.
   std::string serialized_job_config;
-  /// The port number of a metrics agent that imports metrics from core workers.
-  /// -1 means there's no such agent.
-  int metrics_agent_port;
   /// If false, the constructor won't connect and notify raylets that it is
   /// ready. It should be explicitly startd by a caller using CoreWorker::Start.
   /// TODO(sang): Use this method for Java and cpp frontend too.

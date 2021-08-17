@@ -503,7 +503,6 @@ class StreamingWorker {
                                                 _2, _3, _4, _5, _6, _7, _8, _9);
     options.ref_counting_enabled = true;
     options.num_workers = 1;
-    options.metrics_agent_port = -1;
     CoreWorkerProcess::Initialize(options);
     STREAMING_LOG(INFO) << "StreamingWorker constructor";
   }

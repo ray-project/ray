@@ -102,9 +102,9 @@ async def _setup_cluster_for_test(ray_start_cluster):
         async def ping(self):
             histogram = Histogram(
                 "test_histogram", description="desc", boundaries=[0.1, 1.6])
-            histogram = ray.get(ray.put(histogram))  # Test serialization.
+            histogram = await ray.put(histogram)  # Test serialization.
             histogram.record(1.5)
-            ray.get(worker_should_exit.wait.remote())
+            await worker_should_exit.wait.remote()
 
     a = A.remote()
     obj_refs = []

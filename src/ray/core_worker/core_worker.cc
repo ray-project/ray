@@ -212,15 +212,13 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
   // for java worker or in constructor of CoreWorker for python worker.
-  stats::Init(global_tags, options_.node_ip_address, options_.metrics_agent_port,
-              [this](const stats::GetAgentAddressCallback &callback) {
-                if (current_node_id_.IsNil()) {
-                  callback(ray::Status::Invalid("No core worker created."),
-                           std::string());
-                  return;
-                }
-                GetAgentAddress(gcs_client_, current_node_id_, callback);
-              });
+  stats::Init(global_tags, [this](const stats::GetAgentAddressCallback &callback) {
+    if (current_node_id_.IsNil()) {
+      callback(ray::Status::Invalid("No core worker created."), std::string());
+      return;
+    }
+    GetAgentAddress(gcs_client_, current_node_id_, callback);
+  });
 
   io_thread_ = std::thread([&] {
 #ifndef _WIN32

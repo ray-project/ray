@@ -49,7 +49,6 @@ struct GcsServerConfig {
   bool pull_based_resource_reporting;
   bool grpc_based_resource_broadcast;
   bool grpc_pubsub_enabled;
-  int metrics_agent_port;
 };
 
 class GcsNodeManager;

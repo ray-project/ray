@@ -27,7 +27,7 @@
 namespace ray {
 namespace stats {
 
-typedef std::function<void(const Status &, std::unique_ptr<rpc::MetricsAgentClient>)>
+typedef std::function<void(const Status &, std::shared_ptr<rpc::MetricsAgentClient>)>
     GetMetricsAgentClientCallback;
 typedef std::function<void(GetMetricsAgentClientCallback)> GetMetricsAgentClientFn;
 
@@ -107,8 +107,10 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
                                   opencensus::stats::ViewData>> &data) override;
 
  private:
+  /// A mutex to lock the client_.
+  absl::Mutex client_mutex_;
   /// Client to call a metrics agent gRPC server.
-  std::unique_ptr<rpc::MetricsAgentClient> client_;
+  std::shared_ptr<rpc::MetricsAgentClient> client_;
   /// Get MetricsAgentClient func.
   GetMetricsAgentClientFn get_metrics_agent_client_;
 };
