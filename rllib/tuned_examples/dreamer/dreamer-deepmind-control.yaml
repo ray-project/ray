@@ -21,6 +21,6 @@ dmc-dreamer:
         imagine_horizon: 15
         free_nats: 3.0
         batch_mode: complete_episodes
-        num_gpus: 0
+        num_gpus: 1
         num_workers: 0
         clip_actions: False
