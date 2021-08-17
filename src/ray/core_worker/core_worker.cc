@@ -22,6 +22,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/stats/stats.h"
+#include "ray/util/event.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 
@@ -182,6 +183,12 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
   // for java worker or in constructor of CoreWorker for python worker.
   stats::Init(global_tags, options_.metrics_agent_port);
+
+  // Initialize event framework.
+  if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
+    RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
+                 std::unordered_map<std::string, std::string>(), options_.log_dir);
+  }
 
 #ifndef _WIN32
   // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
