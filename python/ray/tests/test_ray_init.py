@@ -1,6 +1,7 @@
 import os
 import sys
 
+import logging
 import pytest
 import redis
 import unittest.mock
@@ -173,11 +174,11 @@ def test_ray_init_invalid_keyword_with_client(shutdown_only):
 
 
 def test_ray_init_valid_keyword_with_client(shutdown_only):
-    with pytest.raises(RuntimeError) as excinfo:
-        # num_cpus is a valid argument for regular ray.init, but not for
-        # init(ray://)
-        ray.init("ray://127.0.0.0", num_cpus=1)
-    assert "num_cpus" in str(excinfo.value)
+    with ray_start_client_server() as given_connection:
+        given_connection.disconnect()
+        # logging_level should be passed to the server
+        with ray.init("ray://localhost:50051", logging_level=logging.INFO):
+            pass
 
 
 def test_env_var_override():

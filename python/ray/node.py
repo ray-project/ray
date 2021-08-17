@@ -768,6 +768,7 @@ class Node:
             "gcs_server", unique=True)
         process_info = ray._private.services.start_gcs_server(
             self._redis_address,
+            self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,

@@ -834,6 +834,7 @@ class SampleBatch(dict):
                 data,
                 _is_training=self.is_training,
                 _time_major=self.time_major,
+                _zero_padded=self.zero_padded,
             )
         else:
             data = tree.map_structure(lambda value: value[start:stop], self)
