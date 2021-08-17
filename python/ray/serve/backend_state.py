@@ -539,6 +539,9 @@ class BackendState:
         self._goal_manager = goal_manager
         self._replicas: Dict[BackendTag, ReplicaStateContainer] = dict()
         self._backend_metadata: Dict[BackendTag, BackendInfo] = dict()
+        # TODO(architkulkarni): Limit the size of this, currently it grows
+        # without bound as more and more deployments are deleted.
+        self._deleted_deployments: Dict[BackendTag, BackendInfo] = dict()
         self._target_replicas: Dict[BackendTag, int] = defaultdict(int)
         self._backend_goals: Dict[BackendTag, GoalId] = dict()
         self._target_versions: Dict[BackendTag, BackendVersion] = dict()
@@ -547,8 +550,8 @@ class BackendState:
 
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
-            (self._replicas, self._backend_metadata, self._target_replicas,
-             self._target_versions,
+            (self._replicas, self._backend_metadata, self._deleted_deployments,
+             self._target_replicas, self._target_versions,
              self._backend_goals) = cloudpickle.loads(checkpoint)
 
             for goal_id in self._backend_goals.values():
@@ -588,7 +591,8 @@ class BackendState:
         self._kv_store.put(
             CHECKPOINT_KEY,
             cloudpickle.dumps(
-                (self._replicas, self._backend_metadata, self._target_replicas,
+                (self._replicas, self._backend_metadata,
+                 self._deleted_deployments, self._target_replicas,
                  self._target_versions, self._backend_goals)))
 
     def _notify_backend_configs_changed(
@@ -621,18 +625,28 @@ class BackendState:
                 list(replica_dict.values()),
             )
 
-    def get_backend_configs(
-            self,
-            filter_tag: Optional[BackendTag] = None,
-    ) -> Dict[BackendTag, BackendConfig]:
+    def get_backend_configs(self,
+                            filter_tag: Optional[BackendTag] = None,
+                            include_deleted: Optional[bool] = False
+                            ) -> Dict[BackendTag, BackendConfig]:
+        metadata = self._backend_metadata.copy()
+        if include_deleted:
+            metadata.update(self._deleted_deployments)
         return {
             tag: info.backend_config
-            for tag, info in self._backend_metadata.items()
+            for tag, info in metadata.items()
             if filter_tag is None or tag == filter_tag
         }
 
-    def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
-        return self._backend_metadata.get(backend_tag)
+    def get_backend(self,
+                    backend_tag: BackendTag,
+                    include_deleted: Optional[bool] = False
+                    ) -> Optional[BackendInfo]:
+        if not include_deleted:
+            return self._backend_metadata.get(backend_tag)
+        else:
+            return self._backend_metadata.get(
+                backend_tag) or self._deleted_deployments.get(backend_tag)
 
     def _set_backend_goal(self, backend_tag: BackendTag,
                           backend_info: Optional[BackendInfo]) -> None:
@@ -706,6 +720,9 @@ class BackendState:
 
         new_goal_id, existing_goal_id = self._set_backend_goal(
             backend_tag, backend_info)
+
+        if backend_tag in self._deleted_deployments:
+            del self._deleted_deployments[backend_tag]
 
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
@@ -949,6 +966,11 @@ class BackendState:
                         self._backend_goals.pop(backend_tag, None))
 
         for backend_tag in deleted_backends:
+            end_time_ms = int(time.time() * 1000)
+            self._backend_metadata[backend_tag].end_time_ms = end_time_ms
+            self._deleted_deployments[backend_tag] = self._backend_metadata[
+                backend_tag]
+
             del self._replicas[backend_tag]
             del self._backend_metadata[backend_tag]
             del self._target_replicas[backend_tag]
