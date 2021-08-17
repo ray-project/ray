@@ -125,7 +125,7 @@ If you encounter ``socket.gaierror: [Errno -2] Name or service not known`` when 
 Connection through the Ingress
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you encounter the following error message when connecting to the ``Ray Cluster`` through ``Ingress`` then it may be caused the Ingress configuration.
+If you encounter the following error message when connecting to the ``Ray Cluster`` using an ``Ingress``,  it may be caused by the Ingress's configuration.
 
 ..
 .. code-block:: python
