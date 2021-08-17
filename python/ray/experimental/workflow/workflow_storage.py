@@ -4,7 +4,6 @@ workflows.
 """
 
 import asyncio
-import functools
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 from dataclasses import dataclass
 
@@ -16,7 +15,8 @@ from ray.experimental.workflow.common import (Workflow, WorkflowData, StepID,
                                               WorkflowRef, StepType)
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import serialization_context
-from ray.experimental.workflow.storage import (DataLoadError, DataSaveError)
+from ray.experimental.workflow.storage import (DataLoadError, DataSaveError,
+                                               KeyNotFoundError)
 
 ArgsType = Tuple[List[Any], Dict[str, Any]]  # args and kwargs
 
@@ -84,30 +84,6 @@ class StepStatus:
     args_exists: bool
     # does the step function body exist?
     func_body_exists: bool
-
-
-def data_load_error(func):
-    @functools.wraps(func)
-    async def _func(*args, **kvargs):
-        try:
-            ret = await func(*args, **kvargs)
-            return ret
-        except Exception as e:
-            raise DataLoadError from e
-
-    return _func
-
-
-def data_save_error(func):
-    @functools.wraps(func)
-    async def _func(*args, **kv_args):
-        try:
-            ret = await func(*args, **kv_args)
-            return ret
-        except Exception as e:
-            raise DataSaveError from e
-
-    return _func
 
 
 class WorkflowStorage:
@@ -410,7 +386,7 @@ class WorkflowStorage:
             metadata = asyncio_run(
                 self._get(self._key_workflow_metadata(), True))
             return WorkflowMetaData(status=WorkflowStatus(metadata["status"]))
-        except Exception:
+        except KeyNotFoundError:
             return None
 
     async def _list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
@@ -454,21 +430,29 @@ class WorkflowStorage:
         return asyncio_run(self._get(self._key_workflow_progress(),
                                      True))["step_id"]
 
-    @data_save_error
     async def _put(self, paths: List[str], data: Any,
                    is_json: bool = False) -> None:
-        key = self._storage.make_key(*paths)
-        await self._storage.put(key, data, is_json=is_json)
+        try:
+            key = self._storage.make_key(*paths)
+            await self._storage.put(key, data, is_json=is_json)
+        except Exception as e:
+            raise DataSaveError from e
 
-    @data_load_error
     async def _get(self, paths: List[str], is_json: bool = False) -> Any:
-        key = self._storage.make_key(*paths)
-        return await self._storage.get(key, is_json=is_json)
+        try:
+            key = self._storage.make_key(*paths)
+            return await self._storage.get(key, is_json=is_json)
+        except KeyNotFoundError:
+            raise
+        except Exception as e:
+            raise DataLoadError from e
 
-    @data_load_error
     async def _scan(self, paths: List[str]) -> Any:
-        prefix = self._storage.make_key(*paths)
-        return await self._storage.scan_prefix(prefix)
+        try:
+            prefix = self._storage.make_key(*paths)
+            return await self._storage.scan_prefix(prefix)
+        except Exception as e:
+            raise DataLoadError from e
 
     # The following functions are helper functions to get the key
     # for a specific fields
