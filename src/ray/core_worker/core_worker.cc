@@ -1037,7 +1037,7 @@ std::vector<rpc::ObjectReference> CoreWorker::GetObjectRefs(
     rpc::ObjectReference ref;
     ref.set_object_id(object_id.Binary());
     ref.mutable_owner_address()->CopyFrom(GetOwnerAddress(object_id));
-    refs.push_back(ref);
+    refs.push_back(std::move(ref));
   }
   return refs;
 }
@@ -2129,9 +2129,10 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
       rpc::ObjectReference ref;
       ref.set_object_id(oid.Binary());
       ref.mutable_owner_address()->CopyFrom(GetOwnerAddress(oid));
-      contained_refs.push_back(ref);
+      contained_refs.push_back(std::move(ref));
     }
-    *return_object = std::make_shared<RayObject>(data_buffer, metadata, contained_refs);
+    *return_object =
+        std::make_shared<RayObject>(data_buffer, metadata, std::move(contained_refs));
   }
 
   return Status::OK();
