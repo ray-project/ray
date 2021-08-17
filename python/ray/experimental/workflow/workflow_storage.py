@@ -392,11 +392,20 @@ class WorkflowStorage:
         except KeyNotFoundError:
             return None
 
-    def get_named_step_id(self, step_name: str) -> str:
+    def get_named_step_id(self, step_name: str) -> Optional[str]:
         """Get the step id from the step name
 
+        Args:
+            step_name: the name of the step
 
+        Returns:
+            The step id associated with the name. Return None if it doesn't
+            exist.
         """
+        try:
+            return  asyncio_run(self._get(self._key_step_name(step_name)))
+        except KeyNotFoundError:
+            return None
 
     async def _list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
         prefix = self._storage.make_key("")
