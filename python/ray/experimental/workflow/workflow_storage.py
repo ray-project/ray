@@ -326,7 +326,8 @@ class WorkflowStorage:
             self._put(self._key_step_args(step_id), args_obj)
         ]
         if inputs.step_name is not None:
-            save_tasks.append(self._put(self._key_step_name(inputs.step_name), step_id))
+            save_tasks.append(
+                self._put(self._key_step_name(inputs.step_name), step_id))
         await asyncio.gather(*save_tasks)
 
     def save_subworkflow(self, workflow: Workflow) -> None:
@@ -403,7 +404,7 @@ class WorkflowStorage:
             exist.
         """
         try:
-            return  asyncio_run(self._get(self._key_step_name(step_name)))
+            return asyncio_run(self._get(self._key_step_name(step_name)))
         except KeyNotFoundError:
             return None
 
