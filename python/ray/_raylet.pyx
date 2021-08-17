@@ -106,7 +106,7 @@ from ray._private.async_compat import (
     sync_to_async, get_new_event_loop)
 import ray._private.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
-from ray import profiling
+import ray._private.profiling as profiling
 from ray.exceptions import (
     RayActorError,
     RayError,

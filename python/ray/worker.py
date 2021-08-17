@@ -42,7 +42,7 @@ from ray import (
     ObjectRef,
     Language,
 )
-from ray import profiling
+import ray._private.profiling as profiling
 
 from ray.exceptions import (
     RaySystemError,
