@@ -15,6 +15,9 @@
 # All C++ code.
 # /src/ray @ray-project/ray-core-cpp
 
+# Dependencies
+/python/setup.py @richardliaw @ericl
+
 # Python worker.
 #/python/ray/ @ray-project/ray-core-python
 #!/python/ray/tune/ @ray-project/ray-core-python
