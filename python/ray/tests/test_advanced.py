@@ -167,14 +167,13 @@ def test_running_function_on_all_workers(ray_start_regular):
     assert "fake_directory" not in ray.get(get_path2.remote())
 
 
-@pytest.mark.skipif(
-    "RAY_PROFILING" not in os.environ,
-    reason="Only tested in client/profiling build.")
+@pytest.mark.skipif("RAY_PROFILING" not in os.environ,
+                    reason="Only tested in client/profiling build.")
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f():
-        with ray.profiling.profile(
-                "custom_event", extra_data={"name": "custom name"}):
+        with ray.profiling.profile("custom_event",
+                                   extra_data={"name": "custom name"}):
             pass
 
     ray.put(1)
@@ -364,15 +363,14 @@ def test_illegal_api_calls(ray_start_regular):
         ray.get(3)
 
 
-@pytest.mark.skipif(
-    client_test_enabled(), reason="grpc interaction with releasing resources")
+@pytest.mark.skipif(client_test_enabled(),
+                    reason="grpc interaction with releasing resources")
 def test_multithreading(ray_start_2_cpus):
     # This test requires at least 2 CPUs to finish since the worker does not
     # release resources when joining the threads.
 
     def run_test_in_multi_threads(test_case, num_threads=10, num_repeats=25):
         """A helper function that runs test cases in multiple threads."""
-
         def wrapper():
             for _ in range(num_repeats):
                 test_case()
@@ -392,7 +390,6 @@ def test_multithreading(ray_start_2_cpus):
 
     def test_api_in_multi_threads():
         """Test using Ray api in multiple threads."""
-
         @ray.remote
         class Echo:
             def echo(self, value):
@@ -487,9 +484,8 @@ def test_multithreading(ray_start_2_cpus):
         def spawn(self):
             wait_objects = [echo.remote(i, delay_ms=10) for i in range(10)]
             self.threads = [
-                threading.Thread(
-                    target=self.background_thread, args=(wait_objects, ))
-                for _ in range(20)
+                threading.Thread(target=self.background_thread,
+                                 args=(wait_objects, )) for _ in range(20)
             ]
             [thread.start() for thread in self.threads]
 
@@ -656,10 +652,9 @@ def test_actor_distribution_balance(ray_start_cluster, args):
     actor_count = args[1]
 
     for i in range(node_count):
-        cluster.add_node(
-            memory=1024**3,
-            _system_config={"gcs_actor_scheduling_enabled": True}
-            if i == 0 else {})
+        cluster.add_node(memory=1024**3,
+                         _system_config={"gcs_actor_scheduling_enabled": True}
+                         if i == 0 else {})
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
@@ -690,8 +685,8 @@ def test_actor_distribution_balance(ray_start_cluster, args):
 # a normal task co-existed.
 def test_schedule_actor_and_normal_task(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(
-        memory=1024**3, _system_config={"gcs_actor_scheduling_enabled": True})
+    cluster.add_node(memory=1024**3,
+                     _system_config={"gcs_actor_scheduling_enabled": True})
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
@@ -743,10 +738,9 @@ def test_schedule_many_actors_and_normal_tasks(ray_start_cluster):
     node_memory = 2 * 1024**3
 
     for i in range(node_count):
-        cluster.add_node(
-            memory=node_memory,
-            _system_config={"gcs_actor_scheduling_enabled": True}
-            if i == 0 else {})
+        cluster.add_node(memory=node_memory,
+                         _system_config={"gcs_actor_scheduling_enabled": True}
+                         if i == 0 else {})
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
@@ -774,13 +768,14 @@ def test_schedule_many_actors_and_normal_tasks(ray_start_cluster):
 
 # This case tests whether RequestWorkerLeaseReply carries normal task resources
 # when the request is rejected (due to resource preemption by normal tasks).
+@pytest.mark.skip(
+    reason="The period of pull based resource report (10ms) is hard-coded.")
 def test_worker_lease_reply_with_resources(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
         memory=2000 * 1024**2,
         _system_config={
             "raylet_report_resources_period_milliseconds": 1000000,
-            "pull_based_resource_reporting": False,
             "gcs_actor_scheduling_enabled": True,
         })
     node2 = cluster.add_node(memory=1000 * 1024**2)
