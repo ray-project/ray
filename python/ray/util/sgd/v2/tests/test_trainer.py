@@ -1,5 +1,5 @@
-import os
 import time
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -11,6 +11,7 @@ from ray.util.sgd.v2 import Trainer
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface, \
     BackendExecutor
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
+from ray.util.sgd.v2.checkpoint import CheckpointConfig
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
 from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
@@ -73,11 +74,11 @@ def gen_new_backend_executor(special_f):
     """Returns a BackendExecutor that runs special_f on worker 0."""
 
     class TestBackendExecutor(BackendExecutor):
-        def start_training(self, train_func, checkpoint):
+        def start_training(self, train_func, run_dir, checkpoint_config):
             special_execute = gen_execute_single_async_special(special_f)
             with patch.object(WorkerGroup, "execute_single_async",
                               special_execute):
-                super().start_training(train_func, checkpoint)
+                super().start_training(train_func, checkpoint_config)
 
     return TestBackendExecutor
 
@@ -237,7 +238,8 @@ def test_checkpoint(ray_start_2_cpus):
             sgd.save_checkpoint(epoch=i)
         return 1
 
-    trainer.run(train_func_checkpoint, checkpoint=checkpoint)
+    trainer.run(
+        train_func_checkpoint, checkpoint_config=CheckpointConfig(checkpoint))
     checkpoint = trainer.latest_checkpoint
 
     assert checkpoint is not None
@@ -313,7 +315,9 @@ def test_load_checkpoint(ray_start_2_cpus):
 
     trainer = Trainer(config, num_workers=2)
     trainer.start()
-    result = trainer.run(train_func_checkpoint, checkpoint={"epoch": 3})
+    result = trainer.run(
+        train_func_checkpoint,
+        checkpoint_config=CheckpointConfig(checkpoint_to_load={"epoch": 3}))
 
     assert result is not None
     assert len(result) == 2
@@ -321,8 +325,10 @@ def test_load_checkpoint(ray_start_2_cpus):
     assert result[1] == [3, 4]
 
 
-@pytest.mark.parametrize(
-    "logdir", [None, "~/tmp/test/trainer/test_persisted_checkpoint"])
+@pytest.mark.parametrize("logdir", [
+    None, "/tmp/test/trainer/test_persisted_checkpoint",
+    "~/tmp/test/trainer/test_persisted_checkpoint"
+])
 def test_persisted_checkpoint(ray_start_2_cpus, logdir):
     config = TestConfig()
 
@@ -336,13 +342,11 @@ def test_persisted_checkpoint(ray_start_2_cpus, logdir):
 
     assert trainer.latest_checkpoint_path is not None
     if logdir is not None:
-        assert trainer.logdir == os.path.abspath(logdir)
-    assert os.path.isdir(trainer.checkpoint_dir)
-    assert os.path.isfile(trainer.latest_checkpoint_path)
-    assert os.path.basename(
-        trainer.latest_checkpoint_path) == f"checkpoint_{2:06d}"
-    assert os.path.basename(os.path.dirname(
-        trainer.latest_checkpoint_path)) == "checkpoints"
+        assert trainer.logdir == Path(logdir).expanduser().resolve()
+    assert trainer.latest_checkpoint_dir.is_dir()
+    assert trainer.latest_checkpoint_path.is_file()
+    assert trainer.latest_checkpoint_path.name == f"checkpoint_{2:06d}"
+    assert trainer.latest_checkpoint_path.parent.name == "checkpoints"
     latest_checkpoint = trainer.latest_checkpoint
 
     def validate():
@@ -350,7 +354,10 @@ def test_persisted_checkpoint(ray_start_2_cpus, logdir):
         assert checkpoint is not None
         assert checkpoint == latest_checkpoint
 
-    trainer.run(validate, checkpoint=trainer.latest_checkpoint_path)
+    trainer.run(
+        validate,
+        checkpoint_config=CheckpointConfig(
+            checkpoint_to_load=trainer.latest_checkpoint_path))
 
 
 def test_world_rank(ray_start_2_cpus):

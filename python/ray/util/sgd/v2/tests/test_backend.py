@@ -7,6 +7,7 @@ import ray
 from ray.util.sgd import v2 as sgd
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
+from ray.util.sgd.v2.checkpoint import CheckpointConfig
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.backends.torch import TorchConfig
 
@@ -174,7 +175,7 @@ def test_persisted_checkpoint(ray_start_2_cpus):
     e.start_training(train)
     e.finish_training()
 
-    assert e.latest_checkpoint_id == 2
+    assert e._latest_checkpoint_id == 2
     assert e.latest_checkpoint is not None
     assert e.latest_checkpoint["epoch"] == 1
     assert e.latest_checkpoint_path is not None
@@ -188,7 +189,8 @@ def test_persisted_checkpoint(ray_start_2_cpus):
 
     e2 = BackendExecutor(config)
     e2.start()
-    e2.start_training(validate, checkpoint=e.latest_checkpoint_path)
+    e2.start_training(
+        validate, checkpoint_config=CheckpointConfig(e.latest_checkpoint_path))
     e2.finish_training()
 
 

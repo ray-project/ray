@@ -1,7 +1,8 @@
 from contextlib import closing
 import socket
+from pathlib import Path
 from threading import Thread
-from typing import Tuple
+from typing import Tuple, Optional
 
 import ray
 
@@ -16,6 +17,24 @@ def get_address_and_port() -> Tuple[str, int]:
         port = s.getsockname()[1]
 
     return addr, port
+
+
+def construct_path(path: Optional[Path], parent_path: Path,
+                   default_path: Path) -> Path:
+    """Constructs a path relative to a parent.
+
+    Args:
+        path: A relative or absolute path.
+        parent_path: A relative path or absolute path.
+        default_path: A relative path or absolute path.
+
+    Returns: An absolute path.
+    """
+    path = path if path is not None else default_path
+    if path.expanduser().is_absolute():
+        return path.expanduser().resolve()
+    else:
+        return parent_path.joinpath(path).expanduser().resolve()
 
 
 class PropagatingThread(Thread):

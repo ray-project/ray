@@ -1,16 +1,18 @@
 import logging
-import os
 from datetime import datetime
+from pathlib import Path
 from typing import Callable, TypeVar, List, Optional, Dict, Union
 
 import ray
 from ray import cloudpickle
 from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
+from ray.util.sgd.v2.checkpoint import CheckpointConfig
 from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     DEFAULT_RESULTS_DIR
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
+from ray.util.sgd.v2.utils import construct_path
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 T = TypeVar("T")
@@ -35,16 +37,19 @@ class BackendExecutor:
 
     This class holds a worker group and is responsible for executing the
     training function on the workers, and collecting intermediate results
-    from ``sgd.report()``.
+    from ``sgd.report()`` and ``sgd.checkpoint()``.
 
-    Args:
-        backend_config (BackendConfig): The configurations for this
-            specific backend.
-        num_workers (int): Number of workers to use for training.
-        num_cpus_per_worker (float): Number of CPUs to use per worker.
-        num_gpus_per_worker (float): Number of GPUs to use per worker.
-        logdir (Optional[str]): Path to the file directory where logs
-        should be persisted. If this is not specified, one will be generated.
+    Attributes:
+        logdir(Path): Path to the file directory where logs will be persisted.
+        latest_run_dir(Optional[Path]): Path to the file directory for the
+            latest run. Configured through ``start_training``.
+        latest_checkpoint_dir(Optional[Path]): Path to the file directory for
+            the checkpoints from the latest run. Configured through
+            ``start_training``.
+        latest_checkpoint_path(Optional[Path]): Path to the latest persisted
+            checkpoint from the latest run.
+        latest_checkpoint(Optional[Dict]): The latest saved checkpoint. This
+            checkpoint may not be saved to disk.
     """
 
     def __init__(self,
@@ -52,25 +57,52 @@ class BackendExecutor:
                  num_workers: int = 1,
                  num_cpus_per_worker: float = 1,
                  num_gpus_per_worker: float = 0,
-                 logdir: Optional[str] = None):
+                 logdir: Optional[Union[str, Path]] = None):
+        """
+        Args:
+            backend_config (BackendConfig): The configurations for this
+                specific backend.
+            num_workers (int): Number of workers to use for training.
+            num_cpus_per_worker (float): Number of CPUs to use per worker.
+            num_gpus_per_worker (float): Number of GPUs to use per worker.
+            logdir (Optional[str|Path]): Path to the file directory where logs
+                should be persisted. If this is not specified, one will be
+                generated.
+        """
         self._backend_config = backend_config
         self._backend = self._backend_config.backend_cls()
         self._num_workers = num_workers
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
-        self._logdir = logdir
 
         self.worker_group = InactiveWorkerGroup()
         self.latest_checkpoint = None
 
-        # Initialize timestamp for identifying this SGD training execution.
-        self.timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
         # Create directory for logs.
-        os.makedirs(self.logdir, exist_ok=True)
-        logger.info(f"Results will be logged in: {self.logdir}")
+        logdir = Path(logdir) if logdir is not None else None
+        self.logdir = self._construct_logdir(logdir)
+        self.logdir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Trainer logs will be logged in: {self.logdir}")
 
-        # Unique checkpoint ID.
-        self.latest_checkpoint_id = 0
+        # Incremental unique run ID of this Trainer.
+        self._run_id = 0
+        # Input log directory for each run.
+        self._run_dir = None
+        # Incremental unique checkpoint ID of this run.
+        self._latest_checkpoint_id = 0
+        # Input log directory for checkpointing.
+        self._checkpoint_dir = None
+
+    def _construct_logdir(self, input_logdir: Optional[Path]) -> Path:
+        """Path to the log directory."""
+
+        # Initialize timestamp for identifying this SGD training execution.
+        timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+        default_logdir = Path(f"sgd_{timestr}")
+
+        logdir = construct_path(input_logdir, DEFAULT_RESULTS_DIR,
+                                default_logdir)
+        return logdir
 
     def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the worker group."""
@@ -81,21 +113,35 @@ class BackendExecutor:
             self.worker_group.execute(initialization_hook)
         self._backend.on_start(self.worker_group, self._backend_config)
 
-    def start_training(self,
-                       train_func: Callable[[], T],
-                       checkpoint: Optional[Union[Dict, str]] = None) -> None:
+    def start_training(
+            self,
+            train_func: Callable[[], T],
+            run_dir: Optional[Union[str, Path]] = None,
+            checkpoint_config: Optional[CheckpointConfig] = None) -> None:
         """Executes a training function on all workers in a separate thread.
 
         ``finish_training`` should be called after this.
 
         Args:
             train_func (Callable): The training function to run on each worker.
-            checkpoint (Optional[Dict|str]): The checkpoint data that should be
-                loaded onto each worker and accessed by the training function
-                via ``sgd.load_checkpoint()``. If this is a ``str`` then the
-                value is expected to be a path to a file that contains a
-                serialized checkpoint dict.
+            run_dir (Optional[str|Path]): The absolute path or path relative
+                to ``Trainer.logdir`` for this run's logs.
+            checkpoint_config (CheckpointConfig): The configurations for
+                loading and saving checkpoints.
         """
+        checkpoint_config = CheckpointConfig() if checkpoint_config is None \
+            else checkpoint_config
+
+        # Create new log directory for this run.
+        self._run_id += 1
+        self._run_dir = Path(run_dir) if run_dir is not None else None
+        self.latest_run_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Run results will be logged in: {self.latest_run_dir}")
+
+        # Restart checkpointing.
+        self._checkpoint_id = 0
+        self._checkpoint_dir = Path(checkpoint_config.checkpoint_dir) if \
+            checkpoint_config.checkpoint_dir is not None else None
 
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
@@ -116,9 +162,8 @@ class BackendExecutor:
                     "You must call `finish_training` before "
                     "calling `start_training` again.")
 
-        if isinstance(checkpoint, str):
-            # Load checkpoint from path.
-            checkpoint = self._load_checkpoint(checkpoint)
+        checkpoint = self._load_checkpoint(
+            checkpoint_config.checkpoint_to_load)
 
         futures = []
         for world_rank in range(len(self.worker_group)):
@@ -208,19 +253,31 @@ class BackendExecutor:
         # Store checkpoint in memory.
         self.latest_checkpoint = checkpoint
         # Get or create checkpoint dir.
-        os.makedirs(self.checkpoint_dir, exist_ok=True)
+        self.latest_checkpoint_dir.mkdir(parents=True, exist_ok=True)
         # Increment checkpoint id.
-        self.latest_checkpoint_id += 1
+        self._latest_checkpoint_id += 1
         # Write checkpoint to disk.
-        with open(self.latest_checkpoint_path, "wb") as f:
+        with self.latest_checkpoint_path.open("wb") as f:
             cloudpickle.dump(checkpoint, f)
             logger.debug(f"Checkpoint successfully written to: "
                          f"{self.latest_checkpoint_path}")
 
-    def _load_checkpoint(self, checkpoint_path: str) -> Dict:
-        """Load the checkpoint dictionary from the input path."""
-        with open(checkpoint_path, "rb") as f:
-            return cloudpickle.load(f)
+    def _load_checkpoint(self,
+                         checkpoint_to_load: Optional[Union[Dict, str, Path]]
+                         ) -> Optional[Dict]:
+        """Load the checkpoint dictionary from the input dict or path."""
+        if checkpoint_to_load is None:
+            return None
+        if isinstance(checkpoint_to_load, Dict):
+            return checkpoint_to_load
+        else:
+            # Load checkpoint from path.
+            checkpoint_path = Path(checkpoint_to_load).expanduser()
+            if not checkpoint_path.exists():
+                raise ValueError(f"Checkpoint path {checkpoint_path} "
+                                 f"does not exist.")
+            with checkpoint_path.open("rb") as f:
+                return cloudpickle.load(f)
 
     def fetch_next_result(self) -> Optional[List[Dict]]:
         """Fetch next results produced by ``sgd.report()`` from each worker.
@@ -359,25 +416,29 @@ class BackendExecutor:
         self.worker_group = InactiveWorkerGroup()
 
     @property
-    def logdir(self) -> str:
-        """Path to the log directory."""
-        if self._logdir is not None:
-            return os.path.abspath(self._logdir)
+    def latest_run_dir(self) -> Optional[Path]:
+        """Path to the latest run directory."""
+        if self._run_id > 0:
+            default_path = Path(f"run_{self._run_id:03d}")
+            run_dir = construct_path(self._run_dir, self.logdir, default_path)
+            return run_dir
         else:
-            directory_name = f"sgd_{self.timestr}"
-            return os.path.join(DEFAULT_RESULTS_DIR, directory_name)
+            return None
 
     @property
-    def checkpoint_dir(self) -> str:
-        """Path to the checkpoint directory."""
-        return os.path.join(self.logdir, "checkpoints")
+    def latest_checkpoint_dir(self) -> Optional[Path]:
+        """Path to the latest checkpoint directory."""
+        default_path = Path("checkpoints")
+        checkpoint_dir = construct_path(self._checkpoint_dir,
+                                        self.latest_run_dir, default_path)
+        return checkpoint_dir
 
     @property
-    def latest_checkpoint_path(self) -> Optional[str]:
+    def latest_checkpoint_path(self) -> Optional[Path]:
         """Path to the latest persisted checkpoint."""
-        if self.latest_checkpoint_id > 0:
-            checkpoint_file = f"checkpoint_{self.latest_checkpoint_id:06d}"
-            return os.path.join(self.checkpoint_dir, checkpoint_file)
+        if self._latest_checkpoint_id > 0:
+            checkpoint_file = f"checkpoint_{self._latest_checkpoint_id:06d}"
+            return self.latest_checkpoint_dir.joinpath(checkpoint_file)
         else:
             return None
 
