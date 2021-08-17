@@ -50,7 +50,8 @@ cc_library(
         "//:ray_util",
         "@boost//:callable_traits",
         "@boost//:dll",
-        "@com_github_gflags_gflags//:gflags",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
         "@msgpack",
     ],
     alwayslink = True,
@@ -150,7 +151,7 @@ cc_test(
         "src/ray/test/cluster/*.h",
     ]),
     args = [
-        "--ray-code-search-path=$(location plus.so):$(location counter.so)",
+        "--ray_code_search_path=$(location plus.so):$(location counter.so)",
     ],
     copts = COPTS,
     data = [
@@ -161,7 +162,6 @@ cc_test(
     linkstatic = True,
     deps = [
         "ray_api",
-        "@com_github_gflags_gflags//:gflags",
         "@com_google_googletest//:gtest_main",
     ],
     tags = ["team:core"],

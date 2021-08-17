@@ -137,8 +137,16 @@ my_func.deploy()
     assert entry["className"] == "my_func"
     assert entry["status"] == "RUNNING"
     assert entry["rayJobId"] is not None
-    assert entry["startTime"] == 0
+    assert entry["startTime"] > 0
     assert entry["endTime"] == 0
+
+    assert len(entry["actors"]) == 1
+    actor_id = next(iter(entry["actors"]))
+    metadata = data["data"]["snapshot"]["actors"][actor_id]["metadata"][
+        "serve"]
+    assert metadata["deploymentName"] == "my_func"
+    assert metadata["version"] == "v1"
+    assert len(metadata["replicaTag"]) > 0
 
     entry_nondetached = data["data"]["snapshot"]["deployments"][
         "myFuncNondetached"]
@@ -149,8 +157,16 @@ my_func.deploy()
     assert entry_nondetached["className"] == "my_func_nondetached"
     assert entry_nondetached["status"] == "RUNNING"
     assert entry_nondetached["rayJobId"] is not None
-    assert entry_nondetached["startTime"] == 0
+    assert entry_nondetached["startTime"] > 0
     assert entry_nondetached["endTime"] == 0
+
+    assert len(entry_nondetached["actors"]) == 1
+    actor_id = next(iter(entry_nondetached["actors"]))
+    metadata = data["data"]["snapshot"]["actors"][actor_id]["metadata"][
+        "serve"]
+    assert metadata["deploymentName"] == "my_func_nondetached"
+    assert metadata["version"] == "v1"
+    assert len(metadata["replicaTag"]) > 0
 
 
 if __name__ == "__main__":

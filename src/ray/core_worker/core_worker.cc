@@ -22,6 +22,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/stats/stats.h"
+#include "ray/util/event.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 
@@ -173,13 +174,21 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // by all of core worker.
   RAY_LOG(DEBUG) << "Stats setup in core worker.";
   // Initialize stats in core worker global tags.
-  const stats::TagsType global_tags = {{stats::ComponentKey, "core_worker"},
-                                       {stats::VersionKey, "2.0.0.dev0"}};
+  const ray::stats::TagsType global_tags = {
+      {ray::stats::ComponentKey, "core_worker"},
+      {ray::stats::VersionKey, "2.0.0.dev0"},
+      {ray::stats::NodeAddressKey, options_.node_ip_address}};
 
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
   // for java worker or in constructor of CoreWorker for python worker.
   stats::Init(global_tags, options_.metrics_agent_port);
+
+  // Initialize event framework.
+  if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
+    RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
+                 std::unordered_map<std::string, std::string>(), options_.log_dir);
+  }
 
 #ifndef _WIN32
   // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
@@ -1128,7 +1137,8 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                const std::vector<ObjectID> &contained_object_ids,
                                ObjectID *object_id, std::shared_ptr<Buffer> *data,
                                bool created_by_worker,
-                               const std::unique_ptr<rpc::Address> &owner_address) {
+                               const std::unique_ptr<rpc::Address> &owner_address,
+                               bool inline_small_object) {
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
                                    worker_context_.GetNextPutIndex());
   rpc::Address real_owner_address =
@@ -1173,7 +1183,7 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
   if ((options_.is_local_mode ||
        (RayConfig::instance().put_small_object_in_memory_store() &&
         static_cast<int64_t>(data_size) < max_direct_call_object_size_)) &&
-      owned_by_us) {
+      owned_by_us && inline_small_object) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
     if (status.ok()) {
@@ -2097,7 +2107,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
         (static_cast<int64_t>(data_size) < max_direct_call_object_size_ &&
          // ensure we don't exceed the limit if we allocate this object inline.
          (task_output_inlined_bytes + static_cast<int64_t>(data_size) <=
-          RayConfig::instance().task_output_inlined_bytes_limit()))) {
+          RayConfig::instance().task_rpc_inlined_bytes_limit()))) {
       data_buffer = std::make_shared<LocalMemoryBuffer>(data_size);
       task_output_inlined_bytes += static_cast<int64_t>(data_size);
     } else {

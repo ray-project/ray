@@ -1,4 +1,4 @@
-// Copyright 2020-2021 The Ray Authors.
+// Copyright 2021 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,18 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <ray/api.h>
-#include <ray/util/logging.h>
-#include "ray/core_worker/common.h"
-#include "ray/core_worker/core_worker.h"
+#pragma once
 
-#include "../config_internal.h"
+namespace ray {
 
-int main(int argc, char **argv) {
-  RAY_LOG(INFO) << "CPP default worker started.";
-  ray::internal::ConfigInternal::Instance().worker_type = ray::core::WorkerType::WORKER;
-  ray::RayConfig config;
-  ray::Init(config, argc, argv);
-  ::ray::core::CoreWorkerProcess::RunTaskExecutionLoop();
-  return 0;
-}
+#define EL_RAY_FATAL_CHECK_FAILED "RAY_FATAL_CHECK_FAILED"
+
+}  // namespace ray
