@@ -659,6 +659,7 @@ def test_init(shutdown_only):
         assert ray.get(t.test.remote()) == "world"
         os.chdir(old_dir)
 
+
 @pytest.mark.skip(reason="hotfix on 1.6.0 release branch breaks this")
 def test_get_wheel_filename():
     ray_version = "2.0.0.dev0"
@@ -670,6 +671,7 @@ def test_get_wheel_filename():
             url = f"{prefix}{filename}"
             assert requests.head(url).status_code == 200
 
+
 @pytest.mark.skip(reason="hotfix on 1.6.0 release branch breaks this")
 def test_get_master_wheel_url():
     ray_version = "2.0.0.dev0"
@@ -679,6 +681,7 @@ def test_get_master_wheel_url():
             url = get_master_wheel_url(test_commit, sys_platform, ray_version,
                                        py_version)
             assert requests.head(url).status_code == 200, url
+
 
 @pytest.mark.skip(reason="hotfix on 1.6.0 release branch breaks this")
 def test_get_release_wheel_url():
