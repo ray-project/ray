@@ -31,12 +31,6 @@ def build_ddpg_models_and_action_dist(
         action_space: gym.spaces.Space,
         config: TrainerConfigDict) -> Tuple[ModelV2, ActionDistribution]:
     model = build_ddpg_models(policy, obs_space, action_space, config)
-    # TODO(sven): Unify this once we generically support creating more than
-    #  one Model per policy. Note: Device placement is done automatically
-    #  already for `policy.model` (but not for the target model).
-    device = (torch.device("cuda")
-              if torch.cuda.is_available() else torch.device("cpu"))
-    policy.target_model = policy.target_model.to(device)
 
     if isinstance(action_space, Simplex):
         return model, TorchDirichlet
@@ -46,6 +40,9 @@ def build_ddpg_models_and_action_dist(
 
 def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
                            train_batch: SampleBatch) -> TensorType:
+
+    target_model = policy.target_models[model]
+
     twin_q = policy.config["twin_q"]
     gamma = policy.config["gamma"]
     n_step = policy.config["n_step"]
@@ -64,7 +61,7 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
 
     model_out_t, _ = model(input_dict, [], None)
     model_out_tp1, _ = model(input_dict_next, [], None)
-    target_model_out_tp1, _ = policy.target_model(input_dict_next, [], None)
+    target_model_out_tp1, _ = target_model(input_dict_next, [], None)
 
     # Policy network evaluation.
     # prev_update_ops = set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS))
@@ -72,8 +69,7 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
     # policy_batchnorm_update_ops = list(
     #    set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
-    policy_tp1 = \
-        policy.target_model.get_policy_output(target_model_out_tp1)
+    policy_tp1 = target_model.get_policy_output(target_model_out_tp1)
 
     # Action outputs.
     if policy.config["smooth_target_policy"]:
@@ -116,11 +112,11 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
     #     set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     # Target q-net(s) evaluation.
-    q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
+    q_tp1 = target_model.get_q_values(target_model_out_tp1,
                                              policy_tp1_smoothed)
 
     if twin_q:
-        twin_q_tp1 = policy.target_model.get_twin_q_values(
+        twin_q_tp1 = target_model.get_twin_q_values(
             target_model_out_tp1, policy_tp1_smoothed)
 
     q_t_selected = torch.squeeze(q_t, axis=len(q_t.shape) - 1)
