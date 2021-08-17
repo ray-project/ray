@@ -228,9 +228,7 @@ def test_starlette_request(serve_instance):
     assert resp == long_string
 
 
-def test_start_detached_idempotent(serve_instance):
-    # Test that running `serve.start()` doesn't affect the running controller
-    # and deployment for `serve.start(detached=True)`
+def test_start_idempotent(serve_instance):
     @serve.deployment(name="start")
     def func(*args):
         pass
@@ -242,7 +240,6 @@ def test_start_detached_idempotent(serve_instance):
     serve.start()
     serve.start(detached=True)
     serve.start()
-    serve.start(detached=True)
     assert "start" in serve.list_backends()
 
 
