@@ -66,7 +66,9 @@ bool ClusterTaskManager::SchedulePendingTasks() {
     auto sched_cls = shapes_it->first;
     auto &work_queue = shapes_it->second;
     bool is_infeasible = false;
-    for (auto work_it = work_queue.begin(); work_it != work_queue.end() && scheduling_backpressure_tracker_[sched_cls] < 16;) {
+    for (auto work_it = work_queue.begin();
+         work_it != work_queue.end() &&
+         scheduling_backpressure_tracker_[sched_cls] < 16;) {
       // Check every task in task_to_schedule queue to see
       // whether it can be scheduled. This avoids head-of-line
       // blocking where a task which cannot be scheduled because
