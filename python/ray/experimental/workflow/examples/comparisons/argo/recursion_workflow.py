@@ -9,7 +9,7 @@ def handle_heads() -> str:
 @workflow.step
 def handle_tails() -> str:
     print("It was tails, retrying")
-    return flip_coin.remote()
+    return flip_coin.step()
 
 
 @workflow.step

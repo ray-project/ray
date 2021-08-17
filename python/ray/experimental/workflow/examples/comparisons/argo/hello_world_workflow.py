@@ -1,10 +1,10 @@
 from ray import workflow
 
 
-@workflow.step(runtime_env={"pip": ["whalesay"]})
+# TODO(ekl) should support something like runtime_env={"pip": ["whalesay"]}
+@workflow.step
 def hello(msg: str) -> None:
-    import whalesay
-    whalesay.print(msg)
+    print(msg)
 
 
 if __name__ == "__main__":

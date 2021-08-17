@@ -1,10 +1,9 @@
 from ray import workflow
 
 
-@workflow.step(runtime_env={"pip": ["whalesay"]})
+@workflow.step
 def hello(msg: str) -> None:
-    import whalesay
-    whalesay.print(msg)
+    print(msg)
 
 
 @workflow.step

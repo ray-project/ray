@@ -17,6 +17,7 @@ def flaky_step() -> str:
 def custom_retry_strategy(func: Any, num_retries: int, delay_s: int) -> str:
     import time
 
+    @workflow.step
     def handle_result(res: Tuple[str, Exception]) -> str:
         result, error = res
         if result:
@@ -36,7 +37,7 @@ if __name__ == "__main__":
     workflow.init()
 
     # Default retry strategy.
-    print(flaky_step.options(max_retries=10).run())
+    print(flaky_step.options(max_retries=10).step().run())
 
     # Custom strategy.
-    print(custom_retry_strategy.step(flaky_step).run())
+    print(custom_retry_strategy.step(flaky_step, 10, 5).run())
