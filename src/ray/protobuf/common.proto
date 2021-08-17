@@ -216,7 +216,6 @@ message TaskSpec {
   string serialized_runtime_env = 25;
   // The concurrency group name in which this task will be performed.
   string concurrency_group_name = 26;
-
 }
 
 message Bundle {
