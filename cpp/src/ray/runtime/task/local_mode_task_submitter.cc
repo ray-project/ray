@@ -44,12 +44,14 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
   TaskSpecBuilder builder;
   std::string task_name =
       invocation.name.empty() ? functionDescriptor->DefaultTaskName() : invocation.name;
+
+  // TODO (Alex): Properly set the depth here?
   builder.SetCommonTaskSpec(invocation.task_id, task_name, rpc::Language::CPP,
                             functionDescriptor, local_mode_ray_tuntime_.GetCurrentJobID(),
                             local_mode_ray_tuntime_.GetCurrentTaskId(), 0,
                             local_mode_ray_tuntime_.GetCurrentTaskId(), address, 1,
                             required_resources, required_placement_resources,
-                            std::make_pair(PlacementGroupID::Nil(), -1), true, "");
+                            std::make_pair(PlacementGroupID::Nil(), -1), true, "", /*depth=*/0);
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {
     invocation.actor_id = local_mode_ray_tuntime_.GetNextActorID();
