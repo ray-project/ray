@@ -239,7 +239,7 @@ Process WorkerPool::StartWorkerProcess(
         if (language == Language::JAVA) {
           code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
         } else if (language == Language::CPP) {
-          code_search_path_str = "--ray-code-search-path=" + code_search_path_str;
+          code_search_path_str = "--ray_code_search_path=" + code_search_path_str;
         } else {
           RAY_LOG(FATAL) << "Unknown language " << Language_Name(language);
         }
@@ -327,15 +327,6 @@ Process WorkerPool::StartWorkerProcess(
       // Allocated_resource_json is only used in "shim process".
       worker_command_args.push_back("--allocated-instances-serialized-json=" +
                                     allocated_instances_serialized_json);
-    } else {
-      // The "shim process" setup worker is not needed, so do not run it.
-      // Check that the arg really is the path to the setup worker before erasing it, to
-      // prevent breaking tests that mock out the worker command args.
-      if (worker_command_args.size() >= 4 &&
-          worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
-        worker_command_args.erase(worker_command_args.begin() + 1,
-                                  worker_command_args.begin() + 4);
-      }
     }
 
     worker_command_args.push_back("--runtime-env-hash=" +
