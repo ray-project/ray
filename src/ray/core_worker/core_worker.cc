@@ -213,11 +213,14 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
   // for java worker or in constructor of CoreWorker for python worker.
   stats::Init(global_tags, [this](const stats::GetAgentAddressCallback &callback) {
-    if (current_node_id_.IsNil()) {
+    worker_map_mutex_.Lock();
+    auto current_node_id = current_node_id_;
+    worker_map_mutex_.Unlock();
+    if (current_node_id.IsNil()) {
       callback(ray::Status::Invalid("No core worker created."), std::string());
       return;
     }
-    GetAgentAddress(gcs_client_, current_node_id_, callback);
+    GetAgentAddress(gcs_client_, current_node_id, callback);
   });
 
   io_thread_ = std::thread([&] {

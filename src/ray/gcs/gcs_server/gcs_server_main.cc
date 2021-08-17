@@ -18,7 +18,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/store_client/redis_store_client.h"
-#include "ray/stats/stats.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
@@ -109,7 +108,6 @@ int main(int argc, char *argv[]) {
                                               int signal_number) {
     RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
     gcs_server.Stop();
-    ray::stats::Shutdown();
     main_service.stop();
   };
   boost::asio::signal_set signals(main_service);

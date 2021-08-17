@@ -22,7 +22,6 @@
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/raylet/raylet.h"
-#include "ray/stats/stats.h"
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
@@ -257,7 +256,6 @@ int main(int argc, char *argv[]) {
     RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
     raylet->Stop();
     gcs_client->Disconnect();
-    ray::stats::Shutdown();
     main_service.stop();
     remove(raylet_socket_name.c_str());
   };

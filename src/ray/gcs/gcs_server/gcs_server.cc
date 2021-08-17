@@ -61,18 +61,24 @@ void GcsServer::Start() {
       {ray::stats::NodeAddressKey, config_.node_ip_address}};
   ray::stats::Init(
       global_tags, [this](const ray::stats::GetAgentAddressCallback &callback) {
-        if (!gcs_node_manager_) {
-          callback(ray::Status::Invalid("The GcsNodeManager is not initialized."),
-                   std::string());
-          return;
-        }
-        auto all_alive_nodes = gcs_node_manager_->GetAllAliveNodes();
-        if (all_alive_nodes.empty()) {
-          callback(ray::Status::Invalid("No alive nodes."), std::string());
-          return;
-        }
-        auto selected_node_id = all_alive_nodes.begin()->first;
-        GetAgentAddress(redis_client_, selected_node_id, callback);
+        // This is the opencensus report thread, we should do the GCS operation
+        // in main_service_.
+        main_service_.post(
+            [this, callback] {
+              if (!gcs_node_manager_) {
+                callback(ray::Status::Invalid("The GcsNodeManager is not initialized."),
+                         std::string());
+                return;
+              }
+              auto all_alive_nodes = gcs_node_manager_->GetAllAliveNodes();
+              if (all_alive_nodes.empty()) {
+                callback(ray::Status::Invalid("No alive nodes."), std::string());
+                return;
+              }
+              auto selected_node_id = all_alive_nodes.begin()->first;
+              GetAgentAddress(redis_client_, selected_node_id, callback);
+            },
+            "GetAgentAddressCallback");
       });
 
   // Init redis failure detector.
@@ -193,6 +199,9 @@ void GcsServer::Stop() {
 
     // Shutdown the rpc server
     rpc_server_.Shutdown();
+
+    // Shutdown stats.
+    ray::stats::Shutdown();
 
     is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";
