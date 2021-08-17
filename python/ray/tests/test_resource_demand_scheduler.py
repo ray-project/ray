@@ -33,7 +33,7 @@ from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
                                 STATUS_WAITING_FOR_SSH, \
                                 NODE_KIND_HEAD, NODE_TYPE_LEGACY_WORKER, \
                                 NODE_TYPE_LEGACY_HEAD
-from ray.test_utils import same_elements
+from ray._private.test_utils import same_elements
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 

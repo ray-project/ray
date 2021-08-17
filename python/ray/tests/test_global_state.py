@@ -7,8 +7,8 @@ import time
 
 import ray
 import ray.ray_constants
-import ray.test_utils
 import ray._private.gcs_utils as gcs_utils
+from ray._private.test_utils import wait_for_condition
 
 from ray._raylet import GlobalStateAccessor
 
@@ -189,7 +189,7 @@ def test_load_report(shutdown_only, max_shapes):
 
     # Wait for load information to arrive.
     checker = Checker()
-    ray.test_utils.wait_for_condition(checker.check_load_report)
+    wait_for_condition(checker.check_load_report)
 
     # Check that we respect the max shapes limit.
     if max_shapes != -1:
@@ -271,17 +271,17 @@ def test_placement_group_load_report(ray_start_cluster):
     _, unready = ray.wait(
         [pg_feasible.ready(), pg_infeasible.ready()], timeout=0)
     assert len(unready) == 2
-    ray.test_utils.wait_for_condition(checker.nothing_is_ready)
+    wait_for_condition(checker.nothing_is_ready)
 
     # Add a node that makes pg feasible. Make sure load include this change.
     cluster.add_node(resources={"A": 1})
     ray.get(pg_feasible.ready())
-    ray.test_utils.wait_for_condition(checker.only_first_one_ready)
+    wait_for_condition(checker.only_first_one_ready)
     # Create one more infeasible pg and make sure load is properly updated.
     pg_infeasible_second = ray.util.placement_group([{"C": 1}])
     _, unready = ray.wait([pg_infeasible_second.ready()], timeout=0)
     assert len(unready) == 1
-    ray.test_utils.wait_for_condition(checker.two_infeasible_pg)
+    wait_for_condition(checker.two_infeasible_pg)
     global_state_accessor.disconnect()
 
 
@@ -328,7 +328,7 @@ def test_backlog_report(shutdown_only):
     # First request finishes, second request is now running, third lease
     # request is sent to the raylet with backlog=7
 
-    ray.test_utils.wait_for_condition(backlog_size_set, timeout=2)
+    wait_for_condition(backlog_size_set, timeout=2)
     global_state_accessor.disconnect()
 
 
@@ -352,7 +352,7 @@ def test_heartbeat_ip(shutdown_only):
         resources_data = resource_usage.batch[0]
         return resources_data.node_manager_address == self_ip
 
-    ray.test_utils.wait_for_condition(self_ip_is_set, timeout=2)
+    wait_for_condition(self_ip_is_set, timeout=2)
     global_state_accessor.disconnect()
 
 

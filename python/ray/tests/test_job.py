@@ -4,7 +4,7 @@ import os
 import ray
 from ray.job_config import JobConfig
 import ray._private.gcs_utils as gcs_utils
-from ray.test_utils import (
+from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,

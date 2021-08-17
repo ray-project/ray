@@ -49,7 +49,7 @@ When you have multiple tasks that need to wait on some condition, you can use a 
 
 .. code-block:: python
 
-    # Also available via `from ray.test_utils import SignalActor`
+    # Also available via `from ray._private.test_utils import SignalActor`
     import ray
     import asyncio
 

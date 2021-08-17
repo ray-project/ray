@@ -19,12 +19,11 @@ import ray.util.accelerators
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
-import ray.test_utils
 import ray._private.resource_spec as resource_spec
 import setproctitle
 
-from ray.test_utils import (check_call_ray, wait_for_condition,
-                            wait_for_num_actors)
+from ray._private.test_utils import (check_call_ray, wait_for_condition,
+                                     wait_for_num_actors)
 
 logger = logging.getLogger(__name__)
 

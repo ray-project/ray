@@ -9,12 +9,11 @@ import sys
 import time
 
 import ray
-import ray.test_utils
 import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
-from ray.test_utils import (run_string_as_driver, get_non_head_nodes,
-                            kill_actor_and_wait_for_failure,
-                            wait_for_condition)
+from ray._private.test_utils import (
+    run_string_as_driver, get_non_head_nodes, kill_actor_and_wait_for_failure,
+    SignalActor, wait_for_condition, wait_for_pid_to_exit)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 from ray._raylet import GlobalStateAccessor
 
@@ -136,7 +135,7 @@ def test_deleted_actor_no_restart(ray_start_regular):
         ray.get(signal.wait.remote())
         return ray.get(actor.method.remote())
 
-    signal = ray.test_utils.SignalActor.remote()
+    signal = SignalActor.remote()
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
     # Pass the handle to another task that cannot run yet.
@@ -147,7 +146,7 @@ def test_deleted_actor_no_restart(ray_start_regular):
     # Once the task finishes, the actor process should get killed.
     ray.get(signal.send.remote())
     assert ray.get(x_id) == 1
-    ray.test_utils.wait_for_pid_to_exit(pid)
+    wait_for_pid_to_exit(pid)
 
     # Create another actor with the same resource requirement to make sure the
     # old one was not restarted.

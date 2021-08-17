@@ -17,7 +17,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)
 from ray.serve.config import HTTPOptions
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray._private.services import new_port
 import ray._private.gcs_utils as gcs_utils
 

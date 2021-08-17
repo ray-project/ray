@@ -3,6 +3,7 @@ import errno
 import io
 import fnmatch
 import os
+import pathlib
 import subprocess
 import sys
 import time
@@ -584,8 +585,9 @@ def fetch_prometheus(prom_addresses):
 def load_test_config(config_file_name):
     """Loads a config yaml from tests/test_cli_patterns."""
     here = os.path.realpath(__file__)
-    parent = os.path.dirname(here)
-    config_path = os.path.join(parent, "tests/test_cli_patterns",
+    path = pathlib.Path(here)
+    grandparent = path.parent.parent
+    config_path = os.path.join(grandparent, "tests/test_cli_patterns",
                                config_file_name)
     config = yaml.safe_load(open(config_path).read())
     return config

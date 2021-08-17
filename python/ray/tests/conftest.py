@@ -9,7 +9,7 @@ import json
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.test_utils import init_error_pubsub
+from ray._private.test_utils import init_error_pubsub
 import ray._private.gcs_utils as gcs_utils
 
 

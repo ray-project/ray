@@ -12,9 +12,9 @@ import pytest
 import ray
 import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
-from ray.test_utils import (SignalActor, kill_actor_and_wait_for_failure,
-                            put_object, wait_for_condition,
-                            new_scheduler_enabled)
+from ray._private.test_utils import (
+    SignalActor, kill_actor_and_wait_for_failure, put_object,
+    wait_for_condition, new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 

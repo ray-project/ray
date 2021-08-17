@@ -9,10 +9,10 @@ except ImportError:
     pytest_timeout = None
 
 import ray
-from ray.test_utils import (generate_system_config_map, get_other_nodes,
-                            kill_actor_and_wait_for_failure,
-                            run_string_as_driver, wait_for_condition,
-                            get_error_message)
+from ray._private.test_utils import (
+    generate_system_config_map, get_other_nodes,
+    kill_actor_and_wait_for_failure, run_string_as_driver, wait_for_condition,
+    get_error_message)
 import ray.cluster_utils
 from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID

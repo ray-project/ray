@@ -3,7 +3,7 @@ import sys
 import ray
 import ray._private.gcs_utils as gcs_utils
 import pytest
-from ray.test_utils import (
+from ray._private.test_utils import (
     generate_system_config_map,
     wait_for_condition,
     wait_for_pid_to_exit,
