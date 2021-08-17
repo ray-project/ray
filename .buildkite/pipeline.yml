@@ -45,7 +45,7 @@
     ]
   commands:
     # Build the debug wheels
-    - RAY_DEBUG_BUILD=1 LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - RAY_DEBUG_BUILD=debug LINUX_WHEELS=1 ./ci/travis/ci.sh build
     # Upload the wheels.
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
@@ -54,6 +54,26 @@
     - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
     # Upload to latest directory.
     - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
+
+# Not working now.
+# - label: ":ferris_wheel: ASAN Wheels"
+#   conditions:
+#     [
+#         "RAY_CI_LINUX_WHEELS_AFFECTED",
+#         "RAY_CI_JAVA_AFFECTED",
+#         "RAY_CI_STREAMING_JAVA_AFFECTED",
+#     ]
+#   commands:
+#     # Build the asan wheels
+#     - RAY_DEBUG_BUILD=asan LINUX_WHEELS=1 ./ci/travis/ci.sh build
+#     # Upload the wheels.
+#     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
+#     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+#     - pip install -q docker aws_requests_auth boto3
+#     # Upload to branch directory.
+#     - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
+#     # Upload to latest directory.
+#     - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
 
 - label: ":docker: Build Images: py36"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -195,9 +215,23 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - pip uninstall -y ray
-    - RAY_DEBUG_BUILD=1 ./ci/travis/ci.sh build
+    - RAY_DEBUG_BUILD=debug ./ci/travis/ci.sh build
     - bazel test --config=ci-debug $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,debug_tests,-flaky
+      python/ray/tests/...
+- label: ":core: (ASAN tests)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
+      --config=asan-buildkite
+      --test_tag_filters=-kubernetes,-jenkins_only,asan_tests,-flaky
+      --test_env=CONDA_EXE
+      --test_env=CONDA_PYTHON_EXE
+      --test_env=CONDA_SHLVL
+      --test_env=CONDA_PREFIX
+      --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
 - label: ":python: (Worker In Container)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
