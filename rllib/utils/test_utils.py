@@ -455,9 +455,7 @@ def run_learning_tests_from_yaml(yaml_files):
         # Criteria is to a) reach reward AND b) to have reached the throughput
         # defined by `timesteps_total` / `time_total_s`.
         for t in trials:
-            experiment = t.trainable_name.lower() + "-" + \
-                         t.config["framework"] + "-" + \
-                         t.config["env"].lower()
+            experiment = re.sub(".+/([^/]+)$", "\\1", t.local_dir)
 
             if t.status == "ERROR":
                 checks[experiment]["failures"] += 1
