@@ -100,7 +100,8 @@ class TestSimpleQ(unittest.TestCase):
             vars = policy.get_weights()
             if isinstance(vars, dict):
                 vars = list(vars.values())
-            vars_t = policy.target_q_func_vars
+
+            vars_t = policy.target_model.variables()
             if fw == "tf":
                 vars_t = policy.get_session().run(vars_t)
 
