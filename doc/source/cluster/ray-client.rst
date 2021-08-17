@@ -142,7 +142,7 @@ If you encounter the following error message when connecting to the ``Ray Cluste
    >
 
 
-If you use ``nginx-ingress-controller``, It may be resolved to add the following Ingress configuration.
+If you are using the ``nginx-ingress-controller``, you may be able to resolve the issue by adding the following Ingress configuration.
 
 
 .. code-block:: yaml
