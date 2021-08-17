@@ -15,8 +15,6 @@
 #pragma once
 #include <boost/asio.hpp>
 #include <boost/asio/ip/host_name.hpp>
-#include <boost/property_tree/json_parser.hpp>
-#include <boost/property_tree/ptree.hpp>
 #include <cmath>
 #include <cstring>
 #include <iomanip>
@@ -31,6 +29,10 @@
 #include "spdlog/spdlog.h"
 #include "src/ray/protobuf/event.pb.h"
 
+#include "nlohmann/json.hpp"
+
+using json = nlohmann::json;
+
 namespace ray {
 
 #define RAY_EVENT(event_type, label) \
@@ -41,7 +43,7 @@ class BaseEventReporter {
  public:
   virtual void Init() = 0;
 
-  virtual void Report(const rpc::Event &event) = 0;
+  virtual void Report(const rpc::Event &event, const json &custom_fields) = 0;
 
   virtual void Close() = 0;
 
@@ -50,18 +52,20 @@ class BaseEventReporter {
 // responsible for writing event to specific file
 class LogEventReporter : public BaseEventReporter {
  public:
-  LogEventReporter(rpc::Event_SourceType source_type, std::string &log_dir,
+  LogEventReporter(rpc::Event_SourceType source_type, const std::string &log_dir,
                    bool force_flush = true, int rotate_max_file_size = 100,
                    int rotate_max_file_num = 20);
 
   virtual ~LogEventReporter();
 
  private:
-  virtual std::string EventToString(const rpc::Event &event);
+  virtual std::string replaceLineFeed(std::string message);
+
+  virtual std::string EventToString(const rpc::Event &event, const json &custom_fields);
 
   virtual void Init() override {}
 
-  virtual void Report(const rpc::Event &event) override;
+  virtual void Report(const rpc::Event &event, const json &custom_fields) override;
 
   virtual void Close() override {}
 
@@ -87,7 +91,11 @@ class EventManager final {
 
   bool IsEmpty();
 
-  void Publish(const rpc::Event &event);
+  // We added `const json &custom_fields` here because we need to support typed custom
+  // fields.
+  // TODO(guyang.sgy): Remove the protobuf `rpc::Event` and use an internal struct
+  // instead.
+  void Publish(const rpc::Event &event, const json &custom_fields);
 
   // NOTE(ruoqiu) AddReporters, ClearPeporters (along with the Pushlish function) would
   // not be thread-safe. But we assume default initialization and shutdown are placed in
@@ -98,7 +106,7 @@ class EventManager final {
   void ClearReporters();
 
  private:
-  EventManager() = default;
+  EventManager();
 
   EventManager(const EventManager &manager) = delete;
 
@@ -164,6 +172,15 @@ class RayEvent {
     return *this;
   }
 
+  /// Set custom field to current event.
+  /// All the supported value type: `bool`, `int`, `unsigned int`, `float`, `double`,
+  /// `std::string` and `nlohmann::json`.
+  template <typename T>
+  RayEvent &WithField(const std::string &key, const T &value) {
+    custom_fields_[key] = value;
+    return *this;
+  }
+
   static void ReportEvent(const std::string &severity, const std::string &label,
                           const std::string &message);
 
@@ -181,7 +198,12 @@ class RayEvent {
  private:
   rpc::Event_Severity severity_;
   std::string label_;
+  json custom_fields_;
   std::ostringstream osstream_;
 };
+
+void RayEventInit(rpc::Event_SourceType source_type,
+                  const std::unordered_map<std::string, std::string> &custom_fields,
+                  const std::string &log_dir);
 
 }  // namespace ray

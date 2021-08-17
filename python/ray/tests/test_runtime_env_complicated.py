@@ -1,3 +1,4 @@
+import json
 import os
 from contextlib import contextmanager
 from typing import List
@@ -11,6 +12,7 @@ import time
 
 import subprocess
 
+from pathlib import Path
 from unittest import mock
 import ray
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
@@ -20,7 +22,6 @@ from ray.workers.setup_runtime_env import (
     _resolve_install_from_source_ray_dependencies,
     _current_py_version,
 )
-from ray.job_config import JobConfig
 from ray.test_utils import (run_string_as_driver,
                             run_string_as_driver_nonblocking)
 
@@ -186,7 +187,7 @@ def test_task_actor_conda_env(conda_envs, shutdown_only):
 def test_job_config_conda_env(conda_envs, shutdown_only):
     for package_version in REQUEST_VERSIONS:
         runtime_env = {"conda": f"package-{package_version}"}
-        ray.init(job_config=JobConfig(runtime_env=runtime_env))
+        ray.init(runtime_env=runtime_env)
         assert ray.get(get_requests_version.remote()) == package_version
         ray.shutdown()
 
@@ -271,7 +272,7 @@ def test_conda_create_job_config(shutdown_only):
             }]
         }
     }
-    ray.init(job_config=JobConfig(runtime_env=runtime_env))
+    ray.init(runtime_env=runtime_env)
 
     @ray.remote
     def f():
@@ -438,7 +439,7 @@ def test_pip_job_config(shutdown_only, pip_as_str, tmp_path):
     else:
         runtime_env = {"pip": ["pip-install-test==0.5"]}
 
-    ray.init(job_config=JobConfig(runtime_env=runtime_env))
+    ray.init(runtime_env=runtime_env)
 
     @ray.remote
     def f():
@@ -562,8 +563,7 @@ def test_client_working_dir_filepath(call_ray_start, tmp_path):
 install_env_script = """
 import ray
 import time
-job_config = ray.job_config.JobConfig(runtime_env={env})
-ray.init(address="auto", job_config=job_config)
+ray.init(address="auto", runtime_env={env})
 @ray.remote
 def f():
     return "hello"
@@ -579,9 +579,8 @@ time.sleep(5)
 def test_env_installation_nonblocking(shutdown_only):
     """Test fix for https://github.com/ray-project/ray/issues/16226."""
     env1 = {"pip": ["pip-install-test==0.5"]}
-    job_config = ray.job_config.JobConfig(runtime_env=env1)
 
-    ray.init(job_config=job_config)
+    ray.init(runtime_env=env1)
 
     @ray.remote
     def f():
@@ -647,6 +646,149 @@ def test_simultaneous_install(shutdown_only):
 
     assert ray.get(worker_1.get.remote()) == (1, "2.2.0")
     assert ray.get(worker_2.get.remote()) == (2, "2.3.0")
+
+
+CLIENT_SERVER_PORT = 24001
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.")
+@pytest.mark.parametrize(
+    "call_ray_start", [
+        f"ray start --head --ray-client-server-port {CLIENT_SERVER_PORT}"
+        " --port 0"
+    ],
+    indirect=True)
+def test_e2e_complex(call_ray_start, tmp_path):
+    """Test multiple runtime_env options across multiple client connections.
+
+    1.  Run a Ray Client job with both working_dir and pip specified. Check the
+        environment using imports and file reads in tasks and actors.
+    2.  On the same cluster, run a job as above but using the Ray Summit
+        2021 demo's pip requirements.txt.  Also, check that per-task and
+        per-actor pip requirements work, all using the job's working_dir.
+    """
+    # Create a file to use to test working_dir
+    specific_path = tmp_path / "test"
+    specific_path.write_text("Hello")
+
+    with ray.client(f"localhost:{CLIENT_SERVER_PORT}").env({
+            "working_dir": str(tmp_path),
+            "pip": ["pip-install-test"]
+    }).connect():
+
+        # Test that a task is started in the working_dir.
+        @ray.remote
+        def test_read():
+            return Path("./test").read_text()
+
+        assert ray.get(test_read.remote()) == "Hello"
+
+        # Check a task has the job's pip requirements and working_dir.
+        @ray.remote
+        def test_pip():
+            import pip_install_test  # noqa
+            import ray  # noqa
+
+            return Path("./test").read_text()
+
+        assert ray.get(test_pip.remote()) == "Hello"
+
+        # Check an actor has the job's pip requirements and working_dir.
+        @ray.remote
+        class TestActor:
+            def test(self):
+                import pip_install_test  # noqa
+
+                return Path("./test").read_text()
+
+        a = TestActor.remote()
+        assert ray.get(a.test.remote()) == "Hello"
+
+    # pip requirements file from Ray Summit 2021 demo.
+    requirement_path = tmp_path / "requirements.txt"
+    requirement_path.write_text("\n".join([
+        "ray[serve, tune]",
+        "texthero",
+        "PyGithub",
+        "xgboost_ray",
+        "pandas==1.1",  # pandas 1.2.4 in the demo, but not supported on py36
+        "typer",
+        "aiofiles",
+    ]))
+
+    # Start a new job on the same cluster using the Summit 2021 requirements.
+    with ray.client(f"localhost:{CLIENT_SERVER_PORT}").env({
+            "working_dir": str(tmp_path),
+            "pip": "requirements.txt"
+    }).connect():
+
+        @ray.remote
+        def test_read():
+            return Path("./test").read_text()
+
+        assert ray.get(test_read.remote()) == "Hello"
+
+        # Check that a task has the job's pip requirements and working_dir.
+        @ray.remote
+        def test_import():
+            import ray  # noqa
+            from ray import serve  # noqa
+            from ray import tune  # noqa
+            import typer  # noqa
+            import xgboost_ray  # noqa
+
+            return Path("./test").read_text()
+
+        assert ray.get(test_import.remote()) == "Hello"
+
+        # Check that an actor has the job's pip requirements and working_dir.
+        @ray.remote
+        class TestActor:
+            def test(self):
+                import ray  # noqa
+                from ray import serve  # noqa
+                from ray import tune  # noqa
+                import typer  # noqa
+                import xgboost_ray  # noqa
+
+                return Path("./test").read_text()
+
+        a = TestActor.options(runtime_env={"pip": "requirements.txt"}).remote()
+        assert ray.get(a.test.remote()) == "Hello"
+
+        # Check that per-task pip specification works and that the job's
+        # working_dir is still inherited.
+        @ray.remote
+        def test_pip():
+            import pip_install_test  # noqa
+
+            return Path("./test").read_text()
+
+        assert ray.get(
+            test_pip.options(runtime_env={
+                "pip": ["pip-install-test"]
+            }).remote()) == "Hello"
+
+        # Check that pip_install_test is not in the job's pip requirements.
+        with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+            ray.get(test_pip.remote())
+        assert "ModuleNotFoundError" in str(excinfo.value)
+
+        # Check that per-actor pip specification works and that the job's
+        # working_dir is still inherited.
+        @ray.remote
+        class TestActor:
+            def test(self):
+                import pip_install_test  # noqa
+
+                return Path("./test").read_text()
+
+        a = TestActor.options(runtime_env={
+            "pip": ["pip-install-test"]
+        }).remote()
+        assert ray.get(a.test.remote()) == "Hello"
 
 
 @contextmanager
@@ -744,6 +886,32 @@ def test_runtime_env_inheritance_regression(shutdown_only):
         assert "working_dir" in env2
         with pytest.raises(NotImplementedError):
             t = Test.options(runtime_env=env2).remote()
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.")
+def test_runtime_env_logging_to_dirver(ray_start_regular_shared, log_pubsub):
+    @ray.remote(runtime_env={"pip": [f"requests=={REQUEST_VERSIONS[0]}"]})
+    def func():
+        pass
+
+    ray.get(func.remote())
+
+    # Check the stderr from the worker.
+    start = time.time()
+    while True:
+        if (time.time() - start) > 5:
+            assert False, "runtime_env log has not been propogated after 5s"
+
+        msg = log_pubsub.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            continue
+
+        log_data = json.loads(ray._private.utils.decode(msg["data"]))
+        if log_data["pid"] == "runtime_env":
+            break
 
 
 if __name__ == "__main__":

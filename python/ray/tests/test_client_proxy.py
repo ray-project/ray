@@ -1,4 +1,5 @@
 from glob import glob
+import json
 import os
 import pickle
 import pytest
@@ -226,12 +227,17 @@ def test_prepare_runtime_init_req_no_modification():
     """
     job_config = JobConfig(worker_env={"KEY": "VALUE"}, ray_namespace="abc")
     init_req = ray_client_pb2.DataRequest(
-        init=ray_client_pb2.InitRequest(job_config=pickle.dumps(job_config)))
+        init=ray_client_pb2.InitRequest(
+            job_config=pickle.dumps(job_config),
+            ray_init_kwargs=json.dumps({
+                "log_to_driver": False
+            })), )
     req, new_config = proxier.prepare_runtime_init_req(init_req)
     assert new_config.serialize() == job_config.serialize()
     assert isinstance(req, ray_client_pb2.DataRequest)
     assert pickle.loads(
         req.init.job_config).serialize() == new_config.serialize()
+    assert json.loads(req.init.ray_init_kwargs) == {"log_to_driver": False}
 
 
 def test_prepare_runtime_init_req_modified_job():
@@ -241,7 +247,11 @@ def test_prepare_runtime_init_req_modified_job():
     """
     job_config = JobConfig(worker_env={"KEY": "VALUE"}, ray_namespace="abc")
     init_req = ray_client_pb2.DataRequest(
-        init=ray_client_pb2.InitRequest(job_config=pickle.dumps(job_config)))
+        init=ray_client_pb2.InitRequest(
+            job_config=pickle.dumps(job_config),
+            ray_init_kwargs=json.dumps({
+                "log_to_driver": False
+            })))
 
     def modify_namespace(job_config: JobConfig):
         job_config.set_ray_namespace("test_value")
@@ -253,6 +263,7 @@ def test_prepare_runtime_init_req_modified_job():
     assert new_config.ray_namespace == "test_value"
     assert pickle.loads(
         req.init.job_config).serialize() == new_config.serialize()
+    assert json.loads(req.init.ray_init_kwargs) == {"log_to_driver": False}
 
 
 @pytest.mark.parametrize(

@@ -2,10 +2,12 @@ import argparse
 from typing import Dict
 
 import torch
+import ray.util.sgd.v2 as sgd
 from ray.util.sgd.v2.trainer import Trainer
+from ray.util.sgd.v2.callbacks import JsonLoggerCallback
 from torch import nn
 from torch.nn.parallel import DistributedDataParallel
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, DistributedSampler
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 
@@ -80,13 +82,19 @@ def validate(dataloader, model, loss_fn, device):
 
 
 def train_func(config: Dict):
-    batch_size = 64
-    lr = 1e-3
-    epochs = 4
+    batch_size = config["batch_size"]
+    lr = config["lr"]
+    epochs = config["epochs"]
 
     # Create data loaders.
-    train_dataloader = DataLoader(training_data, batch_size=batch_size)
-    test_dataloader = DataLoader(test_data, batch_size=batch_size)
+    train_dataloader = DataLoader(
+        training_data,
+        batch_size=batch_size,
+        sampler=DistributedSampler(training_data))
+    test_dataloader = DataLoader(
+        test_data,
+        batch_size=batch_size,
+        sampler=DistributedSampler(test_data))
 
     # Create model.
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -102,19 +110,24 @@ def train_func(config: Dict):
     for _ in range(epochs):
         train(train_dataloader, model, loss_fn, optimizer, device)
         loss = validate(test_dataloader, model, loss_fn, device)
+        sgd.report(loss=loss)
         loss_results.append(loss)
 
     return loss_results
 
 
-def train_example(num_workers=1, use_gpu=False):
-    trainer = Trainer(
-        backend="torch",
-        num_workers=num_workers,
-        num_gpus_per_worker=int(use_gpu))
-
-    result = trainer.run(train_func=train_func)
-
+def train_fashion_mnist(num_workers=1, use_gpu=False):
+    trainer = Trainer(backend="torch", num_workers=num_workers)
+    trainer.start()
+    result = trainer.run(
+        train_func=train_func,
+        config={
+            "lr": 1e-3,
+            "batch_size": 64,
+            "epochs": 4
+        },
+        callbacks=[JsonLoggerCallback("./sgd_results")])
+    trainer.shutdown()
     print(f"Loss results: {result}")
 
 
@@ -125,13 +138,6 @@ if __name__ == "__main__":
         required=False,
         type=str,
         help="the address to use for Ray")
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using "
-        "Ray Client.")
     parser.add_argument(
         "--num-workers",
         "-n",
@@ -157,8 +163,6 @@ if __name__ == "__main__":
 
     if args.smoke_test:
         ray.init(num_cpus=2)
-    elif args.server_address:
-        ray.util.connect(args.server_address)
     else:
         ray.init(address=args.address)
-    train_example(num_workers=args.num_workers, use_gpu=args.use_gpu)
+    train_fashion_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu)

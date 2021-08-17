@@ -391,7 +391,9 @@ def build_eager_tf_policy(
                 samples,
                 shuffle=False,
                 max_seq_len=self._max_seq_len,
-                batch_divisibility_req=self.batch_divisibility_req)
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
 
             self._is_training = True
             samples["is_training"] = True
@@ -712,10 +714,9 @@ def build_eager_tf_policy(
         def export_model(self, export_dir):
             pass
 
-        # TODO: (sven) Deprecate this in favor of `save()`.
         @override(Policy)
         def export_checkpoint(self, export_dir):
-            deprecation_warning("export_checkpoint", "save")
+            pass
 
         def _get_is_training_placeholder(self):
             return tf.convert_to_tensor(self._is_training)

@@ -17,6 +17,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
+from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
@@ -347,17 +348,15 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
+@Deprecated(
+    old="rllib.agents.ppo.ppo_tf_policy.postprocess_ppo_gae",
+    new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
+    error=False)
 def postprocess_ppo_gae(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
         episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
-
-    # Stub serving backward compatibility.
-    deprecation_warning(
-        old="rllib.agents.ppo.ppo_tf_policy.postprocess_ppo_gae",
-        new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
-        error=False)
 
     return compute_gae_for_sample_batch(policy, sample_batch,
                                         other_agent_batches, episode)

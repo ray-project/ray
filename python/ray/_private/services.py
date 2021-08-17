@@ -16,10 +16,12 @@ import subprocess
 import sys
 import time
 from typing import Optional
+import warnings
 
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
+from ray.util.debug import log_once
 import redis
 
 # Import psutil and colorama after ray so the packaged version is used.
@@ -35,15 +37,13 @@ EXE_SUFFIX = ".exe" if sys.platform == "win32" else ""
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
 
-# Location of the redis server and module.
+# Location of the redis server.
 RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "../..")
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 RAY_PRIVATE_DIR = "_private"
 AUTOSCALER_PRIVATE_DIR = "autoscaler/_private"
 REDIS_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX)
-REDIS_MODULE = os.path.join(
-    RAY_PATH, "core/src/ray/gcs/redis_module/libray_redis_module.so")
 
 # Location of the raylet executables.
 RAYLET_EXECUTABLE = os.path.join(RAY_PATH,
@@ -406,11 +406,24 @@ def create_redis_client(redis_address, password=None):
     Returns:
         A Redis client.
     """
-    redis_ip_address, redis_port = redis_address.split(":")
+    if not hasattr(create_redis_client, "instances"):
+        create_redis_client.instances = {}
+    else:
+        cli = create_redis_client.instances.get(redis_address)
+        if cli is not None:
+            try:
+                cli.ping()
+                return cli
+            except Exception:
+                create_redis_client.instances.pop(redis_address)
+
+    _, redis_ip_address, redis_port = validate_redis_address(redis_address)
     # For this command to work, some other client (on the same machine
     # as Redis) must have run "CONFIG SET protected-mode no".
-    return redis.StrictRedis(
+    create_redis_client.instances[redis_address] = redis.StrictRedis(
         host=redis_ip_address, port=int(redis_port), password=password)
+
+    return create_redis_client.instances[redis_address]
 
 
 def start_ray_process(command,
@@ -827,7 +840,6 @@ def start_redis(node_ip_address,
         primary_redis_client.delete("RedisShards")
     else:
         redis_executable = REDIS_EXECUTABLE
-        redis_modules = [REDIS_MODULE]
 
         redis_stdout_file, redis_stderr_file = redirect_files[0]
         # If no port is given, fallback to default Redis port for the primary
@@ -840,7 +852,6 @@ def start_redis(node_ip_address,
         # Start the primary Redis shard.
         port, p = _start_redis_instance(
             redis_executable,
-            modules=redis_modules,
             port=port,
             password=password,
             redis_max_clients=redis_max_clients,
@@ -888,7 +899,6 @@ def start_redis(node_ip_address,
         else:
             redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
             redis_executable = REDIS_EXECUTABLE
-            redis_modules = [REDIS_MODULE]
             redis_shard_port = redis_shard_ports[i]
             # If no shard port is given, try to start this shard's Redis
             # instance on the port right after the last shard's port.
@@ -900,7 +910,6 @@ def start_redis(node_ip_address,
 
             redis_shard_port, p = _start_redis_instance(
                 redis_executable,
-                modules=redis_modules,
                 port=redis_shard_port,
                 password=password,
                 redis_max_clients=redis_max_clients,
@@ -923,7 +932,6 @@ def start_redis(node_ip_address,
 
 
 def _start_redis_instance(executable,
-                          modules,
                           port,
                           redis_max_clients=None,
                           num_retries=20,
@@ -942,8 +950,6 @@ def _start_redis_instance(executable,
 
     Args:
         executable (str): Full path of the redis-server executable.
-        modules (list of str): A list of pathnames, pointing to the redis
-            module(s) that will be loaded in this redis server.
         port (int): Try to start a Redis server at this port.
         redis_max_clients: If this is provided, Ray will attempt to configure
             Redis with this maxclients number.
@@ -970,12 +976,7 @@ def _start_redis_instance(executable,
         Exception: An exception is raised if Redis could not be started.
     """
     assert os.path.isfile(executable)
-    for module in modules:
-        assert os.path.isfile(module)
     counter = 0
-    load_module_args = []
-    for module in modules:
-        load_module_args += ["--loadmodule", module]
 
     while counter < num_retries:
         # Construct the command to start the Redis server.
@@ -984,8 +985,7 @@ def _start_redis_instance(executable,
             if " " in password:
                 raise ValueError("Spaces not permitted in redis password.")
             command += ["--requirepass", password]
-        command += (
-            ["--port", str(port), "--loglevel", "warning"] + load_module_args)
+        command += (["--port", str(port), "--loglevel", "warning"])
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_REDIS_SERVER,
@@ -1174,6 +1174,11 @@ def start_dashboard(require_dashboard,
 
         # Make sure the process can start.
         try:
+            # These checks have to come first because aiohttp looks
+            # for opencensus, too, and raises a different error otherwise.
+            import opencensus  # noqa: F401
+            import prometheus_client  # noqa: F401
+
             import aiohttp  # noqa: F401
             import aioredis  # noqa: F401
             import aiohttp_cors  # noqa: F401
@@ -1181,10 +1186,18 @@ def start_dashboard(require_dashboard,
         except ImportError:
             warning_message = (
                 "Not all Ray Dashboard dependencies were found. "
-                "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
-                "only be usable via `pip install 'ray[default]'`. Please "
-                "update your install command.")
-            raise ImportError(warning_message)
+                "To use the dashboard please install Ray like so: `pip "
+                "install ray[default]`.")
+            if require_dashboard:
+                raise ImportError(warning_message)
+            else:
+                if log_once("dashboard_failed_import") and not os.getenv(
+                        "RAY_DISABLE_IMPORT_WARNING") == "1":
+                    warning_message += " To disable this message, set " \
+                                       "RAY_DISABLE_IMPORT_WARNING " \
+                                       "env var to '1'."
+                    warnings.warn(warning_message)
+                return None, None
 
         # Start the dashboard process.
         dashboard_dir = "new_dashboard"
@@ -1262,6 +1275,7 @@ def start_dashboard(require_dashboard,
 
 
 def start_gcs_server(redis_address,
+                     log_dir,
                      stdout_file=None,
                      stderr_file=None,
                      redis_password=None,
@@ -1273,6 +1287,7 @@ def start_gcs_server(redis_address,
     """Start a gcs server.
     Args:
         redis_address (str): The address that the Redis server is listening on.
+        log_dir (str): The path of the dir where log files are created.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1296,6 +1311,7 @@ def start_gcs_server(redis_address,
         GCS_SERVER_EXECUTABLE,
         f"--redis_address={gcs_ip_address}",
         f"--redis_port={gcs_port}",
+        f"--log_dir={log_dir}",
         f"--config_list={config_str}",
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
@@ -1335,6 +1351,7 @@ def start_raylet(redis_address,
                  redis_password=None,
                  metrics_agent_port=None,
                  metrics_export_port=None,
+                 dashboard_agent_listen_port=None,
                  use_valgrind=False,
                  use_profiler=False,
                  stdout_file=None,
@@ -1495,6 +1512,7 @@ def start_raylet(redis_address,
         f"--redis-address={redis_address}",
         f"--metrics-export-port={metrics_export_port}",
         f"--dashboard-agent-port={metrics_agent_port}",
+        f"--listen-port={dashboard_agent_listen_port}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
@@ -1529,6 +1547,7 @@ def start_raylet(redis_address,
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
+        f"--log_dir={log_dir}",
         f"--resource_dir={resource_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
@@ -1648,14 +1667,14 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
 
     command = [
         DEFAULT_WORKER_EXECUTABLE,
-        f"--ray-plasma-store-socket-name={plasma_store_name}",
-        f"--ray-raylet-socket-name={raylet_name}",
-        "--ray-node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--ray-address={redis_address}",
-        f"--ray-redis-password={redis_password}",
-        f"--ray-session-dir={session_dir}",
-        f"--ray-logs-dir={log_dir}",
-        f"--ray-node-ip-address={node_ip_address}",
+        f"--ray_plasma_store_socket_name={plasma_store_name}",
+        f"--ray_raylet_socket_name={raylet_name}",
+        "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--ray_address={redis_address}",
+        f"--ray_redis_password={redis_password}",
+        f"--ray_session_dir={session_dir}",
+        f"--ray_logs_dir={log_dir}",
+        f"--ray_node_ip_address={node_ip_address}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 

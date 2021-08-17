@@ -1,3 +1,16 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "ray/object_manager/pull_manager.h"
 
@@ -17,7 +30,6 @@ class PullManagerTestWithCapacity {
         object_is_local_(false),
         num_send_pull_request_calls_(0),
         num_restore_spilled_object_calls_(0),
-        num_object_store_full_calls_(0),
         fake_time_(0),
         pull_manager_(
             self_node_id_, [this](const ObjectID &object_id) { return object_is_local_; },
@@ -31,7 +43,6 @@ class PullManagerTestWithCapacity {
               restore_object_callback_ = callback;
             },
             [this]() { return fake_time_; }, 10000, num_available_bytes,
-            [this]() { num_object_store_full_calls_++; },
             [this](const ObjectID &object_id) { return PinReturn(); }) {}
 
   void AssertNoLeaks() {
@@ -64,7 +75,6 @@ class PullManagerTestWithCapacity {
   bool allow_pin_ = false;
   int num_send_pull_request_calls_;
   int num_restore_spilled_object_calls_;
-  int num_object_store_full_calls_;
   std::function<void(const ray::Status &)> restore_object_callback_;
   double fake_time_;
   PullManager pull_manager_;
@@ -396,6 +406,7 @@ TEST_P(PullManagerTest, TestBasic) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id = pull_manager_.Pull(refs, prio, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
+  ASSERT_TRUE(pull_manager_.HasPullsQueued());
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
@@ -409,6 +420,7 @@ TEST_P(PullManagerTest, TestBasic) {
   ASSERT_EQ(num_send_pull_request_calls_, oids.size());
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   AssertNumActiveRequestsEquals(oids.size());
+  ASSERT_FALSE(pull_manager_.HasPullsQueued());
 
   // Don't pull an object if it's local.
   object_is_local_ = true;
@@ -428,6 +440,7 @@ TEST_P(PullManagerTest, TestBasic) {
     ASSERT_EQ(num_abort_calls_[oid], 1);
     ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
   }
+  ASSERT_FALSE(pull_manager_.HasPullsQueued());
 
   // Don't pull a remote object if we've canceled.
   object_is_local_ = false;
@@ -437,6 +450,7 @@ TEST_P(PullManagerTest, TestBasic) {
     pull_manager_.OnLocationChange(oids[i], client_ids, "", NodeID::Nil(), 0);
   }
   ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_FALSE(pull_manager_.HasPullsQueued());
 
   AssertNoLeaks();
 }
@@ -634,6 +648,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id = pull_manager_.Pull(refs, prio, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
+  ASSERT_TRUE(pull_manager_.HasPullsQueued());
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
@@ -649,43 +664,27 @@ TEST_P(PullManagerWithAdmissionControlTest, TestBasic) {
     ASSERT_TRUE(pull_manager_.IsObjectActive(oids[i]));
   }
   ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
+  ASSERT_FALSE(pull_manager_.HasPullsQueued());
 
   // Reduce the available memory.
   ASSERT_TRUE(num_abort_calls_.empty());
-  ASSERT_EQ(num_object_store_full_calls_, 0);
   pull_manager_.UpdatePullsBasedOnAvailableMemory(oids.size() * object_size - 1);
 
   // In unlimited mode, we fulfill all ray.gets using the fallback allocator.
-  if (RayConfig::instance().plasma_unlimited() && GetParam()) {
+  if (GetParam()) {
+    ASSERT_FALSE(pull_manager_.HasPullsQueued());
     AssertNumActiveRequestsEquals(3);
     AssertNumActiveBundlesEquals(1);
-    if (!RayConfig::instance().plasma_unlimited()) {
-      ASSERT_EQ(num_object_store_full_calls_, 1);  // Spill on fallback.
-    }
     return;
   }
 
-  if (RayConfig::instance().pull_manager_min_active_pulls() == 0) {
-    AssertNumActiveRequestsEquals(0);
-    if (!RayConfig::instance().plasma_unlimited()) {
-      ASSERT_EQ(num_object_store_full_calls_, 1);
-    }
-    for (auto &oid : oids) {
-      ASSERT_FALSE(pull_manager_.IsObjectActive(oid));
-      ASSERT_EQ(num_abort_calls_[oid], 1);
-    }
-    ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
-  } else {
-    AssertNumActiveRequestsEquals(3);
-    if (!RayConfig::instance().plasma_unlimited()) {
-      ASSERT_EQ(num_object_store_full_calls_, 1);
-    }
-    for (auto &oid : oids) {
-      ASSERT_TRUE(pull_manager_.IsObjectActive(oid));
-      ASSERT_EQ(num_abort_calls_[oid], 0);
-    }
-    ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
+  ASSERT_FALSE(pull_manager_.HasPullsQueued());
+  AssertNumActiveRequestsEquals(3);
+  for (auto &oid : oids) {
+    ASSERT_TRUE(pull_manager_.IsObjectActive(oid));
+    ASSERT_EQ(num_abort_calls_[oid], 0);
   }
+  ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_id));
 
   pull_manager_.CancelPull(req_id);
   for (auto &oid : oids) {
@@ -726,23 +725,16 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
     }
   }
 
-  num_object_store_full_calls_ = 0;
   for (int capacity = 0; capacity < 20; capacity++) {
     int num_requests_quota =
         std::min(num_requests, capacity / (object_size * num_oids_per_request));
-    int num_requests_expected = std::max(
-        RayConfig::instance().pull_manager_min_active_pulls(), num_requests_quota);
-    if (RayConfig::instance().plasma_unlimited() && GetParam()) {
+    int num_requests_expected = std::max(1, num_requests_quota);
+    if (GetParam()) {
       num_requests_expected = num_requests;
     }
     pull_manager_.UpdatePullsBasedOnAvailableMemory(capacity);
 
     AssertNumActiveRequestsEquals(num_requests_expected * num_oids_per_request);
-    if (!RayConfig::instance().plasma_unlimited()) {
-      // The total requests that are active is under the specified capacity.
-      ASSERT_TRUE(
-          IsUnderCapacity(num_requests_expected * num_oids_per_request * object_size));
-    }
     // This is the maximum number of requests that can be served at once that
     // is under the capacity.
     if (num_requests_expected < num_requests) {
@@ -750,13 +742,6 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
                                    object_size));
     }
     // Check that OOM was triggered.
-    if (!RayConfig::instance().plasma_unlimited()) {
-      if (num_requests_quota == num_requests_expected) {
-        ASSERT_EQ(num_object_store_full_calls_, 0);
-      } else {
-        ASSERT_EQ(num_object_store_full_calls_, 1);
-      }
-    }
     for (size_t i = 0; i < req_ids.size(); i++) {
       if ((int)i < num_requests_expected) {
         ASSERT_TRUE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_ids[i]));
@@ -764,7 +749,6 @@ TEST_P(PullManagerWithAdmissionControlTest, TestQueue) {
         ASSERT_FALSE(pull_manager_.PullRequestActiveOrWaitingForMetadata(req_ids[i]));
       }
     }
-    num_object_store_full_calls_ = 0;
   }
 
   for (auto req_id : req_ids) {
@@ -778,7 +762,7 @@ TEST_P(PullManagerWithAdmissionControlTest, TestCancel) {
   if (GetParam()) {
     prio = BundlePriority::GET_REQUEST;
   }
-  if (RayConfig::instance().plasma_unlimited() && GetParam()) {
+  if (GetParam()) {
     return;  // This case isn't meaningful to test.
   }
   /// Test admission control while requests are cancelled out-of-order. When an
@@ -937,11 +921,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   // the same type by FIFO order.
   pull_manager_.UpdatePullsBasedOnAvailableMemory(2);
   ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[0]));
-  if (RayConfig::instance().plasma_unlimited()) {
-    ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[1]));
-  } else {
-    ASSERT_FALSE(pull_manager_.IsObjectActive(get_oids[1]));
-  }
+  ASSERT_TRUE(pull_manager_.IsObjectActive(get_oids[1]));
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[0]));
   ASSERT_FALSE(pull_manager_.IsObjectActive(task_oids[1]));
 
