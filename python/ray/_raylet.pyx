@@ -1182,7 +1182,6 @@ cdef class CoreWorker:
             shared_ptr[CBuffer] metadata
             int64_t put_threshold
             c_bool put_small_object_in_memory_store
-            c_vector[CObjectID] c_object_id_vector
             unique_ptr[CAddress] c_owner_address
             c_vector[CObjectID] contained_object_ids
             c_vector[CObjectReference] contained_object_refs
@@ -1206,14 +1205,14 @@ cdef class CoreWorker:
                     Buffer.make(data))
             if self.is_local_mode or (put_small_object_in_memory_store
                and <int64_t>total_bytes < put_threshold):
-                contained_object_refs = (
-                        CCoreWorkerProcess.GetCoreWorker().
-                        GetObjectRefs(contained_object_ids))
+                if not self.is_local_mode:
+                    contained_object_refs = (
+                            CCoreWorkerProcess.GetCoreWorker().
+                            GetObjectRefs(contained_object_ids))
                 if owner_address is not None:
                     raise Exception(
                         "cannot put data into memory store directly"
                         " and assign owner at the same time")
-                c_object_id_vector.push_back(c_object_id)
                 check_status(CCoreWorkerProcess.GetCoreWorker().Put(
                         CRayObject(data, metadata, contained_object_refs),
                         contained_object_ids, c_object_id))
