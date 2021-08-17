@@ -780,10 +780,8 @@ class RolloutWorker(ParallelIteratorWorker):
             logger.info("Completed sample batch:\n\n{}\n".format(
                 summarize(batch)))
 
-        if self.compress_observations == "bulk":
-            batch.compress(bulk=True)
-        elif self.compress_observations:
-            batch.compress()
+        if self.compress_observations:
+            batch.compress(bulk=self.compress_observations == "bulk")
 
         if self.fake_sampler:
             self.last_batch = batch
