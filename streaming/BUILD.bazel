@@ -276,6 +276,7 @@ cc_test(
     ],
     copts = COPTS,
     deps = test_common_deps,
+    tags = ["team:ant-group"],
 )
 
 cc_test(
@@ -285,6 +286,7 @@ cc_test(
     ],
     copts = COPTS,
     deps = test_common_deps,
+    tags = ["team:ant-group"],
 )
 
 cc_test(
@@ -294,6 +296,7 @@ cc_test(
     ],
     copts = COPTS,
     deps = test_common_deps,
+    tags = ["team:ant-group"],
 )
 
 cc_test(
@@ -303,6 +306,7 @@ cc_test(
     ],
     copts = COPTS,
     deps = test_common_deps,
+    tags = ["team:ant-group"],
 )
 
 cc_test(
@@ -312,6 +316,7 @@ cc_test(
     ],
     copts = COPTS,
     deps = test_common_deps,
+    tags = ["team:ant-group"],
 )
 
 cc_test(
@@ -321,6 +326,7 @@ cc_test(
     ],
     copts = COPTS,
     deps = test_common_deps,
+    tags = ["team:ant-group"],
 )
 
 cc_test(
@@ -329,6 +335,7 @@ cc_test(
         "src/test/queue_protobuf_tests.cc",
     ],
     deps = test_common_deps,
+    tags = ["team:ant-group"],
 )
 
 cc_test(
@@ -338,6 +345,7 @@ cc_test(
     ],
     copts = COPTS,
     deps = test_common_deps,
+    tags = ["team:ant-group"],
 )
 
 python_proto_compile(

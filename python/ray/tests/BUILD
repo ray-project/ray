@@ -48,7 +48,7 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_a_to_j"],
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -81,7 +81,7 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_k_to_z"],
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -119,7 +119,7 @@ py_test_module_list(
   ],
   size = "small",
   extra_srcs = SRCS,
-  tags = ["exclusive"],
+  tags = ["exclusive", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -132,7 +132,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive"],
+  tags = ["exclusive", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -144,7 +144,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive"],
+  tags = ["exclusive", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -158,7 +158,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "post_wheel_build", "flaky"],
+  tags = ["exclusive", "post_wheel_build", "flaky", "team:serve"],
   deps = ["//:ray_lib"],
 )
 
@@ -169,7 +169,7 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky"],
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -182,7 +182,7 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_k_to_z", "flaky"],
+  tags = ["exclusive", "medium_size_python_tests_k_to_z", "flaky", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -193,7 +193,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "flaky"],
+  tags = ["exclusive", "flaky", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -204,7 +204,7 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky-mac"],
+  tags = ["exclusive", "medium_size_python_tests_a_to_j", "flaky-mac", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -214,7 +214,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "flaky-mac"],
+  tags = ["exclusive", "flaky-mac", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -224,7 +224,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["flaky-mac", "exclusive"],
+  tags = ["flaky-mac", "exclusive", "team:serve"],
   deps = ["//:ray_lib"],
 )
 
@@ -236,6 +236,7 @@ py_test(
     name = "test_autoscaler_aws",
     size = "small",
     srcs = SRCS + ["aws/test_autoscaler_aws.py"],
+    tags = ["exclusive", "team:autoscaler"],
     deps = ["//:ray_lib"],
 )
 
@@ -243,6 +244,7 @@ py_test(
     name = "test_aws_batch_tag_update",
     size = "small",
     srcs = SRCS + ["aws/test_aws_batch_tag_update.py"],
+    tags = ["exclusive", "team:autoscaler"],
     deps = ["//:ray_lib"],
 )
 
@@ -250,6 +252,7 @@ py_test(
     name = "test_gcp_node_provider",
     size = "small",
     srcs = SRCS + ["gcp/test_gcp_node_provider.py"],
+    tags = ["exclusive", "team:autoscaler"],
     deps = ["//:ray_lib"],
 )
 
@@ -259,7 +262,7 @@ py_test(
     name = "test_typing",
     size = "small",
     srcs = SRCS + ["test_typing.py"] + glob(["typing_files"]),
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:core"],
     deps = ["//:ray_lib"],
 )
 
@@ -268,7 +271,7 @@ py_test(
   name = "test_tracing",
   size = "medium",
   srcs = SRCS + ["test_tracing.py"],
-  tags = ["exclusive"],
+  tags = ["exclusive", "team:serve"],
   deps = ["//:ray_lib"]
 )
 
@@ -276,7 +279,7 @@ py_test(
     name = "test_pydantic_serialization",
     size = "small",
     srcs = SRCS + ["test_pydantic_serialization.py", "pydantic_module.py"],
-    tags = ["exclusive"],
+    tags = ["exclusive", "team:serve"],
     deps = ["//:ray_lib"],
 )
 
@@ -299,7 +302,7 @@ py_test_module_list(
   # TODO(barakmich): py_test will support env in Bazel 4.0.0...
   # Until then, we can use tags.
   #env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},
-  tags = ["exclusive", "client_tests"],
+  tags = ["exclusive", "client_tests", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -309,7 +312,7 @@ py_test_module_list(
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "worker-container"],
+  tags = ["exclusive", "worker-container", "team:serve"],
   # Now we run this test in a container which has installed ray
   deps = [],
 )
@@ -324,6 +327,6 @@ py_test_module_list(
   size = "medium",
   extra_srcs = SRCS,
   name_suffix = "_debug_mode",
-  tags = ["exclusive", "debug_tests"],
+  tags = ["exclusive", "debug_tests", "team:serve"],
   deps = ["//:ray_lib"],
 )

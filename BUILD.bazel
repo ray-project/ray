@@ -491,6 +491,7 @@ cc_test(
         ":gcs_pub_sub_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_library(
@@ -770,6 +771,7 @@ cc_test(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -781,6 +783,7 @@ cc_test(
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -791,6 +794,7 @@ cc_test(
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -802,6 +806,7 @@ cc_test(
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -813,6 +818,7 @@ cc_test(
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -824,6 +830,7 @@ cc_test(
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -834,6 +841,7 @@ cc_test(
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -845,6 +853,7 @@ cc_test(
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -856,6 +865,7 @@ cc_test(
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -867,6 +877,7 @@ cc_test(
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -880,6 +891,7 @@ cc_test(
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -893,6 +905,7 @@ cc_test(
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -906,6 +919,7 @@ cc_test(
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -919,6 +933,7 @@ cc_test(
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -932,6 +947,7 @@ cc_test(
         ":object_manager",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -945,6 +961,7 @@ cc_test(
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -960,6 +977,7 @@ cc_test(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -974,6 +992,7 @@ cc_test(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -988,6 +1007,7 @@ cc_test(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1002,6 +1022,7 @@ cc_test(
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1013,6 +1034,7 @@ cc_test(
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1026,6 +1048,7 @@ cc_test(
         "raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1037,6 +1060,7 @@ cc_test(
         "ray_common",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1051,6 +1075,7 @@ cc_test(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1064,6 +1089,7 @@ cc_test(
         "@boost//:range",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1075,6 +1101,7 @@ cc_test(
         ":ray_util",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1087,6 +1114,7 @@ cc_test(
         "@boost//:asio",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1099,6 +1127,7 @@ cc_test(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1110,6 +1139,7 @@ cc_test(
         ":ray_common",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1121,6 +1151,7 @@ cc_test(
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1132,6 +1163,7 @@ cc_test(
         ":ray_common",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1143,6 +1175,7 @@ cc_test(
         ":pubsub_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1156,6 +1189,7 @@ cc_test(
         ":pubsub_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1167,6 +1201,7 @@ cc_test(
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1178,6 +1213,7 @@ cc_test(
         ":ray_util",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1185,11 +1221,11 @@ cc_test(
     size = "small",
     srcs = ["src/ray/stats/stats_test.cc"],
     copts = COPTS,
-    tags = ["stats"],
     deps = [
         ":stats_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["stats", "team:core"],
 )
 
 cc_test(
@@ -1197,11 +1233,11 @@ cc_test(
     size = "small",
     srcs = ["src/ray/stats/metric_exporter_client_test.cc"],
     copts = COPTS,
-    tags = ["stats"],
     deps = [
         ":stats_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["stats", "team:core"],
 )
 
 cc_library(
@@ -1237,6 +1273,7 @@ cc_test(
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_library(
@@ -1261,6 +1298,7 @@ cc_test(
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1276,6 +1314,7 @@ cc_test(
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1291,6 +1330,7 @@ cc_test(
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1306,6 +1346,7 @@ cc_test(
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1321,6 +1362,7 @@ cc_test(
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_library(
@@ -1380,6 +1422,7 @@ cc_test(
         ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1396,6 +1439,7 @@ cc_test(
         ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1410,6 +1454,7 @@ cc_test(
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1424,6 +1469,7 @@ cc_test(
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1438,6 +1484,7 @@ cc_test(
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1452,6 +1499,7 @@ cc_test(
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_library(
@@ -1518,6 +1566,7 @@ cc_test(
         ":service_based_gcs_client_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1540,6 +1589,7 @@ cc_test(
         ":service_based_gcs_client_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1555,6 +1605,7 @@ cc_test(
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_library(
@@ -1789,6 +1840,7 @@ cc_test(
         ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -1801,6 +1853,7 @@ cc_test(
         ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_library(
@@ -1849,6 +1902,7 @@ cc_test(
         ":ray_util",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 flatbuffer_cc_library(

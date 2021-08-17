@@ -140,6 +140,7 @@ cc_test(
         "@boost//:filesystem",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_test(
@@ -163,6 +164,7 @@ cc_test(
         "@com_github_gflags_gflags//:gflags",
         "@com_google_googletest//:gtest_main",
     ],
+    tags = ["team:core"],
 )
 
 cc_binary(
