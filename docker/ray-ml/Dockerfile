@@ -9,7 +9,8 @@ COPY requirements_ml_docker.txt ./
 COPY requirements_rllib.txt ./
 COPY requirements_tune.txt ./requirements_tune.txt
 
-RUN sudo apt-get update \
+# See https://github.com/kubernetes/kubernetes/issues/97264 , ugh
+RUN (sudo apt-get update || sudo apt-get update || sudo apt-get update) \
     && sudo apt-get install -y gcc \
 	cmake \
 	libgtk2.0-dev \

@@ -12,7 +12,9 @@ ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 # Specify bazel (see https://github.com/bazelbuild/bazel/issues/12887)
 ENV USE_BAZEL_VERSION=3.7.2
-RUN sudo apt-get update && sudo apt-get install -y curl bash
+# Sometimes packages.cloud.google.com round robins badly
+# See https://github.com/kubernetes/kubernetes/issues/97264 , ugh
+RUN (sudo apt-get update || sudo apt-get update || sudo apt-get update) && sudo apt-get install -y curl bash
 RUN echo "export PATH=~/anaconda3/bin/:~/.cargo/bin:\$PATH" >> ~/.bashrc
 SHELL ["/bin/bash", "-c"]
 RUN export PATH=$HOME/.cargo/bin:$HOME/anaconda3/bin/:$PATH

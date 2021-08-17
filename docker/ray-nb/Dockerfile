@@ -6,7 +6,7 @@ FROM "$DOCKER_PREFIX"ray-wheel:nightly"$GPU" AS raywheel
 WORKDIR /ray
 
 # This is our actual image that we use as the base
-FROM jupyter/base-notebook:lab-3.0.16
+FROM "$DOCKER_PREFIX"base-notebook:nightly
 
 RUN conda install -c conda-forge --yes mamba
 # For Click
@@ -32,7 +32,7 @@ COPY requirements.txt .
 ENV MAKEFLAGS -j 4
 
 RUN apt-get update -y \
-    && apt-get install -y tzdata bash libhdf5-dev \
+    && apt-get install -y tzdata bash libhdf5-dev pkg-config \
     && (apt-get install -y libhdf5-100 || apt-get install -y libhdf5-103) \
     && apt-get install -y gcc g++ make cmake wget \
     && rm -rf /var/lib/apt/lists/* \

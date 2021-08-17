@@ -17,8 +17,9 @@ ARG RAY_UID=1000
 ARG RAY_GID=100
 
 RUN apt-get update -y \
-    && apt-get install -y sudo tzdata bash libhdf5-dev pkg-config apt-transport-https ca-certificates curl \
+    && apt-get install -y sudo tzdata bash libhdf5-dev pkg-config apt-transport-https ca-certificates curl pkg-config \
     && (apt-get install -y libhdf5-100 || apt-get install -y libhdf5-103) \
+    && apt-get upgrade -y \
     && useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID \
     && usermod -aG sudo ray \
     && echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers \
@@ -34,7 +35,8 @@ ENV HOME=/home/ray
 SHELL ["/bin/bash", "-c"]
 
 
-RUN  export arch=$(uname -m); \
+RUN  set -x; \
+     export arch=$(uname -m); \
      if [ "$arch" == "aarm64" ]; then \
 	arch="arm64"; \
      fi; \
@@ -73,21 +75,16 @@ RUN  export arch=$(uname -m); \
     # atari-py is built from source for Python 3.8 (requires g++ & zlib1g-dev)
     # To avoid the following error on Jenkins:
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
-	&& $HOME/anaconda3/bin/pip uninstall -y dask \
-	# On amd64:
-	# We install cmake temporarily to get psutil, blist & atari-py
-	# But in arm we need these friends for later parties.
-	&& sudo apt-get autoremove -y $(if [ "$arch" = "x86_64" ]; then echo \
-	cmake zlib1g-dev; fi) \
-	# We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
-	$(if [ "$BASE_IMAGE" = "ubuntu:focal" && "$arch" = "x86_64" ]; then echo \
-	g++; fi) \
+    # On amd64:
+    # We install cmake temporarily to get psutil, blist & atari-py
+    # But in arm we need these friends for later parties.
+    && if [ "$arch" = "x86_64" ]; then sudo apt-get autoremove -y cmake zlib1g-dev; fi \
     # Either install kubectl or remove wget
-    && (if [ "$AUTOSCALER" = "autoscaler" ]; \
-	then wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add - \
-	&& sudo touch /etc/apt/sources.list.d/kubernetes.list \
+    && (if [ "$AUTOSCALER" == "autoscaler" ]; then \
+	sudo touch /etc/apt/sources.list.d/kubernetes.list \
 	&& echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list \
-	&& sudo apt-get update \
+	# See https://github.com/kubernetes/kubernetes/issues/97264
+	&& (sudo apt-get update || sudo apt-get update || sudo apt-get update) \
 	&& sudo apt-get install kubectl; \
     else sudo apt-get autoremove -y wget; \
     fi;) \

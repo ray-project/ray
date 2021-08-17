@@ -49,6 +49,16 @@ esac
 shift
 done
 
+# Build the underlying base-notebook image we can use with the matching Python version
+# Based on the approach taken in dask-docker but using shell instead of compose
+mytmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
+pushd "${mytmpdir}"
+git clone https://github.com/jupyter/docker-stacks.git
+pushd docker-stacks/base-notebook
+docker buildx build $NO_CACHE --build-arg PYTHON_VERSION="$PYTHON_VERSION"  -t "${DOCKER_PREFIX}base-notebook:nightly" --platform linux/arm64,linux/amd64 --push .
+popd
+popd
+
 # Build base-deps, ray-deps, and ray.
 for IMAGE in "base-deps" "ray-deps" "ray-wheel" "ray" "ray-nb"
 do
