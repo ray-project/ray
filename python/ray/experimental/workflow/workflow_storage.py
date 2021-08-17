@@ -307,7 +307,7 @@ class WorkflowStorage:
                 ray_options=metadata.get("ray_options", {}),
                 step_type=StepType[metadata.get("step_type")],
             )
-        except storage.DataLoadError:
+        except Exception:
             return StepInspectResult(
                 args_valid=field_list.args_exists,
                 func_body_valid=field_list.func_body_exists)
