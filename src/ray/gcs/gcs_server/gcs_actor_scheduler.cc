@@ -130,7 +130,6 @@ void GcsActorScheduler::CancelOnLeasing(const NodeID &node_id, const ActorID &ac
                                         const TaskID &task_id) {
   // NOTE: This method will cancel the outstanding lease request and remove leasing
   // information from the internal state.
-  RAY_LOG(DEBUG) << "Canceling worker leasing of task " << task_id;
   auto node_it = node_to_actors_when_leasing_.find(node_id);
   RAY_CHECK(node_it != node_to_actors_when_leasing_.end());
   node_it->second.erase(actor_id);
