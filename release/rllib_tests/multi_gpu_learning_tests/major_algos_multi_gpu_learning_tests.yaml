@@ -73,7 +73,7 @@ ddpg-repeat-after-me-env:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: -50.0
-        timesteps_total: 100000
+        timesteps_total: 20000
     stop:
         time_total_s: 600
     config:
@@ -93,7 +93,7 @@ dqn-cartpole-v0:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: 150.0
-        timesteps_total: 500000
+        timesteps_total: 150000
     stop:
         time_total_s: 600
     config:
@@ -177,7 +177,7 @@ sac-repeat-after-me-env:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: 40.0
-        timesteps_total: 50000
+        timesteps_total: 4500
     stop:
         time_total_s: 600
     config:
@@ -198,7 +198,7 @@ sac-repeat-after-me-env-continuous:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: -50.0
-        timesteps_total: 50000
+        timesteps_total: 4500
     stop:
         time_total_s: 600
     config:
@@ -220,7 +220,7 @@ simpleq-cartpole-v0:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: 150.0
-        timesteps_total: 500000
+        timesteps_total: 150000
     stop:
         time_total_s: 600
     config:
@@ -233,7 +233,7 @@ td3-repeat-after-me-env:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: -50.0
-        timesteps_total: 100000
+        timesteps_total: 50000
     stop:
         time_total_s: 600
     config:
