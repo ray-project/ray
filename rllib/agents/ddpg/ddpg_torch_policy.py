@@ -154,10 +154,10 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
 
     # Add l2-regularization if required.
     if l2_reg is not None:
-        for name, var in policy.model.policy_variables(as_dict=True).items():
+        for name, var in model.policy_variables(as_dict=True).items():
             if "bias" not in name:
                 actor_loss += (l2_reg * l2_loss(var))
-        for name, var in policy.model.q_variables(as_dict=True).items():
+        for name, var in model.q_variables(as_dict=True).items():
             if "bias" not in name:
                 critic_loss += (l2_reg * l2_loss(var))
 
