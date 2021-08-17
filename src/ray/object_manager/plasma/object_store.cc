@@ -32,6 +32,9 @@ const LocalObject *ObjectStore::CreateObject(const ray::ObjectInfo &object_info,
   auto object_size = object_info.GetObjectSize();
   auto allocation = fallback_allocate ? allocator_.FallbackAllocate(object_size)
                                       : allocator_.Allocate(object_size);
+  RAY_LOG_EVERY_MS(INFO, 10 * 60 * 1000)
+      << "Object store current usage " << (allocator_.Allocated() / 1e9) << " / "
+      << (allocator_.GetFootprintLimit() / 1e9) << " GB.";
   if (!allocation.has_value()) {
     return nullptr;
   }
