@@ -191,8 +191,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
                    << return_object.size();
 
-    const auto nested_refs = VectorFromProtobuf<rpc::ObjectReference>(
-                                              return_object.nested_inlined_refs());
+    const auto nested_refs =
+        VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
     if (return_object.in_plasma()) {
       const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
       if (check_node_alive_(pinned_at_raylet_id)) {
