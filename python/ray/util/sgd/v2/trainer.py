@@ -1,6 +1,7 @@
 import inspect
 import logging
-from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, Type
+from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, Type, \
+    Iterator
 
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
     InactiveWorkerGroupError, SGDBackendError
@@ -152,40 +153,146 @@ class Trainer:
             list corresponds to the output of the training function from
             each worker.
         """
-        train_func = self._get_train_func(train_func, config)
         # TODO(matt): Set default callbacks.
         callbacks = [] if callbacks is None else callbacks
         finished_with_errors = False
 
+        for callback in callbacks:
+            callback.start_training()
+
         try:
-            for callback in callbacks:
-                callback.start_training()
-            self._executor.start_training(train_func, checkpoint)
+            iterator = self.run_iterator(
+                train_func=train_func, config=config, checkpoint=checkpoint)
+            for intermediate_result in iterator:
+                for callback in callbacks:
+                    callback.handle_result(intermediate_result)
 
-            while True:
-                intermediate_results = self._executor.fetch_next_result()
-                if intermediate_results is None:
-                    break
-                else:
-                    for callback in callbacks:
-                        callback.handle_result(intermediate_results)
-
-            return self._executor.finish_training()
-        except InactiveWorkerGroupError:
-            finished_with_errors = True
-            raise RuntimeError(
-                "This Trainer is not active. It is either shutdown already or "
-                "never started in the first place. Either create a new "
-                "Trainer or start this one.") from None
-        except SGDBackendError:
-            finished_with_errors = True
-            raise RuntimeError("Training failed. You should not be seeing "
-                               "this error and this is a bug. Please create "
-                               "a new issue at "
-                               "https://github.com/ray-project/ray.") from None
+            assert iterator.is_finished()
+            return iterator.get_returns()
         finally:
             for callback in callbacks:
                 callback.finish_training(error=finished_with_errors)
+
+    def run_iterator(
+            self,
+            train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
+            config: Optional[Dict[str, Any]] = None,
+            checkpoint: Optional[Dict] = None) -> Iterator[List[Any]]:
+        """Same as ``run`` except returns an iterator over the results.
+
+        This is useful if you want to have more customization of what to do
+        with the intermediate results or how to use the ``Trainer`` with Ray
+        Tune.
+
+        .. code_block:: python
+
+            def train_func(config):
+                ...
+                for _ in config["epochs"]:
+                    metrics = train()
+                    metrics = validate(...)
+                    ray.sgd.report(**metrics)
+                return model
+
+            iterator = trainer.run_iterator(train_func, config=config)
+
+            for result in iterator:
+                do_stuff(result)
+                latest_ckpt = trainer.get_latest_checkpoint()
+
+            assert iterator.is_finished()
+            model = iterator.get_returns()[0]
+
+        Args:
+            train_func (Callable): The training function to execute.
+                This can either take in no arguments or a ``config`` dict.
+            config (Optional[Dict]): Configurations to pass into
+                ``train_func``. If None then an empty Dict will be created.
+            checkpoint (Optional[Dict]): The checkpoint data that should be
+                loaded onto each worker and accessed by the training function
+                via ``sgd.load_checkpoint()``.
+
+        Returns:
+            An Iterator over the intermediate results from ``sgd.report()``.
+        """
+        train_func = self._get_train_func(train_func, config)
+
+        class SGDIterator:
+            def __init__(self, backend_executor):
+                self._executor = backend_executor
+                self._run_with_error_handling(
+                    lambda: self._executor.start_training(train_func,
+                                                          checkpoint))
+
+                self._final_results = None
+                self._finished_training = False
+                self._started_training = False
+
+            def __iter__(self):
+                return self
+
+            def _run_with_error_handling(self, func):
+                try:
+                    return func()
+                except InactiveWorkerGroupError:
+                    raise RuntimeError(
+                        "This Trainer is not active. It is either shutdown "
+                        "already or never started in the first place. "
+                        "Either create a new Trainer or start this one.") \
+                        from None
+                except SGDBackendError:
+                    raise RuntimeError(
+                        "Training failed. You should not be seeing "
+                        "this error and this is a bug. Please create "
+                        "a new issue at "
+                        "https://github.com/ray-project/ray.") from None
+
+            def __next__(self):
+                if self.is_finished():
+                    raise StopIteration
+                next_results = self._run_with_error_handling(
+                    self._executor.fetch_next_result)
+                if next_results is None:
+                    self._final_results = \
+                        self._run_with_error_handling(
+                            self._executor.finish_training)
+                    self._finished_training = True
+                    raise StopIteration
+                else:
+                    return next_results
+
+            def is_finished(self):
+                return self._finished_training
+
+            def get_returns(self, force=False):
+                """Gets the training func return values from each worker.
+
+                If ``force`` is ``True``, then immediately finish training
+                and return even if all the intermediate results have not
+                been processed yet. Else, intermediate results must be
+                processed before obtaining the final results. Defaults to
+                False.
+                """
+
+                if self.is_finished():
+                    assert self._final_results is not None
+                else:
+                    assert self._final_results is None
+                    if force:
+                        self._final_results = self._run_with_error_handling(
+                            self._executor.finish_training)
+                        self._finished_training = True
+                    else:
+                        logger.info("Please finish iterating through the "
+                                    "intermediate results before getting the"
+                                    "final returns. If you would like "
+                                    "training to finish immediately and get "
+                                    "the final returns, then set "
+                                    "`force=True`.")
+
+                return self._final_results
+
+        return SGDIterator(backend_executor=self._executor)
 
     def _get_train_func(
             self,
@@ -273,22 +380,6 @@ class Trainer:
                                       self._resources_per_worker)
 
 
-class _TuneTrainer(Trainer):
-    def start_training(
-            self,
-            train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-            config: Optional[Dict[str, Any]] = None) -> None:
-
-        train_func = self._get_train_func(train_func, config)
-        self._executor.start_training(train_func)
-
-    def fetch_next_report(self) -> Optional[List[Dict]]:
-        return self._executor.fetch_next_result()
-
-    def finish_training(self) -> List[T]:
-        return self._executor.finish_training()
-
-
 def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
                            resources_per_worker):
     """Creates a Tune Trainable class for SGD training.
@@ -298,7 +389,7 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
 
     # TODO(amog): Implement checkpointing for Tune.
     def tune_function(config, checkpoint_dir=None):
-        trainer = _TuneTrainer(
+        trainer = Trainer(
             backend=backend,
             num_workers=num_workers,
             use_gpu=use_gpu,
@@ -306,15 +397,12 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
 
         trainer.start()
 
-        trainer.start_training(train_func, config)
-        while True:
-            results = trainer.fetch_next_report()
-            if results is None:
-                trainer.finish_training()
-                break
-            else:
-                first_worker_results = results[0]
-                tune.report(**first_worker_results)
+        iterator = trainer.run_iterator(train_func, config)
+
+        for results in iterator:
+            first_worker_results = results[0]
+
+            tune.report(**first_worker_results)
 
     trainable_cls = wrap_function(tune_function)
 

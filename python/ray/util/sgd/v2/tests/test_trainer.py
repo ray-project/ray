@@ -219,6 +219,50 @@ def test_mismatch_report(ray_start_2_cpus):
             trainer.run(train)
 
 
+def test_run_iterator(ray_start_2_cpus):
+    config = TestConfig()
+
+    def train_func():
+        for i in range(3):
+            sgd.report(index=i)
+        return 1
+
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+    iterator = trainer.run_iterator(train_func)
+
+    count = 0
+    for results in iterator:
+        assert (value["index"] == count for value in results)
+        count += 1
+
+    assert count == 3
+    assert iterator.is_finished()
+    assert iterator.get_returns() == [1, 1]
+
+    with pytest.raises(StopIteration):
+        next(iterator)
+
+
+def test_run_iterator_returns(ray_start_2_cpus):
+    config = TestConfig()
+
+    def train_func():
+        for i in range(3):
+            sgd.report(index=i)
+        return 1
+
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+    iterator = trainer.run_iterator(train_func)
+
+    assert iterator.get_returns() is None
+    assert iterator.get_returns(force=True) == [1, 1]
+
+    with pytest.raises(StopIteration):
+        next(iterator)
+
+
 def test_checkpoint(ray_start_2_cpus):
     config = TestConfig()
 
