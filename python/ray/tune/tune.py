@@ -22,7 +22,7 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, \
     SearchGenerator
-from ray.tune.suggest.suggestion import Searcher
+from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
 from ray.tune.trainable import Trainable
@@ -101,6 +101,7 @@ def run(
         trial_executor: Optional[RayTrialExecutor] = None,
         raise_on_failed_trial: bool = True,
         callbacks: Optional[Sequence[Callback]] = None,
+        max_concurrent_trials: Optional[int] = None,
         # Deprecated args
         loggers: Optional[Sequence[Type[Logger]]] = None,
         ray_auto_init: Optional = None,
@@ -280,6 +281,12 @@ def run(
             ``ray.tune.callback.Callback`` class. If not passed,
             `LoggerCallback` and `SyncerCallback` callbacks are automatically
             added.
+        max_concurrent_trials (int): Maximum number of trials to run
+            concurrently. Must be non-negative. If None or 0, no limit will
+            be applied. This is achieved by wrapping the ``search_alg`` in
+            a :class:`ConcurrencyLimiter`, and thus this argument is ignored
+            if the ``search_alg`` is already a :class:`ConcurrencyLimiter`.
+            Defaults to None.
         _remote (bool): Whether to run the Tune driver in a remote function.
             This is disabled automatically if a custom trial executor is
             passed in. This is enabled by default in Ray client mode.
@@ -439,11 +446,23 @@ def run(
         from ray.tune.schedulers import create_scheduler
         scheduler = create_scheduler(scheduler)
 
+    if not search_alg:
+        search_alg = BasicVariantGenerator(
+            max_concurrent=max_concurrent_trials or 0)
+    elif isinstance(search_alg, ConcurrencyLimiter):
+        logger.warning(
+            "You have specified `max_concurrent_trials="
+            f"{max_concurrent_trials}`, but the `search_alg` is already a "
+            "`ConcurrencyLimiter`. `max_concurrent_trials` will be ignored.")
+    elif max_concurrent_trials:
+        if max_concurrent_trials < 0:
+            raise ValueError("`max_concurrent_trials` must be non-negative, "
+                             f"got {max_concurrent_trials}.")
+        search_alg = ConcurrencyLimiter(
+            search_alg, max_concurrent=max_concurrent_trials)
+
     if issubclass(type(search_alg), Searcher):
         search_alg = SearchGenerator(search_alg)
-
-    if not search_alg:
-        search_alg = BasicVariantGenerator()
 
     if config and not search_alg.set_search_properties(metric, mode, config):
         if has_unresolved_values(config):

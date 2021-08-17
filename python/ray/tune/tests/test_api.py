@@ -21,6 +21,7 @@ from ray.tune.durable_trainable import durable
 from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
                                  AsyncHyperBandScheduler)
 from ray.tune.stopper import MaximumIterationStopper, TrialPlateauStopper
+from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from ray.tune.sync_client import CommandBasedClient
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
@@ -1635,10 +1636,107 @@ class ApiTestFast(unittest.TestCase):
                 mode="max",
                 stop={TRAINING_ITERATION: 1})
 
-        self.assertTrue(
-            isinstance(capture["search_alg"], BasicVariantGenerator))
-        self.assertTrue(
-            isinstance(capture["scheduler"], AsyncHyperBandScheduler))
+        self.assertIsInstance(capture["search_alg"], BasicVariantGenerator)
+        self.assertIsInstance(capture["scheduler"], AsyncHyperBandScheduler)
+
+    def testMaxConcurrentTrials(self):
+        def train(config):
+            tune.report(metric=1)
+
+        capture = {}
+
+        class MockTrialRunner(TrialRunner):
+            def __init__(self,
+                         search_alg=None,
+                         scheduler=None,
+                         local_checkpoint_dir=None,
+                         remote_checkpoint_dir=None,
+                         sync_to_cloud=None,
+                         stopper=None,
+                         resume=False,
+                         server_port=None,
+                         fail_fast=False,
+                         checkpoint_period=None,
+                         trial_executor=None,
+                         callbacks=None,
+                         metric=None):
+                capture["search_alg"] = search_alg
+                capture["scheduler"] = scheduler
+                super().__init__(
+                    search_alg=search_alg,
+                    scheduler=scheduler,
+                    local_checkpoint_dir=local_checkpoint_dir,
+                    remote_checkpoint_dir=remote_checkpoint_dir,
+                    sync_to_cloud=sync_to_cloud,
+                    stopper=stopper,
+                    resume=resume,
+                    server_port=server_port,
+                    fail_fast=fail_fast,
+                    checkpoint_period=checkpoint_period,
+                    trial_executor=trial_executor,
+                    callbacks=callbacks,
+                    metric=metric)
+
+        with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
+            tune.run(
+                train,
+                config={"a": tune.randint(0, 2)},
+                metric="metric",
+                mode="max",
+                stop={TRAINING_ITERATION: 1})
+
+            self.assertIsInstance(capture["search_alg"], BasicVariantGenerator)
+            self.assertEqual(capture["search_alg"].max_concurrent, 0)
+
+            tune.run(
+                train,
+                max_concurrent_trials=2,
+                config={"a": tune.randint(0, 2)},
+                metric="metric",
+                mode="max",
+                stop={TRAINING_ITERATION: 1})
+
+            self.assertIsInstance(capture["search_alg"], BasicVariantGenerator)
+            self.assertEqual(capture["search_alg"].max_concurrent, 2)
+
+            tune.run(
+                train,
+                search_alg=HyperOptSearch(),
+                config={"a": tune.randint(0, 2)},
+                metric="metric",
+                mode="max",
+                stop={TRAINING_ITERATION: 1})
+
+            self.assertIsInstance(capture["search_alg"].searcher,
+                                  HyperOptSearch)
+
+            tune.run(
+                train,
+                search_alg=HyperOptSearch(),
+                max_concurrent_trials=2,
+                config={"a": tune.randint(0, 2)},
+                metric="metric",
+                mode="max",
+                stop={TRAINING_ITERATION: 1})
+
+            self.assertIsInstance(capture["search_alg"].searcher,
+                                  ConcurrencyLimiter)
+            self.assertEqual(capture["search_alg"].searcher.max_concurrent, 2)
+
+            # max_concurrent_trials should not override ConcurrencyLimiter
+            tune.run(
+                train,
+                search_alg=ConcurrencyLimiter(
+                    HyperOptSearch(), max_concurrent=3),
+                max_concurrent_trials=2,
+                config={"a": tune.randint(0, 2)},
+                metric="metric",
+                mode="max",
+                stop={TRAINING_ITERATION: 1})
+
+            self.assertIsInstance(capture["search_alg"].searcher,
+                                  ConcurrencyLimiter)
+            self.assertEqual(capture["search_alg"].searcher.max_concurrent, 3)
 
 
 if __name__ == "__main__":
