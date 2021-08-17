@@ -175,16 +175,15 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
     : self_node_id_(self_node_id),
       io_service_(io_service),
       gcs_client_(gcs_client),
-      worker_pool_(
-          io_service, self_node_id_, config.node_manager_address,
-          config.num_workers_soft_limit, config.num_initial_python_workers_for_first_job,
-          config.maximum_startup_concurrency, config.min_worker_port,
-          config.max_worker_port, config.worker_ports, gcs_client_,
-          config.worker_commands,
-          /*starting_worker_timeout_callback=*/
-          [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
-          config.ray_debugger_external,
-          /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
+      worker_pool_(io_service, self_node_id_, config.node_manager_address,
+                   config.num_workers_soft_limit, config.num_initial_python_workers_for_first_job,
+                   config.maximum_startup_concurrency, config.min_worker_port,
+                   config.max_worker_port, config.worker_ports, gcs_client_,
+                   config.worker_commands,
+                   /*starting_worker_timeout_callback=*/
+                   [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+                   config.ray_debugger_external,
+                   /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
