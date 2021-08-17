@@ -128,7 +128,7 @@ HeartbeatSender::HeartbeatSender(NodeID self_node_id,
     heartbeat_io_service_.run();
   }));
   gcs_client_ = std::make_shared<gcs::ServiceBasedGcsClient>(gcs_client_->GetOptions());
-  gcs_client_->Connect(heartbeat_io_service_);
+  RAY_CHECK_OK(gcs_client_->Connect(heartbeat_io_service_));
   heartbeat_runner_.reset(new PeriodicalRunner(heartbeat_io_service_));
 
   // Start sending heartbeats to the GCS.
