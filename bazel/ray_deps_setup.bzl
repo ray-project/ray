@@ -233,6 +233,7 @@ def ray_deps_setup():
         patches = [
             "//thirdparty/patches:grpc-cython-copts.patch",
             "//thirdparty/patches:grpc-python.patch",
+            "//thirdparty/patches:grpc-windows-python-header-path.patch",
         ],
     )
 
