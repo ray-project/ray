@@ -136,7 +136,7 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
         action_space (gym.spaces.Space): The Policy's action space.
         config (TrainerConfigDict): The Policy's config.
     """
-    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
+    TargetNetworkMixin.__init__(policy)
 
 
 SimpleQTorchPolicy = build_policy_class(

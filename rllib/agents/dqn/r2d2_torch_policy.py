@@ -248,7 +248,7 @@ def before_loss_init(policy: Policy, obs_space: gym.spaces.Space,
                      action_space: gym.spaces.Space,
                      config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy)
-    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
+    TargetNetworkMixin.__init__(policy)
 
 
 def grad_process_and_td_error_fn(policy: Policy,

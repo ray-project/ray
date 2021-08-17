@@ -292,7 +292,7 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     """
     KLCoeffMixin.__init__(policy, config)
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
-    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
+    TargetNetworkMixin.__init__(policy)
 
 
 # Build a child class of `TorchPolicy`, given the custom functions defined
