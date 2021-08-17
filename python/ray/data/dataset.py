@@ -1275,7 +1275,7 @@ class Dataset(Generic[T]):
         """
         raise NotImplementedError  # P1
 
-    def to_spark(self) -> "pyspark.sql.DataFrame":
+    def to_spark(self, spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
         """Convert this dataset into a Spark dataframe.
 
         Time complexity: O(dataset size / parallelism)
@@ -1283,7 +1283,8 @@ class Dataset(Generic[T]):
         Returns:
             A Spark dataframe created from this dataset.
         """
-        raise NotImplementedError  # P2
+        import raydp
+        raydp.spark.ray_dataset_to_spark_dataframe(spark, self)
 
     def to_pandas(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.

@@ -502,13 +502,15 @@ def from_spark(df: "pyspark.sql.DataFrame", *,
     """Create a dataset from a Spark dataframe.
 
     Args:
+        spark: A SparkSession, which must be created by RayDP (Spark-on-Ray).
         df: A Spark dataframe, which must be created by RayDP (Spark-on-Ray).
         parallelism: The amount of parallelism to use for the dataset.
 
     Returns:
         Dataset holding Arrow records read from the dataframe.
     """
-    raise NotImplementedError  # P2
+    import raydp
+    return raydp.spark.spark_dataframe_to_ray_dataset(df, parallelism)
 
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
