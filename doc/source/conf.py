@@ -160,7 +160,7 @@ extensions = [
 ]
 
 versionwarning_admonition_type = "note"
-versionwarning_banner_title = "[Ray Summit 2021 | June 22-24 | Virtual & Free]"
+versionwarning_banner_title = "Join the Ray Discuss Forums!"
 
 FORUM_LINK = ("https://discuss.ray.io")
 
@@ -301,6 +301,7 @@ html_theme_options = {
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
     "home_page_in_toc": True,
+    "show_navbar_depth": 0,
 }
 
 # Add any paths that contain custom themes here, relative to this directory.

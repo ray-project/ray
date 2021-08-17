@@ -42,8 +42,7 @@ retrieves the ``request.json()["observation"]`` as input.
     :end-before: __doc_define_servable_end__
 
 Now that we've defined our services, let's deploy the model to Ray Serve. We will
-define an endpoint for the route representing the ppo model, a
-backend correspond the physical implementation, and connect them together.
+define a Serve deployment that will be exposed over an HTTP route.
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_rllib.py
     :start-after: __doc_deploy_begin__

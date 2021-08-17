@@ -5,7 +5,7 @@ Datasets: Distributed Arrow on Ray
 
 .. tip::
 
-  Ray Datasets is available in early preview at ``ray.experimental.data``.
+  Ray Datasets is available in early preview at ``ray.data`` with Ray 1.6+ (and ``ray.experimental.data`` in Ray 1.5).
 
 Ray Datasets are the standard way to load and exchange data in Ray libraries and applications. Datasets provide basic distributed data transformations such as ``map``, ``filter``, and ``repartition``, and are compatible with a variety of file formats, datasources, and distributed frameworks.
 
@@ -56,6 +56,9 @@ Datasource Compatibility Matrices
      - ✅
    * - Binary Files
      - ``ray.data.read_binary_files()``
+     - ✅
+   * - Python Objects
+     - ``ray.data.from_items()``
      - ✅
    * - Spark Dataframe
      - ``ray.data.from_spark()``
@@ -219,17 +222,17 @@ Datasets can be transformed in parallel using ``.map()``. Transformations are ex
 
     ds = ray.data.range(10000)
     ds = ds.map(lambda x: x * 2)
-    # -> Map Progress: 100%|█████████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
+    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
     # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
     ds.take(5)
     # -> [0, 2, 4, 6, 8]
 
     ds.filter(lambda x: x > 5).take(5)
-    # -> Map Progress: 100%|█████████████████████████| 200/200 [00:00<00:00, 1859.63it/s]
+    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1859.63it/s]
     # -> [6, 8, 10, 12, 14]
 
     ds.flat_map(lambda x: [x, -x]).take(5)
-    # -> Map Progress: 100%|█████████████████████████| 200/200 [00:00<00:00, 1568.10it/s]
+    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1568.10it/s]
     # -> [0, 0, 2, -2, 4]
 
 To take advantage of vectorized functions, use ``.map_batches()``. Note that you can also implement ``filter`` and ``flat_map`` using ``.map_batches()``, since your map function can return an output batch of any size.
@@ -237,8 +240,9 @@ To take advantage of vectorized functions, use ``.map_batches()``. Note that you
 .. code-block:: python
 
     ds = ray.data.range_arrow(10000)
-    ds = ds.map_batches(lambda df: df.applymap(lambda x: x * 2), batch_format="pandas")
-    # -> Map Progress: 100%|█████████████████████████| 200/200 [00:00<00:00, 1927.62it/s]
+    ds = ds.map_batches(
+        lambda df: df.applymap(lambda x: x * 2), batch_format="pandas")
+    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1927.62it/s]
     ds.take(5)
     # -> [ArrowRow({'value': 0}), ArrowRow({'value': 2}), ...]
 
@@ -260,12 +264,12 @@ By default, transformations are executed using Ray tasks. For transformations th
 
     # Preprocess the data.
     ds = ds.map(preprocess)
-    # -> Map Progress: 100%|█████████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
+    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
 
     # Apply GPU batch inference with actors, and assign each actor a GPU using
     # ``num_gpus=1`` (any Ray remote decorator argument can be used here).
     ds = ds.map_batches(BatchInferModel, compute="actors", batch_size=256, num_gpus=1)
-    # -> Map Progress (16 actors 4 pending): 100%|█████| 200/200 [00:07<00:00, 27.60it/s]
+    # -> Map Progress (16 actors 4 pending): 100%|██████| 200/200 [00:07, 27.60it/s]
 
     # Save the results.
     ds.repartition(1).write_json("s3://bucket/inference-results")
@@ -324,7 +328,8 @@ Datasets support tensor-typed values, which are represented in-memory as Arrow t
 
     # Create a Dataset of tensor-typed values.
     ds = ray.data.range_tensor(10000, shape=(3, 5))
-    # -> Dataset(num_blocks=200, num_rows=10000, schema=<Tensor: shape=(None, 3, 5), dtype=int64>)
+    # -> Dataset(num_blocks=200, num_rows=10000,
+    #            schema=<Tensor: shape=(None, 3, 5), dtype=int64>)
 
     ds.map_batches(lambda t: t + 2).show(2)
     # -> [[2 2 2 2 2]
@@ -339,7 +344,8 @@ Datasets support tensor-typed values, which are represented in-memory as Arrow t
 
     # Read from storage.
     ray.data.read_numpy("/tmp/tensor_out")
-    # -> Dataset(num_blocks=200, num_rows=?, schema=<Tensor: shape=(None, 3, 5), dtype=int64>)
+    # -> Dataset(num_blocks=200, num_rows=?,
+    #            schema=<Tensor: shape=(None, 3, 5), dtype=int64>)
 
 Tensor datasets are also created whenever an array type is returned from a map function:
 
@@ -351,7 +357,8 @@ Tensor datasets are also created whenever an array type is returned from a map f
 
     # It is now converted into a Tensor dataset.
     ds = ds.map_batches(lambda x: np.array(x))
-    # -> Dataset(num_blocks=10, num_rows=10, schema=<Tensor: shape=(None,), dtype=int64>)
+    # -> Dataset(num_blocks=10, num_rows=10,
+    #            schema=<Tensor: shape=(None,), dtype=int64>)
 
 Limitations: currently tensor-typed values cannot be nested in tabular records (e.g., as in TFRecord / Petastorm format). This is planned for development.
 

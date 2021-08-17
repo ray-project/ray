@@ -30,15 +30,18 @@ def list_named_actors(all_namespaces: bool = False) -> List[str]:
     and the returned entries will simply be their name.
 
     If `all_namespaces` is set to True, all actors in the cluster will be
-    returned regardless of namespace, and the retunred entries will be of the
-    form '<namespace>/<name>'.
+    returned regardless of namespace, and the returned entries will be of the
+    form {"namespace": namespace, "name": name}.
     """
     worker = ray.worker.global_worker
     worker.check_connected()
 
     actors = worker.core_worker.list_named_actors(all_namespaces)
     if all_namespaces:
-        return [f"{namespace}/{name}" for namespace, name in actors]
+        return [{
+            "name": name,
+            "namespace": namespace
+        } for namespace, name in actors]
     else:
         return [name for _, name in actors]
 
