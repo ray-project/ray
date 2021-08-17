@@ -934,6 +934,8 @@ class Policy(metaclass=ABCMeta):
             else:
                 space = state
             for vr in view_reqs:
+                # Only override if user has not already provided
+                # custom view-requirements for state_in_n.
                 if "state_in_{}".format(i) not in vr:
                     vr["state_in_{}".format(i)] = ViewRequirement(
                         "state_out_{}".format(i),
@@ -942,6 +944,8 @@ class Policy(metaclass=ABCMeta):
                         batch_repeat_value=self.config.get("model", {}).get(
                             "max_seq_len", 1),
                         space=space)
+                # Only override if user has not already provided
+                # custom view-requirements for state_out_n.
                 if "state_out_{}".format(i) not in vr:
                     vr["state_out_{}".format(i)] = ViewRequirement(
                         space=space, used_for_training=True)
