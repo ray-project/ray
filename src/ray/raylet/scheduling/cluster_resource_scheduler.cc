@@ -648,6 +648,12 @@ std::string ClusterResourceScheduler::DebugString(void) const {
   return buffer.str();
 }
 
+uint64_t ClusterResourceScheduler::GetNumCpus(void) const {
+  auto it = nodes_.find(local_node_id_);
+  RAY_CHECK(it != nodes_.end());
+  return static_cast<uint64_t>(it->second.GetLocalView().predefined_resources[CPU].total.Double());
+}
+
 void ClusterResourceScheduler::InitResourceInstances(
     FixedPoint total, bool unit_instances, ResourceInstanceCapacities *instance_list) {
   if (unit_instances) {

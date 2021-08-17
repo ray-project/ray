@@ -136,12 +136,12 @@ def test_many_fractional_resources(shutdown_only):
 def test_background_tasks_with_max_calls(shutdown_only):
     ray.init(num_cpus=2)
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     def g():
         time.sleep(.1)
         return 0
 
-    @ray.remote(max_calls=1, max_retries=0)
+    @ray.remote(num_cpus=0, max_calls=1, max_retries=0)
     def f():
         return [g.remote()]
 
@@ -151,7 +151,7 @@ def test_background_tasks_with_max_calls(shutdown_only):
     # wait for g to finish before exiting.
     ray.get([x[0] for x in nested])
 
-    @ray.remote(max_calls=1, max_retries=0)
+    @ray.remote(num_cpus=0, max_calls=1, max_retries=0)
     def f():
         return os.getpid(), g.remote()
 
@@ -161,29 +161,6 @@ def test_background_tasks_with_max_calls(shutdown_only):
         ray.get(g_id)
         del g_id
         wait_for_pid_to_exit(pid)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_fair_queueing(shutdown_only):
-    ray.init(num_cpus=1)
-
-    @ray.remote
-    def h():
-        return 0
-
-    @ray.remote
-    def g():
-        return ray.get(h.remote())
-
-    @ray.remote
-    def f():
-        return ray.get(g.remote())
-
-    # This will never finish without fair queueing of {f, g, h}:
-    # https://github.com/ray-project/ray/issues/3644
-    ready, _ = ray.wait(
-        [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
-    assert len(ready) == 1000, len(ready)
 
 
 def test_actor_killing(shutdown_only):

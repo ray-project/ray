@@ -65,10 +65,11 @@ bool ClusterTaskManager::SchedulePendingTasks() {
        shapes_it != tasks_to_schedule_.end();) {
     auto sched_cls = shapes_it->first;
     auto &work_queue = shapes_it->second;
+    auto max_running_tasks = MaxRunningTasksPerSchedulingClass(sched_cls);
     bool is_infeasible = false;
     for (auto work_it = work_queue.begin();
          work_it != work_queue.end() &&
-         scheduling_backpressure_tracker_[sched_cls] < 16;) {
+         scheduling_backpressure_tracker_[sched_cls] < max_running_tasks;) {
       // Check every task in task_to_schedule queue to see
       // whether it can be scheduled. This avoids head-of-line
       // blocking where a task which cannot be scheduled because
@@ -1244,6 +1245,16 @@ ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
     }
   }
   return total_normal_task_resources;
+}
+
+uint64_t ClusterTaskManager::MaxRunningTasksPerSchedulingClass(SchedulingClass sched_cls_id) const {
+  auto sched_cls = TaskSpecification::GetSchedulingClassDescriptor(sched_cls_id);
+  double cpu_req = sched_cls.resource_set.GetNumCpusDouble();
+  // Handle the num_cpus=0 edge case.
+  cpu_req = std::max(cpu_req, 0.01);
+  uint64_t total_cpus = cluster_resource_scheduler_->GetNumCpus();
+  double target = total_cpus / cpu_req;
+  return static_cast<uint64_t>(std::ceil(target));
 }
 
 }  // namespace raylet

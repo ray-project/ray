@@ -519,6 +519,26 @@ def test_pull_manager_at_capacity_reports(ray_start_cluster):
     wait_for_condition(lambda: not fetches_queued())
 
 
+def test_nested_tasks(shutdown_only):
+    ray.init(num_cpus=1, resources={"worker": 3})
+
+    @ray.remote(num_cpus=1, resources={"worker": 1})
+    def h():
+        return 0
+
+    @ray.remote(num_cpus=1, resources={"worker": 1})
+    def g():
+        return ray.get(h.remote())
+
+    @ray.remote(num_cpus=1, resources={"worker": 1})
+    def f():
+        return ray.get(g.remote())
+
+    ready, _ = ray.wait(
+        [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
+    assert len(ready) == 1000, len(ready)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
