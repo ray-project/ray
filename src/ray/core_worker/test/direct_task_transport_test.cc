@@ -146,9 +146,16 @@ class MockRayletClient : public WorkerLeaseInterface {
   }
 
   void RequestWorkerLease(
-      const TaskSpecification &resource_spec,
+      const ray::rpc::TaskSpec &task_spec,
       const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size) override {
+    num_workers_requested += 1;
+    callbacks.push_back(callback);
+  }
+  virtual void RequestWorkerLease(
+      const ray::TaskSpecification &resource_spec,
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size = -1) override {
     num_workers_requested += 1;
     callbacks.push_back(callback);
   }
@@ -221,6 +228,11 @@ class MockRayletClient : public WorkerLeaseInterface {
 class MockActorCreator : public ActorCreatorInterface {
  public:
   MockActorCreator() {}
+
+  Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                            const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
 
   Status RegisterActor(const TaskSpecification &task_spec) override {
     return Status::OK();
