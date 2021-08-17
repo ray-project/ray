@@ -16,7 +16,7 @@
 # /src/ray @ray-project/ray-core-cpp
 
 # Dependencies
-/python/setup.py @richardliaw @ericl
+/python/setup.py @richardliaw @ericl @edoakes
 
 # Python worker.
 #/python/ray/ @ray-project/ray-core-python
