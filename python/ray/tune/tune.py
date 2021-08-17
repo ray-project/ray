@@ -449,20 +449,22 @@ def run(
     if not search_alg:
         search_alg = BasicVariantGenerator(
             max_concurrent=max_concurrent_trials or 0)
-    elif isinstance(search_alg, ConcurrencyLimiter):
-        logger.warning(
-            "You have specified `max_concurrent_trials="
-            f"{max_concurrent_trials}`, but the `search_alg` is already a "
-            "`ConcurrencyLimiter`. `max_concurrent_trials` will be ignored.")
-    elif max_concurrent_trials:
-        if max_concurrent_trials < 0:
-            raise ValueError("`max_concurrent_trials` must be non-negative, "
-                             f"got {max_concurrent_trials}.")
-        search_alg = ConcurrencyLimiter(
-            search_alg, max_concurrent=max_concurrent_trials)
-
-    if issubclass(type(search_alg), Searcher):
-        search_alg = SearchGenerator(search_alg)
+    else:
+        if isinstance(search_alg, ConcurrencyLimiter):
+            logger.warning(
+                "You have specified `max_concurrent_trials="
+                f"{max_concurrent_trials}`, but the `search_alg` is already "
+                "a `ConcurrencyLimiter`. `max_concurrent_trials` will "
+                "be ignored.")
+        elif max_concurrent_trials:
+            if max_concurrent_trials < 0:
+                raise ValueError(
+                    "`max_concurrent_trials` must be non-negative, "
+                    f"got {max_concurrent_trials}.")
+            search_alg = ConcurrencyLimiter(
+                search_alg, max_concurrent=max_concurrent_trials)
+        if issubclass(type(search_alg), Searcher):
+            search_alg = SearchGenerator(search_alg)
 
     if config and not search_alg.set_search_properties(metric, mode, config):
         if has_unresolved_values(config):
