@@ -151,3 +151,11 @@ test:segfault --run_under="bash -c 'unset GREP_OPTIONS && if ! grep -q -o Micros
 build:debug -c dbg
 build:debug --copt="-g"
 build:debug --strip="never"
+
+# Undefined Behavior Sanitizer
+build:ubsan --strip=never
+build:ubsan --copt -fsanitize=undefined
+build:ubsan --copt -fno-sanitize-recover=all
+build:ubsan --copt -g
+build:ubsan --linkopt -fsanitize=undefined
+build:ubsan --linkopt -fno-sanitize-recover=all
