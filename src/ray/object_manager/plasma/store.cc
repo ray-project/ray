@@ -735,7 +735,8 @@ std::string PlasmaStore::GetDebugDump() const {
   if (RayConfig::instance().object_store_stats_debug_dump_enabled()) {
     object_lifecycle_mgr_.GetDebugDump(buffer);
   } else {
-    buffer << "object_lifecycle_mgr_ debug dump not enabled";
+    buffer << "object_lifecycle_mgr_ debug dump is not enabled. Set "
+              "RAY_object_store_stats_debug_dump_enabled=1 to get a debug dump.";
   }
   return buffer.str();
 }
