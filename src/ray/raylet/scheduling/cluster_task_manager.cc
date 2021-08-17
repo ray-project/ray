@@ -1247,7 +1247,8 @@ ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
   return total_normal_task_resources;
 }
 
-uint64_t ClusterTaskManager::MaxRunningTasksPerSchedulingClass(SchedulingClass sched_cls_id) const {
+uint64_t ClusterTaskManager::MaxRunningTasksPerSchedulingClass(
+    SchedulingClass sched_cls_id) const {
   auto sched_cls = TaskSpecification::GetSchedulingClassDescriptor(sched_cls_id);
   double cpu_req = sched_cls.resource_set.GetNumCpusDouble();
   // Handle the num_cpus=0 edge case.

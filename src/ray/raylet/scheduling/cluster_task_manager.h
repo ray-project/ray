@@ -245,15 +245,13 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   // queue.
   void SpillWaitingTasks();
 
-
   /// Calculate the maximum number of running tasks for a given scheduling
   /// class. https://github.com/ray-project/ray/issues/16973
   ///
   /// \param sched_cls_id The scheduling class in question.
   /// \returns The maximum number instances of that scheduling class that
   ///          should be running (or blocked) at once.
-  uint64_t MaxRunningTasksPerSchedulingClass(
-                                                                 SchedulingClass sched_cls_id) const;
+  uint64_t MaxRunningTasksPerSchedulingClass(SchedulingClass sched_cls_id) const;
 
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.
