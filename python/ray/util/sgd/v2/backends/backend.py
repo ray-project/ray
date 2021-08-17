@@ -79,7 +79,7 @@ class BackendExecutor:
         self.latest_checkpoint = None
 
         # Create directory for logs.
-        logdir = Path(logdir) if logdir is not None else None
+        logdir = Path(logdir) if logdir else None
         self.logdir = self._construct_logdir(logdir)
         self.logdir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Trainer logs will be logged in: {self.logdir}")
@@ -134,14 +134,14 @@ class BackendExecutor:
 
         # Create new log directory for this run.
         self._run_id += 1
-        self._run_dir = Path(run_dir) if run_dir is not None else None
+        self._run_dir = Path(run_dir) if run_dir else None
         self.latest_run_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Run results will be logged in: {self.latest_run_dir}")
 
         # Restart checkpointing.
         self._checkpoint_id = 0
         self._checkpoint_dir = Path(checkpoint_config.checkpoint_dir) if \
-            checkpoint_config.checkpoint_dir is not None else None
+            checkpoint_config.checkpoint_dir else None
 
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
