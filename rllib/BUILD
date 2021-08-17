@@ -766,7 +766,7 @@ py_test(
 py_test(
     name = "test_td3",
     tags = ["trainers_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/ddpg/tests/test_td3.py"]
 )
 
