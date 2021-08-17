@@ -392,6 +392,7 @@ class WorkflowStorage:
         Raises:
             DataSaveError: if we fail to save the class body.
         """
+
         metadata = {
             "status": metadata.status.value,
         }
@@ -399,11 +400,17 @@ class WorkflowStorage:
 
     def load_workflow_meta(self) -> Optional[WorkflowMetaData]:
         """Load the metadata of the current workflow.
+
+        Returns:
+            The metadata of the current workflow. If it doesn't exist,
+            return None.
         """
+
         try:
-            metadata = asyncio_run(self._get(self._key_workflow_metadata(), True))
+            metadata = asyncio_run(
+                self._get(self._key_workflow_metadata(), True))
             return WorkflowMetaData(status=WorkflowStatus(metadata["status"]))
-        except:
+        except Exception:
             return None
 
     async def _list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
