@@ -406,7 +406,7 @@ class Worker:
         task = ray_client_pb2.ClientTask()
         task.type = ray_client_pb2.ClientTask.NAMED_ACTOR
         task.name = name
-        task.namespace = namespace
+        task.namespace = namespace or ""
         ids = self._call_schedule_for_task(task)
         assert len(ids) == 1
         return ClientActorHandle(ClientActorRef(ids[0]))
