@@ -114,11 +114,11 @@ def ddpg_actor_critic_loss(policy: Policy, model: ModelV2, _,
 
     # Target q-net(s) evaluation.
     q_tp1 = target_model.get_q_values(target_model_out_tp1,
-                                             policy_tp1_smoothed)
+                                      policy_tp1_smoothed)
 
     if twin_q:
-        twin_q_tp1 = target_model.get_twin_q_values(
-            target_model_out_tp1, policy_tp1_smoothed)
+        twin_q_tp1 = target_model.get_twin_q_values(target_model_out_tp1,
+                                                    policy_tp1_smoothed)
 
     q_t_selected = torch.squeeze(q_t, axis=len(q_t.shape) - 1)
     if twin_q:

@@ -317,8 +317,8 @@ def actor_critic_loss(
 
         # Target q network evaluation.
         q_tp1 = target_model.get_q_values(target_model_out_tp1,
-                                                 target_states_in_tp1["q"],
-                                                 seq_lens, policy_tp1)[0]
+                                          target_states_in_tp1["q"], seq_lens,
+                                          policy_tp1)[0]
         if policy.config["twin_q"]:
             twin_q_tp1 = target_model.get_twin_q_values(
                 target_model_out_tp1, target_states_in_tp1["twin_q"], seq_lens,
