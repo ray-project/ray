@@ -41,6 +41,7 @@ parser.add_argument(
     default="tf",
     help="The DL framework specifier.")
 parser.add_argument("--num-cpus", type=int, default=0)
+parser.add_argument("--num-workers", type=int, default=2)
 parser.add_argument(
     "--from-checkpoint",
     type=str,
@@ -197,6 +198,7 @@ if __name__ == "__main__":
             # Always just train the "main" policy.
             "policies_to_train": ["main"],
         },
+        "num_workers": args.num_workers,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": args.framework,
