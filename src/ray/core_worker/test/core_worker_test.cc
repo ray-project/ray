@@ -63,7 +63,7 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
                                          "actor creation task", "", "", ""));
   std::vector<std::unique_ptr<TaskArg>> args;
   args.emplace_back(new TaskArgByValue(
-      std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
+      std::make_shared<RayObject>(buffer, nullptr, std::vector<rpc::ObjectReference>())));
 
   std::string name = "";
   std::string ray_namespace = "";
@@ -236,12 +236,13 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       auto buffer2 = GenerateRandomBuffer();
 
       ObjectID object_id;
-      RAY_CHECK_OK(driver.Put(RayObject(buffer2, nullptr, std::vector<ObjectID>()), {},
-                              &object_id));
+      RAY_CHECK_OK(
+          driver.Put(RayObject(buffer2, nullptr, std::vector<rpc::ObjectReference>()), {},
+                     &object_id));
 
       std::vector<std::unique_ptr<TaskArg>> args;
-      args.emplace_back(new TaskArgByValue(
-          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
+      args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+          buffer1, nullptr, std::vector<rpc::ObjectReference>())));
       args.emplace_back(new TaskArgByReference(object_id, driver.GetRpcAddress()));
 
       RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
@@ -282,10 +283,10 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<std::unique_ptr<TaskArg>> args;
-      args.emplace_back(new TaskArgByValue(
-          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
-      args.emplace_back(new TaskArgByValue(
-          std::make_shared<RayObject>(buffer2, nullptr, std::vector<ObjectID>())));
+      args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+          buffer1, nullptr, std::vector<rpc::ObjectReference>())));
+      args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+          buffer2, nullptr, std::vector<rpc::ObjectReference>())));
 
       TaskOptions options{"", 1, resources};
       std::vector<ObjectID> return_ids;
@@ -321,13 +322,14 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
     ObjectID object_id;
     RAY_CHECK_OK(
-        driver.Put(RayObject(buffer1, nullptr, std::vector<ObjectID>()), {}, &object_id));
+        driver.Put(RayObject(buffer1, nullptr, std::vector<rpc::ObjectReference>()), {},
+                   &object_id));
 
     // Create arguments with PassByRef and PassByValue.
     std::vector<std::unique_ptr<TaskArg>> args;
     args.emplace_back(new TaskArgByReference(object_id, driver.GetRpcAddress()));
-    args.emplace_back(new TaskArgByValue(
-        std::make_shared<RayObject>(buffer2, nullptr, std::vector<ObjectID>())));
+    args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+        buffer2, nullptr, std::vector<rpc::ObjectReference>())));
 
     TaskOptions options{"", 1, resources};
     std::vector<ObjectID> return_ids;
@@ -388,8 +390,8 @@ void CoreWorkerTest::TestActorRestart(
 
       // Create arguments with PassByValue.
       std::vector<std::unique_ptr<TaskArg>> args;
-      args.emplace_back(new TaskArgByValue(
-          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
+      args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+          buffer1, nullptr, std::vector<rpc::ObjectReference>())));
 
       TaskOptions options{"", 1, resources};
       std::vector<ObjectID> return_ids;
@@ -431,8 +433,8 @@ void CoreWorkerTest::TestActorFailure(
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<std::unique_ptr<TaskArg>> args;
-      args.emplace_back(new TaskArgByValue(
-          std::make_shared<RayObject>(buffer1, nullptr, std::vector<ObjectID>())));
+      args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+          buffer1, nullptr, std::vector<rpc::ObjectReference>())));
 
       TaskOptions options{"", 1, resources};
       std::vector<ObjectID> return_ids;
@@ -491,7 +493,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                        FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   std::vector<std::unique_ptr<TaskArg>> args;
   args.emplace_back(new TaskArgByValue(
-      std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
+      std::make_shared<RayObject>(buffer, nullptr, std::vector<rpc::ObjectReference>())));
 
   std::unordered_map<std::string, double> resources;
   std::string name = "";
@@ -565,8 +567,8 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
     int64_t array[] = {SHOULD_CHECK_MESSAGE_ORDER, i};
     auto buffer = std::make_shared<LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(array),
                                                       sizeof(array));
-    args.emplace_back(new TaskArgByValue(
-        std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
+    args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+        buffer, nullptr, std::vector<rpc::ObjectReference>())));
 
     TaskOptions options{"", 1, resources};
     std::vector<ObjectID> return_ids;
@@ -655,10 +657,10 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   std::vector<RayObject> buffers;
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
                        std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2),
-                       std::vector<ObjectID>());
+                       std::vector<rpc::ObjectReference>());
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)),
                        std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2),
-                       std::vector<ObjectID>());
+                       std::vector<rpc::ObjectReference>());
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
@@ -780,10 +782,10 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   std::vector<RayObject> buffers;
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
                        std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2),
-                       std::vector<ObjectID>());
+                       std::vector<rpc::ObjectReference>());
   buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, array2_size),
                        std::make_shared<LocalMemoryBuffer>(array2, array2_size / 2),
-                       std::vector<ObjectID>());
+                       std::vector<rpc::ObjectReference>());
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
