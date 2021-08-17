@@ -2,6 +2,15 @@
 # Tests from the python/ray/util/sgd/v2/examples directory.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
+py_test(
+    name = "mlflow_fashion_mnist",
+    size = "medium",
+    main = "examples/mlflow_fashion_mnist.py",
+    srcs = ["examples/mlflow_fashion_mnist.py"],
+    tags = ["exclusive"],
+    deps = [":sgd_v2_lib"],
+    args = ["--smoke-test"]
+)
 
 py_test(
     name = "transformers_example",
