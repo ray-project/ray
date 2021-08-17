@@ -510,9 +510,9 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
             return_object->set_metadata(result->GetMetadata()->Data(),
                                         result->GetMetadata()->Size());
           }
-          for (const auto &nested_ref : result->GetNestedRefs()) {
-            return_object->add_nested_inlined_refs()->CopyFrom(nested_ref);
-          }
+        }
+        for (const auto &nested_ref : result->GetNestedRefs()) {
+          return_object->add_nested_inlined_refs()->CopyFrom(nested_ref);
         }
       }
       if (task_spec.IsActorCreationTask()) {

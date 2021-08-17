@@ -15,10 +15,13 @@
 #include "ray/util/event.h"
 #include <boost/filesystem.hpp>
 #include <boost/range.hpp>
+#include <csignal>
 #include <fstream>
 #include <set>
 #include <thread>
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/util/event_label.h"
 
 namespace ray {
 
@@ -346,6 +349,35 @@ TEST(EVENT_TEST, WITH_FIELD) {
   EXPECT_EQ(double_value, 0.123);
   auto bool_value = custom_fields["bool"].get<bool>();
   EXPECT_EQ(bool_value, true);
+  boost::filesystem::remove_all(log_dir.c_str());
+}
+
+TEST(EVENT_TEST, TEST_RAY_CHECK_ABORT) {
+  std::string log_dir = GenerateLogDir();
+
+  ray::EventManager::Instance().ClearReporters();
+  auto custom_fields = std::unordered_map<std::string, std::string>();
+  custom_fields.emplace("node_id", "node 1");
+  custom_fields.emplace("job_id", "job 1");
+  custom_fields.emplace("task_id", "task 1");
+  RayEventInit(rpc::Event_SourceType::Event_SourceType_RAYLET, custom_fields, log_dir);
+
+  RAY_CHECK(1 > 0) << "correct test case";
+
+  ASSERT_DEATH({ RAY_CHECK(1 < 0) << "incorrect test case"; }, "");
+
+  std::vector<std::string> vc;
+  ReadEventFromFile(vc, log_dir + "/event/event_RAYLET.log");
+  json out_custom_fields;
+  rpc::Event ele_1 = GetEventFromString(vc.back(), &out_custom_fields);
+
+  CheckEventDetail(ele_1, "job 1", "node 1", "task 1", "RAYLET", "FATAL",
+                   EL_RAY_FATAL_CHECK_FAILED, "NULL");
+  EXPECT_THAT(ele_1.message(),
+              testing::HasSubstr("Check failed: 1 < 0 incorrect test case"));
+  EXPECT_THAT(ele_1.message(), testing::HasSubstr("*** StackTrace Information ***"));
+  EXPECT_THAT(ele_1.message(), testing::HasSubstr("ray::RayLog::~RayLog()"));
+
   boost::filesystem::remove_all(log_dir.c_str());
 }
 

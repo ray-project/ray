@@ -150,7 +150,7 @@ message RayObject {
   bytes data = 1;
   // Metadata of the object.
   bytes metadata = 2;
-  // ObjectIDs that were nested in data. This is only set for inlined objects.
+  // ObjectRefs that were nested in this object.
   repeated ObjectReference nested_inlined_refs = 3;
 }
 

@@ -398,20 +398,22 @@ class Client:
                                            version, prev_version, route_prefix,
                                            ray.get_runtime_context().job_id))
 
+        tag = f"component=serve deployment={name}"
+
         if updating:
             msg = f"Updating deployment '{name}'"
             if version is not None:
                 msg += f" to version '{version}'"
-            logger.info(f"{msg}.")
+            logger.info(f"{msg}. {tag}")
         else:
             logger.info(f"Deployment '{name}' is already at version "
-                        f"'{version}', not updating.")
+                        f"'{version}', not updating. {tag}")
 
         if _blocking:
             self._wait_for_goal(goal_id)
             logger.info(
                 f"Deployment '{name}{':'+version if version else ''}' is ready"
-                f" at `{url}`.")
+                f" at `{url}`. {tag}")
         else:
             return goal_id
 
