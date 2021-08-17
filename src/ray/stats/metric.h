@@ -258,16 +258,16 @@ void RegisterView(const std::string &name, const std::string &description,
 }
 
 template <typename T = void>
-void RegisterViewList(const std::string &name, const std::string &description,
-                      const std::vector<opencensus::tags::TagKey> &tag_keys,
-                      const std::vector<double> &buckets) {}
+void RegisterViewWithTagList(const std::string &name, const std::string &description,
+                             const std::vector<opencensus::tags::TagKey> &tag_keys,
+                             const std::vector<double> &buckets) {}
 
 template <StatsType T, StatsType... Ts>
-void RegisterViewList(const std::string &name, const std::string &description,
-                      const std::vector<opencensus::tags::TagKey> &tag_keys,
-                      const std::vector<double> &buckets) {
+void RegisterViewWithTagList(const std::string &name, const std::string &description,
+                             const std::vector<opencensus::tags::TagKey> &tag_keys,
+                             const std::vector<double> &buckets) {
   RegisterView<T>(name, description, tag_keys, buckets);
-  RegisterViewList<Ts...>(name, description, tag_keys, buckets);
+  RegisterViewWithTagList<Ts...>(name, description, tag_keys, buckets);
 }
 
 inline std::vector<opencensus::tags::TagKey> convertTags(
@@ -387,9 +387,9 @@ class Stats {
           (), ray::stats::GAUGE);
       STATS_async_pool_req_execution_time_ms.record(1, "method");
 */
-#define DEFINE_stats(name, description, tags, buckets, types...)           \
+#define DEFINE_stats(name, description, tags, buckets, ...)                \
   ray::stats::internal::Stats STATS_##name(                                \
       #name, description, {STATS_DEPAREN(tags)}, {STATS_DEPAREN(buckets)}, \
-      ray::stats::internal::RegisterViewList<types>)
+      ray::stats::internal::RegisterViewWithTagList<__VA_ARGS__>)
 
 #define DECLARE_stats(name) extern ray::stats::internal::Stats STATS_##name

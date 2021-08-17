@@ -160,9 +160,7 @@ void GcsServer::Stop() {
     // time, causing many nodes die after GCS's failure.
     gcs_heartbeat_manager_->Stop();
 
-    if (config_.pull_based_resource_reporting) {
-      gcs_resource_report_poller_->Stop();
-    }
+    gcs_resource_report_poller_->Stop();
 
     if (config_.grpc_based_resource_broadcast) {
       grpc_based_resource_broadcaster_->Stop();
@@ -351,15 +349,13 @@ void GcsServer::InitTaskInfoHandler() {
 }
 
 void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
-  if (config_.pull_based_resource_reporting) {
-    gcs_resource_report_poller_.reset(new GcsResourceReportPoller(
-        raylet_client_pool_, [this](const rpc::ResourcesData &report) {
-          gcs_resource_manager_->UpdateFromResourceReport(report);
-        }));
+  gcs_resource_report_poller_.reset(new GcsResourceReportPoller(
+      raylet_client_pool_, [this](const rpc::ResourcesData &report) {
+        gcs_resource_manager_->UpdateFromResourceReport(report);
+      }));
 
-    gcs_resource_report_poller_->Initialize(gcs_init_data);
-    gcs_resource_report_poller_->Start();
-  }
+  gcs_resource_report_poller_->Initialize(gcs_init_data);
+  gcs_resource_report_poller_->Start();
 }
 
 void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data) {
@@ -436,9 +432,7 @@ void GcsServer::InstallEventListeners() {
     gcs_placement_group_manager_->SchedulePendingPlacementGroups();
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
-    if (config_.pull_based_resource_reporting) {
-      gcs_resource_report_poller_->HandleNodeAdded(*node);
-    }
+    gcs_resource_report_poller_->HandleNodeAdded(*node);
     if (config_.grpc_based_resource_broadcast) {
       grpc_based_resource_broadcaster_->HandleNodeAdded(*node);
     }
@@ -452,9 +446,7 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
-        if (config_.pull_based_resource_reporting) {
-          gcs_resource_report_poller_->HandleNodeRemoved(*node);
-        }
+        gcs_resource_report_poller_->HandleNodeRemoved(*node);
         if (config_.grpc_based_resource_broadcast) {
           grpc_based_resource_broadcaster_->HandleNodeRemoved(*node);
         }

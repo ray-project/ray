@@ -111,11 +111,7 @@ def test_default_config(shutdown_only):
             "object_store_full_delay_ms": 100
         })
     assert "object_spilling_config" not in ray.worker._global_node._config
-    if ray.worker.global_worker.core_worker.plasma_unlimited():
-        run_basic_workload()
-    else:
-        with pytest.raises(ray.exceptions.ObjectStoreFullError):
-            run_basic_workload()
+    run_basic_workload()
     ray.shutdown()
 
     # Make sure when we use a different config, it is reflected.
@@ -170,12 +166,7 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config,
         })
     arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
     ref = ray.get(ray.put(arr))  # noqa
-    # Since the ref exists, it should raise OOM.
-    if ray.worker.global_worker.core_worker.plasma_unlimited():
-        ref2 = ray.put(arr)  # noqa
-    else:
-        with pytest.raises(ray.exceptions.ObjectStoreFullError):
-            ref2 = ray.put(arr)  # noqa
+    ref2 = ray.put(arr)  # noqa
 
     wait_for_condition(lambda: is_dir_empty(temp_folder))
     assert_no_thrashing(address["redis_address"])

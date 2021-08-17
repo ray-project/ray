@@ -55,10 +55,10 @@ _METRICS = [
     "ray_pending_actors",
     "ray_pending_placement_groups",
     "ray_outbound_heartbeat_size_kb_sum",
-    "ray_async_pool_req_num",
-    "ray_async_pool_req_execution_time_ms",
-    "ray_async_pool_req_queue_time_ms",
-    "ray_async_pool_req_activate_num",
+    "ray_operation_count",
+    "ray_operation_run_time_ms",
+    "ray_operation_queue_time_ms",
+    "ray_operation_active_count",
 ]
 
 # This list of metrics should be kept in sync with
