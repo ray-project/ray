@@ -398,10 +398,13 @@ class WorkflowStorage:
         asyncio_run(self._put(self._key_workflow_metadata(), metadata, True))
 
     def load_workflow_meta(self) -> Optional[WorkflowMetaData]:
-        metadata = asyncio_run(self._get(self._key_workflow_metadata(), True))
-        if metadata is None:
+        """Load the metadata of the current workflow.
+        """
+        try:
+            metadata = asyncio_run(self._get(self._key_workflow_metadata(), True))
+            return WorkflowMetaData(status=WorkflowStatus(metadata["status"]))
+        except:
             return None
-        return WorkflowMetaData(status=WorkflowStatus(metadata["status"]))
 
     async def _list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
         prefix = self._storage.make_key("")
