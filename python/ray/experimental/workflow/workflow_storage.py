@@ -31,6 +31,7 @@ STEP_FUNC_BODY = "func_body.pkl"
 CLASS_BODY = "class_body.pkl"
 WORKFLOW_META = "workflow_meta.json"
 WORKFLOW_PROGRESS = "progress.json"
+NAMED_STEP = "named_step"
 
 
 # TODO: Get rid of this and use asyncio.run instead once we don't support py36
@@ -348,6 +349,8 @@ class WorkflowStorage:
             self._put(self._key_step_function_body(step_id), inputs.func_body),
             self._put(self._key_step_args(step_id), args_obj)
         ]
+        if inputs.step_name is not None:
+            save_tasks.append(self._put(self._key_step_name(inputs.step_name), step_id))
         await asyncio.gather(*save_tasks)
 
     def save_subworkflow(self, workflow: Workflow) -> None:
@@ -412,6 +415,12 @@ class WorkflowStorage:
             return WorkflowMetaData(status=WorkflowStatus(metadata["status"]))
         except Exception:
             return None
+
+    def get_named_step_id(self, step_name: str) -> str:
+        """Get the step id from the step name
+
+
+        """
 
     async def _list_workflow(self) -> List[Tuple[str, WorkflowStatus]]:
         prefix = self._storage.make_key("")
@@ -502,6 +511,9 @@ class WorkflowStorage:
 
     def _key_workflow_metadata(self):
         return [self._workflow_id, WORKFLOW_META]
+
+    def _key_step_name(self, step_name):
+        return [self._workflow_id, NAMED_STEP, step_name]
 
 
 def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
