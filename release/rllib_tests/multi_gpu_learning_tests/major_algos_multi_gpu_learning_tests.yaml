@@ -28,7 +28,7 @@ appo-cartpole-v0-no-vtrace:
     config:
         vtrace: false
         num_gpus: 2
-        num_workers: 31
+        num_workers: 5
         lr: 0.0003
         observation_filter: MeanStdFilter
         num_sgd_iter: 6
@@ -53,7 +53,7 @@ appo-cartpole-v0-vtrace:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 31
+        num_workers: 5
         lr: 0.0003
         observation_filter: MeanStdFilter
         num_sgd_iter: 6
@@ -83,7 +83,7 @@ ddpg-repeat-after-me-env:
                 repeat_delay: 0
 
         num_gpus: 2
-        num_workers: 31
+        num_workers: 0
         # Double batch size (2 GPUs).
         train_batch_size: 512
 
@@ -98,7 +98,7 @@ dqn-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 31
+        num_workers: 0
         # Double batch size (2 GPUs).
         train_batch_size: 64
         # Mimic tuned_example for DQN CartPole.
@@ -185,7 +185,7 @@ sac-repeat-after-me-env:
             config:
                 repeat_delay: 0
         num_gpus: 2
-        num_workers: 31
+        num_workers: 0
         initial_alpha: 0.001
         prioritized_replay: true
 
@@ -207,7 +207,7 @@ sac-repeat-after-me-env-continuous:
                 continuous: true
                 repeat_delay: 0
         num_gpus: 2
-        num_workers: 31
+        num_workers: 0
         initial_alpha: 0.001
         prioritized_replay: true
 
@@ -225,7 +225,7 @@ simpleq-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 31
+        num_workers: 0
 
 td3-repeat-after-me-env:
     env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
@@ -243,6 +243,6 @@ td3-repeat-after-me-env:
                 repeat_delay: 0
 
         num_gpus: 2
-        num_workers: 31
+        num_workers: 0
         # Double batch size (2 GPUs).
         train_batch_size: 200
