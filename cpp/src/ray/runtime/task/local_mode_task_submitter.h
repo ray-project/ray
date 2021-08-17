@@ -38,10 +38,15 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
 
   ObjectID SubmitActorTask(InvocationSpec &invocation, const CallOptions &call_options);
 
+  ActorID GetActor(bool global, const std::string &actor_name);
+
  private:
   std::unordered_map<ActorID, std::unique_ptr<ActorContext>> actor_contexts_;
 
   absl::Mutex actor_contexts_mutex_;
+
+  std::unordered_map<std::string, ActorID> named_actors_;
+  absl::Mutex named_actors_mutex_;
 
   std::unique_ptr<boost::asio::thread_pool> thread_pool_;
 

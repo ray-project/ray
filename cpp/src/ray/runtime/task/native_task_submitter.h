@@ -30,6 +30,8 @@ class NativeTaskSubmitter : public TaskSubmitter {
 
   ObjectID SubmitActorTask(InvocationSpec &invocation, const CallOptions &call_options);
 
+  ActorID GetActor(bool global, const std::string &actor_name);
+
  private:
   ObjectID Submit(InvocationSpec &invocation, const CallOptions &call_options);
 };
