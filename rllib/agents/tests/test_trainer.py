@@ -1,3 +1,4 @@
+import copy
 from random import choice
 import unittest
 
@@ -5,6 +6,7 @@ import ray
 import ray.rllib.agents.a3c as a3c
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.pg as pg
+from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -18,6 +20,23 @@ class TestTrainer(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
+    def test_validate_config_idempotent(self):
+        """
+        Asserts that validate_config run multiple
+        times on COMMON_CONFIG will be idempotent
+        """
+        # Given:
+        standard_config = copy.deepcopy(COMMON_CONFIG)
+
+        # When (we validate config 2 times), ...
+        Trainer._validate_config(standard_config)
+        config_v1 = copy.deepcopy(standard_config)
+        Trainer._validate_config(standard_config)
+        config_v2 = copy.deepcopy(standard_config)
+
+        # ... then ...
+        self.assertEqual(config_v1, config_v2)
+
     def test_add_delete_policy(self):
         config = pg.DEFAULT_CONFIG.copy()
         config.update({
@@ -28,10 +47,18 @@ class TestTrainer(unittest.TestCase):
                 },
             },
             "num_workers": 2,  # Test on remote workers as well.
+            "model": {
+                "fcnet_hiddens": [5],
+                "fcnet_activation": "linear",
+            },
+            "train_batch_size": 100,
+            "rollout_fragment_length": 50,
             "multiagent": {
                 # Start with a single policy.
                 "policies": {"p0"},
                 "policy_mapping_fn": lambda aid, episode, **kwargs: "p0",
+                # And only two policies that can be stored in memory at a
+                # time.
                 "policy_map_capacity": 2,
             },
         })
@@ -39,7 +66,7 @@ class TestTrainer(unittest.TestCase):
         for _ in framework_iterator(config):
             trainer = pg.PGTrainer(config=config)
             r = trainer.train()
-            self.assertTrue("p0" in r["policy_reward_min"])
+            self.assertTrue("p0" in r["info"]["learner"])
             checkpoints = []
             for i in range(1, 3):
 
@@ -58,11 +85,11 @@ class TestTrainer(unittest.TestCase):
                 )
                 pol_map = trainer.workers.local_worker().policy_map
                 self.assertTrue(new_pol is not trainer.get_policy("p0"))
-                for j in range(i):
+                for j in range(i + 1):
                     self.assertTrue(f"p{j}" in pol_map)
                 self.assertTrue(len(pol_map) == i + 1)
                 r = trainer.train()
-                self.assertTrue("p1" in r["policy_reward_min"])
+                self.assertTrue("p1" in r["info"]["learner"])
                 checkpoints.append(trainer.save())
 
                 # Test restoring from the checkpoint (which has more policies
