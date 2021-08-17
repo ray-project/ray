@@ -16,5 +16,6 @@ then
     echo "No GPU support found (${GPUCMD} not found)."
 else
     eval "${GPUCMD}"
+    python -c "import torch; print('Torch cuda available:', torch.cuda.is_available())"
 fi
 echo "----------------------------"
