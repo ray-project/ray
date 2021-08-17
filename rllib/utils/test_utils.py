@@ -5,6 +5,7 @@ import logging
 import numpy as np
 import re
 import time
+from typing import Any, Dict, List
 import yaml
 
 import ray
@@ -376,14 +377,18 @@ def check_compute_single_action(trainer,
                         "({})!".format(action, what, action_space))
 
 
-def run_learning_tests_from_yaml(yaml_files):
+def run_learning_tests_from_yaml(yaml_files: List[str],
+                                 max_num_repeats: int = 2) -> Dict[str, Any]:
+    """Runs the given experiments in yaml_files and returns results dict.
 
+    Args:
+        yaml_files (List[str]): List of yaml file names.
+        max_num_repeats (int): How many times should we repeat a failed
+            experiment?
+    """
     print("Will run the following yaml files:")
     for yaml_file in yaml_files:
         print("->", yaml_file)
-
-    # How many times should we repeat a failed experiment?
-    max_num_repeats = 2
 
     # All trials we'll ever run in this test script.
     all_trials = []
