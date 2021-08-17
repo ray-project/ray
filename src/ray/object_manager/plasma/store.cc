@@ -734,6 +734,8 @@ std::string PlasmaStore::GetDebugDump() const {
          << num_pending_bytes / 1024 / 1024 << "MB\n";
   if (RayConfig::instance().object_store_stats_debug_dump_enabled()) {
     object_lifecycle_mgr_.GetDebugDump(buffer);
+  } else {
+    buffer << "object_lifecycle_mgr_ debug dump not enabled";
   }
   return buffer.str();
 }
