@@ -35,7 +35,7 @@ def _set_future_helper(
 
 cdef class ObjectRef(BaseID):
 
-    def __init__(self, id, c_string call_site = b""):
+    def __init__(self, id, c_string call_site=b""):
         check_id(id)
         self.data = CObjectID.FromBinary(<c_string>id)
         self.in_core_worker = False

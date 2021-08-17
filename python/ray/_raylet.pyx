@@ -847,7 +847,7 @@ cdef void get_py_stack(c_string* stack_out) nogil:
             stack_out[0] = "".encode("ascii")
             return
         msg_frames = []
-        seen_worker = False
+        seen_worker_frame = False
         while frame and len(msg_frames) < 4:
             filename = frame.f_code.co_filename
             # Decode Ray internal frames to add annotations.
@@ -856,11 +856,13 @@ cdef void get_py_stack(c_string* stack_out) nogil:
                     msg_frames = ["(put object) "]
                 elif frame.f_code.co_name == "deserialize_objects":
                     msg_frames = ["(deserialize object) "]
-                elif not seen_worker:
-                    msg_frames.append("({}:{}:{}, omitting rest from the file)".format(
-                        frame.f_code.co_filename, frame.f_code.co_name,
-                        frame.f_lineno))
-                seen_worker = True
+                elif not seen_worker_frame:
+                    msg_frames.append(
+                        "({}:{}:{}, omitting rest from the file)".format(
+                            frame.f_code.co_filename,
+                            frame.f_code.co_name,
+                            frame.f_lineno))
+                seen_worker_frame = True
             elif filename.endswith("ray/remote_function.py"):
                 # TODO(ekl) distinguish between task return objects and
                 # arguments. This can only be done in the core worker.
@@ -870,8 +872,10 @@ cdef void get_py_stack(c_string* stack_out) nogil:
                 # arguments. This can only be done in the core worker.
                 msg_frames = ["(actor call) "]
             elif filename.endswith("ray/workers/default_worker.py"):
+                # Common codepath, not specific to an operation.
                 pass
             elif filename.endswith("ray/_private/client_mode_hook.py"):
+                # Common codepath, not specific to an operation.
                 pass
             else:
                 msg_frames.append("{}:{}:{}".format(
@@ -1661,7 +1665,7 @@ cdef class CoreWorker:
         return output, ObjectRef(c_actor_handle_id.Binary())
 
     cpdef add_object_ref_reference(self, ObjectRef object_ref,
-            const c_string &call_site):
+                                   const c_string &call_site):
         # Note: faster to not release GIL for short-running op.
         if call_site.empty():
             CCoreWorkerProcess.GetCoreWorker().AddLocalReference(
@@ -1669,7 +1673,6 @@ cdef class CoreWorker:
         else:
             CCoreWorkerProcess.GetCoreWorker().AddLocalReference(
                 object_ref.native(), call_site)
-
 
     def remove_object_ref_reference(self, ObjectRef object_ref):
         cdef:
@@ -1958,7 +1961,7 @@ cdef class DeserializationInfo:
     cdef:
         public ObjectRef outer_object_ref
         CObjectID outer_object_id
-        # Only set when needed, because it is expensive to compute,
+        # Only set when needed, because it is expensive to compute.
         c_string call_site
 
     def __cinit__(self, ObjectRef object_ref):
