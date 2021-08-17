@@ -7,6 +7,7 @@ from ray.rllib.agents.ddpg.ddpg_tf_policy import build_ddpg_models, \
     get_distribution_inputs_and_class, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
+from ray.rllib.agents.sac.sac_torch_policy import TargetNetworkMixin
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic, \
@@ -254,29 +255,6 @@ class ComputeTDErrorMixin:
             return self.model.td_error
 
         self.compute_td_error = compute_td_error
-
-
-class TargetNetworkMixin:
-    def __init__(self):
-        # Hard initial update from Q-net(s) to target Q-net(s).
-        self.update_target(tau=1.0)
-
-    def update_target(self, tau: int = None):
-        tau = tau or self.config.get("tau")
-        # Update_target_fn will be called periodically to copy Q network to
-        # target Q network, using (soft) tau-synching.
-        # Full sync from Q-model to target Q-model.
-        if tau == 1.0:
-            self.target_model.load_state_dict(self.model.state_dict())
-        # Partial (soft) sync using tau-synching.
-        else:
-            model_vars = self.model.variables()
-            target_model_vars = self.target_model.variables()
-            assert len(model_vars) == len(target_model_vars), \
-                (model_vars, target_model_vars)
-            for var, var_target in zip(model_vars, target_model_vars):
-                var_target.data = tau * var.data + \
-                    (1.0 - tau) * var_target.data
 
 
 def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,

@@ -10,6 +10,7 @@ import numpy as np
 import logging
 from typing import Type
 
+from ray.rllib.agents.dqn.simple_q_torch_policy import TargetNetworkMixin
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.agents.impala.vtrace_torch_policy import make_time_major, \
     choose_optimizer
@@ -255,29 +256,6 @@ def stats(policy: Policy, train_batch: SampleBatch):
         stats_dict.update({"KL_Coeff": policy.kl_coeff})
 
     return stats_dict
-
-
-class TargetNetworkMixin:
-    """Target NN is updated by master learner via the `update_target` method.
-
-    Updates happen every `trainer.update_target_frequency` steps. All worker
-    batches are importance sampled wrt the target network to ensure a more
-    stable pi_old in PPO.
-    """
-
-    def __init__(self, obs_space, action_space, config):
-        def do_update():
-            # Update_target_fn will be called periodically to copy Q network to
-            # target Q network.
-            assert len(self.model_variables) == \
-                len(self.target_model_variables), \
-                (self.model_variables, self.target_model_variables)
-
-            state_dict = self.model.state_dict()
-            for target in self.target_models.values():
-                target.load_state_dict(state_dict)
-
-        self.update_target = do_update
 
 
 def add_values(policy, input_dict, state_batches, model, action_dist):

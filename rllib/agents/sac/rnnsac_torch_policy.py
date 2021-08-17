@@ -202,6 +202,8 @@ def actor_critic_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
+    target_model = policy.target_models[model]
+
     # Should be True only for debugging purposes (e.g. test cases)!
     deterministic = policy.config["_deterministic_loss"]
 
@@ -229,14 +231,14 @@ def actor_critic_loss(
     }, state_batches, seq_lens)
     states_in_tp1 = model.select_state(state_in_tp1, ["policy", "q", "twin_q"])
 
-    target_model_out_tp1, target_state_in_tp1 = policy.target_model({
+    target_model_out_tp1, target_state_in_tp1 = target_model({
         "obs": train_batch[SampleBatch.NEXT_OBS],
         "prev_actions": train_batch[SampleBatch.ACTIONS],
         "prev_rewards": train_batch[SampleBatch.REWARDS],
         "is_training": True,
     }, state_batches, seq_lens)
     target_states_in_tp1 = \
-        policy.target_model.select_state(state_in_tp1,
+        target_model.select_state(state_in_tp1,
                                          ["policy", "q", "twin_q"])
 
     alpha = torch.exp(model.log_alpha)
@@ -256,12 +258,12 @@ def actor_critic_loss(
         # Q-values.
         q_t = model.get_q_values(model_out_t, states_in_t["q"], seq_lens)[0]
         # Target Q-values.
-        q_tp1 = policy.target_model.get_q_values(
+        q_tp1 = target_model.get_q_values(
             target_model_out_tp1, target_states_in_tp1["q"], seq_lens)[0]
         if policy.config["twin_q"]:
             twin_q_t = model.get_twin_q_values(
                 model_out_t, states_in_t["twin_q"], seq_lens)[0]
-            twin_q_tp1 = policy.target_model.get_twin_q_values(
+            twin_q_tp1 = target_model.get_twin_q_values(
                 target_model_out_tp1, target_states_in_tp1["twin_q"],
                 seq_lens)[0]
             q_tp1 = torch.min(q_tp1, twin_q_tp1)
@@ -286,13 +288,13 @@ def actor_critic_loss(
                                             policy.action_space)
         action_dist_t = action_dist_class(
             model.get_policy_output(model_out_t, states_in_t["policy"],
-                                    seq_lens)[0], policy.model)
+                                    seq_lens)[0], model)
         policy_t = action_dist_t.sample() if not deterministic else \
             action_dist_t.deterministic_sample()
         log_pis_t = torch.unsqueeze(action_dist_t.logp(policy_t), -1)
         action_dist_tp1 = action_dist_class(
             model.get_policy_output(model_out_tp1, states_in_tp1["policy"],
-                                    seq_lens)[0], policy.model)
+                                    seq_lens)[0], model)
         policy_tp1 = action_dist_tp1.sample() if not deterministic else \
             action_dist_tp1.deterministic_sample()
         log_pis_tp1 = torch.unsqueeze(action_dist_tp1.logp(policy_tp1), -1)
@@ -314,11 +316,11 @@ def actor_critic_loss(
             q_t_det_policy = torch.min(q_t_det_policy, twin_q_t_det_policy)
 
         # Target q network evaluation.
-        q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
+        q_tp1 = target_model.get_q_values(target_model_out_tp1,
                                                  target_states_in_tp1["q"],
                                                  seq_lens, policy_tp1)[0]
         if policy.config["twin_q"]:
-            twin_q_tp1 = policy.target_model.get_twin_q_values(
+            twin_q_tp1 = target_model.get_twin_q_values(
                 target_model_out_tp1, target_states_in_tp1["twin_q"], seq_lens,
                 policy_tp1)[0]
             # Take min over both twin-NNs.
