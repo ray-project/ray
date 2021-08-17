@@ -1641,9 +1641,9 @@ def build_java_worker_command(
     command = [sys.executable, setup_worker_path]
     command += [f"--worker-setup-hook={worker_setup_hook}"]
     command += [f"--session-dir={session_dir}"]
-    command += ["--worker-language=cpp"]
-    command += ["--worker-entrypoint=java"
-                ] + ["-D{}={}".format(*pair) for pair in pairs]
+    command += ["--worker-entrypoint=java"]
+    command += ["--worker-language=java"]
+    command += ["-D{}={}".format(*pair) for pair in pairs]
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
