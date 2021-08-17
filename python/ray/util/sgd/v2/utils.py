@@ -19,8 +19,23 @@ def get_address_and_port() -> Tuple[str, int]:
     return addr, port
 
 
-def construct_path(path: Optional[Path], parent_path: Path,
-                   default_path: Path) -> Path:
+def construct_path(path: Path, parent_path: Path) -> Path:
+    """Constructs a path relative to a parent.
+
+    Args:
+        path: A relative or absolute path.
+        parent_path: A relative path or absolute path.
+
+    Returns: An absolute path.
+    """
+    if path.expanduser().is_absolute():
+        return path.expanduser().resolve()
+    else:
+        return parent_path.joinpath(path).expanduser().resolve()
+
+
+def construct_path_with_default(path: Optional[Path], parent_path: Path,
+                                default_path: Path) -> Path:
     """Constructs a path relative to a parent.
 
     Args:
@@ -31,10 +46,7 @@ def construct_path(path: Optional[Path], parent_path: Path,
     Returns: An absolute path.
     """
     path = path if path is not None else default_path
-    if path.expanduser().is_absolute():
-        return path.expanduser().resolve()
-    else:
-        return parent_path.joinpath(path).expanduser().resolve()
+    return construct_path(path, parent_path)
 
 
 class PropagatingThread(Thread):

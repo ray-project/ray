@@ -1,6 +1,5 @@
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional, Union, Dict, Tuple
+from typing import Optional
 
 from ray.util.sgd.v2.constants import TIMESTAMP
 
@@ -9,45 +8,42 @@ MIN = "min"
 
 
 @dataclass
-class CheckpointConfig:
-    # The checkpoint data that should be loaded onto each worker and accessed
-    # by the training function via ``sgd.load_checkpoint()``. If this is a
-    # ``str`` or ``Path`` then the value is expected to be a path to a file
-    # that contains a serialized checkpoint dict. If this is ``None`` then no
-    # checkpoint will be loaded.
-    checkpoint_to_load: Optional[Union[Dict, str, Path]] = None
-    # The directory that checkpoints should be stored in. This can be be an
-    # absolute path or a path relative to ``Trainer.latest_run_dir``. If this
-    # is ``None`` then checkpoints will be stored in
-    # ``<Trainer.latest_run_dir>/checkpoints``.
-    checkpoint_dir: Optional[Union[str, Path]] = None
-    # How often checkpoints should be persisted to disk - every
-    # ``persist_checkpoint_frequency``th call to `sgd.checkpoint()` will be
-    # persisted. If this is ``None`` then checkpoints will not be persisted to
-    # disk and only one checkpoint will be accessible by
-    # ``Trainer.latest_checkpoint``.
-    # TODO(matt): Implement the usage of this attribute.
-    persist_checkpoint_frequency: Optional[int] = 1
-    # The number of checkpoints to keep on disk for this run. If a checkpoint
-    # is persisted to disk after there are already this many checkpoints,
-    # then an existing checkpoint will be deleted. If this is ``None``
-    # then checkpoints will not be deleted.
-    # TODO(matt): Implement the usage of this attribute.
-    keep_checkpoints_num: Optional[int] = None
-    # The strategy for choosing which checkpoints to keep if
-    # ``keep_checkpoints_num`` is set. The first argument is the key from the
-    # checkpoint dictionary which points to a numerical value. The second
-    # argument is either "max" or "min" and determines if the checkpoints
-    # with the max or min values will be kept. Default behavior is to retain
-    # the checkpoints with maximum timestamp, i.e. the most recent checkpoints.
-    # TODO(matt): Implement the usage of this attribute.
-    checkpoint_retention_strategy: Tuple[str, str] = (TIMESTAMP, MAX)
+class CheckpointStrategy:
+    """
+    Configurable parameters for defining the SGD checkpointing strategy.
+
+    Default behavior is to persist all checkpoints to disk. If
+    ``num_to_keep`` is set, the default retention policy is to keep the
+    checkpoints with maximum timestamp, i.e. the most recent checkpoints.
+    Args:
+        num_to_keep (Optional[int]): The number of checkpoints to keep
+            on disk for this run. If a checkpoint is persisted to disk after
+            there are already this many checkpoints, then an existing
+            checkpoint will be deleted. If this is ``None`` then checkpoints
+            will not be deleted. If this is ``0`` then no checkpoints will be
+            persisted to disk.
+        checkpoint_score_attribute (str): The attribute that will be used to
+            score checkpoints to determine which checkpoints should be kept
+            on disk when there are greater than ``num_to_keep`` checkpoints.
+            This attribute must be a key from the checkpoint
+            dictionary which has a numerical value.
+        checkpoint_score_order (str). Either "max" or "min".
+            If "max", then checkpoints with highest values of
+            ``checkpoint_score_attribute`` will be kept.
+            If "min", then checkpoints with lowest values of
+            ``checkpoint_score_attribute`` will be kept.
+    """
+    num_to_keep: Optional[int] = None
+    checkpoint_score_attribute: str = TIMESTAMP
+    checkpoint_score_order: str = MAX
 
     def __post_init__(self):
-        if self.persist_checkpoint_frequency is not None:
-            if (self.persist_checkpoint_frequency < 1):
-                raise ValueError("The value of persist_checkpoint_frequency "
-                                 "must be at least 1, or None if checkpoints "
-                                 "should not be persisted.")
-        if self.keep_checkpoints_num is not None:
-            raise NotImplementedError("This attribute is not yet supported.")
+        if self.num_to_keep:
+            # TODO(matt): Implement num_to_keep deletion.
+            raise NotImplementedError("Deleting checkpoints is not yet "
+                                      "supported. Please use None to persist "
+                                      "all checkpoints or 0 to not persist "
+                                      "any checkpoints.")
+        if self.checkpoint_score_order not in (MAX, MIN):
+            raise ValueError(f"checkpoint_score_order must be either "
+                             f"\"{MAX}\" or \"{MIN}\".")

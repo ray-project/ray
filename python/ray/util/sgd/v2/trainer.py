@@ -9,7 +9,7 @@ from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.backends.torch import TorchConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
-from ray.util.sgd.v2.checkpoint import CheckpointConfig
+from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 
 T = TypeVar("T")
 S = TypeVar("S")
@@ -25,14 +25,28 @@ BACKEND_NAME_TO_CONFIG_CLS = {
 class Trainer:
     """A class for enabling seamless distributed deep learning.
 
+    Args:
+        backend (Union[str, BackendConfig]): The backend used for
+            distributed communication. If configurations are needed,
+            a subclass of ``BackendConfig`` can be passed in.
+            Supported ``str`` values: {"torch"}.
+        num_workers (int): The number of workers (Ray actors) to launch.
+            Defaults to 1. Each worker will reserve 1 CPU by default.
+        use_gpu (bool): If True, training will be done on GPUs (1 per
+            worker). Defaults to False.
+        resources_per_worker (Optional[Dict]): If specified, the resources
+            defined in this Dict will be reserved for each worker.
+        logdir (Optional[str]): Path to the file directory where logs
+            should be persisted. If this is not specified, one will be
+            generated.
+
     Attributes:
         logdir(Path): Path to the file directory where logs will be persisted.
             Configurable through ``__init__``.
         latest_run_dir(Optional[Path]): Path to the file directory for the
-            latest run. Configurable through ``run``.
+            latest run.
         latest_checkpoint_dir(Optional[Path]): Path to the file directory for
-            the checkpoints from the latest run. Configurable through
-            ``run``.
+            the checkpoints from the latest run.
         latest_checkpoint_path(Optional[Path]): Path to the latest persisted
             checkpoint from the latest run.
         latest_checkpoint(Optional[Dict]): The latest saved checkpoint. This
@@ -45,23 +59,6 @@ class Trainer:
                  use_gpu: bool = False,
                  resources_per_worker: Optional[Dict[str, float]] = None,
                  logdir: Optional[str] = None):
-        """A class for distributed training.
-
-        Args:
-            backend (Union[str, BackendConfig]): The backend used for
-                distributed communication. If configurations are needed,
-                a subclass of ``BackendConfig`` can be passed in.
-                Supported ``str`` values: {"torch"}.
-            num_workers (int): The number of workers (Ray actors) to launch.
-                Defaults to 1. Each worker will reserve 1 CPU by default.
-            use_gpu (bool): If True, training will be done on GPUs (1 per
-                worker). Defaults to False.
-            resources_per_worker (Optional[Dict]): If specified, the resources
-                defined in this Dict will be reserved for each worker.
-            logdir (Optional[str]): Path to the file directory where logs
-                should be persisted. If this is not specified, one will be
-                generated.
-        """
         # Setup executor.
         backend_config = self._get_backend_config(backend)
 
@@ -118,9 +115,10 @@ class Trainer:
     def run(self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
-            run_dir: Optional[Union[str, Path]] = None,
             callbacks: Optional[List[SGDCallback]] = None,
-            checkpoint_config: Optional[CheckpointConfig] = None) -> List[T]:
+            checkpoint: Optional[Union[Dict, str, Path]] = None,
+            checkpoint_strategy: Optional[CheckpointStrategy] = None
+            ) -> List[T]:
         """Runs a training function in a distributed manner.
 
         Args:
@@ -128,13 +126,17 @@ class Trainer:
                 This can either take in no arguments or a ``config`` dict.
             config (Optional[Dict]): Configurations to pass into
                 ``train_func``. If None then an empty Dict will be created.
-            run_dir (Optional[str|Path]): The absolute path or path relative
-                to ``Trainer.logdir`` for this run's logs.
             callbacks (Optional[List[SGDCallback]]): A list of Callbacks which
                 will be executed during training. If this is not set,
                 currently there are NO default Callbacks.
-            checkpoint_config (Optional[CheckpointConfig]): The
-                configurations for loading and saving checkpoints.
+            checkpoint (Optional[Dict|str|Path]): The checkpoint data that
+                should be loaded onto each worker and accessed by the training
+                function via ``sgd.load_checkpoint()``. If this is a ``str`` or
+                ``Path`` then the value is expected to be a path to a file
+                that contains a serialized checkpoint dict. If this is
+                ``None`` then no checkpoint will be loaded.
+            checkpoint_strategy (Optional[CheckpointStrategy]): The
+                configurations for saving checkpoints.
 
         Returns:
             A list of results from the training function. Each value in the
@@ -149,8 +151,8 @@ class Trainer:
         try:
             for callback in callbacks:
                 callback.start_training()
-            self._executor.start_training(train_func, run_dir,
-                                          checkpoint_config)
+            self._executor.start_training(train_func, checkpoint,
+                                          checkpoint_strategy)
 
             while True:
                 intermediate_results = self._executor.fetch_next_result()

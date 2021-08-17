@@ -11,7 +11,6 @@ from ray.util.sgd.v2 import Trainer
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface, \
     BackendExecutor
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
-from ray.util.sgd.v2.checkpoint import CheckpointConfig
 from ray.util.sgd.v2.examples.tensorflow_mnist_example import train_func as \
     tensorflow_mnist_train_func
 from ray.util.sgd.v2.examples.train_fashion_mnist import train_func as \
@@ -74,11 +73,12 @@ def gen_new_backend_executor(special_f):
     """Returns a BackendExecutor that runs special_f on worker 0."""
 
     class TestBackendExecutor(BackendExecutor):
-        def start_training(self, train_func, run_dir, checkpoint_config):
+        def start_training(self, train_func, checkpoint, checkpoint_strategy):
             special_execute = gen_execute_single_async_special(special_f)
             with patch.object(WorkerGroup, "execute_single_async",
                               special_execute):
-                super().start_training(train_func, checkpoint_config)
+                super().start_training(train_func, checkpoint,
+                                       checkpoint_strategy)
 
     return TestBackendExecutor
 
@@ -238,8 +238,7 @@ def test_checkpoint(ray_start_2_cpus):
             sgd.save_checkpoint(epoch=i)
         return 1
 
-    trainer.run(
-        train_func_checkpoint, checkpoint_config=CheckpointConfig(checkpoint))
+    trainer.run(train_func_checkpoint, checkpoint=checkpoint)
     checkpoint = trainer.latest_checkpoint
 
     assert checkpoint is not None
@@ -315,9 +314,7 @@ def test_load_checkpoint(ray_start_2_cpus):
 
     trainer = Trainer(config, num_workers=2)
     trainer.start()
-    result = trainer.run(
-        train_func_checkpoint,
-        checkpoint_config=CheckpointConfig(checkpoint_to_load={"epoch": 3}))
+    result = trainer.run(train_func_checkpoint, checkpoint={"epoch": 3})
 
     assert result is not None
     assert len(result) == 2
@@ -354,10 +351,7 @@ def test_persisted_checkpoint(ray_start_2_cpus, logdir):
         assert checkpoint is not None
         assert checkpoint == latest_checkpoint
 
-    trainer.run(
-        validate,
-        checkpoint_config=CheckpointConfig(
-            checkpoint_to_load=trainer.latest_checkpoint_path))
+    trainer.run(validate, checkpoint=trainer.latest_checkpoint_path)
 
 
 def test_world_rank(ray_start_2_cpus):
