@@ -457,8 +457,8 @@ _lint() {
 
     # lint test script
     pushd "${WORKSPACE_DIR}"
-       bazel query 'kind("cc_test", //...)' --output=xml > python "${ROOT_DIR}"/check-bazel-team-owner.py
-       bazel query 'kind("py_test", //...)' --output=xml > python "${ROOT_DIR}"/check-bazel-team-owner.py
+       bazel query 'kind("cc_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
+       bazel query 'kind("py_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
     popd
   fi
 }

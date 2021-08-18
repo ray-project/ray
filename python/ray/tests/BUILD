@@ -327,7 +327,7 @@ py_test_module_list(
   size = "medium",
   extra_srcs = SRCS,
   name_suffix = "_debug_mode",
-  tags = ["exclusive", "debug_tests", "team:serve"],
+  tags = ["exclusive", "debug_tests", "team:core"],
   deps = ["//:ray_lib"],
 )
 
@@ -341,6 +341,6 @@ py_test_module_list(
   size = "large",
   extra_srcs = SRCS,
   name_suffix = "_asan",
-  tags = ["exclusive", "asan_tests"],
+  tags = ["exclusive", "asan_tests", "team:core"],
   deps = ["//:ray_lib"],
 )
