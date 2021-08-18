@@ -23,9 +23,9 @@
 namespace ray {
 namespace rpc {
 
-#define RAY_OBJECT_MANAGER_RPC_HANDLERS               \
-  RPC_SERVICE_HANDLER(ObjectManagerService, Push)     \
-  RPC_SERVICE_HANDLER(ObjectManagerService, Pull)     \
+#define RAY_OBJECT_MANAGER_RPC_HANDLERS           \
+  RPC_SERVICE_HANDLER(ObjectManagerService, Push) \
+  RPC_SERVICE_HANDLER(ObjectManagerService, Pull) \
   RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects)
 
 /// Implementations of the `ObjectManagerGrpcService`, check interface in

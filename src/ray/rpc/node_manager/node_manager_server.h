@@ -25,23 +25,23 @@ namespace rpc {
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
 #define RAY_NODE_MANAGER_RPC_HANDLERS                             \
-   RPC_SERVICE_HANDLER(NodeManagerService, UpdateResourceUsage)    \
-   RPC_SERVICE_HANDLER(NodeManagerService, RequestResourceReport)  \
-   RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease)     \
-   RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)           \
-   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedWorkers)   \
-   RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease)      \
-   RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)           \
-   RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)           \
-   RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)               \
-   RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo) \
-   RPC_SERVICE_HANDLER(NodeManagerService, PrepareBundleResources) \
-   RPC_SERVICE_HANDLER(NodeManagerService, CommitBundleResources)  \
-   RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve)  \
-   RPC_SERVICE_HANDLER(NodeManagerService, RequestObjectSpillage)  \
-   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedBundles)   \
-   RPC_SERVICE_HANDLER(NodeManagerService, GetSystemConfig)        \
-   RPC_SERVICE_HANDLER(NodeManagerService, GetGcsServerAddress)
+  RPC_SERVICE_HANDLER(NodeManagerService, UpdateResourceUsage)    \
+  RPC_SERVICE_HANDLER(NodeManagerService, RequestResourceReport)  \
+  RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease)     \
+  RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedWorkers)   \
+  RPC_SERVICE_HANDLER(NodeManagerService, CancelWorkerLease)      \
+  RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats)           \
+  RPC_SERVICE_HANDLER(NodeManagerService, GlobalGC)               \
+  RPC_SERVICE_HANDLER(NodeManagerService, FormatGlobalMemoryInfo) \
+  RPC_SERVICE_HANDLER(NodeManagerService, PrepareBundleResources) \
+  RPC_SERVICE_HANDLER(NodeManagerService, CommitBundleResources)  \
+  RPC_SERVICE_HANDLER(NodeManagerService, CancelResourceReserve)  \
+  RPC_SERVICE_HANDLER(NodeManagerService, RequestObjectSpillage)  \
+  RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedBundles)   \
+  RPC_SERVICE_HANDLER(NodeManagerService, GetSystemConfig)        \
+  RPC_SERVICE_HANDLER(NodeManagerService, GetGcsServerAddress)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
