@@ -395,7 +395,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             queue_putter = self.queue.put
             extra_batches_putter = (
                 lambda x: self.extra_batches.put(x, timeout=600.0))
-        _env_runner = _env_runner(
+        env_runner = _env_runner(
             self.worker, self.base_env, extra_batches_putter,
             self.horizon, self.normalize_actions, self.clip_actions,
             self.multiple_episodes_in_batch, self.callbacks, self.perf_stats,
@@ -405,7 +405,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
             # set to some large number. This is an empirical observation.
-            item = next(_env_runner)
+            item = next(env_runner)
             if isinstance(item, RolloutMetrics):
                 self.metrics_queue.put(item)
             else:
