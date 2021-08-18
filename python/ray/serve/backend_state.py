@@ -1,12 +1,11 @@
 import math
 import time
 from abc import ABC
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from collections.abc import Iterable
 from enum import Enum
 import os
 from typing import Any, Dict, List, Optional, Tuple
-from typing_extensions import OrderedDict
 
 import ray
 from ray import cloudpickle
