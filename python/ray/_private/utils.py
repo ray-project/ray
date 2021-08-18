@@ -1050,8 +1050,8 @@ def get_wheel_filename(
                                               " '37', or '38'")
 
     os_strings = {
-        "darwin": "macosx_10_13_x86_64"
-        if py_version == "38" else "macosx_10_13_intel",
+        "darwin": "macosx_10_15_x86_64"
+        if py_version == "38" else "macosx_10_15_intel",
         "linux": "manylinux2014_x86_64",
         "win32": "win_amd64"
     }
