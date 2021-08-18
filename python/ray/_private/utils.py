@@ -1041,27 +1041,26 @@ def get_wheel_filename(
             `ray --version`.  Examples: "2.0.0.dev0"
         py_version (str):
             The major and minor Python versions concatenated.  Examples: "36",
-            "37", "38"
+            "37", "38", "39"
     Returns:
         The wheel file name.  Examples:
             ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
     """
-    assert py_version in ["36", "37", "38"], ("py_version must be one of '36',"
-                                              " '37', or '38'")
+    assert py_version in ["36", "37", "38", "39"], py_version
 
     os_strings = {
         "darwin": "macosx_10_15_x86_64"
-        if py_version == "38" else "macosx_10_15_intel",
+        if py_version in ["38", "39"] else "macosx_10_15_intel",
         "linux": "manylinux2014_x86_64",
         "win32": "win_amd64"
     }
 
-    assert sys_platform in os_strings, ("sys_platform must be one of 'darwin',"
-                                        " 'linux', or 'win32'")
+    assert sys_platform in os_strings, sys_platform
 
-    wheel_filename = (f"ray-{ray_version}-cp{py_version}-"
-                      f"cp{py_version}{'m' if py_version != '38' else ''}"
-                      f"-{os_strings[sys_platform]}.whl")
+    wheel_filename = (
+        f"ray-{ray_version}-cp{py_version}-"
+        f"cp{py_version}{'m' if py_version in ['36', '37'] else ''}"
+        f"-{os_strings[sys_platform]}.whl")
 
     return wheel_filename
 
