@@ -83,5 +83,50 @@ ObjectID NativeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
   return Submit(invocation, task_options);
 }
 
+ray::PlacementGroup NativeTaskSubmitter::CreatePlacementGroup(
+    const ray::internal::PlacementGroupCreationOptions &create_options) {
+  auto get_full_name = [](bool global, std::string name) -> std::string {
+    if (name.empty()) {
+      return "";
+    }
+    return global
+               ? name
+               : CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" + name;
+  };
+  auto full_name = get_full_name(create_options.global, create_options.name);
+  auto options = ray::core::PlacementGroupCreationOptions(
+      std::move(full_name), (ray::core::PlacementStrategy)create_options.strategy,
+      create_options.bundles, false);
+  ray::PlacementGroupID placement_group_id;
+  auto status = CoreWorkerProcess::GetCoreWorker().CreatePlacementGroup(
+      options, &placement_group_id);
+  if (!status.ok()) {
+    throw RayException(status.message());
+  }
+
+  return {placement_group_id.Binary(), create_options};
+}
+
+void NativeTaskSubmitter::RemovePlacementGroup(const std::string &group_id) {
+  auto placement_group_id = ray::PlacementGroupID::FromBinary(group_id);
+  auto status =
+      CoreWorkerProcess::GetCoreWorker().RemovePlacementGroup(placement_group_id);
+  if (!status.ok()) {
+    throw RayException(status.message());
+  }
+}
+
+bool NativeTaskSubmitter::WaitPlacementGroupReady(const std::string &group_id,
+                                                  int timeout_seconds) {
+  auto placement_group_id = ray::PlacementGroupID::FromBinary(group_id);
+  auto status = CoreWorkerProcess::GetCoreWorker().WaitPlacementGroupReady(
+      placement_group_id, timeout_seconds);
+
+  if (status.IsNotFound()) {
+    throw RayException(status.message());
+  }
+  return status.ok();
+}
+
 }  // namespace internal
 }  // namespace ray

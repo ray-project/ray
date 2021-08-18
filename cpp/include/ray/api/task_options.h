@@ -49,5 +49,38 @@ struct ActorCreationOptions {
   int max_concurrency = 1;
 };
 
+enum class PlacementStrategy {
+  PACK = 0,
+  SPREAD = 1,
+  STRICT_PACK = 2,
+  STRICT_SPREAD = 3,
+  UNRECOGNIZED = -1
+};
+
+struct PlacementGroupCreationOptions {
+  bool global;
+  std::string name;
+  std::vector<std::unordered_map<std::string, double>> bundles;
+  PlacementStrategy strategy;
+};
+
 }  // namespace internal
+
+class PlacementGroup {
+ public:
+  PlacementGroup() = default;
+  PlacementGroup(std::string id, internal::PlacementGroupCreationOptions options)
+      : id_(std::move(id)), options_(std::move(options)) {}
+  std::string GetID() { return id_; }
+  std::string GetName() { return options_.name; }
+  std::vector<std::unordered_map<std::string, double>> GetBundles() {
+    return options_.bundles;
+  }
+  internal::PlacementStrategy GetStrategy() { return options_.strategy; }
+
+ private:
+  std::string id_;
+  internal::PlacementGroupCreationOptions options_;
+};
+
 }  // namespace ray

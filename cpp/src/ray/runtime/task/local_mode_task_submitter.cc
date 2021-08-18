@@ -119,5 +119,16 @@ ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
   return Submit(invocation, {});
 }
 
+ray::PlacementGroup LocalModeTaskSubmitter::CreatePlacementGroup(
+    const ray::internal::PlacementGroupCreationOptions &create_options) {
+  ray::PlacementGroup placement_group{ray::PlacementGroupID::FromRandom().Binary(),
+                                      create_options};
+  placement_groups_.emplace(placement_group.GetID(), placement_group);
+  return placement_group;
+}
+
+void LocalModeTaskSubmitter::RemovePlacementGroup(const std::string &group_id) {
+  placement_groups_.erase(group_id);
+}
 }  // namespace internal
 }  // namespace ray
