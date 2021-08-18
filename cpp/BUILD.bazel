@@ -136,7 +136,7 @@ cc_test(
     ]),
     copts = COPTS,
     linkstatic = False,
-    tags = ["team:core"],
+    tags = ["team:serverless"],
     deps = [
         "ray_api",
         "@boost//:filesystem",
