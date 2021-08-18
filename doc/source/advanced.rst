@@ -434,7 +434,7 @@ Runtime Environments
 
 .. note::
 
-    This feature requires a full installation of Ray using `pip install "ray[default]"`.
+    This feature requires a full installation of Ray using ``pip install "ray[default]"``.
 
 On Mac OS and Linux, Ray 1.4+ supports dynamically setting the runtime environment of tasks, actors, and jobs so that they can depend on different Python libraries (e.g., conda environments, pip dependencies) while all running on the same Ray cluster.
 
