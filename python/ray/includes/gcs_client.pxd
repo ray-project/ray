@@ -66,7 +66,8 @@ cdef extern from * namespace "_gcs_maker":
           const std::string& ip,
           int port,
           const std::string& password) {
-        std::shared_ptr<RayletGcsClient> raylet_gcs_client = std::make_shared<RayletGcsClient>(
+        std::shared_ptr<RayletGcsClient> raylet_gcs_client =
+          std::make_shared<RayletGcsClient>(
             ray::gcs::GcsClientOptions(ip, port, password));
         raylet_gcs_client->DoConnect();
         return raylet_gcs_client;
