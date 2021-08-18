@@ -83,7 +83,19 @@ def test_get_output_2(workflow_start_regular, tmp_path):
     assert ray.get([obj, obj2]) == [0, 0]
 
 
-def test_get_named_step_output(workflow_start_regular, tmp_path):
+def test_get_named_step_output_finished(workflow_start_regular, tmp_path):
+    @workflow.step
+    def double(v):
+        return 2 * v
+
+    # Get the result from named step after workflow finished
+    assert 4 == double.options(step_name="outer").step(
+        double.options(step_name="inner").step(1)).run("double")
+    assert ray.get(workflow.get_output("double", "inner")) == 2
+    assert ray.get(workflow.get_output("double", "outer")) == 4
+
+
+def test_get_named_step_output_runnin(workflow_start_regular, tmp_path):
     @workflow.step
     def double(v, lock=None):
         if lock is not None:
@@ -91,12 +103,6 @@ def test_get_named_step_output(workflow_start_regular, tmp_path):
                 return 2 * v
         else:
             return 2 * v
-
-    # Get the result from named step after workflow finished
-    assert 4 == double.options(step_name="outer").step(
-        double.options(step_name="inner").step(1)).run("double")
-    assert ray.get(workflow.get_output("double", "inner")) == 2
-    assert ray.get(workflow.get_output("double", "outer")) == 4
 
     # Get the result from named step after workflow before it's finished
     lock_path = str(tmp_path / "lock")
@@ -130,6 +136,24 @@ def test_get_named_step_output(workflow_start_regular, tmp_path):
     outer = workflow.get_output("double-2", "outer")
     assert 2 == ray.get(inner)
     assert 4 == ray.get(outer)
+
+
+def test_get_named_step_output_error(workflow_start_regular, tmp_path):
+    @workflow.step
+    def double(v, error):
+        if error:
+            raise Exception()
+        return v + v
+
+    with pytest.raises(Exception):
+        double.options(step_name="outer").step(
+            double.options(step_name="inner").step(1, False),
+            True).run("double")
+
+    assert 2 == ray.get(workflow.get_output("double", "inner"))
+    outer = workflow.get_output("double", "outer")
+    with pytest.raises(Exception):
+        ray.get(outer)
 
 
 if __name__ == "__main__":

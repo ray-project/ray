@@ -131,8 +131,7 @@ class WorkflowManagementActor:
         self._step_output_cache: Dict[Tuple[str, str],
                                       LatestWorkflowOutput] = {}
         self._actor_initialized: Dict[str, ray.ObjectRef] = {}
-        self._step_status: Dict[str, Dict[str, Tuple[common.WorkflowStatus,
-                                                     ray.ObjectRef]]] = {}
+        self._step_status: Dict[str, Dict[str, common.WorkflowStatus]] = {}
 
     def get_storage_url(self) -> str:
         """Get hte storage URL."""
@@ -199,9 +198,7 @@ class WorkflowManagementActor:
         if status == common.WorkflowStatus.SUCCESSFUL:
             self._step_status[workflow_id].pop(step_id, None)
         else:
-            assert len(outputs) == 1
-            self._step_status.setdefault(workflow_id,
-                                         {})[step_id] = (status, outputs[0])
+            self._step_status.setdefault(workflow_id, {})[step_id] = status
         remaining = len(self._step_status[workflow_id])
         if status != common.WorkflowStatus.RUNNING:
             self._step_output_cache.pop((workflow_id, step_id), None)
@@ -302,9 +299,10 @@ class WorkflowManagementActor:
             if step_id is None:
                 raise ValueError(
                     f"Load such step {step_id} in workflow {workflow_id}")
-            output = self._step_status.get(workflow_id, {}).get(step_id, None)
+            output = self._step_output_cache.get(workflow_id, {}).get(
+                step_id, None)
             if output is not None:
-                return ray.put(_SelfDereferenceObject(None, output))
+                return ray.put(_SelfDereferenceObject(None, output.output))
 
         result = recovery.resume_workflow_step(workflow_id, step_id,
                                                self._store.storage_url)
