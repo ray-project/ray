@@ -1,4 +1,5 @@
 import copy
+import numpy as np
 from random import choice
 import unittest
 
@@ -65,9 +66,9 @@ class TestTrainer(unittest.TestCase):
 
         for _ in framework_iterator(config):
             trainer = pg.PGTrainer(config=config)
+            pol0 = trainer.get_policy("p0")
             r = trainer.train()
             self.assertTrue("p0" in r["info"]["learner"])
-            checkpoints = []
             for i in range(1, 3):
 
                 def new_mapping_fn(agent_id, episode, **kwargs):
@@ -84,24 +85,26 @@ class TestTrainer(unittest.TestCase):
                     policies_to_train=[f"p{i}", f"p{i-1}"],
                 )
                 pol_map = trainer.workers.local_worker().policy_map
-                self.assertTrue(new_pol is not trainer.get_policy("p0"))
+                self.assertTrue(new_pol is not pol0)
                 for j in range(i + 1):
                     self.assertTrue(f"p{j}" in pol_map)
                 self.assertTrue(len(pol_map) == i + 1)
                 r = trainer.train()
-                self.assertTrue("p1" in r["info"]["learner"])
-                checkpoints.append(trainer.save())
+                self.assertTrue("p1" in r["info"]["learner"]
+                                or "p2" in r["info"]["learner"])
+                checkpoint = trainer.save()
 
                 # Test restoring from the checkpoint (which has more policies
                 # than what's defined in the config dict).
                 test = pg.PGTrainer(config=config)
-                test.restore(checkpoints[-1])
+                test.restore(checkpoint)
+                pol0 = test.get_policy("p0")
                 test.train()
                 # Test creating an action with the added (and restored) policy.
                 a = test.compute_single_action(
-                    test.get_policy("p0").observation_space.sample(),
+                    np.zeros_like(pol0.observation_space.sample()),
                     policy_id=pid)
-                self.assertTrue(test.get_policy("p0").action_space.contains(a))
+                self.assertTrue(pol0.action_space.contains(a))
                 test.stop()
 
             # Delete all added policies again from trainer.
