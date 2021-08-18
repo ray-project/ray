@@ -422,29 +422,6 @@ cc_library(
     ],
 )
 
-# This header is used to warp some streaming code so we can reduce suspicious
-# symbols export.
-cc_library(
-    name = "exported_streaming_internal",
-    srcs = glob(
-        [
-            "src/ray/streaming/streaming.cc",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "src/ray/streaming/streaming.h",
-        ],
-    ),
-    copts = COPTS,
-    strip_include_prefix = "src",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":core_worker_lib",
-    ],
-    alwayslink = 1,
-)
-
 cc_binary(
     name = "raylet",
     srcs = ["src/ray/raylet/main.cc"],
@@ -640,7 +617,6 @@ cc_library(
         ],
     }),
     strip_include_prefix = "src",
-    visibility = ["//streaming:__subpackages__"],
     deps = [
         ":agent_manager_rpc",
         ":gcs",
@@ -688,7 +664,6 @@ cc_library(
         ],
     }),
     strip_include_prefix = "src",
-    visibility = ["//streaming:__subpackages__"],
     deps = [
         ":agent_manager_rpc",
         ":node_manager_fbs",
@@ -1898,28 +1873,8 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    # Export ray ABI symbols, which can then be used by _streaming.so.
-    # We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
-    # shared lib, see python/ray/__init__.py.
-    cc_kwargs = dict(
-        srcs = PYX_SRCS,
-        copts = COPTS + PYX_COPTS,
-        # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
-        linkopts = select({
-            "@bazel_tools//src/conditions:darwin": [
-                "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
-            ],
-            "@bazel_tools//src/conditions:windows": [
-            ],
-            "//conditions:default": [
-                "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
-            ],
-        }),
-        linkstatic = 1,
-    ),
     deps = [
         "//:core_worker_lib",
-        "//:exported_streaming_internal",
         "//:global_state_accessor_lib",
         "//:ray_util",
         "//:raylet_lib",
@@ -1930,27 +1885,6 @@ pyx_library(
     ],
 )
 
-pyx_library(
-    name = "_streaming",
-    srcs = glob([
-        "python/ray/streaming/_streaming.pyx",
-        "python/ray/__init__.py",
-        "python/ray/_raylet.pxd",
-        "python/ray/includes/*.pxd",
-        "python/ray/includes/*.pxi",
-        "python/ray/streaming/__init__.pxd",
-        "python/ray/streaming/includes/*.pxd",
-        "python/ray/streaming/includes/*.pxi",
-    ]),
-    cc_kwargs = dict(
-        srcs = PYX_SRCS,
-        copts = COPTS + PYX_COPTS,
-    ),
-    deps = [
-        "//streaming:streaming_lib",
-    ],
-)
-
 cc_binary(
     name = "libcore_worker_library_java.so",
     srcs = glob([
@@ -1958,23 +1892,11 @@ cc_binary(
         "src/ray/core_worker/lib/java/*.cc",
     ]),
     copts = COPTS,
-    # Export ray ABI symbols, which can then be used by libstreaming_java.so. see `//:_raylet`
-    linkopts = select({
-        "@bazel_tools//src/conditions:darwin": [
-            "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
-        ],
-        "@bazel_tools//src/conditions:windows": [
-        ],
-        "//conditions:default": [
-            "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
-        ],
-    }),
     linkshared = 1,
     linkstatic = 1,
     visibility = ["//java:__subpackages__"],
     deps = [
         "//:core_worker_lib",
-        "//:exported_streaming_internal",
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
@@ -2060,12 +1982,6 @@ copy_to_workspace(
 )
 
 copy_to_workspace(
-    name = "cp_streaming",
-    srcs = ["python/ray/streaming/_streaming.so"],
-    dstdir = "python/ray/streaming",
-)
-
-copy_to_workspace(
     name = "cp_all_py_proto",
     srcs = [":all_py_proto"],
     dstdir = "python/ray/core/generated",
@@ -2096,7 +2012,6 @@ genrule(
     name = "install_py_proto",
     srcs = [
         ":cp_all_py_proto",
-        "//streaming:copy_streaming_py_proto",
     ],
     outs = ["install_py_proto.out"],
     cmd = """
@@ -2116,7 +2031,6 @@ genrule(
     name = "ray_pkg",
     srcs = [
         ":cp_raylet_so",
-        ":cp_streaming",
         ":python_sources",
         ":install_py_proto",
         ":cp_redis",

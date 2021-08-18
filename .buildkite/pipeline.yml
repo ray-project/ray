@@ -3,7 +3,6 @@
     [
         "RAY_CI_LINUX_WHEELS_AFFECTED",
         "RAY_CI_JAVA_AFFECTED",
-        "RAY_CI_STREAMING_JAVA_AFFECTED",
     ]
   commands:
     # Build the wheels and jars
@@ -41,7 +40,6 @@
     [
         "RAY_CI_LINUX_WHEELS_AFFECTED",
         "RAY_CI_JAVA_AFFECTED",
-        "RAY_CI_STREAMING_JAVA_AFFECTED",
     ]
   commands:
     # Build the debug wheels
@@ -61,7 +59,6 @@
 #     [
 #         "RAY_CI_LINUX_WHEELS_AFFECTED",
 #         "RAY_CI_JAVA_AFFECTED",
-#         "RAY_CI_STREAMING_JAVA_AFFECTED",
 #     ]
 #   commands:
 #     # Build the asan wheels
@@ -118,14 +115,6 @@
   conditions: ["RAY_CI_JAVA_AFFECTED"]
   commands:
     - ./java/test.sh
-
-- label: ":java: Streaming"
-  conditions:
-    ["RAY_CI_STREAMING_PYTHON_AFFECTED", "RAY_CI_STREAMING_JAVA_AFFECTED"]
-  commands:
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      //streaming:all
-    - bash streaming/src/test/run_streaming_queue_test.sh
 
 - label: ":cpp: Worker"
   commands:

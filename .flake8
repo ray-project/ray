@@ -1,7 +1,6 @@
 [flake8]
 exclude =
   python/ray/core/generated/
-  streaming/python/generated
   doc/source/conf.py
   python/ray/cloudpickle/
   python/ray/thirdparty_files/
