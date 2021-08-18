@@ -219,7 +219,7 @@ TEST_F(StatsTest, STAT_DEF) {
   ray::stats::Shutdown();
   std::shared_ptr<stats::MetricExporterClient> exporter(
       new stats::StdoutExporterClient());
-  ray::stats::Init({}, MetricsAgentPort, exporter);
+  ray::stats::Init({}, GetMetricsAgentAddress, exporter);
   STATS_test.Record(1.0);
   STATS_test_declare.Record(1.0, "Test");
 }

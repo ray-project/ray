@@ -20,6 +20,11 @@ from ray.test_utils import wait_for_condition, SignalActor, fetch_prometheus
 os.environ["RAY_event_stats"] = "1"
 
 try:
+    create_task = asyncio.create_task
+except AttributeError:
+    create_task = asyncio.ensure_future
+
+try:
     import prometheus_client
 except ImportError:
     prometheus_client = None
@@ -129,7 +134,7 @@ async def _setup_cluster_for_test(ray_start_cluster):
         prom_addresses.append(f"{addr}:{metrics_export_port}")
     autoscaler_export_addr = "{}:{}".format(cluster.head_node.node_ip_address,
                                             AUTOSCALER_METRIC_PORT)
-    task = asyncio.create_task(_metrics_gen())
+    task = create_task(_metrics_gen())
     yield prom_addresses, autoscaler_export_addr
     task.cancel()
 

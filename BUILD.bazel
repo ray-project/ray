@@ -590,9 +590,9 @@ cc_library(
 cc_library(
     name = "stats_lib",
     srcs = [
-        "src/ray/stats/stats.cc",
         "src/ray/stats/metric_exporter.cc",
         "src/ray/stats/metric_exporter_client.cc",
+        "src/ray/stats/stats.cc",
     ],
     hdrs = [
         "src/ray/stats/metric_defs.h",
