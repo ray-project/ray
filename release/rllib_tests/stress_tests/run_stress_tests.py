@@ -9,7 +9,6 @@ from pathlib import Path
 
 from ray.rllib.utils.test_utils import run_learning_tests_from_yaml
 
-
 if __name__ == "__main__":
     # Get path of this very script to look for yaml files.
     abs_yaml_path = Path(__file__).parent

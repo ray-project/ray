@@ -237,9 +237,8 @@ def actor_critic_loss(
         "prev_rewards": train_batch[SampleBatch.REWARDS],
         "is_training": True,
     }, state_batches, seq_lens)
-    target_states_in_tp1 = \
-        target_model.select_state(state_in_tp1,
-                                         ["policy", "q", "twin_q"])
+    target_states_in_tp1 = target_model.select_state(state_in_tp1,
+                                                     ["policy", "q", "twin_q"])
 
     alpha = torch.exp(model.log_alpha)
 
