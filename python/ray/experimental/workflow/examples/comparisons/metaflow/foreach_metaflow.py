@@ -5,12 +5,12 @@ from metaflow import FlowSpec, step
 class ForeachFlow(FlowSpec):
     @step
     def start(self):
-        self.titles = ['Stranger Things', 'House of Cards', 'Narcos']
-        self.next(self.a, foreach='titles')
+        self.titles = ["Stranger Things", "House of Cards", "Narcos"]
+        self.next(self.a, foreach="titles")
 
     @step
     def a(self):
-        self.title = '%s processed' % self.input
+        self.title = "%s processed" % self.input
         self.next(self.join)
 
     @step
@@ -20,8 +20,8 @@ class ForeachFlow(FlowSpec):
 
     @step
     def end(self):
-        print('\n'.join(self.results))
+        print("\n".join(self.results))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     ForeachFlow()
