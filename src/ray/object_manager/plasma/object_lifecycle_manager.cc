@@ -15,10 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "ray/object_manager/plasma/object_lifecycle_manager.h"
-
 #include "absl/time/clock.h"
+
 #include "ray/common/ray_config.h"
+#include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
 namespace plasma {
 using namespace flatbuf;

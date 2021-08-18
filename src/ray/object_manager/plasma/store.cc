@@ -671,13 +671,12 @@ void PlasmaStore::ProcessCreateRequests() {
 
   if (retry_after_ms > 0) {
     // Try to process requests later, after space has been made.
-    create_timer_ = execute_after(
-        io_context_,
-        [this]() {
-          create_timer_ = nullptr;
-          ProcessCreateRequests();
-        },
-        retry_after_ms);
+    create_timer_ = execute_after(io_context_,
+                                  [this]() {
+                                    create_timer_ = nullptr;
+                                    ProcessCreateRequests();
+                                  },
+                                  retry_after_ms);
   }
 }
 
@@ -717,9 +716,8 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
 void PlasmaStore::PrintDebugDump() const {
   RAY_LOG(INFO) << GetDebugDump();
 
-  stats_timer_ = execute_after(
-      io_context_, [this]() { PrintDebugDump(); },
-      RayConfig::instance().event_stats_print_interval_ms());
+  stats_timer_ = execute_after(io_context_, [this]() { PrintDebugDump(); },
+                               RayConfig::instance().event_stats_print_interval_ms());
 }
 
 std::string PlasmaStore::GetDebugDump() const {

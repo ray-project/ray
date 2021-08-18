@@ -13,9 +13,7 @@
 // limitations under the License.
 
 #include "ray/object_manager/plasma/object_store.h"
-
 #include <limits>
-
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
 #include "gmock/gmock.h"

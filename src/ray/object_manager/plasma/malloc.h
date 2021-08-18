@@ -21,7 +21,6 @@
 #include <stddef.h>
 
 #include <unordered_map>
-
 #include "ray/object_manager/plasma/compat.h"
 
 namespace plasma {

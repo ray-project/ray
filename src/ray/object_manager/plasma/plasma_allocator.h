@@ -20,9 +20,9 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include "ray/object_manager/plasma/allocator.h"
 
 #include "absl/types/optional.h"
-#include "ray/object_manager/plasma/allocator.h"
 #include "ray/object_manager/plasma/common.h"
 
 namespace plasma {

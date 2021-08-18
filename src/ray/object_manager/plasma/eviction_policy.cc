@@ -16,11 +16,10 @@
 // under the License.
 
 #include "ray/object_manager/plasma/eviction_policy.h"
+#include "ray/object_manager/plasma/plasma_allocator.h"
 
 #include <algorithm>
 #include <sstream>
-
-#include "ray/object_manager/plasma/plasma_allocator.h"
 
 namespace plasma {
 
