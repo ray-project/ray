@@ -467,6 +467,3 @@ RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512);
 // If enabled and worker stated in container, the container will add
 // resource limit.
 RAY_CONFIG(bool, worker_resource_limits_enabled, false)
-
-/// ServerCall instance number of each RPC service handler
-RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
