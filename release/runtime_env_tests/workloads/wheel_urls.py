@@ -39,11 +39,17 @@ if __name__ == "__main__":
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
             if "dev" in ray.__version__:
-                url = get_master_wheel_url(ray_commit=ray.__commit__, sys_platform=sys_platform, ray_version=ray.__version__,
-                                           py_version=py_version)
+                url = get_master_wheel_url(
+                    ray_commit=ray.__commit__,
+                    sys_platform=sys_platform,
+                    ray_version=ray.__version__,
+                    py_version=py_version)
             else:
-                url = get_release_wheel_url(ray_commit=ray.__commit__, sys_platform=sys_platform, ray_version=ray.__version__,
-                                            py_version=py_version)
+                url = get_release_wheel_url(
+                    ray_commit=ray.__commit__,
+                    sys_platform=sys_platform,
+                    ray_version=ray.__version__,
+                    py_version=py_version)
             assert requests.head(url).status_code == 200, url
             print("Successfully tested URL: ", url)
             update_progress({"url": url})
