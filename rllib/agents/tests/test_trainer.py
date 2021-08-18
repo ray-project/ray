@@ -89,9 +89,7 @@ class TestTrainer(unittest.TestCase):
                 for j in range(i + 1):
                     self.assertTrue(f"p{j}" in pol_map)
                 self.assertTrue(len(pol_map) == i + 1)
-                r = trainer.train()
-                self.assertTrue("p1" in r["info"]["learner"]
-                                or "p2" in r["info"]["learner"])
+                trainer.train()
                 checkpoint = trainer.save()
 
                 # Test restoring from the checkpoint (which has more policies
