@@ -184,14 +184,17 @@ def get_output(workflow_id: str,
 
     Args:
         workflow_id(str): The ID of the running workflow job.
-        step_name(str): Fetch the specific result instead of the final output
+        step_name(Optional[str]): If set, fetch the specific step instead of
+            the output of the workflow.
 
     Examples:
-        >>> trip = start_trip.step()
+        >>> trip = start_trip.options(step_name="trip").step()
         >>> res1 = trip.async_run(workflow_id="trip1")
         >>> # you could "get_output()" in another machine
         >>> res2 = workflow.get_output("trip1")
         >>> assert ray.get(res1) == ray.get(res2)
+        >>> step_output = workflow.get_output("trip1", "trip")
+        >>> assert ray.get(step_output) == ray.get(res1)
 
     Returns:
         An object reference that can be used to retrieve the workflow result.
