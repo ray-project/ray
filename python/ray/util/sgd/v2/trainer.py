@@ -39,18 +39,6 @@ class Trainer:
         logdir (Optional[str]): Path to the file directory where logs
             should be persisted. If this is not specified, one will be
             generated.
-
-    Attributes:
-        logdir(Path): Path to the file directory where logs will be persisted.
-            Configurable through ``__init__``.
-        latest_run_dir(Optional[Path]): Path to the file directory for the
-            latest run.
-        latest_checkpoint_dir(Optional[Path]): Path to the file directory for
-            the checkpoints from the latest run.
-        latest_checkpoint_path(Optional[Path]): Path to the latest persisted
-            checkpoint from the latest run.
-        latest_checkpoint(Optional[Dict]): The latest saved checkpoint. This
-            checkpoint may not be saved to disk.
     """
 
     def __init__(self,
@@ -262,7 +250,7 @@ class Trainer:
 
     @property
     def latest_checkpoint_path(self) -> Optional[Path]:
-        """Path to the latest persisted checkpoint.
+        """Path to the latest persisted checkpoint from the latest run.
 
         Returns ``None`` if ``run()`` has not been called or if
         ``sgd.checkpoint()`` has not been called from ``train_func`` within
@@ -273,6 +261,8 @@ class Trainer:
     @property
     def latest_checkpoint(self) -> Optional[Dict]:
         """The latest saved checkpoint.
+
+        This checkpoint may not be saved to disk.
 
         Returns ``None`` if ``run()`` has not been called or if
         ``sgd.checkpoint()`` has not been called from ``train_func``.
