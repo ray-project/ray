@@ -22,8 +22,8 @@ SUCCESS=1
 # Run all test cases, but with a forced num_gpus=1.
 export RLLIB_NUM_GPUS=1
 
-if python rllib/examples/attention_net.py --as-test --stop-reward=20; then SUCCESS=0; fi
-if python rllib/examples/attention_net.py --framework=torch --as-test --stop-reward=20; then SUCCESS=0; fi
+if python rllib/examples/attention_net.py --as-test --stop-reward=20 --num-cpus=0; then SUCCESS=0; fi
+if python rllib/examples/attention_net.py --framework=torch --as-test --stop-reward=20 --num-cpus=0; then SUCCESS=0; fi
 
 popd || true
 
