@@ -397,7 +397,7 @@ install_dependencies() {
       esac
       pip install --use-deprecated=legacy-resolver --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
         torch=="${TORCH_VERSION-1.7}" torchvision=="${TORCHVISION_VERSION}" \
-        tensorflow=="${TF_VERSION-2.2.0}" gym
+        tensorflow=="${TF_VERSION-2.2.0}" gym=="0.18.0"
     fi
   fi
 

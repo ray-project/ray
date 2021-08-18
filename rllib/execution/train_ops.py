@@ -2,7 +2,7 @@ import logging
 import numpy as np
 import math
 import tree
-from typing import List, Tuple, Any
+from typing import List, Tuple, Any, Union
 
 import ray
 from ray.rllib.evaluation.metrics import extract_stats, get_learner_stats, \
@@ -211,6 +211,7 @@ class TrainTFMultiGPU:
             fetches = {}
             for policy_id, tuples_per_device in num_loaded_tuples.items():
                 optimizer = self.optimizers[policy_id]
+                policy = self.workers.local_worker().get_policy(policy_id)
                 num_batches = max(
                     1,
                     int(tuples_per_device) // int(self.per_device_batch_size))
@@ -223,6 +224,17 @@ class TrainTFMultiGPU:
                             self.sess, permutation[batch_index] *
                             self.per_device_batch_size)
 
+                        # Pull and preprocess the metrics for TF runtime error.
+                        for tower_num in range(len(self.devices)):
+                            tower_metric = batch_fetches.get(f'tower_{str(tower_num)}')
+                            if tower_metric is not None:
+                                learner_stats = tower_metric.get('learner_stats')
+                                if learner_stats is not None and learner_stats.get(
+                                        'runtime_errors') is not None:
+                                    learner_stats['runtime_errors'] = policy.aggregate_dict_metric(
+                                        'runtime_errors', [learner_stats['runtime_errors']]
+                                    )
+
                         batch_fetches_all_towers.append(
                             tree.map_structure_with_path(
                                 lambda p, *s: self._all_tower_reduce(p, *s),
@@ -232,7 +244,7 @@ class TrainTFMultiGPU:
                 # Reduce mean across all minibatch SGD steps (axis=0 to keep
                 # all shapes as-is).
                 fetches[policy_id] = tree.map_structure(
-                    lambda *s: np.nanmean(s, axis=0),
+                    self._all_batch_reduce,
                     *batch_fetches_all_towers)
 
         load_timer.push_units_processed(samples.count)
@@ -251,8 +263,21 @@ class TrainTFMultiGPU:
         self.workers.local_worker().set_global_vars(_get_global_vars())
         return samples, fetches
 
+    def _all_batch_reduce(self, *batches):
+        """Reduces stats across all batches."""
+        if isinstance(batches[0], np.bool) or isinstance(batches[0], np.bool_):
+            return np.any(batches)
+        if isinstance(batches[0], str) or isinstance(batches[0], bytes):
+            return batches
+        return np.nanmean(batches, axis=0)
+
     def _all_tower_reduce(self, path, *tower_data):
         """Reduces stats across towers based on their stats-dict paths."""
+        # For boolean data, if any of boolean is True, return True.
+        if isinstance(tower_data[0], np.bool) or isinstance(tower_data[0], np.bool_):
+            return np.any(tower_data)
+        if isinstance(tower_data[0], str) or isinstance(tower_data[0], bytes):
+            return tower_data
         if len(path) == 1 and path[0] == "td_error":
             return np.concatenate(tower_data, axis=0)
         elif path[-1].startswith("min_"):
