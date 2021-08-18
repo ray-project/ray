@@ -218,10 +218,9 @@ class SyncSampler(SamplerInput):
 
         # Create the rollout generator to use for calls to `get_data()`.
         self._env_runner = _env_runner(
-            worker, self.base_env, self.extra_batches.put,
-            self.horizon, normalize_actions, clip_actions,
-            multiple_episodes_in_batch, callbacks, self.perf_stats,
-            soft_horizon, no_done_at_end,
+            worker, self.base_env, self.extra_batches.put, self.horizon,
+            normalize_actions, clip_actions, multiple_episodes_in_batch,
+            callbacks, self.perf_stats, soft_horizon, no_done_at_end,
             observation_fn, self.sample_collector, self.render)
         self.metrics_queue = queue.Queue()
 
@@ -396,8 +395,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             extra_batches_putter = (
                 lambda x: self.extra_batches.put(x, timeout=600.0))
         env_runner = _env_runner(
-            self.worker, self.base_env, extra_batches_putter,
-            self.horizon, self.normalize_actions, self.clip_actions,
+            self.worker, self.base_env, extra_batches_putter, self.horizon,
+            self.normalize_actions, self.clip_actions,
             self.multiple_episodes_in_batch, self.callbacks, self.perf_stats,
             self.soft_horizon, self.no_done_at_end, self.observation_fn,
             self.sample_collector, self.render)

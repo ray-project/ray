@@ -4,8 +4,7 @@ import unittest
 import ray
 import ray.rllib.agents.dreamer as dreamer
 from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.utils.test_utils import check_compute_single_action, \
-    framework_iterator
+from ray.rllib.utils.test_utils import framework_iterator
 
 
 class TestDreamer(unittest.TestCase):
