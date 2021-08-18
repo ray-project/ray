@@ -105,7 +105,7 @@ class TestPPO(unittest.TestCase):
         num_iterations = 2
 
         for fw in framework_iterator(config):
-            for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
+            for env in ["FrozenLake-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
                 for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
@@ -150,6 +150,9 @@ class TestPPO(unittest.TestCase):
 
         # Test w/ LSTMs.
         config["model"]["use_lstm"] = True
+
+        # Double batch size (2 GPUs).
+        config["train_batch_size"] = 8000
 
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
             trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
