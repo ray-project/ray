@@ -248,7 +248,6 @@ class Client:
             endpoint_name: str,
             missing_ok: Optional[bool] = False,
             sync: bool = True,
-            _internal_use_serve_request: Optional[bool] = True,
             _internal_pickled_http_request: bool = False,
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Retrieve RayServeHandle for service endpoint to invoke it from Python.
@@ -301,7 +300,6 @@ class Client:
                 self._controller,
                 endpoint_name,
                 known_python_methods=python_methods,
-                _internal_use_serve_request=_internal_use_serve_request,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
         else:
@@ -309,7 +307,6 @@ class Client:
                 self._controller,
                 endpoint_name,
                 known_python_methods=python_methods,
-                _internal_use_serve_request=_internal_use_serve_request,
                 _internal_pickled_http_request=_internal_pickled_http_request,
             )
 
@@ -756,10 +753,7 @@ class Deployment:
             ServeHandle
         """
         return _get_global_client().get_handle(
-            self._name,
-            missing_ok=True,
-            sync=sync,
-            _internal_use_serve_request=False)
+            self._name, missing_ok=True, sync=sync)
 
     @PublicAPI
     def options(

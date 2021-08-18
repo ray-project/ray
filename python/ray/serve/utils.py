@@ -96,13 +96,6 @@ def parse_request_item(request_item):
             assert isinstance(arg, bytes)
             arg: HTTPRequestWrapper = pickle.loads(arg)
             return (build_starlette_request(arg.scope, arg.body), ), {}
-        elif request_item.metadata.use_serve_request:
-            return (ServeRequest(
-                arg,
-                request_item.kwargs,
-                headers=request_item.metadata.http_headers,
-                method=request_item.metadata.http_method,
-            ), ), {}
 
     return request_item.args, request_item.kwargs
 
