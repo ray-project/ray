@@ -235,13 +235,13 @@ class FunctionActorManager:
         Returns:
             A FunctionExecutionInfo object.
         """
+        function_id = function_descriptor.function_id
+        # If the function has already been loaded,
+        # There's no need to load again
+        if function_id in self._function_execution_info:
+            return self._function_execution_info[function_id]
         if self._worker.load_code_from_local:
             # Load function from local code.
-            function_id = function_descriptor.function_id
-            # If the function has already been loaded,
-            # There's no need to load again
-            if function_id in self._function_execution_info:
-                return self._function_execution_info[function_id]
             if not function_descriptor.is_actor_method():
                 # If the function is not able to be loaded,
                 # try to load it from GCS,
