@@ -742,7 +742,7 @@ py_test(
 py_test(
     name = "test_appo",
     tags = ["trainers_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/ppo/tests/test_appo.py"]
 )
 
@@ -766,7 +766,7 @@ py_test(
 py_test(
     name = "test_td3",
     tags = ["trainers_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/ddpg/tests/test_td3.py"]
 )
 
@@ -1815,7 +1815,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/complex_struct_space_tf", main = "examples/complex_struct_space.py",
+    name = "examples/complex_struct_space_tf",
+    main = "examples/complex_struct_space.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/complex_struct_space.py"],
@@ -1823,7 +1824,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/complex_struct_space_tf_eager", main = "examples/complex_struct_space.py",
+    name = "examples/complex_struct_space_tf_eager",
+    main = "examples/complex_struct_space.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/complex_struct_space.py"],
@@ -1831,7 +1833,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/complex_struct_space_torch", main = "examples/complex_struct_space.py",
+    name = "examples/complex_struct_space_torch",
+    main = "examples/complex_struct_space.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/complex_struct_space.py"],
