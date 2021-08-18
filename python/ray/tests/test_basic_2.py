@@ -747,7 +747,7 @@ def test_use_dynamic_function_and_class():
     f = foo1()
     assert ray.get(f.remote()) == "OK"
     # Check whether the dynamic function is exported to GCS.
-    # Note, the key format should be kept 
+    # Note, the key format should be kept
     # the same as in `FunctionActorManager.export`.
     key_func = (
         b"RemoteFunction:" + ray.worker.global_worker.current_job_id.binary() +
@@ -757,7 +757,7 @@ def test_use_dynamic_function_and_class():
 
     assert ray.get(foo_actor.foo.remote()) == "OK"
     # Check whether the dynamic class is exported to GCS.
-    # Note, the key format should be kept 
+    # Note, the key format should be kept
     # the same as in `FunctionActorManager.export_actor_class`.
     key_cls = (
         b"ActorClass:" + ray.worker.global_worker.current_job_id.binary() +
