@@ -62,8 +62,9 @@ def book_all(car_req_id: str, hotel_req_id: str, flight_req_id: str) -> str:
 
 
 @workflow.step
-def handle_errors(car_req_id: str, hotel_req_id: str, flight_req_id: str,
-                  final_result: Tuple[Optional[str], Optional[Exception]]) -> str:
+def handle_errors(
+        car_req_id: str, hotel_req_id: str, flight_req_id: str,
+        final_result: Tuple[Optional[str], Optional[Exception]]) -> str:
     result, error = final_result
 
     @workflow.step
