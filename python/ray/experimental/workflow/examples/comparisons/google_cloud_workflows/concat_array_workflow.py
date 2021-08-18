@@ -12,4 +12,4 @@ def iterate(array: List[str], result: str, i: int) -> str:
 
 if __name__ == "__main__":
     workflow.init()
-    print(iterate.step(["foo", "ba", "r"], 0, "").run())
+    print(iterate.step(["foo", "ba", "r"], "", 0).run())

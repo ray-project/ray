@@ -3,6 +3,11 @@ from typing import List, Tuple
 from ray import workflow
 
 
+# Mock method to make requests to an external service.
+def make_request(*args) -> None:
+    return "result"
+
+
 # Generate an idempotency token (this is an extension to the cadence example).
 @workflow.step
 def generate_request_id():
@@ -12,35 +17,35 @@ def generate_request_id():
 
 @workflow.step
 def book_car(request_id: str) -> str:
-    car_reservation_id = ...  # RPC to book the car
+    car_reservation_id = make_request("book_car", request_id)
     return car_reservation_id
 
 
 @workflow.step
 def cancel_car(request_id: str) -> None:
-    ...  # cancel the car booking
+    make_request("cancel_car", request_id)
 
 
 @workflow.step
 def book_hotel(request_id: str, *deps) -> str:
-    hotel_reservation_id = ...  # RPC to book the hotel
+    hotel_reservation_id = make_request("book_hotel", request_id)
     return hotel_reservation_id
 
 
 @workflow.step
 def cancel_hotel(request_id: str) -> None:
-    ...  # cancel the hotel booking
+    make_request("cancel_hotel", request_id)
 
 
 @workflow.step
 def book_flight(request_id: str, *deps) -> str:
-    flight_reservation_id = ...  # RPC to book the flight
+    flight_reservation_id = make_request("book_flight", request_id)
     return flight_reservation_id
 
 
 @workflow.step
 def cancel_flight(request_id: str) -> None:
-    ...  # cancel the flight booking
+    make_request("cancel_flight", request_id)
 
 
 @workflow.step
@@ -84,6 +89,7 @@ if __name__ == "__main__":
     # pattern of compensation workflows.
     saga_result = book_all.options(catch_exceptions=True) \
         .step(car_req_id, hotel_req_id, flight_req_id)
+    print(saga_result.run())
 
     final_result = handle_errors.step(car_req_id, hotel_req_id, flight_req_id,
                                       saga_result)

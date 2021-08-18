@@ -27,7 +27,7 @@ def custom_retry_strategy(func: Any, num_retries: int, delay_s: int) -> str:
         else:
             print("Retrying exception after delay", error)
             time.sleep(delay_s)
-            return custom_retry_strategy(func, num_retries - 1, delay_s)
+            return custom_retry_strategy.step(func, num_retries - 1, delay_s)
 
     res = func.options(catch_exceptions=True).step()
     return handle_result.step(res)
@@ -40,4 +40,4 @@ if __name__ == "__main__":
     print(flaky_step.options(max_retries=10).step().run())
 
     # Custom strategy.
-    print(custom_retry_strategy.step(flaky_step, 10, 5).run())
+    print(custom_retry_strategy.step(flaky_step, 10, 1).run())

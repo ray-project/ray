@@ -1,26 +1,29 @@
-import requests
-
 from ray import workflow
 
 
-@workflow.step
-def make_request() -> int:
-    return int(requests.get("https://www.example.com/callA").text)
+# Mock method to make a request.
+def make_request(url: str) -> str:
+    return "42"
 
 
 @workflow.step
-def small() -> str:
-    return requests.get("https://www.example.com/SmallFunc").text
+def get_size() -> int:
+    return int(make_request("https://www.example.com/callA"))
 
 
 @workflow.step
-def medium() -> str:
-    return requests.get("https://www.example.com/MediumFunc").text
+def small(result: int) -> str:
+    return make_request("https://www.example.com/SmallFunc")
 
 
 @workflow.step
-def large() -> str:
-    return requests.get("https://www.example.com/LargeFunc").text
+def medium(result: int) -> str:
+    return make_request("https://www.example.com/MediumFunc")
+
+
+@workflow.step
+def large(result: int) -> str:
+    return make_request("https://www.example.com/LargeFunc")
 
 
 @workflow.step
@@ -35,4 +38,4 @@ def decide(result: int) -> str:
 
 if __name__ == "__main__":
     workflow.init()
-    print(decide.step(make_request.step()).run())
+    print(decide.step(get_size.step()).run())
