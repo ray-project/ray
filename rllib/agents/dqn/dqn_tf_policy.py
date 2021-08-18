@@ -140,7 +140,7 @@ class ComputeTDErrorMixin:
 def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
                   action_space: gym.spaces.Space,
                   config: TrainerConfigDict) -> ModelV2:
-    """Build q_model and target_q_model for DQN
+    """Build q_model and target_model for DQN
 
     Args:
         policy (Policy): The Policy, which will use the model for optimization.
@@ -151,7 +151,7 @@ def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
     Returns:
         ModelV2: The Model for the Policy to use.
             Note: The target q model will not be returned, just assigned to
-            `policy.target_q_model`.
+            `policy.target_model`.
     """
     if not isinstance(action_space, gym.spaces.Discrete):
         raise UnsupportedSpaceException(
@@ -185,7 +185,7 @@ def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
             getattr(policy, "exploration", None), ParameterNoise)
         or config["exploration_config"]["type"] == "ParameterNoise")
 
-    policy.target_q_model = ModelCatalog.get_model_v2(
+    policy.target_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
         num_outputs=num_outputs,
@@ -247,11 +247,11 @@ def build_q_losses(policy: Policy, model, _,
     # target q network evalution
     q_tp1, q_logits_tp1, q_dist_tp1, _ = compute_q_values(
         policy,
-        policy.target_q_model, {"obs": train_batch[SampleBatch.NEXT_OBS]},
+        policy.target_model, {"obs": train_batch[SampleBatch.NEXT_OBS]},
         state_batches=None,
         explore=False)
     if not hasattr(policy, "target_q_func_vars"):
-        policy.target_q_func_vars = policy.target_q_model.variables()
+        policy.target_q_func_vars = policy.target_model.variables()
 
     # q scores for actions which we know were selected in the given state.
     one_hot_selection = tf.one_hot(

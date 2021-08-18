@@ -1,6 +1,4 @@
-"""Stress tests for RLlib (torch and tf).
-
-Runs IMPALA on 4 GPUs and 100s of CPUs.
+"""Multi-GPU learning tests for RLlib (torch and tf).
 """
 
 import json
@@ -16,14 +14,15 @@ if __name__ == "__main__":
 
     # This pattern match is kind of hacky. Avoids cluster.yaml to get sucked
     # into this.
-    yaml_files = abs_yaml_path.rglob("*tests.yaml")
+    yaml_files = abs_yaml_path.rglob("*test*.yaml")
     yaml_files = sorted(
         map(lambda path: str(path.absolute()), yaml_files), reverse=True)
 
-    results = run_learning_tests_from_yaml(yaml_files, max_num_repeats=1)
+    # Run all tests in the found yaml files.
+    results = run_learning_tests_from_yaml(yaml_files)
 
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON",
-                                      "/tmp/rllib_stress_test.json")
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/rllib_multi_gpu_learning_tests.json")
     with open(test_output_json, "wt") as f:
         json.dump(results, f)
 
