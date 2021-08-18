@@ -95,6 +95,7 @@ def pad_batch_to_sequences_of_same_size(
     elif not meets_divisibility_reqs:
         max_seq_len = batch_divisibility_req
         dynamic_max = False
+        batch.max_seq_len = max_seq_len
     # Simple case: No RNN/attention net, nor do we need to pad.
     else:
         if shuffle:
@@ -430,6 +431,7 @@ def timeslice_along_seq_lens_with_overlap(
     # Zero-pad each slice if necessary.
     if zero_pad_max_seq_len > 0:
         for ts in timeslices:
-            ts.zero_pad(max_seq_len=zero_pad_max_seq_len, exclude_states=True)
+            ts.right_zero_pad(
+                max_seq_len=zero_pad_max_seq_len, exclude_states=True)
 
     return timeslices

@@ -216,6 +216,25 @@ print("local", ray._private.runtime_env.VAR)
     assert local_out == "local hello world"
 
 
+# https://github.com/ray-project/ray/issues/17842
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+def test_disable_cuda_devices():
+    script = """
+import ray
+ray.init()
+
+@ray.remote
+def check():
+    import os
+    assert "CUDA_VISIBLE_DEVICES" not in os.environ
+
+print("remote", ray.get(check.remote()))
+"""
+
+    run_string_as_driver(script,
+                         {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"})
+
+
 def test_put_get(shutdown_only):
     ray.init(num_cpus=0)
 

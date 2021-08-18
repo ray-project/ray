@@ -241,7 +241,7 @@ class DynamicTFPolicy(TFPolicy):
                 True, (), name="is_exploring")
 
         # Placeholder for `is_training` flag.
-        self._input_dict["is_training"] = self._get_is_training_placeholder()
+        self._input_dict.is_training = self._get_is_training_placeholder()
 
         # Multi-GPU towers do not need any action computing/exploration
         # graphs.
@@ -266,7 +266,7 @@ class DynamicTFPolicy(TFPolicy):
                     prev_reward_batch=self._input_dict.get(
                         SampleBatch.PREV_REWARDS),
                     explore=explore,
-                    is_training=self._input_dict["is_training"])
+                    is_training=self._input_dict.is_training)
             # Distribution generation is customized, e.g., DQN, DDPG.
             else:
                 if action_distribution_fn:
@@ -284,7 +284,7 @@ class DynamicTFPolicy(TFPolicy):
                                 seq_lens=self._seq_lens,
                                 explore=explore,
                                 timestep=timestep,
-                                is_training=in_dict["is_training"])
+                                is_training=in_dict.is_training)
                     # Trying the old way (to stay backward compatible).
                     # TODO: Remove in future.
                     except TypeError as e:
@@ -301,7 +301,7 @@ class DynamicTFPolicy(TFPolicy):
                                     prev_reward_batch=in_dict.get(
                                         SampleBatch.PREV_REWARDS),
                                     explore=explore,
-                                    is_training=in_dict["is_training"])
+                                    is_training=in_dict.is_training)
                         else:
                             raise e
 
@@ -379,6 +379,9 @@ class DynamicTFPolicy(TFPolicy):
                             self.config.get("num_multi_gpu_tower_stacks", 1))
                     ]
 
+            # Initialize again after loss and tower init.
+            self.get_session().run(tf1.global_variables_initializer())
+
     @override(TFPolicy)
     @DeveloperAPI
     def copy(self,
@@ -448,6 +451,9 @@ class DynamicTFPolicy(TFPolicy):
             batch: SampleBatch,
             buffer_index: int = 0,
     ) -> int:
+        # Set the is_training flag of the batch.
+        batch.is_training = True
+
         # Shortcut for 1 CPU only: Store batch in
         # `self._loaded_single_cpu_batch`.
         if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
@@ -693,9 +699,6 @@ class DynamicTFPolicy(TFPolicy):
             if (v not in self._state_inputs and v != self._seq_lens)
         }
 
-        # Initialize again after loss init.
-        self.get_session().run(tf1.global_variables_initializer())
-
     def _do_loss_init(self, train_batch: SampleBatch):
         loss = self._loss_fn(self, self.model, self.dist_class, train_batch)
         if self._stats_fn:
@@ -932,10 +935,11 @@ class TFMultiGPUTowerStack:
         sess.run([t.init_op for t in self._towers], feed_dict=feed_dict)
 
         self.num_tuples_loaded = truncated_len
-        tuples_per_device = truncated_len // len(self.devices)
-        assert tuples_per_device > 0, "No data loaded?"
-        assert tuples_per_device % self._loaded_per_device_batch_size == 0
-        return tuples_per_device
+        samples_per_device = truncated_len // len(self.devices)
+        assert samples_per_device > 0, "No data loaded?"
+        assert samples_per_device % self._loaded_per_device_batch_size == 0
+        # Return loaded samples per-device.
+        return samples_per_device
 
     def optimize(self, sess, batch_index):
         """Run a single step of SGD.

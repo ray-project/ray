@@ -567,6 +567,83 @@ def test_future_resolution_skip_plasma(ray_start_cluster):
     assert ray.get(g_ref) == 4
 
 
+def test_task_output_inline_bytes_limit(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Disable worker caching so worker leases are not reused; set object
+    # inlining size threshold and enable storing of small objects in in-memory
+    # object store so the borrowed ref is inlined.
+    # set task_rpc_inlined_bytes_limit which only allows inline 20 bytes.
+    cluster.add_node(
+        num_cpus=1,
+        resources={"pin_head": 1},
+        _system_config={
+            "worker_lease_timeout_milliseconds": 0,
+            "max_direct_call_object_size": 100 * 1024,
+            "task_rpc_inlined_bytes_limit": 20,
+            "put_small_object_in_memory_store": True,
+        },
+    )
+    cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_returns=5, resources={"pin_head": 1})
+    def f():
+        return list(range(5))
+
+    @ray.remote(resources={"pin_worker": 1})
+    def sum():
+        numbers = f.remote()
+        result = 0
+        for i, ref in enumerate(numbers):
+            result += ray.get(ref)
+            inlined = ray.worker.global_worker.core_worker.object_exists(
+                ref, memory_store_only=True)
+            if i < 2:
+                assert inlined
+            else:
+                assert not inlined
+        return result
+
+    assert ray.get(sum.remote()) == 10
+
+
+def test_task_arguments_inline_bytes_limit(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=1,
+        resources={"pin_head": 1},
+        _system_config={
+            "max_direct_call_object_size": 100 * 1024,
+            # if task_rpc_inlined_bytes_limit is greater than
+            # max_grpc_message_size, this test fails.
+            "task_rpc_inlined_bytes_limit": 18 * 1024,
+            "max_grpc_message_size": 20 * 1024,
+            "put_small_object_in_memory_store": True,
+        },
+    )
+    cluster.add_node(num_cpus=1, resources={"pin_worker": 1})
+    ray.init(address=cluster.address)
+
+    @ray.remote(resources={"pin_worker": 1})
+    def foo(ref1, ref2, ref3):
+        return ref1 == ref2 + ref3
+
+    @ray.remote(resources={"pin_head": 1})
+    def bar():
+        # if the refs are inlined, the test fails.
+        # refs = [ray.put(np.random.rand(1024) for _ in range(3))]
+        # return ray.get(
+        #     foo.remote(refs[0], refs[1], refs[2]))
+
+        return ray.get(
+            foo.remote(
+                np.random.rand(1024),  # 8k
+                np.random.rand(1024),  # 8k
+                np.random.rand(1024)))  # 8k
+
+    ray.get(bar.remote())
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

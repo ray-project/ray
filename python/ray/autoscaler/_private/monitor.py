@@ -188,7 +188,13 @@ class Monitor:
             pending_placement_groups = list(
                 resources_batch_data.placement_group_load.placement_group_data)
 
-            ip = resource_message.node_manager_address
+            use_node_id_as_ip = (self.autoscaler is not None
+                                 and self.autoscaler.config["provider"].get(
+                                     "use_node_id_as_ip", False))
+            if use_node_id_as_ip:
+                ip = str(int(total_resources.get("NODE_ID_AS_RESOURCE", 0)))
+            else:
+                ip = resource_message.node_manager_address
             self.load_metrics.update(
                 ip, total_resources, available_resources, resource_load,
                 waiting_bundles, infeasible_bundles, pending_placement_groups)

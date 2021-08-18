@@ -18,7 +18,15 @@
 #include <iomanip>
 #include <iostream>
 #include <utility>
+#include "ray/stats/metric.h"
 
+DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
+DEFINE_stats(operation_run_time_ms, "operation execution time", ("Method"), (),
+             ray::stats::GAUGE);
+DEFINE_stats(operation_queue_time_ms, "operation queuing time", ("Method"), (),
+             ray::stats::GAUGE);
+DEFINE_stats(operation_active_count, "activate operation number", ("Method"), (),
+             ray::stats::GAUGE);
 namespace {
 
 /// A helper for creating a snapshot view of the global stats.
@@ -95,6 +103,8 @@ std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(
     stats->stats.cum_count++;
     stats->stats.curr_count++;
   }
+  STATS_operation_count.Record(stats->stats.curr_count, name);
+  STATS_operation_active_count.Record(stats->stats.curr_count, name);
   return std::make_shared<StatsHandle>(
       name, absl::GetCurrentTimeNanos() + expected_queueing_delay_ns, stats,
       global_stats_);
@@ -103,12 +113,19 @@ std::shared_ptr<StatsHandle> instrumented_io_context::RecordStart(
 void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
                                               std::shared_ptr<StatsHandle> handle) {
   int64_t start_execution = absl::GetCurrentTimeNanos();
+  // Update running count
+  {
+    auto &stats = handle->handler_stats;
+    absl::MutexLock lock(&(stats->mutex));
+    stats->stats.running_count++;
+  }
   // Execute actual handler.
   fn();
   int64_t end_execution = absl::GetCurrentTimeNanos();
   // Update execution time stats.
   const auto execution_time_ns = end_execution - start_execution;
   // Update handler-specific stats.
+  STATS_operation_run_time_ms.Record(execution_time_ns / 1000000, handle->handler_name);
   {
     auto &stats = handle->handler_stats;
     absl::MutexLock lock(&(stats->mutex));
@@ -116,9 +133,13 @@ void instrumented_io_context::RecordExecution(const std::function<void()> &fn,
     stats->stats.cum_execution_time += execution_time_ns;
     // Handler-specific current count.
     stats->stats.curr_count--;
+    STATS_operation_active_count.Record(stats->stats.curr_count, handle->handler_name);
+    // Handler-specific running count.
+    stats->stats.running_count--;
   }
   // Update global stats.
   const auto queue_time_ns = start_execution - handle->start_time;
+  STATS_operation_queue_time_ms.Record(queue_time_ns / 1000000, handle->handler_name);
   {
     auto global_stats = handle->global_stats;
     absl::MutexLock lock(&(global_stats->mutex));
@@ -212,8 +233,11 @@ std::string instrumented_io_context::StatsString() const {
     curr_count += entry.second.curr_count;
     cum_execution_time += entry.second.cum_execution_time;
     handler_stats_stream << "\n\t" << entry.first << " - " << entry.second.cum_count
-                         << " total (" << entry.second.curr_count
-                         << " active), CPU time: mean = "
+                         << " total (" << entry.second.curr_count << " active";
+    if (entry.second.running_count > 0) {
+      handler_stats_stream << ", " << entry.second.running_count << " running";
+    }
+    handler_stats_stream << "), CPU time: mean = "
                          << to_human_readable(entry.second.cum_execution_time /
                                               static_cast<double>(entry.second.cum_count))
                          << ", total = "

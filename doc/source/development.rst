@@ -19,6 +19,8 @@ Building Ray (Python Only)
 
 RLlib, Tune, Autoscaler, and most Python files do not require you to build and compile Ray. Follow these instructions to develop Ray's Python files locally without building Ray.
 
+0. (Optional) To setup an isolated Anaconda environment, see :ref:`ray_anaconda`.
+
 1. Pip install the **latest Ray wheels.** See :ref:`install-nightlies` for instructions.
 
 .. code-block:: shell
@@ -37,14 +39,19 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
 3. Replace Python files in the installed package with your local editable copy. We provide a simple script to help you do this: ``python python/ray/setup-dev.py``.
 Running the script will remove the  ``ray/tune``, ``ray/rllib``, ``ray/autoscaler`` dir (among other directories) bundled with the ``ray`` pip package, and replace them with links to your local code. This way, changing files in your git clone will directly affect the behavior of your installed ray.
 
+.. code-block:: shell
+
+    # This replaces `<package path>/site-packages/ray/<package>`
+    # with your local `ray/python/ray/<package>`.
+    python python/ray/setup-dev.py
+
 .. warning:: Do not run ``pip uninstall ray`` or ``pip install -U`` (for Ray or Ray wheels) if setting up your environment this way. To uninstall or upgrade, you must first ``rm -rf`` the pip-installation site (usually a ``site-packages/ray`` location), then do a pip reinstall (see 1. above), and finally run the above `setup-dev.py` script again.
 
 .. code-block:: shell
 
-    cd ray
-    python python/ray/setup-dev.py
-    # This replaces miniconda3/lib/python3.7/site-packages/ray/tune
-    # with your local `ray/python/ray/tune`.
+    # To uninstall, delete the symlinks first.
+    rm -rf <package path>/site-packages/ray # Path will be in the output of `setup-dev.py`.
+    pip uninstall ray # or `pip install -U <wheel>`
 
 Building Ray on Linux & MacOS (full)
 ------------------------------------
@@ -62,7 +69,22 @@ For Ubuntu, run the following commands:
 
   pip install cython==0.29.0 pytest
 
+For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
+
+.. code-block:: bash
+
+  sudo yum groupinstall 'Development Tools'
+  sudo yum install psmisc
+
+  pip install cython==0.29.0 pytest
+
+Install bazel manually from link: https://docs.bazel.build/versions/main/install-redhat.html 
+
+
 For MacOS, run the following commands:
+
+.. tip:: Assuming you already have brew and bazel installed on your mac and you also have grpc and protobuf installed on your mac consider removing those (grpc and protobuf) for smooth build through commands ``brew uninstall grpc``, ``brew uninstall protobuf``. If you have built the source code earlier and it still fails with error as ``No such file or directory:``, try cleaning previous builds on your host by running commands ``brew uninstall binutils`` and ``bazel clean --expunge``.
+
 
 .. code-block:: bash
 

@@ -72,7 +72,8 @@ class RayTaskError(RayError):
                  cause,
                  proctitle=None,
                  pid=None,
-                 ip=None):
+                 ip=None,
+                 actor_repr=None):
         """Initialize a RayTaskError."""
         import ray
 
@@ -88,6 +89,7 @@ class RayTaskError(RayError):
         self.ip = ip or ray.util.get_node_ip_address()
         self.function_name = function_name
         self.traceback_str = traceback_str
+        self.actor_repr = actor_repr
         # TODO(edoakes): should we handle non-serializable exception objects?
         self.cause = cause
         assert traceback_str is not None
@@ -133,17 +135,55 @@ class RayTaskError(RayError):
         """Format a RayTaskError as a string."""
         lines = self.traceback_str.strip().split("\n")
         out = []
-        in_worker = False
-        for line in lines:
+        code_from_internal_file = False
+
+        # Format tracebacks.
+        # Python stacktrace consists of
+        # Traceback...: Indicate the next line will be a traceback.
+        #   File [file_name + line number]
+        #     code
+        # XError: [message]
+        # NOTE: For _raylet.pyx (Cython), the code is not always included.
+        for i, line in enumerate(lines):
+            # Convert traceback to the readable information.
             if line.startswith("Traceback "):
-                out.append(f"{colorama.Fore.CYAN}"
-                           f"{self.proctitle}"
-                           f"{colorama.Fore.RESET} "
-                           f"(pid={self.pid}, ip={self.ip})")
-            elif in_worker:
-                in_worker = False
-            elif "ray/worker.py" in line or "ray/function_manager.py" in line:
-                in_worker = True
+                traceback_line = (f"{colorama.Fore.CYAN}"
+                                  f"{self.proctitle}"
+                                  f"{colorama.Fore.RESET} "
+                                  f"(pid={self.pid}, ip={self.ip}")
+                if self.actor_repr:
+                    traceback_line += f", repr={self.actor_repr})"
+                else:
+                    traceback_line += ")"
+                code_from_internal_file = False
+                out.append(traceback_line)
+            elif line.startswith("  File ") and ("ray/worker.py" in line
+                                                 or "ray/_private/" in line
+                                                 or "ray/util/tracing/" in line
+                                                 or "ray/_raylet.pyx" in line):
+                # TODO(windows)
+                # Process the internal file line.
+                # The file line always starts with 2 space and File.
+                # https://github.com/python/cpython/blob/0a0a135bae2692d069b18d2d590397fbe0a0d39a/Lib/traceback.py#L421 # noqa
+                if "ray._raylet.raise_if_dependency_failed" in line:
+                    # It means the current task is failed
+                    # due to the dependency failure.
+                    # Print out an user-friendly
+                    # message to explain that..
+                    out.append("  Some of the input arguments for "
+                               "this task could not be computed:")
+                if i + 1 < len(lines) and lines[i + 1].startswith("    "):
+                    # If the next line is indented with 2 space,
+                    # that means it contains internal code information.
+                    # For example,
+                    #   File [file_name] [line]
+                    #     [code] # if the next line is indented, it is code.
+                    # Note there there are 4 spaces in the code line.
+                    code_from_internal_file = True
+            elif code_from_internal_file:
+                # If the current line is internal file's code,
+                # the next line is not code anymore.
+                code_from_internal_file = False
             else:
                 out.append(line)
         return "\n".join(out)
@@ -267,6 +307,16 @@ class AsyncioActorExit(RayError):
     pass
 
 
+class RuntimeEnvSetupError(RayError):
+    """Raised when a runtime environment fails to be set up."""
+
+    def __str__(self):
+        return (
+            "The runtime environment for this task or actor failed to be "
+            "installed. Corresponding error logs should have been streamed "
+            "to the driver's STDOUT.")
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -277,4 +327,5 @@ RAY_EXCEPTION_TYPES = [
     ObjectLostError,
     GetTimeoutError,
     AsyncioActorExit,
+    RuntimeEnvSetupError,
 ]

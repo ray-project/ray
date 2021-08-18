@@ -17,6 +17,7 @@
 #include "ray/util/util.h"
 
 namespace ray {
+namespace core {
 
 bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   // Check the ReferenceCounter to see if there is a location for the object.
@@ -151,4 +152,5 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   }
 }
 
+}  // namespace core
 }  // namespace ray

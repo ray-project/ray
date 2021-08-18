@@ -23,7 +23,8 @@ from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical, TorchSquashedGaussian, TorchDiagGaussian, TorchBeta)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.torch_ops import apply_grad_clipping, huber_loss
+from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+    concat_multi_gpu_td_errors, huber_loss
 from ray.rllib.utils.typing import LocalOptimizer, ModelInputDict, \
     TensorType, TrainerConfigDict
 
@@ -166,6 +167,9 @@ def actor_critic_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
+    # Look up the target model (tower) using the model tower.
+    target_model = policy.target_models[model]
+
     # Should be True only for debugging purposes (e.g. test cases)!
     deterministic = policy.config["_deterministic_loss"]
 
@@ -179,7 +183,7 @@ def actor_critic_loss(
         "is_training": True,
     }, [], None)
 
-    target_model_out_tp1, _ = policy.target_model({
+    target_model_out_tp1, _ = target_model({
         "obs": train_batch[SampleBatch.NEXT_OBS],
         "is_training": True,
     }, [], None)
@@ -196,11 +200,10 @@ def actor_critic_loss(
         # Q-values.
         q_t = model.get_q_values(model_out_t)
         # Target Q-values.
-        q_tp1 = policy.target_model.get_q_values(target_model_out_tp1)
+        q_tp1 = target_model.get_q_values(target_model_out_tp1)
         if policy.config["twin_q"]:
             twin_q_t = model.get_twin_q_values(model_out_t)
-            twin_q_tp1 = policy.target_model.get_twin_q_values(
-                target_model_out_tp1)
+            twin_q_tp1 = target_model.get_twin_q_values(target_model_out_tp1)
             q_tp1 = torch.min(q_tp1, twin_q_tp1)
         q_tp1 -= alpha * log_pis_tp1
 
@@ -246,10 +249,9 @@ def actor_critic_loss(
             q_t_det_policy = torch.min(q_t_det_policy, twin_q_t_det_policy)
 
         # Target q network evaluation.
-        q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
-                                                 policy_tp1)
+        q_tp1 = target_model.get_q_values(target_model_out_tp1, policy_tp1)
         if policy.config["twin_q"]:
-            twin_q_tp1 = policy.target_model.get_twin_q_values(
+            twin_q_tp1 = target_model.get_twin_q_values(
                 target_model_out_tp1, policy_tp1)
             # Take min over both twin-NNs.
             q_tp1 = torch.min(q_tp1, twin_q_tp1)
@@ -343,15 +345,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     Returns:
         Dict[str, TensorType]: The stats dict.
     """
-    td_error = torch.cat(
-        [
-            getattr(t, "td_error", torch.tensor([0.0]))
-            for t in policy.model_gpu_towers
-        ],
-        dim=0)
     return {
-        "td_error": td_error,
-        "mean_td_error": torch.mean(td_error),
         "actor_loss": torch.mean(policy.actor_loss),
         "critic_loss": torch.mean(torch.stack(policy.critic_loss)),
         "alpha_loss": torch.mean(policy.alpha_loss),
@@ -462,13 +456,15 @@ class TargetNetworkMixin:
         model_state_dict = self.model.state_dict()
         # Support partial (soft) synching.
         # If tau == 1.0: Full sync from Q-model to target Q-model.
-        target_state_dict = self.target_model.state_dict()
+        target_state_dict = next(iter(
+            self.target_models.values())).state_dict()
         model_state_dict = {
             k: tau * model_state_dict[k] + (1 - tau) * v
             for k, v in target_state_dict.items()
         }
 
-        self.target_model.load_state_dict(model_state_dict)
+        for t in self.target_models.values():
+            t.load_state_dict(model_state_dict)
 
 
 def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
@@ -492,9 +488,6 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
         action_space (gym.spaces.Space): The Policy's action space.
         config (TrainerConfigDict): The Policy's config.
     """
-    policy.target_model = policy.target_model.to(policy.device)
-    policy.model.log_alpha = policy.model.log_alpha.to(policy.device)
-    policy.model.target_entropy = policy.model.target_entropy.to(policy.device)
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy)
 
@@ -513,6 +506,7 @@ SACTorchPolicy = build_policy_class(
     validate_spaces=validate_spaces,
     before_loss_init=setup_late_mixins,
     make_model_and_action_dist=build_sac_model_and_action_dist,
+    extra_learn_fetches_fn=concat_multi_gpu_td_errors,
     mixins=[TargetNetworkMixin, ComputeTDErrorMixin],
     action_distribution_fn=action_distribution_fn,
 )

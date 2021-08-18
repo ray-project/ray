@@ -16,10 +16,12 @@ import subprocess
 import sys
 import time
 from typing import Optional
+import warnings
 
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
+from ray.util.debug import log_once
 import redis
 
 # Import psutil and colorama after ray so the packaged version is used.
@@ -404,11 +406,24 @@ def create_redis_client(redis_address, password=None):
     Returns:
         A Redis client.
     """
-    redis_ip_address, redis_port = redis_address.split(":")
+    if not hasattr(create_redis_client, "instances"):
+        create_redis_client.instances = {}
+    else:
+        cli = create_redis_client.instances.get(redis_address)
+        if cli is not None:
+            try:
+                cli.ping()
+                return cli
+            except Exception:
+                create_redis_client.instances.pop(redis_address)
+
+    _, redis_ip_address, redis_port = validate_redis_address(redis_address)
     # For this command to work, some other client (on the same machine
     # as Redis) must have run "CONFIG SET protected-mode no".
-    return redis.StrictRedis(
+    create_redis_client.instances[redis_address] = redis.StrictRedis(
         host=redis_ip_address, port=int(redis_port), password=password)
+
+    return create_redis_client.instances[redis_address]
 
 
 def start_ray_process(command,
@@ -1171,10 +1186,18 @@ def start_dashboard(require_dashboard,
         except ImportError:
             warning_message = (
                 "Not all Ray Dashboard dependencies were found. "
-                "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
-                "only be usable via `pip install 'ray[default]'`. Please "
-                "update your install command.")
-            raise ImportError(warning_message)
+                "To use the dashboard please install Ray like so: `pip "
+                "install ray[default]`.")
+            if require_dashboard:
+                raise ImportError(warning_message)
+            else:
+                if log_once("dashboard_failed_import") and not os.getenv(
+                        "RAY_DISABLE_IMPORT_WARNING") == "1":
+                    warning_message += " To disable this message, set " \
+                                       "RAY_DISABLE_IMPORT_WARNING " \
+                                       "env var to '1'."
+                    warnings.warn(warning_message)
+                return None, None
 
         # Start the dashboard process.
         dashboard_dir = "new_dashboard"
@@ -1252,6 +1275,7 @@ def start_dashboard(require_dashboard,
 
 
 def start_gcs_server(redis_address,
+                     log_dir,
                      stdout_file=None,
                      stderr_file=None,
                      redis_password=None,
@@ -1263,6 +1287,7 @@ def start_gcs_server(redis_address,
     """Start a gcs server.
     Args:
         redis_address (str): The address that the Redis server is listening on.
+        log_dir (str): The path of the dir where log files are created.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1286,6 +1311,7 @@ def start_gcs_server(redis_address,
         GCS_SERVER_EXECUTABLE,
         f"--redis_address={gcs_ip_address}",
         f"--redis_port={gcs_port}",
+        f"--log_dir={log_dir}",
         f"--config_list={config_str}",
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
@@ -1325,6 +1351,7 @@ def start_raylet(redis_address,
                  redis_password=None,
                  metrics_agent_port=None,
                  metrics_export_port=None,
+                 dashboard_agent_listen_port=None,
                  use_valgrind=False,
                  use_profiler=False,
                  stdout_file=None,
@@ -1424,6 +1451,8 @@ def start_raylet(redis_address,
     include_java = has_java_command and ray_java_installed
     if include_java is True:
         java_worker_command = build_java_worker_command(
+            setup_worker_path,
+            worker_setup_hook,
             redis_address,
             plasma_store_name,
             raylet_name,
@@ -1436,8 +1465,9 @@ def start_raylet(redis_address,
 
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
-            "", redis_address, plasma_store_name, raylet_name, redis_password,
-            session_dir, log_dir, node_ip_address)
+            "", setup_worker_path, worker_setup_hook, redis_address,
+            plasma_store_name, raylet_name, redis_password, session_dir,
+            log_dir, node_ip_address)
     else:
         cpp_worker_command = []
 
@@ -1445,11 +1475,14 @@ def start_raylet(redis_address,
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if
     # needed.
+    python_executable = sys.executable
     start_worker_command = [
-        sys.executable,
+        python_executable,
         setup_worker_path,
         f"--worker-setup-hook={worker_setup_hook}",
         f"--session-dir={session_dir}",
+        f"--worker-entrypoint={python_executable}",
+        "--worker-language=python",
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1485,6 +1518,7 @@ def start_raylet(redis_address,
         f"--redis-address={redis_address}",
         f"--metrics-export-port={metrics_export_port}",
         f"--dashboard-agent-port={metrics_agent_port}",
+        f"--listen-port={dashboard_agent_listen_port}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}",
@@ -1519,6 +1553,7 @@ def start_raylet(redis_address,
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
+        f"--log_dir={log_dir}",
         f"--resource_dir={resource_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
@@ -1564,6 +1599,8 @@ def get_ray_jars_dir():
 
 
 def build_java_worker_command(
+        setup_worker_path,
+        worker_setup_hook,
         redis_address,
         plasma_store_name,
         raylet_name,
@@ -1605,7 +1642,12 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
+    command = [sys.executable, setup_worker_path]
+    command += [f"--worker-setup-hook={worker_setup_hook}"]
+    command += [f"--session-dir={session_dir}"]
+    command += ["--worker-entrypoint=java"]
+    command += ["--worker-language=java"]
+    command += ["-D{}={}".format(*pair) for pair in pairs]
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
@@ -1617,7 +1659,8 @@ def build_java_worker_command(
     return command
 
 
-def build_cpp_worker_command(cpp_worker_options, redis_address,
+def build_cpp_worker_command(cpp_worker_options, setup_worker_path,
+                             worker_setup_hook, redis_address,
                              plasma_store_name, raylet_name, redis_password,
                              session_dir, log_dir, node_ip_address):
     """This method assembles the command used to start a CPP worker.
@@ -1637,15 +1680,20 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
     """
 
     command = [
-        DEFAULT_WORKER_EXECUTABLE,
-        f"--ray-plasma-store-socket-name={plasma_store_name}",
-        f"--ray-raylet-socket-name={raylet_name}",
-        "--ray-node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--ray-address={redis_address}",
-        f"--ray-redis-password={redis_password}",
-        f"--ray-session-dir={session_dir}",
-        f"--ray-logs-dir={log_dir}",
-        f"--ray-node-ip-address={node_ip_address}",
+        sys.executable,
+        setup_worker_path,
+        f"--worker-setup-hook={worker_setup_hook}",
+        f"--session-dir={session_dir}",
+        f"--worker-entrypoint={DEFAULT_WORKER_EXECUTABLE}",
+        "--worker-language=cpp",
+        f"--ray_plasma_store_socket_name={plasma_store_name}",
+        f"--ray_raylet_socket_name={raylet_name}",
+        "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--ray_address={redis_address}",
+        f"--ray_redis_password={redis_password}",
+        f"--ray_session_dir={session_dir}",
+        f"--ray_logs_dir={log_dir}",
+        f"--ray_node_ip_address={node_ip_address}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 
@@ -1887,10 +1935,12 @@ def start_ray_client_server(redis_address,
     conda_shim_flag = (
         "--worker-setup-hook=" + ray_constants.DEFAULT_WORKER_SETUP_HOOK)
 
+    python_executable = sys.executable
     command = [
-        sys.executable,
+        python_executable,
         setup_worker_path,
         conda_shim_flag,  # These two args are to use the shim process.
+        f"--worker-entrypoint={python_executable}",
         "-m",
         "ray.util.client.server",
         "--redis-address=" + str(redis_address),

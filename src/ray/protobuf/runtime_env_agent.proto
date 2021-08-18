@@ -21,6 +21,8 @@ import "src/ray/protobuf/agent_manager.proto";
 message CreateRuntimeEnvRequest {
   // Runtime env description.
   string serialized_runtime_env = 1;
+  // Job id.
+  bytes job_id = 2;
 }
 
 message CreateRuntimeEnvReply {

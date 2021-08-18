@@ -86,6 +86,17 @@ message FunctionDescriptor {
   }
 }
 
+// Actor concurrency group is used to define a concurrent
+// unit to indicate how some methods are performed concurrently.
+message ConcurrencyGroup {
+  // The name of the method concurrency group.
+  string name = 1;
+  // The maximum concurrency of this group.
+  int32 max_concurrency = 2;
+  // Function descriptors of the actor methods that will run in this concurrency group.
+  repeated FunctionDescriptor function_descriptors = 3;
+}
+
 // This enum type is used as object's metadata to indicate the object's
 // creating task has failed because of a certain error.
 // TODO(hchen): We may want to make these errors more specific. E.g., we may
@@ -115,8 +126,10 @@ enum ErrorType {
   OBJECT_IN_PLASMA = 4;
   // Indicates that an object has been cancelled.
   TASK_CANCELLED = 5;
-  // Inidicates that creating the GCS service failed to create the actor.
+  // Indicates that the GCS service failed to create the actor.
   ACTOR_CREATION_FAILED = 6;
+  // Indicates that the runtime_env failed to be created.
+  RUNTIME_ENV_SETUP_FAILED = 7;
 }
 
 /// The task exception encapsulates all information about task
@@ -198,6 +211,8 @@ message TaskSpec {
   bytes debugger_breakpoint = 23;
   // Serialized JSON string of the parsed runtime environment dict for this task.
   string serialized_runtime_env = 24;
+  // The concurrency group name in which this task will be performed.
+  string concurrency_group_name = 25;
 }
 
 message Bundle {
@@ -293,7 +308,7 @@ message ActorCreationTaskSpec {
   // an actor creation task. If the list isn't empty, the options will be used to replace
   // the placeholder string `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER` in the worker command.
   repeated string dynamic_worker_options = 5;
-  // The max number of concurrent calls for direct call actors.
+  // The max number of concurrent calls for default concurrency group of this actor.
   int32 max_concurrency = 6;
   // Whether the actor is persistent.
   bool is_detached = 7;
@@ -307,6 +322,8 @@ message ActorCreationTaskSpec {
   string extension_data = 11;
   // Serialized bytes of the Handle to the actor that will be created by this task.
   bytes serialized_actor_handle = 12;
+  // The concurrency groups of this actor.
+  repeated ConcurrencyGroup concurrency_groups = 13;
 }
 
 // Task spec of an actor task.

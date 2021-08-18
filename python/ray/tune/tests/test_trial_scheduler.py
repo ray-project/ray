@@ -216,6 +216,7 @@ class EarlyStoppingSuite(unittest.TestCase):
         self._test_metrics(result2, "mean_loss", "min")
 
 
+# Only barebone impl for start/stop_trial. No internal state maintained.
 class _MockTrialExecutor(TrialExecutor):
     def start_trial(self, trial, checkpoint_obj=None, train=True):
         trial.logger_running = True
@@ -238,6 +239,30 @@ class _MockTrialExecutor(TrialExecutor):
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False
+
+    def debug_string(self):
+        return "This is a mock TrialExecutor."
+
+    def export_trial_if_needed(self):
+        return {}
+
+    def fetch_result(self):
+        return []
+
+    def get_next_available_trial(self):
+        return None
+
+    def get_next_failed_trial(self):
+        return None
+
+    def get_running_trials(self):
+        return []
+
+    def has_resources(self):
+        return False
+
+    def resource_string(self):
+        return "This is a mock resource_string."
 
 
 class _MockTrialRunner():
