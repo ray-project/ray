@@ -75,8 +75,8 @@ def test_actor_scheduling_latency(ray_start_cluster, args):
     # UpperActors create BottomActors.
     for actor in actor_list:
         ref_list.append(
-            actor.create.remote(int(
-                (actor_count - upper_count) / upper_count)))
+            actor.create.remote(
+                int((actor_count - upper_count) / upper_count)))
     for ref in ref_list:
         ret_list = ray.get(ref)
         for ret in ret_list:
