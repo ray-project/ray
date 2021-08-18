@@ -31,8 +31,7 @@ namespace rpc {
 #define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS)                  \
   std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                    \
       new ServerCallFactoryImpl<SERVICE, SERVICE##Handler, HANDLER##Request,    \
-                                HANDLER##Reply,                                 \
-                                decltype(&SERVICE##Handler::Handle##HANDLER)>(  \
+                                HANDLER##Reply>(                                \
           service_, &SERVICE::AsyncService::Request##HANDLER, service_handler_, \
           &SERVICE##Handler::Handle##HANDLER, cq, main_service_,                \
           #SERVICE ".grpc_server." #HANDLER, MAX_ACTIVE_RPCS));                 \
