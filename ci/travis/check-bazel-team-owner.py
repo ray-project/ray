@@ -1,4 +1,20 @@
-"Used to check bazel output for team's test owner tags"
+"""Used to check bazel output for team's test owner tags
+
+The bazel output looks like
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<query version="2">
+    <rule class="cc_test"
+          location="/Users/simonmo/Desktop/ray/ray/streaming/BUILD.bazel:312:8"
+          name="//streaming:streaming_util_tests"
+    >
+        <string name="name" value="streaming_util_tests"/>
+        <list name="tags">
+            <string value="team:ant-group"/>
+        </list>
+        <list name="deps">
+...
+
+"""
 import sys
 import xml.etree.ElementTree as ET
 
