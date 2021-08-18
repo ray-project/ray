@@ -126,6 +126,7 @@ class TaskSpecBuilder {
     message_->set_placement_group_capture_child_tasks(
         placement_group_capture_child_tasks);
     message_->set_debugger_breakpoint(debugger_breakpoint);
+    message_->set_depth(depth);
     message_->set_serialized_runtime_env(serialized_runtime_env);
     message_->set_concurrency_group_name(concurrency_group_name);
     for (const auto &env : override_environment_variables) {

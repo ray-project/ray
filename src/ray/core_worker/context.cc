@@ -71,6 +71,7 @@ struct WorkerThreadContext {
     SetCurrentTaskId(task_spec.TaskId());
     SetCurrentPlacementGroupId(task_spec.PlacementGroupBundleId().first);
     SetPlacementGroupCaptureChildTasks(task_spec.PlacementGroupCaptureChildTasks());
+    RAY_LOG(ERROR) << "Setting current task";
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);
   }
 
@@ -141,6 +142,14 @@ uint64_t WorkerContext::GetNextTaskIndex() {
 
 ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();
+}
+
+int64_t WorkerContext::GetTaskDepth() const {
+  auto task_spec = GetCurrentTask();
+  if (task_spec) {
+    return task_spec->GetDepth();
+  }
+  return 0;
 }
 
 const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id_; }

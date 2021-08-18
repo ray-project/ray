@@ -75,7 +75,7 @@ class WorkerLeaseInterface {
   /// \param disconnect_worker Whether the raylet should disconnect the worker.
   /// \return ray::Status
   virtual ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
-                                   bool disconnect_worker) = 0;
+                                   bool disconnect_worker, bool reuse_worker) = 0;
 
   /// Notify raylets to release unused workers.
   /// \param workers_in_use Workers currently in use.
@@ -372,7 +372,7 @@ class RayletClient : public RayletClientInterface {
 
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
-                           bool disconnect_worker) override;
+                           bool disconnect_worker, bool reuse_worker) override;
 
   /// Implements WorkerLeaseInterface.
   void ReleaseUnusedWorkers(

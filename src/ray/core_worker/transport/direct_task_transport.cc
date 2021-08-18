@@ -134,7 +134,8 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
 
 void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::WorkerAddress addr,
                                                  bool was_error,
-                                                 const SchedulingKey &scheduling_key) {
+                                                 const SchedulingKey &scheduling_key,
+                                                 bool reuse_worker) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
   auto &lease_entry = worker_to_lease_entry_[addr];
@@ -152,7 +153,7 @@ void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::WorkerAddress addr,
   }
 
   auto status =
-      lease_entry.lease_client->ReturnWorker(addr.port, addr.worker_id, was_error);
+    lease_entry.lease_client->ReturnWorker(addr.port, addr.worker_id, was_error, reuse_worker);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
   }
@@ -331,6 +332,8 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     return;
   }
 
+  RAY_LOG(ERROR) << "There's an idle worker!";
+
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &current_queue = scheduling_key_entry.task_queue;
   // Return the worker if there was an error executing the previous task,
@@ -342,7 +345,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
 
     // Return the worker only if there are no tasks in flight
     if (lease_entry.tasks_in_flight == 0) {
-      RAY_LOG(DEBUG)
+      RAY_LOG(ERROR)
           << "Number of tasks in flight == 0, calling StealTasksOrReturnWorker!";
       StealTasksOrReturnWorker(addr, was_error, scheduling_key, assigned_resources);
     }
@@ -604,25 +607,27 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           scheduling_key_entry.total_tasks_in_flight--;
 
           if (reply.worker_exiting()) {
-            RAY_LOG(DEBUG) << "Worker " << addr.worker_id
+            RAY_LOG(ERROR) << "Worker " << addr.worker_id
                            << " replied that it is exiting.";
             // The worker is draining and will shutdown after it is done. Don't return
             // it to the Raylet since that will kill it early.
-            worker_to_lease_entry_.erase(addr);
-            auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-            scheduling_key_entry.active_workers.erase(addr);
-            if (scheduling_key_entry.CanDelete()) {
-              // We can safely remove the entry keyed by scheduling_key from the
-              // scheduling_key_entries_ hashmap.
-              scheduling_key_entries_.erase(scheduling_key);
-            }
+            ReturnWorker(addr, false, scheduling_key, /*reuse_worker=*/false);
+            // worker_to_lease_entry_.erase(addr);
+            // auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+            // scheduling_key_entry.active_workers.erase(addr);
+            // if (scheduling_key_entry.CanDelete()) {
+            //   // We can safely remove the entry keyed by scheduling_key from the
+            //   // scheduling_key_entries_ hashmap.
+            //   scheduling_key_entries_.erase(scheduling_key);
+            // }
           } else if (reply.task_stolen()) {
+            RAY_LOG(ERROR) << "Task was stolen";
             // If the task was stolen, we push it to the thief worker & call OnWorkerIdle
             // in the StealTasks callback within StealTasksOrReturnWorker. So we don't
             // need to do anything here.
             return;
           } else if (!status.ok() || !is_actor_creation) {
-            RAY_LOG(DEBUG) << "Task failed with error: " << status;
+            RAY_LOG(ERROR) << "Task failed with error: " << status;
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr, scheduling_key,
                          /*error=*/!status.ok(), assigned_resources);

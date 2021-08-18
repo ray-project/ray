@@ -136,14 +136,20 @@ def test_many_fractional_resources(shutdown_only):
 def test_background_tasks_with_max_calls(shutdown_only):
     ray.init(num_cpus=2)
 
-    @ray.remote(num_cpus=0)
+    @ray.remote
     def g():
         time.sleep(.1)
         return 0
 
-    @ray.remote(num_cpus=0, max_calls=1, max_retries=0)
+    @ray.remote(max_calls=1, max_retries=0)
     def f():
-        return [g.remote()]
+        temp = [g.remote()]
+        # time.sleep(5)
+        return temp
+
+    temp = []
+    for _ in range(10):
+        temp.append(f.remote())
 
     nested = ray.get([f.remote() for _ in range(10)])
 
@@ -151,16 +157,16 @@ def test_background_tasks_with_max_calls(shutdown_only):
     # wait for g to finish before exiting.
     ray.get([x[0] for x in nested])
 
-    @ray.remote(num_cpus=0, max_calls=1, max_retries=0)
-    def f():
-        return os.getpid(), g.remote()
+    # @ray.remote(max_calls=1, max_retries=0)
+    # def f():
+    #     return os.getpid(), g.remote()
 
-    nested = ray.get([f.remote() for _ in range(10)])
-    while nested:
-        pid, g_id = nested.pop(0)
-        ray.get(g_id)
-        del g_id
-        wait_for_pid_to_exit(pid)
+    # nested = ray.get([f.remote() for _ in range(10)])
+    # while nested:
+    #     pid, g_id = nested.pop(0)
+    #     ray.get(g_id)
+    #     del g_id
+    #     wait_for_pid_to_exit(pid)
 
 
 def test_actor_killing(shutdown_only):

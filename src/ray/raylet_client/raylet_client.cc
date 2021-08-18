@@ -324,11 +324,12 @@ void raylet::RayletClient::RequestObjectSpillage(
 }
 
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
-                                          bool disconnect_worker) {
+                                          bool disconnect_worker, bool reuse_worker) {
   rpc::ReturnWorkerRequest request;
   request.set_worker_port(worker_port);
   request.set_worker_id(worker_id.Binary());
   request.set_disconnect_worker(disconnect_worker);
+  request.set_reuse_worker(reuse_worker);
   grpc_client_->ReturnWorker(
       request, [](const Status &status, const rpc::ReturnWorkerReply &reply) {
         if (!status.ok()) {

@@ -63,13 +63,10 @@ bool ClusterTaskManager::SchedulePendingTasks() {
   bool did_schedule = false;
   for (auto shapes_it = tasks_to_schedule_.begin();
        shapes_it != tasks_to_schedule_.end();) {
-    auto sched_cls = shapes_it->first;
     auto &work_queue = shapes_it->second;
-    auto max_running_tasks = MaxRunningTasksPerSchedulingClass(sched_cls);
     bool is_infeasible = false;
     for (auto work_it = work_queue.begin();
-         work_it != work_queue.end() &&
-         scheduling_backpressure_tracker_[sched_cls] < max_running_tasks;) {
+         work_it != work_queue.end();) {
       // Check every task in task_to_schedule queue to see
       // whether it can be scheduled. This avoids head-of-line
       // blocking where a task which cannot be scheduled because
@@ -101,7 +98,6 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       if (node_id_string == self_node_id_.Binary()) {
         // Warning: WaitForTaskArgsRequests must execute (do not let it short
         // circuit if did_schedule is true).
-        scheduling_backpressure_tracker_[sched_cls]++;
         bool task_scheduled = WaitForTaskArgsRequests(work);
         did_schedule = task_scheduled || did_schedule;
       } else {
@@ -278,8 +274,10 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
        shapes_it != tasks_to_dispatch_.end();) {
     auto &scheduling_class = shapes_it->first;
     auto &dispatch_queue = shapes_it->second;
+    auto max_running_tasks = MaxRunningTasksPerSchedulingClass(scheduling_class);
     bool is_infeasible = false;
-    for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
+    for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end() &&
+           num_running_tasks_by_sched_cls_[scheduling_class] < max_running_tasks;) {
       auto &work = *work_it;
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();
@@ -459,13 +457,18 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
 void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
                                       RayTask *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
+  if (leased_workers_.count(worker->WorkerId()) == 0) {
+    // TaskFinished has already been called on this worker.
+    return;
+  }
   *task = worker->GetAssignedTask();
   auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
-  scheduling_backpressure_tracker_[sched_cls]--;
+  num_running_tasks_by_sched_cls_[sched_cls]--;
   ReleaseTaskArgs(task->GetTaskSpecification().TaskId());
   if (worker->GetAllocatedInstances() != nullptr) {
     ReleaseWorkerResources(worker);
   }
+  ScheduleAndDispatchTasks();
 }
 
 bool ClusterTaskManager::PinTaskArgsIfMemoryAvailable(const TaskSpecification &spec,
@@ -974,6 +977,7 @@ void ClusterTaskManager::Dispatch(
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;
   RemoveFromBacklogTracker(task);
+  num_running_tasks_by_sched_cls_[task_spec.GetSchedulingClass()]++;
 
   // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;

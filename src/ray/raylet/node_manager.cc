@@ -1215,9 +1215,6 @@ void NodeManager::DisconnectClient(
   dependency_manager_.CancelGetRequest(worker->WorkerId());
   dependency_manager_.CancelWaitRequest(worker->WorkerId());
 
-  // Erase any lease metadata.
-  leased_workers_.erase(worker->WorkerId());
-
   if (creation_task_exception != nullptr) {
     RAY_LOG(INFO) << "Formatted creation task exception: "
                   << creation_task_exception->formatted_exception_string()
@@ -1269,6 +1266,9 @@ void NodeManager::DisconnectClient(
         RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
       }
     }
+
+    // Erase any lease metadata.
+    leased_workers_.erase(worker->WorkerId());
 
     // Remove the dead client from the pool and stop listening for messages.
     worker_pool_.DisconnectWorker(worker, disconnect_type);
@@ -1670,12 +1670,11 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
   auto worker_id = WorkerID::FromBinary(request.worker_id());
-  std::shared_ptr<WorkerInterface> worker = leased_workers_[worker_id];
+  auto it = leased_workers_.find(worker_id);
 
   Status status;
-  leased_workers_.erase(worker_id);
-
-  if (worker) {
+  if (it != leased_workers_.end()) {
+    auto worker = it->second;
     if (request.disconnect_worker()) {
       DisconnectClient(worker->Connection());
     } else {
@@ -1685,11 +1684,18 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
         HandleDirectCallTaskUnblocked(worker);
       }
       cluster_task_manager_->ReturnWorkerResources(worker);
-      HandleWorkerAvailable(worker);
+      // The worker may not be reusable (i.e. already exiting).
+      if (request.reuse_worker()) {
+        HandleWorkerAvailable(worker);
+      } else {
+        RayTask _unused;
+        cluster_task_manager_->TaskFinished(worker, &_unused);
+      }
     }
   } else {
     status = Status::Invalid("Returned worker does not exist any more");
   }
+  leased_workers_.erase(worker_id);
   send_reply_callback(status, nullptr, nullptr);
 }
 
@@ -1841,7 +1847,7 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   // std::shared_ptr<WorkerInterface> instead of refs.
   auto &worker = *worker_ptr;
   TaskID task_id = worker.GetAssignedTaskId();
-  RAY_LOG(DEBUG) << "Finished task " << task_id;
+  RAY_LOG(ERROR) << "Finished task " << task_id;
 
   RayTask task;
   cluster_task_manager_->TaskFinished(worker_ptr, &task);
