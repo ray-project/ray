@@ -23,47 +23,6 @@ using namespace ray;
 using namespace testing;
 
 namespace plasma {
-// namespace {
-// template <typename T>
-// T Random(T max = std::numeric_limits<T>::max()) {
-//   static absl::BitGen bitgen;
-//   return absl::Uniform(bitgen, 0, max);
-// }
-
-// Allocation CreateAllocation(Allocation alloc, int64_t size) {
-//   alloc.size = size;
-//   alloc.offset = Random<ptrdiff_t>();
-//   alloc.mmap_size = Random<int64_t>();
-//   return alloc;
-// }
-
-// const std::string Serialize(const Allocation &allocation) {
-//   return absl::StrFormat("%p/%d/%d/%d/%d/%d/%d", allocation.address, allocation.size,
-//                          allocation.fd.first, allocation.fd.second, allocation.offset,
-//                          allocation.device_num, allocation.mmap_size);
-// }
-
-// ObjectInfo CreateObjectInfo(ObjectID object_id, int64_t object_size) {
-//   ObjectInfo info;
-//   info.object_id = object_id;
-//   info.data_size = Random<int64_t>(object_size);
-//   info.metadata_size = object_size - info.data_size;
-//   info.owner_raylet_id = NodeID::FromRandom();
-//   info.owner_ip_address = "random_ip";
-//   info.owner_port = Random<int>();
-//   info.owner_worker_id = WorkerID::FromRandom();
-//   return info;
-// }
-
-// const ObjectID kId1 = ObjectID::FromRandom();
-// const ObjectID kId2 = []() {
-//   auto id = ObjectID::FromRandom();
-//   while (id == kId1) {
-//     id = ObjectID::FromRandom();
-//   }
-//   return id;
-// }();
-// }  // namespace
 
 class MockAllocator : public IAllocator {
  public:
@@ -287,7 +246,8 @@ TEST_F(ObjectStoreTest, SourceMetricsTest) {
       if (oids.size() < i) {
         oid = oids[i];
       } else {
-        // no op oid
+        // It is for testing there's no underflow.
+        // Delete will be no op in this case.
         oid = ObjectID::FromRandom();
       }
       store.DeleteObject(oid);
