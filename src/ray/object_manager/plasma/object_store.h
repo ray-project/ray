@@ -102,7 +102,58 @@ class ObjectStore : public IObjectStore {
   void GetDebugDump(std::stringstream &buffer) const override;
 
  private:
+  friend class ObjectStoreTest;
+  FRIEND_TEST(ObjectStoreTest, PassThroughTest);
+  FRIEND_TEST(ObjectStoreTest, SourceMetricsTest);
+
+  struct ObjectStoreMetrics {
+    /// A running total of the objects that have ever been created on this node.
+    int64_t num_bytes_created_total = 0;
+    /// Total number of objects allocated to objects that are created but not yet
+    /// sealed.
+    int64_t num_objects_unsealed = 0;
+    int64_t num_bytes_unsealed = 0;
+    /// Total number of objects created by core workers.
+    size_t num_objects_created_by_worker = 0;
+    size_t num_bytes_created_by_worker = 0;
+    /// Total number of objects created by object restoration.
+    size_t num_objects_restored = 0;
+    size_t num_bytes_restored = 0;
+    /// Total number of objects created by object pulling.
+    size_t num_objects_received = 0;
+    size_t num_bytes_received = 0;
+    /// Total number of objects that are created as an error object.
+    size_t num_objects_errored = 0;
+    size_t num_bytes_errored = 0;
+
+    bool operator==(const ObjectStoreMetrics &metrics) const {
+      return (num_objects_unsealed == metrics.num_objects_unsealed &&
+              num_bytes_unsealed == metrics.num_bytes_unsealed &&
+              num_objects_created_by_worker == metrics.num_objects_created_by_worker &&
+              num_bytes_created_by_worker == metrics.num_bytes_created_by_worker &&
+              num_objects_restored == metrics.num_objects_restored &&
+              num_bytes_restored == metrics.num_bytes_restored &&
+              num_objects_received == metrics.num_objects_received &&
+              num_bytes_received == metrics.num_bytes_received &&
+              num_objects_errored == metrics.num_objects_errored &&
+              num_bytes_errored == metrics.num_bytes_errored);
+    }
+  };
+
   LocalObject *GetMutableObject(const ObjectID &object_id);
+
+  /// Testing only
+  ObjectStoreMetrics GetMetrics();
+
+  /// Update metrics when object is newly created.
+  void MetricsUpdateOnObjectCreated(LocalObject *obj);
+
+  /// Update metrics when unsealed object is deleted.
+  /// e.g., when the object is sealed or unsealed object is deleted.
+  void MetricsUpdateOnObjectSealed(LocalObject *obj);
+
+  /// Update metrics when the object is deleted from the object table.
+  void MetricsUpdateOnObjectDeleted(LocalObject *obj);
 
   /// Allocator that allocates memory.
   IAllocator &allocator_;
@@ -110,14 +161,6 @@ class ObjectStore : public IObjectStore {
   /// Mapping from ObjectIDs to information about the object.
   absl::flat_hash_map<ObjectID, std::unique_ptr<LocalObject>> object_table_;
 
-  /// Total number of bytes allocated to objects that are created but not yet
-  /// sealed.
-  int64_t num_bytes_unsealed_ = 0;
-
-  /// Number of objects that are created but not sealed.
-  int64_t num_objects_unsealed_ = 0;
-
-  /// A running total of the objects that have ever been created on this node.
-  int64_t num_bytes_created_total_ = 0;
+  ObjectStoreMetrics object_store_metrics_;
 };
 }  // namespace plasma
