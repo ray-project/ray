@@ -63,51 +63,6 @@ def test_handle_in_endpoint(serve_instance):
     assert requests.get("http://127.0.0.1:8000/Endpoint2").text == "hello"
 
 
-def test_handle_http_args(serve_instance):
-    @serve.deployment
-    class Endpoint:
-        async def __call__(self, request):
-            return {
-                "args": dict(request.query_params),
-                "headers": dict(request.headers),
-                "method": request.method,
-                "json": await request.json()
-            }
-
-    Endpoint.deploy()
-
-    ground_truth = {
-        "args": {
-            "arg1": "1",
-            "arg2": "2"
-        },
-        "headers": {
-            "x-custom-header": "value"
-        },
-        "method": "POST",
-        "json": {
-            "json_key": "json_val"
-        }
-    }
-
-    resp_web = requests.post(
-        "http://127.0.0.1:8000/Endpoint/?arg1=1&arg2=2",
-        headers=ground_truth["headers"],
-        json=ground_truth["json"]).json()
-
-    handle = serve.get_handle("Endpoint")
-    resp_handle = ray.get(
-        handle.options(
-            http_method=ground_truth["method"],
-            http_headers=ground_truth["headers"]).remote(
-                ground_truth["json"], **ground_truth["args"]))
-
-    for resp in [resp_web, resp_handle]:
-        for field in ["args", "method", "json"]:
-            assert resp[field] == ground_truth[field]
-        resp["headers"]["x-custom-header"] == "value"
-
-
 def test_handle_inject_starlette_request(serve_instance):
     @serve.deployment(name="echo")
     def echo_request_type(request):
@@ -117,7 +72,7 @@ def test_handle_inject_starlette_request(serve_instance):
 
     @serve.deployment(name="wrapper")
     def wrapper_model(web_request):
-        handle = serve.get_handle("echo")
+        handle = echo_request_type.get_handle()
         return ray.get(handle.remote(web_request))
 
     wrapper_model.deploy()
@@ -172,24 +127,16 @@ def test_repeated_get_handle_cached(serve_instance):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("sync", [True, False])
-@pytest.mark.parametrize("serve_request", [True, False])
-async def test_args_kwargs(serve_instance, sync, serve_request):
+async def test_args_kwargs(sync):
     @serve.deployment
     async def f(*args, **kwargs):
-        if serve_request:
-            req = args[0]
-            assert await req.body() == "hi"
-            assert req.query_params["kwarg1"] == 1
-            assert req.query_params["kwarg2"] == "2"
-        else:
-            assert args[0] == "hi"
-            assert kwargs["kwarg1"] == 1
-            assert kwargs["kwarg2"] == "2"
+        assert args[0] == "hi"
+        assert kwargs["kwarg1"] == 1
+        assert kwargs["kwarg2"] == "2"
 
     f.deploy()
 
-    handle = serve.get_handle(
-        "f", sync=sync, _internal_use_serve_request=serve_request)
+    handle = f.get_handle(sync=sync)
 
     def call():
         return handle.remote("hi", kwarg1=1, kwarg2="2")

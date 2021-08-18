@@ -128,7 +128,7 @@ def test_connect(detached, ray_shutdown):
 
     connect_in_deployment.deploy()
     ray.get(connect_in_deployment.get_handle().remote())
-    assert "deployment-ception" in serve.serve.list_deployments()
+    assert "deployment-ception" in serve.list_deployments()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")

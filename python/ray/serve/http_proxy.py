@@ -2,7 +2,7 @@ import asyncio
 import socket
 import time
 import pickle
-from typing import List, Dict, Optional, Tuple
+from typing import Callable, List, Dict, Optional, Tuple
 
 import uvicorn
 import starlette.responses
@@ -113,7 +113,9 @@ class ServeStarletteEndpoint:
 class LongestPrefixRouter:
     """Router that performs longest prefix matches on incoming routes."""
 
-    def __init__(self):
+    def __init__(self, get_handle: Callable):
+        # Function to get a handle given a name. Used to mock for testing.
+        self._get_handle = get_handle
         # Routes sorted in order of decreasing length.
         self.sorted_routes: List[str] = list()
         # Endpoints and methods associated with the routes.
@@ -143,13 +145,7 @@ class LongestPrefixRouter:
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                self.handles[
-                    endpoint] = serve.api._get_global_client().get_handle(
-                        endpoint,
-                        sync=False,
-                        missing_ok=True,
-                        _internal_pickled_http_request=True,
-                    )
+                self.handles[endpoint] = self._get_handle(endpoint)
 
         # Clean up any handles that are no longer used.
         for endpoint in existing_handles:
@@ -221,7 +217,16 @@ class HTTPProxy:
         # router can be removed once we deprecate the old API.
         self.starlette_router = starlette.routing.Router(
             default=self._fallback_to_prefix_router)
-        self.prefix_router = LongestPrefixRouter()
+
+        def get_handle(name):
+            return serve.api._get_global_client().get_handle(
+                name,
+                sync=False,
+                missing_ok=True,
+                _internal_pickled_http_request=True,
+            )
+
+        self.prefix_router = LongestPrefixRouter(get_handle)
         self.long_poll_client = LongPollClient(
             ray.get_actor(controller_name), {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
