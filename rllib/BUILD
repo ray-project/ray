@@ -647,14 +647,13 @@ py_test(
     srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
 
-# TODO: enable once we have a MuJoCo-independent test case.
-## Dreamer
-#py_test(
-#    name = "test_dreamer",
-#    tags = ["trainers_dir"],
-#    size = "small",
-#    srcs = ["agents/dreamer/tests/test_dreamer.py"]
-#)
+# Dreamer
+py_test(
+    name = "test_dreamer",
+    tags = ["trainers_dir"],
+    size = "small",
+    srcs = ["agents/dreamer/tests/test_dreamer.py"]
+)
 
 # ES
 py_test(
