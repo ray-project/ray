@@ -91,7 +91,7 @@ py_test(
     name = "test_ray_client",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serverless"],
     deps = [":serve_lib"],
 )
 

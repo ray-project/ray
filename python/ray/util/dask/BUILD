@@ -16,7 +16,7 @@ py_test(
     size = "small",
     main = "test_dask_callback.py",
     srcs = ["tests/test_dask_callback.py"],
-    tags = ["team:core", "exclusive", "client"],
+    tags = ["team:serverless", "exclusive", "client"],
     deps = [":dask_lib"]
 )
 
@@ -33,7 +33,7 @@ py_test(
     size = "small",
     main = "test_dask_optimization.py",
     srcs = ["tests/test_dask_optimization.py"],
-    tags = ["team:core", "exclusive", "client"],
+    tags = ["team:serverless", "exclusive", "client"],
     deps = [":dask_lib"]
 )
 
@@ -50,7 +50,7 @@ py_test(
     size = "small",
     main = "test_dask_scheduler.py",
     srcs = ["tests/test_dask_scheduler.py"],
-    tags = ["team:core", "exclusive", "client"],
+    tags = ["team:serverless", "exclusive", "client"],
     deps = [":dask_lib"]
 )
 
@@ -72,7 +72,7 @@ py_test(
     size = "medium",
     main = "dask_ray_persist_example.py",
     srcs = ["examples/dask_ray_persist_example.py"],
-    tags = ["team:core", "exclusive", "client"],
+    tags = ["team:serverless", "exclusive", "client"],
     deps = [":dask_lib"],
 )
 
@@ -89,7 +89,7 @@ py_test(
     size = "medium",
     main = "dask_ray_scheduler_example.py",
     srcs = ["examples/dask_ray_scheduler_example.py"],
-    tags = ["team:core", "exclusive", "client"],
+    tags = ["team:serverless", "exclusive", "client"],
     deps = [":dask_lib"],
 )
 
@@ -107,7 +107,7 @@ py_test(
     size = "medium",
     main = "dask_ray_shuffle_optimization.py",
     srcs = ["examples/dask_ray_shuffle_optimization.py"],
-    tags = ["team:core", "exclusive", "client"],
+    tags = ["team:serverless", "exclusive", "client"],
     deps = [":dask_lib"],
 )
 
