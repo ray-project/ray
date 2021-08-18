@@ -89,8 +89,8 @@ if __name__ == "__main__":
     # pattern of compensation workflows.
     saga_result = book_all.options(catch_exceptions=True) \
         .step(car_req_id, hotel_req_id, flight_req_id)
-    print(saga_result.run())
 
     final_result = handle_errors.step(car_req_id, hotel_req_id, flight_req_id,
                                       saga_result)
-    print(final_result.run())
+    # TODO(ekl) this is failing due to a bug
+    # print(final_result.run())
