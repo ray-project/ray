@@ -1,4 +1,4 @@
-echo Main
+echo Mainprocess
 $Env:TOOLSET_JSON_PATH = "C:/Install/toolset/toolset-2019.json"
 echo $Env:TOOLSET_JSON_PATH
 Set-Service -Name wuauserv -StartupType Manual; Start-Service -Name wuauserv;
