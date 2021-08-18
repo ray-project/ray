@@ -1524,13 +1524,7 @@ def memory(address, redis_password, group_by, sort_by, units, no_format,
     type=str,
     default=ray_constants.REDIS_DEFAULT_PASSWORD,
     help="Connect to ray with redis_password.")
-@click.option(
-    "-v",
-    "--verbose",
-    is_flag=True,
-    default=False,
-    help="Show more detailed demands.")
-def status(address, redis_password, verbose):
+def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
@@ -1538,7 +1532,7 @@ def status(address, redis_password, verbose):
         address, redis_password)
     status = redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
     error = redis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
-    print(debug_status(status, error, verbose))
+    print(debug_status(status, error))
 
 
 @cli.command(hidden=True)

@@ -7,12 +7,13 @@ import json
 import os
 import re
 import threading
-from typing import Any, Dict, Optional, Tuple, List
+from typing import Any, Dict, Optional, Tuple, List, Union
 
 import ray
 import ray.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private import constants
+from ray.autoscaler._private.load_metrics import LoadMetricsSummary
 from ray.autoscaler._private.local.config import prepare_local
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
@@ -41,6 +42,8 @@ HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE = "Setting `max_workers` for node type"\
     "https://docs.ray.io/en/master/cluster/config.html"\
     "#cluster-configuration-node-max-workers\n"\
     "https://docs.ray.io/en/master/cluster/config.html#full-configuration"
+
+ResourceBundle = Dict[str, Union[int, float]]
 
 logger = logging.getLogger(__name__)
 
@@ -389,47 +392,6 @@ def hash_runtime_conf(file_mounts,
     return (_hash_cache[conf_str], file_mounts_contents_hash)
 
 
-def add_resources(dict1: Dict[str, float],
-                  dict2: Dict[str, float]) -> Dict[str, float]:
-    """Add the values in two dictionaries.
-
-    Returns:
-        dict: A new dictionary (inputs remain unmodified).
-    """
-    new_dict = dict1.copy()
-    for k, v in dict2.items():
-        new_dict[k] = v + new_dict.get(k, 0)
-    return new_dict
-
-
-def freq_of_dicts(dicts: List[Dict],
-                  serializer=lambda d: frozenset(d.items()),
-                  deserializer=dict):
-    """Count a list of dictionaries (or unhashable types).
-
-    This is somewhat annoying because mutable data structures aren't hashable,
-    and set/dict keys must be hashable.
-
-    Args:
-        dicts (List[D]): A list of dictionaries to be counted.
-        serializer (D -> S): A custom serailization function. The output type S
-            must be hashable. The default serializer converts a dictionary into
-            a frozenset of KV pairs.
-        deserializer (S -> U): A custom deserialization function. See the
-            serializer for information about type S. For dictionaries U := D.
-
-    Returns:
-        List[Tuple[U, int]]: Returns a list of tuples. Each entry in the list
-            is a tuple containing a unique entry from `dicts` and its
-            corresponding frequency count.
-    """
-    freqs = collections.Counter(map(lambda d: serializer(d), dicts))
-    as_list = []
-    for as_set, count in freqs.items():
-        as_list.append((deserializer(as_set), count))
-    return as_list
-
-
 def add_prefix(info_string, prefix):
     """Prefixes each line of info_string, except the first, by prefix."""
     lines = info_string.split("\n")
@@ -460,7 +422,7 @@ def parse_placement_group_resource_str(
 
     Returns:
         Tuple of (resource_name, placement_group_name). placement_group_name
-        could be None
+        could be None if its not a placement group resource.
     """
     result = PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN.match(
         placement_group_resource_str)
@@ -473,93 +435,91 @@ def parse_placement_group_resource_str(
     return (placement_group_resource_str, None)
 
 
-def get_usage_report(lm_summary, verbose=False) -> str:
+def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
+    # first collect resources used in placement groups
+    placement_group_resource_usage = collections.defaultdict(float)
+    for resource, (used, total) in lm_summary.usage.items():
+        (pg_resource_name,
+         pg_name) = parse_placement_group_resource_str(resource)
+        if pg_name:
+            placement_group_resource_usage[pg_resource_name] += used
+            continue
+
     usage_lines = []
     for resource, (used, total) in sorted(lm_summary.usage.items()):
         if "node:" in resource:
             continue  # Skip the auto-added per-node "node:<ip>" resource.
 
-        # Skip placement group related resource, in the form of
-        # {resource_name}_group_{bundle_id}_{group_name} or
-        # {resource_name}_group_{group_name};
-        (_,
-         placement_group_name) = parse_placement_group_resource_str(resource)
-        if placement_group_name and not verbose:
-            continue
+        (_, pg_name) = parse_placement_group_resource_str(resource)
+        if pg_name:
+            continue  # Skip resource used by placement groups
+
+        used_in_pg = placement_group_resource_usage[resource]
 
         line = f" {used}/{total} {resource}"
+        if used_in_pg != 0:
+            line = line + f" ({used_in_pg} reserved in placement groups)"
+
         if resource in ["memory", "object_store_memory"]:
             to_GiB = 1 / 2**30
             used *= to_GiB
             total *= to_GiB
+            used_in_pg *= to_GiB
             line = f" {used:.2f}/{total:.3f} GiB {resource}"
+            if used_in_pg != 0:
+                line = line + f" ({used_in_pg:.2f} GiB reserved" \
+                    + " in placement groups)"
         usage_lines.append(line)
     usage_report = "\n".join(usage_lines)
     return usage_report
 
 
-def format_resource_requirement(
-        resource_requirement: Dict[str, float]) -> List[str]:
-    demand_lines = []
-    for resource, required in sorted(resource_requirement.items()):
-        if resource in ["memory", "object_store_memory"]:
-            to_GiB = 1 / 2**30
-            required *= to_GiB
-            demand_lines.append(f"  {required:.3f} GiB {resource}")
-        else:
-            demand_lines.append(f"  {required:.1f} {resource}")
-    return demand_lines
+def format_resource_demand_summary(
+        resource_demand: List[Tuple[ResourceBundle, int]]) -> List[str]:
+    def filter_placement_group_from_bundle(bundle: ResourceBundle):
+        """filter placement group from bundle resource name. returns
+        filtered bundle and a bool indicate if the bundle is using
+        placement group.
 
-
-def format_resource_demand_summary(resource_demand: List[Any]) -> List[str]:
-    resource_requirement = collections.defaultdict(float)
-    sum_count = 0
-    for bundle, count in resource_demand:
-        sum_count += count
+        Example: {"CPU_group_groupid": 1} returns {"CPU": 1}, True
+                 {"memory": 1} return {"memory": 1}, False
+        """
+        using_placement_group = False
+        result_bundle = dict()
         for pg_resource_str, resource_count in bundle.items():
             (resource_name,
-             _) = parse_placement_group_resource_str(pg_resource_str)
-            resource_requirement[resource_name] += resource_count * count
-    demand_lines = [f" {sum_count} pending tasks/actors:"]
-    demand_lines.extend(format_resource_requirement(resource_requirement))
-    return demand_lines
+             pg_name) = parse_placement_group_resource_str(pg_resource_str)
+            result_bundle[resource_name] = resource_count
+            if pg_name:
+                using_placement_group = True
+        return (result_bundle, using_placement_group)
 
+    bundle_demand = collections.defaultdict(int)
+    pg_bundle_demand = collections.defaultdict(int)
 
-def format_pg_demand_summary(pg_demand: List[Any]) -> List[str]:
-    resource_requirement = collections.defaultdict(float)
-    sum_count = 0
-    for pg, count in pg_demand:
-        sum_count += count
-        for bundle, bundle_count in pg["bundles"]:
-            for resource_name, resource_count in bundle.items():
-                resource_requirement[
-                    resource_name] += resource_count * count * bundle_count
-    demand_lines = [f" {sum_count} pending placement groups:"]
-    demand_lines.extend(format_resource_requirement(resource_requirement))
-    return demand_lines
+    for bundle, count in resource_demand:
+        (pg_filtered_bundle,
+         using_placement_group) = filter_placement_group_from_bundle(bundle)
 
-
-def format_request_resources_summary(
-        request_resources: List[Any]) -> List[str]:
-    resource_requirement = collections.defaultdict(float)
-    sum_count = 0
-    for bundle, count in request_resources:
-        sum_count += count
-        for resource_name, resource_count in bundle.items():
-            resource_requirement[resource_name] += resource_count * count
-    demand_lines = [f" {sum_count} pending resource requirements:"]
-    demand_lines.extend(format_resource_requirement(resource_requirement))
-    return demand_lines
-
-
-def get_demand_report(lm_summary, verbose):
-    if not verbose:
-        return get_demand_report_summary(lm_summary)
+        bundle_demand[tuple(sorted(pg_filtered_bundle.items()))] += count
+        if using_placement_group:
+            pg_bundle_demand[tuple(sorted(
+                pg_filtered_bundle.items()))] += count
 
     demand_lines = []
-    for bundle, count in lm_summary.resource_demand:
-        line = f" {bundle}: {count}+ pending tasks/actors"
+    for bundle, count in bundle_demand.items():
+        line = f" {dict(bundle)}: {count}+ pending tasks/actors"
+        if bundle in pg_bundle_demand:
+            line += f" ({pg_bundle_demand[bundle]}+ using placement groups)"
         demand_lines.append(line)
+    return demand_lines
+
+
+def get_demand_report(lm_summary: LoadMetricsSummary):
+    demand_lines = []
+    if lm_summary.resource_demand:
+        demand_lines.extend(
+            format_resource_demand_summary(lm_summary.resource_demand))
     for entry in lm_summary.pg_demand:
         pg, count = entry
         pg_str = format_pg(pg)
@@ -575,27 +535,7 @@ def get_demand_report(lm_summary, verbose):
     return demand_report
 
 
-def get_demand_report_summary(lm_summary: Any) -> str:
-    demand_lines = []
-
-    if lm_summary.resource_demand:
-        demand_lines.extend(
-            format_resource_demand_summary(lm_summary.resource_demand))
-    if lm_summary.pg_demand:
-        demand_lines.extend(format_pg_demand_summary(lm_summary.pg_demand))
-    if lm_summary.request_demand:
-        demand_lines.extend(
-            format_request_resources_summary(lm_summary.request_demand))
-
-    if not demand_lines:
-        return " (no resource demands)"
-    return "\n".join(demand_lines)
-
-
-def format_info_string(lm_summary,
-                       autoscaler_summary,
-                       time=None,
-                       verbose=False):
+def format_info_string(lm_summary, autoscaler_summary, time=None):
     if time is None:
         time = datetime.now()
     header = "=" * 8 + f" Autoscaler status: {time} " + "=" * 8
@@ -631,8 +571,8 @@ def format_info_string(lm_summary,
     else:
         failure_report += " (no failures)"
 
-    usage_report = get_usage_report(lm_summary, verbose)
-    demand_report = get_demand_report(lm_summary, verbose)
+    usage_report = get_usage_report(lm_summary)
+    demand_report = get_demand_report(lm_summary)
 
     formatted_output = f"""{header}
 Node status
@@ -654,7 +594,7 @@ Demands:
     return formatted_output
 
 
-def format_info_string_no_node_types(lm_summary, time=None, verbose=False):
+def format_info_string_no_node_types(lm_summary, time=None):
     if time is None:
         time = datetime.now()
     header = "=" * 8 + f" Cluster status: {time} " + "=" * 8
@@ -666,8 +606,8 @@ def format_info_string_no_node_types(lm_summary, time=None, verbose=False):
         node_lines.append(line)
     node_report = "\n".join(node_lines)
 
-    usage_report = get_usage_report(lm_summary, verbose)
-    demand_report = get_demand_report(lm_summary, verbose)
+    usage_report = get_usage_report(lm_summary)
+    demand_report = get_demand_report(lm_summary)
 
     formatted_output = f"""{header}
 Node status
