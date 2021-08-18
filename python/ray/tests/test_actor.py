@@ -866,6 +866,23 @@ def test_get_non_existing_named_actor(ray_start_regular_shared):
         _ = ray.get_actor("non_existing_actor")
 
 
+# https://github.com/ray-project/ray/issues/17843
+def test_actor_namespace(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def f(self):
+            return "ok"
+
+    a = Actor.options(name="foo", namespace="f1").remote()
+
+    with pytest.raises(ValueError):
+        ray.get_actor(name="foo", namespace="f2")
+
+    a1 = ray.get_actor(name="foo", namespace="f1")
+    assert ray.get(a1.f.remote()) == "ok"
+    del a
+
+
 def test_named_actor_cache(ray_start_regular_shared):
     """Verify that named actor cache works well."""
 
