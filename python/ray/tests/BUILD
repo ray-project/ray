@@ -330,3 +330,17 @@ py_test_module_list(
   tags = ["exclusive", "debug_tests", "team:serve"],
   deps = ["//:ray_lib"],
 )
+
+py_test_module_list(
+  files = [
+    "test_object_spilling.py",
+    "test_object_spilling_2.py",
+    "test_scheduling.py",
+    "test_array.py"
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  name_suffix = "_asan",
+  tags = ["exclusive", "asan_tests"],
+  deps = ["//:ray_lib"],
+)
