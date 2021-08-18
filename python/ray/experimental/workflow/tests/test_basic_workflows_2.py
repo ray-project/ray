@@ -83,6 +83,55 @@ def test_get_output_2(workflow_start_regular, tmp_path):
     assert ray.get([obj, obj2]) == [0, 0]
 
 
+def test_get_named_step_output(workflow_start_regular, tmp_path):
+    @workflow.step
+    def double(v, lock=None):
+        if lock is not None:
+            with FileLock(lock_path):
+                return 2 * v
+        else:
+            return 2 * v
+
+    # Get the result from named step after workflow finished
+    assert 4 == double.options(step_name="outer").step(
+        double.options(step_name="inner").step(1)).run("double")
+    assert ray.get(workflow.get_output("double", "inner")) == 2
+    assert ray.get(workflow.get_output("double", "outer")) == 4
+
+    # Get the result from named step after workflow before it's finished
+    lock_path = str(tmp_path / "lock")
+    lock = FileLock(lock_path)
+    lock.acquire()
+    output = double.options(step_name="outer").step(
+        double.options(step_name="inner").step(1, lock_path),
+        lock_path).run_async("double-2")
+
+    inner = workflow.get_output("double-2", "inner")
+    outer = workflow.get_output("double-2", "outer")
+
+    @ray.remote
+    def wait(obj_ref):
+        return ray.get(obj_ref[0])
+
+    ready, waiting = ray.wait(
+        [wait.remote([output]),
+         wait.remote([inner]),
+         wait.remote([outer])],
+        timeout=1)
+    assert 0 == len(ready)
+    assert 3 == len(waiting)
+
+    lock.release()
+    assert 4 == ray.get(output)
+    assert 2 == ray.get(inner)
+    assert 4 == ray.get(outer)
+
+    inner = workflow.get_output("double-2", "inner")
+    outer = workflow.get_output("double-2", "outer")
+    assert 2 == ray.get(inner)
+    assert 4 == ray.get(outer)
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
