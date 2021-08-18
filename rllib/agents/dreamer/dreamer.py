@@ -127,13 +127,9 @@ class EpisodicBuffer(object):
                 continue
             available = episode.count - self.length
             index = int(random.randint(0, available))
-            episodes_buffer.append(episode.slice(index, index + self.length))
+            episodes_buffer.append(episode[index:index + self.length])
 
-        batch = {}
-        for k in episodes_buffer[0].keys():
-            batch[k] = np.stack([e[k] for e in episodes_buffer], axis=0)
-
-        return SampleBatch(batch)
+        return SampleBatch.concat_samples(episodes_buffer)
 
 
 def total_sampled_timesteps(worker):
@@ -151,12 +147,12 @@ class DreamerIteration:
 
     def __call__(self, samples):
 
-        # Dreamer Training Loop
+        # Dreamer training loop.
         for n in range(self.dreamer_train_iters):
-            print(n)
+            print(f"sub-iteration={n}/{self.dreamer_train_iters}")
             batch = self.episode_buffer.sample(self.batch_size)
-            if n == self.dreamer_train_iters - 1:
-                batch["log_gif"] = True
+            # if n == self.dreamer_train_iters - 1:
+            #     batch["log_gif"] = True
             fetches = self.worker.learn_on_batch(batch)
 
         # Custom Logging
@@ -189,7 +185,7 @@ class DreamerIteration:
 
 
 def execution_plan(workers, config):
-    # Special Replay Buffer for Dreamer agent
+    # Special replay buffer for Dreamer agent.
     episode_buffer = EpisodicBuffer(length=config["batch_length"])
 
     local_worker = workers.local_worker()

@@ -181,7 +181,7 @@ def dreamer_loss(policy, model, dist_class, train_batch):
 
 def build_dreamer_model(policy, obs_space, action_space, config):
 
-    policy.model = ModelCatalog.get_model_v2(
+    model = ModelCatalog.get_model_v2(
         obs_space,
         action_space,
         1,
@@ -189,9 +189,9 @@ def build_dreamer_model(policy, obs_space, action_space, config):
         name="DreamerModel",
         framework="torch")
 
-    policy.model_variables = policy.model.variables()
+    policy.model_variables = model.variables()
 
-    return policy.model
+    return model
 
 
 def action_sampler_fn(policy, model, input_dict, state, explore, timestep):
@@ -251,10 +251,11 @@ def preprocess_episode(
     """Batch format should be in the form of (s_t, a_(t-1), r_(t-1))
     When t=0, the resetted obs is paired with action and reward of 0.
     """
-    obs = sample_batch["obs"]
-    new_obs = sample_batch["new_obs"]
-    action = sample_batch["actions"]
-    reward = sample_batch["rewards"]
+    obs = sample_batch[SampleBatch.OBS]
+    new_obs = sample_batch[SampleBatch.NEXT_OBS]
+    action = sample_batch[SampleBatch.ACTIONS]
+    reward = sample_batch[SampleBatch.REWARDS]
+    eps_ids = sample_batch[SampleBatch.EPS_ID]
 
     act_shape = action.shape
     act_reset = np.array([0.0] * act_shape[-1])[None]
@@ -264,11 +265,13 @@ def preprocess_episode(
     batch_obs = np.concatenate([obs, obs_end], axis=0)
     batch_action = np.concatenate([act_reset, action], axis=0)
     batch_rew = np.concatenate([rew_reset, reward], axis=0)
+    batch_eps_ids = np.concatenate([eps_ids, eps_ids[-1:]], axis=0)
 
     new_batch = {
-        "obs": batch_obs,
-        "rewards": batch_rew,
-        "actions": batch_action
+        SampleBatch.OBS: batch_obs,
+        SampleBatch.REWARDS: batch_rew,
+        SampleBatch.ACTIONS: batch_action,
+        SampleBatch.EPS_ID: batch_eps_ids,
     }
     return SampleBatch(new_batch)
 

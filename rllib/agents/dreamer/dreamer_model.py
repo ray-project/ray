@@ -487,7 +487,7 @@ class DreamerModel(TorchModelV2, nn.Module):
         and policy to obtain action.
         """
         if state is None:
-            self.initial_state()
+            self.state = self.get_initial_state(batch_size=obs.shape[0])
         else:
             self.state = state
         post = self.state[:4]
