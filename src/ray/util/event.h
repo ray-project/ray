@@ -122,15 +122,23 @@ class RayEventContext final {
  public:
   static RayEventContext &Instance();
 
+  static RayEventContext &OriginContext();
+
   void SetEventContext(rpc::Event_SourceType source_type,
                        const std::unordered_map<std::string, std::string> &custom_fields =
                            std::unordered_map<std::string, std::string>());
 
-  void SetCustomFields(const std::string &key, const std::string &value);
+  void SetCustomField(const std::string &key, const std::string &value);
 
   void SetCustomFields(const std::unordered_map<std::string, std::string> &custom_fields);
 
+  // Only for test, isn't thread-safe with SetEventContext.
   void ResetEventContext();
+
+  inline void SetSourceType(rpc::Event_SourceType source_type) {
+    source_type_ = source_type;
+    initialized_ = true;
+  }
 
   inline const rpc::Event_SourceType &GetSourceType() const { return source_type_; }
 
@@ -141,6 +149,8 @@ class RayEventContext final {
   inline const std::unordered_map<std::string, std::string> &GetCustomFields() const {
     return custom_fields_;
   }
+
+  inline bool GetInitialzed() const { return initialized_; }
 
  private:
   RayEventContext() {}
@@ -154,8 +164,13 @@ class RayEventContext final {
   std::string source_hostname_ = boost::asio::ip::host_name();
   int32_t source_pid_ = getpid();
   std::unordered_map<std::string, std::string> custom_fields_;
+  bool initialized_ = false;
 
   static thread_local std::unique_ptr<RayEventContext> context_;
+
+  static std::unique_ptr<RayEventContext> first_instance_;
+  static std::atomic<bool> first_instance_finished_setting_;
+  static std::atomic<int> first_instance_started_setting_;
 };
 
 // when the RayEvent is deconstructed, the context information is obtained from the

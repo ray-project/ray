@@ -148,6 +148,12 @@ void EventManager::ClearReporters() { reporter_map_.clear(); }
 ///
 thread_local std::unique_ptr<RayEventContext> RayEventContext::context_ = nullptr;
 
+std::unique_ptr<RayEventContext> RayEventContext::first_instance_ = nullptr;
+
+std::atomic<int> RayEventContext::first_instance_started_setting_(0);
+
+std::atomic<bool> RayEventContext::first_instance_finished_setting_(false);
+
 RayEventContext &RayEventContext::Instance() {
   if (context_ == nullptr) {
     context_ = std::unique_ptr<RayEventContext>(new RayEventContext());
@@ -155,19 +161,38 @@ RayEventContext &RayEventContext::Instance() {
   return *context_;
 }
 
+RayEventContext &RayEventContext::OriginContext() {
+  if (first_instance_finished_setting_ == false) {
+    static RayEventContext tmp_instance_;
+    return tmp_instance_;
+  }
+  return *first_instance_;
+}
+
 void RayEventContext::SetEventContext(
     rpc::Event_SourceType source_type,
     const std::unordered_map<std::string, std::string> &custom_fields) {
   source_type_ = source_type;
   custom_fields_ = custom_fields;
+
+  initialized_ = true;
+  if (!first_instance_started_setting_.fetch_or(1)) {
+    first_instance_ = std::unique_ptr<RayEventContext>(new RayEventContext());
+    first_instance_->SetSourceType(source_type);
+    first_instance_->SetCustomFields(custom_fields);
+    first_instance_finished_setting_ = true;
+  }
 }
 
 void RayEventContext::ResetEventContext() {
   source_type_ = rpc::Event_SourceType::Event_SourceType_COMMON;
   custom_fields_.clear();
+  initialized_ = false;
+  first_instance_started_setting_ = 0;
+  first_instance_finished_setting_ = false;
 }
 
-void RayEventContext::SetCustomFields(const std::string &key, const std::string &value) {
+void RayEventContext::SetCustomField(const std::string &key, const std::string &value) {
   custom_fields_[key] = value;
 }
 
@@ -196,22 +221,26 @@ void RayEvent::SendMessage(const std::string &message) {
     return;
   }
 
+  const RayEventContext &context = RayEventContext::Instance().GetInitialzed()
+                                       ? RayEventContext::Instance()
+                                       : RayEventContext::OriginContext();
+
   rpc::Event event;
 
   std::string event_id_buffer = std::string(18, ' ');
   FillRandom(&event_id_buffer);
   event.set_event_id(StringToHex(event_id_buffer));
 
-  event.set_source_type(RayEventContext::Instance().GetSourceType());
-  event.set_source_hostname(RayEventContext::Instance().GetSourceHostname());
-  event.set_source_pid(RayEventContext::Instance().GetSourcePid());
+  event.set_source_type(context.GetSourceType());
+  event.set_source_hostname(context.GetSourceHostname());
+  event.set_source_pid(context.GetSourcePid());
 
   event.set_severity(severity_);
   event.set_label(label_);
   event.set_message(message);
   event.set_timestamp(current_sys_time_us());
 
-  auto mp = RayEventContext::Instance().GetCustomFields();
+  auto mp = context.GetCustomFields();
   for (const auto &pair : mp) {
     custom_fields_[pair.first] = pair.second;
   }
