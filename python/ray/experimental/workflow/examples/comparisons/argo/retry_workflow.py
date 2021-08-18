@@ -1,4 +1,4 @@
-from typing import Any, Tuple
+from typing import Any, Tuple, Optional
 
 from ray import workflow
 
@@ -18,7 +18,7 @@ def custom_retry_strategy(func: Any, num_retries: int, delay_s: int) -> str:
     import time
 
     @workflow.step
-    def handle_result(res: Tuple[str, Exception]) -> str:
+    def handle_result(res: Tuple[Optional[str], Optional[Exception]]) -> str:
         result, error = res
         if result:
             return res

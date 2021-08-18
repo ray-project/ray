@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Optional
 
 from ray import workflow
 
@@ -24,7 +24,7 @@ def send_email(result: str) -> None:
 
 
 @workflow.step
-def exit_handler(res: Tuple[str, Exception]) -> None:
+def exit_handler(res: Tuple[Optional[str], Optional[Exception]]) -> None:
     result, error = res
     email = send_email.step("Raw result: {}, {}".format(result, error))
     if error:
