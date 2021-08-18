@@ -261,7 +261,7 @@ def fill_node_type_min_max_workers(config):
     """Sets default per-node max workers to global max_workers.
     This equivalent to setting the default per-node max workers to infinity,
     with the only upper constraint coming from the global max_workers.
-    Sets default per-node max workers to zero.
+    Sets default per-node min workers to zero.
     Also sets default max_workers for the head node to zero.
     """
     assert "max_workers" in config, "Global max workers should be set."
@@ -270,10 +270,15 @@ def fill_node_type_min_max_workers(config):
         node_type_data = node_types[node_type_name]
 
         node_type_data.setdefault("min_workers", 0)
-        if node_type_name == config["head_node_type"]:
-            node_type_data.setdefault("max_workers", 0)
-        else:
-            node_type_data.setdefault("max_workers", config["max_workers"])
+        if "max_workers" not in node_type_data:
+            if node_type_name == config["head_node_type"]:
+                logger.info("setting max workers for head node to 0")
+                node_type_data.setdefault("max_workers", 0)
+            else:
+                global_max_workers = config["max_workers"]
+                logger.info(f"setting max workers for {node_type_name} to "
+                            "{global_max_workers}")
+                node_type_data.setdefault("max_workers", global_max_workers)
 
 
 def with_head_node_ip(cmds, head_ip=None):
