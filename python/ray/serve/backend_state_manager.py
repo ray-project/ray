@@ -128,6 +128,19 @@ class ActorReplicaWrapper:
             backend_info.backend_config.user_config)
 
     def check_ready(self) -> ReplicaState:
+        """
+        Check if current replica has started by making ray API calls on relevant
+        actor / object ref.
+
+        Returns:
+            state (ReplicaState):
+                STARTING_OR_UPDATING:
+                    - replica reconfigure() haven't returned.
+                FAILED_TO_START:
+                    - replica __init__() failed.
+                RUNNING:
+                    - replica __init__() and reconfigure() succeeded.
+        """
         ready, _ = ray.wait([self._ready_obj_ref], timeout=0)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
@@ -989,10 +1002,11 @@ class BackendStateManager:
         Returns:
             completed_goals (List[GoalId]): List of goal_ids successfully
                 completed in this cycle
-            failed_goals (List[GoalId]):List of goal_ids failed in this cycle
+            failed_to_start_goals (List[GoalId]):List of goal_ids failed to
+                start in this cycle
         """
         completed_goals = []
-        failed_goals = []
+        failed_to_start_goals = []
         deleted_backends = []
         for backend_tag in self._replicas:
             target_replica_count = self._target_replicas.get(backend_tag, 0)
@@ -1040,7 +1054,7 @@ class BackendStateManager:
             elif len(failed_to_start_replica) == target_replica_count:
                 # Reconfigure action failed as all replicas failed to start
                 # without any running instance.
-                failed_goals.append(self._backend_goals.pop(backend_tag, None))
+                failed_to_start_goals.append(self._backend_goals.pop(backend_tag, None))
                 # TODO: (jiaodong) Determine if we should delete backend or
                 # roll back to previous version
 
@@ -1051,18 +1065,25 @@ class BackendStateManager:
             del self._target_versions[backend_tag]
 
         return [goal for goal in completed_goals
-                if goal], [goal for goal in failed_goals if goal]
+                if goal], [goal for goal in failed_to_start_goals if goal]
 
     def update(self) -> bool:
         """Updates the state of all running replicas to match the goal state.
         """
         self._scale_all_backends()
 
-        complete_goal_ids, failed_goal_ids = self._check_completed_goals()
+        complete_goal_ids, failed_to_start_goal_ids = self._check_completed_goals()
         for goal_id in complete_goal_ids:
             self._goal_manager.complete_goal(goal_id)
-        for goal_id in failed_goal_ids:
-            self._goal_manager.complete_goal(goal_id)
+        for goal_id in failed_to_start_goal_ids:
+            self._goal_manager.complete_goal(
+                goal_id,
+                # TODO:(jiaodong) Do we want to surface original constructor
+                # exception from other actor instead ?
+                RuntimeError(
+                    f"Deployment with goal_id {goal_id} "
+                    f"failed to start.")
+            )
 
         transitioned_backend_tags = set()
         for backend_tag, replicas in self._replicas.items():
