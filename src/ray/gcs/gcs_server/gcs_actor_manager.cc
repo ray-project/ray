@@ -240,7 +240,8 @@ void GcsActorManager::HandleGetNamedActorInfo(
     rpc::SendReplyCallback send_reply_callback) {
   const std::string &name = request.name();
   const std::string &ray_namespace = request.ray_namespace();
-  RAY_LOG(DEBUG) << "Getting actor info, name = " << name;
+  RAY_LOG(DEBUG) << "Getting actor info, name = " << name << " , namespace = "
+                 << ray_namespace;
 
   // Try to look up the actor ID for the named actor.
   ActorID actor_id = GetActorIDByName(name, ray_namespace);
