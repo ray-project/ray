@@ -37,8 +37,6 @@ class RayIntentionalSystemExitException : public RayException {
   RayIntentionalSystemExitException(const std::string &msg) : RayException(msg){};
 };
 
-std::string GetFullName(bool global, const std::string &name);
-
 class AbstractRayRuntime : public RayRuntime {
  public:
   virtual ~AbstractRayRuntime(){};

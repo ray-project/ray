@@ -200,14 +200,6 @@ void AbstractRayRuntime::RemoveLocalReference(const std::string &id) {
   }
 }
 
-std::string GetFullName(bool global, const std::string &name) {
-  if (name.empty()) {
-    return "";
-  }
-  return global ? name
-                : CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" + name;
-}
-
 /// TODO(qicosmos): Now only support global name, will support the name of a current job.
 std::string AbstractRayRuntime::GetActorId(bool global, const std::string &actor_name) {
   auto actor_id = task_submitter_->GetActor(global, actor_name);

@@ -108,12 +108,18 @@ ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation,
   return Submit(invocation, {});
 }
 
+std::string LocalModeTaskSubmitter::GetFullName(bool global, const std::string &name) {
+  if (name.empty()) {
+    return "";
+  }
+  return global ? name : local_mode_ray_tuntime_.GetCurrentJobID().Hex() + "-" + name;
+}
+
 ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation,
                                             const ActorCreationOptions &create_options) {
   Submit(invocation, create_options);
   auto full_actor_name = GetFullName(create_options.global, create_options.name);
-
-  {
+  if (!full_actor_name.empty()) {
     absl::MutexLock lock(&actor_contexts_mutex_);
     named_actors_.emplace(std::move(full_actor_name), invocation.actor_id);
   }

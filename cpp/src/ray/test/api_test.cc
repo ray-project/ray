@@ -203,6 +203,36 @@ TEST(RayApiTest, ActorTest) {
   EXPECT_EQ(return5, 6);
 }
 
+TEST(RayApiTest, GetActorTest) {
+  ray::ActorHandle<Counter> actor =
+      ray::Actor(Counter::FactoryCreate).SetName("named_actor").Remote();
+  auto named_actor_obj = actor.Task(&Counter::Add).Remote(1);
+  EXPECT_EQ(1, *named_actor_obj.Get());
+
+  auto named_actor_handle_optional = ray::GetActor<Counter>("named_actor");
+  EXPECT_TRUE(named_actor_handle_optional);
+  auto &named_actor_handle = *named_actor_handle_optional;
+  auto named_actor_obj1 = named_actor_handle.Task(&Counter::Plus1).Remote(1);
+  EXPECT_EQ(2, *named_actor_obj1.Get());
+  EXPECT_FALSE(ray::GetActor<Counter>("not_exist_actor"));
+}
+
+TEST(RayApiTest, GetGlobalActorTest) {
+  ray::ActorHandle<Counter> actor = ray::Actor(Counter::FactoryCreate)
+                                        .SetMaxRestarts(1)
+                                        .SetGlobalName("named_actor")
+                                        .Remote();
+  auto named_actor_obj = actor.Task(&Counter::Add).Remote(1);
+  EXPECT_EQ(1, *named_actor_obj.Get());
+
+  auto named_actor_handle_optional = ray::GetGlobalActor<Counter>("named_actor");
+  EXPECT_TRUE(named_actor_handle_optional);
+  auto &named_actor_handle = *named_actor_handle_optional;
+  auto named_actor_obj1 = named_actor_handle.Task(&Counter::Plus1).Remote(1);
+  EXPECT_EQ(2, *named_actor_obj1.Get());
+  EXPECT_FALSE(ray::GetGlobalActor<Counter>("not_exist_actor"));
+}
+
 TEST(RayApiTest, CompareWithFuture) {
   // future from a packaged_task
   std::packaged_task<int(int)> task(Plus1);

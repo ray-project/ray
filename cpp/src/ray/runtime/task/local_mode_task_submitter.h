@@ -41,6 +41,9 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
   ActorID GetActor(bool global, const std::string &actor_name);
 
  private:
+  ObjectID Submit(InvocationSpec &invocation, const ActorCreationOptions &options);
+  std::string GetFullName(bool global, const std::string &name);
+
   std::unordered_map<ActorID, std::unique_ptr<ActorContext>> actor_contexts_;
 
   absl::Mutex actor_contexts_mutex_;
@@ -51,8 +54,6 @@ class LocalModeTaskSubmitter : public TaskSubmitter {
   std::unique_ptr<boost::asio::thread_pool> thread_pool_;
 
   LocalModeRayRuntime &local_mode_ray_tuntime_;
-
-  ObjectID Submit(InvocationSpec &invocation, const ActorCreationOptions &options);
 };
 }  // namespace internal
 }  // namespace ray

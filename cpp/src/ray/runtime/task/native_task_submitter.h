@@ -34,6 +34,7 @@ class NativeTaskSubmitter : public TaskSubmitter {
 
  private:
   ObjectID Submit(InvocationSpec &invocation, const CallOptions &call_options);
+  std::string GetFullName(bool global, const std::string &name);
 };
 }  // namespace internal
 }  // namespace ray
