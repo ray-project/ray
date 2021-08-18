@@ -16,8 +16,9 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include <ctype.h>
+#include <google/protobuf/arena.h>
 #include <boost/asio.hpp>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
@@ -125,7 +126,7 @@ using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
 /// \tparam ServiceHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
-template <class ServiceHandler, class Request, class Reply>
+template <class ServiceHandler, class Request, class Reply, class HandlerFunction>
 class ServerCallImpl : public ServerCall {
  public:
   /// Constructor.
@@ -134,10 +135,9 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] service_handler The service handler that handles the request.
   /// \param[in] handle_request_function Pointer to the service handler function.
   /// \param[in] io_service The event loop.
-  ServerCallImpl(
-      const ServerCallFactory &factory, ServiceHandler &service_handler,
-      HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
-      instrumented_io_context &io_service, std::string call_name)
+  ServerCallImpl(const ServerCallFactory &factory, ServiceHandler &service_handler,
+                 HandlerFunction handle_request_function,
+                 instrumented_io_context &io_service, std::string call_name)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
@@ -145,17 +145,7 @@ class ServerCallImpl : public ServerCall {
         response_writer_(&context_),
         io_service_(io_service),
         call_name_(std::move(call_name)) {
-    // TODO call_name_ sometimes get corrunpted due to memory issues.
-    RAY_CHECK(!call_name_.empty()) << "Call name is empty";
-    STATS_grpc_server_req_new.Record(1.0, call_name_);
-    start_time_ = absl::GetCurrentTimeNanos();
-  }
-
-  ~ServerCallImpl() override {
-    STATS_grpc_server_req_finished.Record(1.0, call_name_);
-    auto end_time = absl::GetCurrentTimeNanos();
-    STATS_grpc_server_req_latency_ms.Record((end_time - start_time_) / 1000000,
-                                            call_name_);
+    reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
   }
 
   ServerCallState GetState() const override { return state_; }
@@ -163,7 +153,6 @@ class ServerCallImpl : public ServerCall {
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
-    STATS_grpc_server_req_handling.Record(1.0, call_name_);
     if (!io_service_.stopped()) {
       io_service_.post([this] { HandleRequestImpl(); }, call_name_);
     } else {
@@ -187,7 +176,7 @@ class ServerCallImpl : public ServerCall {
       factory.CreateCall();
     }
     (service_handler_.*handle_request_function_)(
-        request_, &reply_,
+        request_, reply_,
         [this](Status status, std::function<void()> success,
                std::function<void()> failure) {
           // These two callbacks must be set before `SendReply`, because `SendReply`
@@ -222,8 +211,10 @@ class ServerCallImpl : public ServerCall {
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
     state_ = ServerCallState::SENDING_REPLY;
-    response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
+    response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
+
+  google::protobuf::Arena arena_;
 
   /// State of this call.
   ServerCallState state_;
@@ -235,7 +226,7 @@ class ServerCallImpl : public ServerCall {
   ServiceHandler &service_handler_;
 
   /// Pointer to the service handler function.
-  HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function_;
+  HandlerFunction handle_request_function_;
 
   /// Context for the request, allowing to tweak aspects of it such as the use
   /// of compression, authentication, as well as to send metadata back to the client.
@@ -251,7 +242,7 @@ class ServerCallImpl : public ServerCall {
   Request request_;
 
   /// The reply message.
-  Reply reply_;
+  Reply *reply_;
 
   /// Human-readable name for this RPC call.
   std::string call_name_;
@@ -265,7 +256,7 @@ class ServerCallImpl : public ServerCall {
   /// The ts when the request created
   int64_t start_time_;
 
-  template <class T1, class T2, class T3, class T4>
+  template <class T1, class T2, class T3, class T4, class T5>
   friend class ServerCallFactoryImpl;
 };
 
@@ -285,7 +276,8 @@ using RequestCallFunction = void (GrpcService::AsyncService::*)(
 /// \tparam ServiceHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
-template <class GrpcService, class ServiceHandler, class Request, class Reply>
+template <class GrpcService, class ServiceHandler, class Request, class Reply,
+          class HandlerFunction>
 class ServerCallFactoryImpl : public ServerCallFactory {
   using AsyncService = typename GrpcService::AsyncService;
 
@@ -304,8 +296,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   ServerCallFactoryImpl(
       AsyncService &service,
       RequestCallFunction<GrpcService, Request, Reply> request_call_function,
-      ServiceHandler &service_handler,
-      HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
+      ServiceHandler &service_handler, HandlerFunction handle_request_function,
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       instrumented_io_context &io_service, std::string call_name, int64_t max_active_rpcs)
       : service_(service),
@@ -320,8 +311,9 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
     // `GrpcServer::PollEventsFromCompletionQueue`.
-    auto call = new ServerCallImpl<ServiceHandler, Request, Reply>(
-        *this, service_handler_, handle_request_function_, io_service_, call_name_);
+    auto call =
+        new ServerCallImpl<ServiceHandler, Request, Reply, HandlerFunction>(
+            *this, service_handler_, handle_request_function_, io_service_, call_name_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
     (service_.*request_call_function_)(&call->context_, &call->request_,
@@ -342,7 +334,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   ServiceHandler &service_handler_;
 
   /// Pointer to the service handler function.
-  HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function_;
+  HandlerFunction handle_request_function_;
 
   /// The `CompletionQueue`.
   const std::unique_ptr<grpc::ServerCompletionQueue> &cq_;

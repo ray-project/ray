@@ -13,6 +13,7 @@
 // limitations under the License.
 
 syntax = "proto3";
+option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -150,8 +151,7 @@ message RayObject {
   bytes data = 1;
   // Metadata of the object.
   bytes metadata = 2;
-  // ObjectIDs that were nested in data. This is set for both inlined
-  // and plasma objects.
+  // ObjectIDs that were nested in data. This is only set for inlined objects.
   repeated bytes nested_inlined_ids = 3;
 }
 

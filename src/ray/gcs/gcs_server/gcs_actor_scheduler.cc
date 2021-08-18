@@ -230,7 +230,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   // backlog in GCS.
   int backlog_size = report_worker_backlog_ ? 0 : -1;
   lease_client->RequestWorkerLease(
-      actor->GetCreationTaskSpecification(),
+      actor->GetActorTableData().task_spec(),
       [this, actor, node](const Status &status,
                           const rpc::RequestWorkerLeaseReply &reply) {
         HandleWorkerLeaseReply(actor, node, status, reply);
@@ -427,19 +427,7 @@ bool GcsActorScheduler::KillActorOnWorker(const rpc::Address &worker_address,
 std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNode(
     std::shared_ptr<GcsActor> actor) {
   // Select a node to lease worker for the actor.
-  std::shared_ptr<rpc::GcsNodeInfo> node;
-
-  // If an actor has resource requirements, we will try to schedule it on the same node as
-  // the owner if possible.
-  const auto &task_spec = actor->GetCreationTaskSpecification();
-  if (!task_spec.GetRequiredResources().IsEmpty()) {
-    auto maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
-    node = maybe_node.has_value() ? maybe_node.value() : SelectNodeRandomly();
-  } else {
-    node = SelectNodeRandomly();
-  }
-
-  return node;
+  return SelectNodeRandomly();
 }
 
 std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNodeRandomly() const {
@@ -448,10 +436,13 @@ std::shared_ptr<rpc::GcsNodeInfo> RayletBasedActorScheduler::SelectNodeRandomly(
     return nullptr;
   }
 
-  static std::mt19937_64 gen_(
-      std::chrono::high_resolution_clock::now().time_since_epoch().count());
-  std::uniform_int_distribution<int> distribution(0, alive_nodes.size() - 1);
-  int key_index = distribution(gen_);
+  // static std::mt19937_64 gen_(
+  //     std::chrono::high_resolution_clock::now().time_since_epoch().count());
+  // std::uniform_int_distribution<int> distribution(0, alive_nodes.size() - 1);
+  static int64_t __key_index = 0;
+  // int key_index = distribution(gen_);
+  __key_index += 1;
+  int64_t key_index = (__key_index++) % alive_nodes.size();
   int index = 0;
   auto iter = alive_nodes.begin();
   for (; index != key_index && iter != alive_nodes.end(); ++index, ++iter)

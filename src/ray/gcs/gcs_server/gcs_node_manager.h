@@ -53,7 +53,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
   /// Handle get all node info rpc request.
   void HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
-                            rpc::GetAllNodeInfoReply *reply,
+                            rpc::GetAllNodeInfoReply* reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get internal config.
