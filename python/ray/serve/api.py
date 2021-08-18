@@ -344,7 +344,10 @@ class Client:
         self._wait_for_goal(
             ray.get(
                 self._controller.create_backend.remote(
-                    backend_tag, backend_config, replica_config)))
+                    backend_tag,
+                    backend_config,
+                    replica_config,
+                    deployer_job_id=ray.get_runtime_context().job_id)))
 
     @_ensure_connected
     def deploy(self,
@@ -395,20 +398,22 @@ class Client:
                                            version, prev_version, route_prefix,
                                            ray.get_runtime_context().job_id))
 
+        tag = f"component=serve deployment={name}"
+
         if updating:
             msg = f"Updating deployment '{name}'"
             if version is not None:
                 msg += f" to version '{version}'"
-            logger.info(f"{msg}.")
+            logger.info(f"{msg}. {tag}")
         else:
             logger.info(f"Deployment '{name}' is already at version "
-                        f"'{version}', not updating.")
+                        f"'{version}', not updating. {tag}")
 
         if _blocking:
             self._wait_for_goal(goal_id)
             logger.info(
                 f"Deployment '{name}{':'+version if version else ''}' is ready"
-                f" at `{url}`.")
+                f" at `{url}`. {tag}")
         else:
             return goal_id
 
@@ -648,8 +653,8 @@ def start(
     if detached:
         controller_name = SERVE_CONTROLLER_NAME
     else:
-        controller_name = format_actor_name(SERVE_CONTROLLER_NAME,
-                                            get_random_letters())
+        controller_name = format_actor_name(get_random_letters(),
+                                            SERVE_CONTROLLER_NAME)
 
     if isinstance(http_options, dict):
         http_options = HTTPOptions.parse_obj(http_options)

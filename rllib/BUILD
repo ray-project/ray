@@ -1,5 +1,5 @@
 # --------------------------------------------------------------------
-# BAZEL/Travis-ci test cases.
+# BAZEL/Buildkite-CI test cases.
 # --------------------------------------------------------------------
 
 # To add new RLlib tests, first find the correct category of your new test
@@ -10,27 +10,28 @@
 
 # Currently we have the following categories:
 
-# a) Learning tests/regression, tagged:
-#    "learning_tests_[tf|torch]" AND "learning_tests_[cartpole|pendulum]"
-# b) Quick agent compilation/tune-train tests, tagged "quick_train"
-# c-e) Utils, Models, Agents, tagged "utils", "models", and "agents_dir".
-# f) Tests directory (everything in rllib/tests/...), tagged: "tests_dir"
-# g) Examples directory (everything in rllib/examples/...), tagged: "examples"
+# - Learning tests/regression, tagged:
+#   "learning_tests_[tf|torch]" AND "learning_tests_[cartpole|pendulum]"
+# - Quick agent compilation/tune-train tests, tagged "quick_train".
+#   NOTE: These should be obsoleted in favor of "trainers_dir" tests as
+#         they cover the same functionaliy.
+# - Folder-bound tests, tagged with the name of the top-level dir:
+#   - `env` directory tests.
+#   - `evaluation` directory tests.
+#   - `execution` directory tests.
+#   - `models` directory tests.
+#   - `policy` directory tests.
+#   - `utils` directory tests.
+# - Trainer ("agents") tests, tagged "trainers_dir".
+# - Tests directory (everything in rllib/tests/...), tagged: "tests_dir"
+# - Examples directory (everything in rllib/examples/...), tagged: "examples"
 
 # The "examples" and "tests_dir" tags have further sub-tags going by the
 # starting letter of the test name (e.g. "examples_A", or "tests_dir_F") for
-# split-up purposes in travis, which doesn't like tests that run for too long
-# (problems: 10min timeout, not respecting ray/ci/keep_alive.sh, or even
-# `travis_wait n`, etc..).
+# split-up purposes in buildkite.
 
-# Our travis.yml file executes all these tests in 7 different jobs, which are:
-# 1) everything in a) using tf2.x
-# 2) everything in a) using tf1.x
-# 3) everything in a) using torch
-# 4) everything in b) c) d) and e)
-# 5) everything in g)
-# 6) f), BUT only those tagged `tests_dir_A` to `tests_dir_[some letter]`
-# 7) f), BUT only those tagged `tests_dir_[some letter]` to `tests_dir_Z`
+# Our .buildkite/pipeline.yml file executes all these tests in n
+# different jobs.
 
 
 # --------------------------------------------------------------------
@@ -560,28 +561,28 @@ py_test(
 # Agents (Compilation, Losses, simple agent functionality tests)
 # rllib/agents/
 #
-# Tag: agents_dir
+# Tag: trainers_dir
 # --------------------------------------------------------------------
 
 # Generic (all Trainers)
 py_test(
     name = "test_trainer",
-    tags = ["agents_dir"],
-    size = "medium",
+    tags = ["trainers_dir"],
+    size = "large",
     srcs = ["agents/tests/test_trainer.py"]
 )
 
 # A2/3CTrainer
 py_test(
     name = "test_a2c",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "medium",
     srcs = ["agents/a3c/tests/test_a2c.py"]
 )
 
 py_test(
     name = "test_a3c",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "medium",
     srcs = ["agents/a3c/tests/test_a3c.py"]
 )
@@ -589,7 +590,7 @@ py_test(
 # APEXTrainer (DQN)
 py_test(
     name = "test_apex_dqn",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "medium",
     srcs = ["agents/dqn/tests/test_apex_dqn.py"]
 )
@@ -597,7 +598,7 @@ py_test(
 # APEXDDPGTrainer
 py_test(
     name = "test_apex_ddpg",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "medium",
     srcs = ["agents/ddpg/tests/test_apex_ddpg.py"]
 )
@@ -605,7 +606,7 @@ py_test(
 # ARS
 py_test(
     name = "test_ars",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "medium",
     srcs = ["agents/ars/tests/test_ars.py"]
 )
@@ -613,7 +614,7 @@ py_test(
 # CQLTrainer
 py_test(
     name = "test_cql",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "medium",
     srcs = ["agents/cql/tests/test_cql.py"]
 )
@@ -621,7 +622,7 @@ py_test(
 # DDPGTrainer
 py_test(
     name = "test_ddpg",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "large",
     srcs = ["agents/ddpg/tests/test_ddpg.py"]
 )
@@ -629,19 +630,19 @@ py_test(
 # DQNTrainer/SimpleQTrainer
 py_test(
     name = "test_dqn",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "large",
     srcs = ["agents/dqn/tests/test_dqn.py"]
 )
 py_test(
     name = "test_r2d2",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "large",
     srcs = ["agents/dqn/tests/test_r2d2.py"]
 )
 py_test(
     name = "test_simple_q",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "medium",
     srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
@@ -650,7 +651,7 @@ py_test(
 ## Dreamer
 #py_test(
 #    name = "test_dreamer",
-#    tags = ["agents_dir"],
+#    tags = ["trainers_dir"],
 #    size = "small",
 #    srcs = ["agents/dreamer/tests/test_dreamer.py"]
 #)
@@ -658,7 +659,7 @@ py_test(
 # ES
 py_test(
     name = "test_es",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "medium",
     srcs = ["agents/es/tests/test_es.py"]
 )
@@ -666,13 +667,13 @@ py_test(
 # IMPALA
 py_test(
     name = "test_impala",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "large",
     srcs = ["agents/impala/tests/test_impala.py"]
 )
 py_test(
     name = "test_vtrace",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "small",
     srcs = ["agents/impala/tests/test_vtrace.py"]
 )
@@ -680,7 +681,7 @@ py_test(
 # MARWILTrainer
 py_test(
     name = "test_marwil",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "large",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
@@ -690,7 +691,7 @@ py_test(
 # BCTrainer (sub-type of MARWIL)
 py_test(
     name = "test_bc",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "large",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
@@ -700,7 +701,7 @@ py_test(
 # MAMLTrainer
 py_test(
     name = "test_maml",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "medium",
     srcs = ["agents/maml/tests/test_maml.py"]
 )
@@ -708,7 +709,7 @@ py_test(
 # MBMPOTrainer
 py_test(
     name = "test_mbmpo",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "medium",
     srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
 )
@@ -716,7 +717,7 @@ py_test(
 # PGTrainer
 py_test(
     name = "test_pg",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "medium",
     srcs = ["agents/pg/tests/test_pg.py"]
 )
@@ -724,7 +725,7 @@ py_test(
 # PPOTrainer
 py_test(
     name = "test_ppo",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "large",
     srcs = ["agents/ppo/tests/test_ppo.py"]
 )
@@ -732,7 +733,7 @@ py_test(
 # PPO: DDPPO
 py_test(
     name = "test_ddppo",
-    tags = ["agents_dir", "flaky"],
+    tags = ["trainers_dir", "flaky"],
     size = "medium",
     srcs = ["agents/ppo/tests/test_ddppo.py"]
 )
@@ -740,7 +741,7 @@ py_test(
 # PPO: APPO
 py_test(
     name = "test_appo",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "medium",
     srcs = ["agents/ppo/tests/test_appo.py"]
 )
@@ -748,7 +749,7 @@ py_test(
 # QMixTrainer
 py_test(
     name = "test_qmix",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "medium",
     srcs = ["agents/qmix/tests/test_qmix.py"]
 )
@@ -756,7 +757,7 @@ py_test(
 # SACTrainer
 py_test(
     name = "test_sac",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "large",
     srcs = ["agents/sac/tests/test_sac.py"]
 )
@@ -764,7 +765,7 @@ py_test(
 # TD3Trainer
 py_test(
     name = "test_td3",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     size = "medium",
     srcs = ["agents/ddpg/tests/test_td3.py"]
 )
@@ -775,7 +776,7 @@ py_test(
 
 py_test(
     name = "random_agent",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     main = "contrib/random_agent/random_agent.py",
     size = "small",
     srcs = ["contrib/random_agent/random_agent.py"]
@@ -783,7 +784,7 @@ py_test(
 
 py_test(
     name = "alpha_zero_cartpole",
-    tags = ["agents_dir"],
+    tags = ["trainers_dir"],
     main = "contrib/alpha_zero/examples/train_cartpole.py",
     size = "large",
     srcs = ["contrib/alpha_zero/examples/train_cartpole.py"],
@@ -802,19 +803,6 @@ py_test(
 # --------------------------------------------------------------------
 
 # A2C/A3C
-
-py_test(
-    name = "test_a3c_tf_cartpole_v1_lstm",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v1",
-        "--run", "A3C",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"model\": {\"use_lstm\": true}}'",
-        "--ray-num-cpus", "4"
-        ]
-)
 
 py_test(
     name = "test_a3c_torch_pong_deterministic_v4",
@@ -949,34 +937,6 @@ py_test(
         ]
 )
 
-# ES
-
-py_test(
-    name = "test_es_pendulum_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "Pendulum-v0",
-        "--run", "ES",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"stepsize\": 0.01, \"episodes_per_batch\": 20, \"train_batch_size\": 100, \"num_workers\": 2}'",
-        "--ray-num-cpus", "4"
-        ]
-)
-
-py_test(
-    name = "test_es_pong_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "Pong-v0",
-        "--run", "ES",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"stepsize\": 0.01, \"episodes_per_batch\": 20, \"train_batch_size\": 100, \"num_workers\": 2}'",
-        "--ray-num-cpus", "4"
-        ]
-)
-
 # IMPALA
 
 py_test(
@@ -1021,66 +981,7 @@ py_test(
         ]
 )
 
-# MARWIL
-
-py_test(
-    name = "test_marwil_cartpole_v0_tf",
-    main = "train.py",
-    srcs = ["train.py"],
-    tags = ["quick_train", "external_files"],
-    size = "small",
-    # Include the json data file.
-    data = ["tests/data/cartpole/small.json"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "MARWIL",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
-        ]
-)
-
-py_test(
-    name = "test_marwil_cartpole_v0_torch",
-    main = "train.py",
-    srcs = ["train.py"],
-    tags = ["quick_train", "external_files"],
-    size = "small",
-    # Include the json data file.
-    data = ["tests/data/cartpole/small.json"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "MARWIL",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"torch\", \"input\": \"tests/data/cartpole\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
-        ]
-)
-
 # PG
-
-py_test(
-    name = "test_pg_tf_frozenlake_v0",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "FrozenLake-v0",
-        "--run", "PG",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"rollout_fragment_length\": 500, \"num_workers\": 1}'"
-        ]
-)
-
-py_test(
-    name = "test_pg_torch_frozenlake_v0",
-    main = "train.py", srcs = ["train.py"],
-    size = "small",
-    tags = ["quick_train"],
-    args = [
-        "--env", "FrozenLake-v0",
-        "--run", "PG",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"torch\", \"rollout_fragment_length\": 500, \"num_workers\": 1}'"
-        ]
-)
 
 py_test(
     name = "test_pg_tf_cartpole_v0_lstm",
@@ -1121,45 +1022,6 @@ py_test(
 )
 
 # PPO/APPO
-
-py_test(
-    name = "test_ppo_tf_frozenlake_v0",
-    main = "train.py", srcs = ["train.py"],
-    size = "small",
-    tags = ["quick_train"],
-    args = [
-        "--env", "FrozenLake-v0",
-        "--run", "PPO",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_sgd_iter\": 10, \"sgd_minibatch_size\": 64, \"train_batch_size\": 1000, \"num_workers\": 1}'"
-        ]
-)
-
-py_test(
-    name = "test_ppo_torch_frozenlake_v0",
-    main = "train.py", srcs = ["train.py"],
-    size = "small",
-    tags = ["quick_train"],
-    args = [
-        "--env", "FrozenLake-v0",
-        "--run", "PPO",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"torch\", \"num_sgd_iter\": 10, \"sgd_minibatch_size\": 64, \"train_batch_size\": 1000, \"num_workers\": 1}'"
-        ]
-)
-
-py_test(
-    name = "test_ppo_tf_cartpole_v1_lstm_simple_optimizer",
-    main = "train.py", srcs = ["train.py"],
-    tags = ["quick_train"],
-    args = [
-        "--env", "CartPole-v1",
-        "--run", "PPO",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"simple_optimizer\": true, \"num_sgd_iter\": 2, \"model\": {\"use_lstm\": true}}'",
-        "--ray-num-cpus", "4"
-        ]
-)
 
 py_test(
     name = "test_ppo_tf_cartpole_v1_complete_episode_batches",
@@ -1262,6 +1124,50 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# Evaluation components
+# rllib/evaluation/
+#
+# Tag: evaluation
+# --------------------------------------------------------------------
+
+py_test(
+    name = "evaluation/tests/test_rollout_worker",
+    tags = ["evaluation"],
+    size = "medium",
+    srcs = ["evaluation/tests/test_rollout_worker.py"]
+)
+
+# mysteriously times out on travis.
+#py_test(
+#    name = "evaluation/tests/test_trajectory_view_api",
+#    tags = ["evaluation"],
+#    size = "medium",
+#    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
+#)
+
+
+# --------------------------------------------------------------------
+# Optimizers and Memories
+# rllib/execution/
+#
+# Tag: execution
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_segment_tree",
+    tags = ["execution"],
+    size = "small",
+    srcs = ["execution/tests/test_segment_tree.py"]
+)
+
+py_test(
+    name = "test_prioritized_replay_buffer",
+    tags = ["execution"],
+    size = "small",
+    srcs = ["execution/tests/test_prioritized_replay_buffer.py"]
+)
+
+# --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
 #
@@ -1295,50 +1201,6 @@ py_test(
     tags = ["models"],
     size = "small",
     srcs = ["models/tests/test_preprocessors.py"]
-)
-
-# --------------------------------------------------------------------
-# Evaluation components
-# rllib/evaluation/
-#
-# Tag: evaluation
-# --------------------------------------------------------------------
-
-py_test(
-    name = "evaluation/tests/test_rollout_worker",
-    tags = ["evaluation"],
-    size = "medium",
-    srcs = ["evaluation/tests/test_rollout_worker.py"]
-)
-
-# mysteriously times out on travis.
-#py_test(
-#    name = "evaluation/tests/test_trajectory_view_api",
-#    tags = ["evaluation"],
-#    size = "medium",
-#    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
-#)
-
-
-# --------------------------------------------------------------------
-# Optimizers and Memories
-# rllib/execution/
-#
-# Tag: optimizers
-# --------------------------------------------------------------------
-
-py_test(
-    name = "test_segment_tree",
-    tags = ["optimizers"],
-    size = "small",
-    srcs = ["execution/tests/test_segment_tree.py"]
-)
-
-py_test(
-    name = "test_prioritized_replay_buffer",
-    tags = ["optimizers"],
-    size = "small",
-    srcs = ["execution/tests/test_prioritized_replay_buffer.py"]
 )
 
 # --------------------------------------------------------------------
@@ -1750,13 +1612,6 @@ py_test(
     tags = ["tests_dir", "tests_dir_T"],
     size = "small",
     srcs = ["tests/test_timesteps.py"]
-)
-
-py_test(
-    name = "tests/test_trainer",
-    tags = ["tests_dir", "tests_dir_T"],
-    size = "small",
-    srcs = ["tests/test_trainer.py"]
 )
 
 # --------------------------------------------------------------------
@@ -2276,6 +2131,30 @@ py_test(
 )
 
 py_test(
+    name = "examples/export/cartpole_dqn_export",
+    main = "examples/export/cartpole_dqn_export.py",
+    tags = ["examples", "examples_E"],
+    size = "medium",
+    srcs = ["examples/export/cartpole_dqn_export.py"],
+)
+
+py_test(
+    name = "examples/export/onnx_tf",
+    main = "examples/export/onnx_tf.py",
+    tags = ["examples", "examples_E"],
+    size = "medium",
+    srcs = ["examples/export/onnx_tf.py"],
+)
+
+py_test(
+    name = "examples/export/onnx_torch",
+    main = "examples/export/onnx_torch.py",
+    tags = ["examples", "examples_E"],
+    size = "medium",
+    srcs = ["examples/export/onnx_torch.py"],
+)
+
+py_test(
     name = "examples/fractional_gpus",
     main = "examples/fractional_gpus.py",
     tags = ["examples", "examples_F"],
@@ -2631,30 +2510,6 @@ py_test(
     size = "large",
     srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=QMIX"]
-)
-
-py_test(
-    name = "examples/export/cartpole_dqn_export",
-    main = "examples/export/cartpole_dqn_export.py",
-    tags = ["examples", "examples_A"],
-    size = "medium",
-    srcs = ["examples/export/cartpole_dqn_export.py"],
-)
-
-py_test(
-    name = "examples/export/onnx_tf",
-    main = "examples/export/onnx_tf.py",
-    tags = ["examples", "examples_A"],
-    size = "medium",
-    srcs = ["examples/export/onnx_tf.py"],
-)
-
-py_test(
-    name = "examples/export/onnx_torch",
-    main = "examples/export/onnx_torch.py",
-    tags = ["examples", "examples_A"],
-    size = "medium",
-    srcs = ["examples/export/onnx_torch.py"],
 )
 
 py_test(
