@@ -23,6 +23,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/compat.h"
@@ -36,9 +37,6 @@ using ray::ObjectID;
 using ray::WorkerID;
 
 enum class ObjectLocation : int32_t { Local, Remote, Nonexistent };
-
-/// Size of object hash digests.
-constexpr int64_t kDigestSize = sizeof(uint64_t);
 
 enum class ObjectState : int {
   /// Object was created but not sealed in the local Plasma Store.
@@ -62,6 +60,13 @@ struct Allocation {
   /// the total size of this mapped memory.
   int64_t mmap_size;
 
+  // only allow moves.
+  RAY_DISALLOW_COPY_AND_ASSIGN(Allocation);
+  Allocation(Allocation &&) noexcept = default;
+  Allocation &operator=(Allocation &&) noexcept = default;
+
+ private:
+  // Only created by Allocator
   Allocation(void *address, int64_t size, MEMFD_TYPE fd, ptrdiff_t offset, int device_num,
              int64_t mmap_size)
       : address(address),
@@ -71,27 +76,47 @@ struct Allocation {
         device_num(device_num),
         mmap_size(mmap_size) {}
 
-  // only allow moves.
-  RAY_DISALLOW_COPY_AND_ASSIGN(Allocation);
-  Allocation(Allocation &&) noexcept = default;
-  Allocation &operator=(Allocation &&) noexcept = default;
+  // Test only
+  Allocation()
+      : address(nullptr), size(0), fd(), offset(0), device_num(0), mmap_size(0) {}
+
+  friend class PlasmaAllocator;
+  friend struct ObjectLifecycleManagerTest;
+  FRIEND_TEST(ObjectStoreTest, PassThroughTest);
 };
 
 /// This type is used by the Plasma store. It is here because it is exposed to
 /// the eviction policy.
-struct LocalObject {
+class LocalObject {
+ public:
   LocalObject(Allocation allocation);
 
   RAY_DISALLOW_COPY_AND_ASSIGN(LocalObject);
 
   int64_t GetObjectSize() const { return object_info.GetObjectSize(); }
 
+  bool Sealed() const { return state == ObjectState::PLASMA_SEALED; }
+
+  int32_t GetRefCount() const { return ref_count; }
+
+  const ray::ObjectInfo &GetObjectInfo() const { return object_info; }
+
+  const Allocation &GetAllocation() const { return allocation; }
+
+ private:
+  friend class ObjectStore;
+  friend class ObjectLifecycleManager;
+  FRIEND_TEST(ObjectStoreTest, PassThroughTest);
+  friend struct ObjectLifecycleManagerTest;
+  FRIEND_TEST(ObjectLifecycleManagerTest, RemoveReferenceOneRefNotSealed);
+
   /// Allocation Info;
   Allocation allocation;
   /// Ray object info;
   ray::ObjectInfo object_info;
   /// Number of clients currently using this object.
-  mutable int ref_count;
+  /// TODO: ref_count probably shouldn't belong to LocalObject.
+  mutable int32_t ref_count;
   /// Unix epoch of when this object was created.
   int64_t create_time;
   /// How long creation of this object took.

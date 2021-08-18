@@ -271,6 +271,9 @@ def set_cuda_visible_devices(gpu_ids):
         gpu_ids (List[str]): List of strings representing GPU IDs.
     """
 
+    if os.environ.get("RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"):
+        return
+
     global last_set_gpu_ids
     if last_set_gpu_ids == gpu_ids:
         return  # optimization: already set
@@ -1047,8 +1050,8 @@ def get_wheel_filename(
                                               " '37', or '38'")
 
     os_strings = {
-        "darwin": "macosx_10_13_x86_64"
-        if py_version == "38" else "macosx_10_13_intel",
+        "darwin": "macosx_10_15_x86_64"
+        if py_version == "38" else "macosx_10_15_intel",
         "linux": "manylinux2014_x86_64",
         "win32": "win_amd64"
     }

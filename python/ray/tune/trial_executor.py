@@ -1,6 +1,9 @@
 # coding: utf-8
 from abc import ABCMeta, abstractmethod
+from functools import lru_cache
 import logging
+import os
+import time
 from typing import Dict, List, Optional
 
 from ray.tune.resources import Resources
@@ -10,6 +13,39 @@ from ray.tune.error import TuneError
 from ray.tune.cluster_info import is_ray_cluster
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache()
+def _get_warning_threshold() -> float:
+    if is_ray_cluster():
+        return float(
+            os.environ.get(
+                "TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER", "60"))
+    else:
+        return float(
+            os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "1"))
+
+
+@lru_cache()
+def _get_warning_msg() -> str:
+    if is_ray_cluster():
+        return (
+            f"If autoscaler is still scaling up, ignore this message. No "
+            f"trial is running and no new trial has been started within at "
+            f"least the last {_get_warning_threshold()} seconds. "
+            f"This could be due to the cluster not having enough "
+            f"resources available to start the next trial. Please stop the "
+            f"tuning job and readjust resources_per_trial argument passed "
+            f"into tune.run() as well as max_workers and worker_nodes "
+            f"InstanceType specified in cluster.yaml.")
+    else:
+        return (f"No trial is running and no new trial has been started within"
+                f" at least the last {_get_warning_threshold()} seconds. "
+                f"This could be due to the cluster not having enough "
+                f"resources available to start the next trial. Please stop "
+                f"the tuning job and readjust resources_per_trial argument "
+                f"passed into tune.run() and/or start a cluster with more "
+                f"resources.")
 
 
 @DeveloperAPI
@@ -32,6 +68,12 @@ class TrialExecutor(metaclass=ABCMeta):
         self._queue_trials = queue_trials
         self._cached_trial_state = {}
         self._trials_to_cache = set()
+        # The start time since when all active trials have been in PENDING
+        # state, or since last time we output a resource insufficent
+        # warning message, whichever comes later.
+        # -1 means either the TrialExecutor is just initialized without any
+        # trials yet, or there are some trials in RUNNING state.
+        self._no_running_trials_since = -1
 
     def set_status(self, trial: Trial, status: str) -> None:
         """Sets status and checkpoints metadata if needed.
@@ -194,6 +236,19 @@ class TrialExecutor(metaclass=ABCMeta):
     def force_reconcilation_on_next_step_end(self) -> None:
         pass
 
+    def _may_warn_insufficient_resources(self, all_trials):
+        if not any(trial.status == Trial.RUNNING for trial in all_trials):
+            if self._no_running_trials_since == -1:
+                self._no_running_trials_since = time.monotonic()
+            elif time.monotonic(
+            ) - self._no_running_trials_since > _get_warning_threshold():
+                # TODO(xwjiang): We should ideally output a more helpful msg.
+                # https://github.com/ray-project/ray/issues/17799
+                logger.warning(_get_warning_msg())
+                self._no_running_trials_since = time.monotonic()
+        else:
+            self._no_running_trials_since = -1
+
     def on_no_available_trials(self, trials: List[Trial]) -> None:
         """
         Args:
@@ -203,6 +258,7 @@ class TrialExecutor(metaclass=ABCMeta):
 
         if self._queue_trials:
             return
+        self._may_warn_insufficient_resources(trials)
         for trial in trials:
             if trial.uses_placement_groups:
                 return

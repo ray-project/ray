@@ -136,7 +136,9 @@ NIGHTLY_TESTS = {
     ],
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
         SmokeTest("learning_tests"),
-        "example_scripts_on_gpu_tests",
+        "multi_gpu_learning_tests",
+        # We'll have these as per-PR tests soon.
+        # "example_scripts_on_gpu_tests",
         SmokeTest("stress_tests"),
     ],
     "~/ray/release/serve_tests/serve_tests.yaml": [

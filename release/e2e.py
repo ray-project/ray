@@ -1737,7 +1737,9 @@ def run_test(test_config_file: str,
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "--test-config", type=str, required=True, help="Test config file")
     parser.add_argument("--test-name", type=str, help="Test name in config")

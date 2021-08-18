@@ -289,11 +289,9 @@ More Information
 
 - `Ray paper`_
 - `Ray HotOS paper`_
-- `Blog (old)`_
 
 .. _`Documentation`: http://docs.ray.io/en/master/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
-.. _`Blog (old)`: https://ray-project.github.io/
 .. _`Blog`: https://medium.com/distributed-computing-with-ray
 .. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Ray Design Patterns`: https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit
@@ -309,6 +307,7 @@ Getting Involved
 - `Forum`_: For discussions about development, questions about usage, and feature requests.
 - `GitHub Issues`_: For reporting bugs.
 - `Twitter`_: Follow updates on Twitter.
+- `Slack`_: Join our Slack channel.
 - `Meetup Group`_: Join our meetup group.
 - `StackOverflow`_: For questions about how to use Ray.
 
@@ -317,3 +316,5 @@ Getting Involved
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
 .. _`Twitter`: https://twitter.com/raydistributed
+.. _`Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
+
