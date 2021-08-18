@@ -144,7 +144,8 @@ def build_q_losses(policy: Policy, model: ModelV2,
         policy.target_model,
         train_batch[SampleBatch.NEXT_OBS],
         explore=False)
-    if not hasattr(policy, "target_q_func_vars"):
+    if not hasattr(policy, "q_func_vars"):
+        policy.q_func_vars = model.variables()
         policy.target_q_func_vars = policy.target_model.variables()
 
     # q scores for actions which we know were selected in the given state.
@@ -204,7 +205,7 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
 
 # Build a child class of `DynamicTFPolicy`, given the custom functions defined
 # above.
-SimpleQTFPolicy: DynamicTFPolicy = build_tf_policy(
+SimpleQTFPolicy: Type[DynamicTFPolicy] = build_tf_policy(
     name="SimpleQTFPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_models,
