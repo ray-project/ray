@@ -31,8 +31,7 @@ namespace gcs {
 /// \class GcsClientOptions
 /// GCS client's options (configuration items), such as service address, and service
 /// password.
-class
-    GcsClientOptions {
+class GcsClientOptions {
  public:
   /// Constructor of GcsClientOptions.
   ///
