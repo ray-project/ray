@@ -5,7 +5,6 @@ import traceback
 import inspect
 from typing import Any, Callable
 import time
-import random
 
 import starlette.responses
 
@@ -25,7 +24,6 @@ from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
-    REPLICA_CONSTRUCTOR_RETRY_COUNT,
 )
 from ray.exceptions import RayTaskError
 
@@ -38,6 +36,7 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
     This approach is picked over inheritance to avoid conflict between user
     provided class and the RayServeReplica class.
     """
+    logger.info(f">>>>>> Calling create_backend_replica")
     serialized_backend_def = serialized_backend_def
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
@@ -45,6 +44,7 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
         async def __init__(self, backend_tag, replica_tag, init_args,
                            backend_config: BackendConfig,
                            controller_name: str):
+            logger.info(f">>>>>> Called serve replica _init_")
             backend_def = cloudpickle.loads(serialized_backend_def)
             if isinstance(backend_def, str):
                 backend = import_attr(backend_def)
@@ -70,33 +70,17 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
             if is_function:
                 _callable = backend
             else:
-                # Retry with exponential backoff if ran into transient
-                # failures; Will throw and notify backend_state if
-                # constructor failed with no retries left
-                for current_try in range(REPLICA_CONSTRUCTOR_RETRY_COUNT + 1):
-                    # This allows backends to define an async __init__ method
-                    # (required for FastAPI backend definition).
-                    _callable = backend.__new__(backend)
-                    try:
-                        await sync_to_async(_callable.__init__)(*init_args)
-                    except Exception as e:
-                        logger.error(
-                            f"Exception while running deployment class "
-                            f"__init__: {e}")
-                        if current_try < REPLICA_CONSTRUCTOR_RETRY_COUNT:
-                            delay_secs = round(
-                                (2**current_try + random.uniform(0, 1)), 2)
-                            logger.info(
-                                f"Waiting for {delay_secs} secs to retry ..")
-                            await asyncio.sleep(delay_secs)
-                            continue
-                        else:
-                            logger.error(
-                                "Deployment constructor failed and ran out of "
-                                "retries. Aborting.")
-                            raise e
-                    break
-
+                # This allows backends to define an async __init__ method
+                # (required for FastAPI backend definition).
+                _callable = backend.__new__(backend)
+                try:
+                    await sync_to_async(_callable.__init__)(*init_args)
+                except Exception as e:
+                    logger.error(
+                        f"Exception while running deployment class "
+                        f"__init__: {e}"
+                    )
+                    raise e
             # Setting the context again to update the servable_object.
             ray.serve.api._set_internal_replica_context(
                 backend_tag,

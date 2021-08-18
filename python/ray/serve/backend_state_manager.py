@@ -1,5 +1,6 @@
 import math
 import time
+import random
 from abc import ABC
 from collections import defaultdict
 from collections.abc import Iterable
@@ -14,7 +15,10 @@ from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
                               ReplicaTag)
 from ray.serve.config import BackendConfig
-from ray.serve.constants import RESERVED_VERSION_TAG
+from ray.serve.constants import (
+    RESERVED_VERSION_TAG,
+    REPLICA_CONSTRUCTOR_RETRY_COUNT
+)
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
@@ -23,43 +27,6 @@ CHECKPOINT_KEY = "serve-backend-state-checkpoint"
 SLOW_STARTUP_WARNING_S = 30
 SLOW_STARTUP_WARNING_PERIOD_S = 30
 
-
-class DeploymentState(Enum):
-    """
-    One abstraction level above replica to manage current state at
-    deployment level.
-
-    A deployment needs to keep track of two sets of states all time:
-      - (1) Target # of replicas running version X
-      - (2) Current # of replicas running version X
-
-    End user submits actions to change (1) through serve client,
-    such as:
-        - Deploying new deployment
-        - Add / remove replicas
-        - Update model version
-
-    Difference between (1) and (2) Determined current state of the
-    deployment that guides subsequent replica level actions.
-    """
-    # 0 replicas of the target state running
-    PENDING = 0
-    # Constructor failed N times for ALL replicas with 0 running,
-    # indicating last deployment action failed, will delete/rollback.
-    FAILED = 1
-    # > 1 but < target replica of the target state running, deployment
-    # is able to at least serve traffic
-    # All states below requires deployment to be at least in RUNNING
-    RUNNING = 2
-    # Recived request to deploy models at different version
-    UPGRADING = 3
-    # Adding more replicas to deployment
-    SCALING_UP = 4
-    # Removing replicas from deployment
-    SCALING_DOWN = 5
-    RUNNING_HEALTHY = 6
-
-
 class ReplicaState(Enum):
     SHOULD_START = 1
     STARTING_OR_UPDATING = 2
@@ -67,8 +34,9 @@ class ReplicaState(Enum):
     SHOULD_STOP = 4
     STOPPING = 5
     # Failed to start and out of retries, terminal state
-    FAILED = 6
-    PAST_SLOW_START_THRESHOLD = 7
+    RETRYING = 6
+    FAILED = 7
+    PAST_SLOW_START_THRESHOLD = 8
 
 
 ALL_REPLICA_STATES = list(ReplicaState)
@@ -279,7 +247,6 @@ class VersionedReplica(ABC):
     def version(self) -> BackendVersion:
         pass
 
-
 class BackendReplica(VersionedReplica):
     """Manages state transitions for backend replicas.
 
@@ -293,12 +260,19 @@ class BackendReplica(VersionedReplica):
             format_actor_name(replica_tag, controller_name), detached,
             controller_name, replica_tag, backend_tag)
         self._controller_name = controller_name
+        self._detached = detached
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
         self._version = version
         self._start_time = None
         self._prev_slow_startup_warning_time = None
+
         self._state = ReplicaState.SHOULD_START
+
+        # Constructor retry with exponential backoff without blocking
+        # contorller event loop
+        self._cur_retry_count = 0
+        self._next_try_timestamp = time.time()
 
     def __get_state__(self) -> Dict[Any, Any]:
         return self.__dict__.copy()
@@ -340,9 +314,11 @@ class BackendReplica(VersionedReplica):
             ReplicaState.SHOULD_START,
             ReplicaState.STARTING_OR_UPDATING,
             ReplicaState.RUNNING,
+            ReplicaState.RETRYING,
         }, (f"State must be {ReplicaState.SHOULD_START}, "
-            f"{ReplicaState.STARTING_OR_UPDATING}, or "
-            f"{ReplicaState.RUNNING} *not* {self._state}.")
+            f"{ReplicaState.STARTING_OR_UPDATING}, "
+            f"{ReplicaState.RUNNING} or {ReplicaState.RETRYING}, "
+            f"*not* {self._state}.")
 
         self._actor.start_or_update(backend_info)
         self._start_time = time.time()
@@ -366,12 +342,33 @@ class BackendReplica(VersionedReplica):
             f"State must be {ReplicaState.STARTING_OR_UPDATING}, "
             f"*not* {self._state}.")
 
+        if time.time() < self._next_try_timestamp:
+            # Wait before retrying from previous FAILED startup healthcheck
+            return self._state
+
         if self._actor.check_ready() == ReplicaState.RUNNING:
             self._state = ReplicaState.RUNNING
             return ReplicaState.RUNNING
         elif self._actor.check_ready() == ReplicaState.FAILED:
-            self._state = ReplicaState.FAILED
-            return ReplicaState.FAILED
+            # Replica failed to start at constructor
+            # Add exponential backoff
+            self._cur_retry_count += 1
+            delay_secs = round(
+                (2 ** self._cur_retry_count + random.uniform(0, 1)), 2
+            )
+            self._next_try_timestamp = time.time() + delay_secs
+            # Create new actor with same inputs to re-instantiate
+            logger.info(f"<<<< BackendReplica address: {id(self)}")
+            logger.info(f"<<<< Retry conut: {self._cur_retry_count}")
+            logger.info(f"<<<< Waiting for {delay_secs} to retry...")
+            self._state = ReplicaState.RETRYING
+
+            if self._cur_retry_count > REPLICA_CONSTRUCTOR_RETRY_COUNT:
+                logger.info(f"<<<< Setting BackendReplica to FAILED")
+                self._state = ReplicaState.FAILED
+
+            logger.info(f"<<<< Returning state {self._state}")
+            return self._state
         elif time.time() - self._start_time > SLOW_STARTUP_WARNING_S:
             return ReplicaState.PAST_SLOW_START_THRESHOLD
         else:
@@ -602,7 +599,6 @@ class BackendStateManager:
         self._prev_startup_warnings: Dict[BackendTag, float] = defaultdict(
             float)
 
-        self._deployment_state = DeploymentState.PENDING
 
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
@@ -740,6 +736,7 @@ class BackendStateManager:
             GoalId, bool: The GoalId for the client to wait for and whether or
             not the backend is being updated.
         """
+        logger.info(f">>>>>> Calling deploy_backend()")
         # Ensures this method is idempotent.
         existing_info = self._backend_metadata.get(backend_tag)
         if existing_info is not None:
@@ -1061,6 +1058,7 @@ class BackendStateManager:
     def update(self) -> bool:
         """Updates the state of all running replicas to match the goal state.
         """
+        # logger.info(self._replicas)
         self._scale_all_backends()
 
         complete_goal_ids, failed_goal_ids = self._check_completed_goals()
@@ -1103,6 +1101,11 @@ class BackendStateManager:
                     # set.
                     replicas.add(ReplicaState.RUNNING, replica)
                     transitioned_backend_tags.add(backend_tag)
+                elif state == ReplicaState.RETRYING:
+                    logger.info(">>>>> Retrying")
+                    replica.start_or_update(self._backend_metadata[backend_tag],
+                                        self._target_versions[backend_tag])
+                    replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
                 elif state == ReplicaState.FAILED:
                     # Replica reconfigure (deploy / upgrade) failed after all
                     # retries
@@ -1111,8 +1114,10 @@ class BackendStateManager:
                     transitioned_backend_tags.add(backend_tag)
 
                 else:
+                    logger.info("<<<< Kept staying at same STARTING_OR_UPDATING state")
                     replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
                     if state == ReplicaState.PAST_SLOW_START_THRESHOLD:
+                        logger.info("<<<< Adding to slow start replica")
                         slow_start_replicas.append(replica)
 
             if (len(slow_start_replicas)

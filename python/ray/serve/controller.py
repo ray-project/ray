@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import ray
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
-from ray.serve.backend_state_manager import BackendStateManager
+from ray.serve.backend_state_manager import ReplicaState, BackendStateManager
 from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
@@ -150,7 +150,7 @@ class ServeController:
             entry["end_time"] = 0
 
             entry["actors"] = dict()
-            replica_state_container = self.backend_state._replicas[
+            replica_state_container = self.backend_state_manager._replicas[
                 deployment_name]
             running_replicas = replica_state_container.get(
                 [ReplicaState.RUNNING])
@@ -360,7 +360,7 @@ class ServeController:
                         f"prev_version '{prev_version}' "
                         "does not match with the existing "
                         f"version '{existing_backend_info.version}'.")
-
+            logger.info(f">>>>>> Calling controller's async deploy()")
             backend_info = BackendInfo(
                 actor_def=ray.remote(
                     create_backend_replica(
