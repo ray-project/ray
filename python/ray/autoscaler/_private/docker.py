@@ -45,24 +45,26 @@ def validate_docker_config(config: Dict[str, Any]) -> None:
     return None
 
 
-def with_docker_exec(cmds: List[str],
+def with_docker_exec(cmd: str,
                      container_name: str,
                      docker_cmd: str,
-                     with_interactive: bool = False):
+                     with_interactive: bool = False) -> str:
+    """Wraps a command so that it will be executed inside of a container.
+    Args:
+        cmd (str): Command to modify
+        container_name (str): Container to run the command in
+        docker_cmd (str): Name of Docker program to use (docker|podman)
+        with_interactive (bool): Whether to run command 'interactively'
     """
-    Wraps a command so that it will be executed inside of a container.
-    """
-    return [
-        "docker exec {interactive} {container} /bin/bash -c {cmd} ".format(
-            interactive="-it" if with_interactive else "",
-            container=container_name,
-            cmd=quote(cmd)) for cmd in cmds
-    ]
+
+    return "docker exec {interactive} {container} /bin/bash -c {cmd} ".format(
+        interactive="-it" if with_interactive else "",
+        container=container_name,
+        cmd=quote(cmd))
 
 
 def _check_helper(container_name: str, template: str, docker_cmd: str) -> str:
-    """
-    Common functionality for running commmands to inspect some parameter.
+    """Common functionality for running commmands to inspect some parameter.
     The produced command string will always exit with 0.
     Args:
         container_name (str): Name of container to check
@@ -91,8 +93,15 @@ def docker_start_cmds(image: str, mount_dict: Dict[str, str],
                       container_name: str, user_options: List[str],
                       cluster_name: str, home_directory: str,
                       docker_cmd: str) -> str:
-    """
-    Build command to start a docker container.
+    """Build command to start a docker container.
+    Args:
+        image (str): Docker image to start
+        mount_dict (dict): File mounts (as defined in the Cluster YAML)
+        container_name: What to name the started container
+        user_options (list): Generic options to append to the start command
+        cluster_name (str): Name of this cluster
+        home_directory (str): Home directory inside of the container
+        docker_cmd (str): Command to do docker operations (docker | podman)
     """
     # Imported here due to circular dependency.
     from ray.autoscaler.sdk import get_docker_host_mount_location

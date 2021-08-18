@@ -613,10 +613,10 @@ class DockerCommandRunner(CommandRunnerInterface):
             if is_using_login_shells():
                 cmd = " ".join(_with_interactive(cmd))
             cmd = with_docker_exec(
-                [cmd],
+                cmd,
                 container_name=self.container_name,
                 with_interactive=is_using_login_shells(),
-                docker_cmd=self.docker_cmd)[0]
+                docker_cmd=self.docker_cmd)
 
         if shutdown_after_run:
             # sudo shutdown should run after `with_docker_exec` command above
