@@ -143,8 +143,6 @@ type Param interface {
 
 type Convert func(a, i Param)
 
-// 缺少泛型的支持，所以只能传入参数名
-// 参数填这里
 func (ah *ActorHandle) Task(f interface{}, args ...interface{}) *ActorTaskCaller {
     methodType := reflect.TypeOf(f)
     methodName := GetFunctionName(f)
@@ -181,7 +179,6 @@ func GetFunctionName(i interface{}) string {
 
 type ID unsafe.Pointer
 
-// 发出调用
 func (atc *ActorTaskCaller) Remote() *ObjectRef {
     returnNum := atc.invokeMethod.NumOut()
     returObjectIds := make([]unsafe.Pointer, returnNum, returnNum)

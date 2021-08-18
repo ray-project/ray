@@ -1,1 +1,0 @@
-_CGO_CFLAGS=-I/root/ray/src/ray/core_worker/lib/golang
