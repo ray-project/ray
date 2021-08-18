@@ -135,9 +135,10 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] service_handler The service handler that handles the request.
   /// \param[in] handle_request_function Pointer to the service handler function.
   /// \param[in] io_service The event loop.
-  ServerCallImpl(const ServerCallFactory &factory, ServiceHandler &service_handler,
-                 HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
-                 instrumented_io_context &io_service, std::string call_name)
+  ServerCallImpl(
+      const ServerCallFactory &factory, ServiceHandler &service_handler,
+      HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
+      instrumented_io_context &io_service, std::string call_name)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
@@ -307,7 +308,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   ServerCallFactoryImpl(
       AsyncService &service,
       RequestCallFunction<GrpcService, Request, Reply> request_call_function,
-      ServiceHandler &service_handler, HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
+      ServiceHandler &service_handler,
+      HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       instrumented_io_context &io_service, std::string call_name, int64_t max_active_rpcs)
       : service_(service),
