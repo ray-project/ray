@@ -447,7 +447,7 @@ def alert_pipeline(stats: bool = False):
 if __name__ == "__main__":
     alert = os.environ.get("RELEASE_ALERT", "0")
 
-    ask_for_config = not bool(int(os.environ.get("AUTOMATIC", "1")))
+    ask_for_config = not bool(int(os.environ.get("AUTOMATIC", "0")))
 
     if alert in ["1", "stats"]:
         steps = alert_pipeline(alert == "stats")
