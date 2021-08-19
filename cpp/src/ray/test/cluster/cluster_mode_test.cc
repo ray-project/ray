@@ -228,51 +228,36 @@ TEST(RayClusterModeTest, ExceptionTest) {
   EXPECT_THROW(object1.Get(), ray::internal::RayTaskException);
 }
 
-bool CheckRefCount(const std::string &object_id,
-                   std::pair<size_t, size_t> ref_count_pair) {
-  auto map = ray::internal::GetRayRuntime()->GetAllReferenceCounts();
-  auto it = map.find(object_id);
-  if (it == map.end()) {
-    return false;
-  }
-
-  return it->second == ref_count_pair;
-}
-
-bool CheckRefCount(const std::string &object_id) {
-  auto map = ray::internal::GetRayRuntime()->GetAllReferenceCounts();
-  return map.find(object_id) == map.end();
+bool CheckRefCount(std::unordered_map<std::string, std::pair<size_t, size_t>> expected) {
+  return expected == ray::internal::GetRayRuntime()->GetAllReferenceCounts();
 }
 
 TEST(RayClusterModeTest, LocalRefrenceTest) {
-  std::string objec_id;
-  {
-    auto r1 = ray::Task(Return1).Remote();
-    objec_id = r1.ID();
-    EXPECT_TRUE(CheckRefCount(objec_id, std::make_pair(1, 0)));
-
-    ray::ObjectRef<int> r2(r1);
-    EXPECT_TRUE(CheckRefCount(objec_id, std::make_pair(2, 0)));
-    // r1.Get();
-    // r2.Get();
-  }
-  EXPECT_TRUE(CheckRefCount(objec_id));
+  auto r1 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Return1).Remote());
+  auto objec_id = r1->ID();
+  EXPECT_TRUE(CheckRefCount({{objec_id, std::make_pair(1, 0)}}));
+  auto r2 = std::make_unique<ray::ObjectRef<int>>(*r1);
+  EXPECT_TRUE(CheckRefCount({{objec_id, std::make_pair(2, 0)}}));
+  r1.reset();
+  EXPECT_TRUE(CheckRefCount({{objec_id, std::make_pair(1, 0)}}));
+  r2.reset();
+  EXPECT_TRUE(CheckRefCount({}));
 }
 
 TEST(RayClusterModeTest, DependencyRefrenceTest) {
-  std::string objec_id;
-  {
-    auto r1 = ray::Task(Return1).Remote();
-    objec_id = r1.ID();
-    EXPECT_TRUE(CheckRefCount(objec_id, std::make_pair(1, 0)));
+  auto r1 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Return1).Remote());
+  auto objec_id = r1->ID();
+  EXPECT_TRUE(CheckRefCount({{objec_id, std::make_pair(1, 0)}}));
 
-    ray::ObjectRef<int> r2 = ray::Task(Plus1).Remote(r1);
-    EXPECT_TRUE(CheckRefCount(r2.ID(), std::make_pair(1, 0)));
-    EXPECT_TRUE(CheckRefCount(objec_id, std::make_pair(1, 1)));
-    r2.Get();
-    EXPECT_TRUE(CheckRefCount(r1.ID(), std::make_pair(1, 0)));
-  }
-  EXPECT_TRUE(CheckRefCount(objec_id));
+  auto r2 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Plus1).Remote(*r1));
+  EXPECT_TRUE(CheckRefCount(
+      {{objec_id, std::make_pair(1, 1)}, {r2->ID(), std::make_pair(1, 0)}}));
+  r2->Get();
+  EXPECT_TRUE(CheckRefCount(
+      {{objec_id, std::make_pair(1, 0)}, {r2->ID(), std::make_pair(1, 0)}}));
+  r1.reset();
+  r2.reset();
+  EXPECT_TRUE(CheckRefCount({}));
 }
 
 int main(int argc, char **argv) {
