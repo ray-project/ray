@@ -1243,6 +1243,11 @@ class TrialRunner:
     def cleanup_trials(self):
         self._run_and_catch(self.trial_executor.cleanup)
 
+    def cleanup(self):
+        """Cleanup trials and callbacks."""
+        self.cleanup_trials()
+        self.end_experiment_callbacks()
+
     def _reconcile_live_trials(self):
         """Loop through live trials and remove if terminated"""
         for trial in list(self._live_trials):

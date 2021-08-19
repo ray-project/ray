@@ -538,10 +538,6 @@ def run(
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter)
-
-    # Calls on_experiment_end on callbacks
-    runner.end_experiment_callbacks()
-
     tune_taken = time.time() - tune_start
 
     try:
@@ -553,7 +549,7 @@ def run(
         _report_progress(runner, progress_reporter, done=True)
 
     wait_for_sync()
-    runner.cleanup_trials()
+    runner.cleanup()
 
     incomplete_trials = []
     for trial in runner.get_trials():
