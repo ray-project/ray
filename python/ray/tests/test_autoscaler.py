@@ -29,7 +29,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER, NODE_KIND_HEAD, \
     NODE_KIND_WORKER, STATUS_UNINITIALIZED, TAG_RAY_CLUSTER_NAME
 from ray.autoscaler.node_provider import NodeProvider
-from ray.test_utils import RayTestTimeoutException
+from ray._private.test_utils import RayTestTimeoutException
 import pytest
 
 
