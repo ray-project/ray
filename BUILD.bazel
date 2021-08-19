@@ -338,6 +338,7 @@ cc_library(
         "src/ray/object_manager/plasma/object_lifecycle_manager.cc",
         "src/ray/object_manager/plasma/object_store.cc",
         "src/ray/object_manager/plasma/plasma_allocator.cc",
+        "src/ray/object_manager/plasma/stats_collector.cc",
         "src/ray/object_manager/plasma/store.cc",
         "src/ray/object_manager/plasma/store_runner.cc",
     ],
@@ -349,6 +350,7 @@ cc_library(
         "src/ray/object_manager/plasma/object_lifecycle_manager.h",
         "src/ray/object_manager/plasma/object_store.h",
         "src/ray/object_manager/plasma/plasma_allocator.h",
+        "src/ray/object_manager/plasma/stats_collector.h",
         "src/ray/object_manager/plasma/store.h",
         "src/ray/object_manager/plasma/store_runner.h",
         "src/ray/thirdparty/dlmalloc.c",
@@ -1010,6 +1012,7 @@ cc_test(
     name = "object_lifecycle_manager_test",
     srcs = [
         "src/ray/object_manager/plasma/test/object_lifecycle_manager_test.cc",
+        "src/ray/object_manager/plasma/test/stats_collector_test.cc",
     ],
     copts = COPTS,
     deps = [
@@ -1324,10 +1327,25 @@ cc_test(
 )
 
 cc_test(
-    name = "gcs_actor_scheduler_test",
+    name = "raylet_based_actor_scheduler_test",
     size = "small",
     srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_actor_scheduler_test.cc",
+        "src/ray/gcs/gcs_server/test/raylet_based_actor_scheduler_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_based_actor_scheduler_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_based_actor_scheduler_test.cc",
     ],
     copts = COPTS,
     deps = [

@@ -73,8 +73,6 @@ class IObjectStore {
   virtual int64_t GetNumBytesUnsealed() const = 0;
 
   virtual int64_t GetNumObjectsUnsealed() const = 0;
-
-  virtual void GetDebugDump(std::stringstream &buffer) const = 0;
 };
 
 // ObjectStore implements IObjectStore. It uses IAllocator
@@ -99,9 +97,9 @@ class ObjectStore : public IObjectStore {
 
   int64_t GetNumObjectsUnsealed() const override;
 
-  void GetDebugDump(std::stringstream &buffer) const override;
-
  private:
+  friend struct ObjectStatsCollectorTest;
+
   LocalObject *GetMutableObject(const ObjectID &object_id);
 
   /// Allocator that allocates memory.
