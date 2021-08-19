@@ -23,6 +23,8 @@ service using ``serve.start(detached=True)``. In this case, the Serve instance w
 run on the Ray cluster even after the script that calls it exits. If you want to run another script
 to update the Serve instance, you can run another script that connects to the same Ray cluster and makes further API calls (e.g., to create, update, or delete a deployment). Note that there can only be one detached Serve instance on each Ray cluster.
 
+All Serve instances will be started in the ``serve`` namespace. If ``serve.start()`` is called again in a process in which there is already a running Serve instance, Serve will re-connect to the existing instance (regardless of ``detached=True``). If a detached Serve instance doesn't exist in the current process but exists in the Ray cluster, you can reconnect to it with ``serve.start(detached=True)``. If a non-detached Serve instance exists in the Ray cluster but not in the current process, it cannot be reconnected to.
+
 Deploying on a Single Node
 ==========================
 
