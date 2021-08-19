@@ -17,12 +17,14 @@ from ray.tune.stopper import NoopStopper
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
                              RESULT_DUPLICATE, SHOULD_CHECKPOINT)
+from ray.tune.resources import Resources
 from ray.tune.syncer import CloudSyncer, get_cloud_syncer
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
@@ -514,6 +516,11 @@ class TrialRunner:
                 self.add_trial(new_trial)
             else:
                 self.add_trial(trial)
+
+    def update_trial_resources(
+            self, resources: Union[dict, Resources, PlacementGroupFactory]):
+        for trial in self._trials:
+            trial.update_resources(resources=resources)
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
