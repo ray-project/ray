@@ -136,6 +136,7 @@ cc_test(
     ]),
     copts = COPTS,
     linkstatic = False,
+    tags = ["team:serverless"],
     deps = [
         "ray_api",
         "@boost//:filesystem",
@@ -159,6 +160,7 @@ cc_test(
         "ray_cpp_pkg",
     ],
     linkstatic = True,
+    tags = ["team:serverless"],
     deps = [
         "ray_api",
         "@com_google_googletest//:gtest_main",
