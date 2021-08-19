@@ -2,16 +2,16 @@ import gym
 from gym.spaces import Tuple, Dict
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 
-def flatten_space(space):
+def flatten_space(space: gym.Space) -> List[gym.Space]:
     """Flattens a gym.Space into its primitive components.
 
     Primitive components are any non Tuple/Dict spaces.
 
     Args:
-        space(gym.Space): The gym.Space to flatten. This may be any
+        space (gym.Space): The gym.Space to flatten. This may be any
             supported type (including nested Tuples and Dicts).
 
     Returns:

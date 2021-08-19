@@ -31,6 +31,17 @@ podTypes:
         rayResources: {}
         # Optionally, set a node selector for this podType: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector
         nodeSelector: {}
+
+        # tolerations for Ray pods of this podType (the head's podType in this case)
+        #   ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+        #   Note that it is often not necessary to manually specify tolerations for GPU
+        #   usage on managed platforms such as AKS, EKS, and GKE.
+        #   ref: https://docs.ray.io/en/master/cluster/kubernetes-gpu.html
+        tolerations: []
+        # - key: "nvidia.com/gpu"
+        #   operator: Exists
+        #   effect: NoSchedule
+
     # The key for each podType is a user-defined string.
     rayWorkerType:
         # minWorkers is the minimum number of Ray workers of this pod type to keep running.
@@ -54,6 +65,22 @@ podTypes:
         # Optionally, set a node selector for this Pod type. See https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector
         nodeSelector: {}
 
+        # tolerations for Ray pods of this podType
+        #   ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+        #   Note that it is often not necessary to manually specify tolerations for GPU
+        #   usage on managed platforms such as AKS, EKS, and GKE.
+        #   ref: https://docs.ray.io/en/master/cluster/kubernetes-gpu.html
+        tolerations: []
+        # - key: nvidia.com/gpu
+        #   operator: Exists
+        #   effect: NoSchedule
+
+    # Optionally, define more worker podTypes
+    # rayWorkerType2:
+    #   minWorkers: 0
+    #   maxWorkers: 10
+    #   memory: ...
+
 
 # Operator settings:
 
@@ -74,7 +101,9 @@ operatorNamespace: default
 # operatorImage - The image used in the operator deployment.
 operatorImage: rayproject/ray:latest
 # `rayproject/ray:latest` contains the latest official release version of Ray.
-# `rayproject/ray:nightly` runs the current master version of Ray and carries some stability fixes.
+# `rayproject/ray:nightly` runs the current master version of Ray.
 # For a particular official release version of Ray, use `rayproject/ray:1.x.y`.
 # For a specific master commit, use the first 6 characters of the commit SHA, e.g. `rayproject/ray:050a07`.
 # The operator and Ray cluster can use different Ray versions, provided both versions are >= 1.2.0
+
+

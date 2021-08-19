@@ -100,6 +100,7 @@ from ray.cross_language import java_function, java_actor_class  # noqa: E402
 from ray.runtime_context import get_runtime_context  # noqa: E402
 from ray import data  # noqa: E402,F401
 from ray import util  # noqa: E402
+from ray import _private  # noqa: E402,F401
 # We import ClientBuilder so that modules can inherit from `ray.ClientBuilder`.
 from ray.client_builder import client, ClientBuilder  # noqa: E402
 

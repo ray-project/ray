@@ -64,7 +64,7 @@ class SampleBatch(dict):
         """Constructs a sample batch (same params as dict constructor).
 
         Note: All *args and those **kwargs not listed below will be passed
-        as-is to the parent dict constructor. 
+        as-is to the parent dict constructor.
 
         Keyword Args:
             _time_major (Optinal[bool]): Whether data in this sample batch
@@ -853,6 +853,7 @@ class SampleBatch(dict):
                 data,
                 _is_training=self.is_training,
                 _time_major=self.time_major,
+                _zero_padded=self.zero_padded,
             )
         else:
             data = tree.map_structure(lambda value: value[start:stop], self)
