@@ -1,4 +1,5 @@
 from collections import defaultdict
+from unittest.mock import patch
 
 import numpy as np
 import unittest
@@ -1628,6 +1629,7 @@ class SearchSpaceTest(unittest.TestCase):
         }
 
         from ray.tune.suggest.basic_variant import BasicVariantGenerator
+        from ray.tune.suggest.variant_generator import logger
 
         # Test whether the initial points of fixed parameters are correctly
         # verified.
@@ -1660,20 +1662,19 @@ class SearchSpaceTest(unittest.TestCase):
             },
         ])
 
-        from ray.tune.suggest.variant_generator import logger
-
-        with self.assertLogs(logger.name, level="WARN") as cm:
-            analysis = tune.run(
+        with patch.object(logger, "warning") as log_warning_mock:
+            tune.run(
                 _mock_objective,
                 name="test",
                 config=config,
                 search_alg=searcher,
                 num_samples=2,
             )
-        self.assertEqual(cm.output, [
-            "WARNING:ray.tune.suggest.variant_generator:Pre-set value `2` is "
-            "not equal to the value of parameter `a`: 1"
-        ])
+            log_warning_mock.assert_called_once()
+            self.assertEqual(
+                log_warning_mock.call_args[0],
+                ("Pre-set value `2` is not equal to the value of parameter "
+                 "`a`: 1", ))
 
     def testConstantGridSearchBasicVariant(self):
         config = {
