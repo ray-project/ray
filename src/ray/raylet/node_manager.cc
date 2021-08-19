@@ -183,6 +183,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                    config.worker_commands,
                    /*starting_worker_timeout_callback=*/
                    [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+                   /*runtime_env_setup_failed_callback=*/
+                   [this](const TaskID &task_id) {
+                     RAY_CHECK(cluster_task_manager_->CancelTask(
+                         task_id, /*runtime_env_setup_failed=*/true));
+                   },
                    config.ray_debugger_external,
                    /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       client_call_manager_(io_service),
@@ -294,6 +299,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
   };
+  auto is_owner_alive = [this](const WorkerID &owner_worker_id,
+                               const NodeID &owner_node_id) {
+    return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
+             failed_nodes_cache_.count(owner_node_id) > 0);
+  };
   auto announce_infeasible_task = [this](const RayTask &task) {
     PublishInfeasibleTaskError(task);
   };
@@ -310,11 +320,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
            "return values are greater than the remaining capacity.";
     max_task_args_memory = 0;
   }
-  auto is_owner_alive = [this](const WorkerID &owner_worker_id,
-                               const NodeID &owner_node_id) {
-    return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
-             failed_nodes_cache_.count(owner_node_id) > 0);
-  };
   cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
       self_node_id_,
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),

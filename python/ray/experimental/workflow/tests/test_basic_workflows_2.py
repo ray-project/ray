@@ -32,13 +32,9 @@ def test_init_twice_2(call_ray_start, reset_workflow, tmp_path):
     }], indirect=True)
 def test_step_resources(workflow_start_regular, tmp_path):
     lock_path = str(tmp_path / "lock")
-    # We use signal actor here because we can't guarantee the order of tasks
-    # sent from worker to raylet.
-    signal_actor = ray.test_utils.SignalActor.remote()
 
     @workflow.step
     def step_run():
-        ray.wait([signal_actor.send.remote()])
         with FileLock(lock_path):
             return None
 
@@ -49,7 +45,6 @@ def test_step_resources(workflow_start_regular, tmp_path):
     lock = FileLock(lock_path)
     lock.acquire()
     ret = step_run.options(num_cpus=2).step().run_async()
-    ray.wait([signal_actor.wait.remote()])
     obj = remote_run.remote()
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(obj, timeout=2)
