@@ -369,7 +369,7 @@ std::string TaskSpecification::DebugString() const {
 
   stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
-         << ", num_returns=" << NumReturns();
+         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.

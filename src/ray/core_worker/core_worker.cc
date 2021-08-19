@@ -1650,7 +1650,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
       task_options.override_environment_variables;
   override_environment_variables.insert(current_override_environment_variables.begin(),
                                         current_override_environment_variables.end());
-  int64_t depth = worker_context_.GetTaskDepth();
+  int64_t depth = worker_context_.GetTaskDepth() + 1;
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
@@ -1711,7 +1711,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_name.empty()
           ? function.GetFunctionDescriptor()->DefaultTaskName()
           : actor_name + ":" + function.GetFunctionDescriptor()->CallString();
-  int64_t depth = worker_context_.GetDepth() + 1;
+  int64_t depth = worker_context_.GetTaskDepth() + 1;
   BuildCommonTaskSpec(
       builder, job_id, actor_creation_task_id, task_name,
       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
@@ -1874,7 +1874,7 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   const std::unordered_map<std::string, std::string> override_environment_variables = {};
   // Depth shouldn't matter for an actor task, but for consistency it should be
   // the same as the actor creation task's depth.
-  int64_t depth = worker_context_.GetDepth();
+  int64_t depth = worker_context_.GetTaskDepth();
   BuildCommonTaskSpec(
       builder, actor_handle->CreationJobID(), actor_task_id, task_name,
       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
