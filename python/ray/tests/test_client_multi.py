@@ -18,6 +18,12 @@ def test_multi_cli_basic(call_ray_start):
     with cli2:
         b = ray.put(20)
 
+    with pytest.raises(Exception):
+        ray.put(30)
+
+    with pytest.raises(Exception):
+        ray.get(a)
+
     with pytest.raises(Exception), cli2:
         ray.get(a)
 

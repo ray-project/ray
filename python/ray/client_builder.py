@@ -29,17 +29,17 @@ class ClientContext:
     ray_commit: str
     protocol_version: Optional[str]
     _num_clients: int
-    ray_cli: Optional[ray.util.client.RayAPIStub]
+    _context_to_restore: Optional[ray.util.client.RayAPIStub]
 
     def __enter__(self) -> "ClientContext":
-        if self.ray_cli is not None:
-            self.ray_cli = ray.util.client.ray.set_context(self.ray_cli)
+        if self._context_to_restore is not None:
+            self._context_to_restore = ray.util.client.ray.set_context(self._context_to_restore)
         return self
 
     def __exit__(self, *exc) -> None:
         self.disconnect()
-        if self.ray_cli is not None:
-            self.ray_cli = ray.util.client.ray.set_context(self.ray_cli)
+        if self._context_to_restore is not None:
+            self._context_to_restore = ray.util.client.ray.set_context(self._context_to_restore)
 
     def disconnect(self) -> None:
         """
@@ -47,8 +47,9 @@ class ClientContext:
         or shuts the current driver down.
         """
         if ray.util.client.ray.is_connected():
-            # This is only a client connected to a server.
-            ray.util.client_connect.disconnect()
+            if ray.util.client.ray.is_default():
+                # This is only a client connected to a server.
+                ray.util.client_connect.disconnect()
         elif ray.worker.global_worker.node is None:
             # Already disconnected.
             return
@@ -74,7 +75,8 @@ class ClientBuilder:
         self._job_config = JobConfig()
         self._fill_defaults_from_env()
         self._remote_init_kwargs = {}
-        self._allow_multiple_cli = False
+        # Whether to allow connections to multiple clusters (allow_multiple=True).
+        self._allow_multiple_connections = False
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -106,17 +108,17 @@ class ClientBuilder:
                 dashboard_url.
         """
         old_ray_cxt = None
-        if ray.util.client.ray.is_connected() and self._allow_multiple_cli:
+        if ray.util.client.ray.is_connected() and self._allow_multiple_connections:
             raise RuntimeError("It's in single-client mode. We can't create"
                                " new client in multi-client mode")
 
-        if ray.util.client.connected_context_num(
-        ) != 0 and not self._allow_multiple_cli:
-            raise RuntimeError("It's in multi-client mode. All the new "
-                               "request to create a client has to be in "
-                               "multi-client mode")
+        if ray.util.client.num_connected_contexts(
+        ) != 0 and not self._allow_multiple_connections:
+            raise RuntimeError("Multiple clients are connected. Additional "
+                               "connections must be created with"
+                               " `ray.init(allow_multiple=True)`")
 
-        if self._allow_multiple_cli:
+        if self._allow_multiple_connections:
             old_ray_cxt = ray.util.client.ray.set_context(None)
         client_info_dict = ray.util.client_connect.connect(
             self.address,
@@ -131,8 +133,8 @@ class ClientBuilder:
             ray_commit=client_info_dict["ray_commit"],
             protocol_version=client_info_dict["protocol_version"],
             _num_clients=client_info_dict["num_clients"],
-            ray_cli=ray.util.client.ray.get_context())
-        if self._allow_multiple_cli:
+            _context_to_restore=ray.util.client.ray.get_context())
+        if self._allow_multiple_connections:
             ray.util.client.ray.set_context(old_ray_cxt)
         return cxt
 
@@ -163,7 +165,7 @@ class ClientBuilder:
             del kwargs["runtime_env"]
 
         if kwargs.get("allow_multiple") is True:
-            self._allow_multiple_cli = True
+            self._allow_multiple_connections = True
             del kwargs["allow_multiple"]
 
         if kwargs:
@@ -195,7 +197,7 @@ class _LocalClientBuilder(ClientBuilder):
             ray_commit=ray.__commit__,
             protocol_version=None,
             _num_clients=1,
-            ray_cli=None)
+            _context_to_restore=None)
 
 
 def _split_address(address: str) -> Tuple[str, str]:

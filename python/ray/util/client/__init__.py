@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 CURRENT_PROTOCOL_VERSION = "2021-08-16"
 
 
-class _Context:
+class _ClientContext:
     def __init__(self):
         from ray.util.client.api import ClientAPI
         self.api = ClientAPI()
@@ -23,16 +23,16 @@ class _Context:
         self._inside_client_test = False
 
     def _connect(self,
-                conn_str: str,
-                job_config: JobConfig = None,
-                secure: bool = False,
-                metadata: List[Tuple[str, str]] = None,
-                connection_retries: int = 3,
-                namespace: str = None,
-                *,
-                ignore_version: bool = False,
-                ray_init_kwargs: Optional[Dict[str, Any]] = None
-                ) -> Dict[str, Any]:
+                 conn_str: str,
+                 job_config: JobConfig = None,
+                 secure: bool = False,
+                 metadata: List[Tuple[str, str]] = None,
+                 connection_retries: int = 3,
+                 namespace: str = None,
+                 *,
+                 ignore_version: bool = False,
+                 ray_init_kwargs: Optional[Dict[str, Any]] = None
+                 ) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
 
         Args:
@@ -173,10 +173,13 @@ class _Context:
                                                _exiting_interpreter)
         self._server = None
 
-
+# All connected context will be put here
+# This struct will be guarded by a lock for thread safety
 _all_contexts = set()
 _lock = threading.Lock()
-_default_context = _Context()
+
+# This is the default context which is used when allow_multiple is not True
+_default_context = _ClientContext()
 
 
 class RayAPIStub:
@@ -201,10 +204,13 @@ class RayAPIStub:
     def set_context(self, cxt):
         old_cxt = self.get_context()
         if cxt is None:
-            self._cxt.handler = _Context()
+            self._cxt.handler = _ClientContext()
         else:
             self._cxt.handler = cxt
         return old_cxt
+
+    def is_default(self):
+        return self._cxt.handler == _default_context
 
     def connect(self, *args, **kw_args):
         conn = self.get_context()._connect(*args, **kw_args)
@@ -258,12 +264,8 @@ class RayAPIStub:
 
 ray = RayAPIStub()
 
-
-def is_main_cli():
-    return _default_context == ray._cxt.handler
-
-
-def connected_context_num():
+def num_connected_contexts():
+    """Return the number of client connections active."""
     global _lock, _all_contexts
     with _lock:
         return len(_all_contexts)
