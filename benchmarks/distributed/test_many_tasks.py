@@ -2,7 +2,7 @@ import click
 import json
 import os
 import ray
-from ray import test_utils
+import ray._private.test_utils as test_utils
 import time
 import tqdm
 

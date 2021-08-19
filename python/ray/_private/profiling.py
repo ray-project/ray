@@ -24,8 +24,9 @@ def profile(event_type, extra_data=None):
     This function can be used as follows (both on the driver or within a task).
 
     .. code-block:: python
+        import ray._private.profiling as profiling
 
-        with ray.profiling.profile("custom event", extra_data={'key': 'val'}):
+        with profiling.profile("custom event", extra_data={'key': 'val'}):
             # Do some computation here.
 
     Optionally, a dictionary can be passed as the "extra_data" argument, and

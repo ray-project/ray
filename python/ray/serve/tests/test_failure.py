@@ -6,7 +6,7 @@ import time
 import pytest
 import ray
 from ray import serve
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 
 
 def request_with_retries(endpoint, timeout=30):
