@@ -715,6 +715,51 @@ def test_init_args(serve_instance):
     check(10, 11, 12)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_deploy_with_constructor_failure(serve_instance):
+    # Test failed to deploy with total of 1 replica
+    # @serve.deployment(num_replicas=1)
+    # class ConstructorFailureDeploymentOneReplica:
+    #     def __init__(self):
+    #         raise RuntimeError("Intentionally throwing ")
+
+    #     async def serve(self, request):
+    #         return "hi"
+
+    # with pytest.raises(RuntimeError):
+    #     ConstructorFailureDeploymentOneReplica.deploy()
+
+    # Test failed to deploy with total of 2 replicas
+    @serve.deployment(num_replicas=2)
+    class ConstructorFailureDeployment:
+        def __init__(self):
+            raise RuntimeError("Intentionally throwing ")
+
+        async def serve(self, request):
+            return "hi"
+
+    with pytest.raises(RuntimeError):
+        ConstructorFailureDeployment.deploy()
+
+
+    # Test failed to deploy with total of 4 replicas,
+    # but 2 of them fails at constructor while the other
+    # two can start
+    # @serve.deployment(num_replicas=4)
+    # class ConstructorFailureDeployment:
+    #     def __init__(self):
+    #         raise RuntimeError("Intentionally throwing ")
+
+    #     async def serve(self, request):
+    #         return "hi"
+
+    # with pytest.raises(RuntimeError):
+    #     ConstructorFailureDeployment.deploy()
+
+
+
+
+
 def test_input_validation():
     name = "test"
 

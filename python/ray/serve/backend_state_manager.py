@@ -934,7 +934,9 @@ class BackendStateManager:
         failed_to_start_replicas = self._replicas[backend_tag].count(
             states=[ReplicaState.FAILED_TO_START])
 
-        delta_replicas = target_replicas - current_replicas
+        delta_replicas = (
+            target_replicas - current_replicas - failed_to_start_replicas
+        )
         if delta_replicas == 0:
             return False
 
@@ -1002,7 +1004,7 @@ class BackendStateManager:
         Returns:
             completed_goals (List[GoalId]): List of goal_ids successfully
                 completed in this cycle
-            failed_to_start_goals (List[GoalId]):List of goal_ids failed to
+            failed_to_start_goals (List[GoalId]): List of goal_ids failed to
                 start in this cycle
         """
         completed_goals = []
@@ -1020,6 +1022,8 @@ class BackendStateManager:
             ]) > 0):
                 continue
 
+            # All replicas are in steady or terminal states beyond this point
+            # thus we can start tracking completed goals.
             target_version = self._target_versions[backend_tag]
 
             all_running_replica = self._replicas[backend_tag].get(
@@ -1051,12 +1055,24 @@ class BackendStateManager:
                 # to bring to target running replica fully
                 completed_goals.append(
                     self._backend_goals.pop(backend_tag, None))
+                # Clear failed to start replicas as the deployment is considered
+                # done with partially fulfilled target replicas
+                self._replicas[backend_tag].pop(
+                    states=[ReplicaState.FAILED_TO_START]
+                )
+
             elif len(failed_to_start_replica) == target_replica_count:
                 # Reconfigure action failed as all replicas failed to start
                 # without any running instance.
                 failed_to_start_goals.append(self._backend_goals.pop(backend_tag, None))
+                # Clear failed to start replicas as the deployment is considered
+                # failed completely with exception set
+                self._replicas[backend_tag].pop(
+                    states=[ReplicaState.FAILED_TO_START]
+                )
                 # TODO: (jiaodong) Determine if we should delete backend or
                 # roll back to previous version
+
 
         for backend_tag in deleted_backends:
             del self._replicas[backend_tag]
@@ -1079,10 +1095,11 @@ class BackendStateManager:
             self._goal_manager.complete_goal(
                 goal_id,
                 # TODO:(jiaodong) Do we want to surface original constructor
-                # exception from other actor instead ?
+                # exception from other actor instead ? Might need controller
+                # level global exception handler
                 RuntimeError(
                     f"Deployment with goal_id {goal_id} "
-                    f"failed to start.")
+                    f"failed to start. See worker exception above.")
             )
 
         transitioned_backend_tags = set()
@@ -1126,7 +1143,6 @@ class BackendStateManager:
                 elif state == ReplicaState.FAILED_TO_START:
                     # Replica reconfigure (deploy / upgrade) failed after all
                     # retries
-                    replica.set_should_stop(0)
                     replicas.add(ReplicaState.FAILED_TO_START, replica)
                     transitioned_backend_tags.add(backend_tag)
                 else:
