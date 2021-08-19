@@ -1,7 +1,7 @@
 import ray
 import ray._private.services as services
 import ray.worker
-from ray import profiling
+import ray._private.profiling as profiling
 from ray import ray_constants
 from ray.state import GlobalState
 

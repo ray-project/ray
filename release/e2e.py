@@ -515,7 +515,8 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
 def _cleanup_session(sdk: AnyscaleSDK, session_id: str):
     if session_id:
         # Just trigger a request. No need to wait until session shutdown.
-        sdk.stop_session(session_id=session_id, stop_session_options={})
+        sdk.terminate_session(
+            session_id=session_id, terminate_session_options={})
 
 
 def search_running_session(sdk: AnyscaleSDK, project_id: str,

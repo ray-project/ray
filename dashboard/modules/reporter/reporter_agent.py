@@ -12,7 +12,6 @@ import warnings
 import aioredis
 
 import ray
-import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
 from ray.new_dashboard import k8s_utils
 import ray.new_dashboard.utils as dashboard_utils
