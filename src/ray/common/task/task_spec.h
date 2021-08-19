@@ -47,14 +47,6 @@ struct SchedulingClassDescriptor {
     bool depth_match = depth == other.depth;
     return resource_sets_match && functions_match && depth_match;
   }
-  /* struct hash_fn { */
-  /*   std::size_t operator()(const SchedulingClassDescriptor &sched_cls) const { */
-  /*     std::size_t hash = std::hash<ResourceSet>()(sched_cls.resource_set); */
-  /*     hash ^= sched_cls.function_descriptor->Hash(); */
-  /*     hash ^= sched_cls.depth; */
-  /*     return hash; */
-  /*   } */
-  /* }; */
 };
 }  // namespace ray
 
