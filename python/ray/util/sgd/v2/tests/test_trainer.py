@@ -667,6 +667,28 @@ def test_run_after_user_error(ray_start_2_cpus):
     output = trainer.run(train)
     assert output == [1, 1]
 
+def test_dataset_torch(ray_start_2_cpus):
+    import pandas as pd
+    config = TestConfig()
+
+    df = pd.DataFrame({
+        "one": [1, 2, 3],
+        "two": [1.0, 2.0, 3.0],
+        "label": [1.0, 2.0, 3.0]
+    })
+    dataset = ray.data.from_pandas(df)
+
+    def get_dataset():
+        print(sgd.get_data_shard().to_torch(label_column="label").numpy())
+
+    trainer = Trainer(config, num_workers=2, dataset=dataset)
+    trainer.start()
+    trainer.run(get_dataset)
+
+
+def test_dataset_tensorflow(ray_start_2_cpus):
+    pass
+
 
 if __name__ == "__main__":
     import pytest
