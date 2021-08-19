@@ -255,7 +255,8 @@ def ask_configuration():
                 "filter_file": FILTER_FILE,
                 "filter_test": FILTER_TEST,
             }.items()
-        ]
+        ],
+        "key": "input_init_step",
     }
     input_ask_step = {
         "input": "Input required: Please specify tests to run",
@@ -272,7 +273,7 @@ def ask_configuration():
             {
                 "text": ("Please specify the Ray branch used "
                          "to find the wheel."),
-                "hint": ("For releases, this will be e.g. `releases/1.x.0`"),
+                "hint": "For releases, this will be e.g. `releases/1.x.0`",
                 "default": RAY_BRANCH,
                 "key": "ray_branch"
             },
@@ -281,6 +282,7 @@ def ask_configuration():
                          "to find the wheel."),
                 "hint": ("Leave empty for latest master. For releases, "
                          "specify the release version."),
+                "required": False,
                 "default": RAY_VERSION,
                 "key": "ray_version"
             },
@@ -317,6 +319,7 @@ def ask_configuration():
                 "hint": ("Only test files (e.g. xgboost_tests.yml) that "
                          "match this string will be included in the test"),
                 "default": FILTER_FILE,
+                "required": False,
                 "key": "filter_file"
             },
             {
@@ -325,9 +328,12 @@ def ask_configuration():
                 "hint": ("Only test names (e.g. tune_4x32) that match "
                          "this string will be included in the test"),
                 "default": FILTER_TEST,
+                "required": False,
                 "key": "filter_test"
             },
-        ]
+        ],
+        "depends_on": "input_init_step",
+        "key": "input_ask_step",
     }
 
     input_update_env_step = {
@@ -342,7 +348,9 @@ def ask_configuration():
                 "filter_file": "FILTER_FILE",
                 "filter_test": "FILTER_TEST",
             }.items()
-        ]
+        ],
+        "depends_on": "input_ask_step",
+        "key": "input_update_env_step",
     }
 
     run_again_step = {
@@ -355,7 +363,9 @@ def ask_configuration():
         "label": ":pipeline: Again",
         "agents": {
             "queue": "runner_queue_branch"
-        }
+        },
+        "depends_on": "input_update_env_step",
+        "key": "run_again_step",
     }
 
     return [
