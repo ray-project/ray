@@ -1268,6 +1268,9 @@ uint64_t ClusterTaskManager::MaxRunningTasksPerSchedulingClass(
   // Handle the num_cpus=0 edge case.
   cpu_req = std::max(cpu_req, 0.01);
   uint64_t total_cpus = cluster_resource_scheduler_->GetNumCpus();
+  if (total_cpus == 0) {
+    total_cpus = INT_MAX;
+  }
   double target = total_cpus / cpu_req;
   return static_cast<uint64_t>(std::ceil(target));
 }

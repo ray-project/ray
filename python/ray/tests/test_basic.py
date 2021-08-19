@@ -9,8 +9,8 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray._private.test_utils import (client_test_enabled, get_error_message,
-                                     SignalActor, run_string_as_driver)
+from ray.test_utils import (client_test_enabled, get_error_message,
+                            run_string_as_driver)
 
 import ray
 
@@ -210,8 +210,7 @@ print("local", ray._private.runtime_env.VAR)
 """
 
     out = run_string_as_driver(
-        script,
-        {"RAY_USER_SETUP_FUNCTION": "ray._private.test_utils.set_setup_func"})
+        script, {"RAY_USER_SETUP_FUNCTION": "ray.test_utils.set_setup_func"})
     (remote_out, local_out) = out.strip().split("\n")[-2:]
     assert remote_out == "remote hello world"
     assert local_out == "local hello world"
@@ -341,7 +340,7 @@ def test_fetch_local(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(num_cpus=2, object_store_memory=75 * 1024 * 1024)
 
-    signal_actor = SignalActor.remote()
+    signal_actor = ray.test_utils.SignalActor.remote()
 
     @ray.remote
     def put():
@@ -370,18 +369,18 @@ def test_fetch_local(ray_start_cluster_head):
 def test_nested_functions(ray_start_shared_local_modes):
     # Make sure that remote functions can use other values that are defined
     # after the remote function but before the first function invocation.
-    # @ray.remote
-    # def f():
-    #     return g(), ray.get(h.remote())
+    @ray.remote
+    def f():
+        return g(), ray.get(h.remote())
 
-    # def g():
-    #     return 1
+    def g():
+        return 1
 
-    # @ray.remote
-    # def h():
-    #     return 2
+    @ray.remote
+    def h():
+        return 2
 
-    # assert ray.get(f.remote()) == (1, 2)
+    assert ray.get(f.remote()) == (1, 2)
 
     # Test a remote function that recursively calls itself.
 
@@ -391,11 +390,11 @@ def test_nested_functions(ray_start_shared_local_modes):
             return 1
         return n * ray.get(factorial.remote(n - 1))
 
-    # assert ray.get(factorial.remote(0)) == 1
-    # assert ray.get(factorial.remote(1)) == 1
-    # assert ray.get(factorial.remote(2)) == 2
-    # assert ray.get(factorial.remote(3)) == 6
-    # assert ray.get(factorial.remote(4)) == 24
+    assert ray.get(factorial.remote(0)) == 1
+    assert ray.get(factorial.remote(1)) == 1
+    assert ray.get(factorial.remote(2)) == 2
+    assert ray.get(factorial.remote(3)) == 6
+    assert ray.get(factorial.remote(4)) == 24
     assert ray.get(factorial.remote(5)) == 120
 
 

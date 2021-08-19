@@ -23,7 +23,7 @@ def valid_exceptions(use_force):
 def test_cancel_chain(ray_start_regular, use_force):
     signaler = SignalActor.remote()
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     def wait_for(t):
         return ray.get(t[0])
 
@@ -129,7 +129,7 @@ def test_single_cpu_cancel(shutdown_only, use_force):
 def test_comprehensive(ray_start_regular, use_force):
     signaler = SignalActor.remote()
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     def wait_for(t):
         ray.get(t[0])
         return "Result"

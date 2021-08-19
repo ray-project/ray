@@ -520,6 +520,45 @@ def test_pull_manager_at_capacity_reports(ray_start_cluster):
 
 
 def test_nested_tasks(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def inc(self):
+            self.count += 1
+            assert self.count < 2
+
+        def dec(self):
+            self.count -= 1
+
+    counter = Counter.remote()
+
+    @ray.remote(num_cpus=1)
+    def g():
+        return None
+
+    @ray.remote(num_cpus=1)
+    def f():
+        counter.inc.remote()
+        res = ray.get(g.remote())
+        ray.get(counter.dec.remote())
+        return res
+
+    ready, _ = ray.wait(
+        [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
+    assert len(ready) == 1000, len(ready)
+
+
+def test_nested_tasks_2(shutdown_only):
+    """
+        This test is the same as before, but uses a custom resource to ensure
+        exactly 1 of each function is executing at once. Since custom resources aren't
+        preemtible, if 2 instances of `f` run, there won't be enough resources for an
+        instance of `h` to run, thus the program will never finish.
+    """
     ray.init(num_cpus=1, resources={"worker": 3})
 
     @ray.remote(num_cpus=1, resources={"worker": 1})
@@ -537,6 +576,52 @@ def test_nested_tasks(shutdown_only):
     ready, _ = ray.wait(
         [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
     assert len(ready) == 1000, len(ready)
+
+
+def test_recursion(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def summer(n):
+        if n == 0:
+            return 0
+        return n + ray.get(summer.remote(n-1))
+
+    assert ray.get(summer.remote(10)) == sum(range(11))
+
+
+def test_limit_concurrency(shutdown_only):
+    ray.init(num_cpus=1)
+
+    block_task = Semaphore.remote(0)
+    block_driver = Semaphore.remote(0)
+
+    @ray.remote(num_cpus=1)
+    def foo():
+        ray.get(block_driver.release.remote())
+        ray.get(block_task.acquire.remote())
+
+    ref1 = foo.remote()
+    ref2 = foo.remote()
+
+    ray.get(block_driver.acquire.remote())
+
+    block_driver_ref = block_driver.acquire.remote()
+
+    # The second instance of foo can't run because it's blocked on the dispatch
+    # queue until the first instance finishes.
+    ready, not_ready = ray.wait([block_driver_ref], timeout=1)
+    assert len(not_ready) == 1
+
+    # Now the first instance of foo finishes, so the second starts to run.
+    ray.get(block_task.release.remote())
+
+    ready, not_ready = ray.wait([block_driver_ref], timeout=1)
+    assert len(not_ready) == 0
+
+    ready, not_ready = ray.wait([ref1, ref2], num_returns=2, timeout=1)
+    assert len(ready) == 1
+    assert len(not_ready) == 1
 
 
 if __name__ == "__main__":
