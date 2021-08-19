@@ -16,9 +16,13 @@ def connect(
         *,
         ignore_version: bool = False,
         ray_init_kwargs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    old_ray = None
     if ray.is_connected():
-        raise RuntimeError("Ray Client is already connected. Maybe you called "
-                           'ray.init("ray://<address>") twice by accident?')
+        old_ray = ray.util.client._ray_cli_tls.handler
+        ray.util.client._ray_cli_tls.handler = ray.util.client.RayAPIStub()
+
+        # raise RuntimeError("Ray Client is already connected. Maybe you called "
+        #                    'ray.init("ray://<address>") twice by accident?')
     # Enable the same hooks that RAY_CLIENT_MODE does, as calling
     # ray.init("ray://<address>") is specifically for using client mode.
     _set_client_hook_status(True)
@@ -27,7 +31,7 @@ def connect(
     # TODO(barakmich): https://github.com/ray-project/ray/issues/13274
     # for supporting things like cert_path, ca_path, etc and creating
     # the correct metadata
-    return ray.connect(
+    conn = ray.connect(
         conn_str,
         job_config=job_config,
         secure=secure,
@@ -36,6 +40,9 @@ def connect(
         namespace=namespace,
         ignore_version=ignore_version,
         ray_init_kwargs=ray_init_kwargs)
+    if old_ray is not None:
+        ray.util.client._ray_cli_tls.handler = old_ray
+    return conn
 
 
 def disconnect():

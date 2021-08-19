@@ -4,7 +4,7 @@ import os
 import sys
 import logging
 import json
-
+import threading
 logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
@@ -180,7 +180,10 @@ class RayAPIStub:
         self._server = None
 
 
-ray = RayAPIStub()
+_ray_cli_tls = threading.local()
+_ray_cli_tls.handler = RayAPIStub()
+ray = _ray_cli_tls.handler
+
 
 # Someday we might add methods in this module so that someone who
 # tries to `import ray_client as ray` -- as a module, instead of

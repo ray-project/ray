@@ -29,12 +29,14 @@ class ClientContext:
     ray_commit: str
     protocol_version: Optional[str]
     _num_clients: int
+    ray_cli: ray.util.client.RayAPIStub
 
     def __enter__(self) -> "ClientContext":
+        ray.util.client._ray_cli_tls.handler, self.ray_cli = self.ray_cli, ray.util.client._ray_cli_tls.handler
         return self
 
     def __exit__(self, *exc) -> None:
-        self.disconnect()
+        ray.util.client._ray_cli_tls.handler, self.ray_cli = self.ray_cli, ray.util.client._ray_cli_tls.handler
 
     def disconnect(self) -> None:
         """
@@ -106,13 +108,14 @@ class ClientBuilder:
             ray_init_kwargs=self._remote_init_kwargs)
         dashboard_url = ray.get(
             ray.remote(ray.worker.get_dashboard_url).remote())
-        return ClientContext(
+        cxt = ClientContext(
             dashboard_url=dashboard_url,
             python_version=client_info_dict["python_version"],
             ray_version=client_info_dict["ray_version"],
             ray_commit=client_info_dict["ray_commit"],
             protocol_version=client_info_dict["protocol_version"],
-            _num_clients=client_info_dict["num_clients"])
+            _num_clients=client_info_dict["num_clients"],
+            ray_cli=ray.util.client._ray_cli_tls.handler)
 
     def _fill_defaults_from_env(self):
         # Check environment variables for default values

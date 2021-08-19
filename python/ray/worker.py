@@ -575,7 +575,6 @@ _global_node = None
 
 
 @PublicAPI
-@client_mode_hook
 def init(
         address=None,
         *,
