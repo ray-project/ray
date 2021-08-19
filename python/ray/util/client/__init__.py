@@ -49,7 +49,6 @@ class _ClientContext:
         """
         # Delay imports until connect to avoid circular imports.
         from ray.util.client.worker import Worker
-        import ray._private.client_mode_hook
         if self.client_worker is not None:
             if self._connected_with_init:
                 return
@@ -173,6 +172,7 @@ class _ClientContext:
                                                _exiting_interpreter)
         self._server = None
 
+
 # All connected context will be put here
 # This struct will be guarded by a lock for thread safety
 _all_contexts = set()
@@ -263,6 +263,7 @@ class RayAPIStub:
 
 
 ray = RayAPIStub()
+
 
 def num_connected_contexts():
     """Return the number of client connections active."""

@@ -33,13 +33,15 @@ class ClientContext:
 
     def __enter__(self) -> "ClientContext":
         if self._context_to_restore is not None:
-            self._context_to_restore = ray.util.client.ray.set_context(self._context_to_restore)
+            self._context_to_restore = ray.util.client.ray.set_context(
+                self._context_to_restore)
         return self
 
     def __exit__(self, *exc) -> None:
         self.disconnect()
         if self._context_to_restore is not None:
-            self._context_to_restore = ray.util.client.ray.set_context(self._context_to_restore)
+            self._context_to_restore = ray.util.client.ray.set_context(
+                self._context_to_restore)
 
     def disconnect(self) -> None:
         """
@@ -75,7 +77,8 @@ class ClientBuilder:
         self._job_config = JobConfig()
         self._fill_defaults_from_env()
         self._remote_init_kwargs = {}
-        # Whether to allow connections to multiple clusters (allow_multiple=True).
+        # Whether to allow connections to multiple clusters"
+        # " (allow_multiple=True).
         self._allow_multiple_connections = False
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
@@ -108,7 +111,8 @@ class ClientBuilder:
                 dashboard_url.
         """
         old_ray_cxt = None
-        if ray.util.client.ray.is_connected() and self._allow_multiple_connections:
+        if ray.util.client.ray.is_connected(
+        ) and self._allow_multiple_connections:
             raise RuntimeError("It's in single-client mode. We can't create"
                                " new client in multi-client mode")
 
