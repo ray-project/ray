@@ -672,7 +672,7 @@ def install_matching_ray():
         return
     assert "manylinux2014_x86_64" in wheel, wheel
     if sys.platform == "darwin":
-        platform = "macosx_10_13_intel"
+        platform = "macosx_10_15_intel"
     elif sys.platform == "win32":
         platform = "win_amd64"
     else:
