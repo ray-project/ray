@@ -1380,6 +1380,7 @@ cc_test(
         "src/ray/gcs/gcs_server/test/raylet_based_actor_scheduler_test.cc",
     ],
     copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
