@@ -12,7 +12,7 @@ from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     DEFAULT_RESULTS_DIR
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
-from ray.util.sgd.v2.utils import construct_path, construct_path_with_default
+from ray.util.sgd.v2.utils import construct_path
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 T = TypeVar("T")
@@ -50,15 +50,15 @@ class BackendExecutor:
             generated.
 
     Attributes:
-        logdir(Path): Path to the file directory where logs will be persisted.
-        latest_run_dir(Optional[Path]): Path to the file directory for the
+        logdir (Path): Path to the file directory where logs will be persisted.
+        latest_run_dir (Optional[Path]): Path to the file directory for the
             latest run. Configured through ``start_training``.
-        latest_checkpoint_dir(Optional[Path]): Path to the file directory for
+        latest_checkpoint_dir (Optional[Path]): Path to the file directory for
             the checkpoints from the latest run. Configured through
             ``start_training``.
-        latest_checkpoint_path(Optional[Path]): Path to the latest persisted
+        latest_checkpoint_path (Optional[Path]): Path to the latest persisted
             checkpoint from the latest run.
-        latest_checkpoint(Optional[Dict]): The latest saved checkpoint. This
+        latest_checkpoint (Optional[Dict]): The latest saved checkpoint. This
             checkpoint may not be saved to disk.
     """
 
@@ -88,16 +88,14 @@ class BackendExecutor:
         # Incremental unique checkpoint ID of this run.
         self._latest_checkpoint_id = 0
 
-    def _construct_logdir(self, input_logdir: Optional[Path]) -> Path:
+    def _construct_logdir(self, logdir: Optional[Path]) -> Path:
         """Path to the log directory."""
+        if not logdir:
+            # Initialize timestamp for identifying this SGD training execution.
+            timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            logdir = Path(f"sgd_{timestr}")
 
-        # Initialize timestamp for identifying this SGD training execution.
-        timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-        default_logdir = Path(f"sgd_{timestr}")
-
-        logdir = construct_path_with_default(input_logdir, DEFAULT_RESULTS_DIR,
-                                             default_logdir)
-        return logdir
+        return construct_path(logdir, DEFAULT_RESULTS_DIR)
 
     def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the worker group."""
@@ -420,18 +418,16 @@ class BackendExecutor:
     def latest_run_dir(self) -> Optional[Path]:
         """Path to the latest run directory."""
         if self._run_id > 0:
-            default_path = Path(f"run_{self._run_id:03d}")
-            run_dir = construct_path(default_path, self.logdir)
-            return run_dir
+            run_dir = Path(f"run_{self._run_id:03d}")
+            return construct_path(run_dir, self.logdir)
         else:
             return None
 
     @property
     def latest_checkpoint_dir(self) -> Optional[Path]:
         """Path to the latest checkpoint directory."""
-        default_path = Path("checkpoints")
-        checkpoint_dir = construct_path(default_path, self.latest_run_dir)
-        return checkpoint_dir
+        checkpoint_dir = Path("checkpoints")
+        return construct_path(checkpoint_dir, self.latest_run_dir)
 
     @property
     def latest_checkpoint_path(self) -> Optional[Path]:
