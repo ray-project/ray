@@ -15,6 +15,15 @@ StepID = str
 WorkflowOutputType = ObjectRef
 
 
+def get_module(f):
+    return f.__module__ if hasattr(f, "__module__") else "__anonymous_module__"
+
+
+def get_qualname(f):
+    return f.__qualname__ if hasattr(f,
+                                     "__qualname__") else "__anonymous_func__"
+
+
 @dataclass
 class WorkflowRef:
     """This class represents a dynamic reference of a workflow output.
@@ -86,7 +95,7 @@ class WorkflowData:
     def to_metadata(self) -> Dict[str, Any]:
         f = self.func_body
         return {
-            "name": f.__module__ + "." + f.__qualname__,
+            "name": get_module(f) + "." + get_qualname(f),
             "step_type": self.step_type,
             "object_refs": [r.hex() for r in self.inputs.object_refs],
             "workflows": [w.id for w in self.inputs.workflows],
@@ -140,8 +149,8 @@ class Workflow:
         self._data = workflow_data
         self._executed: bool = False
         self._result: Optional[WorkflowExecutionResult] = None
-        self._step_id: StepID = slugify(
-            self._data.func_body.__qualname__) + "." + uuid.uuid4().hex
+        qual_name = get_qualname(self._data.func_body)
+        self._step_id: StepID = slugify(qual_name) + "." + uuid.uuid4().hex
 
     @property
     def executed(self) -> bool:

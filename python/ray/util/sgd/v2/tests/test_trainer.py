@@ -1,4 +1,8 @@
 import time
+<<<<<<< HEAD
+=======
+from pathlib import Path
+>>>>>>> 36c26578a7ba2b148b7ce10efeef750b82d547da
 from unittest.mock import patch
 
 import pytest
@@ -6,7 +10,10 @@ import ray
 import ray.util.sgd.v2 as sgd
 import tensorflow as tf
 import torch
+<<<<<<< HEAD
 
+=======
+>>>>>>> 36c26578a7ba2b148b7ce10efeef750b82d547da
 from ray.util.sgd.v2 import Trainer
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface, \
     BackendExecutor
@@ -81,11 +88,12 @@ def gen_new_backend_executor(special_f):
     """Returns a BackendExecutor that runs special_f on worker 0."""
 
     class TestBackendExecutor(BackendExecutor):
-        def start_training(self, train_func, checkpoint):
+        def start_training(self, train_func, checkpoint, checkpoint_strategy):
             special_execute = gen_execute_single_async_special(special_f)
             with patch.object(WorkerGroup, "execute_single_async",
                               special_execute):
-                super().start_training(train_func, checkpoint)
+                super().start_training(train_func, checkpoint,
+                                       checkpoint_strategy)
 
     return TestBackendExecutor
 
@@ -188,7 +196,7 @@ def test_fast_slow(ray_start_2_cpus):
         trainer.start()
         trainer.run(train, callbacks=[callback])
 
-    assert trainer.get_latest_checkpoint()["epoch"] == 1
+    assert trainer.latest_checkpoint["epoch"] == 1
 
     result_list = callback.result_list
     assert len(result_list) == 2
@@ -292,7 +300,7 @@ def test_checkpoint(ray_start_2_cpus):
     trainer = Trainer(config, num_workers=2)
     trainer.start()
     trainer.run(train_func)
-    checkpoint = trainer.get_latest_checkpoint()
+    checkpoint = trainer.latest_checkpoint
 
     assert checkpoint is not None
     assert checkpoint["epoch"] == 2
@@ -307,7 +315,7 @@ def test_checkpoint(ray_start_2_cpus):
         return 1
 
     trainer.run(train_func_checkpoint, checkpoint=checkpoint)
-    checkpoint = trainer.get_latest_checkpoint()
+    checkpoint = trainer.latest_checkpoint
 
     assert checkpoint is not None
     assert checkpoint["epoch"] == 4
@@ -357,7 +365,7 @@ def test_mismatch_checkpoint_report(ray_start_2_cpus):
         with pytest.raises(RuntimeError):
             trainer.run(train, callbacks=[callback])
     # validate checkpoint
-    assert trainer.get_latest_checkpoint()["epoch"] == 0
+    assert trainer.latest_checkpoint["epoch"] == 0
     # validate callback
     result_list = callback.result_list
     assert len(result_list) == 1  # 1 epoch succeeded
@@ -388,6 +396,38 @@ def test_load_checkpoint(ray_start_2_cpus):
     assert len(result) == 2
     assert result[0] == [3, 4]
     assert result[1] == [3, 4]
+
+
+@pytest.mark.parametrize("logdir", [
+    None, "/tmp/test/trainer/test_persisted_checkpoint",
+    "~/tmp/test/trainer/test_persisted_checkpoint"
+])
+def test_persisted_checkpoint(ray_start_2_cpus, logdir):
+    config = TestConfig()
+
+    def train():
+        for i in range(2):
+            sgd.save_checkpoint(epoch=i)
+
+    trainer = Trainer(config, num_workers=2, logdir=logdir)
+    trainer.start()
+    trainer.run(train)
+
+    assert trainer.latest_checkpoint_path is not None
+    if logdir is not None:
+        assert trainer.logdir == Path(logdir).expanduser().resolve()
+    assert trainer.latest_checkpoint_dir.is_dir()
+    assert trainer.latest_checkpoint_path.is_file()
+    assert trainer.latest_checkpoint_path.name == f"checkpoint_{2:06d}"
+    assert trainer.latest_checkpoint_path.parent.name == "checkpoints"
+    latest_checkpoint = trainer.latest_checkpoint
+
+    def validate():
+        checkpoint = sgd.load_checkpoint()
+        assert checkpoint is not None
+        assert checkpoint == latest_checkpoint
+
+    trainer.run(validate, checkpoint=trainer.latest_checkpoint_path)
 
 
 def test_world_rank(ray_start_2_cpus):
@@ -632,7 +672,7 @@ def test_worker_failure_checkpoint(ray_start_2_cpus):
         trainer.start()
         with pytest.raises(RuntimeError):
             trainer.run(train)
-        assert trainer.get_latest_checkpoint()["epoch"] == 1
+        assert trainer.latest_checkpoint["epoch"] == 1
 
 
 def test_worker_failure_checkpoint_2(ray_start_2_cpus):
@@ -658,7 +698,7 @@ def test_worker_failure_checkpoint_2(ray_start_2_cpus):
         trainer.start()
         with pytest.raises(RuntimeError):
             trainer.run(train)
-        assert trainer.get_latest_checkpoint()["epoch"] == 2
+        assert trainer.latest_checkpoint["epoch"] == 2
 
 
 def test_worker_kill(ray_start_2_cpus):

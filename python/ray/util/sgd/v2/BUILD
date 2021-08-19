@@ -17,7 +17,7 @@ py_test(
     size = "large",
     main = "examples/transformers/transformers_example.py",
     srcs = ["examples/transformers/transformers_example.py"],
-    tags = ["exclusive"],
+    tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"],
     args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
     "--max_length=32", "--per_device_train_batch_size=64",
@@ -43,7 +43,7 @@ py_test(
     name = "test_backend",
     size = "medium",
     srcs = ["tests/test_backend.py"],
-    tags = ["exclusive"],
+    tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"]
 )
 
@@ -51,7 +51,7 @@ py_test(
     name = "test_session",
     size = "small",
     srcs = ["tests/test_session.py"],
-    tags = ["exclusive"],
+    tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"]
 )
 
@@ -59,7 +59,7 @@ py_test(
     name = "test_trainer",
     size = "medium",
     srcs = ["tests/test_trainer.py"],
-    tags = ["exclusive"],
+    tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"]
 )
 
@@ -75,7 +75,7 @@ py_test(
     name = "test_worker_group",
     size = "small",
     srcs = ["tests/test_worker_group.py"],
-    tags = ["exclusive"],
+    tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"]
 )
 

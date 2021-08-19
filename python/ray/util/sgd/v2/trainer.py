@@ -1,13 +1,15 @@
 import inspect
 import logging
-from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, Type, \
-    Iterator
+from pathlib import Path
+from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, \
+    Type, Iterator
 
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
     InactiveWorkerGroupError, SGDBackendError
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.backends.torch import TorchConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
+from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 
 # Ray SGD should be usable even if Tune is not installed.
 try:
@@ -50,32 +52,17 @@ class Trainer:
             worker). Defaults to False.
         resources_per_worker (Optional[Dict]): If specified, the resources
             defined in this Dict will be reserved for each worker.
+        logdir (Optional[str]): Path to the file directory where logs
+            should be persisted. If this is not specified, one will be
+            generated.
     """
 
     def __init__(self,
                  backend: Union[str, BackendConfig],
                  num_workers: int = 1,
                  use_gpu: bool = False,
-                 resources_per_worker: Optional[Dict[str, float]] = None):
-        """A class for distributed training.
-
-        Args:
-            backend (Union[str, BackendConfig]): The backend used for
-                distributed communication. If configurations are needed,
-                a subclass of ``BackendConfig`` can be passed in.
-                Supported ``str`` values: {"torch"}.
-            num_workers (int): The number of workers (Ray actors) to launch.
-                Defaults to 1. Each worker will reserve 1 CPU by default.
-            use_gpu (bool): If True, training will be done on GPUs (1 per
-                worker). Defaults to False.
-            resources_per_worker (Optional[Dict]): If specified, the resources
-                defined in this Dict will be reserved for each worker.
-        """
-        self._backend = backend
-        self._num_workers = num_workers
-        self._use_gpu = use_gpu
-        self._resources_per_worker = resources_per_worker
-
+                 resources_per_worker: Optional[Dict[str, float]] = None,
+                 logdir: Optional[str] = None):
         # Setup executor.
         backend_config = self._get_backend_config(backend)
 
@@ -84,7 +71,7 @@ class Trainer:
                                       "supported yet.")
 
         self._executor = BackendExecutor(backend_config, num_workers, 1,
-                                         int(use_gpu))
+                                         int(use_gpu), logdir)
 
     def _get_backend_config(
             self, backend: Union[str, BackendConfig]) -> BackendConfig:
@@ -133,7 +120,9 @@ class Trainer:
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
             callbacks: Optional[List[SGDCallback]] = None,
-            checkpoint: Optional[Dict] = None) -> List[T]:
+            checkpoint: Optional[Union[Dict, str, Path]] = None,
+            checkpoint_strategy: Optional[CheckpointStrategy] = None
+            ) -> List[T]:
         """Runs a training function in a distributed manner.
 
         Args:
@@ -144,9 +133,14 @@ class Trainer:
             callbacks (Optional[List[SGDCallback]]): A list of Callbacks which
                 will be executed during training. If this is not set,
                 currently there are NO default Callbacks.
-            checkpoint (Optional[Dict]): The checkpoint data that should be
-                loaded onto each worker and accessed by the training function
-                via ``sgd.load_checkpoint()``.
+            checkpoint (Optional[Dict|str|Path]): The checkpoint data that
+                should be loaded onto each worker and accessed by the training
+                function via ``sgd.load_checkpoint()``. If this is a ``str`` or
+                ``Path`` then the value is expected to be a path to a file
+                that contains a serialized checkpoint dict. If this is
+                ``None`` then no checkpoint will be loaded.
+            checkpoint_strategy (Optional[CheckpointStrategy]): The
+                configurations for saving checkpoints.
 
         Returns:
             A list of results from the training function. Each value in the
@@ -162,7 +156,8 @@ class Trainer:
 
         try:
             iterator = self.run_iterator(
-                train_func=train_func, config=config, checkpoint=checkpoint)
+                train_func=train_func, config=config, checkpoint=checkpoint,
+                checkpoint_strategy=checkpoint_strategy)
             for intermediate_result in iterator:
                 for callback in callbacks:
                     callback.handle_result(intermediate_result)
@@ -177,7 +172,9 @@ class Trainer:
             self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
-            checkpoint: Optional[Dict] = None) -> Iterator[List[Dict]]:
+            checkpoint: Optional[Dict] = None,
+            checkpoint_strategy: Optional[CheckpointStrategy] = None
+    ) -> Iterator[List[Dict]]:
         """Same as ``run`` except returns an iterator over the results.
 
         This is useful if you want to have more customization of what to do
@@ -211,6 +208,8 @@ class Trainer:
             checkpoint (Optional[Dict]): The checkpoint data that should be
                 loaded onto each worker and accessed by the training function
                 via ``sgd.load_checkpoint()``.
+            checkpoint_strategy (Optional[CheckpointStrategy]): The
+                configurations for saving checkpoints.
 
         Returns:
             An Iterator over the intermediate results from ``sgd.report()``.
@@ -220,7 +219,9 @@ class Trainer:
         return SGDIterator(
             backend_executor=self._executor,
             train_func=train_func,
-            checkpoint=checkpoint)
+            checkpoint=checkpoint,
+            checkpoint_strategy=checkpoint_strategy
+        )
 
     def _get_train_func(
             self,
@@ -280,9 +281,49 @@ class Trainer:
         """
         raise NotImplementedError
 
-    def get_latest_checkpoint(self) -> Optional[Dict]:
-        """Gets the latest checkpoint for this Trainer."""
-        return self._executor.get_latest_checkpoint()
+    @property
+    def logdir(self) -> Path:
+        """Path to this Trainer's log directory."""
+        return self._executor.logdir
+
+    @property
+    def latest_run_dir(self) -> Optional[Path]:
+        """Path to the log directory for the latest call to ``run()``.
+
+        Returns ``None`` if ``run()`` has not been called.
+        """
+        return self._executor.latest_run_dir
+
+    @property
+    def latest_checkpoint_dir(self) -> Optional[Path]:
+        """Path to the checkpoint directory.
+
+        Returns ``None`` if ``run()`` has not been called or if
+        ``sgd.checkpoint()`` has not been called from ``train_func``within
+        the most recent call to ``run``.
+        """
+        return self._executor.latest_checkpoint_dir
+
+    @property
+    def latest_checkpoint_path(self) -> Optional[Path]:
+        """Path to the latest persisted checkpoint from the latest run.
+
+        Returns ``None`` if ``run()`` has not been called or if
+        ``sgd.checkpoint()`` has not been called from ``train_func`` within
+        the most recent call to ``run``.
+        """
+        return self._executor.latest_checkpoint_path
+
+    @property
+    def latest_checkpoint(self) -> Optional[Dict]:
+        """The latest saved checkpoint.
+
+        This checkpoint may not be saved to disk.
+
+        Returns ``None`` if ``run()`` has not been called or if
+        ``sgd.checkpoint()`` has not been called from ``train_func``.
+        """
+        return self._executor.latest_checkpoint
 
     def shutdown(self):
         """Shuts down the training execution service."""
@@ -311,10 +352,13 @@ class Trainer:
 class SGDIterator:
     """An iterator over SGD results. Returned by ``trainer.run_iterator``."""
 
-    def __init__(self, backend_executor, train_func, checkpoint):
+    def __init__(self, backend_executor: BackendExecutor, train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
+                 checkpoint: Optional[Dict],
+                 checkpoint_strategy: Optional[CheckpointStrategy]):
         self._executor = backend_executor
         self._run_with_error_handling(
-            lambda: self._executor.start_training(train_func, checkpoint))
+            lambda: self._executor.start_training(train_func, checkpoint,
+                                                  checkpoint_strategy))
 
         self._final_results = None
         self._finished_training = False
@@ -322,7 +366,7 @@ class SGDIterator:
     def __iter__(self):
         return self
 
-    def _run_with_error_handling(self, func):
+    def _run_with_error_handling(self, func: Callable):
         try:
             return func()
         except InactiveWorkerGroupError:
@@ -353,10 +397,10 @@ class SGDIterator:
         else:
             return next_results
 
-    def is_finished(self):
+    def is_finished(self) -> bool:
         return self._finished_training
 
-    def get_final_results(self, force=False):
+    def get_final_results(self, force:bool=False) -> List[T]:
         """Gets the training func return values from each worker.
 
         If ``force`` is ``True``, then immediately finish training
