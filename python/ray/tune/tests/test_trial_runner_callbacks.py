@@ -211,7 +211,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         self.assertIn("setup", self.callback.state)
         self.assertTrue(self.callback.state["setup"] is not None)
-        for key in Experiment.PUBLIC_KEYS:
+        for key in Experiment.PUBLIC_KEYS + {"total_num_samples"}:
             self.assertIn(key, self.callback.state["setup"])
         # check if it was added first
         self.assertTrue(list(self.callback.state)[0] == "setup")

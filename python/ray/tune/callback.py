@@ -50,6 +50,7 @@ class Callback(ABC):
     def setup(self,
               stop: Optional["Stopper"] = None,
               num_samples: Optional[int] = None,
+              total_num_samples: Optional[int] = None,
               **info):
         """Called once at the very beginning of training.
 
@@ -66,6 +67,8 @@ class Callback(ABC):
                 provided as an argument, the grid will be repeated
                 `num_samples` of times. If this is -1, (virtually) infinite
                 samples are generated until a stopping condition is met.
+            total_num_samples (int): Total number of samples factoring
+                in grid search samplers.
             **info: Kwargs dict for forward compatibility.
         """
         pass

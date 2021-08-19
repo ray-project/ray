@@ -480,9 +480,6 @@ def run(
         callbacks=callbacks,
         metric=metric)
 
-    # Calls setup on callbacks
-    runner.setup_experiments(experiments=experiments)
-
     if not runner.resumed:
         for exp in experiments:
             search_alg.add_configurations([exp])
@@ -498,6 +495,10 @@ def run(
             "own `metric` and `mode` parameters. Either remove the arguments "
             "from your reporter or from your call to `tune.run()`")
     progress_reporter.set_total_samples(search_alg.total_samples)
+
+    # Calls setup on callbacks
+    runner.setup_experiments(
+        experiments=experiments, total_num_samples=search_alg.total_samples)
 
     # User Warning for GPUs
     if trial_executor.has_gpus():

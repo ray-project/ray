@@ -329,7 +329,8 @@ class TrialRunner:
         self._checkpoint_period = checkpoint_period
         self._checkpoint_manager = self._create_checkpoint_manager()
 
-    def setup_experiments(self, experiments: List[Experiment]) -> None:
+    def setup_experiments(self, experiments: List[Experiment],
+                          total_num_samples: int) -> None:
         """Obtains any necessary information from experiments.
 
         Mainly used to setup callbacks.
@@ -337,9 +338,12 @@ class TrialRunner:
         Args:
             experiments (List[Experiment]): List of Experiments
                 to use.
+            total_num_samples (int): Total number of samples
+                factoring in grid search samplers.
         """
         experiment = experiments[0]
         spec = experiment.public_spec if experiment else {}
+        spec["total_num_samples"] = total_num_samples
         self._callbacks.setup(**spec)
 
     def end_experiment_callbacks(self) -> None:
