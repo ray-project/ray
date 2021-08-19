@@ -1,5 +1,6 @@
 import os
 import importlib
+import inspect
 import json
 import logging
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from ray.ray_constants import (RAY_ADDRESS_ENVIRONMENT_VARIABLE,
                                RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
 from ray.job_config import JobConfig
 import ray.util.client_connect
+from ray.worker import init as ray_driver_init
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,7 @@ class ClientBuilder:
         self.address = address
         self._job_config = JobConfig()
         self._fill_defaults_from_env()
+        self._remote_init_kwargs = {}
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -98,7 +101,9 @@ class ClientBuilder:
                 dashboard_url.
         """
         client_info_dict = ray.util.client_connect.connect(
-            self.address, job_config=self._job_config)
+            self.address,
+            job_config=self._job_config,
+            ray_init_kwargs=self._remote_init_kwargs)
         dashboard_url = ray.get(
             ray.remote(ray.worker.get_dashboard_url).remote())
         return ClientContext(
@@ -134,62 +139,27 @@ class ClientBuilder:
         if kwargs.get("runtime_env") is not None:
             self.env(kwargs["runtime_env"])
             del kwargs["runtime_env"]
-        if not kwargs:
-            return self
-        unknown = ", ".join(kwargs)
-        raise RuntimeError(
-            f"Unexpected keyword argument(s) for Ray Client: {unknown}")
+        if kwargs:
+            expected_sig = inspect.signature(ray_driver_init)
+            extra_args = set(kwargs.keys()).difference(
+                expected_sig.parameters.keys())
+            if len(extra_args) > 0:
+                raise RuntimeError("Got unexpected kwargs: {}".format(
+                    ", ".join(extra_args)))
+            self._remote_init_kwargs = kwargs
+            unknown = ", ".join(kwargs)
+            logger.info("Passing the following kwargs to ray.init() "
+                        f"on the server: {unknown}")
+        return self
 
 
 class _LocalClientBuilder(ClientBuilder):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._init_args_dict = {}
-        self._internal_config = {}
-
-    def _init_args(self, **kwargs) -> "ClientBuilder":
-        for argument in kwargs:
-            if argument.startswith("_"):
-                raise RuntimeError(
-                    f"Unexpected keyword argument: {argument}. Unstable "
-                    "parameters using the local client should be passed "
-                    "through the `internal_config` dict, e.g. ray.init"
-                    "(local://..., internal_config={{argument: value}}")
-        if kwargs.get("job_config") is not None:
-            self._job_config = kwargs.pop("job_config")
-        if kwargs.get("namespace") is not None:
-            self.namespace(kwargs.pop("namespace"))
-        if kwargs.get("runtime_env") is not None:
-            self.env(kwargs.pop("runtime_env"))
-        self._internal_config = kwargs.pop("internal_config", {})
-
-        # Prefix internal_config names with underscores
-        arg_names = list(self._internal_config)
-        for name in arg_names:
-            if name.startswith("_"):
-                stripped_name = name.lstrip("_")
-                raise RuntimeError(
-                    f"Found internal_config argument "
-                    f"`{name}`. Arguments passed in internal_config should "
-                    "not include the underscore prefix. Use "
-                    f"`{stripped_name}` instead.")
-            self._internal_config["_" + name] = self._internal_config[name]
-            del self._internal_config[name]
-
-        self._fill_defaults_from_env()
-        self._init_args_dict = kwargs
-        return self
-
     def connect(self) -> ClientContext:
         """
-        Begin a connection to the address passed in via ray.client(...) or
-        ray.init("local://...")
+        Begin a connection to the address passed in via ray.client(...)
         """
         connection_dict = ray.init(
-            address=self.address,
-            job_config=self._job_config,
-            **self._init_args_dict,
-            **self._internal_config)
+            address=self.address, job_config=self._job_config)
         return ClientContext(
             dashboard_url=connection_dict["webui_url"],
             python_version="{}.{}.{}".format(
@@ -229,8 +199,6 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
             pass
         return _LocalClientBuilder(address)
     module_string, inner_address = _split_address(address)
-    if module_string == "local":
-        return _LocalClientBuilder(inner_address or None)
     try:
         module = importlib.import_module(module_string)
     except Exception:

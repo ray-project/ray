@@ -10,6 +10,8 @@ from ray.tune.sync_client import get_sync_client
 from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.syncer import get_cloud_sync_client
 
+from ray.util.annotations import PublicAPI
+
 logger = logging.getLogger(__name__)
 
 
@@ -114,6 +116,7 @@ class DurableTrainable(Trainable):
         return os.path.join(self.remote_checkpoint_dir, rel_local_path)
 
 
+@PublicAPI(stability="beta")
 def durable(trainable: Union[str, Type[Trainable], Callable]):
     """Convert trainable into a durable trainable.
 

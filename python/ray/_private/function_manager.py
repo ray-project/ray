@@ -14,7 +14,7 @@ from collections import (
 )
 
 import ray
-from ray import profiling
+import ray._private.profiling as profiling
 from ray import ray_constants
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor

@@ -60,12 +60,27 @@ class SetupType(Enum):
     RAY_CPP = 2
 
 
+class BuildType(Enum):
+    DEFAULT = 1
+    DEBUG = 2
+    ASAN = 3
+
+
 class SetupSpec:
-    def __init__(self, type: SetupType, name: str, description: str):
+    def __init__(self, type: SetupType, name: str, description: str,
+                 build_type: BuildType):
         self.type: SetupType = type
         self.name: str = name
-        self.version: str = find_version("ray", "__init__.py")
+        version = find_version("ray", "__init__.py")
+        # add .dbg suffix if debug mode is on.
+        if build_type == BuildType.DEBUG:
+            self.version: str = f"{version}+dbg"
+        elif build_type == BuildType.ASAN:
+            self.version: str = f"{version}+asan"
+        else:
+            self.version = version
         self.description: str = description
+        self.build_type: BuildType = build_type
         self.files_to_include: list = []
         self.install_requires: list = []
         self.extras: dict = {}
@@ -77,15 +92,24 @@ class SetupSpec:
             return []
 
 
+build_type = os.getenv("RAY_DEBUG_BUILD")
+if build_type == "debug":
+    BUILD_TYPE = BuildType.DEBUG
+elif build_type == "asan":
+    BUILD_TYPE = BuildType.ASAN
+else:
+    BUILD_TYPE = BuildType.DEFAULT
+
 if os.getenv("RAY_INSTALL_CPP") == "1":
     # "ray-cpp" wheel package.
     setup_spec = SetupSpec(SetupType.RAY_CPP, "ray-cpp",
-                           "A subpackage of Ray which provide Ray C++ API.")
+                           "A subpackage of Ray which provide Ray C++ API.",
+                           BUILD_TYPE)
 else:
     # "ray" primary wheel package.
     setup_spec = SetupSpec(
         SetupType.RAY, "ray", "Ray provides a simple, "
-        "universal API for building distributed applications.")
+        "universal API for building distributed applications.", BUILD_TYPE)
 
 # Ideally, we could include these files by putting them in a
 # MANIFEST.in or using the package_data argument to setup, but the
@@ -177,6 +201,9 @@ if setup_spec.type == SetupType.RAY:
         "dm_tree",
         "gym",
         "lz4",
+        # matplotlib (dependency of scikit-image) 3.4.3 breaks docker build
+        # Todo: Remove this when safe?
+        "matplotlib!=3.4.3",
         "scikit-image",
         "pyyaml",
         "scipy",
@@ -418,8 +445,8 @@ def build(build_python, build_java, build_cpp):
             ".".join(map(str, SUPPORTED_BAZEL)), bazel_version_str))
 
     if not is_conda_build:
-        bazel_options = ["build", "--verbose_failures", "--"]
-    else:
+        bazel_precmd_flags = []
+    if is_conda_build:
         root_dir = os.path.join(
             os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-root")
         out_dir = os.path.join(
@@ -429,9 +456,8 @@ def build(build_python, build_java, build_cpp):
             if not os.path.exists(d):
                 os.makedirs(d)
 
-        bazel_options = [
-            "--output_user_root=" + root_dir, "--output_base=" + out_dir,
-            "build", "--verbose_failures"
+        bazel_precmd_flags = [
+            "--output_user_root=" + root_dir, "--output_base=" + out_dir
         ]
 
         if is_native_windows_or_msys():
@@ -441,8 +467,17 @@ def build(build_python, build_java, build_cpp):
     bazel_targets += ["//:ray_pkg"] if build_python else []
     bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
+
+    bazel_flags = ["--verbose_failures"]
+    if setup_spec.build_type == BuildType.DEBUG:
+        bazel_flags.extend(["--config", "debug"])
+    if setup_spec.build_type == BuildType.ASAN:
+        bazel_flags.extend(["--config=asan-build"])
+
     return bazel_invoke(
-        subprocess.check_call, bazel_options + bazel_targets, env=bazel_env)
+        subprocess.check_call,
+        bazel_precmd_flags + ["build"] + bazel_flags + ["--"] + bazel_targets,
+        env=bazel_env)
 
 
 def walk_directory(directory):

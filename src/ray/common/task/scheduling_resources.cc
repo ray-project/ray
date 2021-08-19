@@ -1,3 +1,17 @@
+// Copyright 2019-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "ray/common/task/scheduling_resources.h"
 
 #include <cmath>
@@ -176,8 +190,10 @@ const ResourceSet ResourceSet::GetNumCpus() const {
 }
 
 std::string format_resource(std::string resource_name, double quantity) {
-  if (resource_name == "object_store_memory" || resource_name == "memory") {
-    return std::to_string(quantity / (1024 * 1024 * 1024)) + " GiB";
+  if (resource_name == "object_store_memory" ||
+      resource_name.find(kMemory_ResourceLabel) == 0) {
+    // The memory resources (in 50MiB unit) are converted to GiB
+    return std::to_string(quantity * 50 / 1024) + " GiB";
   }
   return std::to_string(quantity);
 }

@@ -1,5 +1,4 @@
 base_image: "anyscale/ray-ml:pinned-nightly-py37"
-env_vars: {"RAY_plasma_unlimited": "1", "RAY_oom_grace_period_s": "2"}
 debian_packages: []
 
 python:

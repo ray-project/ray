@@ -75,7 +75,6 @@ CORE_NIGHTLY_TESTS = {
         "many_actors_smoke_test",
         "many_tasks_smoke_test",
         "many_pgs_smoke_test",
-        "many_nodes_smoke_test",
     ],
     "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
         "inference",
@@ -135,9 +134,19 @@ NIGHTLY_TESTS = {
         "ft_small_non_elastic",
         "distributed_api_test",
     ],
+    "~/ray/release/rllib_tests/rllib_tests.yaml": [
+        SmokeTest("learning_tests"),
+        "multi_gpu_learning_tests",
+        # We'll have these as per-PR tests soon.
+        # "example_scripts_on_gpu_tests",
+        SmokeTest("stress_tests"),
+    ],
     "~/ray/release/serve_tests/serve_tests.yaml": [
         "single_deployment_1k_noop_replica",
         "multi_deployment_1k_noop_replica",
+    ],
+    "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
+        "rte_many_tasks_actors",
     ],
 }
 
@@ -178,14 +187,13 @@ WEEKLY_TESTS = {
         "network_overhead",
         "long_running_large_checkpoints",
     ],
+    "~/ray/release/rllib_tests/rllib_tests.yaml": [
+        "learning_tests",
+        "stress_tests",
+    ],
 }
 
 MANUAL_TESTS = {
-    "~/ray/release/rllib_tests/rllib_tests.yaml": [
-        "learning_tests",
-        "example_scripts_on_gpu_tests",
-        "stress_tests",
-    ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("serve"),
         SmokeTest("serve_failure"),

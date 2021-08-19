@@ -1,3 +1,17 @@
+// Copyright 2020-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <boost/algorithm/string.hpp>
 
 #include "process_helper.h"
@@ -7,7 +21,10 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-namespace api {
+namespace internal {
+
+using ray::core::CoreWorkerProcess;
+using ray::core::WorkerType;
 
 /// IP address by which the local node can be reached *from* the `address`.
 ///
@@ -43,10 +60,38 @@ static std::string GetNodeIpAddress(const std::string &address = "8.8.8.8:53") {
   }
 }
 
-void ProcessHelper::StartRayNode(int redis_port, std::string redis_password) {
+std::string FormatResourcesArg(const std::unordered_map<std::string, int> &resources) {
+  std::ostringstream oss;
+  oss << "{";
+  for (auto iter = resources.begin(); iter != resources.end();) {
+    oss << "\"" << iter->first << "\":" << iter->second;
+    ++iter;
+    if (iter != resources.end()) {
+      oss << ",";
+    }
+  }
+  oss << "}";
+  return oss.str();
+}
+
+void ProcessHelper::StartRayNode(const int redis_port, const std::string redis_password,
+                                 const int num_cpus, const int num_gpus,
+                                 const std::unordered_map<std::string, int> resources) {
   std::vector<std::string> cmdargs({"ray", "start", "--head", "--port",
                                     std::to_string(redis_port), "--redis-password",
                                     redis_password, "--include-dashboard", "false"});
+  if (num_cpus >= 0) {
+    cmdargs.emplace_back("--num-cpus");
+    cmdargs.emplace_back(std::to_string(num_cpus));
+  }
+  if (num_gpus >= 0) {
+    cmdargs.emplace_back("--num-gpus");
+    cmdargs.emplace_back(std::to_string(num_gpus));
+  }
+  if (!resources.empty()) {
+    cmdargs.emplace_back("--resources");
+    cmdargs.emplace_back(FormatResourcesArg(resources));
+  }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
   RAY_CHECK(!Process::Spawn(cmdargs, true).second);
   std::this_thread::sleep_for(std::chrono::seconds(5));
@@ -63,11 +108,12 @@ void ProcessHelper::StopRayNode() {
 
 void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) {
   std::string redis_ip = ConfigInternal::Instance().redis_ip;
-  if (ConfigInternal::Instance().worker_type == ray::WorkerType::DRIVER &&
-      redis_ip.empty()) {
+  if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER && redis_ip.empty()) {
     redis_ip = "127.0.0.1";
     StartRayNode(ConfigInternal::Instance().redis_port,
-                 ConfigInternal::Instance().redis_password);
+                 ConfigInternal::Instance().redis_password,
+                 ConfigInternal::Instance().num_cpus, ConfigInternal::Instance().num_gpus,
+                 ConfigInternal::Instance().resources);
   }
   if (redis_ip == "127.0.0.1") {
     redis_ip = GetNodeIpAddress();
@@ -85,7 +131,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   }
 
   std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor = nullptr;
-  if (ConfigInternal::Instance().worker_type == ray::WorkerType::DRIVER) {
+  if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
     global_state_accessor.reset(new ray::gcs::GlobalStateAccessor(
         redis_address, ConfigInternal::Instance().redis_password));
     RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
@@ -168,5 +214,5 @@ void ProcessHelper::RayStop() {
   }
 }
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

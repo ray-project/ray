@@ -90,11 +90,12 @@ int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
   return bytes_evicted;
 }
 
-EvictionPolicy::EvictionPolicy(PlasmaStoreInfo *store_info, const IAllocator &allocator)
+EvictionPolicy::EvictionPolicy(const IObjectStore &object_store,
+                               const IAllocator &allocator)
     : pinned_memory_bytes_(0),
-      store_info_(store_info),
-      allocator_(allocator),
-      cache_("global lru", allocator_.GetFootprintLimit()) {}
+      cache_("global lru", allocator.GetFootprintLimit()),
+      object_store_(object_store),
+      allocator_(allocator) {}
 
 int64_t EvictionPolicy::ChooseObjectsToEvict(int64_t num_bytes_required,
                                              std::vector<ObjectID> *objects_to_evict) {
@@ -146,10 +147,8 @@ void EvictionPolicy::RemoveObject(const ObjectID &object_id) {
 }
 
 int64_t EvictionPolicy::GetObjectSize(const ObjectID &object_id) const {
-  auto entry = store_info_->objects[object_id].get();
-  return entry->data_size + entry->metadata_size;
+  return object_store_.GetObject(object_id)->GetObjectSize();
 }
 
 std::string EvictionPolicy::DebugString() const { return cache_.DebugString(); }
-
 }  // namespace plasma

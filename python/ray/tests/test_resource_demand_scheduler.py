@@ -14,7 +14,7 @@ from ray.autoscaler._private.util import \
     prepare_config, format_info_string, \
     format_info_string_no_node_types
 from ray.tests.test_autoscaler import SMALL_CLUSTER, MOCK_DEFAULT_CONFIG, \
-    MockProvider, MockProcessRunner
+    MULTI_WORKER_CLUSTER, TYPES_A, MockProvider, MockProcessRunner
 from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
                                                _clear_provider_cache)
 from ray.autoscaler._private.autoscaler import StandardAutoscaler, \
@@ -25,7 +25,7 @@ from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.resource_demand_scheduler import \
     _utilization_score, _add_min_workers_nodes, \
     get_bin_pack_residual, get_nodes_for, ResourceDemandScheduler
-from ray.gcs_utils import PlacementGroupTableData
+from ray._private.gcs_utils import PlacementGroupTableData
 from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
                                 NODE_KIND_WORKER, TAG_RAY_NODE_STATUS, \
@@ -33,66 +33,13 @@ from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
                                 STATUS_WAITING_FOR_SSH, \
                                 NODE_KIND_HEAD, NODE_TYPE_LEGACY_WORKER, \
                                 NODE_TYPE_LEGACY_HEAD
-from ray.test_utils import same_elements
+from ray._private.test_utils import same_elements
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 
 from time import sleep
 
 GET_DEFAULT_METHOD = "ray.autoscaler._private.util._get_default_config"
-
-TYPES_A = {
-    "empty_node": {
-        "node_config": {
-            "FooProperty": 42,
-        },
-        "resources": {},
-        "max_workers": 0,
-    },
-    "m4.large": {
-        "node_config": {},
-        "resources": {
-            "CPU": 2
-        },
-        "max_workers": 10,
-    },
-    "m4.4xlarge": {
-        "node_config": {},
-        "resources": {
-            "CPU": 16
-        },
-        "max_workers": 8,
-    },
-    "m4.16xlarge": {
-        "node_config": {},
-        "resources": {
-            "CPU": 64
-        },
-        "max_workers": 4,
-    },
-    "p2.xlarge": {
-        "node_config": {},
-        "resources": {
-            "CPU": 16,
-            "GPU": 1
-        },
-        "max_workers": 10,
-    },
-    "p2.8xlarge": {
-        "node_config": {},
-        "resources": {
-            "CPU": 32,
-            "GPU": 8
-        },
-        "max_workers": 4,
-    },
-}
-
-MULTI_WORKER_CLUSTER = dict(
-    SMALL_CLUSTER, **{
-        "available_node_types": TYPES_A,
-        "head_node_type": "empty_node"
-    })
 
 
 def test_util_score():

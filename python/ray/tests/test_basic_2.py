@@ -13,7 +13,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 import ray.cluster_utils
-from ray.test_utils import client_test_enabled
+from ray._private.test_utils import client_test_enabled
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.exceptions import GetTimeoutError
 from ray.exceptions import RayTaskError

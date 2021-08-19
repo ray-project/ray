@@ -17,6 +17,7 @@
 #include <chrono>
 
 namespace ray {
+namespace core {
 
 namespace worker {
 
@@ -89,4 +90,5 @@ void Profiler::FlushEvents() {
 
 }  // namespace worker
 
+}  // namespace core
 }  // namespace ray

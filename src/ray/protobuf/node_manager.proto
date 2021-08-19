@@ -43,6 +43,10 @@ message RequestWorkerLeaseReply {
   bool runtime_env_setup_failed = 5;
   // PID of the worker process.
   uint32 worker_pid = 6;
+  // Whether the request was rejected because of insufficient resources.
+  bool rejected = 7;
+  // The (normal task) resources data to be carried by the Reply.
+  ResourcesData resources_data = 8;
 }
 
 message PrepareBundleResourcesRequest {
@@ -148,6 +152,10 @@ message ObjectStoreStats {
   int64 num_local_objects = 11;
   // The number of plasma object bytes that are consumed by core workers.
   int64 consumed_bytes = 12;
+  // Whether this node has object pulls queued. This can happen if
+  // the node has more pull requests than available object store
+  // memory.
+  bool object_pulls_queued = 13;
 }
 
 message GetNodeStatsReply {
