@@ -20,17 +20,17 @@ py_test_module_list(
       "tests/test_variable_mutable.py",
       "tests/test_large_intermediate.py",
       "tests/test_signature_check.py",
+      "tests/test_basic_workflows_2.py",
   ],
   size = "small",
   extra_srcs = SRCS,
-  tags = ["exclusive"],
+  tags = ["team:core", "exclusive"],
   deps = ["//:ray_lib"],
 )
 
 py_test_module_list(
   files = [
       "tests/test_basic_workflows.py",
-      "tests/test_basic_workflows_2.py",
       "tests/test_recovery.py",
       "tests/test_lifetime.py",
       "tests/test_workflow_manager.py",
@@ -39,6 +39,6 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive"],
+  tags = ["team:core", "exclusive"],
   deps = ["//:ray_lib"],
 )
