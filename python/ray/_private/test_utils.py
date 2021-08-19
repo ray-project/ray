@@ -3,6 +3,7 @@ import errno
 import io
 import fnmatch
 import os
+import pathlib
 import subprocess
 import sys
 import time
@@ -17,6 +18,7 @@ import yaml
 import ray
 import ray._private.services
 import ray._private.utils
+import ray._private.gcs_utils as gcs_utils
 from ray.util.queue import Queue, _QueueActor, Empty
 import requests
 from ray.scripts.scripts import main as ray_main
@@ -290,7 +292,7 @@ def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     start = time.time()
     while time.time() - start <= timeout:
         actor_status = ray.state.actors(actor_id)
-        if actor_status["State"] == ray.gcs_utils.ActorTableData.DEAD \
+        if actor_status["State"] == gcs_utils.ActorTableData.DEAD \
                 or actor_status["NumRestarts"] > current_num_restarts:
             return
         time.sleep(retry_interval_ms / 1000.0)
@@ -510,7 +512,7 @@ def init_error_pubsub():
     """Initialize redis error info pub/sub"""
     p = ray.worker.global_worker.redis_client.pubsub(
         ignore_subscribe_messages=True)
-    error_pubsub_channel = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+    error_pubsub_channel = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
     p.psubscribe(error_pubsub_channel)
     return p
 
@@ -524,8 +526,8 @@ def get_error_message(pub_sub, num, error_type=None, timeout=20):
         if msg is None:
             time.sleep(0.01)
             continue
-        pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
-        error_data = ray.gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
+        pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
+        error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
         if error_type is None or error_type == error_data.type:
             msgs.append(error_data)
         else:
@@ -583,8 +585,9 @@ def fetch_prometheus(prom_addresses):
 def load_test_config(config_file_name):
     """Loads a config yaml from tests/test_cli_patterns."""
     here = os.path.realpath(__file__)
-    parent = os.path.dirname(here)
-    config_path = os.path.join(parent, "tests/test_cli_patterns",
+    path = pathlib.Path(here)
+    grandparent = path.parent.parent
+    config_path = os.path.join(grandparent, "tests/test_cli_patterns",
                                config_file_name)
     config = yaml.safe_load(open(config_path).read())
     return config
