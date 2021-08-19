@@ -10,20 +10,12 @@ import json
 import time
 import traceback
 
-try:
-    import aiohttp
-    import aiohttp.web
-    import aiohttp_cors
-    from aiohttp import hdrs
+import aiohttp
+import aiohttp.web
+import aiohttp_cors
+from aiohttp import hdrs
 
-    import aioredis  # noqa: F401
-except ImportError:
-    print("Not all Ray Dashboard dependencies were found. "
-          "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
-          "only be usable via `pip install 'ray[default]'`. Please "
-          "update your install command.")
-    # Set an exit code different from throwing an exception.
-    sys.exit(2)
+import aioredis  # noqa: F401
 
 from grpc.experimental import aio as aiogrpc
 

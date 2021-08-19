@@ -1503,30 +1503,54 @@ def start_raylet(redis_address,
     if max_worker_port is None:
         max_worker_port = 0
 
-    # Create agent command
-    agent_command = [
-        sys.executable,
-        "-u",
-        os.path.join(RAY_PATH, "new_dashboard/agent.py"),
-        f"--node-ip-address={node_ip_address}",
-        f"--redis-address={redis_address}",
-        f"--metrics-export-port={metrics_export_port}",
-        f"--dashboard-agent-port={metrics_agent_port}",
-        f"--listen-port={dashboard_agent_listen_port}",
-        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--object-store-name={plasma_store_name}",
-        f"--raylet-name={raylet_name}",
-        f"--temp-dir={temp_dir}",
-        f"--session-dir={session_dir}",
-        f"--runtime-env-dir={resource_dir}",
-        f"--runtime-env-setup-hook={runtime_env_setup_hook}",
-        f"--log-dir={log_dir}",
-        f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}",
-    ]
+    # Check to see if we should start the dashboard agent or not based on the
+    # Ray installation version the user has installed (ray vs. ray[default]).
+    # Unfortunately there doesn't seem to be a cleaner way to detect this other
+    # than just blindly importing the relevant packages.
+    def check_should_start_agent():
+        try:
+            import aiohttp  # noqa: F401
+            import aiohttp.web  # noqa: F401
+            import aiohttp_cors  # noqa: F401
+            from aiohttp import hdrs  # noqa: F401
 
-    if redis_password is not None and len(redis_password) != 0:
-        agent_command.append("--redis-password={}".format(redis_password))
+            import aioredis  # noqa: F401
+
+            return True
+        except ImportError:
+            print("Not all Ray Dashboard dependecies were found. In Ray 1.4+, "
+                  "the Ray CLI, autoscaler, and dashboard will only be usable "
+                  "via `pip install 'ray[default]'`.")
+
+        return False
+
+    if not check_should_start_agent():
+        # An empty agent command will cause the raylet not to start it.
+        agent_command = []
+    else:
+        agent_command = [
+            sys.executable,
+            "-u",
+            os.path.join(RAY_PATH, "new_dashboard/agent.py"),
+            f"--node-ip-address={node_ip_address}",
+            f"--redis-address={redis_address}",
+            f"--metrics-export-port={metrics_export_port}",
+            f"--dashboard-agent-port={metrics_agent_port}",
+            f"--listen-port={dashboard_agent_listen_port}",
+            "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+            f"--object-store-name={plasma_store_name}",
+            f"--raylet-name={raylet_name}",
+            f"--temp-dir={temp_dir}",
+            f"--session-dir={session_dir}",
+            f"--runtime-env-dir={resource_dir}",
+            f"--runtime-env-setup-hook={runtime_env_setup_hook}",
+            f"--log-dir={log_dir}",
+            f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}",
+        ]
+
+        if redis_password is not None and len(redis_password) != 0:
+            agent_command.append("--redis-password={}".format(redis_password))
 
     command = [
         RAYLET_EXECUTABLE,
