@@ -3,7 +3,6 @@ from ray.job_config import JobConfig
 import os
 import sys
 import logging
-import inspect
 import json
 import threading
 logger = logging.getLogger(__name__)
@@ -11,6 +10,7 @@ logger = logging.getLogger(__name__)
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
 CURRENT_PROTOCOL_VERSION = "2021-08-16"
+
 
 class _Context:
     def __init__(self):
@@ -172,6 +172,11 @@ class _Context:
                                                _exiting_interpreter)
         self._server = None
 
+
+_all_contexts = set()
+_lock = threading.Lock()
+
+
 class RayAPIStub:
     """This class stands in as the replacement API for the `import ray` module.
 
@@ -179,6 +184,7 @@ class RayAPIStub:
     _client_worker. As parts of the ray API are covered, they are piped through
     here or on the client worker API.
     """
+
     def __init__(self):
         self._cxt = threading.local()
         self._cxt.handler = _Context()
@@ -195,10 +201,23 @@ class RayAPIStub:
         return old_cxt
 
     def connect(self, *args, **kw_args):
-        return self._cxt.handler.connect(*args, **kw_args)
+        conn = self._cxt.handler.connect(*args, **kw_args)
+        global _lock, _all_contexts
+        with _lock:
+            _all_contexts.add(self._cxt.handler)
+        return conn
 
     def disconnect(self, *args, **kw_args):
-        return self._cxt.disconnect(*args, **kw_args)
+        global _lock, _all_contexts
+        with _lock:
+            if self._cxt.handler not in _all_contexts:
+                for cxt in _all_contexts:
+                    cxt.disconnect(*args, **kw_args)
+                _all_contexts = set()
+                self._cxt.handler.disconnect()
+            else:
+                self._cxt.handler.disconnect()
+                _all_contexts.remove(self._cxt.handler)
 
     def remote(self, *args, **kwargs):
         return self._cxt.handler.remote(*args, **kwargs)
@@ -213,11 +232,30 @@ class RayAPIStub:
         return self._cxt.handler.init(*args, **kwargs)
 
     def shutdown(self, *args, **kwargs):
-        return self._cxt.handler.shutdown(*args, **kwargs)
+        global _lock, _all_contexts
+        with _lock:
+            if self._cxt.handler not in _all_contexts:
+                for cxt in _all_contexts:
+                    cxt.shutdown(*args, **kwargs)
+                _all_contexts = set()
+                self._cxt.handler.shutdown()
+            else:
+                self._cxt.handler.shutdown()
+                _all_contexts.remove(self._cxt.handler)
 
 
 
 ray = RayAPIStub()
+
+def is_main_cli():
+    global _lock, _all_contexts
+    with _lock:
+        return ray._cxt.handler not in _all_contexts
+
+def connected_context_num():
+    global _lock, _all_contexts
+    with _lock:
+        return len(_all_contexts)
 
 # Someday we might add methods in this module so that someone who
 # tries to `import ray_client as ray` -- as a module, instead of

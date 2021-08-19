@@ -36,6 +36,8 @@ class ClientContext:
         return self
 
     def __exit__(self, *exc) -> None:
+        if ray.util.client.is_main_cli():
+            self.disconnect()
         self.ray_cli = ray.util.client.ray.set_context(self.ray_cli)
 
     def disconnect(self) -> None:
@@ -104,6 +106,16 @@ class ClientBuilder:
                 dashboard_url.
         """
         old_ray_cxt = None
+        if ray.util.client.ray.is_connected() and self._allow_multiple_cli:
+            raise RuntimeError("It's in single-client mode. We can't create"
+                               " new client in multi-client mode")
+
+        if ray.util.client.connected_context_num(
+        ) != 0 and not self._allow_multiple_cli:
+            raise RuntimeError("It's in multi-client mode. All the new "
+                               "request to create a client has to be in "
+                               "multi-client mode")
+
         if self._allow_multiple_cli:
             old_ray_cxt = ray.util.client.ray.set_context(None)
         client_info_dict = ray.util.client_connect.connect(
@@ -150,7 +162,7 @@ class ClientBuilder:
             self.env(kwargs["runtime_env"])
             del kwargs["runtime_env"]
 
-        if kwargs.get("allow_multiple") == True:
+        if kwargs.get("allow_multiple") is True:
             self._allow_multiple_cli = True
             del kwargs["allow_multiple"]
 
