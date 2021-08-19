@@ -44,9 +44,8 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
         async def __init__(self, backend_tag, replica_tag, init_args,
                            backend_config: BackendConfig,
                            controller_name: str):
-            logger.info(
-                f">>>>>> Called serve replica _init_, "
-                f"replica_tag: {replica_tag}")
+            logger.info(f">>>>>> Called serve replica _init_, "
+                        f"replica_tag: {replica_tag}")
             backend_def = cloudpickle.loads(serialized_backend_def)
             if isinstance(backend_def, str):
                 backend = import_attr(backend_def)
@@ -78,10 +77,8 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
                 try:
                     await sync_to_async(_callable.__init__)(*init_args)
                 except Exception as e:
-                    logger.error(
-                        f"Exception while running deployment class "
-                        f"__init__: {e}"
-                    )
+                    logger.error(f"Exception while running deployment class "
+                                 f"__init__: {e}")
                     raise e
             # Setting the context again to update the servable_object.
             ray.serve.api._set_internal_replica_context(

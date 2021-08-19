@@ -15,10 +15,8 @@ from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
                               ReplicaTag)
 from ray.serve.config import BackendConfig
-from ray.serve.constants import (
-    RESERVED_VERSION_TAG,
-    REPLICA_CONSTRUCTOR_RETRY_COUNT
-)
+from ray.serve.constants import (RESERVED_VERSION_TAG,
+                                 REPLICA_CONSTRUCTOR_RETRY_COUNT)
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
@@ -26,6 +24,7 @@ from ray.serve.utils import format_actor_name, get_random_letters, logger
 CHECKPOINT_KEY = "serve-backend-state-checkpoint"
 SLOW_STARTUP_WARNING_S = 30
 SLOW_STARTUP_WARNING_PERIOD_S = 30
+
 
 class ReplicaState(Enum):
     SHOULD_START = 1
@@ -261,6 +260,7 @@ class VersionedReplica(ABC):
     def version(self) -> BackendVersion:
         pass
 
+
 class BackendReplica(VersionedReplica):
     """Manages state transitions for backend replicas.
 
@@ -373,8 +373,7 @@ class BackendReplica(VersionedReplica):
                 return ReplicaState.FAILED_TO_START
 
             delay_secs = round(
-                (2 ** self._cur_retry_count + random.uniform(0, 1)), 2
-            )
+                (2**self._cur_retry_count + random.uniform(0, 1)), 2)
             self._next_try_timestamp = time.time() + delay_secs
             logger.info(f"<<<< Retry conut: {self._cur_retry_count}")
             logger.info(f"<<<< Waiting for {delay_secs} to retry...")
@@ -609,7 +608,6 @@ class BackendStateManager:
         self._target_versions: Dict[BackendTag, BackendVersion] = dict()
         self._prev_startup_warnings: Dict[BackendTag, float] = defaultdict(
             float)
-
 
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
@@ -935,8 +933,7 @@ class BackendStateManager:
             states=[ReplicaState.FAILED_TO_START])
 
         delta_replicas = (
-            target_replicas - current_replicas - failed_to_start_replicas
-        )
+            target_replicas - current_replicas - failed_to_start_replicas)
         if delta_replicas == 0:
             return False
 
@@ -1058,21 +1055,19 @@ class BackendStateManager:
                 # Clear failed to start replicas as the deployment is considered
                 # done with partially fulfilled target replicas
                 self._replicas[backend_tag].pop(
-                    states=[ReplicaState.FAILED_TO_START]
-                )
+                    states=[ReplicaState.FAILED_TO_START])
 
             elif len(failed_to_start_replica) == target_replica_count:
                 # Reconfigure action failed as all replicas failed to start
                 # without any running instance.
-                failed_to_start_goals.append(self._backend_goals.pop(backend_tag, None))
+                failed_to_start_goals.append(
+                    self._backend_goals.pop(backend_tag, None))
                 # Clear failed to start replicas as the deployment is considered
                 # failed completely with exception set
                 self._replicas[backend_tag].pop(
-                    states=[ReplicaState.FAILED_TO_START]
-                )
+                    states=[ReplicaState.FAILED_TO_START])
                 # TODO: (jiaodong) Determine if we should delete backend or
                 # roll back to previous version
-
 
         for backend_tag in deleted_backends:
             del self._replicas[backend_tag]
@@ -1088,7 +1083,8 @@ class BackendStateManager:
         """
         self._scale_all_backends()
 
-        complete_goal_ids, failed_to_start_goal_ids = self._check_completed_goals()
+        complete_goal_ids, failed_to_start_goal_ids = self._check_completed_goals(
+        )
         for goal_id in complete_goal_ids:
             self._goal_manager.complete_goal(goal_id)
         for goal_id in failed_to_start_goal_ids:
@@ -1097,10 +1093,8 @@ class BackendStateManager:
                 # TODO:(jiaodong) Do we want to surface original constructor
                 # exception from other actor instead ? Might need controller
                 # level global exception handler
-                RuntimeError(
-                    f"Deployment with goal_id {goal_id} "
-                    f"failed to start. See worker exception above.")
-            )
+                RuntimeError(f"Deployment with goal_id {goal_id} "
+                             f"failed to start. See worker exception above."))
 
         transitioned_backend_tags = set()
         for backend_tag, replicas in self._replicas.items():
@@ -1137,8 +1131,9 @@ class BackendStateManager:
                     replicas.add(ReplicaState.RUNNING, replica)
                     transitioned_backend_tags.add(backend_tag)
                 elif state == ReplicaState.RETRYING:
-                    replica.start_or_update(self._backend_metadata[backend_tag],
-                                        self._target_versions[backend_tag])
+                    replica.start_or_update(
+                        self._backend_metadata[backend_tag],
+                        self._target_versions[backend_tag])
                     replicas.add(ReplicaState.STARTING_OR_UPDATING, replica)
                 elif state == ReplicaState.FAILED_TO_START:
                     # Replica reconfigure (deploy / upgrade) failed after all

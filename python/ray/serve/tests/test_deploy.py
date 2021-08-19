@@ -746,6 +746,7 @@ def test_deploy_with_constructor_failure(serve_instance):
     test_file_path = "/tmp/deployment.txt"
     if os.path.exists(test_file_path):
         os.remove(test_file_path)
+
     @serve.deployment(num_replicas=2)
     class PartialConstructorFailureDeployment:
         def __init__(self):

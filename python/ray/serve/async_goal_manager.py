@@ -44,16 +44,13 @@ class AsyncGoalManager:
             goal_id = uuid4()
 
         self._pending_goals[
-            goal_id
-        ] = asyncio.get_running_loop().create_future()
+            goal_id] = asyncio.get_running_loop().create_future()
 
         return goal_id
 
-    def complete_goal(
-        self,
-        goal_id: GoalId,
-        exception: Optional[Exception] = None
-    ) -> None:
+    def complete_goal(self,
+                      goal_id: GoalId,
+                      exception: Optional[Exception] = None) -> None:
         """
         Mark given goal as completed, if an exception object is provided,
         set exception instead.
