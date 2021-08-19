@@ -8,7 +8,7 @@ import pytest
 import requests
 
 import ray
-from ray.test_utils import SignalActor, wait_for_condition
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
 from ray.serve.utils import get_random_letters, logger
 

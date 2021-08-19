@@ -189,6 +189,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
                    << return_object.size();
 
+    std::vector<ObjectID> nested_ids =
+        IdVectorFromProtobuf<ObjectID>(return_object.nested_inlined_ids());
+
     if (return_object.in_plasma()) {
       const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
       if (check_node_alive_(pinned_at_raylet_id)) {
@@ -221,13 +224,17 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                 reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
             return_object.metadata().size());
       }
+
       bool stored_in_direct_memory = in_memory_store_->Put(
-          RayObject(data_buffer, metadata_buffer,
-                    IdVectorFromProtobuf<ObjectID>(return_object.nested_inlined_ids())),
-          object_id);
+          RayObject(data_buffer, metadata_buffer, nested_ids), object_id);
       if (stored_in_direct_memory) {
         direct_return_ids.push_back(object_id);
       }
+    }
+
+    rpc::Address owner_address;
+    if (reference_counter_->GetOwner(object_id, &owner_address) && !nested_ids.empty()) {
+      reference_counter_->AddNestedObjectIds(object_id, nested_ids, owner_address);
     }
   }
 
