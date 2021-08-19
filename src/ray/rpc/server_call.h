@@ -25,6 +25,7 @@
 
 DECLARE_stats(grpc_server_req_latency_ms);
 DECLARE_stats(grpc_server_req_new);
+DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
 
 namespace ray {
@@ -162,7 +163,7 @@ class ServerCallImpl : public ServerCall {
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
-    STATS_grpc_server_req_new.Record(1.0, call_name_);
+    STATS_grpc_server_req_handling.Record(1.0, call_name_);
     if (!io_service_.stopped()) {
       io_service_.post([this] { HandleRequestImpl(); }, call_name_);
     } else {
