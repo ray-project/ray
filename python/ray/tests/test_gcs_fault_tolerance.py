@@ -1,8 +1,9 @@
 import sys
 
 import ray
+import ray._private.gcs_utils as gcs_utils
 import pytest
-from ray.test_utils import (
+from ray._private.test_utils import (
     generate_system_config_map,
     wait_for_condition,
     wait_for_pid_to_exit,
@@ -150,7 +151,7 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular):
 
     def condition():
         actor_status = ray.state.actors(actor_id=actor_id)
-        if actor_status["State"] == ray.gcs_utils.ActorTableData.DEAD:
+        if actor_status["State"] == gcs_utils.ActorTableData.DEAD:
             return True
         else:
             return False
