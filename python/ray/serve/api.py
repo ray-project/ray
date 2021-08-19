@@ -3,6 +3,7 @@ import atexit
 import collections
 import inspect
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass
@@ -22,7 +23,7 @@ from ray.serve.common import BackendInfo, GoalId
 from ray.serve.config import (BackendConfig, DeploymentMode, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (HTTP_PROXY_DEPLOYMENT_NAME,
-                                 SERVE_CONTROLLER_NAME)
+                                 SERVE_CONTROLLER_NAME, SERVE_ROOT_URL_ENV_KEY)
 from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
@@ -101,8 +102,7 @@ class Client:
         self._controller_name = controller_name
         self._detached = detached
         self._shutdown = False
-        self._http_config: HTTPOptions = ray.get(
-            controller.get_http_config.remote())
+        self._root_url: str = ray.get(controller.get_root_url.remote())
 
         # Each handle has the overhead of long poll client, therefore cached.
         self.handle_cache = WeakValueDictionary()
@@ -119,7 +119,7 @@ class Client:
 
     @property
     def root_url(self):
-        return self._http_config.root_url
+        return self._root_url
 
     def __del__(self):
         if not self._detached:
@@ -667,6 +667,11 @@ def start(
     if http_options is None:
         http_options = HTTPOptions()
 
+    if SERVE_ROOT_URL_ENV_KEY in os.environ:
+        root_url = os.environ[SERVE_ROOT_URL_ENV_KEY]
+    else:
+        root_url = f"http://{http_options.host}:{http_options.port}"
+
     controller = ServeController.options(
         num_cpus=(1 if dedicated_cpu else 0),
         name=controller_name,
@@ -680,6 +685,7 @@ def start(
     ).remote(
         controller_name,
         detached=detached,
+        root_url=root_url,
     )
 
     # Wait for controller to start.

@@ -65,7 +65,13 @@ class ServeController:
           requires all implementations here to be idempotent.
     """
 
-    async def __init__(self, controller_name: str, detached: bool = False):
+    async def __init__(self,
+                       controller_name: str,
+                       detached: bool = False,
+                       root_url: str = ""):
+        # Metadata used to print full URLs for deployments.
+        self._root_url = root_url
+
         # Used to read/write checkpoints.
         self.kv_store = RayInternalKVStore(namespace=controller_name)
 
@@ -84,6 +90,9 @@ class ServeController:
                                           self.kv_store, self.long_poll_host,
                                           self.goal_manager)
         asyncio.get_event_loop().create_task(self.run_control_loop())
+
+    def get_root_url(self) -> str:
+        return self._root_url
 
     async def wait_for_goals(self, goal_ids: List[Optional[GoalId]]) -> None:
         await self.goal_manager.wait_for_goals(goal_ids)
