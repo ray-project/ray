@@ -9,8 +9,8 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray.test_utils import (client_test_enabled, get_error_message,
-                            run_string_as_driver)
+from ray._private.test_utils import (client_test_enabled, get_error_message,
+                                     SignalActor, run_string_as_driver)
 
 import ray
 
@@ -210,7 +210,8 @@ print("local", ray._private.runtime_env.VAR)
 """
 
     out = run_string_as_driver(
-        script, {"RAY_USER_SETUP_FUNCTION": "ray.test_utils.set_setup_func"})
+        script,
+        {"RAY_USER_SETUP_FUNCTION": "ray._private.test_utils.set_setup_func"})
     (remote_out, local_out) = out.strip().split("\n")[-2:]
     assert remote_out == "remote hello world"
     assert local_out == "local hello world"
@@ -340,7 +341,7 @@ def test_fetch_local(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(num_cpus=2, object_store_memory=75 * 1024 * 1024)
 
-    signal_actor = ray.test_utils.SignalActor.remote()
+    signal_actor = SignalActor.remote()
 
     @ray.remote
     def put():

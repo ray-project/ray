@@ -3,7 +3,7 @@ import pytest
 import sys
 
 import ray
-from ray.test_utils import run_string_as_driver, wait_for_condition
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 
 
 def test_list_named_actors_basic(ray_start_regular):
