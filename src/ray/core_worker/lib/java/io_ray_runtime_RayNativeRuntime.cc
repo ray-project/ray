@@ -97,7 +97,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
       [](TaskType task_type, const std::string task_name, const RayFunction &ray_function,
          const std::unordered_map<std::string, double> &required_resources,
          const std::vector<std::shared_ptr<RayObject>> &args,
-         const std::vector<ObjectID> &arg_reference_ids,
+         const std::vector<rpc::ObjectReference> &arg_refs,
          const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
          std::vector<std::shared_ptr<RayObject>> *results,
          std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb) {

@@ -94,5 +94,68 @@ if __name__ == "__main__":
     assert x == 42
 
 
+def test_object_lost_error(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=0, _system_config={
+            "num_heartbeats_timeout": 3,
+        })
+    ray.init(address=cluster.address)
+    worker_node = cluster.add_node(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self):
+            return
+
+        def foo(self):
+            return "x" * 1000_000
+
+        def done(self):
+            return
+
+    @ray.remote
+    def borrower(ref):
+        ray.get(ref[0])
+
+    @ray.remote
+    def task_arg(ref):
+        return
+
+    a = Actor.remote()
+    x = a.foo.remote()
+    ray.get(a.done.remote())
+    cluster.remove_node(worker_node, allow_graceful=False)
+    cluster.add_node(num_cpus=1)
+
+    y = borrower.remote([x])
+
+    try:
+        ray.get(x)
+        assert False
+    except ray.exceptions.ObjectLostError as e:
+        error = str(e)
+        print(error)
+        assert "actor call" in error
+        assert "test_failure_4.py" in error
+
+    try:
+        ray.get(y)
+        assert False
+    except ray.exceptions.RayTaskError as e:
+        error = str(e)
+        print(error)
+        assert "actor call" in error
+        assert "test_failure_4.py" in error
+
+    try:
+        ray.get(task_arg.remote(x))
+    except ray.exceptions.RayTaskError as e:
+        error = str(e)
+        print(error)
+        assert "actor call" in error
+        assert "test_failure_4.py" in error
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

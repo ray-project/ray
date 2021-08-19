@@ -46,6 +46,7 @@ from cython.operator import dereference, postincrement
 from ray.includes.common cimport (
     CBuffer,
     CAddress,
+    CObjectReference,
     CLanguage,
     CRayObject,
     CRayStatus,
@@ -180,10 +181,11 @@ cdef RayObjectsToDataMetadataPairs(
     return data_metadata_pairs
 
 
-cdef VectorToObjectRefs(const c_vector[CObjectID] &object_refs):
+cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs):
     result = []
     for i in range(object_refs.size()):
-        result.append(ObjectRef(object_refs[i].Binary()))
+        result.append(ObjectRef(object_refs[i].object_id(),
+                                object_refs[i].call_site()))
     return result
 
 
@@ -326,6 +328,7 @@ cdef prepare_args(
         int64_t total_inlined
         shared_ptr[CBuffer] arg_data
         c_vector[CObjectID] inlined_ids
+        c_string call_site
 
     worker = ray.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -338,7 +341,8 @@ cdef prepare_args(
                 unique_ptr[CTaskArg](new CTaskArgByReference(
                     c_arg,
                     CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
-                        c_arg))))
+                        c_arg),
+                    arg.call_site())))
 
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
@@ -374,11 +378,14 @@ cdef prepare_args(
                 inlined_ids.clear()
                 total_inlined += <int64_t>size
             else:
+                call_site.clear()
+                get_py_stack(&call_site)
                 args_vector.push_back(unique_ptr[CTaskArg](
                     new CTaskArgByReference(CObjectID.FromBinary(
                         core_worker.put_serialized_object(
                             serialized_arg, inline_small_object=False)),
-                        CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())))
+                        CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
+                        call_site)))
 
 
 cdef raise_if_dependency_failed(arg):
@@ -398,7 +405,7 @@ cdef execute_task(
         const CRayFunction &ray_function,
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
-        const c_vector[CObjectID] &c_arg_reference_ids,
+        const c_vector[CObjectReference] &c_arg_refs,
         const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns):
@@ -504,7 +511,7 @@ cdef execute_task(
                     args, kwargs = [], {}
                 else:
                     metadata_pairs = RayObjectsToDataMetadataPairs(c_args)
-                    object_refs = VectorToObjectRefs(c_arg_reference_ids)
+                    object_refs = VectorToObjectRefs(c_arg_refs)
 
                     if core_worker.current_actor_is_asyncio():
                         # We deserialize objects in event loop thread to
@@ -634,7 +641,7 @@ cdef CRayStatus task_execution_handler(
         const CRayFunction &ray_function,
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
-        const c_vector[CObjectID] &c_arg_reference_ids,
+        const c_vector[CObjectReference] &c_arg_refs,
         const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns,
@@ -645,7 +652,7 @@ cdef CRayStatus task_execution_handler(
                 # The call to execute_task should never raise an exception. If
                 # it does, that indicates that there was an internal error.
                 execute_task(task_type, task_name, ray_function, c_resources,
-                             c_args, c_arg_reference_ids, c_return_ids,
+                             c_args, c_arg_refs, c_return_ids,
                              debugger_breakpoint, returns)
             except Exception as e:
                 sys_exit = SystemExit()
@@ -721,11 +728,17 @@ cdef void run_on_util_worker_handler(
 
 
 cdef c_vector[c_string] spill_objects_handler(
-        const c_vector[CObjectID]& object_ids_to_spill,
-        const c_vector[c_string]& owner_addresses) nogil:
-    cdef c_vector[c_string] return_urls
+        const c_vector[CObjectReference]& object_refs_to_spill) nogil:
+    cdef:
+        c_vector[c_string] return_urls
+        c_vector[c_string] owner_addresses
+
     with gil:
-        object_refs = VectorToObjectRefs(object_ids_to_spill)
+        object_refs = VectorToObjectRefs(object_refs_to_spill)
+        for i in range(object_refs_to_spill.size()):
+            owner_addresses.push_back(
+                    object_refs_to_spill[i].owner_address()
+                    .SerializeAsString())
         try:
             with ray.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER,
@@ -748,7 +761,7 @@ cdef c_vector[c_string] spill_objects_handler(
 
 
 cdef int64_t restore_spilled_objects_handler(
-        const c_vector[CObjectID]& object_ids_to_restore,
+        const c_vector[CObjectReference]& object_refs_to_restore,
         const c_vector[c_string]& object_urls) nogil:
     cdef:
         int64_t bytes_restored = 0
@@ -757,7 +770,7 @@ cdef int64_t restore_spilled_objects_handler(
         size = object_urls.size()
         for i in range(size):
             urls.append(object_urls[i])
-        object_refs = VectorToObjectRefs(object_ids_to_restore)
+        object_refs = VectorToObjectRefs(object_refs_to_restore)
         try:
             with ray.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
@@ -871,7 +884,8 @@ cdef void get_py_stack(c_string* stack_out) nogil:
                     frame.f_code.co_filename, frame.f_code.co_name,
                     frame.f_lineno))
             frame = frame.f_back
-        stack_out[0] = " | ".join(msg_frames).encode("ascii")
+        stack_out[0] = (ray_constants.CALL_STACK_LINE_DELIMITER
+                        .join(msg_frames).encode("ascii"))
 
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
     cdef shared_ptr[CBuffer] empty_metadata
@@ -1307,13 +1321,13 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
-            c_vector[CObjectID] return_ids
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
             c_string c_serialized_runtime_env
             unordered_map[c_string, c_string] \
                 c_override_environment_variables = \
                 override_environment_variables
+            c_vector[CObjectReference] return_refs
 
         with self.profile_event(b"submit_task"):
             c_serialized_runtime_env = \
@@ -1326,19 +1340,19 @@ cdef class CoreWorker:
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
             # https://github.com/ray-project/ray/pull/12803
-            CCoreWorkerProcess.GetCoreWorker().SubmitTask(
+            return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitTask(
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
                     b"",
                     c_serialized_runtime_env,
                     c_override_environment_variables),
-                &return_ids, max_retries,
+                max_retries,
                 c_pair[CPlacementGroupID, int64_t](
                     c_placement_group_id, placement_group_bundle_index),
                 placement_group_capture_child_tasks,
                 debugger_breakpoint)
 
-            return VectorToObjectRefs(return_ids)
+            return VectorToObjectRefs(return_refs)
 
     def create_actor(self,
                      Language language,
@@ -1478,7 +1492,7 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
-            c_vector[CObjectID] return_ids
+            c_vector[CObjectReference] return_refs
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
@@ -1490,13 +1504,12 @@ cdef class CoreWorker:
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
             # https://github.com/ray-project/ray/pull/12803
-            CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
+            return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
                 c_actor_id,
                 ray_function,
-                args_vector, CTaskOptions(name, num_returns, c_resources),
-                &return_ids)
+                args_vector, CTaskOptions(name, num_returns, c_resources))
 
-            return VectorToObjectRefs(return_ids)
+            return VectorToObjectRefs(return_refs)
 
     def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:
