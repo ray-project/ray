@@ -55,20 +55,6 @@ const size_t kAllocationAlignment = 64;
 // bookkeeping.
 const int64_t kDlMallocReserved = 256 * sizeof(size_t);
 
-absl::optional<Allocation> BuildAllocation(void *addr, size_t size) {
-  if (addr == nullptr) {
-    return absl::nullopt;
-  }
-  MEMFD_TYPE fd;
-  int64_t mmap_size;
-  ptrdiff_t offset;
-
-  if (GetMallocMapinfo(addr, &fd, &mmap_size, &offset)) {
-    return Allocation(addr, static_cast<int64_t>(size), std::move(fd), offset,
-                      0 /* device_number*/, mmap_size);
-  }
-  return absl::nullopt;
-}
 }  // namespace
 
 PlasmaAllocator::PlasmaAllocator(const std::string &plasma_directory,
@@ -138,4 +124,19 @@ int64_t PlasmaAllocator::GetFootprintLimit() const { return kFootprintLimit; }
 int64_t PlasmaAllocator::Allocated() const { return allocated_; }
 
 int64_t PlasmaAllocator::FallbackAllocated() const { return fallback_allocated_; }
+
+absl::optional<Allocation> PlasmaAllocator::BuildAllocation(void *addr, size_t size) {
+  if (addr == nullptr) {
+    return absl::nullopt;
+  }
+  MEMFD_TYPE fd;
+  int64_t mmap_size;
+  ptrdiff_t offset;
+
+  if (internal::GetMallocMapinfo(addr, &fd, &mmap_size, &offset)) {
+    return Allocation(addr, static_cast<int64_t>(size), std::move(fd), offset,
+                      0 /* device_number*/, mmap_size);
+  }
+  return absl::nullopt;
+}
 }  // namespace plasma

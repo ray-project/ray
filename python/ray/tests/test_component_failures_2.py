@@ -8,7 +8,7 @@ import pytest
 import ray
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
-from ray.test_utils import (
+from ray._private.test_utils import (
     RayTestTimeoutException,
     get_other_nodes,
     wait_for_condition,

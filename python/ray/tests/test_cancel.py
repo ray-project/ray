@@ -8,7 +8,7 @@ import ray
 from ray.exceptions import TaskCancelledError, RayTaskError, \
                            GetTimeoutError, WorkerCrashedError, \
                            ObjectLostError
-from ray.test_utils import SignalActor
+from ray._private.test_utils import SignalActor
 
 
 def valid_exceptions(use_force):

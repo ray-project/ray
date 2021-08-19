@@ -1,5 +1,6 @@
 import os
 import importlib
+import inspect
 import json
 import logging
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from ray.ray_constants import (RAY_ADDRESS_ENVIRONMENT_VARIABLE,
                                RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE)
 from ray.job_config import JobConfig
 import ray.util.client_connect
+from ray.worker import init as ray_driver_init
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,7 @@ class ClientBuilder:
         self.address = address
         self._job_config = JobConfig()
         self._fill_defaults_from_env()
+        self._remote_init_kwargs = {}
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -98,7 +101,9 @@ class ClientBuilder:
                 dashboard_url.
         """
         client_info_dict = ray.util.client_connect.connect(
-            self.address, job_config=self._job_config)
+            self.address,
+            job_config=self._job_config,
+            ray_init_kwargs=self._remote_init_kwargs)
         dashboard_url = ray.get(
             ray.remote(ray.worker.get_dashboard_url).remote())
         return ClientContext(
@@ -134,11 +139,18 @@ class ClientBuilder:
         if kwargs.get("runtime_env") is not None:
             self.env(kwargs["runtime_env"])
             del kwargs["runtime_env"]
-        if not kwargs:
-            return self
-        unknown = ", ".join(kwargs)
-        raise RuntimeError(
-            f"Unexpected keyword argument(s) for Ray Client: {unknown}")
+        if kwargs:
+            expected_sig = inspect.signature(ray_driver_init)
+            extra_args = set(kwargs.keys()).difference(
+                expected_sig.parameters.keys())
+            if len(extra_args) > 0:
+                raise RuntimeError("Got unexpected kwargs: {}".format(
+                    ", ".join(extra_args)))
+            self._remote_init_kwargs = kwargs
+            unknown = ", ".join(kwargs)
+            logger.info("Passing the following kwargs to ray.init() "
+                        f"on the server: {unknown}")
+        return self
 
 
 class _LocalClientBuilder(ClientBuilder):

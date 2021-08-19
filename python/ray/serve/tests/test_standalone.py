@@ -18,8 +18,9 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)
 from ray.serve.config import HTTPOptions
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray._private.services import new_port
+import ray._private.gcs_utils as gcs_utils
 
 
 @pytest.fixture
@@ -330,7 +331,7 @@ def test_no_http(ray_shutdown):
         # Only controller actor should exist
         live_actors = [
             actor for actor in ray.state.actors().values()
-            if actor["State"] == ray.gcs_utils.ActorTableData.ALIVE
+            if actor["State"] == gcs_utils.ActorTableData.ALIVE
         ]
         assert len(live_actors) == 1
         controller = serve.api._global_client._controller
