@@ -360,7 +360,10 @@ class SGDIterator:
             checkpoint_strategy: Optional[CheckpointStrategy]):
         self._executor = backend_executor
         self._run_with_error_handling(
-            lambda: self._executor.start_training(train_func, checkpoint, checkpoint_strategy)
+            lambda: self._executor.start_training(
+                train_func=train_func,
+                checkpoint=checkpoint,
+                checkpoint_strategy=checkpoint_strategy)
         )
 
         self._final_results = None
