@@ -1045,7 +1045,11 @@ std::vector<rpc::ObjectReference> CoreWorker::GetObjectRefs(
   for (const auto &object_id : object_ids) {
     rpc::ObjectReference ref;
     ref.set_object_id(object_id.Binary());
-    ref.mutable_owner_address()->CopyFrom(GetOwnerAddress(object_id));
+    rpc::Address owner_address;
+    if (reference_counter_->GetOwner(object_id, &owner_address)) {
+      // NOTE(swang): Detached actors do not have an owner address set.
+      ref.mutable_owner_address()->CopyFrom(owner_address);
+    }
     refs.push_back(std::move(ref));
   }
   return refs;
