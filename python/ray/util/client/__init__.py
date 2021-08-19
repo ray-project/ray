@@ -177,6 +177,7 @@ _all_contexts = set()
 _lock = threading.Lock()
 _default_context = _Context()
 
+
 class RayAPIStub:
     """This class stands in as the replacement API for the `import ray` module.
 
@@ -191,7 +192,7 @@ class RayAPIStub:
 
     def get_context(self):
         try:
-            return self._cxt.__getattribute__('handler')
+            return self._cxt.__getattribute__("handler")
         except AttributeError:
             self._cxt.handler = _default_context
             return self._cxt.handler

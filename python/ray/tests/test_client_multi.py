@@ -1,8 +1,7 @@
-import os
 import sys
 import pytest
 import ray
-import ray.util.client.server.server as ray_client_server
+
 
 @pytest.mark.skipif(
     sys.platform == "win32",
@@ -40,9 +39,9 @@ def test_multi_cli_basic(call_ray_start):
     ["ray start --head --ray-client-server-port 25001 --port 0"],
     indirect=True)
 def test_multi_cli_error_1(call_ray_start):
-    cli1 = ray.init("ray://localhost:25001", allow_multiple=True)
+    cli1 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
     with pytest.raises(RuntimeError):
-        cli2 = ray.init("ray://localhost:25001")
+        cli2 = ray.init("ray://localhost:25001")  # noqa
 
 
 @pytest.mark.skipif(
@@ -53,9 +52,9 @@ def test_multi_cli_error_1(call_ray_start):
     ["ray start --head --ray-client-server-port 25001 --port 0"],
     indirect=True)
 def test_multi_cli_error_2(call_ray_start):
-    cli1 = ray.init("ray://localhost:25001")
+    cli1 = ray.init("ray://localhost:25001")  # noqa
     with pytest.raises(RuntimeError):
-        cli2 = ray.init("ray://localhost:25001", allow_multiple=True)
+        cli2 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
 
 
 @pytest.mark.skipif(
@@ -69,6 +68,7 @@ def test_multi_cli_func(call_ray_start):
     @ray.remote
     def hello():
         return "world"
+
     cli1 = ray.init("ray://localhost:25001", allow_multiple=True)
     cli2 = ray.init("ray://localhost:25001", allow_multiple=True)
 
