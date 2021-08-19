@@ -128,7 +128,8 @@ class ServeController:
     def _put_serve_snapshot(self) -> None:
         val = dict()
         for deployment_name, (backend_info,
-                              route_prefix) in self.list_deployments().items():
+                              route_prefix) in self.list_deployments(
+                                  include_deleted=True).items():
             entry = dict()
             entry["name"] = deployment_name
             entry["namespace"] = ray.get_runtime_context().namespace
@@ -142,28 +143,29 @@ class ServeController:
             # deployments with no HTTP route, update the below line.
             # Or refactor the route_prefix logic in the Deployment class.
             entry["http_route"] = route_prefix or f"/{deployment_name}"
-            entry["status"] = "RUNNING"
             entry["start_time"] = backend_info.start_time_ms
-            entry["end_time"] = 0
-
+            entry["end_time"] = backend_info.end_time_ms or 0
+            entry["status"] = ("DELETED"
+                               if backend_info.end_time_ms else "RUNNING")
             entry["actors"] = dict()
-            replica_state_container = self.backend_state_manager._replicas[
-                deployment_name]
-            running_replicas = replica_state_container.get(
-                [ReplicaState.RUNNING])
-            for replica in running_replicas:
-                try:
-                    actor_handle = replica.actor_handle
-                except ValueError:
-                    # Actor died or hasn't yet been created.
-                    continue
-                actor_id = actor_handle._ray_actor_id.hex()
-                replica_tag = replica.replica_tag
-                replica_version = replica.version.code_version
-                entry["actors"][actor_id] = {
-                    "replica_tag": replica_tag,
-                    "version": replica_version
-                }
+            if entry["status"] == "RUNNING":
+                replica_state_container = self.backend_state_manager._replicas[
+                    deployment_name]
+                running_replicas = replica_state_container.get(
+                    [ReplicaState.RUNNING])
+                for replica in running_replicas:
+                    try:
+                        actor_handle = replica.actor_handle
+                    except ValueError:
+                        # Actor died or hasn't yet been created.
+                        continue
+                    actor_id = actor_handle._ray_actor_id.hex()
+                    replica_tag = replica.replica_tag
+                    replica_version = replica.version.code_version
+                    entry["actors"][actor_id] = {
+                        "replica_tag": replica_tag,
+                        "version": replica_version
+                    }
 
             val[deployment_name] = entry
         self.kv_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
@@ -406,10 +408,24 @@ class ServeController:
 
         return backend_info, route
 
-    def list_deployments(self) -> Dict[str, Tuple[BackendInfo, str]]:
-        """Gets the current information about all active deployments."""
+    def list_deployments(self, include_deleted: Optional[bool] = False
+                         ) -> Dict[str, Tuple[BackendInfo, str]]:
+        """Gets the current information about all deployments.
+
+        Args:
+            include_deleted(bool): Whether to include information about
+                deployments that have been deleted.
+
+        Returns:
+            Dict(deployment_name, (BackendInfo, route))
+
+        Raises:
+            KeyError if the deployment doesn't exist.
+        """
         return {
-            name: (self.backend_state_manager.get_backend(name),
-                   self.endpoint_state_manager.get_endpoint_route(name))
-            for name in self.backend_state_manager.get_backend_configs()
+            name: (self.backend_state_manager.get_backend(
+                name, include_deleted=include_deleted),
+                   self.endpoint_state.get_endpoint_route(name))
+            for name in self.backend_state_manager.get_backend_configs(
+                include_deleted=include_deleted)
         }
