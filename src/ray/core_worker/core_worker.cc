@@ -2132,14 +2132,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
   }
   // Leave the return object as a nullptr if the object already exists.
   if (!object_already_exists) {
-    std::vector<rpc::ObjectReference> contained_refs;
-    for (const auto &oid : contained_object_ids) {
-      RAY_LOG(DEBUG) << "Return object " << object_id << " contains ObjectRef " << oid;
-      rpc::ObjectReference ref;
-      ref.set_object_id(oid.Binary());
-      ref.mutable_owner_address()->CopyFrom(GetOwnerAddress(oid));
-      contained_refs.push_back(std::move(ref));
-    }
+    auto contained_refs = GetObjectRefs(contained_object_ids);
     *return_object =
         std::make_shared<RayObject>(data_buffer, metadata, std::move(contained_refs));
   }

@@ -1205,10 +1205,9 @@ cdef class CoreWorker:
                     Buffer.make(data))
             if self.is_local_mode or (put_small_object_in_memory_store
                and <int64_t>total_bytes < put_threshold):
-                if not self.is_local_mode:
-                    contained_object_refs = (
-                            CCoreWorkerProcess.GetCoreWorker().
-                            GetObjectRefs(contained_object_ids))
+                contained_object_refs = (
+                        CCoreWorkerProcess.GetCoreWorker().
+                        GetObjectRefs(contained_object_ids))
                 if owner_address is not None:
                     raise Exception(
                         "cannot put data into memory store directly"
