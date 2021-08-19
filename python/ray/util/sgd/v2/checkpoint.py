@@ -9,12 +9,12 @@ MIN = "min"
 
 @dataclass
 class CheckpointStrategy:
-    """
-    Configurable parameters for defining the SGD checkpointing strategy.
+    """Configurable parameters for defining the SGD checkpointing strategy.
 
     Default behavior is to persist all checkpoints to disk. If
     ``num_to_keep`` is set, the default retention policy is to keep the
     checkpoints with maximum timestamp, i.e. the most recent checkpoints.
+    
     Args:
         num_to_keep (Optional[int]): The number of checkpoints to keep
             on disk for this run. If a checkpoint is persisted to disk after
