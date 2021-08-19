@@ -1873,6 +1873,25 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
+    # Export ray ABI symbols, which can then be used by _streaming.so.
+    # We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
+    # shared lib, see python/ray/__init__.py.
+    cc_kwargs = dict(
+        srcs = PYX_SRCS,
+        copts = COPTS + PYX_COPTS,
+        # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
+        linkopts = select({
+            "@bazel_tools//src/conditions:darwin": [
+                "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
+            ],
+            "@bazel_tools//src/conditions:windows": [
+            ],
+            "//conditions:default": [
+                "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
+            ],
+        }),
+        linkstatic = 1,
+    ),
     deps = [
         "//:core_worker_lib",
         "//:global_state_accessor_lib",
@@ -1892,6 +1911,17 @@ cc_binary(
         "src/ray/core_worker/lib/java/*.cc",
     ]),
     copts = COPTS,
+    # Export ray ABI symbols, which can then be used by libstreaming_java.so. see `//:_raylet`
+    linkopts = select({
+        "@bazel_tools//src/conditions:darwin": [
+            "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
+        ],
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
+        ],
+    }),
     linkshared = 1,
     linkstatic = 1,
     visibility = ["//java:__subpackages__"],
