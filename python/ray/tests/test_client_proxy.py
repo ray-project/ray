@@ -12,7 +12,7 @@ import grpc
 import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray.job_config import JobConfig
-from ray.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver
 import ray.util.client.server.proxier as proxier
 
 
