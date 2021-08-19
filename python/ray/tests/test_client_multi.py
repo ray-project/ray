@@ -89,6 +89,8 @@ def test_multi_cli_func(call_ray_start):
         o2 = hello.remote()
         assert "world" == ray.get(o2)
 
+    # TODO better error message.
+    # Right now, it's EOFError actually
     with pytest.raises(Exception), cli1:
         assert "world" == ray.get(o2)
 
