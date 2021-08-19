@@ -608,6 +608,7 @@ def test_client_context_manager(ray_start_regular_shared, connect_to_client):
             assert client_mode_should_convert() is False
             assert ray.util.client.ray.is_connected() is False
 
+
 object_ref_cleanup_script = """
 import ray
 
@@ -619,6 +620,7 @@ def f():
 
 obj_ref = f.remote()
 """
+
 
 def test_object_ref_cleanup():
     # Checks no error output when running the script in
