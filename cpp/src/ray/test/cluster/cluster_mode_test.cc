@@ -241,7 +241,8 @@ TEST(RayClusterModeTest, ExceptionTest) {
 }
 
 bool CheckRefCount(std::unordered_map<std::string, std::pair<size_t, size_t>> expected) {
-  return expected == ray::internal::GetRayRuntime()->GetAllReferenceCounts();
+  auto map = ray::internal::GetRayRuntime()->GetAllReferenceCounts();
+  return expected == map;
 }
 
 TEST(RayClusterModeTest, LocalRefrenceTest) {
