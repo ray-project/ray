@@ -22,14 +22,11 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include "ray/util/macros.h"
 
-<<<<<<< HEAD
 #ifdef _WIN32
 #include <process.h>  // to ensure getpid() on Windows
 #endif
-=======
-#include "ray/util/macros.h"
->>>>>>> master
 
 // Portable code for unreachable
 #if defined(_MSC_VER)
