@@ -419,7 +419,7 @@ class VirtualActor:
             max_retries=1,
             catch_exceptions=False,
             ray_options={},
-            step_name=None,
+            name=None,
         )
         wf = Workflow(workflow_data)
         with workflow_context.workflow_step_context(self._actor_id,

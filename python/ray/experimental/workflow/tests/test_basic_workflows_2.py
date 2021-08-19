@@ -89,8 +89,8 @@ def test_get_named_step_output_finished(workflow_start_regular, tmp_path):
         return 2 * v
 
     # Get the result from named step after workflow finished
-    assert 4 == double.options(step_name="outer").step(
-        double.options(step_name="inner").step(1)).run("double")
+    assert 4 == double.options(name="outer").step(
+        double.options(name="inner").step(1)).run("double")
     assert ray.get(workflow.get_output("double", "inner")) == 2
     assert ray.get(workflow.get_output("double", "outer")) == 4
 
@@ -108,8 +108,8 @@ def test_get_named_step_output_runnin(workflow_start_regular, tmp_path):
     lock_path = str(tmp_path / "lock")
     lock = FileLock(lock_path)
     lock.acquire()
-    output = double.options(step_name="outer").step(
-        double.options(step_name="inner").step(1, lock_path),
+    output = double.options(name="outer").step(
+        double.options(name="inner").step(1, lock_path),
         lock_path).run_async("double-2")
 
     inner = workflow.get_output("double-2", "inner")
@@ -146,8 +146,8 @@ def test_get_named_step_output_error(workflow_start_regular, tmp_path):
         return v + v
 
     with pytest.raises(Exception):
-        double.options(step_name="outer").step(
-            double.options(step_name="inner").step(1, False),
+        double.options(name="outer").step(
+            double.options(name="inner").step(1, False),
             True).run("double")
 
     assert 2 == ray.get(workflow.get_output("double", "inner"))

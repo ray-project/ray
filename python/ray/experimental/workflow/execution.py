@@ -72,7 +72,7 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     return flatten_workflow_output(workflow_id, result.persisted_output)
 
 
-def get_output(workflow_id: str, step_name: Optional[str]) -> ray.ObjectRef:
+def get_output(workflow_id: str, name: Optional[str]) -> ray.ObjectRef:
     """Get the output of a running workflow.
     See "api.get_output()" for details.
     """
@@ -85,7 +85,7 @@ def get_output(workflow_id: str, step_name: Optional[str]) -> ray.ObjectRef:
             "actor. The workflow could have already failed. You can use "
             "workflow.resume() to resume the workflow.") from e
     output = ray.get(
-        workflow_manager.get_output.remote(workflow_id, step_name))
+        workflow_manager.get_output.remote(workflow_id, name))
     return flatten_workflow_output(workflow_id, output)
 
 

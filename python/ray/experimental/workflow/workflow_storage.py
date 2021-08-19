@@ -325,9 +325,9 @@ class WorkflowStorage:
             self._put(self._key_step_function_body(step_id), inputs.func_body),
             self._put(self._key_step_args(step_id), args_obj)
         ]
-        if inputs.step_name is not None:
+        if inputs.name is not None:
             save_tasks.append(
-                self._put(self._key_step_name(inputs.step_name), step_id))
+                self._put(self._key_step_name(inputs.name), step_id))
         await asyncio.gather(*save_tasks)
 
     def save_subworkflow(self, workflow: Workflow) -> None:
@@ -393,18 +393,18 @@ class WorkflowStorage:
         except KeyNotFoundError:
             return None
 
-    def get_named_step_id(self, step_name: str) -> Optional[str]:
+    def get_named_step_id(self, name: str) -> Optional[str]:
         """Get the step id from the step name
 
         Args:
-            step_name: the name of the step
+            name: the name of the step
 
         Returns:
             The step id associated with the name. Return None if it doesn't
             exist.
         """
         try:
-            return asyncio_run(self._get(self._key_step_name(step_name)))
+            return asyncio_run(self._get(self._key_step_name(name)))
         except KeyNotFoundError:
             return None
 
@@ -506,8 +506,8 @@ class WorkflowStorage:
     def _key_workflow_metadata(self):
         return [self._workflow_id, WORKFLOW_META]
 
-    def _key_step_name(self, step_name):
-        return [self._workflow_id, NAMED_STEP, step_name]
+    def _key_step_name(self, name):
+        return [self._workflow_id, NAMED_STEP, name]
 
 
 def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:

@@ -56,7 +56,7 @@ class WorkflowStepFunction:
                 *,
                 max_retries: int = 1,
                 catch_exceptions: bool = False,
-                step_name: str = None,
+                name: str = None,
                 **ray_options) -> "WorkflowStepFunction":
         """This function set how the step function is going to be executed.
 
@@ -77,4 +77,4 @@ class WorkflowStepFunction:
             The step function itself.
         """
         return WorkflowStepFunction(self._func, max_retries, catch_exceptions,
-                                    step_name, ray_options)
+                                    name, ray_options)

@@ -273,7 +273,7 @@ class WorkflowManagementActor:
         return self._actor_initialized[actor_id]
 
     def get_output(self, workflow_id: str,
-                   step_name: Optional[str]) -> "ray.ObjectRef":
+                   name: Optional[str]) -> "ray.ObjectRef":
         """Get the output of a running workflow.
 
         Args:
@@ -283,7 +283,7 @@ class WorkflowManagementActor:
             An object reference that can be used to retrieve the
             workflow result.
         """
-        if workflow_id in self._workflow_outputs and step_name is None:
+        if workflow_id in self._workflow_outputs and name is None:
             return self._workflow_outputs[workflow_id].output
         wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
         meta = wf_store.load_workflow_meta()
@@ -292,10 +292,10 @@ class WorkflowManagementActor:
         if meta == common.WorkflowStatus.FAILED:
             raise ValueError(
                 f"Workflow {workflow_id} failed, please resume it")
-        if step_name is None:
+        if name is None:
             step_id = wf_store.get_entrypoint_step_id()
         else:
-            step_id = wf_store.get_named_step_id(step_name)
+            step_id = wf_store.get_named_step_id(name)
             if step_id is None:
                 raise ValueError(
                     f"Load such step {step_id} in workflow {workflow_id}")
@@ -308,7 +308,7 @@ class WorkflowManagementActor:
                                                self._store.storage_url)
         # We don't record workflow running status for getting result
         # for a named step.
-        if step_name is not None:
+        if name is not None:
             return result.persisted_output
 
         latest_output = LatestWorkflowOutput(result.persisted_output,

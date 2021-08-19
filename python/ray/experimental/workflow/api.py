@@ -179,16 +179,16 @@ def resume(workflow_id: str) -> ray.ObjectRef:
 
 
 def get_output(workflow_id: str,
-               step_name: Optional[str] = None) -> ray.ObjectRef:
+               name: Optional[str] = None) -> ray.ObjectRef:
     """Get the output of a running workflow.
 
     Args:
         workflow_id(str): The ID of the running workflow job.
-        step_name(Optional[str]): If set, fetch the specific step instead of
+        name(Optional[str]): If set, fetch the specific step instead of
             the output of the workflow.
 
     Examples:
-        >>> trip = start_trip.options(step_name="trip").step()
+        >>> trip = start_trip.options(name="trip").step()
         >>> res1 = trip.async_run(workflow_id="trip1")
         >>> # you could "get_output()" in another machine
         >>> res2 = workflow.get_output("trip1")
@@ -199,7 +199,7 @@ def get_output(workflow_id: str,
     Returns:
         An object reference that can be used to retrieve the workflow result.
     """
-    return execution.get_output(workflow_id, step_name)
+    return execution.get_output(workflow_id, name)
 
 
 def list_all(status_filter: Optional[Union[Union[WorkflowStatus, str], Set[

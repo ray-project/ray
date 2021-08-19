@@ -92,7 +92,7 @@ class WorkflowData:
     # ray_remote options
     ray_options: Dict[str, Any]
     # name of the step
-    step_name: str
+    name: str
 
     def to_metadata(self) -> Dict[str, Any]:
         f = self.func_body
@@ -105,7 +105,7 @@ class WorkflowData:
             "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
             "catch_exceptions": self.catch_exceptions,
             "ray_options": self.ray_options,
-            "step_name": self.step_name
+            "name": self.name
         }
 
 

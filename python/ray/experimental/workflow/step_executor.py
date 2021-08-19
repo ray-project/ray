@@ -251,7 +251,7 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
             else:
                 retry_msg = "The step will be retried."
             logger.error(
-                f"{workflow_context.get_step_name()} failed with error message"
+                f"{workflow_context.get_name()} failed with error message"
                 f" {e}. {retry_msg}")
             exception = e
 
