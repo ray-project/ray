@@ -16,6 +16,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/runtime_env_manager.h"
+#include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
@@ -46,8 +47,8 @@ struct GcsServerConfig {
   bool retry_redis = true;
   bool enable_sharding_conn = true;
   std::string node_ip_address;
-  bool grpc_based_resource_broadcast;
-  bool grpc_pubsub_enabled;
+  bool grpc_based_resource_broadcast = false;
+  bool grpc_pubsub_enabled = false;
 };
 
 class GcsNodeManager;

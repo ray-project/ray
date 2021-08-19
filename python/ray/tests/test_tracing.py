@@ -7,7 +7,7 @@ import shutil
 from unittest.mock import patch
 
 import ray
-from ray.test_utils import check_call_ray
+from ray._private.test_utils import check_call_ray
 from ray.util.tracing.setup_local_tmp_tracing import spans_dir
 
 setup_tracing_path = "ray.util.tracing.setup_local_tmp_tracing:setup_tracing"
