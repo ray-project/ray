@@ -8,11 +8,10 @@ import pytest
 import numpy as np
 
 import ray
-import ray.test_utils
 from ray.core.generated import common_pb2
 from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
-from ray.test_utils import (wait_for_condition, run_string_as_driver,
-                            run_string_as_driver_nonblocking)
+from ray._private.test_utils import (wait_for_condition, run_string_as_driver,
+                                     run_string_as_driver_nonblocking)
 
 
 def get_workers():

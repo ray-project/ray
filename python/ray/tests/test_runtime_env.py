@@ -9,7 +9,7 @@ from pathlib import Path
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
-from ray.test_utils import (
+from ray._private.test_utils import (
     run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
@@ -847,7 +847,8 @@ def test_no_spurious_worker_startup(ray_start_cluster):
     # This hook sleeps for 15 seconds to simulate creating a runtime env.
     cluster.add_node(
         num_cpus=1,
-        runtime_env_setup_hook="ray.test_utils.sleep_setup_runtime_env")
+        runtime_env_setup_hook=(
+            "ray._private.test_utils.sleep_setup_runtime_env"))
 
     # Set a nonempty runtime env so that the runtime env setup hook is called.
     runtime_env = {"env_vars": {"a": "b"}}
