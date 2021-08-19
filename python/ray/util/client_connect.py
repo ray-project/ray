@@ -17,9 +17,8 @@ def connect(
         ignore_version: bool = False,
         ray_init_kwargs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if ray.is_connected():
-        pass
-        # raise RuntimeError("Ray Client is already connected. Maybe you called "
-        #                    'ray.init("ray://<address>") twice by accident?')
+        raise RuntimeError("Ray Client is already connected. Maybe you called "
+                           'ray.init("ray://<address>") twice by accident?')
 
     # Enable the same hooks that RAY_CLIENT_MODE does, as calling
     # ray.init("ray://<address>") is specifically for using client mode.

@@ -244,18 +244,20 @@ class RayAPIStub:
                 _all_contexts.remove(self._cxt.handler)
 
 
-
 ray = RayAPIStub()
+
 
 def is_main_cli():
     global _lock, _all_contexts
     with _lock:
         return ray._cxt.handler not in _all_contexts
 
+
 def connected_context_num():
     global _lock, _all_contexts
     with _lock:
         return len(_all_contexts)
+
 
 # Someday we might add methods in this module so that someone who
 # tries to `import ray_client as ray` -- as a module, instead of
