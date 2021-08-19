@@ -30,7 +30,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     # Create q custom Trainer class using our custom Policy.
-    MyTrainer = build_trainer(
+    BareMetalPolicyTrainer = build_trainer(
         name="MyPolicy", default_policy=BareMetalPolicyWithCustomViewReqs)
 
     config = {
@@ -49,6 +49,6 @@ if __name__ == "__main__":
     }
 
     # Train the Trainer with our policy.
-    my_trainer = MyTrainer(config=config)
+    my_trainer = BareMetalPolicyTrainer(config=config)
     results = my_trainer.train()
     print(results)
