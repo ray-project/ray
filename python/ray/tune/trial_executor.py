@@ -6,6 +6,7 @@ import os
 import time
 from typing import Dict, List, Optional
 
+import ray
 from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI
 from ray.tune.trial import Trial, Checkpoint
@@ -13,6 +14,14 @@ from ray.tune.error import TuneError
 from ray.tune.cluster_info import is_ray_cluster
 
 logger = logging.getLogger(__name__)
+
+
+def _can_fulfill(cluster_resources: Dict, trial: Trial) -> bool:
+    """Decides for an autoscaler disabled cluster, whether there is enough
+        resources for a PENDING trial."""
+    assert trial.status == Trial.PENDING
+    return trial.resources.cpu <= cluster_resources.get(
+        "CPU", 0) and trial.resources.gpu <= cluster_resources.get("GPU", 0)
 
 
 @lru_cache()
@@ -23,7 +32,7 @@ def _get_warning_threshold() -> float:
                 "TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER", "60"))
     else:
         return float(
-            os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "1"))
+            os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "5"))
 
 
 @lru_cache()
@@ -242,7 +251,13 @@ class TrialExecutor(metaclass=ABCMeta):
                 self._no_running_trials_since = time.monotonic()
             elif time.monotonic(
             ) - self._no_running_trials_since > _get_warning_threshold():
-                # TODO(xwjiang): We should ideally output a more helpful msg.
+                if not is_ray_cluster():  # autosclaer not enabled
+                    cluster_resources = ray.cluster_resources()
+                    if not any(trial.status == Trial.PENDING
+                               and _can_fulfill(cluster_resources, trial)
+                               for trial in all_trials):
+                        raise TuneError(_get_warning_msg())
+                # TODO(xwjiang): Output a more helpful msg for autoscaler case.
                 # https://github.com/ray-project/ray/issues/17799
                 logger.warning(_get_warning_msg())
                 self._no_running_trials_since = time.monotonic()
