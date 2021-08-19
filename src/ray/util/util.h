@@ -22,6 +22,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+
 #include "ray/util/macros.h"
 
 #ifdef _WIN32
