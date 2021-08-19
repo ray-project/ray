@@ -427,6 +427,12 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// Get the number of cpus on this node.
   uint64_t GetNumCpus() const;
 
+  /// Check whether a task request is schedulable on a the local node. A node is
+  /// schedulable if it has the available resources needed to execute the task.
+  ///
+  /// \param shape The resource demand's shape.
+  bool IsLocallySchedulable(const std::unordered_map<std::string, double> &shape);
+
  private:
   /// Init the information about which resources are unit_instance.
   void InitResourceUnitInstanceInfo();

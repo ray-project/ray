@@ -1052,6 +1052,10 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
   reply->mutable_retry_at_raylet_address()->set_port(node_info_opt->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
 
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    reply->set_rejected(true);
+  }
+
   auto send_reply_callback = work->callback;
   send_reply_callback();
 }
@@ -1214,6 +1218,12 @@ void ClusterTaskManager::SpillWaitingTasks() {
       break;
     }
   }
+}
+
+bool ClusterTaskManager::IsLocallySchedulable(const RayTask &task) const {
+  const auto &spec = task.GetTaskSpecification();
+  return cluster_resource_scheduler_->IsLocallySchedulable(
+      spec.GetRequiredResources().GetResourceMap());
 }
 
 ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {

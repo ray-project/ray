@@ -466,10 +466,6 @@ ray::Status NodeManager::RegisterGcs() {
         "NodeManager.deadline_timer.flush_free_objects");
   }
   last_resource_report_at_ms_ = now_ms;
-  periodical_runner_.RunFnPeriodically(
-      [this] { ReportResourceUsage(); }, report_resources_period_ms_,
-      "NodeManager.deadline_timer.report_resource_usage");
-
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
@@ -547,6 +543,7 @@ void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data
     auto &normal_task_map = *(resources_data.mutable_resources_normal_task());
     normal_task_map = {normal_task_resources.GetResourceMap().begin(),
                        normal_task_resources.GetResourceMap().end()};
+    resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
     last_heartbeat_resources->SetNormalTaskResources(normal_task_resources);
   }
 }
@@ -561,7 +558,7 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   cluster_resource_scheduler_->FillResourceUsage(resources_data);
   cluster_task_manager_->FillResourceUsage(
       resources_data, gcs_client_->NodeResources().GetLastResourceUsage());
-  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     FillNormalTaskResourceUsage(resources_data);
   }
 
@@ -586,33 +583,6 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
       local_gc_throttler_.AbleToRun()) {
     DoLocalGC();
     should_local_gc_ = false;
-  }
-}
-
-void NodeManager::ReportResourceUsage() {
-  if (initial_config_.pull_based_resource_reporting) {
-    return;
-  }
-  uint64_t now_ms = current_time_ms();
-  uint64_t interval = now_ms - last_resource_report_at_ms_;
-  if (interval >
-      RayConfig::instance().num_resource_report_periods_warning() *
-          RayConfig::instance().raylet_report_resources_period_milliseconds()) {
-    RAY_LOG(WARNING)
-        << "Last resource report was sent " << interval
-        << " ms ago. There might be resource pressure on this node. If "
-           "resource reports keep lagging, scheduling decisions of other nodes "
-           "may become stale";
-  }
-  last_resource_report_at_ms_ = now_ms;
-  auto resources_data = std::make_shared<rpc::ResourcesData>();
-  FillResourceReport(*resources_data);
-
-  if (resources_data->resources_total_size() > 0 ||
-      resources_data->resources_available_changed() ||
-      resources_data->resource_load_changed() || resources_data->should_global_gc()) {
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(resources_data,
-                                                                       /*done*/ nullptr));
   }
 }
 
@@ -1603,7 +1573,48 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
   }
 
-  cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback);
+  if (!(RayConfig::instance().gcs_actor_scheduling_enabled() &&
+        task.GetTaskSpecification().IsActorCreationTask())) {
+    cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback);
+    return;
+  }
+
+  auto send_reply_callback_wrapper = [this, actor_id, reply, send_reply_callback](
+                                         Status status, std::function<void()> success,
+                                         std::function<void()> failure) {
+    if (!reply->rejected()) {
+      send_reply_callback(status, success, failure);
+      return;
+    }
+
+    // If the reqiured resource and normal task resource exceed available resource,
+    // reject it.
+    ResourceSet normal_task_resources = cluster_task_manager_->CalcNormalTaskResources();
+    RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
+                   << " actor_id = " << actor_id
+                   << ", normal_task_resources = " << normal_task_resources.ToString()
+                   << ", local_resoruce_view = "
+                   << cluster_resource_scheduler_->GetLocalResourceViewString();
+    auto resources_data = reply->mutable_resources_data();
+    resources_data->set_node_id(self_node_id_.Binary());
+    resources_data->set_resources_normal_task_changed(true);
+    auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
+    normal_task_map = {normal_task_resources.GetResourceMap().begin(),
+                       normal_task_resources.GetResourceMap().end()};
+    resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
+
+    send_reply_callback(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
+  };
+
+  // If resources are not enough due to normal tasks' preemption, return a rejection with
+  // normal task resource usages.
+  if (!cluster_task_manager_->IsLocallySchedulable(task)) {
+    reply->set_rejected(true);
+    send_reply_callback_wrapper(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
+    return;
+  }
+
+  cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback_wrapper);
 }
 
 void NodeManager::HandlePrepareBundleResources(
