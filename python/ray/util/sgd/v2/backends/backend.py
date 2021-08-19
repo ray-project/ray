@@ -108,6 +108,7 @@ class BackendExecutor:
         if dataset is not None:
             datasets = dataset.split(
                 len(self.worker_group),
+                equal=True,
                 locality_hints=self.worker_group.workers)
         else:
             datasets = [None] * len(self.worker_group)

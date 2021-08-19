@@ -676,14 +676,16 @@ def test_dataset_torch(ray_start_2_cpus):
         "two": [1.0, 2.0, 3.0],
         "label": [1.0, 2.0, 3.0]
     })
-    dataset = ray.data.from_pandas(df)
+    dataset = ray.data.from_pandas([ray.put(df)])
 
     def get_dataset():
-        print(sgd.get_data_shard().to_torch(label_column="label").numpy())
+        torch_ds = sgd.get_dataset_shard().to_torch(label_column="label")
+        for batch in iter(torch_ds):
+            print(torch.cat((*batch[0], batch[1]), axis=1).numpy())
 
-    trainer = Trainer(config, num_workers=2, dataset=dataset)
+    trainer = Trainer(config, num_workers=2)
     trainer.start()
-    trainer.run(get_dataset)
+    trainer.run(get_dataset, dataset=dataset)
 
 
 def test_dataset_tensorflow(ray_start_2_cpus):
