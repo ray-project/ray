@@ -702,10 +702,7 @@ class ModelCatalog:
                 observation_space, options)
         else:
             cls = get_preprocessor(observation_space)
-            if cls is not None:
-                prep = cls(observation_space, options)
-            else:
-                prep = None
+            prep = cls(observation_space, options)
 
         if prep is not None:
             logger.debug("Created preprocessor {}: {} -> {}".format(

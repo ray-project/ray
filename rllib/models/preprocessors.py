@@ -342,7 +342,7 @@ def get_preprocessor(space: gym.Space) -> type:
     elif isinstance(space, Repeated):
         preprocessor = RepeatedValuesPreprocessor
     else:
-        preprocessor = None
+        preprocessor = NoPreprocessor
 
     return preprocessor
 

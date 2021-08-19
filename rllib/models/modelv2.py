@@ -228,6 +228,8 @@ class ModelV2:
                     restored["obs_flat"] = input_dict["obs"]
             except AttributeError:
                 restored["obs_flat"] = input_dict["obs"]
+        # TODO: This is unnecessary for when no preprocessor is used.
+        #  Obs are not flat then anymore.
         else:
             restored["obs_flat"] = input_dict["obs"]
 
