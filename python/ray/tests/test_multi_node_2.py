@@ -8,8 +8,8 @@ from ray.util.placement_group import placement_group, remove_placement_group
 from ray.autoscaler.sdk import request_resources
 from ray.autoscaler._private.monitor import Monitor
 from ray.cluster_utils import Cluster
-from ray.test_utils import (generate_system_config_map, wait_for_condition,
-                            SignalActor)
+from ray._private.test_utils import (generate_system_config_map,
+                                     wait_for_condition, SignalActor)
 
 logger = logging.getLogger(__name__)
 
