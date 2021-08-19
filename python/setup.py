@@ -33,7 +33,7 @@ THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 
 CLEANABLE_SUBDIRS = [PICKLE5_SUBDIR, THIRDPARTY_SUBDIR]
 
-is_conda_build = int(os.environ.get("IS_CONDA_BUILD", "0"))
+is_automated_build = bool(int(os.environ.get("IS_AUTOMATED_BUILD", "0")))
 
 exe_suffix = ".exe" if sys.platform == "win32" else ""
 
@@ -311,7 +311,7 @@ def patch_isdir():
     """
     orig_isdir = os.path.isdir
 
-    def fixed_isdir(path, debug=False):
+    def fixed_isdir(path):
         while os.path.islink(path):
             try:
                 link = os.readlink(path)
@@ -324,6 +324,7 @@ def patch_isdir():
 
 
 def replace_symlinks_with_junctions():
+    # Update this list if new symlinks are introduced to the source tree
     _LINKS = {
         r"ray\new_dashboard": "../../dashboard",
         r"ray\rllib": "../../rllib",
@@ -369,7 +370,7 @@ def replace_symlinks_with_junctions():
                 cwd=os.path.dirname(path))
 
 
-if is_conda_build and is_native_windows_or_msys():
+if is_automated_build and is_native_windows_or_msys():
     patch_isdir()
     replace_symlinks_with_junctions()
 
@@ -391,8 +392,6 @@ def build(build_python, build_java, build_cpp):
     bazel_env = dict(os.environ, PYTHON3_BIN_PATH=sys.executable)
 
     if is_native_windows_or_msys():
-        if is_conda_build:
-            replace_symlinks_with_junctions()
         SHELL = bazel_env.get("SHELL")
         if SHELL:
             bazel_env.setdefault("BAZEL_SH", os.path.normpath(SHELL))
@@ -444,9 +443,11 @@ def build(build_python, build_java, build_cpp):
         logger.warning("Expected Bazel version {} but found {}".format(
             ".".join(map(str, SUPPORTED_BAZEL)), bazel_version_str))
 
-    if not is_conda_build:
+    bazel_flags = ["--verbose_failures"]
+
+    if not is_automated_build:
         bazel_precmd_flags = []
-    if is_conda_build:
+    if is_automated_build:
         root_dir = os.path.join(
             os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-root")
         out_dir = os.path.join(
@@ -461,14 +462,13 @@ def build(build_python, build_java, build_cpp):
         ]
 
         if is_native_windows_or_msys():
-            bazel_options.append("--enable_runfiles=false")
+            bazel_flags.append("--enable_runfiles=false")
 
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
     bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
 
-    bazel_flags = ["--verbose_failures"]
     if setup_spec.build_type == BuildType.DEBUG:
         bazel_flags.extend(["--config", "debug"])
     if setup_spec.build_type == BuildType.ASAN:
