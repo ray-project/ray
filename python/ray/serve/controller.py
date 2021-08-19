@@ -425,7 +425,7 @@ class ServeController:
         return {
             name: (self.backend_state_manager.get_backend(
                 name, include_deleted=include_deleted),
-                   self.endpoint_state.get_endpoint_route(name))
+                   self.endpoint_state_manager.get_endpoint_route(name))
             for name in self.backend_state_manager.get_backend_configs(
                 include_deleted=include_deleted)
         }
