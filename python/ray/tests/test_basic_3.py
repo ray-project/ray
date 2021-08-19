@@ -1,5 +1,6 @@
 # coding: utf-8
 import logging
+import os
 import sys
 import time
 
@@ -9,6 +10,7 @@ import pytest
 import ray.cluster_utils
 from ray.test_utils import (
     dicts_equal,
+    wait_for_pid_to_exit,
     wait_for_condition,
 )
 from pathlib import Path
@@ -141,13 +143,7 @@ def test_background_tasks_with_max_calls(shutdown_only):
 
     @ray.remote(max_calls=1, max_retries=0)
     def f():
-        temp = [g.remote()]
-        # time.sleep(5)
-        return temp
-
-    temp = []
-    for _ in range(10):
-        temp.append(f.remote())
+        return [g.remote()]
 
     nested = ray.get([f.remote() for _ in range(10)])
 
@@ -155,16 +151,39 @@ def test_background_tasks_with_max_calls(shutdown_only):
     # wait for g to finish before exiting.
     ray.get([x[0] for x in nested])
 
-    # @ray.remote(max_calls=1, max_retries=0)
-    # def f():
-    #     return os.getpid(), g.remote()
+    @ray.remote(max_calls=1, max_retries=0)
+    def f():
+        return os.getpid(), g.remote()
 
-    # nested = ray.get([f.remote() for _ in range(10)])
-    # while nested:
-    #     pid, g_id = nested.pop(0)
-    #     ray.get(g_id)
-    #     del g_id
-    #     wait_for_pid_to_exit(pid)
+    nested = ray.get([f.remote() for _ in range(10)])
+    while nested:
+        pid, g_id = nested.pop(0)
+        ray.get(g_id)
+        del g_id
+        wait_for_pid_to_exit(pid)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_fair_queueing(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def h():
+        return 0
+
+    @ray.remote
+    def g():
+        return ray.get(h.remote())
+
+    @ray.remote
+    def f():
+        return ray.get(g.remote())
+
+    # This will never finish without fair queueing of {f, g, h}:
+    # https://github.com/ray-project/ray/issues/3644
+    ready, _ = ray.wait(
+        [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
+    assert len(ready) == 1000, len(ready)
 
 
 def test_actor_killing(shutdown_only):
@@ -265,29 +284,6 @@ def test_worker_startup_count(ray_start_cluster):
         num = get_num_workers()
         assert num == 16
         time.sleep(0.1)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_fair_queueing(shutdown_only):
-    ray.init(num_cpus=1)
-
-    @ray.remote
-    def h():
-        return 0
-
-    @ray.remote
-    def g():
-        return ray.get(h.remote())
-
-    @ray.remote
-    def f():
-        return ray.get(g.remote())
-
-    # This will never finish without fair queueing of {f, g, h}:
-    # https://github.com/ray-project/ray/issues/3644
-    ready, _ = ray.wait(
-        [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
-    assert len(ready) == 1000, len(ready)
 
 
 if __name__ == "__main__":

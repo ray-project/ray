@@ -71,7 +71,6 @@ struct WorkerThreadContext {
     SetCurrentTaskId(task_spec.TaskId());
     SetCurrentPlacementGroupId(task_spec.PlacementGroupBundleId().first);
     SetPlacementGroupCaptureChildTasks(task_spec.PlacementGroupCaptureChildTasks());
-    RAY_LOG(ERROR) << "Setting current task";
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);
   }
 

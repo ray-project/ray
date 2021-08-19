@@ -1697,6 +1697,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
       cluster_task_manager_->ReturnWorkerResources(worker);
       // The worker may not be reusable (i.e. already exiting).
       if (request.reuse_worker()) {
+        // HandleWorkerAvailable calls TaskFinished.
         HandleWorkerAvailable(worker);
       } else {
         RayTask _unused;
@@ -1858,7 +1859,7 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   // std::shared_ptr<WorkerInterface> instead of refs.
   auto &worker = *worker_ptr;
   TaskID task_id = worker.GetAssignedTaskId();
-  RAY_LOG(ERROR) << "Finished task " << task_id;
+  RAY_LOG(DEBUG) << "Finished task " << task_id;
 
   RayTask task;
   cluster_task_manager_->TaskFinished(worker_ptr, &task);

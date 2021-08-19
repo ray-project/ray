@@ -332,8 +332,6 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     return;
   }
 
-  RAY_LOG(ERROR) << "There's an idle worker!";
-
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &current_queue = scheduling_key_entry.task_queue;
   // Return the worker if there was an error executing the previous task,
@@ -345,7 +343,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
 
     // Return the worker only if there are no tasks in flight
     if (lease_entry.tasks_in_flight == 0) {
-      RAY_LOG(ERROR)
+      RAY_LOG(DEBUG)
           << "Number of tasks in flight == 0, calling StealTasksOrReturnWorker!";
       StealTasksOrReturnWorker(addr, was_error, scheduling_key, assigned_resources);
     }
@@ -607,7 +605,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           scheduling_key_entry.total_tasks_in_flight--;
 
           if (reply.worker_exiting()) {
-            RAY_LOG(ERROR) << "Worker " << addr.worker_id
+            RAY_LOG(DEBUG) << "Worker " << addr.worker_id
                            << " replied that it is exiting.";
             // The worker is draining and will shutdown after it is done. Don't return
             // it to the Raylet since that will kill it early.
@@ -621,13 +619,12 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
             //   scheduling_key_entries_.erase(scheduling_key);
             // }
           } else if (reply.task_stolen()) {
-            RAY_LOG(ERROR) << "Task was stolen";
             // If the task was stolen, we push it to the thief worker & call OnWorkerIdle
             // in the StealTasks callback within StealTasksOrReturnWorker. So we don't
             // need to do anything here.
             return;
           } else if (!status.ok() || !is_actor_creation) {
-            RAY_LOG(ERROR) << "Task failed with error: " << status;
+            RAY_LOG(DEBUG) << "Task failed with error: " << status;
             // Successful actor creation leases the worker indefinitely from the raylet.
             OnWorkerIdle(addr, scheduling_key,
                          /*error=*/!status.ok(), assigned_resources);
