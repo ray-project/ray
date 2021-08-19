@@ -940,7 +940,7 @@ class BackendStateManager:
         if delta_replicas == 0:
             return False
 
-        if failed_to_start_replicas == target_replicas:
+        if failed_to_start_replicas == target_replicas and target_replicas != 0:
             logger.error("Deployment reconfiguration failed. ")
             return False
 

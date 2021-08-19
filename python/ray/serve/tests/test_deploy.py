@@ -10,7 +10,7 @@ import requests
 import ray
 from ray.test_utils import SignalActor, wait_for_condition
 from ray import serve
-from ray.serve.utils import get_random_letters
+from ray.serve.utils import get_random_letters, logger
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
@@ -718,46 +718,80 @@ def test_init_args(serve_instance):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_deploy_with_constructor_failure(serve_instance):
     # Test failed to deploy with total of 1 replica
-    # @serve.deployment(num_replicas=1)
-    # class ConstructorFailureDeploymentOneReplica:
-    #     def __init__(self):
-    #         raise RuntimeError("Intentionally throwing ")
-
-    #     async def serve(self, request):
-    #         return "hi"
-
-    # with pytest.raises(RuntimeError):
-    #     ConstructorFailureDeploymentOneReplica.deploy()
-
-    # Test failed to deploy with total of 2 replicas
-    @serve.deployment(num_replicas=2)
-    class ConstructorFailureDeployment:
+    @serve.deployment(num_replicas=1)
+    class ConstructorFailureDeploymentOneReplica:
         def __init__(self):
-            raise RuntimeError("Intentionally throwing ")
+            raise RuntimeError("Intentionally throwing on only one replica")
 
         async def serve(self, request):
             return "hi"
 
     with pytest.raises(RuntimeError):
-        ConstructorFailureDeployment.deploy()
+        ConstructorFailureDeploymentOneReplica.deploy()
 
+    # Test failed to deploy with total of 2 replicas
+    @serve.deployment(num_replicas=2)
+    class ConstructorFailureDeploymentTwoReplicas:
+        def __init__(self):
+            raise RuntimeError("Intentionally throwing on both replicas")
 
-    # Test failed to deploy with total of 4 replicas,
-    # but 2 of them fails at constructor while the other
-    # two can start
-    # @serve.deployment(num_replicas=4)
-    # class ConstructorFailureDeployment:
-    #     def __init__(self):
-    #         raise RuntimeError("Intentionally throwing ")
+        async def serve(self, request):
+            return "hi"
 
-    #     async def serve(self, request):
-    #         return "hi"
+    with pytest.raises(RuntimeError):
+        ConstructorFailureDeploymentTwoReplicas.deploy()
 
-    # with pytest.raises(RuntimeError):
-    #     ConstructorFailureDeployment.deploy()
+    # Test deploy with 2 replicas but one of them failed all
+    # attempts
+    test_file_path = "/tmp/deployment.txt"
+    if os.path.exists(test_file_path):
+        os.remove(test_file_path)
+    @serve.deployment(num_replicas=2)
+    class PartialConstructorFailureDeployment:
+        def __init__(self):
+            if not os.path.exists(test_file_path):
+                with open(test_file_path, "w") as f:
+                    # Write first replica tag to local file so that it will
+                    # consistently fail even retried on other actor
+                    f.write(serve.get_replica_context().replica_tag)
+                raise RuntimeError("Consistently throwing on same replica.")
+            else:
+                with open(test_file_path, "r") as f:
+                    content = f.read()
+                    if content == serve.get_replica_context().replica_tag:
+                        raise RuntimeError(
+                            "Consistently throwing on same replica.")
+                    else:
+                        return True
 
+        async def serve(self, request):
+            return "hi"
 
+    PartialConstructorFailureDeployment.deploy()
+    if os.path.exists(test_file_path):
+        os.remove(test_file_path)
 
+    # Test failed to deploy with total of 2 replicas,
+    # but first constructor call fails.
+    if os.path.exists(test_file_path):
+        os.remove(test_file_path)
+
+    @serve.deployment(num_replicas=2)
+    class TransientConstructorFailureDeployment:
+        def __init__(self):
+            if os.path.exists(test_file_path):
+                return True
+            else:
+                with open(test_file_path, "w") as f:
+                    f.write("ONE")
+                raise RuntimeError("Intentionally throw on first try.")
+
+        async def serve(self, request):
+            return "hi"
+
+    TransientConstructorFailureDeployment.deploy()
+    if os.path.exists(test_file_path):
+        os.remove(test_file_path)
 
 
 def test_input_validation():

@@ -44,7 +44,9 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
         async def __init__(self, backend_tag, replica_tag, init_args,
                            backend_config: BackendConfig,
                            controller_name: str):
-            logger.info(f">>>>>> Called serve replica _init_")
+            logger.info(
+                f">>>>>> Called serve replica _init_, "
+                f"replica_tag: {replica_tag}")
             backend_def = cloudpickle.loads(serialized_backend_def)
             if isinstance(backend_def, str):
                 backend = import_attr(backend_def)
