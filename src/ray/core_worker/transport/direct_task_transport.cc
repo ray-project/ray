@@ -607,17 +607,9 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           if (reply.worker_exiting()) {
             RAY_LOG(DEBUG) << "Worker " << addr.worker_id
                            << " replied that it is exiting.";
-            // The worker is draining and will shutdown after it is done. Don't return
-            // it to the Raylet since that will kill it early.
+            // Since this worker is draining, make sure the raylet doesn't
+            // reuse it.
             ReturnWorker(addr, false, scheduling_key, /*reuse_worker=*/false);
-            // worker_to_lease_entry_.erase(addr);
-            // auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-            // scheduling_key_entry.active_workers.erase(addr);
-            // if (scheduling_key_entry.CanDelete()) {
-            //   // We can safely remove the entry keyed by scheduling_key from the
-            //   // scheduling_key_entries_ hashmap.
-            //   scheduling_key_entries_.erase(scheduling_key);
-            // }
           } else if (reply.task_stolen()) {
             // If the task was stolen, we push it to the thief worker & call OnWorkerIdle
             // in the StealTasks callback within StealTasksOrReturnWorker. So we don't

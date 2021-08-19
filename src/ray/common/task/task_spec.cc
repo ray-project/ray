@@ -23,8 +23,7 @@
 namespace ray {
 
 absl::Mutex TaskSpecification::mutex_;
-absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass,
-                    SchedulingClassDescriptor::hash_fn>
+absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass>
     TaskSpecification::sched_cls_to_id_;
 absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor>
     TaskSpecification::sched_id_to_cls_;

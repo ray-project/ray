@@ -29,7 +29,6 @@
 extern "C" {
 #include "ray/thirdparty/sha256.h"
 }
-
 namespace ray {
 /* typedef ResourceSet SchedulingClassDescriptor; */
 typedef int SchedulingClass;
@@ -48,15 +47,30 @@ struct SchedulingClassDescriptor {
     bool depth_match = depth == other.depth;
     return resource_sets_match && functions_match && depth_match;
   }
-  struct hash_fn {
-    std::size_t operator()(const SchedulingClassDescriptor &sched_cls) const {
-      std::size_t hash = std::hash<ResourceSet>()(sched_cls.resource_set);
-      hash ^= sched_cls.function_descriptor->Hash();
-      hash ^= sched_cls.depth;
-      return hash;
-    }
-  };
+  /* struct hash_fn { */
+  /*   std::size_t operator()(const SchedulingClassDescriptor &sched_cls) const { */
+  /*     std::size_t hash = std::hash<ResourceSet>()(sched_cls.resource_set); */
+  /*     hash ^= sched_cls.function_descriptor->Hash(); */
+  /*     hash ^= sched_cls.depth; */
+  /*     return hash; */
+  /*   } */
+  /* }; */
 };
+}  // namespace ray
+
+namespace std {
+template <>
+struct hash<ray::SchedulingClassDescriptor> {
+  size_t operator()(const ray::SchedulingClassDescriptor &sched_cls) const {
+    size_t hash = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
+    hash ^= sched_cls.function_descriptor->Hash();
+    hash ^= sched_cls.depth;
+    return hash;
+  }
+};
+}  // namespace std
+
+namespace ray {
 
 /// ConcurrencyGroup is a group of actor methods that shares
 /// a executing thread pool.
@@ -289,9 +303,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// multi-threading, we need a mutex to protect it.
   static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
-  static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass,
-                             SchedulingClassDescriptor::hash_fn>
-      sched_cls_to_id_ GUARDED_BY(mutex_);
+  /* static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass, */
+  /*                            SchedulingClassDescriptor::hash_fn> */
+  static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
+      GUARDED_BY(mutex_);
   static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
       GUARDED_BY(mutex_);
   static int next_sched_id_ GUARDED_BY(mutex_);
