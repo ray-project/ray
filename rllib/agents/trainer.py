@@ -147,6 +147,17 @@ COMMON_CONFIG: TrainerConfigDict = {
     # is a dict plus the properties: num_workers, worker_index, vector_index,
     # and remote).
     "env_config": {},
+    # If using num_envs_per_worker > 1, whether to create those sub-envs as
+    # ray remote processes (actors) instead of in the same process as the
+    # worker itself. This adds overheads, but can make sense if your envs can
+    # take much time to step / reset (e.g., for StarCraft).
+    # Use this cautiously; Overheads are significant.
+    "remote_worker_envs": False,
+    # Timeout that remote workers are waiting when polling environments.
+    # 0 (continue when at least one env is ready) is a reasonable default,
+    # but optimal value could be obtained by measuring your environment
+    # step / reset and model inference perf.
+    "remote_env_batch_wait_ms": 0,
     # A callable taking the last train results, the base env and the env
     # context as args and returning a new task to set the env to.
     # The env must be a `TaskSettableEnv` sub-class for this to work.
@@ -318,16 +329,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     "collect_metrics_timeout": 180,
     # Smooth metrics over this many episodes.
     "metrics_smoothing_episodes": 100,
-    # If using num_envs_per_worker > 1, whether to create those new envs in
-    # remote processes instead of in the same worker. This adds overheads, but
-    # can make sense if your envs can take much time to step / reset
-    # (e.g., for StarCraft). Use this cautiously; overheads are significant.
-    "remote_worker_envs": False,
-    # Timeout that remote workers are waiting when polling environments.
-    # 0 (continue when at least one env is ready) is a reasonable default,
-    # but optimal value could be obtained by measuring your environment
-    # step / reset and model inference perf.
-    "remote_env_batch_wait_ms": 0,
     # Minimum time per train iteration (frequency of metrics reporting).
     "min_iter_time_s": 0,
     # Minimum env steps to optimize for per train call. This value does
