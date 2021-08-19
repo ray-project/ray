@@ -61,7 +61,7 @@ struct GcsServerMocker {
    public:
     /// WorkerLeaseInterface
     ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
-                             bool disconnect_worker) override {
+                             bool disconnect_worker, bool reuse_worker) override {
       if (disconnect_worker) {
         num_workers_disconnected++;
       } else {

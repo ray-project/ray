@@ -1519,6 +1519,132 @@ TEST_F(ClusterTaskManagerTest, PopWorkerExactlyOnce) {
   AssertNoLeaks();
 }
 
+TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
+  RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}}, /*num_args=*/0, /*args=*/{});
+  RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 4}}, /*num_args=*/0, /*args=*/{});
+  RayTask task3 = CreateTask({{ray::kCPU_ResourceLabel, 4}}, /*num_args=*/0, /*args=*/{});
+  auto runtime_env_hash = task.GetTaskSpecification().GetRuntimeEnvHash();
+  std::vector<std::shared_ptr<MockWorker>> workers;
+  for (int i = 0; i < 3; i++) {
+    std::shared_ptr<MockWorker> worker =
+        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+    pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+    pool_.TriggerCallbacks();
+    workers.push_back(worker);
+  }
+  rpc::RequestWorkerLeaseReply reply;
+  int num_callbacks = 0;
+  auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
+    num_callbacks++;
+  };
+  task_manager_.QueueAndScheduleTask(task, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task2, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task3, &reply, callback);
+  pool_.TriggerCallbacks();
+
+  ASSERT_EQ(num_callbacks, 2);
+
+  task_manager_.ReleaseCpuResourcesFromUnblockedWorker(workers[0]);
+  task_manager_.ReleaseCpuResourcesFromUnblockedWorker(workers[1]);
+
+  task_manager_.ScheduleAndDispatchTasks();
+
+  // Even though there are free resources, we've hit our cap of (8/4=)2 workers
+  // of the given scheduling class so we shouldn't dispatch the remaining task.
+  ASSERT_EQ(num_callbacks, 2);
+}
+
+TEST_F(ClusterTaskManagerTest, ZeroCPUTasks) {
+  RayTask task = CreateTask({}, /*num_args=*/0, /*args=*/{});
+  RayTask task2 = CreateTask({}, /*num_args=*/0, /*args=*/{});
+  RayTask task3 = CreateTask({}, /*num_args=*/0, /*args=*/{});
+  auto runtime_env_hash = task.GetTaskSpecification().GetRuntimeEnvHash();
+  std::vector<std::shared_ptr<MockWorker>> workers;
+  for (int i = 0; i < 3; i++) {
+    std::shared_ptr<MockWorker> worker =
+        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+    pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+    pool_.TriggerCallbacks();
+    workers.push_back(worker);
+  }
+  rpc::RequestWorkerLeaseReply reply;
+  int num_callbacks = 0;
+  auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
+    num_callbacks++;
+  };
+  task_manager_.QueueAndScheduleTask(task, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task2, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task3, &reply, callback);
+  pool_.TriggerCallbacks();
+
+  // We shouldn't cap anything for zero cpu tasks (and shouldn't crash before
+  // this point).
+  ASSERT_EQ(num_callbacks, 3);
+}
+
+TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
+  std::unordered_map<std::string, double> local_node_resources;
+  local_node_resources[ray::kCPU_ResourceLabel] = 0;
+  local_node_resources[ray::kGPU_ResourceLabel] = 4;
+  local_node_resources[ray::kMemory_ResourceLabel] = 128;
+
+  auto scheduler_ = std::make_shared<ClusterResourceScheduler>(
+      ClusterResourceScheduler(id_.Binary(), local_node_resources));
+  ClusterTaskManager task_manager_(
+      id_, scheduler_, dependency_manager_,
+      /* is_owner_alive= */
+      [this](const WorkerID &worker_id, const NodeID &node_id) {
+        return is_owner_alive_;
+      },
+      /* get_node_info= */
+      [this](const NodeID &node_id) {
+        node_info_calls_++;
+        return node_info_[node_id];
+      },
+      /* announce_infeasible_task= */
+      [this](const RayTask &task) { announce_infeasible_task_calls_++; }, pool_,
+      leased_workers_,
+      /* get_task_arguments= */
+      [this](const std::vector<ObjectID> &object_ids,
+             std::vector<std::unique_ptr<RayObject>> *results) {
+        for (auto &obj_id : object_ids) {
+          if (missing_objects_.count(obj_id) == 0) {
+            results->emplace_back(MakeDummyArg());
+          } else {
+            results->emplace_back(nullptr);
+          }
+        }
+        return true;
+      },
+      /*max_pinned_task_arguments_bytes=*/1000);
+
+  RayTask task = CreateTask({}, /*num_args=*/0, /*args=*/{});
+  RayTask task2 = CreateTask({}, /*num_args=*/0, /*args=*/{});
+  RayTask task3 = CreateTask({}, /*num_args=*/0, /*args=*/{});
+  auto runtime_env_hash = task.GetTaskSpecification().GetRuntimeEnvHash();
+  std::vector<std::shared_ptr<MockWorker>> workers;
+  for (int i = 0; i < 3; i++) {
+    std::shared_ptr<MockWorker> worker =
+        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+    pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+    pool_.TriggerCallbacks();
+    workers.push_back(worker);
+  }
+  rpc::RequestWorkerLeaseReply reply;
+  int num_callbacks = 0;
+  auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
+    num_callbacks++;
+  };
+  task_manager_.QueueAndScheduleTask(task, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task2, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task3, &reply, callback);
+  pool_.TriggerCallbacks();
+
+  // We shouldn't cap anything for zero cpu tasks (and shouldn't crash before
+  // this point).
+  ASSERT_EQ(num_callbacks, 3);
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

@@ -135,11 +135,11 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
 class MockRayletClient : public WorkerLeaseInterface {
  public:
-  Status ReturnWorker(int worker_port, const WorkerID &worker_id,
-                      bool disconnect_worker) override {
+  Status ReturnWorker(int worker_port, const WorkerID &worker_id, bool disconnect_worker,
+                      bool reuse_worker) override {
     if (disconnect_worker) {
       num_workers_disconnected++;
-    } else {
+    } else if (reuse_worker) {
       num_workers_returned++;
     }
     return Status::OK();
@@ -1006,12 +1006,6 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
   RAY_LOG(INFO) << "Test different resources";
   TestSchedulingKey(store, BuildTaskSpec(resources1, descriptor1),
                     BuildTaskSpec(resources1, descriptor1),
-                    BuildTaskSpec(resources2, descriptor1));
-
-  // Tasks with different function descriptors do not request different worker leases.
-  RAY_LOG(INFO) << "Test different descriptors";
-  TestSchedulingKey(store, BuildTaskSpec(resources1, descriptor1),
-                    BuildTaskSpec(resources1, descriptor2),
                     BuildTaskSpec(resources2, descriptor1));
 
   ObjectID direct1 = ObjectID::FromRandom();

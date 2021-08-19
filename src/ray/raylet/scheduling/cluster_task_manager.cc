@@ -273,6 +273,11 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
        shapes_it != tasks_to_dispatch_.end();) {
     auto &scheduling_class = shapes_it->first;
     auto &dispatch_queue = shapes_it->second;
+    /// We cap the maximum running tasks of a scheduling class to avoid
+    /// scheduling too many tasks of a single type/depth, when there are
+    /// deeper/other functions that should be run. We need to apply back
+    /// pressure here because workers don't submit their lease requests until
+    /// dependencies are resolved.
     auto max_running_tasks = MaxRunningTasksPerSchedulingClass(scheduling_class);
     bool is_infeasible = false;
     for (auto work_it = dispatch_queue.begin();
