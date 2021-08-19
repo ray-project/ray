@@ -11,9 +11,10 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import (SignalActor, kill_actor_and_wait_for_failure,
-                            put_object, wait_for_condition,
-                            new_scheduler_enabled)
+import ray._private.gcs_utils as gcs_utils
+from ray._private.test_utils import (
+    SignalActor, kill_actor_and_wait_for_failure, put_object,
+    wait_for_condition, new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 
@@ -539,7 +540,7 @@ def test_basic_nested_ids(one_worker_100MiB):
 
 
 def _all_actors_dead():
-    return all(actor["State"] == ray.gcs_utils.ActorTableData.DEAD
+    return all(actor["State"] == gcs_utils.ActorTableData.DEAD
                for actor in list(ray.state.actors().values()))
 
 
@@ -568,6 +569,36 @@ def test_remove_actor_immediately_after_creation(ray_start_regular):
     del a
     del b
     wait_for_condition(_all_actors_dead, timeout=10)
+
+
+# https://github.com/ray-project/ray/issues/17553
+def test_return_nested_ids(ray_start_regular):
+    class Nested:
+        def __init__(self, blocks):
+            self._blocks = blocks
+
+    @ray.remote
+    def echo(fn):
+        return fn()
+
+    @ray.remote
+    def create_nested():
+        refs = [ray.put(np.random.random(1024 * 1024)) for _ in range(10)]
+        return Nested(refs)
+
+    @ray.remote
+    def test():
+        ref = create_nested.remote()
+        result1 = ray.get(ref)
+        del ref
+        result = echo.remote(lambda: result1)  # noqa
+        del result1
+
+        time.sleep(5)
+        block = ray.get(result)._blocks[0]
+        print(ray.get(block))
+
+    ray.get(test.remote())
 
 
 if __name__ == "__main__":

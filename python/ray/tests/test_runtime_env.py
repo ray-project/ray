@@ -9,8 +9,8 @@ from pathlib import Path
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
-from ray.test_utils import (run_string_as_driver,
-                            run_string_as_driver_nonblocking)
+from ray._private.test_utils import (
+    run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 import ray.experimental.internal_kv as kv
@@ -673,7 +673,7 @@ def test_get_wheel_filename():
 
 def test_get_master_wheel_url():
     ray_version = "2.0.0.dev0"
-    test_commit = "ba6cebe30fab6925e5b2d9e859ad064d53015246"
+    test_commit = "58a73821fbfefbf53a19b6c7ffd71e70ccf258c7"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38"]:
             url = get_master_wheel_url(test_commit, sys_platform, ray_version,
@@ -682,11 +682,7 @@ def test_get_master_wheel_url():
 
 
 def test_get_release_wheel_url():
-    test_commits = {
-        "1.4.0rc1": "e7c7f6371a69eb727fa469e4cd6f4fbefd143b4c",
-        "1.3.0": "0b4b444fadcdc23226e11fef066b982175804232",
-        "1.2.0": "1b1a2496ca51b745c07c79fb859946d3350d471b"
-    }
+    test_commits = {"1.6.0": "5052fe67d99f1d4bfc81b2a8694dbf2aa807bbdc"}
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38"]:
             for version, commit in test_commits.items():
@@ -830,6 +826,75 @@ def test_invalid_conda_env(shutdown_only):
         ray.get(f.options(runtime_env=bad_env).remote())
 
     assert (time.time() - start) < (first_time / 2.0)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "_system_config": {
+            "event_stats_print_interval_ms": 100,
+            "debug_dump_period_milliseconds": 100,
+            "event_stats": True
+        }
+    }],
+    indirect=True)
+def test_no_spurious_worker_startup(ray_start_cluster):
+    """Test that no extra workers start up during a long env installation."""
+
+    cluster = ray_start_cluster
+
+    # This hook sleeps for 15 seconds to simulate creating a runtime env.
+    cluster.add_node(
+        num_cpus=1,
+        runtime_env_setup_hook=(
+            "ray._private.test_utils.sleep_setup_runtime_env"))
+
+    # Set a nonempty runtime env so that the runtime env setup hook is called.
+    runtime_env = {"env_vars": {"a": "b"}}
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    class Counter(object):
+        def __init__(self):
+            self.value = 0
+
+        def get(self):
+            return self.value
+
+    # Instantiate an actor that requires the long runtime env installation.
+    a = Counter.options(runtime_env=runtime_env).remote()
+    assert ray.get(a.get.remote()) == 0
+
+    # Check "debug_state.txt" to ensure no extra workers were started.
+    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    debug_state_path = session_path / "debug_state.txt"
+
+    def get_num_workers():
+        with open(debug_state_path) as f:
+            for line in f.readlines():
+                num_workers_prefix = "- num PYTHON workers: "
+                if num_workers_prefix in line:
+                    return int(line[len(num_workers_prefix):])
+        return None
+
+    # Wait for "debug_state.txt" to be updated to reflect the started worker.
+    start = time.time()
+    wait_for_condition(lambda: get_num_workers() > 0)
+    time_waited = time.time() - start
+    print(f"Waited {time_waited} for debug_state.txt to be updated")
+
+    # If any workers were unnecessarily started during the initial env
+    # installation, they will bypass the runtime env setup hook because the
+    # created env will have been cached and should be added to num_workers
+    # within a few seconds.  Adjusting the default update period for
+    # debut_state.txt via this cluster_utils pytest fixture seems to be broken,
+    # so just check it for the next 10 seconds (the default period).
+    for i in range(100):
+        # Check that no more workers were started.
+        assert get_num_workers() <= 1
+        time.sleep(0.1)
 
 
 if __name__ == "__main__":

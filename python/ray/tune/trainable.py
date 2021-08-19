@@ -25,12 +25,14 @@ from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.log import disable_ipython
 from ray.tune.utils.util import Tee
 from ray.util.debug import log_once
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
 
 
+@PublicAPI
 class Trainable:
     """Abstract class for trainable models, functions, etc.
 
@@ -853,6 +855,7 @@ class Trainable:
         return hasattr(self, key) and callable(getattr(self, key))
 
 
+@PublicAPI
 class DistributedTrainable(Trainable):
     """Common Trainable class for distributed training."""
 

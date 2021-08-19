@@ -18,6 +18,7 @@
 #include <functional>
 
 #include "ray/common/id.h"
+#include "ray/common/status.h"
 
 namespace ray {
 
@@ -45,6 +46,17 @@ struct ObjectInfo {
   int owner_port;
   /// Owner's worker ID.
   WorkerID owner_worker_id;
+
+  int64_t GetObjectSize() const { return data_size + metadata_size; }
+
+  bool operator==(const ObjectInfo &other) const {
+    return ((object_id == other.object_id) && (data_size == other.data_size) &&
+            (metadata_size == other.metadata_size) &&
+            (owner_raylet_id == other.owner_raylet_id) &&
+            (owner_ip_address == other.owner_ip_address) &&
+            (owner_port == other.owner_port) &&
+            (owner_worker_id == other.owner_worker_id));
+  }
 };
 
 // A callback to call when an object is added to the shared memory store.

@@ -15,9 +15,9 @@
 #pragma once
 
 #include <ray/api/static_check.h>
-
+#include <ray/api/task_options.h>
 namespace ray {
-namespace api {
+namespace internal {
 
 template <typename F>
 class TaskCaller {
@@ -29,11 +29,27 @@ class TaskCaller {
   template <typename... Args>
   ObjectRef<boost::callable_traits::return_type_t<F>> Remote(Args &&... args);
 
+  TaskCaller &SetName(std::string name) {
+    task_options_.name = std::move(name);
+    return *this;
+  }
+
+  TaskCaller &SetResources(std::unordered_map<std::string, double> resources) {
+    task_options_.resources = std::move(resources);
+    return *this;
+  }
+
+  TaskCaller &SetResource(std::string name, double value) {
+    task_options_.resources.emplace(std::move(name), value);
+    return *this;
+  }
+
  private:
   RayRuntime *runtime_;
   RemoteFunctionHolder remote_function_holder_{};
   std::string function_name_;
-  std::vector<ray::api::TaskArg> args_;
+  std::vector<TaskArg> args_;
+  CallOptions task_options_;
 };
 
 // ---------- implementation ----------
@@ -51,10 +67,11 @@ template <typename... Args>
 ObjectRef<boost::callable_traits::return_type_t<F>> TaskCaller<F>::Remote(
     Args &&... args) {
   StaticCheck<F, Args...>();
+  CheckTaskOptions(task_options_.resources);
   using ReturnType = boost::callable_traits::return_type_t<F>;
   Arguments::WrapArgs(&args_, std::forward<Args>(args)...);
-  auto returned_object_id = runtime_->Call(remote_function_holder_, args_);
+  auto returned_object_id = runtime_->Call(remote_function_holder_, args_, task_options_);
   return ObjectRef<ReturnType>(returned_object_id);
 }
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

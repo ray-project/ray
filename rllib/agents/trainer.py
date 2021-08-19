@@ -951,7 +951,7 @@ class Trainer(Trainable):
             unsquash_actions: Optional[bool] = None,
             clip_actions: Optional[bool] = None,
     ) -> TensorStructType:
-        """Computes an action for the specified policy on the local Worker.
+        """Computes an action for the specified policy on the local worker.
 
         Note that you can also access the policy object through
         self.get_policy(policy_id) and call compute_single_action() on it
@@ -982,17 +982,31 @@ class Trainer(Trainable):
             any: The computed action if full_fetch=False, or
             tuple: The full output of policy.compute_actions() if
                 full_fetch=True or we have an RNN-based Policy.
+
+        Raises:
+            KeyError: If the `policy_id` cannot be found in this Trainer's
+                local worker.
         """
+        policy = self.get_policy(policy_id)
+        if policy is None:
+            raise KeyError(
+                f"PolicyID '{policy_id}' not found in PolicyMap of the "
+                f"Trainer's local worker!")
+
+        local_worker = self.workers.local_worker()
+
         if state is None:
             state = []
+
         # Check the preprocessor and preprocess, if necessary.
-        pp = self.workers.local_worker().preprocessors[policy_id]
+        pp = local_worker.preprocessors[policy_id]
         if type(pp).__name__ != "NoPreprocessor":
             observation = pp.transform(observation)
-        filtered_observation = self.workers.local_worker().filters[policy_id](
+        filtered_observation = local_worker.filters[policy_id](
             observation, update=False)
 
-        result = self.get_policy(policy_id).compute_single_action(
+        # Compute the action.
+        result = policy.compute_single_action(
             filtered_observation,
             state,
             prev_action,
@@ -1002,10 +1016,12 @@ class Trainer(Trainable):
             clip_actions=clip_actions,
             explore=explore)
 
+        # Return 3-Tuple: Action, states, and extra-action fetches.
         if state or full_fetch:
             return result
+        # Ensure backward compatibility.
         else:
-            return result[0]  # backwards compatibility
+            return result[0]
 
     @Deprecated(new="compute_single_action", error=False)
     def compute_action(self, *args, **kwargs):
@@ -1193,7 +1209,6 @@ class Trainer(Trainable):
                 observation_space=observation_space,
                 action_space=action_space,
                 config=config,
-                policy_config=self.config,
                 policy_mapping_fn=policy_mapping_fn,
                 policies_to_train=policies_to_train,
             )

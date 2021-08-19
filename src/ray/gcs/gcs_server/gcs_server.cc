@@ -160,9 +160,7 @@ void GcsServer::Stop() {
     // time, causing many nodes die after GCS's failure.
     gcs_heartbeat_manager_->Stop();
 
-    if (config_.pull_based_resource_reporting) {
-      gcs_resource_report_poller_->Stop();
-    }
+    gcs_resource_report_poller_->Stop();
 
     if (config_.grpc_based_resource_broadcast) {
       grpc_based_resource_broadcaster_->Stop();
@@ -228,6 +226,7 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_, gcs_pub_sub_,
                                                      *runtime_env_manager_);
   gcs_job_manager_->Initialize(gcs_init_data);
+
   // Register service.
   job_info_service_ =
       std::make_unique<rpc::JobInfoGrpcService>(main_service_, *gcs_job_manager_);
@@ -236,27 +235,35 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_ && gcs_node_manager_);
-  auto scheduler = std::make_shared<RayletBasedActorScheduler>(
-      main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
-      /*schedule_failure_handler=*/
-      [this](std::shared_ptr<GcsActor> actor) {
-        // When there are no available nodes to schedule the actor the
-        // gcs_actor_scheduler will treat it as failed and invoke this handler. In
-        // this case, the actor manager should schedule the actor once an
-        // eligible node is registered.
-        gcs_actor_manager_->OnActorCreationFailed(std::move(actor));
-      },
-      /*schedule_success_handler=*/
-      [this](std::shared_ptr<GcsActor> actor) {
-        gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
-      },
-      raylet_client_pool_,
-      /*client_factory=*/
-      [this](const rpc::Address &address) {
-        return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
-      });
+  std::unique_ptr<GcsActorSchedulerInterface> scheduler;
+  auto schedule_failure_handler = [this](std::shared_ptr<GcsActor> actor) {
+    // When there are no available nodes to schedule the actor the
+    // gcs_actor_scheduler will treat it as failed and invoke this handler. In
+    // this case, the actor manager should schedule the actor once an
+    // eligible node is registered.
+    gcs_actor_manager_->OnActorCreationFailed(std::move(actor));
+  };
+  auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor) {
+    gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
+  };
+  auto client_factory = [this](const rpc::Address &address) {
+    return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
+  };
+
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    RAY_CHECK(gcs_resource_manager_ && gcs_resource_scheduler_);
+    scheduler = std::make_unique<GcsBasedActorScheduler>(
+        main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
+        gcs_resource_manager_, gcs_resource_scheduler_, schedule_failure_handler,
+        schedule_success_handler, raylet_client_pool_, client_factory);
+  } else {
+    scheduler = std::make_unique<RayletBasedActorScheduler>(
+        main_service_, gcs_table_storage_->ActorTable(), *gcs_node_manager_, gcs_pub_sub_,
+        schedule_failure_handler, schedule_success_handler, raylet_client_pool_,
+        client_factory);
+  }
   gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      scheduler, gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
+      std::move(scheduler), gcs_table_storage_, gcs_pub_sub_, *runtime_env_manager_,
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
@@ -342,15 +349,13 @@ void GcsServer::InitTaskInfoHandler() {
 }
 
 void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
-  if (config_.pull_based_resource_reporting) {
-    gcs_resource_report_poller_.reset(new GcsResourceReportPoller(
-        raylet_client_pool_, [this](const rpc::ResourcesData &report) {
-          gcs_resource_manager_->UpdateFromResourceReport(report);
-        }));
+  gcs_resource_report_poller_.reset(new GcsResourceReportPoller(
+      raylet_client_pool_, [this](const rpc::ResourcesData &report) {
+        gcs_resource_manager_->UpdateFromResourceReport(report);
+      }));
 
-    gcs_resource_report_poller_->Initialize(gcs_init_data);
-    gcs_resource_report_poller_->Start();
-  }
+  gcs_resource_report_poller_->Initialize(gcs_init_data);
+  gcs_resource_report_poller_->Start();
 }
 
 void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data) {
@@ -427,9 +432,7 @@ void GcsServer::InstallEventListeners() {
     gcs_placement_group_manager_->SchedulePendingPlacementGroups();
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
-    if (config_.pull_based_resource_reporting) {
-      gcs_resource_report_poller_->HandleNodeAdded(*node);
-    }
+    gcs_resource_report_poller_->HandleNodeAdded(*node);
     if (config_.grpc_based_resource_broadcast) {
       grpc_based_resource_broadcaster_->HandleNodeAdded(*node);
     }
@@ -443,9 +446,7 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
-        if (config_.pull_based_resource_reporting) {
-          gcs_resource_report_poller_->HandleNodeRemoved(*node);
-        }
+        gcs_resource_report_poller_->HandleNodeRemoved(*node);
         if (config_.grpc_based_resource_broadcast) {
           grpc_based_resource_broadcaster_->HandleNodeRemoved(*node);
         }
@@ -472,6 +473,17 @@ void GcsServer::InstallEventListeners() {
     gcs_actor_manager_->OnJobFinished(*job_id);
     gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenJobDead(*job_id);
   });
+
+  // Install scheduling policy event listeners.
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    gcs_resource_manager_->AddResourcesChangedListener([this] {
+      main_service_.post([this] {
+        // Because resources have been changed, we need to try to schedule the pending
+        // actors.
+        gcs_actor_manager_->SchedulePendingActors();
+      });
+    });
+  }
 }
 
 void GcsServer::CollectStats() {

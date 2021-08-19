@@ -16,10 +16,12 @@ import subprocess
 import sys
 import time
 from typing import Optional
+import warnings
 
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
+from ray.util.debug import log_once
 import redis
 
 # Import psutil and colorama after ray so the packaged version is used.
@@ -1184,10 +1186,18 @@ def start_dashboard(require_dashboard,
         except ImportError:
             warning_message = (
                 "Not all Ray Dashboard dependencies were found. "
-                "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
-                "only be usable via `pip install 'ray[default]'`. Please "
-                "update your install command.")
-            raise ImportError(warning_message)
+                "To use the dashboard please install Ray like so: `pip "
+                "install ray[default]`.")
+            if require_dashboard:
+                raise ImportError(warning_message)
+            else:
+                if log_once("dashboard_failed_import") and not os.getenv(
+                        "RAY_DISABLE_IMPORT_WARNING") == "1":
+                    warning_message += " To disable this message, set " \
+                                       "RAY_DISABLE_IMPORT_WARNING " \
+                                       "env var to '1'."
+                    warnings.warn(warning_message)
+                return None, None
 
         # Start the dashboard process.
         dashboard_dir = "new_dashboard"
@@ -1265,6 +1275,7 @@ def start_dashboard(require_dashboard,
 
 
 def start_gcs_server(redis_address,
+                     log_dir,
                      stdout_file=None,
                      stderr_file=None,
                      redis_password=None,
@@ -1276,6 +1287,7 @@ def start_gcs_server(redis_address,
     """Start a gcs server.
     Args:
         redis_address (str): The address that the Redis server is listening on.
+        log_dir (str): The path of the dir where log files are created.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1299,6 +1311,7 @@ def start_gcs_server(redis_address,
         GCS_SERVER_EXECUTABLE,
         f"--redis_address={gcs_ip_address}",
         f"--redis_port={gcs_port}",
+        f"--log_dir={log_dir}",
         f"--config_list={config_str}",
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
@@ -1534,6 +1547,7 @@ def start_raylet(redis_address,
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
+        f"--log_dir={log_dir}",
         f"--resource_dir={resource_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
@@ -1653,14 +1667,14 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
 
     command = [
         DEFAULT_WORKER_EXECUTABLE,
-        f"--ray-plasma-store-socket-name={plasma_store_name}",
-        f"--ray-raylet-socket-name={raylet_name}",
-        "--ray-node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--ray-address={redis_address}",
-        f"--ray-redis-password={redis_password}",
-        f"--ray-session-dir={session_dir}",
-        f"--ray-logs-dir={log_dir}",
-        f"--ray-node-ip-address={node_ip_address}",
+        f"--ray_plasma_store_socket_name={plasma_store_name}",
+        f"--ray_raylet_socket_name={raylet_name}",
+        "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--ray_address={redis_address}",
+        f"--ray_redis_password={redis_password}",
+        f"--ray_session_dir={session_dir}",
+        f"--ray_logs_dir={log_dir}",
+        f"--ray_node_ip_address={node_ip_address}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 

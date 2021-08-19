@@ -2,6 +2,7 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
+import os
 import sys
 import socket
 
@@ -11,12 +12,14 @@ import requests
 import ray
 from ray import serve
 from ray.cluster_utils import Cluster
-from ray.serve.constants import HTTP_PROXY_DEPLOYMENT_NAME
+from ray.serve.constants import (HTTP_PROXY_DEPLOYMENT_NAME,
+                                 SERVE_ROOT_URL_ENV_KEY)
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import HTTPOptions
 from ray.serve.utils import block_until_http_ready
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray._private.services import new_port
+import ray._private.gcs_utils as gcs_utils
 
 
 @pytest.fixture
@@ -37,7 +40,7 @@ def ray_cluster():
 
 def test_shutdown(ray_shutdown):
     ray.init(num_cpus=16)
-    serve.start(http_port=8003)
+    serve.start(http_options=dict(port=8003))
 
     @serve.deployment
     def f():
@@ -230,6 +233,30 @@ def test_middleware(ray_shutdown):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+def test_http_root_url(ray_shutdown):
+    @serve.deployment
+    def f(_):
+        pass
+
+    root_url = "https://my.domain.dev/prefix"
+
+    port = new_port()
+    os.environ[SERVE_ROOT_URL_ENV_KEY] = root_url
+    serve.start(http_options=dict(port=port))
+    f.deploy()
+    assert f.url == root_url + "/f"
+    serve.shutdown()
+    del os.environ[SERVE_ROOT_URL_ENV_KEY]
+
+    port = new_port()
+    serve.start(http_options=dict(port=port))
+    f.deploy()
+    assert f.url != root_url + "/f"
+    assert f.url == f"http://127.0.0.1:{port}/f"
+    serve.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_proxy_fail_loudly(ray_shutdown):
     # Test that if the http server fail to start, serve.start should fail.
     with pytest.raises(ValueError):
@@ -240,9 +267,6 @@ def test_http_proxy_fail_loudly(ray_shutdown):
 def test_no_http(ray_shutdown):
     # The following should have the same effect.
     options = [
-        {
-            "http_host": None
-        },
         {
             "http_options": {
                 "host": None
@@ -268,7 +292,7 @@ def test_no_http(ray_shutdown):
         # Only controller actor should exist
         live_actors = [
             actor for actor in ray.state.actors().values()
-            if actor["State"] == ray.gcs_utils.ActorTableData.ALIVE
+            if actor["State"] == gcs_utils.ActorTableData.ALIVE
         ]
         assert len(live_actors) == 1
         controller = serve.api._global_client._controller

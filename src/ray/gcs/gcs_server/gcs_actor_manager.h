@@ -31,6 +31,7 @@
 
 namespace ray {
 namespace gcs {
+class GcsActorWorkerAssignment;
 
 /// GcsActor just wraps `ActorTableData` and provides some convenient interfaces to access
 /// the fields inside `ActorTableData`.
@@ -125,10 +126,16 @@ class GcsActor {
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
 
+  std::shared_ptr<const GcsActorWorkerAssignment> GetActorWorkerAssignment() const;
+
+  void SetActorWorkerAssignment(std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr);
+
  private:
   /// The actor meta data which contains the task specification as well as the state of
   /// the gcs actor and so on (see gcs.proto).
   rpc::ActorTableData actor_table_data_;
+  // TODO(Chong-Li): Considering shared assignments, this pointer would be moved out.
+  std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr_ = nullptr;
 };
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
@@ -421,6 +428,13 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_delta->set_num_restarts(actor.num_restarts());
     actor_delta->set_timestamp(actor.timestamp());
     actor_delta->set_pid(actor.pid());
+    // Acotr's namespace and name are used for removing cached name when it's dead.
+    if (!actor.ray_namespace().empty()) {
+      actor_delta->set_ray_namespace(actor.ray_namespace());
+    }
+    if (!actor.name().empty()) {
+      actor_delta->set_name(actor.name());
+    }
     return actor_delta;
   }
 

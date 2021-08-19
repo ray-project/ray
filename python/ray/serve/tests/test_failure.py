@@ -7,7 +7,7 @@ import pytest
 import ray
 from ray import serve
 from ray.serve.constants import HTTP_PROXY_DEPLOYMENT_NAME
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 
 
 def request_with_retries(endpoint, timeout=30):

@@ -200,9 +200,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// Select a node to schedule the actor.
   ///
   /// \param actor The actor to be scheduled.
-  /// \return The selected node. If the selection fails, nullptr is returned.
-  virtual std::shared_ptr<rpc::GcsNodeInfo> SelectNode(
-      std::shared_ptr<GcsActor> actor) = 0;
+  /// \return The selected node's ID. If the selection fails, NodeID::Nil() is returned.
+  virtual NodeID SelectNode(std::shared_ptr<GcsActor> actor) = 0;
 
   /// Lease a worker from the specified node for the specified actor.
   ///
@@ -275,6 +274,9 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
       const rpc::Address &raylet_address);
 
+  /// Kill the actor on a node
+  bool KillActorOnWorker(const rpc::Address &worker_address, ActorID actor_id);
+
  protected:
   /// The io loop that is used to delay execution of tasks (e.g.,
   /// execute_after).
@@ -308,8 +310,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   rpc::CoreWorkerClientPool core_worker_clients_;
 };
 
-/// RayletBasedActorScheduler implements a random node selection, while relying on Raylets
-/// for spillback scheduling.
+/// RayletBasedActorScheduler inherits from GcsActorScheduler. Its scheduling strategy is
+/// based on a random node selection, while relying on Raylets for spillback scheduling.
 class RayletBasedActorScheduler : public GcsActorScheduler {
  public:
   using GcsActorScheduler::GcsActorScheduler;
@@ -319,8 +321,8 @@ class RayletBasedActorScheduler : public GcsActorScheduler {
   /// Randomly select a node from the node pool to schedule the actor.
   ///
   /// \param actor The actor to be scheduled.
-  /// \return The selected node. If the selection fails, nullptr is returned.
-  std::shared_ptr<rpc::GcsNodeInfo> SelectNode(std::shared_ptr<GcsActor> actor) override;
+  /// \return The selected node's ID. If the selection fails, NodeID::Nil() is returned.
+  NodeID SelectNode(std::shared_ptr<GcsActor> actor) override;
 
   /// Handler to process a worker lease reply.
   /// If the worker leasing fails at the selected node, the corresponding Raylet tries to

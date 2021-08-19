@@ -18,7 +18,6 @@ from typing import Any, Dict, List, Iterator
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 import ray.cloudpickle as pickle
-import ray.gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray.node
 import ray.job_config
@@ -26,6 +25,7 @@ import ray._private.parameter
 import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
+import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
 import ray._private.runtime_env as runtime_env_pkg
 import ray._private.import_thread as import_thread
@@ -42,7 +42,7 @@ from ray import (
     ObjectRef,
     Language,
 )
-from ray import profiling
+import ray._private.profiling as profiling
 
 from ray.exceptions import (
     RaySystemError,
@@ -433,7 +433,7 @@ class Worker:
         """
         pubsub_client = self.redis_client.pubsub(
             ignore_subscribe_messages=True)
-        pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
+        pubsub_client.subscribe(gcs_utils.LOG_FILE_CHANNEL)
         localhost = services.get_node_ip_address()
         try:
             # Keep track of the number of consecutive log messages that have
@@ -696,7 +696,9 @@ def init(
         log_to_driver (bool): If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace (str): Namespace to use
-        runtime_env (dict): The runtime environment to use for this job.
+        runtime_env (dict): The runtime environment to use for this job (see
+                :ref:`runtime-environments` for details).  This API is in beta
+                and may change before becoming stable.
         _enable_object_reconstruction (bool): If True, when an object stored in
             the distributed plasma store is lost due to node failure, Ray will
             attempt to reconstruct the object by re-executing the task that
@@ -1047,7 +1049,7 @@ def custom_excepthook(type, value, tb):
                                                      "worker_id"):
         error_message = "".join(traceback.format_tb(tb))
         worker_id = global_worker.worker_id
-        worker_type = ray.gcs_utils.DRIVER
+        worker_type = gcs_utils.DRIVER
         worker_info = {"exception": error_message}
 
         ray.state.state._check_connected()
@@ -1174,7 +1176,7 @@ def listen_error_messages_raylet(worker, threads_stopped):
 
     # Really we should just subscribe to the errors for this specific job.
     # However, currently all errors seem to be published on the same channel.
-    error_pubsub_channel = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+    error_pubsub_channel = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
     worker.error_message_pubsub_client.psubscribe(error_pubsub_channel)
 
     try:
@@ -1194,9 +1196,8 @@ def listen_error_messages_raylet(worker, threads_stopped):
             if msg is None:
                 threads_stopped.wait(timeout=0.01)
                 continue
-            pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
-            error_data = ray.gcs_utils.ErrorTableData.FromString(
-                pubsub_msg.data)
+            pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
+            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
             job_id = error_data.job_id
             if job_id not in [
                     worker.current_job_id.binary(),
@@ -1329,10 +1330,14 @@ def connect(node,
     driver_name = ""
     log_stdout_file_path = ""
     log_stderr_file_path = ""
+    interactive_mode = False
     if mode == SCRIPT_MODE:
         import __main__ as main
-        driver_name = (main.__file__
-                       if hasattr(main, "__file__") else "INTERACTIVE MODE")
+        if hasattr(main, "__file__"):
+            driver_name = main.__file__
+        else:
+            interactive_mode = True
+            driver_name = "INTERACTIVE MODE"
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
@@ -1433,11 +1438,13 @@ def connect(node,
         # paths of the workers. Also add the current directory. Note that this
         # assumes that the directory structures on the machines in the clusters
         # are the same.
-        # In client mode, if we use runtime env, then it'll be taken care of
-        # automatically.
-        script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
-        worker.run_function_on_all_workers(
-            lambda worker_info: sys.path.insert(1, script_directory))
+        # When using an interactive shell, there is no script directory.
+        if not interactive_mode:
+            script_directory = os.path.abspath(os.path.dirname(sys.argv[0]))
+            worker.run_function_on_all_workers(
+                lambda worker_info: sys.path.insert(1, script_directory))
+        # In client mode, if we use runtime envs with "working_dir", then
+        # it'll be handled automatically.  Otherwise, add the current dir.
         if not job_config.client_job and len(
                 job_config.get_runtime_env_uris()) == 0:
             current_directory = os.path.abspath(os.path.curdir)
@@ -1658,7 +1665,7 @@ def put(value, *, _owner=None):
     elif isinstance(_owner, ray.actor.ActorHandle):
         # Ensure `ray.state.state.global_state_accessor` is not None
         ray.state.state._check_connected()
-        owner_address = ray.gcs_utils.ActorTableData.FromString(
+        owner_address = gcs_utils.ActorTableData.FromString(
             ray.state.state.global_state_accessor.get_actor_info(
                 _owner._actor_id)).address
         if len(owner_address.worker_id) == 0:
@@ -1789,12 +1796,17 @@ def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
 
 @PublicAPI
 @client_mode_hook
-def get_actor(name):
+def get_actor(name: str, namespace: str = None):
     """Get a handle to a named actor.
 
     Gets a handle to an actor with the given name. The actor must
     have been created with Actor.options(name="name").remote(). This
     works for both detached & non-detached actors.
+
+    Args:
+        name: The name of the actor.
+        namespace: The namespace of the actor, or None to specify the current
+            namespace.
 
     Returns:
         ActorHandle to the actor.
@@ -1806,14 +1818,7 @@ def get_actor(name):
         raise ValueError("Please supply a non-empty value to get_actor")
     worker = global_worker
     worker.check_connected()
-    split_names = name.split("/", maxsplit=1)
-    if len(split_names) <= 1:
-        name = split_names[0]
-        namespace = ""
-    else:
-        # must be length 2
-        namespace, name = split_names
-    return worker.core_worker.get_named_actor_handle(name, namespace)
+    return worker.core_worker.get_named_actor_handle(name, namespace or "")
 
 
 @PublicAPI
@@ -2061,7 +2066,8 @@ def remote(*args, **kwargs):
             infinite retries.
         runtime_env (Dict[str, Any]): Specifies the runtime environment for
             this actor or task and its children. See
-            :ref:`runtime-environments` for detailed documentation.
+            :ref:`runtime-environments` for detailed documentation. This API is
+            in beta and may change before becoming stable.
         override_environment_variables (Dict[str, str]): (Deprecated in Ray
             1.4.0, will be removed in Ray 1.6--please use the ``env_vars``
             field of :ref:`runtime-environments` instead.) This specifies

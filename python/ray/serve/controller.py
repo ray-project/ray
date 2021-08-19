@@ -1,11 +1,13 @@
 import asyncio
+import json
+import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
-from ray.serve.backend_state import BackendState
+from ray.serve.backend_state import BackendState, ReplicaState
 from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
@@ -23,7 +25,7 @@ from ray.serve.constants import (
     RESERVED_VERSION_TAG,
 )
 from ray.serve.endpoint_state import EndpointState
-from ray.serve.kv_store import RayInternalKVStore
+from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
 from ray.serve.utils import logger
 
@@ -33,6 +35,8 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 0.1
+
+SNAPSHOT_KEY = "serve-deployments-snapshot"
 
 
 @ray.remote(num_cpus=0)
@@ -79,7 +83,6 @@ class ServeController:
         self.backend_state = BackendState(controller_name, detached,
                                           self.kv_store, self.long_poll_host,
                                           self.goal_manager)
-
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
     async def wait_for_goals(self, goal_ids: List[Optional[GoalId]]) -> None:
@@ -106,8 +109,53 @@ class ServeController:
                     self.backend_state.update()
                 except Exception as e:
                     logger.error(f"Exception updating backend state: {e}")
-
+            self._put_serve_snapshot()
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
+
+    def _put_serve_snapshot(self) -> None:
+        val = dict()
+        for deployment_name, (backend_info,
+                              route_prefix) in self.list_deployments(
+                                  include_deleted=True).items():
+            entry = dict()
+            entry["name"] = deployment_name
+            entry["namespace"] = ray.get_runtime_context().namespace
+            entry["ray_job_id"] = ("None"
+                                   if backend_info.deployer_job_id is None else
+                                   backend_info.deployer_job_id.hex())
+            entry[
+                "class_name"] = backend_info.replica_config.func_or_class_name
+            entry["version"] = backend_info.version or "Unversioned"
+            # TODO(architkulkarni): When we add the feature to allow
+            # deployments with no HTTP route, update the below line.
+            # Or refactor the route_prefix logic in the Deployment class.
+            entry["http_route"] = route_prefix or f"/{deployment_name}"
+            entry["start_time"] = backend_info.start_time_ms
+            entry["end_time"] = backend_info.end_time_ms or 0
+            entry["status"] = ("DELETED"
+                               if backend_info.end_time_ms else "RUNNING")
+            entry["actors"] = dict()
+            if entry["status"] == "RUNNING":
+                replica_state_container = self.backend_state._replicas[
+                    deployment_name]
+                running_replicas = replica_state_container.get(
+                    [ReplicaState.RUNNING])
+                for replica in running_replicas:
+                    try:
+                        actor_handle = replica.actor_handle
+                    except ValueError:
+                        # Actor died or hasn't yet been created.
+                        continue
+                    actor_id = actor_handle._ray_actor_id.hex()
+                    replica_tag = replica.replica_tag
+                    replica_version = replica.version.code_version
+                    entry["actors"][actor_id] = {
+                        "replica_tag": replica_tag,
+                        "version": replica_version
+                    }
+
+            val[deployment_name] = entry
+        self.kv_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
     def _all_replica_handles(
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
@@ -205,8 +253,12 @@ class ServeController:
                 return None
 
     async def create_backend(
-            self, backend_tag: BackendTag, backend_config: BackendConfig,
-            replica_config: ReplicaConfig) -> Optional[GoalId]:
+            self,
+            backend_tag: BackendTag,
+            backend_config: BackendConfig,
+            replica_config: ReplicaConfig,
+            deployer_job_id: Optional["Optional[ray._raylet.JobID]"] = None
+    ) -> Optional[GoalId]:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
             backend_info = BackendInfo(
@@ -215,7 +267,9 @@ class ServeController:
                         backend_tag, replica_config.serialized_backend_def)),
                 version=RESERVED_VERSION_TAG,
                 backend_config=backend_config,
-                replica_config=replica_config)
+                replica_config=replica_config,
+                start_time_ms=int(time.time() * 1000),
+                deployer_job_id=deployer_job_id)
             goal_id, _ = self.backend_state.deploy_backend(
                 backend_tag, backend_info)
             return goal_id
@@ -246,7 +300,9 @@ class ServeController:
             version=existing_info.version,
             backend_config=existing_info.backend_config.copy(
                 update=config_options.dict(exclude_unset=True)),
-            replica_config=existing_info.replica_config)
+            replica_config=existing_info.replica_config,
+            deployer_job_id=existing_info.deployer_job_id,
+            start_time_ms=existing_info.start_time_ms)
         goal_id, _ = self.backend_state.deploy_backend(backend_tag,
                                                        backend_info)
         return goal_id
@@ -283,10 +339,15 @@ class ServeController:
 
             return goal_ids
 
-    async def deploy(self, name: str, backend_config: BackendConfig,
-                     replica_config: ReplicaConfig, python_methods: List[str],
-                     version: Optional[str], prev_version: Optional[str],
-                     route_prefix: Optional[str]
+    async def deploy(self,
+                     name: str,
+                     backend_config: BackendConfig,
+                     replica_config: ReplicaConfig,
+                     python_methods: List[str],
+                     version: Optional[str],
+                     prev_version: Optional[str],
+                     route_prefix: Optional[str],
+                     deployer_job_id: "Optional[ray._raylet.JobID]" = None
                      ) -> Tuple[List[Optional[GoalId]], bool]:
         if route_prefix is not None:
             assert route_prefix.startswith("/")
@@ -311,7 +372,9 @@ class ServeController:
                         name, replica_config.serialized_backend_def)),
                 version=version,
                 backend_config=backend_config,
-                replica_config=replica_config)
+                replica_config=replica_config,
+                deployer_job_id=deployer_job_id,
+                start_time_ms=int(time.time() * 1000))
 
             goal_id, updating = self.backend_state.deploy_backend(
                 name, backend_info)
@@ -363,10 +426,24 @@ class ServeController:
 
         return backend_info, route
 
-    def list_deployments(self) -> Dict[str, Tuple[BackendInfo, str]]:
-        """Gets the current information about all active deployments."""
+    def list_deployments(self, include_deleted: Optional[bool] = False
+                         ) -> Dict[str, Tuple[BackendInfo, str]]:
+        """Gets the current information about all deployments.
+
+        Args:
+            include_deleted(bool): Whether to include information about
+                deployments that have been deleted.
+
+        Returns:
+            Dict(deployment_name, (BackendInfo, route))
+
+        Raises:
+            KeyError if the deployment doesn't exist.
+        """
         return {
-            name: (self.backend_state.get_backend(name),
+            name: (self.backend_state.get_backend(
+                name, include_deleted=include_deleted),
                    self.endpoint_state.get_endpoint_route(name))
-            for name in self.backend_state.get_backend_configs()
+            for name in self.backend_state.get_backend_configs(
+                include_deleted=include_deleted)
         }
