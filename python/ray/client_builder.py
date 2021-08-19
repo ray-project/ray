@@ -29,16 +29,18 @@ class ClientContext:
     ray_commit: str
     protocol_version: Optional[str]
     _num_clients: int
-    ray_cli: ray.util.client.RayAPIStub
+    ray_cli: Optional[ray.util.client.RayAPIStub]
 
     def __enter__(self) -> "ClientContext":
-        self.ray_cli = ray.util.client.ray.set_context(self.ray_cli)
+        if self.ray_cli is not None:
+            self.ray_cli = ray.util.client.ray.set_context(self.ray_cli)
         return self
 
     def __exit__(self, *exc) -> None:
-        if ray.util.client.is_main_cli():
+        if self.ray_cli is None or ray.util.client.is_main_cli():
             self.disconnect()
-        self.ray_cli = ray.util.client.ray.set_context(self.ray_cli)
+        if self.ray_cli is not None:
+            self.ray_cli = ray.util.client.ray.set_context(self.ray_cli)
 
     def disconnect(self) -> None:
         """
@@ -194,7 +196,8 @@ class _LocalClientBuilder(ClientBuilder):
             ray_version=ray.__version__,
             ray_commit=ray.__commit__,
             protocol_version=None,
-            _num_clients=1)
+            _num_clients=1,
+            ray_cli=None)
 
 
 def _split_address(address: str) -> Tuple[str, str]:
