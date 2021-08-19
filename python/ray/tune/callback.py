@@ -222,9 +222,9 @@ class CallbackList:
             except TypeError as e:
                 if "argument" in str(e):
                     warnings.warn(
-                        "Please update ``setup`` method in callback "
-                        f"{callback.__class__} to match the method signature "
-                        "in ``ray.tune.callback.Callback``.", FutureWarning)
+                        "Please update `setup` method in callback "
+                        f"`{callback.__class__}` to match the method signature "
+                        "in `ray.tune.callback.Callback`.", FutureWarning)
                     callback.setup()
                 else:
                     raise e
