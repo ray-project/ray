@@ -21,13 +21,18 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
                          **kwargs)
         self.observation_space = observation_space
         self.action_space = action_space
+        self.state_size = 10
         self.model_config = model_config or {}
-        space = Box(low=-np.inf, high=np.inf, shape=(10, ), dtype=np.float64)
+        space = Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=(self.state_size, ),
+            dtype=np.float64)
         # Set view requirements such that the policy state is held in
         # memory for 2 environment steps.
         self.view_requirements["state_in_0"] = \
             ViewRequirement("state_out_0",
-                            shift="-{}:-1".format(2),
+                            shift="-2:-1",
                             used_for_training=False,
                             used_for_compute_actions=True,
                             batch_repeat_value=1)
@@ -41,7 +46,7 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
     # Set the initial state. This is necessary for starting
     # the policy.
     def get_initial_state(self):
-        return [np.zeros((10, ), dtype=np.float32)]
+        return [np.zeros((self.state_size, ), dtype=np.float32)]
 
     def compute_actions(self,
                         obs_batch=None,
@@ -54,7 +59,8 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
         # First dimension is the batch (in list), second is the number of
         # states, and third is the shift. Fourth is the size of the state.
         batch_size = state_batches[0].shape[0]
-        actions = np.random.randint(0, 2, batch_size)
+        actions = np.array(
+            [self.action_space.sample() for _ in range(batch_size)])
         new_state_batches = list(state_batches[0][0])
         return actions, [new_state_batches], {}
 
@@ -64,6 +70,11 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
                                         timestep=None,
                                         episodes=None,
                                         **kwargs):
+        # Access the `infos` key here so it'll show up here always during
+        # action sampling.
+        infos = input_dict.get("infos")
+        assert infos is not None
+
         # Default implementation just passes obs, prev-a/r, and states on to
         # `self.compute_actions()`.
         state_batches = [
@@ -72,6 +83,7 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
         # Make sure that two (shift="-2:-1") past states are contained in the
         # state_batch.
         assert state_batches[0].shape[1] == 2
+        assert state_batches[0].shape[2] == self.state_size
         return self.compute_actions(
             input_dict[SampleBatch.OBS],
             state_batches,
