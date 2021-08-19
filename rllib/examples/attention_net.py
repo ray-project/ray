@@ -204,8 +204,8 @@ if __name__ == "__main__":
                 ]
             print(f"Total reward in test episode: {total_reward}")
 
-    # Run with Tune for auto env and trainer creation and TensorBoard.
     else:
+        # run with Tune for auto env and trainer creation and TensorBoard
         results = tune.run(args.run, config=config, stop=stop, verbose=2)
 
         if args.as_test:
