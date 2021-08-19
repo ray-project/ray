@@ -12,11 +12,10 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-import ray.test_utils
 
-from ray.test_utils import client_test_enabled
-from ray.test_utils import RayTestTimeoutException
-from ray.test_utils import SignalActor
+import ray._private.profiling as profiling
+from ray._private.test_utils import (client_test_enabled,
+                                     RayTestTimeoutException, SignalActor)
 
 if client_test_enabled():
     from ray.util.client import ray
@@ -173,7 +172,7 @@ def test_running_function_on_all_workers(ray_start_regular):
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f():
-        with ray.profiling.profile(
+        with profiling.profile(
                 "custom_event", extra_data={"name": "custom name"}):
             pass
 

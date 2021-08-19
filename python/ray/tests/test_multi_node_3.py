@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 import ray
-from ray.test_utils import (
+from ray._private.test_utils import (
     check_call_ray, run_string_as_driver, run_string_as_driver_nonblocking,
     wait_for_children_of_pid, wait_for_children_of_pid_to_exit,
     wait_for_children_names_of_pid, kill_process_by_name, Semaphore)
@@ -326,7 +326,7 @@ def test_multi_driver_logging(ray_start_regular):
     driver_script_template = """
 import ray
 import sys
-from ray.test_utils import Semaphore
+from ray._private.test_utils import Semaphore
 
 @ray.remote(num_cpus=0)
 def remote_print(s, file=None):

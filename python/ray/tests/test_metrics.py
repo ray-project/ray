@@ -7,8 +7,8 @@ import ray
 from ray.core.generated import common_pb2
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
-from ray.test_utils import (RayTestTimeoutException,
-                            wait_until_succeeded_without_exception)
+from ray._private.test_utils import (RayTestTimeoutException,
+                                     wait_until_succeeded_without_exception)
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 

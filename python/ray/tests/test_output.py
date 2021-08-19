@@ -4,7 +4,7 @@ import pytest
 
 import ray
 
-from ray.test_utils import run_string_as_driver_nonblocking
+from ray._private.test_utils import run_string_as_driver_nonblocking
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
