@@ -243,21 +243,6 @@ def ask_configuration():
     FILTER_FILE = os.environ.get("FILTER_FILE", "")
     FILTER_TEST = os.environ.get("FILTER_TEST", "")
 
-    input_init_step = {
-        "commands": [
-            f"buildkite-agent meta-data set \"{k}\" \"{v}\"" for k, v in {
-                "ray_branch": RAY_BRANCH,
-                "ray_repo": RAY_REPO,
-                "ray_version": RAY_VERSION,
-                "ray_test_branch": RAY_TEST_BRANCH,
-                "ray_test_repo": RAY_TEST_REPO,
-                "release_test_suite": RELEASE_TEST_SUITE,
-                "filter_file": FILTER_FILE,
-                "filter_test": FILTER_TEST,
-            }.items()
-        ],
-        "key": "input_init_step",
-    }
     input_ask_step = {
         "input": "Input required: Please specify tests to run",
         "fields": [
@@ -332,13 +317,13 @@ def ask_configuration():
                 "key": "filter_test"
             },
         ],
-        "depends_on": "input_init_step",
         "key": "input_ask_step",
     }
 
     run_again_step = {
         "commands": [
-            f"export {v}=buildkite-agent meta-data get \"{k}\"" for k, v in {
+            f"export {v}=$(buildkite-agent meta-data get \"{k}\")"
+            for k, v in {
                 "ray_branch": "RAY_BRANCH",
                 "ray_repo": "RAY_REPO",
                 "ray_version": "RAY_VERSION",
@@ -363,7 +348,6 @@ def ask_configuration():
     }
 
     return [
-        input_init_step,
         input_ask_step,
         run_again_step,
     ]
