@@ -336,7 +336,7 @@ def ask_configuration():
         "key": "input_ask_step",
     }
 
-    input_update_env_step = {
+    run_again_step = {
         "commands": [
             f"export {v}=buildkite-agent meta-data get \"{k}\"" for k, v in {
                 "ray_branch": "RAY_BRANCH",
@@ -348,13 +348,7 @@ def ask_configuration():
                 "filter_file": "FILTER_FILE",
                 "filter_test": "FILTER_TEST",
             }.items()
-        ],
-        "depends_on": "input_ask_step",
-        "key": "input_update_env_step",
-    }
-
-    run_again_step = {
-        "commands": [
+        ] + [
             "export AUTOMATIC=1",
             "python3 -m pip install --user pyyaml",
             ("python3 release/.buildkite/build_pipeline.py "
@@ -364,14 +358,13 @@ def ask_configuration():
         "agents": {
             "queue": "runner_queue_branch"
         },
-        "depends_on": "input_update_env_step",
+        "depends_on": "input_ask_step",
         "key": "run_again_step",
     }
 
     return [
         input_init_step,
         input_ask_step,
-        input_update_env_step,
         run_again_step,
     ]
 
