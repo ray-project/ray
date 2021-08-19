@@ -1169,6 +1169,8 @@ TPU Configuration
 
 It is possible to use `TPU VMs <https://cloud.google.com/tpu/docs/users-guide-tpu-vm>`_ on GCP. Currently, TPU pods are not supported.
 
+Before using a config with TPUs, ensure that the `TPU API is enabled for your GCP project <https://cloud.google.com/tpu/docs/users-guide-tpu-vm#enable_the_cloud_tpu_api>`_.
+
 .. tabs::
 
     .. group-tab:: GCP
