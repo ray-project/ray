@@ -49,7 +49,7 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
             })
         msg = (
             "No trial is running and no new trial has been started within at"
-            " least the last 1.0 seconds. This could be due to the cluster "
+            " least the last 5.0 seconds. This could be due to the cluster "
             "not having enough resources available to start the next trial. "
             "Please stop the tuning job and readjust resources_per_trial "
             "argument passed into tune.run() and/or start a cluster with more "

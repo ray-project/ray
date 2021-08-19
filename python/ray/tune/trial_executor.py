@@ -6,6 +6,7 @@ import os
 import time
 from typing import Dict, List, Optional
 
+import ray
 from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI
 from ray.tune.trial import Trial, Checkpoint
@@ -13,6 +14,14 @@ from ray.tune.error import TuneError
 from ray.tune.cluster_info import is_ray_cluster
 
 logger = logging.getLogger(__name__)
+
+
+def _can_fulfill(cluster_resources: Dict, trial: Trial) -> bool:
+    """Decides for an autoscaler disabled cluster, whether there is enough
+        resources for a PENDING trial."""
+    assert trial.status == Trial.PENDING
+    return trial.resources.cpu <= cluster_resources.get(
+        "CPU", 0) and trial.resources.gpu <= cluster_resources.get("GPU", 0)
 
 
 @lru_cache()
@@ -23,7 +32,7 @@ def _get_warning_threshold() -> float:
                 "TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER", "60"))
     else:
         return float(
-            os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "1"))
+            os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "5"))
 
 
 @lru_cache()
@@ -68,12 +77,19 @@ class TrialExecutor(metaclass=ABCMeta):
         self._queue_trials = queue_trials
         self._cached_trial_state = {}
         self._trials_to_cache = set()
+        # The next two variables are used to keep track of if there is any
+        # "progress" made between subsequent calls to `on_no_available_trials`.
+        # TODO(xwjiang): Clean this up once figure out who should have a
+        #  holistic view of trials - runner or executor.
+        #  Also iterating over list of trials every time is very inefficient.
+        #  Need better visibility APIs into trials.
         # The start time since when all active trials have been in PENDING
         # state, or since last time we output a resource insufficent
         # warning message, whichever comes later.
         # -1 means either the TrialExecutor is just initialized without any
         # trials yet, or there are some trials in RUNNING state.
         self._no_running_trials_since = -1
+        self._all_trials_size = -1
 
     def set_status(self, trial: Trial, status: str) -> None:
         """Sets status and checkpoints metadata if needed.
@@ -237,17 +253,27 @@ class TrialExecutor(metaclass=ABCMeta):
         pass
 
     def _may_warn_insufficient_resources(self, all_trials):
-        if not any(trial.status == Trial.RUNNING for trial in all_trials):
+        # This is approximately saying we are not making progress.
+        if len(all_trials) == self._all_trials_size:
             if self._no_running_trials_since == -1:
                 self._no_running_trials_since = time.monotonic()
             elif time.monotonic(
             ) - self._no_running_trials_since > _get_warning_threshold():
-                # TODO(xwjiang): We should ideally output a more helpful msg.
+                if not is_ray_cluster():  # autoscaler not enabled
+                    cluster_resources = ray.cluster_resources()
+                    # If any of the pending trial cannot be fulfilled,
+                    # that's a good enough hint of trial resources not enough.
+                    if any(trial.status == Trial.PENDING
+                           and not _can_fulfill(cluster_resources, trial)
+                           for trial in all_trials):
+                        raise TuneError(_get_warning_msg())
+                # TODO(xwjiang): Output a more helpful msg for autoscaler case.
                 # https://github.com/ray-project/ray/issues/17799
                 logger.warning(_get_warning_msg())
                 self._no_running_trials_since = time.monotonic()
         else:
             self._no_running_trials_since = -1
+        self._all_trials_size = len(all_trials)
 
     def on_no_available_trials(self, trials: List[Trial]) -> None:
         """
