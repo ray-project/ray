@@ -177,7 +177,7 @@ class Trainer:
             self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
-            checkpoint: Optional[Dict] = None) -> Iterator[List[Any]]:
+            checkpoint: Optional[Dict] = None) -> Iterator[List[Dict]]:
         """Same as ``run`` except returns an iterator over the results.
 
         This is useful if you want to have more customization of what to do
@@ -253,10 +253,12 @@ class Trainer:
                 next_results = self._run_with_error_handling(
                     self._executor.fetch_next_result)
                 if next_results is None:
-                    self._final_results = \
-                        self._run_with_error_handling(
-                            self._executor.finish_training)
-                    self._finished_training = True
+                    try:
+                        self._final_results = \
+                            self._run_with_error_handling(
+                                self._executor.finish_training)
+                    finally:
+                        self._finished_training = True
                     raise StopIteration
                 else:
                     return next_results
@@ -274,14 +276,15 @@ class Trainer:
                 False.
                 """
 
-                if self.is_finished():
-                    assert self._final_results is not None
-                else:
+                if not self.is_finished():
                     assert self._final_results is None
                     if force:
-                        self._final_results = self._run_with_error_handling(
-                            self._executor.finish_training)
-                        self._finished_training = True
+                        try:
+                            self._final_results = \
+                                self._run_with_error_handling(
+                                    self._executor.finish_training)
+                        finally:
+                            self._finished_training = True
                     else:
                         logger.info("Please finish iterating through the "
                                     "intermediate results before getting the"
@@ -404,10 +407,12 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
 
             tune.report(**first_worker_results)
 
+        trainer.shutdown()
+
     trainable_cls = wrap_function(tune_function)
 
-    class _WrappedSgdTrainable(trainable_cls):
-        """Wrapper around ``_SgdTrainable`` with class attributes."""
+    class SgdTrainable(trainable_cls):
+        """Add default resources to the Trainable."""
 
         @classmethod
         def default_resource_request(cls,
@@ -423,4 +428,4 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
             bundles = head_bundle + worker_bundles
             return PlacementGroupFactory(bundles, strategy="PACK")
 
-    return _WrappedSgdTrainable
+    return SgdTrainable

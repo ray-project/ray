@@ -263,6 +263,23 @@ def test_run_iterator_returns(ray_start_2_cpus):
         next(iterator)
 
 
+def test_run_iterator_error(ray_start_2_cpus):
+    config = TestConfig()
+
+    def fail_train():
+        raise NotImplementedError
+
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+    iterator = trainer.run_iterator(fail_train)
+
+    with pytest.raises(NotImplementedError):
+        next(iterator)
+
+    assert iterator.get_returns() is None
+    assert iterator.is_finished()
+
+
 def test_checkpoint(ray_start_2_cpus):
     config = TestConfig()
 
