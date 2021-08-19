@@ -55,6 +55,24 @@ class ObjectRef {
   ObjectRef();
   ~ObjectRef();
 
+  ObjectRef(ObjectRef &&rhs) {
+    SubReference(rhs.id_);
+    CopyAndAddReference(id_, rhs.id_);
+    rhs.id_ = {};
+  }
+
+  ObjectRef &operator=(ObjectRef &&rhs) {
+    if (rhs == *this) {
+      return *this;
+    }
+
+    SubReference(id_);
+    SubReference(rhs.id_);
+    CopyAndAddReference(id_, rhs.id_);
+    rhs.id_ = {};
+    return *this;
+  }
+
   ObjectRef(const ObjectRef &rhs) { CopyAndAddReference(id_, rhs.id_); }
 
   ObjectRef &operator=(const ObjectRef &rhs) {
