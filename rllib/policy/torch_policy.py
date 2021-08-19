@@ -572,7 +572,6 @@ class TorchPolicy(Policy):
             assert buffer_index == 0
         return len(self._loaded_batches[buffer_index])
 
-    @with_lock
     @override(Policy)
     @DeveloperAPI
     def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
