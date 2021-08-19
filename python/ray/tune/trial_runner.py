@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import click
 from datetime import datetime
@@ -329,13 +329,16 @@ class TrialRunner:
         self._checkpoint_period = checkpoint_period
         self._checkpoint_manager = self._create_checkpoint_manager()
 
-    def setup_callbacks(self, experiment: Optional[Experiment]) -> None:
-        """Calls ``setup`` method in callbacks.
+    def setup_experiments(self, experiments: List[Experiment]) -> None:
+        """Obtains any necessary information from experiments.
+
+        Mainly used to setup callbacks.
 
         Args:
-            experiment (Experiment): Experiment which ``public.spec`` is
-                passed to callback ``setup`` methods.
+            experiments (List[Experiment]): List of Experiments
+                to use.
         """
+        experiment = experiments[0]
         spec = experiment.public_spec if experiment else {}
         self._callbacks.setup(**spec)
 

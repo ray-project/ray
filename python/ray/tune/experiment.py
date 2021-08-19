@@ -105,7 +105,7 @@ class Experiment:
     """
 
     # keys that will be present in `public_spec` dict
-    PUBLIC_KEYS = {"stop", "resources_per_trial", "num_samples"}
+    PUBLIC_KEYS = {"stop", "num_samples"}
 
     def __init__(self,
                  name,

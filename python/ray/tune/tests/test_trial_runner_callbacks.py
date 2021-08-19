@@ -92,7 +92,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.trial_runner = TrialRunner(
             trial_executor=self.executor, callbacks=[self.callback])
         # experiment would never be None normally, but it's fine for testing
-        self.trial_runner.setup_callbacks(experiment=None)
+        self.trial_runner.setup_experiments(experiments=[None])
 
     def tearDown(self):
         ray.shutdown()
@@ -293,7 +293,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
 
         callback = NoExperimentInSetupCallback()
         trial_runner = TrialRunner(callbacks=[callback])
-        trial_runner.setup_callbacks(experiment=Experiment("", lambda x: x))
+        trial_runner.setup_experiments(
+            experiments=[Experiment("", lambda x: x)])
         mocked_warning_method.assert_called_once()
         self.assertIn("Please update",
                       mocked_warning_method.call_args_list[0][0][0])

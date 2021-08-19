@@ -481,7 +481,7 @@ def run(
         metric=metric)
 
     # Calls setup on callbacks
-    runner.setup_callbacks(experiment=experiments[0])
+    runner.setup_experiments(experiments=experiments)
 
     if not runner.resumed:
         for exp in experiments:
@@ -538,6 +538,10 @@ def run(
         runner.step()
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter)
+
+    # Calls on_experiment_end on callbacks
+    runner.end_experiment_callbacks()
+
     tune_taken = time.time() - tune_start
 
     try:
@@ -555,9 +559,6 @@ def run(
     for trial in runner.get_trials():
         if trial.status != Trial.TERMINATED:
             incomplete_trials += [trial]
-
-    # Calls on_experiment_end on callbacks
-    runner.end_experiment_callbacks()
 
     if incomplete_trials:
         if raise_on_failed_trial and not state[signal.SIGINT]:
