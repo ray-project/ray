@@ -1,9 +1,9 @@
 import time
 import pytest
 
-import ray
 from ray.util.sgd.v2.session import init_session, shutdown_session, \
-    get_session, world_rank, report, get_dataset_shard
+    get_session, world_rank, report, save_checkpoint, TrainingResultType, \
+    load_checkpoint, get_dataset_shard
 
 
 @pytest.fixture(scope="function")
@@ -55,8 +55,8 @@ def test_report():
     init_session(training_func=train, world_rank=0)
     session = get_session()
     session.start()
-    assert session.get_next()["loss"] == 0
-    assert session.get_next()["loss"] == 1
+    assert session.get_next().data["loss"] == 0
+    assert session.get_next().data["loss"] == 1
     shutdown_session()
 
     with pytest.raises(ValueError):
@@ -80,6 +80,7 @@ def test_report_fail():
 
 def test_report_after_finish(session):
     session.start()
+    session.pause_reporting()
     session.finish()
     for _ in range(2):
         report(loss=1)
@@ -89,6 +90,59 @@ def test_report_after_finish(session):
 def test_no_start(session):
     with pytest.raises(RuntimeError):
         session.get_next()
+
+
+def test_checkpoint():
+    def train():
+        for i in range(2):
+            save_checkpoint(epoch=i)
+
+    def validate_zero(expected):
+        next = session.get_next()
+        assert next is not None
+        assert next.type == TrainingResultType.CHECKPOINT
+        assert next.data["epoch"] == expected
+
+    init_session(training_func=train, world_rank=0)
+    session = get_session()
+    session.start()
+    validate_zero(0)
+    validate_zero(1)
+    session.finish()
+    shutdown_session()
+
+    def validate_nonzero():
+        next = session.get_next()
+        assert next is not None
+        assert next.type == TrainingResultType.CHECKPOINT
+        assert next.data == {}
+
+    init_session(training_func=train, world_rank=1)
+    session = get_session()
+    session.start()
+    validate_nonzero()
+    validate_nonzero()
+    session.finish()
+    shutdown_session()
+
+    with pytest.raises(ValueError):
+        save_checkpoint(epoch=2)
+
+
+def test_load_checkpoint_after_save():
+    def train():
+        for i in range(2):
+            save_checkpoint(epoch=i)
+            checkpoint = load_checkpoint()
+            assert checkpoint["epoch"] == i
+
+    init_session(training_func=train, world_rank=0)
+    session = get_session()
+    session.start()
+    for i in range(2):
+        session.get_next()
+    session.finish()
+    shutdown_session()
 
 
 def test_locking():
@@ -113,6 +167,10 @@ def test_locking():
     session = get_session()
     session.start()
     time.sleep(3)
+
+    session.pause_reporting()
+    # Releases session.continue_lock to resume the training thread.
+    session.get_next()
 
     with pytest.raises(KeyboardInterrupt):
         session.finish()

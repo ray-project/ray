@@ -21,6 +21,7 @@ from ray.ray_constants import env_integer
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
 from ray.tune.sync_client import (CommandBasedClient, get_sync_client,
                                   get_cloud_sync_client, NOOP)
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.trial import Trial
@@ -86,6 +87,7 @@ def log_sync_template(options=""):
     return template.format(options=options, rsh=quote(rsh))
 
 
+@PublicAPI
 @dataclass
 class SyncConfig:
     """Configuration object for syncing.

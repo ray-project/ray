@@ -69,7 +69,22 @@ For Ubuntu, run the following commands:
 
   pip install cython==0.29.0 pytest
 
+For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
+
+.. code-block:: bash
+
+  sudo yum groupinstall 'Development Tools'
+  sudo yum install psmisc
+
+  pip install cython==0.29.0 pytest
+
+Install bazel manually from link: https://docs.bazel.build/versions/main/install-redhat.html 
+
+
 For MacOS, run the following commands:
+
+.. tip:: Assuming you already have brew and bazel installed on your mac and you also have grpc and protobuf installed on your mac consider removing those (grpc and protobuf) for smooth build through commands ``brew uninstall grpc``, ``brew uninstall protobuf``. If you have built the source code earlier and it still fails with error as ``No such file or directory:``, try cleaning previous builds on your host by running commands ``brew uninstall binutils`` and ``bazel clean --expunge``.
+
 
 .. code-block:: bash
 

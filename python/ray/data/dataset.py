@@ -33,6 +33,7 @@ from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.shuffle import simple_shuffle
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
+from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
 
 T = TypeVar("T")
@@ -521,6 +522,50 @@ class Dataset(Generic[T]):
             for actor in locality_hints
         ])
 
+    def union(self, *other: List["Dataset[T]"]) -> "Dataset[T]":
+        """Combine this dataset with others of the same type.
+
+        Time complexity: O(1)
+
+        Args:
+            other: List of datasets to combine with this one. The datasets
+                must have the same schema as this dataset, otherwise the
+                behavior is undefined.
+
+        Returns:
+            A new dataset holding the union of their data.
+        """
+
+        blocks: List[ObjectRef[Block]] = []
+        metadata: List[BlockMetadata] = []
+        pending_blocks: List[Callable[[], ObjectRef[Block]]] = []
+        pending_metadata: List[BlockMetadata] = []
+
+        datasets = [self] + list(other)
+        for ds in datasets:
+            bl = ds._blocks
+            if isinstance(bl, LazyBlockList):
+                for block, meta in zip(bl._blocks, bl._metadata):
+                    blocks.append(block)
+                    metadata.append(meta)
+                lim = len(bl._blocks)
+                for call, meta in zip(bl._calls[lim:], bl._metadata[lim:]):
+                    pending_blocks.append(call)
+                    pending_metadata.append(meta)
+            else:
+                assert isinstance(bl, BlockList), bl
+                blocks.extend(list(bl._blocks))
+                metadata.extend(bl.get_metadata())
+
+        result = LazyBlockList([], [])
+        result._calls = ([None] * len(blocks)) + pending_blocks
+        result._blocks = blocks
+        result._metadata = metadata + pending_metadata
+
+        assert len(result._calls) == len(result._metadata), result
+        assert len(result._blocks) <= len(result._calls), result
+        return Dataset(result)
+
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,
              descending: bool = False) -> "Dataset[T]":
@@ -797,7 +842,7 @@ class Dataset(Generic[T]):
             block = BlockAccessor.for_block(block)
             logger.debug(
                 f"Writing {block.num_rows()} records to {write_path}.")
-            block.to_pandas().to_json(write_path, orient="records")
+            block.to_pandas().to_json(write_path, orient="records", lines=True)
 
         refs = [
             json_write.remote(

@@ -26,6 +26,7 @@ namespace plasma {
 
 std::unordered_map<void *, MmapRecord> mmap_records;
 
+namespace internal {
 static void *pointer_advance(void *p, ptrdiff_t n) { return (unsigned char *)p + n; }
 
 static ptrdiff_t pointer_distance(void const *pfrom, void const *pto) {
@@ -52,5 +53,5 @@ bool GetMallocMapinfo(const void *const addr, MEMFD_TYPE *fd, int64_t *map_size,
 
   return false;
 }
-
+}  // namespace internal
 }  // namespace plasma

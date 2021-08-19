@@ -675,6 +675,12 @@ def test_detached_actor(ray_start_regular):
             ValueError, match="Actor name cannot be an empty string"):
         DetachedActor._remote(lifetime="detached", name="")
 
+    with pytest.raises(ValueError):
+        DetachedActor._remote(lifetime="detached", name="hi", namespace="")
+
+    with pytest.raises(TypeError):
+        DetachedActor._remote(lifetime="detached", name="hi", namespace=2)
+
     d = DetachedActor._remote(lifetime="detached", name="d_actor")
     assert ray.get(d.ping.remote()) == "pong"
 
@@ -1286,12 +1292,45 @@ def test_actor_namespace_access(ray_start_regular):
             return "hi"
 
     A.options(name="actor_in_current_namespace", lifetime="detached").remote()
-    A.options(name="namespace/actor_name", lifetime="detached").remote()
+    A.options(
+        name="actor_name", namespace="namespace",
+        lifetime="detached").remote()
     ray.get_actor("actor_in_current_namespace")  # => works
-    ray.get_actor("namespace/actor_name")  # => works
+    ray.get_actor("actor_name", namespace="namespace")  # => works
     match_str = r"Failed to look up actor with name.*"
     with pytest.raises(ValueError, match=match_str):
         ray.get_actor("actor_name")  # => errors
+
+
+def test_get_actor_after_killed(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    class A:
+        def ready(self):
+            return True
+
+    actor = A.options(
+        name="actor", namespace="namespace", lifetime="detached").remote()
+    ray.kill(actor)
+    # This could be flaky due to our caching named actor mechanism.
+    with pytest.raises(ValueError):
+        ray.get_actor("actor", namespace="namespace")
+
+    actor = A.options(
+        name="actor_2",
+        namespace="namespace",
+        lifetime="detached",
+        max_restarts=1).remote()
+    ray.kill(actor, no_restart=False)
+    assert ray.get(
+        ray.get_actor("actor_2", namespace="namespace").ready.remote())
+
+    # TODO(sang): This currently doesn't pass without time.sleep.
+    # ray.kill(actor, no_restart=False)
+    # # Now the actor is killed.
+    # with pytest.raises(ValueError):
+    #     ray.get_actor("actor_2", namespace="namespace")
 
 
 if __name__ == "__main__":

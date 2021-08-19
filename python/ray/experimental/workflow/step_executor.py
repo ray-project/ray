@@ -8,12 +8,12 @@ from ray._private import signature
 
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import recovery
-from ray.experimental.workflow.storage import DataLoadError
+from ray.experimental.workflow.storage import KeyNotFoundError
 from ray.experimental.workflow.workflow_context import get_step_status_info
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.workflow_access import (
-    MANAGEMENT_ACTOR_NAME, get_or_create_management_actor)
+    get_or_create_management_actor, get_management_actor)
 from ray.experimental.workflow.common import (
     Workflow, WorkflowStatus, WorkflowOutputType, WorkflowExecutionResult,
     StepType)
@@ -74,7 +74,7 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
             wf_store = workflow_storage.get_workflow_storage()
             try:
                 output = wf_store.load_step_output(workflow_ref.step_id)
-            except DataLoadError:
+            except KeyNotFoundError:
                 current_step_id = workflow_context.get_current_step_id()
                 logger.warning("Failed to get the output of step "
                                f"{workflow_ref.step_id}. Trying to resume it. "
@@ -380,7 +380,7 @@ class _BakedWorkflowInputs:
 
 def _record_step_status(step_id: "StepID", status: "WorkflowStatus") -> None:
     workflow_id = workflow_context.get_current_workflow_id()
-    workflow_manager = ray.get_actor(MANAGEMENT_ACTOR_NAME)
+    workflow_manager = get_management_actor()
     ray.get(
         workflow_manager.update_step_status.remote(workflow_id, step_id,
                                                    status))

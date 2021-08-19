@@ -103,9 +103,6 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The minimum object size that can be spilled by each spill operation.
   int64_t min_spilling_size;
-  // Whether to the raylet should push resource reports to GCS or wait for GCS to pull the
-  // reports from raylets.
-  bool pull_based_resource_reporting;
 };
 
 class HeartbeatSender {
@@ -249,20 +246,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// report to GCS.
   void FillResourceReport(rpc::ResourcesData &resources_data);
 
-  /// Report resource usage to the GCS.
-  void ReportResourceUsage();
-
   /// Write out debug state to a file.
   void DumpDebugState() const;
 
   /// Flush objects that are out of scope in the application. This will attempt
   /// to eagerly evict all plasma copies of the object from the cluster.
   void FlushObjectsToFree();
-
-  /// Get profiling information from the object manager and push it to the GCS.
-  ///
-  /// \return Void.
-  void GetObjectManagerProfileInfo();
 
   /// Handler for a resource usage notification from the GCS.
   ///
@@ -286,7 +275,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Helper function to produce actor table data for a newly created actor.
   ///
-  /// \param task_spec Task specification of the actor creation task that created the
+  /// \param task_spec RayTask specification of the actor creation task that created the
   /// actor.
   /// \param worker The port that the actor is listening on.
   std::shared_ptr<ActorTableData> CreateActorTableDataFromCreationTask(
@@ -295,7 +284,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
   /// \return Void.
-  void FinishAssignedActorCreationTask(WorkerInterface &worker, const Task &task);
+  void FinishAssignedActorCreationTask(WorkerInterface &worker, const RayTask &task);
 
   /// Handle blocking gets of objects. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
@@ -582,8 +571,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Publish the infeasible task error to GCS so that drivers can subscribe to it and
   /// print.
   ///
-  /// \param task Task that is infeasible
-  void PublishInfeasibleTaskError(const Task &task) const;
+  /// \param task RayTask that is infeasible
+  void PublishInfeasibleTaskError(const RayTask &task) const;
 
   /// Get pointers to objects stored in plasma. They will be
   /// released once the returned references go out of scope.

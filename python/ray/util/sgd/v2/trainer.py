@@ -112,8 +112,9 @@ class Trainer:
     def run(self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
-            dataset: Optional[RayDataset] = None,
-            callbacks: Optional[List[SGDCallback]] = None) -> List[T]:
+            callbacks: Optional[List[SGDCallback]] = None,
+            checkpoint: Optional[Dict] = None,
+            dataset: Optional[RayDataset] = None) -> List[T]:
         """Runs a training function in a distributed manner.
 
         Args:
@@ -121,13 +122,16 @@ class Trainer:
                 This can either take in no arguments or a ``config`` dict.
             config (Optional[Dict]): Configurations to pass into
                 ``train_func``. If None then an empty Dict will be created.
+            callbacks (Optional[List[SGDCallback]]): A list of Callbacks which
+                will be executed during training. If this is not set,
+                currently there are NO default Callbacks.
+            checkpoint (Optional[Dict]): The checkpoint data that should be
+                loaded onto each worker and accessed by the training function
+                via ``sgd.load_checkpoint()``.
             dataset (Optional[Union[Dataset, DatasetPipeline]]):
                 Distributed Ray Dataset or DatasetPipeline to pass into
                 worker. Sharding and locality hints will automatically be
                 handled by the Trainer.
-            callbacks (Optional[List[SGDCallback]]): A list of Callbacks which
-                will be executed during training. If this is not set,
-                currently there are NO default Callbacks.
 
         Returns:
             A list of results from the training function. Each value in the
@@ -137,9 +141,14 @@ class Trainer:
         train_func = self._get_train_func(train_func, config)
         # TODO(matt): Set default callbacks.
         callbacks = [] if callbacks is None else callbacks
+        finished_with_errors = False
 
         try:
-            self._executor.start_training(train_func, dataset=dataset)
+            for callback in callbacks:
+                callback.start_training()
+            self._executor.start_training(train_func, dataset=dataset, checkpoint=
+                                          checkpoint)
+
             while True:
                 intermediate_results = self._executor.fetch_next_result()
                 if intermediate_results is None:
@@ -147,17 +156,23 @@ class Trainer:
                 else:
                     for callback in callbacks:
                         callback.handle_result(intermediate_results)
+
             return self._executor.finish_training()
         except InactiveWorkerGroupError:
+            finished_with_errors = True
             raise RuntimeError(
                 "This Trainer is not active. It is either shutdown already or "
                 "never started in the first place. Either create a new "
                 "Trainer or start this one.") from None
         except SGDBackendError:
+            finished_with_errors = True
             raise RuntimeError("Training failed. You should not be seeing "
                                "this error and this is a bug. Please create "
                                "a new issue at "
                                "https://github.com/ray-project/ray.") from None
+        finally:
+            for callback in callbacks:
+                callback.finish_training(error=finished_with_errors)
 
     def _get_train_func(
             self,
@@ -216,6 +231,10 @@ class Trainer:
             The output of ``func`` from a single worker.
         """
         raise NotImplementedError
+
+    def get_latest_checkpoint(self) -> Optional[Dict]:
+        """Gets the latest checkpoint for this Trainer."""
+        return self._executor.get_latest_checkpoint()
 
     def shutdown(self):
         """Shuts down the training execution service."""

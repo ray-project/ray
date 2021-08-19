@@ -13,13 +13,14 @@
 // limitations under the License.
 
 #include "ray/util/event.h"
+#include <boost/filesystem.hpp>
 
 namespace ray {
 ///
 /// LogEventReporter
 ///
 LogEventReporter::LogEventReporter(rpc::Event_SourceType source_type,
-                                   std::string &log_dir, bool force_flush,
+                                   const std::string &log_dir, bool force_flush,
                                    int rotate_max_file_size, int rotate_max_file_num)
     : log_dir_(log_dir),
       force_flush_(force_flush),
@@ -118,6 +119,12 @@ void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields
 ///
 /// EventManager
 ///
+EventManager::EventManager() {
+  RayLog::AddFatalLogCallbacks({[](const std::string &label, const std::string &content) {
+    RayEvent::ReportEvent("FATAL", label, content);
+  }});
+}
+
 EventManager &EventManager::Instance() {
   static EventManager instance_;
   return instance_;
@@ -211,6 +218,16 @@ void RayEvent::SendMessage(const std::string &message) {
   event.mutable_custom_fields()->insert(mp.begin(), mp.end());
 
   EventManager::Instance().Publish(event, custom_fields_);
+}
+
+void RayEventInit(rpc::Event_SourceType source_type,
+                  const std::unordered_map<std::string, std::string> &custom_fields,
+                  const std::string &log_dir) {
+  RayEventContext::Instance().SetEventContext(source_type, custom_fields);
+  auto event_dir = boost::filesystem::path(log_dir) / boost::filesystem::path("event");
+  ray::EventManager::Instance().AddReporter(
+      std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
+  RAY_LOG(INFO) << "Ray Event initialized for " << Event_SourceType_Name(source_type);
 }
 
 }  // namespace ray

@@ -64,7 +64,9 @@ GetRemoteFunctions() {
 }
 }  // namespace internal
 
-namespace api {
+namespace internal {
+
+using ray::core::CoreWorkerProcess;
 
 std::shared_ptr<msgpack::sbuffer> TaskExecutor::current_actor_ = nullptr;
 
@@ -96,9 +98,9 @@ std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
     RAY_LOG(DEBUG) << "Execute function " << func_name << " ok.";
     return std::make_pair(ray::Status::OK(),
                           std::make_shared<msgpack::sbuffer>(std::move(result)));
-  } catch (ray::api::RayIntentionalSystemExitException &e) {
+  } catch (RayIntentionalSystemExitException &e) {
     return std::make_pair(ray::Status::IntentionalSystemExit(), nullptr);
-  } catch (ray::api::RayException &e) {
+  } catch (RayException &e) {
     return std::make_pair(ray::Status::NotFound(e.what()), nullptr);
   } catch (msgpack::type_error &e) {
     return std::make_pair(
@@ -174,7 +176,7 @@ Status TaskExecutor::ExecuteTask(
     auto &result_id = return_ids[0];
     auto result_ptr = &(*results)[0];
     int64_t task_output_inlined_bytes = 0;
-    RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
+    RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
         result_id, data_size, meta_buffer, std::vector<ray::ObjectID>(),
         task_output_inlined_bytes, result_ptr));
 
@@ -185,8 +187,7 @@ Status TaskExecutor::ExecuteTask(
       }
     }
 
-    RAY_CHECK_OK(
-        ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result));
+    RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, result));
   }
   return ray::Status::OK();
 }
@@ -214,13 +215,13 @@ void TaskExecutor::Invoke(
   std::shared_ptr<msgpack::sbuffer> data;
   try {
     if (actor) {
-      auto result = internal::TaskExecutionHandler(typed_descriptor->FunctionName(),
-                                                   args_buffer, actor.get());
+      auto result = TaskExecutionHandler(typed_descriptor->FunctionName(), args_buffer,
+                                         actor.get());
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
       runtime->Put(std::move(data), task_spec.ReturnId(0));
     } else {
-      auto result = internal::TaskExecutionHandler(typed_descriptor->FunctionName(),
-                                                   args_buffer, nullptr);
+      auto result =
+          TaskExecutionHandler(typed_descriptor->FunctionName(), args_buffer, nullptr);
       data = std::make_shared<msgpack::sbuffer>(std::move(result));
       if (task_spec.IsActorCreationTask()) {
         std::unique_ptr<ActorContext> actorContext(new ActorContext());
@@ -232,11 +233,11 @@ void TaskExecutor::Invoke(
       }
     }
   } catch (std::exception &e) {
-    auto result = ray::internal::PackError(e.what());
+    auto result = PackError(e.what());
     auto data = std::make_shared<msgpack::sbuffer>(std::move(result));
     runtime->Put(std::move(data), task_spec.ReturnId(0));
   }
 }
 
-}  // namespace api
+}  // namespace internal
 }  // namespace ray
