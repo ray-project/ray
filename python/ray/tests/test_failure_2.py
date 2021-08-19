@@ -16,8 +16,8 @@ import ray._private.utils
 from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
-from ray.test_utils import (init_error_pubsub, get_error_message, Semaphore,
-                            wait_for_condition)
+from ray._private.test_utils import (init_error_pubsub, get_error_message,
+                                     Semaphore, wait_for_condition)
 
 
 def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):

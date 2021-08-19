@@ -1426,7 +1426,7 @@ done
 @cli.command()
 def microbenchmark():
     """Run a local Ray microbenchmark on the current machine."""
-    from ray.ray_perf import main
+    from ray._private.ray_perf import main
     main()
 
 
