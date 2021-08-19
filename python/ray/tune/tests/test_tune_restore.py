@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 import time
+from typing import List
 import unittest
 
 import skopt
@@ -31,6 +32,7 @@ from ray.tune.suggest.optuna import OptunaSearch, param as ot_param
 from ray.tune.suggest.sigopt import SigOptSearch
 from ray.tune.suggest.zoopt import ZOOptSearch
 from ray.tune.suggest.hebo import HEBOSearch
+from ray.tune.trial import Trial
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils._mock_trainable import MyTrainableClass
 
@@ -186,6 +188,20 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 assert len(trials) == self.expected_trials
                 self._checked = True
 
+    class CheckTrialResourcesCallback(Callback):
+        """Checks if unfinished trials are resumed with updated resources."""
+
+        def __init__(self, expected_new_cpu: int):
+            self._expected_new_cpu = expected_new_cpu
+            self._checked = False
+
+        def on_step_begin(self, iteration: int, trials: List["Trial"], **info):
+            if not self._checked:
+                for trial in trials:
+                    if trial.status == Trial.PENDING:
+                        assert trial.resources.cpu == self._expected_new_cpu
+                self._checked = True
+
     def setUp(self):
         self.logdir = tempfile.mkdtemp()
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
@@ -236,6 +252,35 @@ class TuneFailResumeGridTest(unittest.TestCase):
         assert all(v == 9 for v in test_counter.values())
         test2_counter = Counter([t.config["test2"] for t in analysis.trials])
         assert all(v == 9 for v in test2_counter.values())
+
+    # Unfinished trials' resources should be updated.
+    def testResourceUpdateInResume(self):
+        os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
+
+        config = dict(
+            num_samples=3,
+            fail_fast=True,
+            config={
+                "test": tune.grid_search([1, 2, 3]),
+                "test2": tune.grid_search([1, 2, 3]),
+            },
+            stop={"training_iteration": 2},
+            local_dir=self.logdir,
+            verbose=1)
+
+        with self.assertRaises(RuntimeError):
+            tune.run(
+                "trainable",
+                callbacks=[self.FailureInjectorCallback()],
+                **config)
+
+        analysis = tune.run(
+            "trainable",
+            resume=True,
+            resources_per_trial={"cpu": 2},
+            callbacks=[self.CheckTrialResourcesCallback(2)],
+            **config)
+        assert len(analysis.trials) == 27
 
     def testFailResumeWithPreset(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"

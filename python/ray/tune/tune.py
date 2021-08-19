@@ -484,7 +484,10 @@ def run(
         for exp in experiments:
             search_alg.add_configurations([exp])
     else:
-        logger.info("TrialRunner resumed, ignoring new add_experiment.")
+        logger.info("TrialRunner resumed, ignoring new add_experiment but "
+                    "updating trial resources.")
+        if resources_per_trial:
+            runner.update_pending_trial_resources(resources_per_trial)
 
     progress_reporter = progress_reporter or detect_reporter()
 
