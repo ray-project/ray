@@ -585,7 +585,7 @@ def test_recursion(shutdown_only):
     def summer(n):
         if n == 0:
             return 0
-        return n + ray.get(summer.remote(n-1))
+        return n + ray.get(summer.remote(n - 1))
 
     assert ray.get(summer.remote(10)) == sum(range(11))
 
