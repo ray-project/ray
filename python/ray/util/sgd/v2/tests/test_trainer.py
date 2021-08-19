@@ -27,6 +27,13 @@ def ray_start_2_cpus():
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
+@pytest.fixture
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
 
 @pytest.fixture
 def ray_start_2_cpus_2_gpus():
@@ -667,7 +674,7 @@ def test_run_after_user_error(ray_start_2_cpus):
     output = trainer.run(train)
     assert output == [1, 1]
 
-def test_dataset_torch(ray_start_2_cpus):
+def test_dataset_torch(ray_start_4_cpus):
     import pandas as pd
     config = TestConfig()
 

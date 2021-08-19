@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import Callable, TypeVar, List, Optional, Dict
 
 import ray
@@ -105,11 +106,25 @@ class BackendExecutor:
                     "You must call `finish_training` before "
                     "calling `start_training` again.")
 
+
         if dataset is not None:
+            # First make sure size of dataset is divisible by num_workers.
+            dataset_size = dataset.count()
+            num_workers = len(self.worker_group)
+            total_rows = math.ceil(dataset_size / num_workers) * num_workers
+            assert dataset_size <= total_rows
+            # Pad the dataset so it's divisible by ``num_workers``.
+            if dataset_size < total_rows:
+                dataset = dataset.union(dataset.limit(limit=total_rows-dataset_size))
+
+            if dataset.num_blocks() < num_workers:
+                dataset = dataset.repartition(num_blocks=num_workers)
+            print(dataset.count())
             datasets = dataset.split(
-                len(self.worker_group),
-                equal=True,
+                num_workers, equal=True,
                 locality_hints=self.worker_group.workers)
+            total_size = sum(ds.count() for ds in datasets)
+            assert total_size == total_rows, (total_size, total_rows)
         else:
             datasets = [None] * len(self.worker_group)
 
