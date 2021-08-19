@@ -8,6 +8,7 @@ import re
 import subprocess
 import stat
 import sys
+import platform
 
 from collections import defaultdict, OrderedDict
 
@@ -84,8 +85,10 @@ class Bazel(object):
         self.extra_args = ("--show_progress=no", )
 
     def _call(self, command, *args):
+        if platform.system() == 'Windows':
+            self.argv += ("--output_user_root=\"c:/tmp\"", )
         return subprocess.check_output(
-            self.argv + ("--output_user_root=\"c:/tmp\"", ) + (command, ) + args[:1] + self.extra_args + args[1:],
+            self.argv + (command, ) + args[:1] + self.extra_args + args[1:],
             stdin=subprocess.PIPE)
 
     def info(self, *args):
