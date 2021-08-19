@@ -24,7 +24,7 @@ py_test_module_list(
   ],
   size = "small",
   extra_srcs = SRCS,
-  tags = ["exclusive"],
+  tags = ["team:core", "exclusive"],
   deps = ["//:ray_lib"],
 )
 
@@ -39,6 +39,6 @@ py_test_module_list(
   ],
   size = "medium",
   extra_srcs = SRCS,
-  tags = ["exclusive"],
+  tags = ["team:core", "exclusive"],
   deps = ["//:ray_lib"],
 )

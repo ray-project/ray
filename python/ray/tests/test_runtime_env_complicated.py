@@ -22,9 +22,10 @@ from ray.workers.setup_runtime_env import (
     _resolve_install_from_source_ray_dependencies,
     _current_py_version,
 )
-from ray.test_utils import (
-    run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
 from ray._private.conda import get_conda_env_list
+from ray._private.test_utils import (run_string_as_driver,
+                                     run_string_as_driver_nonblocking,
+                                     wait_for_condition)
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray

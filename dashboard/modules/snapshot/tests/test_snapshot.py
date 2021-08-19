@@ -9,7 +9,7 @@ import requests
 
 import ray
 from ray import serve
-from ray.test_utils import (
+from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,
 )

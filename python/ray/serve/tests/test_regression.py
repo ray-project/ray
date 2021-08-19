@@ -8,7 +8,7 @@ from fastapi import FastAPI
 import ray
 from ray.exceptions import GetTimeoutError
 from ray import serve
-from ray.test_utils import SignalActor
+from ray._private.test_utils import SignalActor
 
 
 @pytest.fixture
