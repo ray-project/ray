@@ -15,6 +15,7 @@ from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.client_mode_hook import enable_client_mode
+from ray._private.test_utils import run_string_as_driver
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -606,6 +607,26 @@ def test_client_context_manager(ray_start_regular_shared, connect_to_client):
         else:
             assert client_mode_should_convert() is False
             assert ray.util.client.ray.is_connected() is False
+
+object_ref_cleanup_script = """
+import ray
+
+ray.client("localhost:50051").connect()
+
+@ray.remote
+def f():
+    return 42
+
+obj_ref = f.remote()
+"""
+
+def test_object_ref_cleanup():
+    # Checks no error output when running the script in
+    # object_ref_cleanup_script
+    # See https://github.com/ray-project/ray/issues/17968 for details
+    with ray_start_client_server():
+        result = run_string_as_driver(object_ref_cleanup_script)
+        assert result == ""
 
 
 if __name__ == "__main__":
