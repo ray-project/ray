@@ -35,9 +35,6 @@ from ray.serve.utils import logger
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
-# How often to call the control loop on the controller.
-CONTROL_LOOP_PERIOD_S = 0.1
-
 SNAPSHOT_KEY = "serve-deployments-snapshot"
 
 
@@ -360,7 +357,6 @@ class ServeController:
                         f"prev_version '{prev_version}' "
                         "does not match with the existing "
                         f"version '{existing_backend_info.version}'.")
-            logger.info(f">>>>>> Calling controller's async deploy()")
             backend_info = BackendInfo(
                 actor_def=ray.remote(
                     create_backend_replica(

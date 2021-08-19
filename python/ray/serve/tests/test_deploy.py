@@ -10,7 +10,9 @@ import requests
 import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
-from ray.serve.utils import get_random_letters, logger
+from ray.serve.utils import get_random_letters
+
+TEST_FILE_PATH = "/tmp/test_deploy.txt"
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
@@ -716,7 +718,7 @@ def test_init_args(serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_deploy_with_constructor_failure(serve_instance):
+def test_deploy_with_consistent_constructor_failure(serve_instance):
     # Test failed to deploy with total of 1 replica
     @serve.deployment(num_replicas=1)
     class ConstructorFailureDeploymentOneReplica:
@@ -741,23 +743,25 @@ def test_deploy_with_constructor_failure(serve_instance):
     with pytest.raises(RuntimeError):
         ConstructorFailureDeploymentTwoReplicas.deploy()
 
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_deploy_with_partial_constructor_failure(serve_instance):
     # Test deploy with 2 replicas but one of them failed all
     # attempts
-    test_file_path = "/tmp/deployment.txt"
-    if os.path.exists(test_file_path):
-        os.remove(test_file_path)
+    if os.path.exists(TEST_FILE_PATH):
+        os.remove(TEST_FILE_PATH)
 
     @serve.deployment(num_replicas=2)
     class PartialConstructorFailureDeployment:
         def __init__(self):
-            if not os.path.exists(test_file_path):
-                with open(test_file_path, "w") as f:
+            if not os.path.exists(TEST_FILE_PATH):
+                with open(TEST_FILE_PATH, "w") as f:
                     # Write first replica tag to local file so that it will
                     # consistently fail even retried on other actor
                     f.write(serve.get_replica_context().replica_tag)
                 raise RuntimeError("Consistently throwing on same replica.")
             else:
-                with open(test_file_path, "r") as f:
+                with open(TEST_FILE_PATH, "r") as f:
                     content = f.read()
                     if content == serve.get_replica_context().replica_tag:
                         raise RuntimeError(
@@ -769,21 +773,24 @@ def test_deploy_with_constructor_failure(serve_instance):
             return "hi"
 
     PartialConstructorFailureDeployment.deploy()
-    if os.path.exists(test_file_path):
-        os.remove(test_file_path)
+    if os.path.exists(TEST_FILE_PATH):
+        os.remove(TEST_FILE_PATH)
 
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_deploy_with_transient_constructor_failure(serve_instance):
     # Test failed to deploy with total of 2 replicas,
     # but first constructor call fails.
-    if os.path.exists(test_file_path):
-        os.remove(test_file_path)
+    if os.path.exists(TEST_FILE_PATH):
+        os.remove(TEST_FILE_PATH)
 
     @serve.deployment(num_replicas=2)
     class TransientConstructorFailureDeployment:
         def __init__(self):
-            if os.path.exists(test_file_path):
+            if os.path.exists(TEST_FILE_PATH):
                 return True
             else:
-                with open(test_file_path, "w") as f:
+                with open(TEST_FILE_PATH, "w") as f:
                     f.write("ONE")
                 raise RuntimeError("Intentionally throw on first try.")
 
@@ -791,8 +798,8 @@ def test_deploy_with_constructor_failure(serve_instance):
             return "hi"
 
     TransientConstructorFailureDeployment.deploy()
-    if os.path.exists(test_file_path):
-        os.remove(test_file_path)
+    if os.path.exists(TEST_FILE_PATH):
+        os.remove(TEST_FILE_PATH)
 
 
 def test_input_validation():

@@ -128,8 +128,8 @@ class ActorReplicaWrapper:
 
     def check_ready(self) -> ReplicaState:
         """
-        Check if current replica has started by making ray API calls on relevant
-        actor / object ref.
+        Check if current replica has started by making ray API calls on
+        relevant actor / object ref.
 
         Returns:
             state (ReplicaState):
@@ -368,15 +368,17 @@ class BackendReplica(VersionedReplica):
             # Add exponential backoff
             self._cur_retry_count += 1
             if self._cur_retry_count > REPLICA_CONSTRUCTOR_RETRY_COUNT:
-                logger.info(f"<<<< Setting BackendReplica to FAILED")
+                logger.error(f"Replica {self._replica_tag} failed to "
+                             "start after all retries.")
                 self._state = ReplicaState.FAILED_TO_START
                 return ReplicaState.FAILED_TO_START
 
             delay_secs = round(
                 (2**self._cur_retry_count + random.uniform(0, 1)), 2)
             self._next_try_timestamp = time.time() + delay_secs
-            logger.info(f"<<<< Retry conut: {self._cur_retry_count}")
-            logger.info(f"<<<< Waiting for {delay_secs} to retry...")
+            logger.error(f"Replica {self._replica_tag} failed to start on "
+                         f"try # {str(self._cur_retry_count)} . Waiting for "
+                         f"{str(delay_secs)} secs to retry...")
             self._state = ReplicaState.RETRYING
             return ReplicaState.RETRYING
         elif time.time() - self._start_time > SLOW_STARTUP_WARNING_S:
@@ -745,7 +747,6 @@ class BackendStateManager:
             GoalId, bool: The GoalId for the client to wait for and whether or
             not the backend is being updated.
         """
-        logger.info(f">>>>>> Calling deploy_backend()")
         # Ensures this method is idempotent.
         existing_info = self._backend_metadata.get(backend_tag)
         if existing_info is not None:
@@ -937,7 +938,8 @@ class BackendStateManager:
         if delta_replicas == 0:
             return False
 
-        if failed_to_start_replicas == target_replicas and target_replicas != 0:
+        if (failed_to_start_replicas == target_replicas
+                and target_replicas != 0):
             logger.error("Deployment reconfiguration failed. ")
             return False
 
@@ -1052,8 +1054,8 @@ class BackendStateManager:
                 # to bring to target running replica fully
                 completed_goals.append(
                     self._backend_goals.pop(backend_tag, None))
-                # Clear failed to start replicas as the deployment is considered
-                # done with partially fulfilled target replicas
+                # Clear failed to start replicas as the deployment is
+                # considered done with partially fulfilled target replicas
                 self._replicas[backend_tag].pop(
                     states=[ReplicaState.FAILED_TO_START])
 
@@ -1062,8 +1064,8 @@ class BackendStateManager:
                 # without any running instance.
                 failed_to_start_goals.append(
                     self._backend_goals.pop(backend_tag, None))
-                # Clear failed to start replicas as the deployment is considered
-                # failed completely with exception set
+                # Clear failed to start replicas as the deployment is
+                # considered failed completely with exception set
                 self._replicas[backend_tag].pop(
                     states=[ReplicaState.FAILED_TO_START])
                 # TODO: (jiaodong) Determine if we should delete backend or
@@ -1083,8 +1085,8 @@ class BackendStateManager:
         """
         self._scale_all_backends()
 
-        complete_goal_ids, failed_to_start_goal_ids = self._check_completed_goals(
-        )
+        (complete_goal_ids,
+         failed_to_start_goal_ids) = self._check_completed_goals()
         for goal_id in complete_goal_ids:
             self._goal_manager.complete_goal(goal_id)
         for goal_id in failed_to_start_goal_ids:
