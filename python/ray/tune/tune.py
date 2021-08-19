@@ -457,9 +457,9 @@ def run(
                 "a `ConcurrencyLimiter`. `max_concurrent_trials` will "
                 "be ignored.")
         elif max_concurrent_trials:
-            if max_concurrent_trials < 0:
+            if max_concurrent_trials < 1:
                 raise ValueError(
-                    "`max_concurrent_trials` must be non-negative, "
+                    "`max_concurrent_trials` must be greater or equal than 1, "
                     f"got {max_concurrent_trials}.")
             search_alg = ConcurrencyLimiter(
                 search_alg, max_concurrent=max_concurrent_trials)
