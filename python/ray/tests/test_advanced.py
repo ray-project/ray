@@ -13,9 +13,6 @@ import pytest
 
 import ray.cluster_utils
 
-from ray.test_utils import client_test_enabled
-from ray.test_utils import RayTestTimeoutException
-from ray.test_utils import SignalActor
 import ray._private.profiling as profiling
 from ray._private.test_utils import (client_test_enabled,
                                      RayTestTimeoutException, SignalActor)

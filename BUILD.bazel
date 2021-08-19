@@ -1380,21 +1380,7 @@ cc_test(
         "src/ray/gcs/gcs_server/test/raylet_based_actor_scheduler_test.cc",
     ],
     copts = COPTS,
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "raylet_based_actor_scheduler_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/raylet_based_actor_scheduler_test.cc",
-    ],
-    copts = COPTS,
+    tags = ["team:core"],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
