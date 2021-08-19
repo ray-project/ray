@@ -65,8 +65,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
        shapes_it != tasks_to_schedule_.end();) {
     auto &work_queue = shapes_it->second;
     bool is_infeasible = false;
-    for (auto work_it = work_queue.begin();
-         work_it != work_queue.end();) {
+    for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
       // Check every task in task_to_schedule queue to see
       // whether it can be scheduled. This avoids head-of-line
       // blocking where a task which cannot be scheduled because
@@ -276,8 +275,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     auto &dispatch_queue = shapes_it->second;
     auto max_running_tasks = MaxRunningTasksPerSchedulingClass(scheduling_class);
     bool is_infeasible = false;
-    for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end() &&
-           num_running_tasks_by_sched_cls_[scheduling_class] < max_running_tasks;) {
+    for (auto work_it = dispatch_queue.begin();
+         work_it != dispatch_queue.end() &&
+         num_running_tasks_by_sched_cls_[scheduling_class] < max_running_tasks;) {
       auto &work = *work_it;
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();

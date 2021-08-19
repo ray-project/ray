@@ -152,8 +152,8 @@ void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::WorkerAddress addr,
     scheduling_key_entries_.erase(scheduling_key);
   }
 
-  auto status =
-    lease_entry.lease_client->ReturnWorker(addr.port, addr.worker_id, was_error, reuse_worker);
+  auto status = lease_entry.lease_client->ReturnWorker(addr.port, addr.worker_id,
+                                                       was_error, reuse_worker);
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
   }

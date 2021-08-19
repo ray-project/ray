@@ -152,7 +152,8 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] addr The address of the worker.
   /// \param[in] was_error Whether the task failed to be submitted.
   void ReturnWorker(const rpc::WorkerAddress addr, bool was_error,
-                    const SchedulingKey &scheduling_key, bool reuse_worker=true) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                    const SchedulingKey &scheduling_key, bool reuse_worker = true)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Check that the scheduling_key_entries_ hashmap is empty.
   inline bool CheckNoSchedulingKeyEntries() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
