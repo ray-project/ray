@@ -6,7 +6,7 @@
 set -eo pipefail
 if [ -z "${TRAVIS_PULL_REQUEST-}" ] || [ -n "${OSTYPE##darwin*}" ]; then set -ux; fi
 
-if [ "${OSTYPE}" = msys ]; then OUTDIR='--output_user_root="c:/tmp"'; else OUTDIR=''; fi
+if [ "${OSTYPE}" = msys ]; then OUTDIR='--output_user_root=c:/tmp'; else OUTDIR=''; fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/../.."

@@ -86,7 +86,7 @@ class Bazel(object):
 
     def _call(self, command, *args):
         if platform.system() == 'Windows':
-            self.argv += ("--output_user_root=\"c:/tmp\"", )
+            self.argv += ("--output_user_root=c:/tmp", )
         return subprocess.check_output(
             self.argv + (command, ) + args[:1] + self.extra_args + args[1:],
             stdin=subprocess.PIPE)
