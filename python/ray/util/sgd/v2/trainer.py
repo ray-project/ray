@@ -168,7 +168,7 @@ class Trainer:
                     callback.handle_result(intermediate_result)
 
             assert iterator.is_finished()
-            return iterator.get_returns()
+            return iterator.get_final_results()
         finally:
             for callback in callbacks:
                 callback.finish_training(error=finished_with_errors)
@@ -201,7 +201,7 @@ class Trainer:
                 latest_ckpt = trainer.get_latest_checkpoint()
 
             assert iterator.is_finished()
-            model = iterator.get_returns()[0]
+            model = iterator.get_fin()[0]
 
         Args:
             train_func (Callable): The training function to execute.
@@ -217,84 +217,10 @@ class Trainer:
         """
         train_func = self._get_train_func(train_func, config)
 
-        class SGDIterator:
-            def __init__(self, backend_executor):
-                self._executor = backend_executor
-                self._run_with_error_handling(
-                    lambda: self._executor.start_training(train_func,
-                                                          checkpoint))
-
-                self._final_results = None
-                self._finished_training = False
-
-            def __iter__(self):
-                return self
-
-            def _run_with_error_handling(self, func):
-                try:
-                    return func()
-                except InactiveWorkerGroupError:
-                    raise RuntimeError(
-                        "This Trainer is not active. It is either shutdown "
-                        "already or never started in the first place. "
-                        "Either create a new Trainer or start this one.") \
-                        from None
-                except SGDBackendError:
-                    raise RuntimeError(
-                        "Training failed. You should not be seeing "
-                        "this error and this is a bug. Please create "
-                        "a new issue at "
-                        "https://github.com/ray-project/ray.") from None
-
-            def __next__(self):
-                if self.is_finished():
-                    raise StopIteration
-                next_results = self._run_with_error_handling(
-                    self._executor.fetch_next_result)
-                if next_results is None:
-                    try:
-                        self._final_results = \
-                            self._run_with_error_handling(
-                                self._executor.finish_training)
-                    finally:
-                        self._finished_training = True
-                    raise StopIteration
-                else:
-                    return next_results
-
-            def is_finished(self):
-                return self._finished_training
-
-            def get_final_results(self, force=False):
-                """Gets the training func return values from each worker.
-
-                If ``force`` is ``True``, then immediately finish training
-                and return even if all the intermediate results have not
-                been processed yet. Else, intermediate results must be
-                processed before obtaining the final results. Defaults to
-                False.
-                """
-
-                if not self.is_finished():
-                    assert self._final_results is None
-                    if force:
-                        try:
-                            self._final_results = \
-                                self._run_with_error_handling(
-                                    self._executor.finish_training)
-                        finally:
-                            self._finished_training = True
-                    else:
-                        logger.info("Please finish iterating through the "
-                                    "intermediate results before getting the"
-                                    "final returns. If you would like "
-                                    "training to finish immediately and get "
-                                    "the final returns, then set "
-                                    "`force=True`.")
-
-                return self._final_results
-
-        return SGDIterator(backend_executor=self._executor)
+        return SGDIterator(
+            backend_executor=self._executor,
+            train_func=train_func,
+            checkpoint=checkpoint)
 
     def _get_train_func(
             self,
@@ -380,6 +306,84 @@ class Trainer:
         return _create_tune_trainable(train_func, self._backend,
                                       self._num_workers, self._use_gpu,
                                       self._resources_per_worker)
+
+
+class SGDIterator:
+    """An iterator over SGD results. Returned by ``trainer.run_iterator``."""
+
+    def __init__(self, backend_executor, train_func, checkpoint):
+        self._executor = backend_executor
+        self._run_with_error_handling(
+            lambda: self._executor.start_training(train_func, checkpoint))
+
+        self._final_results = None
+        self._finished_training = False
+
+    def __iter__(self):
+        return self
+
+    def _run_with_error_handling(self, func):
+        try:
+            return func()
+        except InactiveWorkerGroupError:
+            raise RuntimeError(
+                "This Trainer is not active. It is either shutdown "
+                "already or never started in the first place. "
+                "Either create a new Trainer or start this one.") \
+                from None
+        except SGDBackendError:
+            raise RuntimeError("Training failed. You should not be seeing "
+                               "this error and this is a bug. Please create "
+                               "a new issue at "
+                               "https://github.com/ray-project/ray.") from None
+
+    def __next__(self):
+        if self.is_finished():
+            raise StopIteration
+        next_results = self._run_with_error_handling(
+            self._executor.fetch_next_result)
+        if next_results is None:
+            try:
+                self._final_results = \
+                    self._run_with_error_handling(
+                        self._executor.finish_training)
+            finally:
+                self._finished_training = True
+            raise StopIteration
+        else:
+            return next_results
+
+    def is_finished(self):
+        return self._finished_training
+
+    def get_final_results(self, force=False):
+        """Gets the training func return values from each worker.
+
+        If ``force`` is ``True``, then immediately finish training
+        and return even if all the intermediate results have not
+        been processed yet. Else, intermediate results must be
+        processed before obtaining the final results. Defaults to
+        False.
+        """
+
+        if not self.is_finished():
+            assert self._final_results is None
+            if force:
+                try:
+                    self._final_results = \
+                        self._run_with_error_handling(
+                            self._executor.finish_training)
+                finally:
+                    self._finished_training = True
+            else:
+                logger.info("Please finish iterating through the "
+                            "intermediate results before getting the"
+                            "final returns. If you would like "
+                            "training to finish immediately and get "
+                            "the final returns, then set "
+                            "`force=True`.")
+
+        return self._final_results
 
 
 def _create_tune_trainable(train_func, backend, num_workers, use_gpu,

@@ -24,7 +24,7 @@ def main(num_workers=1, use_gpu=False):
         first_worker_result = intermediate_result[0]
         mlflow.log_metric("loss", first_worker_result["loss"])
 
-    print("Full losses for rank 0 worker: ", iterator.get_returns())
+    print("Full losses for rank 0 worker: ", iterator.get_final_results())
 
 
 if __name__ == "__main__":

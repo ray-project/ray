@@ -238,7 +238,7 @@ def test_run_iterator(ray_start_2_cpus):
 
     assert count == 3
     assert iterator.is_finished()
-    assert iterator.get_returns() == [1, 1]
+    assert iterator.get_final_results() == [1, 1]
 
     with pytest.raises(StopIteration):
         next(iterator)
@@ -256,8 +256,8 @@ def test_run_iterator_returns(ray_start_2_cpus):
     trainer.start()
     iterator = trainer.run_iterator(train_func)
 
-    assert iterator.get_returns() is None
-    assert iterator.get_returns(force=True) == [1, 1]
+    assert iterator.get_final_results() is None
+    assert iterator.get_final_results(force=True) == [1, 1]
 
     with pytest.raises(StopIteration):
         next(iterator)
@@ -276,7 +276,7 @@ def test_run_iterator_error(ray_start_2_cpus):
     with pytest.raises(NotImplementedError):
         next(iterator)
 
-    assert iterator.get_returns() is None
+    assert iterator.get_final_results() is None
     assert iterator.is_finished()
 
 
