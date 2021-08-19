@@ -451,11 +451,19 @@ def run(
             max_concurrent=max_concurrent_trials or 0)
     else:
         if isinstance(search_alg, ConcurrencyLimiter):
-            logger.warning(
-                "You have specified `max_concurrent_trials="
-                f"{max_concurrent_trials}`, but the `search_alg` is already "
-                "a `ConcurrencyLimiter`. `max_concurrent_trials` will "
-                "be ignored.")
+            if search_alg.max_concurrent != max_concurrent_trials:
+                raise ValueError(
+                    "You have specified `max_concurrent_trials="
+                    f"{max_concurrent_trials}`, but the `search_alg` is "
+                    "already a `ConcurrencyLimiter` with `max_concurrent="
+                    f"{search_alg.max_concurrent}. FIX THIS by setting "
+                    "`max_concurrent_trials=None`.")
+            else:
+                logger.warning(
+                    "You have specified `max_concurrent_trials="
+                    f"{max_concurrent_trials}`, but the `search_alg` is "
+                    "already a `ConcurrencyLimiter`. `max_concurrent_trials` "
+                    "will  be ignored.")
         elif max_concurrent_trials:
             if max_concurrent_trials < 1:
                 raise ValueError(
