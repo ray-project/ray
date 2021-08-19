@@ -1163,3 +1163,15 @@ Full configuration
 
         .. literalinclude:: ../../../python/ray/autoscaler/gcp/example-full.yaml
             :language: yaml
+
+TPU Configuration
+~~~~~~~~~~~~~~~~~
+
+It is possible to use `TPU VMs <https://cloud.google.com/tpu/docs/users-guide-tpu-vm>`_ on GCP. Currently, TPU pods are not supported.
+
+.. tabs::
+
+    .. group-tab:: GCP
+
+        .. literalinclude:: ../../../python/ray/autoscaler/gcp/tpu.yaml
+            :language: yaml
