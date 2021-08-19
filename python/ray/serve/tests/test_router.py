@@ -12,7 +12,7 @@ from ray.serve.config import BackendConfig
 from ray.serve.controller import TrafficPolicy
 from ray.serve.router import Query, ReplicaSet, RequestMetadata, EndpointRouter
 from ray.serve.utils import get_random_letters
-from ray.test_utils import SignalActor
+from ray._private.test_utils import SignalActor
 
 pytestmark = pytest.mark.asyncio
 

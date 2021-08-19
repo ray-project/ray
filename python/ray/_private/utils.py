@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 
 import ray
-import ray.gcs_utils
+import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
 
 # Import psutil after ray so the packaged version is used.
@@ -134,9 +134,9 @@ def push_error_to_driver_through_redis(redis_client,
     assert isinstance(job_id, ray.JobID)
     # Do everything in Python and through the Python Redis client instead
     # of through the raylet.
-    error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
-                                                       message, time.time())
-    pubsub_msg = ray.gcs_utils.PubSubMessage()
+    error_data = gcs_utils.construct_error_message(job_id, error_type, message,
+                                                   time.time())
+    pubsub_msg = gcs_utils.PubSubMessage()
     pubsub_msg.id = job_id.binary()
     pubsub_msg.data = error_data
     redis_client.publish("ERROR_INFO:" + job_id.hex(),
@@ -1050,8 +1050,8 @@ def get_wheel_filename(
                                               " '37', or '38'")
 
     os_strings = {
-        "darwin": "macosx_10_13_x86_64"
-        if py_version == "38" else "macosx_10_13_intel",
+        "darwin": "macosx_10_15_x86_64"
+        if py_version == "38" else "macosx_10_15_intel",
         "linux": "manylinux2014_x86_64",
         "win32": "win_amd64"
     }

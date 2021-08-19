@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-from ray.test_utils import (
+from ray._private.test_utils import (
     dicts_equal,
     wait_for_pid_to_exit,
     wait_for_condition,

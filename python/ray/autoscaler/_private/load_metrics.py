@@ -10,7 +10,7 @@ import ray._private.services as services
 from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES,\
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 from ray.autoscaler._private.util import add_resources, freq_of_dicts
-from ray.gcs_utils import PlacementGroupTableData
+from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.resource_demand_scheduler import \
     NodeIP, ResourceDict
 from ray.core.generated.common_pb2 import PlacementStrategy

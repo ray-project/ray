@@ -296,11 +296,16 @@ _bazel_build_before_install() {
   fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
 
-  # Build in debug mode if RAY_DEBUG_BUILD=1
-  if [ -z "${RAY_DEBUG_BUILD-}" ] || [ "${RAY_DEBUG_BUILD}" -ne "1" ]; then
+  if [ -z "${RAY_DEBUG_BUILD-}" ]; then
     bazel build "${target}"
-  else
+  elif [ "${RAY_DEBUG_BUILD}" = "asan" ]; then
+    # bazel build --config asan "${target}"
+    echo "Not needed"
+  elif [ "${RAY_DEBUG_BUILD}" = "debug" ]; then
     bazel build --config debug "${target}"
+  else
+    echo "Invalid config given"
+    exit 1
   fi
 }
 
@@ -449,6 +454,12 @@ _lint() {
 
     # lint copyright
     lint_copyright
+
+    # lint test script
+    pushd "${WORKSPACE_DIR}"
+       bazel query 'kind("cc_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
+       bazel query 'kind("py_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
+    popd
   fi
 }
 
