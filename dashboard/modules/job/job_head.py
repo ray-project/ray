@@ -6,8 +6,7 @@ import aiohttp.web
 from aioredis.pubsub import Receiver
 from grpc.experimental import aio as aiogrpc
 
-import ray
-import ray.gcs_utils
+import ray._private.gcs_utils as gcs_utils
 import ray.new_dashboard.utils as dashboard_utils
 from ray.new_dashboard.modules.job import job_consts
 from ray.new_dashboard.modules.job.job_description import JobDescription
@@ -139,8 +138,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         async for sender, msg in receiver.iter():
             try:
                 _, data = msg
-                pubsub_message = ray.gcs_utils.PubSubMessage.FromString(data)
-                message = ray.gcs_utils.JobTableData.FromString(
+                pubsub_message = gcs_utils.PubSubMessage.FromString(data)
+                message = gcs_utils.JobTableData.FromString(
                     pubsub_message.data)
                 job_table_data = job_table_data_to_dict(message)
                 job_id = job_table_data["jobId"]

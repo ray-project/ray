@@ -11,7 +11,7 @@ def to_dict_key(key: str):
 
 
 if __name__ == "__main__":
-    from ray.ray_perf import main
+    from ray._private.ray_perf import main
     results = main() or []
 
     result_dict = {

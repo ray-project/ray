@@ -23,6 +23,7 @@
 #include "ray/object_manager/plasma/eviction_policy.h"
 #include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
+#include "ray/object_manager/plasma/stats_collector.h"
 
 namespace plasma {
 
@@ -136,6 +137,7 @@ class ObjectLifecycleManager {
 
  private:
   friend struct ObjectLifecycleManagerTest;
+  friend struct ObjectStatsCollectorTest;
   FRIEND_TEST(ObjectLifecycleManagerTest, DeleteFailure);
   FRIEND_TEST(ObjectLifecycleManagerTest, RemoveReferenceOneRefEagerlyDeletion);
 
@@ -149,6 +151,8 @@ class ObjectLifecycleManager {
 
   // Total bytes of the objects whose references are greater than 0.
   int64_t num_bytes_in_use_;
+
+  ObjectStatsCollector stats_collector_;
 };
 
 }  // namespace plasma

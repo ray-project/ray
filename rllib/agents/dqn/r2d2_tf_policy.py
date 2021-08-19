@@ -27,7 +27,7 @@ tf1, tf, tfv = try_import_tf()
 def build_r2d2_model(policy: Policy, obs_space: gym.spaces.Space,
                      action_space: gym.spaces.Space, config: TrainerConfigDict
                      ) -> Tuple[ModelV2, ActionDistribution]:
-    """Build q_model and target_q_model for DQN
+    """Build q_model and target_model for DQN
 
     Args:
         policy (Policy): The policy, which will use the model for optimization.
@@ -38,7 +38,7 @@ def build_r2d2_model(policy: Policy, obs_space: gym.spaces.Space,
     Returns:
         q_model
             Note: The target q model will not be returned, just assigned to
-            `policy.target_q_model`.
+            `policy.target_model`.
     """
 
     # Create the policy's models.
@@ -88,7 +88,7 @@ def r2d2_loss(policy: Policy, model, _,
     # Target Q-network evaluation (at t+1).
     q_target, _, _, _ = compute_q_values(
         policy,
-        policy.target_q_model,
+        policy.target_model,
         train_batch,
         state_batches=state_batches,
         seq_lens=train_batch.get("seq_lens"),
@@ -96,7 +96,7 @@ def r2d2_loss(policy: Policy, model, _,
         is_training=True)
 
     if not hasattr(policy, "target_q_func_vars"):
-        policy.target_q_func_vars = policy.target_q_model.variables()
+        policy.target_q_func_vars = policy.target_model.variables()
 
     actions = tf.cast(train_batch[SampleBatch.ACTIONS], tf.int64)
     dones = tf.cast(train_batch[SampleBatch.DONES], tf.float32)

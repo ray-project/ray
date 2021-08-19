@@ -7,7 +7,7 @@ import redis
 import ray
 from ray import ray_constants
 from ray import cloudpickle as pickle
-from ray import profiling
+import ray._private.profiling as profiling
 
 import logging
 

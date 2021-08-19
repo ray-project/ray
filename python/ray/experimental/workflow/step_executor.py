@@ -8,7 +8,7 @@ from ray._private import signature
 
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import recovery
-from ray.experimental.workflow.storage import DataLoadError
+from ray.experimental.workflow.storage import KeyNotFoundError
 from ray.experimental.workflow.workflow_context import get_step_status_info
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import workflow_storage
@@ -74,7 +74,7 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
             wf_store = workflow_storage.get_workflow_storage()
             try:
                 output = wf_store.load_step_output(workflow_ref.step_id)
-            except DataLoadError:
+            except KeyNotFoundError:
                 current_step_id = workflow_context.get_current_step_id()
                 logger.warning("Failed to get the output of step "
                                f"{workflow_ref.step_id}. Trying to resume it. "
