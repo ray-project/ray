@@ -28,7 +28,8 @@ class RayError(Exception):
             try:
                 return pickle.loads(ray_exception.serialized_exception)
             except Exception as e:
-                raise RuntimeError("Failed to unpickle serialized exception") from e
+                raise RuntimeError(
+                    "Failed to unpickle serialized exception") from e
         else:
             return CrossLanguageError(ray_exception)
 
