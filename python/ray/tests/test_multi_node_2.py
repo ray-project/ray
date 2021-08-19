@@ -321,7 +321,7 @@ def test_multi_node_pgs(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes(2)
-
+    print("addr", cluster.address)
     ray.init(address=cluster.address)
 
     pgs = [ray.util.placement_group([{"CPU": 1}]) for _ in range(4)]

@@ -1,5 +1,6 @@
 from typing import List, Tuple, Dict, Any, Optional
 from ray.job_config import JobConfig
+from ray._private.client_mode_hook import _explicitly_disable_client_mode, _explicitly_enable_client_mode
 import os
 import sys
 import logging
@@ -21,7 +22,7 @@ class _Context:
         self._connected_with_init = False
         self._inside_client_test = False
 
-    def connect(self,
+    def _connect(self,
                 conn_str: str,
                 job_config: JobConfig = None,
                 secure: bool = False,
@@ -57,7 +58,7 @@ class _Context:
         if not self._inside_client_test:
             # If we're calling a client connect specifically and we're not
             # currently in client mode, ensure we are.
-            ray._private.client_mode_hook._explicitly_enable_client_mode()
+            _explicitly_enable_client_mode()
         if namespace is not None:
             job_config = job_config or JobConfig()
             job_config.set_ray_namespace(namespace)
@@ -81,7 +82,7 @@ class _Context:
             self._register_serializers()
             return conn_info
         except Exception:
-            self.disconnect()
+            self._disconnect()
             raise
 
     def _register_serializers(self):
@@ -116,7 +117,7 @@ class _Context:
             else:
                 raise RuntimeError(msg)
 
-    def disconnect(self):
+    def _disconnect(self):
         """Disconnect the Ray Client.
         """
         if self.client_worker is not None:
@@ -125,7 +126,7 @@ class _Context:
 
     # remote can be called outside of a connection, which is why it
     # exists on the same API layer as connect() itself.
-    def remote(self, *args, **kwargs):
+    def _remote(self, *args, **kwargs):
         """remote is the hook stub passed on to replace `ray.remote`.
 
         This sets up remote functions or actors, as the decorator,
@@ -138,7 +139,7 @@ class _Context:
         return self.api.remote(*args, **kwargs)
 
     def __getattr__(self, key: str):
-        if self.is_connected():
+        if self._is_connected():
             return getattr(self.api, key)
         elif key in ["is_initialized", "_internal_kv_initialized"]:
             # Client is not connected, thus Ray is not considered initialized.
@@ -147,24 +148,24 @@ class _Context:
             raise Exception("Ray Client is not connected. "
                             "Please connect by calling `ray.connect`.")
 
-    def is_connected(self) -> bool:
+    def _is_connected(self) -> bool:
         if self.client_worker is None:
             return False
         return self.client_worker.is_connected()
 
-    def init(self, *args, **kwargs):
+    def _init(self, *args, **kwargs):
         if self._server is not None:
             raise Exception("Trying to start two instances of ray via client")
         import ray.util.client.server.server as ray_client_server
         server_handle, address_info = ray_client_server.init_and_serve(
             "localhost:50051", *args, **kwargs)
         self._server = server_handle.grpc_server
-        self.connect("localhost:50051")
+        self._connect("localhost:50051")
         self._connected_with_init = True
         return address_info
 
-    def shutdown(self, _exiting_interpreter=False):
-        self.disconnect()
+    def _shutdown(self, _exiting_interpreter=False):
+        self._disconnect()
         import ray.util.client.server.server as ray_client_server
         if self._server is None:
             return
@@ -206,7 +207,7 @@ class RayAPIStub:
         return old_cxt
 
     def connect(self, *args, **kw_args):
-        conn = self.get_context().connect(*args, **kw_args)
+        conn = self.get_context()._connect(*args, **kw_args)
         global _lock, _all_contexts
         with _lock:
             _all_contexts.add(self._cxt.handler)
@@ -217,33 +218,41 @@ class RayAPIStub:
         with _lock:
             if _default_context == self._cxt.handler:
                 for cxt in _all_contexts:
-                    cxt.disconnect(*args, **kw_args)
+                    cxt._disconnect(*args, **kw_args)
                 _all_contexts = set()
             else:
-                self.get_context().disconnect()
+                self.get_context()._disconnect(*args, **kw_args)
+
+            if self._cxt.handler in _all_contexts:
                 _all_contexts.remove(self._cxt.handler)
 
     def remote(self, *args, **kwargs):
-        return self.get_context().remote(*args, **kwargs)
+        return self.get_context()._remote(*args, **kwargs)
 
-    def __getattr__(self, *args, **kwargs):
-        return self.get_context().__getattr__(*args, **kwargs)
+    def __getattr__(self, name):
+        try:
+            return self.__getattribute__(name)
+        except Exception:
+            return self.get_context().__getattr__(name)
 
     def is_connected(self, *args, **kwargs):
-        return self.get_context().is_connected(*args, **kwargs)
+        return self.get_context()._is_connected(*args, **kwargs)
 
     def init(self, *args, **kwargs):
-        return self.get_context().init(*args, **kwargs)
+        return self.get_context()._init(*args, **kwargs)
 
     def shutdown(self, *args, **kwargs):
         global _lock, _all_contexts
         with _lock:
             if _default_context == self._cxt.handler:
                 for cxt in _all_contexts:
-                    cxt.shutdown(*args, **kwargs)
+                    cxt._shutdown(*args, **kwargs)
                 _all_contexts = set()
+                _explicitly_disable_client_mode()
             else:
-                self.get_context().shutdown()
+                self.get_context()._shutdown(*args, **kwargs)
+
+            if self._cxt.handler in _all_contexts:
                 _all_contexts.remove(self._cxt.handler)
 
 

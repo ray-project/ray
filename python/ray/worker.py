@@ -936,7 +936,6 @@ def init(
         # Rewrite the URI. Note the package isn't uploaded to the URI until
         # later in the connect
         runtime_env_pkg.rewrite_runtime_env_uris(job_config)
-
     connect(
         _global_node,
         mode=driver_mode,

@@ -37,8 +37,7 @@ class ClientContext:
         return self
 
     def __exit__(self, *exc) -> None:
-        if self.ray_cli is None or ray.util.client.is_main_cli():
-            self.disconnect()
+        self.disconnect()
         if self.ray_cli is not None:
             self.ray_cli = ray.util.client.ray.set_context(self.ray_cli)
 
@@ -50,7 +49,6 @@ class ClientContext:
         if ray.util.client.ray.is_connected():
             # This is only a client connected to a server.
             ray.util.client_connect.disconnect()
-            ray._private.client_mode_hook._explicitly_disable_client_mode()
         elif ray.worker.global_worker.node is None:
             # Already disconnected.
             return
