@@ -263,7 +263,7 @@ class Trainer:
             def is_finished(self):
                 return self._finished_training
 
-            def get_returns(self, force=False):
+            def get_final_results(self, force=False):
                 """Gets the training func return values from each worker.
 
                 If ``force`` is ``True``, then immediately finish training
