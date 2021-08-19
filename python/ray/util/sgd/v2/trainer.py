@@ -156,7 +156,9 @@ class Trainer:
 
         try:
             iterator = self.run_iterator(
-                train_func=train_func, config=config, checkpoint=checkpoint,
+                train_func=train_func,
+                config=config,
+                checkpoint=checkpoint,
                 checkpoint_strategy=checkpoint_strategy)
             for intermediate_result in iterator:
                 for callback in callbacks:
@@ -220,8 +222,7 @@ class Trainer:
             backend_executor=self._executor,
             train_func=train_func,
             checkpoint=checkpoint,
-            checkpoint_strategy=checkpoint_strategy
-        )
+            checkpoint_strategy=checkpoint_strategy)
 
     def _get_train_func(
             self,
@@ -352,13 +353,15 @@ class Trainer:
 class SGDIterator:
     """An iterator over SGD results. Returned by ``trainer.run_iterator``."""
 
-    def __init__(self, backend_executor: BackendExecutor, train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-                 checkpoint: Optional[Dict],
-                 checkpoint_strategy: Optional[CheckpointStrategy]):
+    def __init__(
+            self, backend_executor: BackendExecutor,
+            train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
+            checkpoint: Optional[Dict],
+            checkpoint_strategy: Optional[CheckpointStrategy]):
         self._executor = backend_executor
         self._run_with_error_handling(
-            lambda: self._executor.start_training(train_func, checkpoint,
-                                                  checkpoint_strategy))
+            lambda: self._executor.start_training(train_func, checkpoint, checkpoint_strategy)
+        )
 
         self._final_results = None
         self._finished_training = False
@@ -400,7 +403,7 @@ class SGDIterator:
     def is_finished(self) -> bool:
         return self._finished_training
 
-    def get_final_results(self, force:bool=False) -> List[T]:
+    def get_final_results(self, force: bool = False) -> List[T]:
         """Gets the training func return values from each worker.
 
         If ``force`` is ``True``, then immediately finish training

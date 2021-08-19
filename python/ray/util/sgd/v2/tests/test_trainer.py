@@ -1,8 +1,5 @@
 import time
-<<<<<<< HEAD
-=======
 from pathlib import Path
->>>>>>> 36c26578a7ba2b148b7ce10efeef750b82d547da
 from unittest.mock import patch
 
 import pytest
@@ -10,10 +7,7 @@ import ray
 import ray.util.sgd.v2 as sgd
 import tensorflow as tf
 import torch
-<<<<<<< HEAD
 
-=======
->>>>>>> 36c26578a7ba2b148b7ce10efeef750b82d547da
 from ray.util.sgd.v2 import Trainer
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface, \
     BackendExecutor
