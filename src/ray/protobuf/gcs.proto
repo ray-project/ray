@@ -293,6 +293,8 @@ message JobConfig {
   string serialized_runtime_env = 7;
   // An opaque kv store for job related metadata.
   map<string, string> metadata = 8;
+  // Indicates whether to prepare runtime env eagerly before the workers are leased.
+  bool prepare_runtime_env_eagerly = 9;
 }
 
 message JobTableData {

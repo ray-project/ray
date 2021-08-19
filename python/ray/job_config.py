@@ -21,6 +21,8 @@ class JobConfig:
         runtime_env (dict): A runtime environment dictionary (see
             ``runtime_env.py`` for detailed documentation).
         client_job (bool): A boolean represent the source of the job.
+        prepare_runtime_env_eagerly(bool) : A boolean indicates whether to
+            prepare runtime env eagerly before the workers are leased.
     """
 
     def __init__(self,
@@ -31,7 +33,8 @@ class JobConfig:
                  runtime_env=None,
                  client_job=False,
                  metadata=None,
-                 ray_namespace=None):
+                 ray_namespace=None,
+                 prepare_runtime_env_eagerly=False):
         if worker_env is None:
             self.worker_env = dict()
         else:
@@ -47,6 +50,7 @@ class JobConfig:
         self.client_job = client_job
         self.metadata = metadata or {}
         self.ray_namespace = ray_namespace
+        self.prepare_runtime_env_eagerly = prepare_runtime_env_eagerly
         self.set_runtime_env(runtime_env)
 
     def set_metadata(self, key: str, value: str) -> None:
@@ -95,6 +99,8 @@ class JobConfig:
                 self.get_serialized_runtime_env()
             for k, v in self.metadata.items():
                 self._cached_pb.metadata[k] = v
+            self._cached_pb.prepare_runtime_env_eagerly = \
+                self.prepare_runtime_env_eagerly
         return self._cached_pb
 
     def get_runtime_env_uris(self):

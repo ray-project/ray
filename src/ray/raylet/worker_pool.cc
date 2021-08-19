@@ -482,7 +482,28 @@ void WorkerPool::MarkPortAsFree(int port) {
 }
 
 void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
+  RAY_LOG(INFO) << "HandleJobStarted " << job_config.serialized_runtime_env() << ", "
+                << job_config.prepare_runtime_env_eagerly();
   all_jobs_[job_id] = job_config;
+  if (job_config.prepare_runtime_env_eagerly() && job_config.has_runtime_env()) {
+    auto const runtime_env = job_config.serialized_runtime_env();
+    CreateRuntimeEnv(
+        runtime_env, job_id,
+        [job_id, runtime_env](bool successful,
+                              const std::string &serialized_runtime_env_context) {
+          if (successful) {
+            RAY_LOG(INFO) << "[Eagerly] Create runtime env successful for job " << job_id
+                          << ". The runtime environment was " << runtime_env << "."
+                          << "The result context was " << serialized_runtime_env_context
+                          << ".";
+
+          } else {
+            RAY_LOG(ERROR) << "[Eagerly] Couldn't create a runtime environment for job "
+                           << job_id << ". The runtime environment was " << runtime_env
+                           << ".";
+          }
+        });
+  }
 }
 
 void WorkerPool::HandleJobFinished(const JobID &job_id) {
@@ -985,21 +1006,17 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         dynamic_options = task_spec.DynamicWorkerOptions();
       }
 
-      // create runtime env.
       if (task_spec.HasRuntimeEnv()) {
-        agent_manager_->CreateRuntimeEnv(
-            task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, callback, &state, task_spec, dynamic_options,
-             allocated_instances_serialized_json](
-                bool success, const std::string &serialized_runtime_env_context) {
-              if (success) {
+        // create runtime env.
+        CreateRuntimeEnv(
+            task_spec.SerializedRuntimeEnv(), task_spec.JobId(),
+            [this, start_worker_process_fn, callback, &state, task_spec, dynamic_options](
+                bool successful, const std::string &serialized_runtime_env_context) {
+              if (successful) {
                 start_worker_process_fn(task_spec, state, dynamic_options, true,
                                         task_spec.SerializedRuntimeEnv(),
                                         serialized_runtime_env_context, callback);
               } else {
-                RAY_LOG(WARNING) << "Couldn't create a runtime environment for task "
-                                 << task_spec.TaskId() << ". The runtime environment was "
-                                 << task_spec.SerializedRuntimeEnv() << ".";
                 callback(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed);
               }
             });
@@ -1045,18 +1062,15 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       // Start a new worker process.
       if (task_spec.HasRuntimeEnv()) {
         // create runtime env.
-        agent_manager_->CreateRuntimeEnv(
-            task_spec.JobId(), task_spec.SerializedRuntimeEnv(),
-            [start_worker_process_fn, callback, &state, task_spec](
+        CreateRuntimeEnv(
+            task_spec.SerializedRuntimeEnv(), task_spec.JobId(),
+            [this, start_worker_process_fn, callback, &state, task_spec](
                 bool successful, const std::string &serialized_runtime_env_context) {
               if (successful) {
                 start_worker_process_fn(task_spec, state, {}, false,
                                         task_spec.SerializedRuntimeEnv(),
                                         serialized_runtime_env_context, callback);
               } else {
-                RAY_LOG(WARNING) << "Couldn't create a runtime environment for task "
-                                 << task_spec.TaskId() << ". The runtime environment was "
-                                 << task_spec.SerializedRuntimeEnv() << ".";
                 callback(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed);
               }
             });
@@ -1340,6 +1354,47 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
     RAY_LOG(FATAL) << "Unknown worker type: " << worker_type;
   }
   UNREACHABLE;
+}
+
+void WorkerPool::SetCreatedRuntimeEnvContext(
+    const std::string &serialized_runtime_env,
+    const std::string &serialized_runtime_env_context) {
+  created_runtime_envs.emplace(serialized_runtime_env, serialized_runtime_env_context);
+}
+
+std::string WorkerPool::GetCreatedRuntimeEnvContext(
+    const std::string &serialized_runtime_env) {
+  auto it = created_runtime_envs.find(serialized_runtime_env);
+  if (it != created_runtime_envs.end()) {
+    return it->second;
+  }
+  return "";
+}
+
+void WorkerPool::CreateRuntimeEnv(
+    const std::string &serialized_runtime_env, const JobID &job_id,
+    std::function<void(bool, const std::string &)> callback) {
+  auto runtime_env_context = GetCreatedRuntimeEnvContext(serialized_runtime_env);
+  if (runtime_env_context.empty()) {
+    // create runtime env.
+    agent_manager_->CreateRuntimeEnv(
+        job_id, serialized_runtime_env,
+        [this, job_id, serialized_runtime_env, callback](
+            bool successful, const std::string &serialized_runtime_env_context) {
+          if (successful) {
+            SetCreatedRuntimeEnvContext(serialized_runtime_env,
+                                        serialized_runtime_env_context);
+            callback(true, serialized_runtime_env_context);
+          } else {
+            RAY_LOG(WARNING) << "Couldn't create a runtime environment for job " << job_id
+                             << ". The runtime environment was " << serialized_runtime_env
+                             << ".";
+            callback(false, "");
+          }
+        });
+  } else {
+    callback(true, runtime_env_context);
+  }
 }
 
 }  // namespace raylet

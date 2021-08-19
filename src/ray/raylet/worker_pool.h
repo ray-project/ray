@@ -593,6 +593,14 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const PopWorkerStatus &status, bool *found /* output */,
       bool *worker_used /* output */, TaskID *task_id /* output */);
 
+  void SetCreatedRuntimeEnvContext(const std::string &serialized_runtime_env,
+                                   const std::string &serialized_runtime_env_context);
+
+  std::string GetCreatedRuntimeEnvContext(const std::string &serialized_runtime_env);
+
+  void CreateRuntimeEnv(const std::string &serialized_runtime_env, const JobID &job_id,
+                        std::function<void(bool, const std::string &)> callback);
+
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
   /// Node ID of the current node.
@@ -656,6 +664,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::function<double()> get_time_;
   /// Agent manager.
   std::shared_ptr<AgentManager> agent_manager_;
+
+  /// A cache of created runtime envs, maps from serialized runtime env to serialized
+  /// runtime env context.
+  std::unordered_map<std::string, std::string> created_runtime_envs;
 };
 
 }  // namespace raylet
