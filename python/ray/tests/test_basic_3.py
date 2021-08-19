@@ -1,6 +1,5 @@
 # coding: utf-8
 import logging
-import os
 import sys
 import time
 
@@ -10,7 +9,6 @@ import pytest
 import ray.cluster_utils
 from ray.test_utils import (
     dicts_equal,
-    wait_for_pid_to_exit,
     wait_for_condition,
 )
 from pathlib import Path
