@@ -49,6 +49,10 @@ if torch:
         def __init__(self):
             super().__init__()
 
+            self.bijective = True
+            self.domain = torch.distributions.constraints.real
+            self.codomain = torch.distributions.constraints.interval(-1.0, 1.0)
+
         def atanh(self, x):
             return 0.5 * torch.log((1 + x) / (1 - x))
 
