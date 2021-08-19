@@ -226,7 +226,6 @@ class Trainer:
 
                 self._final_results = None
                 self._finished_training = False
-                self._started_training = False
 
             def __iter__(self):
                 return self
