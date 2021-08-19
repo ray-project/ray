@@ -3,6 +3,7 @@ from ray.job_config import JobConfig
 import os
 import sys
 import logging
+import inspect
 import json
 import threading
 logger = logging.getLogger(__name__)
@@ -11,15 +12,7 @@ logger = logging.getLogger(__name__)
 # protocol that require upgrading the client version.
 CURRENT_PROTOCOL_VERSION = "2021-08-16"
 
-
-class RayAPIStub:
-    """This class stands in as the replacement API for the `import ray` module.
-
-    Much like the ray module, this mostly delegates the work to the
-    _client_worker. As parts of the ray API are covered, they are piped through
-    here or on the client worker API.
-    """
-
+class _Context:
     def __init__(self):
         from ray.util.client.api import ClientAPI
         self.api = ClientAPI()
@@ -179,11 +172,52 @@ class RayAPIStub:
                                                _exiting_interpreter)
         self._server = None
 
+class RayAPIStub:
+    """This class stands in as the replacement API for the `import ray` module.
 
-_ray_cli_tls = threading.local()
-_ray_cli_tls.handler = RayAPIStub()
-ray = _ray_cli_tls.handler
+    Much like the ray module, this mostly delegates the work to the
+    _client_worker. As parts of the ray API are covered, they are piped through
+    here or on the client worker API.
+    """
+    def __init__(self):
+        self._cxt = threading.local()
+        self._cxt.handler = _Context()
 
+    def get_context(self):
+        return self._cxt.handler
+
+    def set_context(self, cxt):
+        old_cxt = self._cxt.handler
+        if cxt is None:
+            self._cxt.handler = _Context()
+        else:
+            self._cxt.handler = cxt
+        return old_cxt
+
+    def connect(self, *args, **kw_args):
+        return self._cxt.handler.connect(*args, **kw_args)
+
+    def disconnect(self, *args, **kw_args):
+        return self._cxt.disconnect(*args, **kw_args)
+
+    def remote(self, *args, **kwargs):
+        return self._cxt.handler.remote(*args, **kwargs)
+
+    def __getattr__(self, *args, **kwargs):
+        return self._cxt.handler.__getattr__(*args, **kwargs)
+
+    def is_connected(self, *args, **kwargs):
+        return self._cxt.handler.is_connected(*args, **kwargs)
+
+    def init(self, *args, **kwargs):
+        return self._cxt.handler.init(*args, **kwargs)
+
+    def shutdown(self, *args, **kwargs):
+        return self._cxt.handler.shutdown(*args, **kwargs)
+
+
+
+ray = RayAPIStub()
 
 # Someday we might add methods in this module so that someone who
 # tries to `import ray_client as ray` -- as a module, instead of

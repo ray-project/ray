@@ -32,11 +32,11 @@ class ClientContext:
     ray_cli: ray.util.client.RayAPIStub
 
     def __enter__(self) -> "ClientContext":
-        ray.util.client._ray_cli_tls.handler, self.ray_cli = self.ray_cli, ray.util.client._ray_cli_tls.handler
+        self.ray_cli = ray.util.client.ray.set_context(self.ray_cli)
         return self
 
     def __exit__(self, *exc) -> None:
-        ray.util.client._ray_cli_tls.handler, self.ray_cli = self.ray_cli, ray.util.client._ray_cli_tls.handler
+        self.ray_cli = ray.util.client.ray.set_context(self.ray_cli)
 
     def disconnect(self) -> None:
         """
@@ -72,6 +72,7 @@ class ClientBuilder:
         self._job_config = JobConfig()
         self._fill_defaults_from_env()
         self._remote_init_kwargs = {}
+        self._allow_multiple_cli = False
 
     def env(self, env: Dict[str, Any]) -> "ClientBuilder":
         """
@@ -102,6 +103,9 @@ class ClientBuilder:
                 includes the server's version of Python & Ray as well as the
                 dashboard_url.
         """
+        old_ray_cxt = None
+        if self._allow_multiple_cli:
+            old_ray_cxt = ray.util.client.ray.set_context(None)
         client_info_dict = ray.util.client_connect.connect(
             self.address,
             job_config=self._job_config,
@@ -115,7 +119,10 @@ class ClientBuilder:
             ray_commit=client_info_dict["ray_commit"],
             protocol_version=client_info_dict["protocol_version"],
             _num_clients=client_info_dict["num_clients"],
-            ray_cli=ray.util.client._ray_cli_tls.handler)
+            ray_cli=ray.util.client.ray.get_context())
+        if self._allow_multiple_cli:
+            ray.util.client.ray.set_context(old_ray_cxt)
+        return cxt
 
     def _fill_defaults_from_env(self):
         # Check environment variables for default values
@@ -142,6 +149,11 @@ class ClientBuilder:
         if kwargs.get("runtime_env") is not None:
             self.env(kwargs["runtime_env"])
             del kwargs["runtime_env"]
+
+        if kwargs.get("allow_multiple") == True:
+            self._allow_multiple_cli = True
+            del kwargs["allow_multiple"]
+
         if kwargs:
             expected_sig = inspect.signature(ray_driver_init)
             extra_args = set(kwargs.keys()).difference(
