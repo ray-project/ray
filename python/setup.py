@@ -451,7 +451,7 @@ def build(build_python, build_java, build_cpp):
         root_dir = os.path.join(
             os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-root")
         out_dir = os.path.join(
-            os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-out")
+            os.path.abspath(os.environ["SRC_DIR"]), "..", "b-o")
 
         for d in (root_dir, out_dir):
             if not os.path.exists(d):
