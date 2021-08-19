@@ -569,8 +569,7 @@ class SimpleListCollector(SampleCollector):
                         else:
                             space = view_req.space
                         fill_value = np.zeros_like(space.sample()) \
-                            if isinstance(view_req.space, Space) else \
-                            view_req.space
+                            if isinstance(space, Space) else space
                         self.agent_collectors[k]._build_buffers({
                             data_col: fill_value
                         })
