@@ -78,6 +78,14 @@ struct GcsServerMocker {
       callbacks.push_back(callback);
     }
 
+    void RequestWorkerLease(
+        const rpc::TaskSpec &spec,
+        const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
+        const int64_t backlog_size = -1) override {
+      num_workers_requested += 1;
+      callbacks.push_back(callback);
+    }
+
     /// WorkerLeaseInterface
     void ReleaseUnusedWorkers(
         const std::vector<WorkerID> &workers_in_use,
