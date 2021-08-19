@@ -53,7 +53,7 @@ def test_cancel_chain(ray_start_regular, use_force):
         SignalActor = create_remote_signal_actor(ray)
         signaler = SignalActor.remote()
 
-        @ray.remote
+        @ray.remote(num_cpus=0)
         def wait_for(t):
             return ray.get(t[0])
 
