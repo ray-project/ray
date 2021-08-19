@@ -105,7 +105,6 @@ class WorkflowData:
             "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
             "catch_exceptions": self.catch_exceptions,
             "ray_options": self.ray_options,
-            "name": self.name
         }
 
 

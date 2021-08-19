@@ -84,8 +84,7 @@ def get_output(workflow_id: str, name: Optional[str]) -> ray.ObjectRef:
             "Failed to connect to the workflow management "
             "actor. The workflow could have already failed. You can use "
             "workflow.resume() to resume the workflow.") from e
-    output = ray.get(
-        workflow_manager.get_output.remote(workflow_id, name))
+    output = ray.get(workflow_manager.get_output.remote(workflow_id, name))
     return flatten_workflow_output(workflow_id, output)
 
 

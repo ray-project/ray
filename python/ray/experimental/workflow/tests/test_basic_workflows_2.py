@@ -147,8 +147,7 @@ def test_get_named_step_output_error(workflow_start_regular, tmp_path):
 
     with pytest.raises(Exception):
         double.options(name="outer").step(
-            double.options(name="inner").step(1, False),
-            True).run("double")
+            double.options(name="inner").step(1, False), True).run("double")
 
     assert 2 == ray.get(workflow.get_output("double", "inner"))
     outer = workflow.get_output("double", "outer")
