@@ -9,7 +9,7 @@ from pathlib import Path
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
-from ray.test_utils import (
+from ray._private.test_utils import (
     run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
@@ -673,7 +673,7 @@ def test_get_wheel_filename():
 
 def test_get_master_wheel_url():
     ray_version = "2.0.0.dev0"
-    test_commit = "ba6cebe30fab6925e5b2d9e859ad064d53015246"
+    test_commit = "58a73821fbfefbf53a19b6c7ffd71e70ccf258c7"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38"]:
             url = get_master_wheel_url(test_commit, sys_platform, ray_version,
@@ -682,11 +682,7 @@ def test_get_master_wheel_url():
 
 
 def test_get_release_wheel_url():
-    test_commits = {
-        "1.4.0rc1": "e7c7f6371a69eb727fa469e4cd6f4fbefd143b4c",
-        "1.3.0": "0b4b444fadcdc23226e11fef066b982175804232",
-        "1.2.0": "1b1a2496ca51b745c07c79fb859946d3350d471b"
-    }
+    test_commits = {"1.6.0": "5052fe67d99f1d4bfc81b2a8694dbf2aa807bbdc"}
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38"]:
             for version, commit in test_commits.items():
@@ -851,7 +847,8 @@ def test_no_spurious_worker_startup(ray_start_cluster):
     # This hook sleeps for 15 seconds to simulate creating a runtime env.
     cluster.add_node(
         num_cpus=1,
-        runtime_env_setup_hook="ray.test_utils.sleep_setup_runtime_env")
+        runtime_env_setup_hook=(
+            "ray._private.test_utils.sleep_setup_runtime_env"))
 
     # Set a nonempty runtime env so that the runtime env setup hook is called.
     runtime_env = {"env_vars": {"a": "b"}}

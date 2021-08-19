@@ -81,6 +81,7 @@ struct Allocation {
       : address(nullptr), size(0), fd(), offset(0), device_num(0), mmap_size(0) {}
 
   friend class PlasmaAllocator;
+  friend class DummyAllocator;
   friend struct ObjectLifecycleManagerTest;
   FRIEND_TEST(ObjectStoreTest, PassThroughTest);
 };
@@ -103,12 +104,15 @@ class LocalObject {
 
   const Allocation &GetAllocation() const { return allocation; }
 
+  const plasma::flatbuf::ObjectSource &GetSource() const { return source; }
+
  private:
   friend class ObjectStore;
   friend class ObjectLifecycleManager;
   FRIEND_TEST(ObjectStoreTest, PassThroughTest);
   friend struct ObjectLifecycleManagerTest;
   FRIEND_TEST(ObjectLifecycleManagerTest, RemoveReferenceOneRefNotSealed);
+  friend struct ObjectStatsCollectorTest;
 
   /// Allocation Info;
   Allocation allocation;

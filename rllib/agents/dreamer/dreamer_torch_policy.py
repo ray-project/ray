@@ -1,11 +1,18 @@
 import logging
 
+import numpy as np
+from typing import Dict, Optional
+
 import ray
 from ray.rllib.agents.dreamer.utils import FreezeParameters
+from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import apply_grad_clipping
+from ray.rllib.utils.typing import AgentID
 
 torch, nn = try_import_torch()
 if torch:
@@ -174,7 +181,7 @@ def dreamer_loss(policy, model, dist_class, train_batch):
 
 def build_dreamer_model(policy, obs_space, action_space, config):
 
-    policy.model = ModelCatalog.get_model_v2(
+    model = ModelCatalog.get_model_v2(
         obs_space,
         action_space,
         1,
@@ -182,9 +189,9 @@ def build_dreamer_model(policy, obs_space, action_space, config):
         name="DreamerModel",
         framework="torch")
 
-    policy.model_variables = policy.model.variables()
+    policy.model_variables = model.variables()
 
-    return policy.model
+    return model
 
 
 def action_sampler_fn(policy, model, input_dict, state, explore, timestep):
@@ -197,7 +204,7 @@ def action_sampler_fn(policy, model, input_dict, state, explore, timestep):
 
     # Custom Exploration
     if timestep <= policy.config["prefill_timesteps"]:
-        logp = [0.0]
+        logp = None
         # Random action in space [-1.0, 1.0]
         action = 2.0 * torch.rand(1, model.action_space.shape[0]) - 1.0
         state = model.get_initial_state()
@@ -236,11 +243,45 @@ def dreamer_optimizer_fn(policy, config):
     return (model_opt, actor_opt, critic_opt)
 
 
+def preprocess_episode(
+        policy: Policy,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
+        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+    """Batch format should be in the form of (s_t, a_(t-1), r_(t-1))
+    When t=0, the resetted obs is paired with action and reward of 0.
+    """
+    obs = sample_batch[SampleBatch.OBS]
+    new_obs = sample_batch[SampleBatch.NEXT_OBS]
+    action = sample_batch[SampleBatch.ACTIONS]
+    reward = sample_batch[SampleBatch.REWARDS]
+    eps_ids = sample_batch[SampleBatch.EPS_ID]
+
+    act_shape = action.shape
+    act_reset = np.array([0.0] * act_shape[-1])[None]
+    rew_reset = np.array(0.0)[None]
+    obs_end = np.array(new_obs[act_shape[0] - 1])[None]
+
+    batch_obs = np.concatenate([obs, obs_end], axis=0)
+    batch_action = np.concatenate([act_reset, action], axis=0)
+    batch_rew = np.concatenate([rew_reset, reward], axis=0)
+    batch_eps_ids = np.concatenate([eps_ids, eps_ids[-1:]], axis=0)
+
+    new_batch = {
+        SampleBatch.OBS: batch_obs,
+        SampleBatch.REWARDS: batch_rew,
+        SampleBatch.ACTIONS: batch_action,
+        SampleBatch.EPS_ID: batch_eps_ids,
+    }
+    return SampleBatch(new_batch)
+
+
 DreamerTorchPolicy = build_policy_class(
     name="DreamerTorchPolicy",
     framework="torch",
     get_default_config=lambda: ray.rllib.agents.dreamer.dreamer.DEFAULT_CONFIG,
     action_sampler_fn=action_sampler_fn,
+    postprocess_fn=preprocess_episode,
     loss_fn=dreamer_loss,
     stats_fn=dreamer_stats,
     make_model=build_dreamer_model,
