@@ -612,7 +612,7 @@ def test_client_context_manager(ray_start_regular_shared, connect_to_client):
 object_ref_cleanup_script = """
 import ray
 
-ray.client("localhost:50051").connect()
+ray.init("ray://localhost:50051")
 
 @ray.remote
 def f():
