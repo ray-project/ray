@@ -152,7 +152,9 @@ class Workflow:
         self._executed: bool = False
         self._result: Optional[WorkflowExecutionResult] = None
         qual_name = get_qualname(self._data.func_body)
-        self._step_id: StepID = slugify(qual_name) + "." + uuid.uuid4().hex
+        self._step_id: StepID = f"{slugify(qual_name)}.{uuid.uuid4().hex}"
+        if workflow_data.name:
+            self._step_id = f"[{workflow_data.name}]." + self._step_id
 
     @property
     def executed(self) -> bool:
