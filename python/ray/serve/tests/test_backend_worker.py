@@ -5,8 +5,7 @@ import pytest
 import ray
 from ray import cloudpickle
 from ray.serve.backend_worker import create_backend_replica, wrap_to_ray_error
-from ray.serve.controller import TrafficPolicy
-from ray.serve.router import RequestMetadata, EndpointRouter
+from ray.serve.router import RequestMetadata, Router
 from ray.serve.config import BackendConfig
 from ray.serve.utils import get_random_letters
 
@@ -64,7 +63,7 @@ async def add_servable_to_router(
     await controller_actor.add_new_replica.remote(
         "backend", worker, kwargs.get("backend_config", BackendConfig()))
 
-    router = EndpointRouter(
+    router = Router(
         controller_actor,
         "endpoint",
         asyncio.get_event_loop(),

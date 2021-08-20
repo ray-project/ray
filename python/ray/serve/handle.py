@@ -8,7 +8,7 @@ from enum import Enum
 from ray.serve.common import EndpointTag
 from ray.actor import ActorHandle
 from ray.serve.utils import get_random_letters
-from ray.serve.router import EndpointRouter, RequestMetadata
+from ray.serve.router import Router, RequestMetadata
 from ray.util import metrics
 
 _global_async_loop = None
@@ -76,7 +76,7 @@ class RayServeHandle:
             handle_options: Optional[HandleOptions] = None,
             *,
             known_python_methods: List[str] = [],
-            _router: Optional[EndpointRouter] = None,
+            _router: Optional[Router] = None,
             _internal_pickled_http_request: bool = False,
     ):
         self.controller_handle = controller_handle
@@ -96,10 +96,10 @@ class RayServeHandle:
             "endpoint": self.endpoint_name
         })
 
-        self.router: EndpointRouter = _router or self._make_router()
+        self.router: Router = _router or self._make_router()
 
-    def _make_router(self) -> EndpointRouter:
-        return EndpointRouter(
+    def _make_router(self) -> Router:
+        return Router(
             self.controller_handle,
             self.endpoint_name,
             asyncio.get_event_loop(),
@@ -200,9 +200,9 @@ class RayServeHandle:
 
 
 class RayServeSyncHandle(RayServeHandle):
-    def _make_router(self) -> EndpointRouter:
+    def _make_router(self) -> Router:
         # Delayed import because ray.serve.api depends on handles.
-        return EndpointRouter(
+        return Router(
             self.controller_handle,
             self.endpoint_name,
             create_or_get_async_loop_in_thread(),
