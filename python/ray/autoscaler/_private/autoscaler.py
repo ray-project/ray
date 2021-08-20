@@ -719,7 +719,8 @@ class StandardAutoscaler:
                 return True
         return False
 
-    def get_unhealthy_nodes(self, nodes: List[NodeID], now: float) -> List[NodeID]:
+    def get_unhealthy_nodes(self, nodes: List[NodeID],
+                            now: float) -> List[NodeID]:
         """Determine nodes for which we haven't received a heartbeat on time.
         These nodes are subsequently terminated.
 
