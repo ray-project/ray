@@ -672,7 +672,7 @@ def install_matching_ray():
         return
     assert "manylinux2014_x86_64" in wheel, wheel
     if sys.platform == "darwin":
-        platform = "macosx_10_13_intel"
+        platform = "macosx_10_15_intel"
     elif sys.platform == "win32":
         platform = "win_amd64"
     else:
@@ -749,11 +749,12 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
 
 def run_job(cluster_name: str, compute_tpl_name: str, cluster_env_name: str,
             job_name: str, min_workers: str, script: str,
-            script_args: List[str],
-            env_vars: Dict[str, str]) -> Tuple[int, str]:
+            script_args: List[str], env_vars: Dict[str, str],
+            autosuspend: int) -> Tuple[int, str]:
     # Start cluster and job
     address = f"anyscale://{cluster_name}?cluster_compute={compute_tpl_name}" \
-              f"&cluster_env={cluster_env_name}&autosuspend=5&&update=True"
+              f"&cluster_env={cluster_env_name}&autosuspend={autosuspend}" \
+               "&&update=True"
     logger.info(f"Starting job {job_name} with Ray address: {address}")
     env = copy.deepcopy(os.environ)
     env.update(GLOBAL_CONFIG)
@@ -1115,6 +1116,7 @@ def run_test_config(
 
     build_id_override = None
     if test_config["run"].get("use_connect"):
+        autosuspend_mins = test_config["run"].get("autosuspend_mins", 5)
         assert not kick_off_only, \
             "Unsupported for running with Anyscale connect."
         if app_config_id_override is not None:
@@ -1128,6 +1130,9 @@ def run_test_config(
             app_config = response.result.config_json
         install_app_config_packages(app_config)
         install_matching_ray()
+    elif "autosuspend_mins" in test_config["run"]:
+        raise ValueError(
+            "'autosuspend_mins' is only supported if 'use_connect' is True.")
 
     # Add information to results dict
     def _update_results(results: Dict):
@@ -1322,7 +1327,8 @@ def run_test_config(
                     min_workers=min_workers,
                     script=test_config["run"]["script"],
                     script_args=script_args,
-                    env_vars=env_vars)
+                    env_vars=env_vars,
+                    autosuspend=autosuspend_mins)
                 _process_finished_client_command(returncode, logs)
                 return
 

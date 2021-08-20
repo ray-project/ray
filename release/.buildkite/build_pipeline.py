@@ -78,6 +78,7 @@ CORE_NIGHTLY_TESTS = {
     ],
     "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
         "inference",
+        "shuffle_data_loader",
     ],
 }
 
@@ -147,6 +148,7 @@ NIGHTLY_TESTS = {
     ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
         "rte_many_tasks_actors",
+        "wheel_urls",
     ],
 }
 

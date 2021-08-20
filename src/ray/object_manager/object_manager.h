@@ -153,7 +153,7 @@ class ObjectManager : public ObjectManagerInterface,
   }
 
  public:
-  /// Takes user-defined ObjectDirectoryInterface implementation.
+  /// Takes user-defined IObjectDirectory implementation.
   /// When this constructor is used, the ObjectManager assumes ownership of
   /// the given ObjectDirectory instance.
   ///
@@ -162,7 +162,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_directory An object implementing the object directory interface.
   explicit ObjectManager(
       instrumented_io_context &main_service, const NodeID &self_node_id,
-      const ObjectManagerConfig &config, ObjectDirectoryInterface *object_directory,
+      const ObjectManagerConfig &config, IObjectDirectory *object_directory,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
       SpillObjectsCallback spill_objects_callback,
@@ -430,7 +430,7 @@ class ObjectManager : public ObjectManagerInterface,
   NodeID self_node_id_;
   const ObjectManagerConfig config_;
   /// The object directory interface to access object information.
-  ObjectDirectoryInterface *object_directory_;
+  IObjectDirectory *object_directory_;
 
   /// Object store runner.
   ObjectStoreRunner object_store_internal_;
