@@ -471,8 +471,9 @@ def run(
                     f"got {max_concurrent_trials}.")
             search_alg = ConcurrencyLimiter(
                 search_alg, max_concurrent=max_concurrent_trials)
-        if issubclass(type(search_alg), Searcher):
-            search_alg = SearchGenerator(search_alg)
+
+    if issubclass(type(search_alg), Searcher):
+        search_alg = SearchGenerator(search_alg)
 
     if config and not search_alg.set_search_properties(metric, mode, config):
         if has_unresolved_values(config):
