@@ -1,6 +1,7 @@
 FROM nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04
 
 # This is a copy of the regular Dockerfile
+# adjusted for ubuntu 18 (removed python-is-python3)
 ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
 ARG BUILDKITE_COMMIT
@@ -45,7 +46,7 @@ RUN echo "ulimit -c 0" >> /root/.bashrc
 
 # Setup Bazel caches
 RUN (echo "build --remote_cache=${REMOTE_CACHE_URL}" >> /root/.bazelrc); \
-    (if [ ${BUILDKITE_PULL_REQUEST} != "false" ]; then (echo "build --remote_upload_local_results=false" >> /root/.bazelrc); fi); \
+    (if [ "${BUILDKITE_PULL_REQUEST}" != "false" ]; then (echo "build --remote_upload_local_results=false" >> /root/.bazelrc); fi); \
     cat /root/.bazelrc
 
 RUN mkdir /ray
