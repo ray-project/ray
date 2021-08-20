@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Optional, Tuple
 
@@ -6,6 +7,8 @@ from ray.autoscaler.sdk import rsync, configure_logging
 from ray.tune.syncer import NodeSyncer
 from ray.tune.sync_client import SyncClient
 from ray.ray_constants import env_integer
+
+logger = logging.getLogger(__name__)
 
 
 class DockerSyncer(NodeSyncer):
@@ -77,6 +80,9 @@ class DockerSyncClient(SyncClient):
     def __init__(self, should_bootstrap: bool = True):
         self._command_runners = {}
         self._cluster_config = None
+        if os.environ.get("TUNE_SYNC_DISABLE_BOOTSTRAP") == "1":
+            should_bootstrap = False
+            logger.debug("Skipping bootstrap for docker sync client.")
         self._should_bootstrap = should_bootstrap
 
     def configure(self, cluster_config_file: str):
