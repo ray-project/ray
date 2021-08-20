@@ -17,6 +17,7 @@
 
 #include "../config_internal.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/gcs/gcs_client/global_state_accessor.h"
 
 namespace ray {
 namespace internal {
@@ -25,7 +26,9 @@ using ray::core::CoreWorkerOptions;
 
 class ProcessHelper {
  public:
-  void RayStart(CoreWorkerOptions::TaskExecutionCallback callback);
+  void RayStart(
+      CoreWorkerOptions::TaskExecutionCallback callback,
+      std::unique_ptr<ray::gcs::GlobalStateAccessor> *gcs_global_state_accessor);
   void RayStop();
   void StartRayNode(const int redis_port, const std::string redis_password,
                     const int num_cpus = -1, const int num_gpus = -1,

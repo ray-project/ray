@@ -22,7 +22,6 @@
 
 #include "../config_internal.h"
 #include "../util/function_helper.h"
-#include "../util/process_helper.h"
 #include "local_mode_ray_runtime.h"
 #include "native_ray_runtime.h"
 
@@ -45,13 +44,17 @@ using ray::core::CoreWorkerProcess;
 using ray::core::WorkerType;
 
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::abstract_ray_runtime_ = nullptr;
+std::unique_ptr<ray::gcs::GlobalStateAccessor>
+    AbstractRayRuntime::global_state_accessor_ = nullptr;
 
 std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
   std::shared_ptr<AbstractRayRuntime> runtime;
   if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
     runtime = std::shared_ptr<AbstractRayRuntime>(new LocalModeRayRuntime());
   } else {
-    ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
+    global_state_accessor_ = nullptr;
+    ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask,
+                                          &global_state_accessor_);
     runtime = std::shared_ptr<AbstractRayRuntime>(new NativeRayRuntime());
     RAY_LOG(INFO) << "Native ray runtime started.";
     if (ConfigInternal::Instance().worker_type == WorkerType::WORKER) {
@@ -71,6 +74,7 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::GetInstance() {
 
 void AbstractRayRuntime::DoShutdown() {
   if (ConfigInternal::Instance().run_mode == RunMode::CLUSTER) {
+    global_state_accessor_ = nullptr;
     ProcessHelper::GetInstance().RayStop();
   }
 }
@@ -240,6 +244,11 @@ void AbstractRayRuntime::ExitActor() {
     throw std::logic_error("This shouldn't be called on a non-actor worker.");
   }
   throw RayIntentionalSystemExitException("SystemExit");
+}
+
+const std::unique_ptr<ray::gcs::GlobalStateAccessor>
+    &AbstractRayRuntime::GetGlobalStateAccessor() {
+  return global_state_accessor_;
 }
 
 }  // namespace internal

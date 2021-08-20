@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 #include <ray/api.h>
+#include "../../runtime/abstract_ray_runtime.h"
 #include "../../util/process_helper.h"
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
@@ -238,6 +239,18 @@ TEST(RayClusterModeTest, ExceptionTest) {
   auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(1);
   auto object1 = actor1.Task(&Counter::ExceptionFunc).Remote();
   EXPECT_THROW(object1.Get(), ray::internal::RayTaskException);
+}
+
+TEST(RayClusterModeTest, GetAllNodeInfoTest) {
+  const auto &gcs_client =
+      ray::internal::AbstractRayRuntime::GetInstance()->GetGlobalStateAccessor();
+  auto all_node_info = gcs_client->GetAllNodeInfo();
+  EXPECT_EQ(all_node_info.size(), 1);
+
+  ray::rpc::GcsNodeInfo node_info;
+  node_info.ParseFromString(all_node_info[0]);
+  EXPECT_EQ(node_info.state(),
+            ray::rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
 }
 
 int main(int argc, char **argv) {
