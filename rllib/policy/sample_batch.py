@@ -39,6 +39,7 @@ class SampleBatch(dict):
     PREV_REWARDS = "prev_rewards"
     DONES = "dones"
     INFOS = "infos"
+    SEQ_LENS = "seq_lens"
 
     # Extra action fetches keys.
     ACTION_DIST_INPUTS = "action_dist_inputs"
