@@ -1490,13 +1490,9 @@ def start_raylet(redis_address,
     ]
     if redis_password:
         start_worker_command_args += [f"--redis-password={redis_password}"]
-    start_worker_command = _wrap_worker_command(setup_worker_path,
-                                                worker_setup_hook,
-                                                session_dir,
-                                                python_executable,
-                                                "python",
-                                                start_worker_command_args
-                                                )
+    start_worker_command = _wrap_worker_command(
+        setup_worker_path, worker_setup_hook, session_dir, python_executable,
+        "python", start_worker_command_args)
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.
@@ -1603,18 +1599,12 @@ def start_raylet(redis_address,
     return process_info
 
 
-def _wrap_worker_command(setup_worker_path,
-                         worker_setup_hook,
-                         session_dir,
-                         worker_entrypoint,
-                         worker_language,
-                         worker_command
-                         ):
+def _wrap_worker_command(setup_worker_path, worker_setup_hook, session_dir,
+                         worker_entrypoint, worker_language, worker_command):
     if sys.platform == "win32":
         return [worker_entrypoint] + worker_command
     wrapped_worker_command = [
-        sys.executable,
-        setup_worker_path,
+        sys.executable, setup_worker_path,
         f"--worker-setup-hook={worker_setup_hook}",
         f"--session-dir={session_dir}",
         f"--worker-entrypoint={worker_entrypoint}",
@@ -1689,12 +1679,8 @@ def build_java_worker_command(
     command_args += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
     command_args += ["io.ray.runtime.runner.worker.DefaultWorker"]
 
-    return _wrap_worker_command(setup_worker_path,
-                                worker_setup_hook,
-                                session_dir,
-                                "java",
-                                "java",
-                                command_args)
+    return _wrap_worker_command(setup_worker_path, worker_setup_hook,
+                                session_dir, "java", "java", command_args)
 
 
 def build_cpp_worker_command(cpp_worker_options, setup_worker_path,
@@ -1729,11 +1715,8 @@ def build_cpp_worker_command(cpp_worker_options, setup_worker_path,
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 
-    return _wrap_worker_command(setup_worker_path,
-                                worker_setup_hook,
-                                session_dir,
-                                DEFAULT_WORKER_EXECUTABLE,
-                                "cpp",
+    return _wrap_worker_command(setup_worker_path, worker_setup_hook,
+                                session_dir, DEFAULT_WORKER_EXECUTABLE, "cpp",
                                 command_args)
 
 
