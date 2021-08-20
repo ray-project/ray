@@ -45,12 +45,12 @@ class BackendExecutor:
         num_workers (int): Number of workers to use for training.
         num_cpus_per_worker (float): Number of CPUs to use per worker.
         num_gpus_per_worker (float): Number of GPUs to use per worker.
-        logdir (Optional[str|Path]): Path to the file directory where logs
+        log_dir (Optional[str|Path]): Path to the file directory where logs
             should be persisted. If this is not specified, one will be
             generated.
 
     Attributes:
-        log_dir (Path): Path to the file directory where logs will be
+        logdir (Path): Path to the file directory where logs will be
             persisted.
         latest_run_dir (Optional[Path]): Path to the file directory for the
             latest run. Configured through ``start_training``.
