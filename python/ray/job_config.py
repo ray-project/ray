@@ -31,10 +31,10 @@ class JobConfig:
                  jvm_options=None,
                  code_search_path=None,
                  runtime_env=None,
+                 prepare_runtime_env_eagerly=False,
                  client_job=False,
                  metadata=None,
-                 ray_namespace=None,
-                 prepare_runtime_env_eagerly=False):
+                 ray_namespace=None):
         if worker_env is None:
             self.worker_env = dict()
         else:
@@ -50,8 +50,7 @@ class JobConfig:
         self.client_job = client_job
         self.metadata = metadata or {}
         self.ray_namespace = ray_namespace
-        self.prepare_runtime_env_eagerly = prepare_runtime_env_eagerly
-        self.set_runtime_env(runtime_env)
+        self.set_runtime_env(runtime_env, prepare_runtime_env_eagerly)
 
     def set_metadata(self, key: str, value: str) -> None:
         self.metadata[key] = value
@@ -61,7 +60,9 @@ class JobConfig:
         job_config = self.get_proto_job_config()
         return job_config.SerializeToString()
 
-    def set_runtime_env(self, runtime_env: Optional[Dict[str, Any]]) -> None:
+    def set_runtime_env(self,
+                        runtime_env: Optional[Dict[str, Any]],
+                        eagerly=False) -> None:
         # Lazily import this to avoid circular dependencies.
         import ray._private.runtime_env as runtime_support
         if runtime_env:
@@ -72,6 +73,7 @@ class JobConfig:
                 or {})
         else:
             self._parsed_runtime_env = runtime_support.RuntimeEnvDict({})
+        self.prepare_runtime_env_eagerly = eagerly
         self.runtime_env = runtime_env or dict()
         self._cached_pb = None
 

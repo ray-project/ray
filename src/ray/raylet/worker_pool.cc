@@ -482,8 +482,6 @@ void WorkerPool::MarkPortAsFree(int port) {
 }
 
 void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
-  RAY_LOG(INFO) << "HandleJobStarted " << job_config.serialized_runtime_env() << ", "
-                << job_config.prepare_runtime_env_eagerly();
   all_jobs_[job_id] = job_config;
   if (job_config.prepare_runtime_env_eagerly() && job_config.has_runtime_env()) {
     auto const runtime_env = job_config.serialized_runtime_env();
@@ -1018,6 +1016,9 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                                         serialized_runtime_env_context, callback);
               } else {
                 callback(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed);
+                RAY_LOG(WARNING)
+                    << "Create runtime env failed for task " << task_spec.TaskId()
+                    << " and couldn't create the dedicated worker.";
               }
             });
       } else {
@@ -1072,6 +1073,9 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                                         serialized_runtime_env_context, callback);
               } else {
                 callback(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed);
+                RAY_LOG(WARNING)
+                    << "Create runtime env failed for task " << task_spec.TaskId()
+                    << " and couldn't create the worker.";
               }
             });
       } else {

@@ -135,6 +135,7 @@ def get_conda_env_list() -> list:
         raise ValueError(f"Could not find Conda executable at {conda_path}.")
     _, stdout, _ = exec_cmd([conda_path, "env", "list", "--json"])
     envs = json.loads(stdout)["envs"]
+    print(f"Conda env len {len(envs)}")
     return envs
 
 

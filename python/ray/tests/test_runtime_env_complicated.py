@@ -23,9 +23,8 @@ from ray.workers.setup_runtime_env import (
     _current_py_version,
 )
 from ray._private.conda import get_conda_env_list
-from ray._private.test_utils import (run_string_as_driver,
-                                     run_string_as_driver_nonblocking,
-                                     wait_for_condition)
+from ray._private.test_utils import (
+    run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
 
 if not os.environ.get("CI"):
     # This flags turns on the local development that link against current ray
@@ -202,12 +201,10 @@ def test_job_config_conda_env(conda_envs, shutdown_only):
     reason="This test is only run on linux CI machines.")
 def test_job_config_conda_env_eagerly(conda_envs, shutdown_only):
     runtime_env = {"conda": f"package-{REQUEST_VERSIONS[0]}"}
-    job_config = ray.job_config.JobConfig(
-        runtime_env=runtime_env, prepare_runtime_env_eagerly=True)
     env_count = len(get_conda_env_list())
-    ray.init(job_config=job_config)
+    ray.init(runtime_env=runtime_env, prepare_runtime_env_eagerly=True)
     wait_for_condition(
-        lambda: len(get_conda_env_list()) == env_count + 1, timeout=20)
+        lambda: len(get_conda_env_list()) == env_count + 1, timeout=60)
     ray.shutdown()
 
 
