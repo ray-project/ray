@@ -166,8 +166,6 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
 
     def test_multi_agent_sample(self):
-        act_space = gym.spaces.Discrete(2)
-        obs_space = gym.spaces.Discrete(2)
 
         def policy_mapping_fn(agent_id, episode, **kwargs):
             return "p{}".format(agent_id % 2)
@@ -175,8 +173,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
             policy_spec={
-                "p0": (MockPolicy, obs_space, act_space, {}),
-                "p1": (MockPolicy, obs_space, act_space, {}),
+                "p0": PolicySpec(policy_class=MockPolicy),
+                "p1": PolicySpec(policy_class=MockPolicy),
             },
             policy_mapping_fn=policy_mapping_fn,
             rollout_fragment_length=50)
@@ -188,20 +186,16 @@ class TestMultiAgentEnv(unittest.TestCase):
                          list(range(25)) * 6)
 
     def test_multi_agent_sample_sync_remote(self):
-        # Allow to be run via Unittest.
-        ray.init(num_cpus=4, ignore_reinit_error=True)
-        act_space = gym.spaces.Discrete(2)
-        obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
             policy_spec={
-                "p0": (MockPolicy, obs_space, act_space, {}),
-                "p1": (MockPolicy, obs_space, act_space, {}),
+                "p0": PolicySpec(policy_class=MockPolicy),
+                "p1": PolicySpec(policy_class=MockPolicy),
             },
             # This signature will raise a soft-deprecation warning due
             # to the new signature we are using (agent_id, episode, **kwargs),
             # but should not break this test.
-            policy_mapping_fn=(lambda agent_id: "p{}".format(agent_id % 2)),
+            policy_mapping_fn=(lambda agent_id: "p{}".format(int(agent_id[-1]) % 2)),
             rollout_fragment_length=50,
             num_envs=4,
             remote_worker_envs=True,
@@ -210,15 +204,11 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.count, 200)
 
     def test_multi_agent_sample_async_remote(self):
-        # Allow to be run via Unittest.
-        ray.init(num_cpus=4, ignore_reinit_error=True)
-        act_space = gym.spaces.Discrete(2)
-        obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
             policy_spec={
-                "p0": (MockPolicy, obs_space, act_space, {}),
-                "p1": (MockPolicy, obs_space, act_space, {}),
+                "p0": PolicySpec(policy_class=MockPolicy),
+                "p1": PolicySpec(policy_class=MockPolicy),
             },
             policy_mapping_fn=(lambda aid, **kwargs: "p{}".format(aid % 2)),
             rollout_fragment_length=50,
@@ -233,8 +223,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
             policy_spec={
-                "p0": (MockPolicy, obs_space, act_space, {}),
-                "p1": (MockPolicy, obs_space, act_space, {}),
+                "p0": PolicySpec(policy_class=MockPolicy),
+                "p1": PolicySpec(policy_class=MockPolicy),
             },
             policy_mapping_fn=(lambda aid, **kwarg: "p{}".format(aid % 2)),
             episode_horizon=10,  # test with episode horizon set
@@ -248,8 +238,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: EarlyDoneMultiAgent(),
             policy_spec={
-                "p0": (MockPolicy, obs_space, act_space, {}),
-                "p1": (MockPolicy, obs_space, act_space, {}),
+                "p0": PolicySpec(policy_class=MockPolicy),
+                "p1": PolicySpec(policy_class=MockPolicy),
             },
             policy_mapping_fn=(lambda aid, **kwargs: "p{}".format(aid % 2)),
             batch_mode="complete_episodes",
@@ -284,12 +274,10 @@ class TestMultiAgentEnv(unittest.TestCase):
                 i, result["episode_reward_mean"], result["timesteps_total"]))
 
     def test_multi_agent_sample_round_robin(self):
-        act_space = gym.spaces.Discrete(2)
-        obs_space = gym.spaces.Discrete(10)
         ev = RolloutWorker(
             env_creator=lambda _: RoundRobinMultiAgent(5, increment_obs=True),
             policy_spec={
-                "p0": (MockPolicy, obs_space, act_space, {}),
+                "p0": PolicySpec(policy_class=MockPolicy),
             },
             policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
             rollout_fragment_length=50)
@@ -382,14 +370,11 @@ class TestMultiAgentEnv(unittest.TestCase):
                 # Just return zeros for actions
                 return [0] * len(obs_batch), [], {}
 
-        single_env = gym.make("CartPole-v0")
-        obs_space = single_env.observation_space
-        act_space = single_env.action_space
         ev = RolloutWorker(
             env_creator=lambda _: MultiAgentCartPole({"num_agents": 2}),
             policy_spec={
-                "p0": (ModelBasedPolicy, obs_space, act_space, {}),
-                "p1": (ModelBasedPolicy, obs_space, act_space, {}),
+                "p0": PolicySpec(policy_class=ModelBasedPolicy),
+                "p1": PolicySpec(policy_class=ModelBasedPolicy),
             },
             policy_mapping_fn=lambda agent_id, episode, **kwargs: "p0",
             rollout_fragment_length=5)

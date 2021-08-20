@@ -3,7 +3,7 @@ import numpy as np
 import sys
 import itertools
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, Iterator, List, Optional, Set, Union
 
 from ray.util import log_once
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, \
@@ -255,7 +255,7 @@ class SampleBatch(dict):
         return copy_
 
     @PublicAPI
-    def rows(self) -> Dict[str, TensorType]:
+    def rows(self) -> Iterator[Dict[str, TensorType]]:
         """Returns an iterator over data rows, i.e. dicts with column values.
 
         Note that if `seq_lens` is set in self, we set it to [1] in the rows.
@@ -1050,8 +1050,8 @@ class MultiAgentBatch:
         steps = []
         for policy_id, batch in self.policy_batches.items():
             for row in batch.rows():
-                steps.append((row[SampleBatch.EPS_ID], row["t"],
-                              row["agent_index"], policy_id, row))
+                steps.append((row[SampleBatch.EPS_ID], row[SampleBatch.T],
+                              row[SampleBatch.AGENT_INDEX], policy_id, row))
         steps.sort()
 
         finished_slices = []
