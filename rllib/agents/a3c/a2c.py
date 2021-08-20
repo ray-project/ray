@@ -4,7 +4,7 @@ from typing import Optional, Type
 from ray.rllib.agents.a3c.a3c import DEFAULT_CONFIG as A3C_CONFIG, \
     validate_config, get_policy_class
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import ComputeGradients, AverageGradients, \
@@ -84,10 +84,13 @@ def execution_plan(workers: WorkerSet,
     return StandardMetricsReporting(train_op, workers, config)
 
 
-A2CTrainer = build_trainer(
+A2CTrainer = build_trainer_class(
     name="A2C",
     default_config=A2C_DEFAULT_CONFIG,
     default_policy=A3CTFPolicy,
     get_policy_class=get_policy_class,
-    validate_config=validate_config,
-    execution_plan=execution_plan)
+    execution_plan=execution_plan,
+    event_handlers={
+        "after_validate_config": validate_config,
+    },
+)

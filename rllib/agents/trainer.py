@@ -1,3 +1,4 @@
+from abc import ABCMeta, abstractmethod
 import copy
 from datetime import datetime
 import functools
@@ -25,7 +26,8 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils import deep_update, FilterManager, merge_dicts
+from ray.rllib.utils import deep_update, FilterManager, merge_dicts, \
+    NullContextManager
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, \
     PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
@@ -499,7 +501,7 @@ def with_common_config(
 
 
 @PublicAPI
-class Trainer(Trainable):
+class Trainer(Trainable, metaclass=ABCMeta):
     """A trainer coordinates the optimization of one or more RL policies.
 
     All RLlib trainers extend this base class, e.g., the A3CTrainer implements
@@ -699,28 +701,20 @@ class Trainer(Trainable):
         self.raw_user_config = config
         self.config = self.merge_trainer_configs(self._default_config, config,
                                                  self._allow_unknown_configs)
+        self.trigger_event(
+            "on_config_complete", trainer=self, config=self.config)
 
-        # Check and resolve DL framework settings.
-        # Enable eager/tracing support.
-        if tf1 and self.config["framework"] in ["tf2", "tfe"]:
-            if self.config["framework"] == "tf2" and tfv < 2:
-                raise ValueError("`framework`=tf2, but tf-version is < 2.0!")
-            if not tf1.executing_eagerly():
-                tf1.enable_eager_execution()
-            logger.info("Executing eagerly, with eager_tracing={}".format(
-                self.config["eager_tracing"]))
-        if tf1 and not tf1.executing_eagerly() and \
-                self.config["framework"] != "torch":
-            logger.info("Tip: set framework=tfe or the --eager flag to enable "
-                        "TensorFlow eager execution")
-
+        # Validate the config.
+        self.trigger_event(
+            "before_validate_config", trainer=self, config=self.config)
         self._validate_config(self.config, trainer_obj_or_none=self)
-        if not callable(self.config["callbacks"]):
-            raise ValueError(
-                "`callbacks` must be a callable method that "
-                "returns a subclass of DefaultCallbacks, got {}".format(
-                    self.config["callbacks"]))
+        self.trigger_event(
+            "after_validate_config", trainer=self, config=self.config)
+
+        # Create the Trainer's Callbacks object (Policies and
+        # RolloutWorkers will have their own).
         self.callbacks = self.config["callbacks"]()
+
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
             logger.info("Current log_level is {}. For more information, "
@@ -729,13 +723,9 @@ class Trainer(Trainable):
         if self.config.get("log_level"):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 
-        def get_scope():
-            if tf1 and not tf1.executing_eagerly():
-                return tf1.Graph().as_default()
-            else:
-                return open(os.devnull)  # fake a no-op scope
+        with tf1.Graph().as_default() if tf1 and not tf1.executing_eagerly() \
+                else NullContextManager():
 
-        with get_scope():
             self._init(self.config, self.env_creator)
 
             # Evaluation setup.
@@ -801,7 +791,7 @@ class Trainer(Trainable):
         """Default factory method for a WorkerSet running under this Trainer.
 
         Override this method by passing a custom `make_workers` into
-        `build_trainer`.
+        `build_trainer_class`.
 
         Args:
             env_creator (callable): A function that return and Env given an env
@@ -1361,6 +1351,20 @@ class Trainer(Trainable):
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict,
                          trainer_obj_or_none: Optional["Trainer"] = None):
+        # Check and resolve DL framework settings.
+        # Enable eager/tracing support.
+        if tf1 and config["framework"] in ["tf2", "tfe"]:
+            if config["framework"] == "tf2" and tfv < 2:
+                raise ValueError("`framework`=tf2, but tf-version is < 2.0!")
+            if not tf1.executing_eagerly():
+                tf1.enable_eager_execution()
+            logger.info("Executing eagerly, with eager_tracing={}".format(
+                config["eager_tracing"]))
+        if tf1 and not tf1.executing_eagerly() and \
+                config["framework"] != "torch":
+            logger.info("Tip: set framework=tfe or the --eager flag to enable "
+                        "TensorFlow eager execution")
+
         model_config = config.get("model")
         if model_config is None:
             config["model"] = model_config = {}
@@ -1516,6 +1520,12 @@ class Trainer(Trainable):
                 "`evaluation_parallel_to_training` to False.")
             config["evaluation_parallel_to_training"] = False
 
+        if not callable(config["callbacks"]):
+            raise ValueError(
+                "`callbacks` must be a callable method that "
+                "returns a subclass of DefaultCallbacks, got {}".format(
+                    config["callbacks"]))
+
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.
 
@@ -1623,7 +1633,7 @@ class Trainer(Trainable):
         raise NotImplementedError(
             "`with_updates` may only be called on Trainer sub-classes "
             "that were generated via the `ray.rllib.agents.trainer_template."
-            "build_trainer()` function!")
+            "build_trainer_class()` function!")
 
     def _register_if_needed(self, env_object: Union[str, EnvType, None],
                             config):

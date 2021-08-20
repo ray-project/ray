@@ -3,7 +3,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 
@@ -24,7 +24,7 @@ MyTorchPolicy = build_policy_class(
     name="MyTorchPolicy", framework="torch", loss_fn=policy_gradient_loss)
 
 # <class 'ray.rllib.agents.trainer_template.MyCustomTrainer'>
-MyTrainer = build_trainer(
+MyTrainer = build_trainer_class(
     name="MyCustomTrainer",
     default_policy=MyTorchPolicy,
 )

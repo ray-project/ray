@@ -62,7 +62,7 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 
     Returns:
         Optional[Type[Policy]]: The Policy class to use with PPOTrainer.
-            If None, use `default_policy` provided in build_trainer().
+            If None, use `default_policy` provided in build_trainer_class().
     """
     if config["framework"] == "torch":
         return RNNSACTorchPolicy

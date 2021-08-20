@@ -12,7 +12,7 @@ import logging
 from typing import Optional, Type
 
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.policy.policy import Policy
@@ -44,7 +44,7 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 
     Returns:
         Optional[Type[Policy]]: The Policy class to use with PGTrainer.
-            If None, use `default_policy` provided in build_trainer().
+            If None, use `default_policy` provided in build_trainer_class().
     """
     if config["framework"] == "torch":
         return PGTorchPolicy
@@ -52,7 +52,7 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 
 # Build a child class of `Trainer`, which uses the framework specific Policy
 # determined in `get_policy_class()` above.
-PGTrainer = build_trainer(
+PGTrainer = build_trainer_class(
     name="PG",
     default_config=DEFAULT_CONFIG,
     default_policy=PGTFPolicy,

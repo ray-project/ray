@@ -10,7 +10,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.agents.dqn.dqn import DEFAULT_CONFIG as DQN_CONFIG
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
@@ -139,7 +139,7 @@ if __name__ == "__main__":
         else:
             return "dqn_policy"
 
-    MyTrainer = build_trainer(
+    MyTrainer = build_trainer_class(
         name="PPO_DQN_MultiAgent",
         default_policy=None,
         execution_plan=custom_training_workflow)

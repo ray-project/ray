@@ -3,7 +3,7 @@ import logging
 import ray
 from ray.rllib.agents.impala.vtrace_tf_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
@@ -326,7 +326,7 @@ def execution_plan(workers, config):
         .for_each(learner_thread.add_learner_metrics)
 
 
-ImpalaTrainer = build_trainer(
+ImpalaTrainer = build_trainer_class(
     name="IMPALA",
     default_config=DEFAULT_CONFIG,
     default_policy=VTraceTFPolicy,

@@ -17,7 +17,7 @@ from typing import List, Type
 
 from ray.rllib.agents.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.execution.concurrency_ops import Concurrently
@@ -231,7 +231,7 @@ def get_policy_class(config: TrainerConfigDict) -> Type[Policy]:
         return SlateQTorchPolicy
 
 
-SlateQTrainer = build_trainer(
+SlateQTrainer = build_trainer_class(
     name="SlateQ",
     get_policy_class=get_policy_class,
     default_config=DEFAULT_CONFIG,

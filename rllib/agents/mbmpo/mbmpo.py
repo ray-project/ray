@@ -19,7 +19,7 @@ from ray.rllib.agents.mbmpo.mbmpo_torch_policy import MBMPOTorchPolicy
 from ray.rllib.agents.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
 from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages, \
     MBMPOExploration
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.wrappers.model_vector_env import model_vector_env
 from ray.rllib.evaluation.metrics import collect_episodes, collect_metrics, \
@@ -342,7 +342,7 @@ def execution_plan(workers: WorkerSet,
 
     Returns:
         LocalIterator[dict]: The Policy class to use with PPOTrainer.
-            If None, use `default_policy` provided in build_trainer().
+            If None, use `default_policy` provided in build_trainer_class().
     """
     # Train TD Models on the driver.
     workers.local_worker().foreach_policy(fit_dynamics)
@@ -455,7 +455,7 @@ def validate_env(env: EnvType, env_context: EnvContext):
 
 # Build a child class of `Trainer`, which uses the default policy,
 # MBMPOTorchPolicy. A TensorFlow version is not available yet.
-MBMPOTrainer = build_trainer(
+MBMPOTrainer = build_trainer_class(
     name="MBMPO",
     default_config=DEFAULT_CONFIG,
     default_policy=MBMPOTorchPolicy,

@@ -1,7 +1,7 @@
 import logging
 
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.contrib.bandits.agents.policy import BanditPolicy
 
 logger = logging.getLogger(__name__)
@@ -29,5 +29,5 @@ UCB_CONFIG = with_common_config({
 # __sphinx_doc_end__
 # yapf: enable
 
-LinUCBTrainer = build_trainer(
+LinUCBTrainer = build_trainer_class(
     name="LinUCB", default_config=UCB_CONFIG, default_policy=BanditPolicy)

@@ -142,7 +142,7 @@ def execution_plan(workers: WorkerSet,
 
     Returns:
         LocalIterator[dict]: The Policy class to use with PGTrainer.
-            If None, use `default_policy` provided in build_trainer().
+            If None, use `default_policy` provided in build_trainer_class().
     """
     rollouts = ParallelRollouts(workers, mode="raw")
 

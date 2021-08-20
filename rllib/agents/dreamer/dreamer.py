@@ -5,7 +5,7 @@ import numpy as np
 
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.dreamer.dreamer_torch_policy import DreamerTorchPolicy
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     LEARNER_INFO, _get_shared_metrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
@@ -226,7 +226,7 @@ def validate_config(config):
         config["horizon"] = config["horizon"] / config["action_repeat"]
 
 
-DREAMERTrainer = build_trainer(
+DREAMERTrainer = build_trainer_class(
     name="Dreamer",
     default_config=DEFAULT_CONFIG,
     default_policy=DreamerTorchPolicy,

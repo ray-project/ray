@@ -3,7 +3,7 @@ from typing import Optional, Type
 
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.execution.rollout_ops import AsyncGradients
 from ray.rllib.execution.train_ops import ApplyGradients
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -55,7 +55,7 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 
     Returns:
         Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
-            If None, use `default_policy` provided in build_trainer().
+            If None, use `default_policy` provided in build_trainer_class().
     """
     if config["framework"] == "torch":
         from ray.rllib.agents.a3c.a3c_torch_policy import \
@@ -99,7 +99,7 @@ def execution_plan(workers: WorkerSet,
     return StandardMetricsReporting(train_op, workers, config)
 
 
-A3CTrainer = build_trainer(
+A3CTrainer = build_trainer_class(
     name="A3C",
     default_config=DEFAULT_CONFIG,
     default_policy=A3CTFPolicy,

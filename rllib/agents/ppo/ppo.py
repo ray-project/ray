@@ -14,7 +14,7 @@ from typing import Optional, Type
 
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
     StandardizeFields, SelectExperiences
@@ -169,7 +169,7 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 
     Returns:
         Optional[Type[Policy]]: The Policy class to use with PPOTrainer.
-            If None, use `default_policy` provided in build_trainer().
+            If None, use `default_policy` provided in build_trainer_class().
     """
     if config["framework"] == "torch":
         from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
@@ -256,7 +256,7 @@ def execution_plan(workers: WorkerSet,
 
     Returns:
         LocalIterator[dict]: The Policy class to use with PPOTrainer.
-            If None, use `default_policy` provided in build_trainer().
+            If None, use `default_policy` provided in build_trainer_class().
     """
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -300,7 +300,7 @@ def execution_plan(workers: WorkerSet,
 
 # Build a child class of `Trainer`, which uses the framework specific Policy
 # determined in `get_policy_class()` above.
-PPOTrainer = build_trainer(
+PPOTrainer = build_trainer_class(
     name="PPO",
     default_config=DEFAULT_CONFIG,
     validate_config=validate_config,

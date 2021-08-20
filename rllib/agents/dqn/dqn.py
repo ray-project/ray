@@ -15,7 +15,7 @@ from typing import List, Optional, Type
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -315,7 +315,7 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 
     Returns:
         Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
-            If None, use `default_policy` provided in build_trainer().
+            If None, use `default_policy` provided in build_trainer_class().
     """
     if config["framework"] == "torch":
         return DQNTorchPolicy
@@ -323,8 +323,8 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 
 # Build a generic off-policy trainer. Other trainers (such as DDPGTrainer)
 # may build on top of it.
-GenericOffPolicyTrainer = build_trainer(
-    name="GenericOffPolicyAlgorithm",
+GenericOffPolicyTrainer = build_trainer_class(
+    name="GenericOffPolicyTrainer",
     default_policy=None,
     get_policy_class=get_policy_class,
     default_config=DEFAULT_CONFIG,

@@ -3,7 +3,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.evaluation.postprocessing import discount_cumsum
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
@@ -38,7 +38,7 @@ MyTFPolicy = build_tf_policy(
 )
 
 # <class 'ray.rllib.agents.trainer_template.MyCustomTrainer'>
-MyTrainer = build_trainer(
+MyTrainer = build_trainer_class(
     name="MyCustomTrainer",
     default_policy=MyTFPolicy,
 )

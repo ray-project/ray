@@ -6,7 +6,7 @@ import numpy as np
 
 from ray.rllib import Policy
 from ray.rllib.agents import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.rollout_ops import ParallelRollouts, SelectExperiences
@@ -75,7 +75,7 @@ def execution_plan(workers: WorkerSet,
     return StandardMetricsReporting(rollouts, workers, config)
 
 
-RandomParametricTrainer = build_trainer(
+RandomParametricTrainer = build_trainer_class(
     name="RandomParametric",
     default_config=DEFAULT_CONFIG,
     default_policy=RandomParametriclPolicy,

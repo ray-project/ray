@@ -50,7 +50,7 @@ def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
 
 
 @DeveloperAPI
-def build_trainer(
+def build_trainer_class(
         name: str,
         *,
         default_config: Optional[TrainerConfigDict] = None,
@@ -58,6 +58,8 @@ def build_trainer(
         default_policy: Optional[Type[Policy]] = None,
         get_policy_class: Optional[Callable[[TrainerConfigDict], Optional[Type[
             Policy]]]] = None,
+        event_handlers: Optional[Dict[EventName, Callable]] = None,
+        # OBSOLETE:
         validate_env: Optional[Callable[[EnvType, EnvContext], None]] = None,
         before_init: Optional[Callable[[Trainer], None]] = None,
         after_init: Optional[Callable[[Trainer], None]] = None,
@@ -231,16 +233,6 @@ def build_trainer(
 
             return res
 
-        @staticmethod
-        @override(Trainer)
-        def _validate_config(config: PartialTrainerConfigDict,
-                             trainer_obj_or_none: Optional["Trainer"] = None):
-            # Call super (Trainer) validation method first.
-            Trainer._validate_config(config, trainer_obj_or_none)
-            # Then call user defined one, if any.
-            if validate_config is not None:
-                validate_config(config)
-
         @override(Trainer)
         def _before_evaluate(self):
             if before_evaluate_fn:
@@ -266,7 +258,7 @@ def build_trainer(
 
             Keyword Args:
                 overrides (dict): use this to override any of the arguments
-                    originally passed to build_trainer() for this policy.
+                    originally passed to build_trainer_class() for this policy.
 
             Returns:
                 Type[Trainer]: A the Trainer sub-class using `original_kwargs`
@@ -279,10 +271,11 @@ def build_trainer(
                 >>> issubclass(MyClass, Trainer)
                 ... True
             """
-            return build_trainer(**dict(original_kwargs, **overrides))
+            return build_trainer_class(**dict(original_kwargs, **overrides))
 
         def __repr__(self):
-            return self._name
+            return f"{self._name}(#workers=" \
+                   f"{len(self.workers.remote_workers())})"
 
     trainer_cls.__name__ = name
     trainer_cls.__qualname__ = name

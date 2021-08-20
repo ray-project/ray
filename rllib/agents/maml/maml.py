@@ -5,7 +5,7 @@ from ray.rllib.utils.sgd import standardized
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.maml.maml_tf_policy import MAMLTFPolicy
 from ray.rllib.agents.maml.maml_torch_policy import MAMLTorchPolicy
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER, LEARNER_INFO, _get_shared_metrics
@@ -236,7 +236,7 @@ def validate_config(config):
                          "(local) worker! Set `create_env_on_driver` to True.")
 
 
-MAMLTrainer = build_trainer(
+MAMLTrainer = build_trainer_class(
     name="MAML",
     default_config=DEFAULT_CONFIG,
     default_policy=MAMLTFPolicy,

@@ -2,7 +2,7 @@ import logging
 
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.execution.replay_ops import SimpleReplayBuffer, Replay, \
     StoreToReplayBuffer, WaitUntilTimestepsElapsed
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
@@ -192,7 +192,7 @@ def execution_plan(workers, config):
     return StandardMetricsReporting(train_op, workers, config)
 
 
-AlphaZeroTrainer = build_trainer(
+AlphaZeroTrainer = build_trainer_class(
     name="AlphaZero",
     default_config=DEFAULT_CONFIG,
     default_policy=AlphaZeroPolicyWrapperClass,

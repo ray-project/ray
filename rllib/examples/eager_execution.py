@@ -3,7 +3,7 @@ import os
 import random
 
 import ray
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.examples.models.eager_model import EagerModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -98,7 +98,7 @@ MyTFPolicy = build_tf_policy(
 )
 
 # <class 'ray.rllib.agents.trainer_template.MyCustomTrainer'>
-MyTrainer = build_trainer(
+MyTrainer = build_trainer_class(
     name="MyCustomTrainer",
     default_policy=MyTFPolicy,
 )
