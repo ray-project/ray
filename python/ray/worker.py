@@ -575,6 +575,7 @@ _global_node = None
 
 
 @PublicAPI
+@client_mode_hook
 def init(
         address=None,
         *,
@@ -748,7 +749,6 @@ def init(
             logger.info(
                 f"Using address {address_env_var} set in the environment "
                 f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}")
-
     if address is not None and "://" in address:
         # Address specified a protocol, use ray client
         builder = ray.client(address)
