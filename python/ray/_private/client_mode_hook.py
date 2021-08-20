@@ -9,6 +9,10 @@ RAY_CLIENT_MODE_ATTR = "__ray_client_mode_key__"
 # Global setting of whether client mode is enabled. This default to OFF,
 # but is enabled upon ray.client(...).connect() or in tests.
 is_client_mode_enabled = os.environ.get("RAY_CLIENT_MODE", "0") == "1"
+
+# When RAY_CLIENT_MODE == 1, we treat it as default enabled client mode
+# This is useful for testing
+is_client_mode_enabled_by_default = is_client_mode_enabled
 os.environ.update({"RAY_CLIENT_MODE": "0"})
 
 # Local setting of whether to ignore client hook conversion. This defaults
@@ -80,7 +84,7 @@ def client_mode_hook(func):
         if client_mode_should_convert():
             # Legacy code
             # we only convert init function if RAY_CLIENT_MODE=1
-            if func.__name__ != "init" or is_client_mode_enabled:
+            if func.__name__ != "init" or is_client_mode_enabled_by_default:
                 return getattr(ray, func.__name__)(*args, **kwargs)
         return func(*args, **kwargs)
 

@@ -46,7 +46,7 @@ def test_multi_cli_basic(call_ray_start):
     indirect=True)
 def test_multi_cli_error_1(call_ray_start):
     cli1 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValueError):
         cli2 = ray.init("ray://localhost:25001")  # noqa
 
 
@@ -59,7 +59,7 @@ def test_multi_cli_error_1(call_ray_start):
     indirect=True)
 def test_multi_cli_error_2(call_ray_start):
     cli1 = ray.init("ray://localhost:25001")  # noqa
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValueError):
         cli2 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
 
 
