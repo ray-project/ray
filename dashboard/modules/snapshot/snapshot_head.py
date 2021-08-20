@@ -1,5 +1,4 @@
 from typing import Dict, Any, List
-import hashlib
 
 import ray
 from ray.core.generated import gcs_service_pb2
@@ -8,6 +7,7 @@ from ray.core.generated import gcs_service_pb2_grpc
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_list
 
 import ray.new_dashboard.utils as dashboard_utils
+from ray.new_dashboard.utils import to_google_style, to_camel_case
 
 import json
 
@@ -35,8 +35,27 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
             "ray_version": ray.__version__,
             "ray_commit": ray.__commit__
         }
+
+        # Serve deployment names are used as keys but should not be converted
+        # to camel case because different user-provided names may map to the
+        # same name in camel case, e.g. "my_func" and "myFunc". For all other
+        # keys, convert to camel case as usual for backward compatibility.
+        converted_case_snapshot = dict()
+        for name, data in snapshot.items():
+            if name == "deployments":
+                converted_case_snapshot["deployments"] = dict()
+                for deployment_name, info in data.items():
+                    converted_case_snapshot["deployments"][
+                        deployment_name] = to_google_style(info)
+            else:
+                converted_case_snapshot[to_camel_case(name)] = to_google_style(
+                    data)
+
         return dashboard_utils.rest_response(
-            success=True, message="hello", snapshot=snapshot)
+            success=True,
+            message="hello",
+            convert_case=False,
+            snapshot=converted_case_snapshot)
 
     async def get_job_info(self):
         request = gcs_service_pb2.GetAllJobInfoRequest()
@@ -94,15 +113,14 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
             actors[actor_id] = entry
 
             deployments = await self.get_serve_info()
-            for deployment_name_hash, deployment_info in deployments.items():
+            for deployment_name, deployment_info in deployments.items():
                 for replica_actor_id, actor_info in deployment_info[
                         "actors"].items():
                     if replica_actor_id in actors:
                         serve_metadata = dict()
                         serve_metadata["replica_tag"] = actor_info[
                             "replica_tag"]
-                        serve_metadata["deployment_name"] = deployment_info[
-                            "name"]
+                        serve_metadata["deployment_name"] = deployment_name
                         serve_metadata["version"] = actor_info["version"]
                         actors[replica_actor_id]["metadata"][
                             "serve"] = serve_metadata
@@ -137,13 +155,6 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         deployments: Dict[str, Any] = {
             k: v
             for d in deployments_per_controller for k, v in d.items()
-        }
-        # Replace the keys (deployment names) with their hashes to prevent
-        # collisions caused by the automatic conversion to camelcase by the
-        # dashboard agent.
-        deployments = {
-            hashlib.sha1(name.encode()).hexdigest(): info
-            for name, info in deployments.items()
         }
         return deployments
 

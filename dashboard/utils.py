@@ -233,7 +233,8 @@ class CustomEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
-def rest_response(success, message, **kwargs) -> aiohttp.web.Response:
+def rest_response(success, message, convert_case=False,
+                  **kwargs) -> aiohttp.web.Response:
     # In the dev context we allow a dev server running on a
     # different port to consume the API, meaning we need to allow
     # cross-origin access
@@ -245,7 +246,7 @@ def rest_response(success, message, **kwargs) -> aiohttp.web.Response:
         {
             "result": success,
             "msg": message,
-            "data": to_google_style(kwargs)
+            "data": to_google_style(kwargs) if convert_case else kwargs
         },
         dumps=functools.partial(json.dumps, cls=CustomEncoder),
         headers=headers)
@@ -261,22 +262,12 @@ def to_camel_case(snake_str):
 
 def to_google_style(d):
     """Recursive convert all keys in dict to google style."""
-    new_dict = {}
-
-    for k, v in d.items():
-        if isinstance(v, dict):
-            new_dict[to_camel_case(k)] = to_google_style(v)
-        elif isinstance(v, list):
-            new_list = []
-            for i in v:
-                if isinstance(i, dict):
-                    new_list.append(to_google_style(i))
-                else:
-                    new_list.append(i)
-            new_dict[to_camel_case(k)] = new_list
-        else:
-            new_dict[to_camel_case(k)] = v
-    return new_dict
+    if isinstance(d, dict):
+        return {to_camel_case(k): to_google_style(v) for k, v in d.items()}
+    elif isinstance(d, list):
+        return [to_google_style(i) for i in d]
+    else:
+        return d
 
 
 def message_to_dict(message, decode_keys=None, **kwargs):

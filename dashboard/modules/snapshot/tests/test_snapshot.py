@@ -2,7 +2,6 @@ import os
 import sys
 import json
 import jsonschema
-import hashlib
 
 import pprint
 import pytest
@@ -137,8 +136,7 @@ my_func_deleted.delete()
 
     assert len(data["data"]["snapshot"]["deployments"]) == 3
 
-    entry = data["data"]["snapshot"]["deployments"][hashlib.sha1(
-        "my_func".encode()).hexdigest()]
+    entry = data["data"]["snapshot"]["deployments"]["my_func"]
     assert entry["name"] == "my_func"
     assert entry["version"] == "None"
     assert entry["namespace"] == "serve"
@@ -157,8 +155,7 @@ my_func_deleted.delete()
     assert metadata["version"] == "None"
     assert len(metadata["replicaTag"]) > 0
 
-    entry_deleted = data["data"]["snapshot"]["deployments"][hashlib.sha1(
-        "my_func_deleted".encode()).hexdigest()]
+    entry_deleted = data["data"]["snapshot"]["deployments"]["my_func_deleted"]
     assert entry_deleted["name"] == "my_func_deleted"
     assert entry_deleted["version"] == "v1"
     assert entry_deleted["namespace"] == "serve"
@@ -169,8 +166,8 @@ my_func_deleted.delete()
     assert entry_deleted["startTime"] > 0
     assert entry_deleted["endTime"] > entry_deleted["startTime"]
 
-    entry_nondetached = data["data"]["snapshot"]["deployments"][hashlib.sha1(
-        "my_func_nondetached".encode()).hexdigest()]
+    entry_nondetached = data["data"]["snapshot"]["deployments"][
+        "my_func_nondetached"]
     assert entry_nondetached["name"] == "my_func_nondetached"
     assert entry_nondetached["version"] == "v1"
     assert entry_nondetached["namespace"] == ""
