@@ -17,7 +17,6 @@ from ray.serve.http_util import ASGIHTTPSender
 from ray.serve.utils import parse_request_item, _get_logger
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
-from ray._private.utils import import_attr
 from ray.serve.config import BackendConfig
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.router import Query, RequestMetadata
@@ -43,11 +42,7 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
         async def __init__(self, backend_tag, replica_tag, init_args,
                            backend_config: BackendConfig,
                            controller_name: str):
-            backend_def = cloudpickle.loads(serialized_backend_def)
-            if isinstance(backend_def, str):
-                backend = import_attr(backend_def)
-            else:
-                backend = backend_def
+            backend = cloudpickle.loads(serialized_backend_def)
 
             if inspect.isfunction(backend):
                 is_function = True

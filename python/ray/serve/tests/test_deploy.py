@@ -638,12 +638,13 @@ def test_redeploy_scale_up(serve_instance, use_handle):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_deploy_handle_validation(serve_instance):
+    @serve.deployment
     class A:
         def b(self, *args):
             return "hello"
 
-    serve_instance.deploy("f", A)
-    handle = serve.get_handle("f")
+    A.deploy()
+    handle = A.get_handle()
 
     # Legacy code path
     assert ray.get(handle.options(method_name="b").remote()) == "hello"
@@ -651,17 +652,6 @@ def test_deploy_handle_validation(serve_instance):
     assert ray.get(handle.b.remote()) == "hello"
     with pytest.raises(AttributeError):
         handle.c.remote()
-
-    # Test missing_ok case
-    missing_handle = serve.get_handle("g", missing_ok=True)
-    with pytest.raises(AttributeError):
-        missing_handle.b.remote()
-    serve_instance.deploy("g", A)
-    # Old code path still work
-    assert ray.get(missing_handle.options(method_name="b").remote()) == "hello"
-    # Because the missing_ok flag, handle.b.remote won't work.
-    with pytest.raises(AttributeError):
-        missing_handle.b.remote()
 
 
 def test_init_args(serve_instance):

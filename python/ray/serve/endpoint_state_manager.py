@@ -1,8 +1,7 @@
 from typing import Dict, Any, Optional
 
 from ray import cloudpickle
-from ray.serve.common import (BackendTag, EndpointInfo, EndpointTag,
-                              TrafficPolicy)
+from ray.serve.common import (EndpointInfo, EndpointTag, TrafficPolicy)
 from ray.serve.long_poll import LongPollNamespace
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
@@ -87,57 +86,6 @@ class EndpointStateManager:
 
         self._checkpoint()
         self._notify_route_table_changed()
-        self._notify_traffic_policies_changed(endpoint)
-
-    def create_endpoint(self, endpoint: EndpointTag,
-                        endpoint_info: EndpointInfo,
-                        traffic_policy: TrafficPolicy):
-        err_prefix = "Cannot create endpoint."
-        if endpoint_info.route is not None:
-            existing_route_endpoint = self._get_endpoint_for_route(
-                endpoint_info.route)
-            if (existing_route_endpoint is not None
-                    and existing_route_endpoint != endpoint):
-                raise ValueError("{} Route '{}' is already registered.".format(
-                    err_prefix, endpoint_info.route))
-
-        if endpoint in self._endpoints:
-            if (self._endpoints[endpoint] == endpoint_info
-                    and self._traffic_policies == traffic_policy):
-                return
-            else:
-                raise ValueError(
-                    "{} Endpoint '{}' is already registered.".format(
-                        err_prefix, endpoint))
-
-        self._endpoints[endpoint] = endpoint_info
-        self._traffic_policies[endpoint] = traffic_policy
-
-        self._checkpoint()
-        self._notify_route_table_changed()
-        self._notify_traffic_policies_changed(endpoint)
-
-    def set_traffic_policy(self, endpoint: EndpointTag,
-                           traffic_policy: TrafficPolicy):
-        if endpoint not in self._traffic_policies:
-            raise ValueError("Attempted to assign traffic for an endpoint '{}'"
-                             " that is not registered.".format(endpoint))
-
-        self._traffic_policies[endpoint] = traffic_policy
-
-        self._checkpoint()
-        self._notify_traffic_policies_changed(endpoint)
-
-    def shadow_traffic(self, endpoint: EndpointTag, backend: BackendTag,
-                       proportion: float):
-        if endpoint not in self._traffic_policies:
-            raise ValueError("Attempted to shadow traffic from an "
-                             "endpoint '{}' that is not registered."
-                             .format(endpoint))
-
-        self._traffic_policies[endpoint].set_shadow(backend, proportion)
-
-        self._checkpoint()
         self._notify_traffic_policies_changed(endpoint)
 
     def get_endpoint_route(self, endpoint: EndpointTag) -> Optional[str]:

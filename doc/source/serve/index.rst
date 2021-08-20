@@ -5,12 +5,8 @@ Ray Serve: Scalable and Programmable Serving
 ============================================
 
 .. warning::
-  Ray Serve is changing fast!  You're probably running the latest pip release and not the nightly build, so please ensure you're viewing the correct version of this documentation.
+  You're probably running the latest pip release and not the nightly build, so please ensure you're viewing the correct version of this documentation.
   `Here's the documentation for the latest pip release of Ray Serve <https://docs.ray.io/en/latest/serve/index.html>`_.
-
-
-.. warning::
-  As of Ray 1.4, Serve has a new API centered around the concept of "Deployments." Deployments offer a more streamlined API and can be declaratively updated, which should improve both development and production workflows. The existing APIs have not changed from Ray 1.4 and will continue to work until Ray 1.5, at which point they will be removed (see the package reference if you're not sure about a specific API). Please see the `migration guide <https://docs.google.com/document/d/1Tgm-bHz6au0B8F_Ps0SLPXh9oyw8pIaGWKWunnK-Kuw>`_ for details on how to update your existing Serve application to use this new API and as always we welcome feedback on `Slack <https://docs.google.com/forms/u/1/d/e/1FAIpQLSfAcoiLCHOguOm8e7Jnn-JJdZaCxPGjgVCvFijHB5PLaQLeig/viewform?usp=send_form>`_, `GitHub <https://github.com/ray-project/ray/issues>`_, or the `Ray forum <http://discuss.ray.io/>`_!
 
 
 .. image:: logo.svg
