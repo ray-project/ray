@@ -10,7 +10,7 @@ from unittest.mock import patch
 import ray.util.client.server.server as ray_client_server
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
-from ray.util.client import RayAPIStub, CURRENT_PROTOCOL_VERSION
+from ray.util.client import _ClientContext, CURRENT_PROTOCOL_VERSION
 
 import ray
 
@@ -115,20 +115,20 @@ def test_num_clients(init_and_serve_lazy):
     def get_job_id(api):
         return api.get_runtime_context().worker.current_job_id
 
-    api1 = RayAPIStub()
-    info1 = api1.connect("localhost:50051")
+    api1 = _ClientContext()
+    info1 = api1._connect("localhost:50051")
     job_id_1 = get_job_id(api1)
     assert info1["num_clients"] == 1, info1
-    api2 = RayAPIStub()
-    info2 = api2.connect("localhost:50051")
+    api2 = _ClientContext()
+    info2 = api2._connect("localhost:50051")
     job_id_2 = get_job_id(api2)
     assert info2["num_clients"] == 2, info2
 
     assert job_id_1 == job_id_2
 
     # Disconnect the first two clients.
-    api1.disconnect()
-    api2.disconnect()
+    api1._disconnect()
+    api2._disconnect()
     time.sleep(1)
 
     api3 = RayAPIStub()

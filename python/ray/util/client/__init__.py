@@ -21,7 +21,6 @@ class _ClientContext:
         self.client_worker = None
         self._server = None
         self._connected_with_init = False
-        self._inside_client_test = False
 
     def _connect(self,
                  conn_str: str,
@@ -194,6 +193,7 @@ class RayAPIStub:
     def __init__(self):
         self._cxt = threading.local()
         self._cxt.handler = _default_context
+        self._inside_client_test = False
 
     def get_context(self):
         try:
@@ -211,9 +211,10 @@ class RayAPIStub:
         return old_cxt
 
     def is_default(self):
-        return self._cxt.handler == _default_context
+        return self.get_context() == _default_context
 
     def connect(self, *args, **kw_args):
+        self.get_context()._inside_client_test = self._inside_client_test
         conn = self.get_context()._connect(*args, **kw_args)
         global _lock, _all_contexts
         with _lock:
@@ -223,15 +224,15 @@ class RayAPIStub:
     def disconnect(self, *args, **kw_args):
         global _lock, _all_contexts, _default_context
         with _lock:
-            if _default_context == self._cxt.handler:
+            if _default_context == self.get_context():
                 for cxt in _all_contexts:
                     cxt._disconnect(*args, **kw_args)
                 _all_contexts = set()
             else:
                 self.get_context()._disconnect(*args, **kw_args)
 
-            if self._cxt.handler in _all_contexts:
-                _all_contexts.remove(self._cxt.handler)
+            if self.get_context() in _all_contexts:
+                _all_contexts.remove(self.get_context())
 
     def remote(self, *args, **kwargs):
         return self.get_context()._remote(*args, **kwargs)
@@ -251,7 +252,7 @@ class RayAPIStub:
     def shutdown(self, *args, **kwargs):
         global _lock, _all_contexts
         with _lock:
-            if _default_context == self._cxt.handler:
+            if _default_context == self.get_context():
                 for cxt in _all_contexts:
                     cxt._shutdown(*args, **kwargs)
                 _all_contexts = set()
@@ -259,8 +260,8 @@ class RayAPIStub:
             else:
                 self.get_context()._shutdown(*args, **kwargs)
 
-            if self._cxt.handler in _all_contexts:
-                _all_contexts.remove(self._cxt.handler)
+            if self.get_context() in _all_contexts:
+                _all_contexts.remove(self.get_context())
 
 
 ray = RayAPIStub()

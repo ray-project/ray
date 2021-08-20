@@ -1,5 +1,5 @@
 import pytest
-from ray.util.client import RayAPIStub
+from ray.util.client import _ClientContext
 from ray.util.client.common import ClientActorRef, ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.ray_client_helpers import (
@@ -257,8 +257,8 @@ def test_named_actor_refcount(ray_start_regular):
         ActorTest.options(name="actor", lifetime="detached").remote()
 
         def connect_api():
-            api = RayAPIStub()
-            api.connect("localhost:50051", namespace="")
+            api = _ClientContext()
+            api._connect("localhost:50051", namespace="")
             api.get_actor("actor")
             return api
 
@@ -271,17 +271,17 @@ def test_named_actor_refcount(ray_start_regular):
         assert len(server.task_servicer.actor_refs) == 1
         assert len(server.task_servicer.named_actors) == 1
 
-        apis.pop(0).disconnect()
+        apis.pop(0)._disconnect()
         assert check_owners(2)
         assert len(server.task_servicer.actor_refs) == 1
         assert len(server.task_servicer.named_actors) == 1
 
-        apis.pop(0).disconnect()
+        apis.pop(0)._disconnect()
         assert check_owners(1)
         assert len(server.task_servicer.actor_refs) == 1
         assert len(server.task_servicer.named_actors) == 1
 
-        apis.pop(0).disconnect()
+        apis.pop(0)._disconnect()
         # no more owners should be seen
         assert check_owners(0)
         # actor refs shouldn't be removed
