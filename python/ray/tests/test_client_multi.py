@@ -92,10 +92,10 @@ def test_multi_cli_func(call_ray_start):
     # TODO better error message.
     # Right now, it's EOFError actually
     with pytest.raises(Exception), cli1:
-        assert "world" == ray.get(o2)
+        ray.get(o2)
 
     with pytest.raises(Exception), cli2:
-        assert "world" == ray.get(o1)
+        ray.get(o1)
 
 
 @pytest.mark.skipif(
@@ -142,3 +142,7 @@ def test_multi_cli_actor(call_ray_start):
 
     with pytest.raises(Exception), cli2:
         ray.get(o1)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
