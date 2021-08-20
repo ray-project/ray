@@ -37,7 +37,8 @@ def test_release_resources_race(shutdown_only):
     ray.init(
         num_cpus=2,
         object_store_memory=700e6,
-        _system_config={"inline_object_status_in_refs": True})
+        _system_config={"inline_object_status_in_refs": True,
+                        "worker_lease_timeout_milliseconds": 1000})
     refs = []
     for _ in range(10):
         refs.append(ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8)))
