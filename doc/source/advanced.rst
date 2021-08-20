@@ -49,7 +49,7 @@ When you have multiple tasks that need to wait on some condition, you can use a 
 
 .. code-block:: python
 
-    # Also available via `from ray.test_utils import SignalActor`
+    # Also available via `from ray._private.test_utils import SignalActor`
     import ray
     import asyncio
 
@@ -431,6 +431,10 @@ Runtime Environments
 .. note::
 
     This API is in beta and may change before becoming stable.
+
+.. note::
+
+    This feature requires a full installation of Ray using ``pip install "ray[default]"``.
 
 On Mac OS and Linux, Ray 1.4+ supports dynamically setting the runtime environment of tasks, actors, and jobs so that they can depend on different Python libraries (e.g., conda environments, pip dependencies) while all running on the same Ray cluster.
 

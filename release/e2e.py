@@ -98,6 +98,25 @@ The `--no-report` option disables storing the results in the DB and
 artifacts on S3. If you set this option, you do not need access to the
 ray-ossci AWS user.
 
+Using Compilation on Product + App Config Override
+--------------------------------------------------
+For quick iteration when debugging a release test, go/compile-on-product allows
+you to easily modify and recompile Ray, such that the recompilation happens
+within an app build step and can benefit from a warm Bazel cache. See
+go/compile-on-product for more information.
+
+After kicking off the app build, you can give the app config ID to this script
+as an app config override, where the indicated app config will be used instead
+of the app config given in the test config. E.g., running
+
+python e2e.py --no-report --test-config ~/ray/benchmarks/benchmark_tests.yaml --test-name=single_node --app-config-id-override=apt_TBngEXXXrhipMXgexVcrpC9i
+
+would run the single_node benchmark test with the apt_TBngEXXXrhipMXgexVcrpC9i
+app config instead of the app config given in
+~/ray/benchmarks/benchmark_tests.yaml. If the build for the app config is still
+in progress, the script will wait until it completes, same as for a locally
+defined app config.
+
 Running on Head Node vs Running with Anyscale Connect
 -----------------------------------------------------
 By default release tests run their drivers on the head node. Support is being
@@ -496,7 +515,8 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
 def _cleanup_session(sdk: AnyscaleSDK, session_id: str):
     if session_id:
         # Just trigger a request. No need to wait until session shutdown.
-        sdk.stop_session(session_id=session_id, stop_session_options={})
+        sdk.terminate_session(
+            session_id=session_id, terminate_session_options={})
 
 
 def search_running_session(sdk: AnyscaleSDK, project_id: str,
@@ -652,7 +672,7 @@ def install_matching_ray():
         return
     assert "manylinux2014_x86_64" in wheel, wheel
     if sys.platform == "darwin":
-        platform = "macosx_10_13_intel"
+        platform = "macosx_10_15_intel"
     elif sys.platform == "win32":
         platform = "win_amd64"
     else:
@@ -729,11 +749,12 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
 
 def run_job(cluster_name: str, compute_tpl_name: str, cluster_env_name: str,
             job_name: str, min_workers: str, script: str,
-            script_args: List[str],
-            env_vars: Dict[str, str]) -> Tuple[int, str]:
+            script_args: List[str], env_vars: Dict[str, str],
+            autosuspend: int) -> Tuple[int, str]:
     # Start cluster and job
     address = f"anyscale://{cluster_name}?cluster_compute={compute_tpl_name}" \
-              f"&cluster_env={cluster_env_name}&autosuspend=5&&update=True"
+              f"&cluster_env={cluster_env_name}&autosuspend={autosuspend}" \
+               "&&update=True"
     logger.info(f"Starting job {job_name} with Ray address: {address}")
     env = copy.deepcopy(os.environ)
     env.update(GLOBAL_CONFIG)
@@ -1016,6 +1037,7 @@ def run_test_config(
         kick_off_only: bool = False,
         check_progress: bool = False,
         upload_artifacts: bool = True,
+        app_config_id_override: Optional[str] = None,
 ) -> Dict[Any, Any]:
     """
 
@@ -1092,11 +1114,25 @@ def run_test_config(
     # If a test is long running, timeout does not mean it failed
     is_long_running = test_config["run"].get("long_running", False)
 
+    build_id_override = None
     if test_config["run"].get("use_connect"):
+        autosuspend_mins = test_config["run"].get("autosuspend_mins", 5)
         assert not kick_off_only, \
             "Unsupported for running with Anyscale connect."
+        if app_config_id_override is not None:
+            logger.info(
+                "Using connect and an app config override, waiting until "
+                "build finishes so we can fetch the app config in order to "
+                "install its pip packages locally.")
+            build_id_override = wait_for_build_or_raise(
+                sdk, app_config_id_override)
+            response = sdk.get_cluster_environment_build(build_id_override)
+            app_config = response.result.config_json
         install_app_config_packages(app_config)
         install_matching_ray()
+    elif "autosuspend_mins" in test_config["run"]:
+        raise ValueError(
+            "'autosuspend_mins' is only supported if 'use_connect' is True.")
 
     # Add information to results dict
     def _update_results(results: Dict):
@@ -1215,7 +1251,9 @@ def run_test_config(
             # First, look for running sessions
             session_id = search_running_session(sdk, project_id, session_name)
             compute_tpl_name = None
+            app_config_id = app_config_id_override
             app_config_name = None
+            build_id = build_id_override
             if not session_id:
                 logger.info("No session found.")
                 # Start session
@@ -1241,9 +1279,22 @@ def run_test_config(
                                 f"{anyscale_compute_tpl_url(compute_tpl_id)}")
 
                     # Find/create app config
-                    app_config_id, app_config_name = create_or_find_app_config(
-                        sdk, project_id, app_config)
-                    build_id = wait_for_build_or_raise(sdk, app_config_id)
+                    if app_config_id is None:
+                        (
+                            app_config_id,
+                            app_config_name,
+                        ) = create_or_find_app_config(sdk, project_id,
+                                                      app_config)
+                    else:
+                        logger.info(
+                            f"Using override app config {app_config_id}")
+                        app_config_name = sdk.get_app_config(
+                            app_config_id).result.name
+                    if build_id is None:
+                        # We might have already retrieved the build ID when
+                        # installing app config packages locally if using
+                        # connect, so only get the build ID if it's not set.
+                        build_id = wait_for_build_or_raise(sdk, app_config_id)
 
                     session_options["compute_template_id"] = compute_tpl_id
                     session_options["build_id"] = build_id
@@ -1276,7 +1327,8 @@ def run_test_config(
                     min_workers=min_workers,
                     script=test_config["run"]["script"],
                     script_args=script_args,
-                    env_vars=env_vars)
+                    env_vars=env_vars,
+                    autosuspend=autosuspend_mins)
                 _process_finished_client_command(returncode, logs)
                 return
 
@@ -1640,7 +1692,8 @@ def run_test(test_config_file: str,
              kick_off_only: bool = False,
              check_progress=False,
              report=True,
-             session_name=None):
+             session_name=None,
+             app_config_id_override=None):
     with open(test_config_file, "rt") as f:
         test_configs = yaml.load(f, Loader=yaml.FullLoader)
 
@@ -1687,7 +1740,8 @@ def run_test(test_config_file: str,
         no_terminate=no_terminate,
         kick_off_only=kick_off_only,
         check_progress=check_progress,
-        upload_artifacts=report)
+        upload_artifacts=report,
+        app_config_id_override=app_config_id_override)
 
     status = result.get("status", "invalid")
 
@@ -1737,7 +1791,9 @@ def run_test(test_config_file: str,
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "--test-config", type=str, required=True, help="Test config file")
     parser.add_argument("--test-name", type=str, help="Test name in config")
@@ -1775,6 +1831,12 @@ if __name__ == "__main__":
         required=False,
         type=str,
         help="Name of the session to run this test.")
+    parser.add_argument(
+        "--app-config-id-override",
+        required=False,
+        type=str,
+        help=("An app config ID, which will override the test config app "
+              "config."))
     args, _ = parser.parse_known_args()
 
     if not GLOBAL_CONFIG["ANYSCALE_PROJECT"]:
@@ -1811,4 +1873,5 @@ if __name__ == "__main__":
         check_progress=args.check,
         report=not args.no_report,
         session_name=args.session_name,
+        app_config_id_override=args.app_config_id_override,
     )
