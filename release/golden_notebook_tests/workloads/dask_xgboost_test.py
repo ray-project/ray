@@ -27,7 +27,7 @@ def main():
     colnames = ["label"] + ["feature-%02d" % i for i in range(1, 29)]
     data = dd.read_csv(FILE_URL, names=colnames)
     if args.smoke_test:
-        data = data.head(n=1000)
+        data = data.head(n=1000, compute=False)
 
     print("Loaded HIGGS data.")
 

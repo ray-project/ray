@@ -215,7 +215,7 @@ if __name__ == "__main__":
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "torch_tune_serve_test")
     if is_anyscale_connect(addr):
-        ray.init(address=addr, job_name=job_name).job_name(job_name)
+        ray.client(address=addr).job_name(job_name).connect()
     else:
         ray.init(address="auto")
 
