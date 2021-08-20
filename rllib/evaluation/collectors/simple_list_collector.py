@@ -650,7 +650,8 @@ class SimpleListCollector(SampleCollector):
                             space = view_req.space
 
                         fill_value = get_dummy_batch_for_space(
-                            space, batch_size=0,
+                            space,
+                            batch_size=0,
                         ) if isinstance(space, Space) else space
 
                         self.agent_collectors[k]._build_buffers({
