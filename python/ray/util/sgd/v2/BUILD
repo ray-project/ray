@@ -7,7 +7,7 @@ py_test(
     size = "medium",
     main = "examples/mlflow_fashion_mnist.py",
     srcs = ["examples/mlflow_fashion_mnist.py"],
-    tags = ["exclusive"],
+    tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"],
     args = ["--smoke-test"]
 )
