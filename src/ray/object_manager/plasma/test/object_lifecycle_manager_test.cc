@@ -28,13 +28,14 @@ namespace plasma {
 
 class MockEvictionPolicy : public IEvictionPolicy {
  public:
-  MOCK_METHOD2(ObjectCreated, void(const ObjectID &, bool));
-  MOCK_METHOD2(RequireSpace, int64_t(int64_t, std::vector<ObjectID> *));
+  MOCK_METHOD1(ObjectCreated, void(const ObjectID &));
+  MOCK_METHOD2(RequireSpace, int64_t(int64_t, std::vector<ObjectID> &));
   MOCK_METHOD1(BeginObjectAccess, void(const ObjectID &));
   MOCK_METHOD1(EndObjectAccess, void(const ObjectID &));
-  MOCK_METHOD2(ChooseObjectsToEvict, int64_t(int64_t, std::vector<ObjectID> *));
+  MOCK_METHOD2(ChooseObjectsToEvict, int64_t(int64_t, std::vector<ObjectID> &));
   MOCK_METHOD1(RemoveObject, void(const ObjectID &));
   MOCK_CONST_METHOD0(DebugString, std::string());
+  MOCK_CONST_METHOD1(IsObjectExists, bool(const ObjectID &));
 };
 
 class MockObjectStore : public IObjectStore {
@@ -121,7 +122,7 @@ TEST_F(ObjectLifecycleManagerTest, CreateObjectTriggerGC) {
   EXPECT_CALL(*eviction_policy_, RequireSpace(_, _))
       .Times(1)
       .WillOnce(Invoke([&](auto size, auto &to_evict) {
-        to_evict->push_back(id1_);
+        to_evict.push_back(id1_);
         return 0;
       }));
 
