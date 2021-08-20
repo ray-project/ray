@@ -209,23 +209,18 @@ API Reference
 -------------
 
 .. autoclass:: ray_lightning.RayPlugin
-    :members:
 
 .. autoclass:: ray_lightning.HorovodRayPlugin
-    :members:
 
 .. autoclass:: ray_lightning.RayShardedPlugin
-    :members:
 
 
 Tune Integration
 ^^^^^^^^^^^^^^^^
 
 .. autoclass:: ray_lightning.tune.TuneReportCallback
-    :members:
 
 .. autoclass:: ray_lightning.tune.TuneReportCheckpointCallback
-    :members:
 
 .. autofunction:: ray_lightning.tune.get_tune_ddp_resources
 

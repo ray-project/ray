@@ -37,7 +37,6 @@ MOCK_MODULES = [
     "ax.service.ax_client",
     "blist",
     "ConfigSpace",
-    "dask",
     "dask.distributed",
     "gym",
     "gym.spaces",
@@ -92,7 +91,6 @@ CHILD_MOCK_MODULES = [
     "pytorch_lightning.plugins",
     "pytorch_lightning.plugins.environments",
     "pytorch_lightning.utilities",
-    "tensorflow",
     "tensorflow.keras.callbacks"
 ]
 
