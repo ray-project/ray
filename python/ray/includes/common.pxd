@@ -156,7 +156,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         void ParseFromString(const c_string &serialized)
         void CopyFrom(const CAddress& address)
         const c_string &worker_id()
-
+    cdef cppclass CObjectReference "ray::rpc::ObjectReference":
+        CObjectReference()
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
@@ -221,7 +222,7 @@ cdef extern from "ray/common/ray_object.h" nogil:
     cdef cppclass CRayObject "ray::RayObject":
         CRayObject(const shared_ptr[CBuffer] &data,
                    const shared_ptr[CBuffer] &metadata,
-                   const c_vector[CObjectID] &nested_ids)
+                   const c_vector[CObjectReference] &nested_refs)
         c_bool HasData() const
         c_bool HasMetadata() const
         const size_t DataSize() const

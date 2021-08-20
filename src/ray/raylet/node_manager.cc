@@ -466,10 +466,6 @@ ray::Status NodeManager::RegisterGcs() {
         "NodeManager.deadline_timer.flush_free_objects");
   }
   last_resource_report_at_ms_ = now_ms;
-  periodical_runner_.RunFnPeriodically(
-      [this] { ReportResourceUsage(); }, report_resources_period_ms_,
-      "NodeManager.deadline_timer.report_resource_usage");
-
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
@@ -586,33 +582,6 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
       local_gc_throttler_.AbleToRun()) {
     DoLocalGC();
     should_local_gc_ = false;
-  }
-}
-
-void NodeManager::ReportResourceUsage() {
-  if (initial_config_.pull_based_resource_reporting) {
-    return;
-  }
-  uint64_t now_ms = current_time_ms();
-  uint64_t interval = now_ms - last_resource_report_at_ms_;
-  if (interval >
-      RayConfig::instance().num_resource_report_periods_warning() *
-          RayConfig::instance().raylet_report_resources_period_milliseconds()) {
-    RAY_LOG(WARNING)
-        << "Last resource report was sent " << interval
-        << " ms ago. There might be resource pressure on this node. If "
-           "resource reports keep lagging, scheduling decisions of other nodes "
-           "may become stale";
-  }
-  last_resource_report_at_ms_ = now_ms;
-  auto resources_data = std::make_shared<rpc::ResourcesData>();
-  FillResourceReport(*resources_data);
-
-  if (resources_data->resources_total_size() > 0 ||
-      resources_data->resources_available_changed() ||
-      resources_data->resource_load_changed() || resources_data->should_global_gc()) {
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(resources_data,
-                                                                       /*done*/ nullptr));
   }
 }
 
