@@ -315,6 +315,10 @@ cdef class ClientActorRef(ActorID):
 
     def __dealloc__(self):
         if client is None or client.ray is None:
+            # The client package or client.ray object might be set
+            # to None when a script exits. Should be safe to skip
+            # call_release in this case, since the client should have already
+            # disconnected at this point.
             return
         if client.ray.is_connected() and not self.data.IsNil():
             client.ray.call_release(self.id)
