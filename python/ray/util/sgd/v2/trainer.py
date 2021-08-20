@@ -64,6 +64,7 @@ class Trainer:
                  resources_per_worker: Optional[Dict[str, float]] = None,
                  logdir: Optional[str] = None):
 
+        self._backend = backend
         self._num_workers = num_workers
         self._use_gpu = use_gpu
         self._resources_per_worker = resources_per_worker
@@ -350,7 +351,12 @@ class Trainer:
             raise ValueError("Tune is not installed. Please install ray["
                              "tune] to use the Tune integration.")
 
-        return _create_tune_trainable(train_func, self._executor,
+        if self._executor.is_started:
+            raise RuntimeError("The Trainer must not be active to use "
+                               "`to_tune_trainable`. Either shutdown the "
+                               "Trainer or don't start it in the first place.")
+
+        return _create_tune_trainable(train_func, self._backend,
                                       self._num_workers, self._use_gpu,
                                       self._resources_per_worker)
 
