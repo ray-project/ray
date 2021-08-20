@@ -1,17 +1,18 @@
-from typing import Callable, Dict, Sequence, Union
+from collections import deque
+import copy
 import json
+import logging
+from numbers import Number
+import os
+import platform
+import re
+import shutil
+import time
+from typing import Callable, Dict, Sequence, Union
+import uuid
 
 import ray
 import ray.cloudpickle as cloudpickle
-from collections import deque
-import copy
-import logging
-import platform
-import shutil
-import uuid
-import time
-import os
-from numbers import Number
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -655,7 +656,7 @@ class Trial:
             generated_dirname = f"{str(self)}_{self.experiment_tag}"
             generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
             generated_dirname += f"_{date_str()}"
-        return generated_dirname.replace("/", "_")
+        return re.sub("[/()]", "_", generated_dirname)
 
     def invalidate_json_state(self):
         self._state_valid = False
