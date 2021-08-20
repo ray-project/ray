@@ -410,16 +410,18 @@ def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
 def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
                                     detached: bool):
     """
-    Tests the serve controller is started in the "serve" namespace
-    even if serve is started in a different namespace. Also tests that
-    we can access the serve controller from a namespace that is not "serve".
+    Tests the serve controller is started in the current namespace if not
+    anonymous or in the "serve" namespace if no namespace is specified.
+    When the controller is started in the "serve" namespace, this also tests
+    that we can get the serve controller from another namespace.
     """
 
     ray.init(namespace=namespace)
     serve.start(detached=detached)
     client = serve.api._global_client
-    assert ray.get_runtime_context().namespace != "serve"
-    assert ray.get_actor(client._controller_name, namespace="serve")
+    controller_namespace = namespace or "serve"
+    assert ray.get_actor(
+        client._controller_name, namespace=controller_namespace)
 
 
 if __name__ == "__main__":
