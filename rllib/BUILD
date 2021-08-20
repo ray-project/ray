@@ -1661,6 +1661,14 @@ py_test(
 )
 
 py_test(
+    name = "examples/bare_metal_policy_with_custom_view_reqs",
+    main = "examples/bare_metal_policy_with_custom_view_reqs.py",
+    tags = ["team:ml", "examples", "examples_B"],
+    size = "small",
+    srcs = ["examples/bare_metal_policy_with_custom_view_reqs.py"],
+)
+
+py_test(
     name = "examples/batch_norm_model_ppo_tf",
     main = "examples/batch_norm_model.py",
     tags = ["team:ml", "examples", "examples_B"],
@@ -2344,6 +2352,24 @@ py_test(
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/pettingzoo_env.py"],
+)
+
+py_test(
+    name = "examples/remote_envs_with_inference_done_on_main_node_tf",
+    main = "examples/remote_envs_with_inference_done_on_main_node.py",
+    tags = ["team:ml", "examples", "examples_R"],
+    size = "medium",
+    srcs = ["examples/remote_envs_with_inference_done_on_main_node.py"],
+    args = ["--as-test"],
+)
+
+py_test(
+    name = "examples/remote_envs_with_inference_done_on_main_node_torch",
+    main = "examples/remote_envs_with_inference_done_on_main_node.py",
+    tags = ["team:ml", "examples", "examples_R"],
+    size = "medium",
+    srcs = ["examples/remote_envs_with_inference_done_on_main_node.py"],
+    args = ["--as-test", "--framework=torch"],
 )
 
 py_test(

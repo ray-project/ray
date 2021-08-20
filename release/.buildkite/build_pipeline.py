@@ -147,6 +147,7 @@ NIGHTLY_TESTS = {
     ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
         "rte_many_tasks_actors",
+        "wheel_urls",
     ],
 }
 
