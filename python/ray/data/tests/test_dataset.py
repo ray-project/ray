@@ -856,6 +856,32 @@ def test_union(ray_start_regular_shared):
     assert ds2.count() == 210
 
 
+def test_split_at_indices(ray_start_regular_shared):
+    ds = ray.data.range(10, parallelism=3)
+
+    with pytest.raises(ValueError):
+        ds.split_at_indices([])
+
+    with pytest.raises(ValueError):
+        ds.split_at_indices([3, 1])
+
+    splits = ds.split_at_indices([5])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]
+
+    splits = ds.split_at_indices([2, 5])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1], [2, 3, 4], [5, 6, 7, 8, 9]]
+
+    splits = ds.split_at_indices([2, 5, 5, 100])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1], [2, 3, 4], [], [5, 6, 7, 8, 9], []]
+
+    splits = ds.split_at_indices([100])
+    r = [s.take() for s in splits]
+    assert r == [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], []]
+
+
 def test_split(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10

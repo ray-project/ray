@@ -551,11 +551,15 @@ class Dataset(Generic[T]):
 
         if len(indices) < 1:
             raise ValueError("indices must be at least of length 1")
+        if sorted(indices) != indices:
+            raise ValueError("indices must be sorted")
 
         rest = self
         splits = []
+        prev = 0
         for i in indices:
-            first, rest = rest._split(i, return_right_half=True)
+            first, rest = rest._split(i - prev, return_right_half=True)
+            prev = i
             splits.append(first)
         splits.append(rest)
 
@@ -1507,10 +1511,10 @@ class Dataset(Generic[T]):
                 left_blocks.append(b0)
                 left_metadata.append(ray.get(m0))
                 right_blocks.append(b1)
-                right_blocks.append(ray.get(m1))
+                right_metadata.append(ray.get(m1))
             count += num_rows
 
-        left = Dataset(BlockList(left_blocks, right_metadata))
+        left = Dataset(BlockList(left_blocks, left_metadata))
         if return_right_half:
             right = Dataset(BlockList(right_blocks, right_metadata))
         else:
