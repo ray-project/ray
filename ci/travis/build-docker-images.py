@@ -90,11 +90,16 @@ def _configure_human_version():
 
 def _get_wheel_name(minor_version_number):
     if minor_version_number:
-        matches = glob.glob(f"{_get_root_dir()}/.whl/ray-*{PYTHON_WHL_VERSION}"
-                            f"{minor_version_number}*-manylinux*")
+        matches = [
+            file for file in glob.glob(
+                f"{_get_root_dir()}/.whl/ray-*{PYTHON_WHL_VERSION}"
+                f"{minor_version_number}*-manylinux*")
+            if "+" not in file  # Exclude dbg, asan  builds
+        ]
         assert len(matches) == 1, (
             f"Found ({len(matches)}) matches for 'ray-*{PYTHON_WHL_VERSION}"
-            f"{minor_version_number}*-manylinux*' instead of 1")
+            f"{minor_version_number}*-manylinux*' instead of 1.\n"
+            f"wheel matches: {matches}")
         return os.path.basename(matches[0])
     else:
         matches = glob.glob(

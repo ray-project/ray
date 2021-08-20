@@ -6,7 +6,7 @@ from ray.new_dashboard.modules.actor import actor_utils
 from aioredis.pubsub import Receiver
 from grpc.experimental import aio as aiogrpc
 
-import ray.gcs_utils
+import ray._private.gcs_utils as gcs_utils
 import ray.new_dashboard.utils as dashboard_utils
 from ray.new_dashboard.utils import rest_response
 from ray.new_dashboard.modules.actor import actor_consts
@@ -116,9 +116,9 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         async for sender, msg in receiver.iter():
             try:
                 actor_id, actor_table_data = msg
-                pubsub_message = ray.gcs_utils.PubSubMessage.FromString(
+                pubsub_message = gcs_utils.PubSubMessage.FromString(
                     actor_table_data)
-                message = ray.gcs_utils.ActorTableData.FromString(
+                message = gcs_utils.ActorTableData.FromString(
                     pubsub_message.data)
                 actor_table_data = actor_table_data_to_dict(message)
                 _process_actor_table_data(actor_table_data)
@@ -126,7 +126,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                 # states related fields.
                 if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
                     actor_id = actor_id.decode("UTF-8")[len(
-                        ray.gcs_utils.TablePrefix_ACTOR_string + ":"):]
+                        gcs_utils.TablePrefix_ACTOR_string + ":"):]
                     actor_table_data_copy = dict(DataSource.actors[actor_id])
                     for k in state_keys:
                         actor_table_data_copy[k] = actor_table_data[k]

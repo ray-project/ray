@@ -21,7 +21,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray.resource_spec import ResourceSpec
+from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
                                 open_log)
 
@@ -769,6 +769,7 @@ class Node:
             "gcs_server", unique=True)
         process_info = ray._private.services.start_gcs_server(
             self._redis_address,
+            self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,

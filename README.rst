@@ -307,6 +307,7 @@ Getting Involved
 - `Forum`_: For discussions about development, questions about usage, and feature requests.
 - `GitHub Issues`_: For reporting bugs.
 - `Twitter`_: Follow updates on Twitter.
+- `Slack`_: Join our Slack channel.
 - `Meetup Group`_: Join our meetup group.
 - `StackOverflow`_: For questions about how to use Ray.
 
@@ -315,3 +316,5 @@ Getting Involved
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
 .. _`Twitter`: https://twitter.com/raydistributed
+.. _`Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
+

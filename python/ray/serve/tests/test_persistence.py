@@ -1,5 +1,5 @@
 import ray
-import ray.test_utils
+from ray._private.test_utils import run_string_as_driver
 from ray import serve
 
 
@@ -16,7 +16,7 @@ def driver():
 
 driver.deploy()
 """.format(ray.worker._global_node._redis_address)
-    ray.test_utils.run_string_as_driver(script)
+    run_string_as_driver(script)
 
     handle = serve.get_deployment("driver").get_handle()
     assert ray.get(handle.remote()) == "OK!"

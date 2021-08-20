@@ -22,6 +22,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/stats/stats.h"
+#include "ray/util/event.h"
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 
@@ -173,13 +174,21 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   // by all of core worker.
   RAY_LOG(DEBUG) << "Stats setup in core worker.";
   // Initialize stats in core worker global tags.
-  const stats::TagsType global_tags = {{stats::ComponentKey, "core_worker"},
-                                       {stats::VersionKey, "2.0.0.dev0"}};
+  const ray::stats::TagsType global_tags = {
+      {ray::stats::ComponentKey, "core_worker"},
+      {ray::stats::VersionKey, "2.0.0.dev0"},
+      {ray::stats::NodeAddressKey, options_.node_ip_address}};
 
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
   // for java worker or in constructor of CoreWorker for python worker.
   stats::Init(global_tags, options_.metrics_agent_port);
+
+  // Initialize event framework.
+  if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
+    RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
+                 std::unordered_map<std::string, std::string>(), options_.log_dir);
+  }
 
 #ifndef _WIN32
   // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
@@ -529,8 +538,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         PutObjectIntoPlasma(object, object_id);
         return Status::OK();
       },
-      options_.ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
-      options_.check_signals,
+      reference_counter_, local_raylet_client_, options_.check_signals,
       [this](const RayObject &obj) {
         // Run this on the event loop to avoid calling back into the language runtime
         // from the middle of user operations.
@@ -2202,9 +2210,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     RAY_LOG(DEBUG) << "Decrementing ref for borrowed ID " << borrowed_id;
     reference_counter_->RemoveLocalReference(borrowed_id, &deleted);
   }
-  if (options_.ref_counting_enabled) {
-    memory_store_->Delete(deleted);
-  }
+  memory_store_->Delete(deleted);
 
   if (task_spec.IsNormalTask() && reference_counter_->NumObjectIDsInScope() != 0) {
     RAY_LOG(DEBUG)
