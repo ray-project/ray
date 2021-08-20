@@ -1661,6 +1661,14 @@ py_test(
 )
 
 py_test(
+    name = "examples/bare_metal_policy_with_custom_view_reqs",
+    main = "examples/bare_metal_policy_with_custom_view_reqs.py",
+    tags = ["team:ml", "examples", "examples_B"],
+    size = "small",
+    srcs = ["examples/bare_metal_policy_with_custom_view_reqs.py"],
+)
+
+py_test(
     name = "examples/batch_norm_model_ppo_tf",
     main = "examples/batch_norm_model.py",
     tags = ["team:ml", "examples", "examples_B"],

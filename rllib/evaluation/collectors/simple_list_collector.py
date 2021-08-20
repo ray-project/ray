@@ -643,11 +643,16 @@ class SimpleListCollector(SampleCollector):
                     # Buffer for the data does not exist yet: Create dummy
                     # (zero) data.
                     if data_col not in buffers[k]:
+                        if view_req.data_col is not None:
+                            space = policy.view_requirements[
+                                view_req.data_col].space
+                        else:
+                            space = view_req.space
+
                         fill_value = get_dummy_batch_for_space(
-                            view_req.space,
-                            batch_size=0,
-                        ) if isinstance(view_req.space, Space) else \
-                            view_req.space
+                            space, batch_size=0,
+                        ) if isinstance(space, Space) else space
+
                         self.agent_collectors[k]._build_buffers({
                             data_col: fill_value
                         })

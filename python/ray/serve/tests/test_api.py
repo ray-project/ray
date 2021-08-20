@@ -1,5 +1,4 @@
 import asyncio
-from collections import defaultdict
 import time
 import os
 
@@ -10,16 +9,14 @@ import starlette.responses
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve.config import BackendConfig
 
 
 def test_e2e(serve_instance):
+    @serve.deployment(name="api")
     def function(starlette_request):
         return {"method": starlette_request.method}
 
-    serve.create_backend("echo:v1", function)
-    serve.create_endpoint(
-        "endpoint", backend="echo:v1", route="/api", methods=["GET", "POST"])
+    function.deploy()
 
     resp = requests.get("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "GET"
@@ -29,60 +26,51 @@ def test_e2e(serve_instance):
 
 
 def test_starlette_response(serve_instance):
-    def basic_response(_):
+    @serve.deployment(name="basic")
+    def basic(_):
         return starlette.responses.Response(
             "Hello, world!", media_type="text/plain")
 
-    serve.create_backend("basic_response", basic_response)
-    serve.create_endpoint(
-        "basic_response", backend="basic_response", route="/basic_response")
-    assert requests.get(
-        "http://127.0.0.1:8000/basic_response").text == "Hello, world!"
+    basic.deploy()
+    assert requests.get("http://127.0.0.1:8000/basic").text == "Hello, world!"
 
-    def html_response(_):
+    @serve.deployment(name="html")
+    def html(_):
         return starlette.responses.HTMLResponse(
             "<html><body><h1>Hello, world!</h1></body></html>")
 
-    serve.create_backend("html_response", html_response)
-    serve.create_endpoint(
-        "html_response", backend="html_response", route="/html_response")
+    html.deploy()
     assert requests.get(
-        "http://127.0.0.1:8000/html_response"
+        "http://127.0.0.1:8000/html"
     ).text == "<html><body><h1>Hello, world!</h1></body></html>"
 
-    def plain_text_response(_):
+    @serve.deployment(name="plain_text")
+    def plain_text(_):
         return starlette.responses.PlainTextResponse("Hello, world!")
 
-    serve.create_backend("plain_text_response", plain_text_response)
-    serve.create_endpoint(
-        "plain_text_response",
-        backend="plain_text_response",
-        route="/plain_text_response")
+    plain_text.deploy()
     assert requests.get(
-        "http://127.0.0.1:8000/plain_text_response").text == "Hello, world!"
+        "http://127.0.0.1:8000/plain_text").text == "Hello, world!"
 
-    def json_response(_):
+    @serve.deployment(name="json")
+    def json(_):
         return starlette.responses.JSONResponse({"hello": "world"})
 
-    serve.create_backend("json_response", json_response)
-    serve.create_endpoint(
-        "json_response", backend="json_response", route="/json_response")
-    assert requests.get("http://127.0.0.1:8000/json_response").json()[
+    json.deploy()
+    assert requests.get("http://127.0.0.1:8000/json").json()[
         "hello"] == "world"
 
-    def redirect_response(_):
+    @serve.deployment(name="redirect")
+    def redirect(_):
         return starlette.responses.RedirectResponse(
-            url="http://127.0.0.1:8000/basic_response")
+            url="http://127.0.0.1:8000/basic")
 
-    serve.create_backend("redirect_response", redirect_response)
-    serve.create_endpoint(
-        "redirect_response",
-        backend="redirect_response",
-        route="/redirect_response")
+    redirect.deploy()
     assert requests.get(
-        "http://127.0.0.1:8000/redirect_response").text == "Hello, world!"
+        "http://127.0.0.1:8000/redirect").text == "Hello, world!"
 
-    def streaming_response(_):
+    @serve.deployment(name="streaming")
+    def streaming(_):
         async def slow_numbers():
             for number in range(1, 4):
                 yield str(number)
@@ -91,31 +79,30 @@ def test_starlette_response(serve_instance):
         return starlette.responses.StreamingResponse(
             slow_numbers(), media_type="text/plain", status_code=418)
 
-    serve.create_backend("streaming_response", streaming_response)
-    serve.create_endpoint(
-        "streaming_response",
-        backend="streaming_response",
-        route="/streaming_response")
-    resp = requests.get("http://127.0.0.1:8000/streaming_response")
+    streaming.deploy()
+    resp = requests.get("http://127.0.0.1:8000/streaming")
     assert resp.text == "123"
     assert resp.status_code == 418
 
 
 def test_backend_user_config(serve_instance):
+    @serve.deployment(
+        "counter", num_replicas=2, user_config={
+            "count": 123,
+            "b": 2
+        })
     class Counter:
         def __init__(self):
             self.count = 10
 
-        def __call__(self, starlette_request):
+        def __call__(self, *args):
             return self.count, os.getpid()
 
         def reconfigure(self, config):
             self.count = config["count"]
 
-    config = BackendConfig(num_replicas=2, user_config={"count": 123, "b": 2})
-    serve.create_backend("counter", Counter, config=config)
-    serve.create_endpoint("counter", backend="counter")
-    handle = serve.get_handle("counter")
+    Counter.deploy()
+    handle = Counter.get_handle()
 
     def check(val, num_replicas):
         pids_seen = set()
@@ -128,110 +115,47 @@ def test_backend_user_config(serve_instance):
 
     wait_for_condition(lambda: check("123", 2))
 
-    serve.update_backend_config("counter", BackendConfig(num_replicas=3))
+    Counter = Counter.options(num_replicas=3)
+    Counter.deploy()
     wait_for_condition(lambda: check("123", 3))
 
-    config = BackendConfig(user_config={"count": 456})
-    serve.update_backend_config("counter", config)
+    Counter = Counter.options(user_config={"count": 456})
+    Counter.deploy()
     wait_for_condition(lambda: check("456", 3))
 
 
 def test_call_method(serve_instance):
+    @serve.deployment(name="method")
     class CallMethod:
-        def method(self, request):
+        def method(self, *args):
             return "hello"
 
-    serve.create_backend("backend", CallMethod)
-    serve.create_endpoint("endpoint", backend="backend", route="/api")
+    CallMethod.deploy()
 
     # Test HTTP path.
     resp = requests.get(
-        "http://127.0.0.1:8000/api",
+        "http://127.0.0.1:8000/method",
         timeout=1,
         headers={"X-SERVE-CALL-METHOD": "method"})
     assert resp.text == "hello"
 
     # Test serve handle path.
-    handle = serve.get_handle("endpoint")
+    handle = CallMethod.get_handle()
     assert ray.get(handle.options(method_name="method").remote()) == "hello"
 
 
-def test_no_route(serve_instance):
-    def func(_, i=1):
-        return 1
-
-    serve.create_backend("backend:1", func)
-    serve.create_endpoint("noroute-endpoint", backend="backend:1")
-    service_handle = serve.get_handle("noroute-endpoint")
-    result = ray.get(service_handle.remote(i=1))
-    assert result == 1
-
-
-def test_reject_duplicate_backend(serve_instance):
-    def f():
-        pass
-
-    def g():
-        pass
-
-    serve.create_backend("backend", f)
-    with pytest.raises(ValueError):
-        serve.create_backend("backend", g)
-
-
 def test_reject_duplicate_route(serve_instance):
-    def f():
+    @serve.deployment(name="A", route_prefix="/api")
+    class A:
         pass
 
-    serve.create_backend("backend", f)
-
-    route = "/foo"
-    serve.create_endpoint("bar", backend="backend", route=route)
+    A.deploy()
     with pytest.raises(ValueError):
-        serve.create_endpoint("foo", backend="backend", route=route)
-
-
-def test_reject_duplicate_endpoint(serve_instance):
-    def f():
-        pass
-
-    serve.create_backend("backend", f)
-
-    endpoint_name = "foo"
-    serve.create_endpoint(endpoint_name, backend="backend", route="/ok")
-    with pytest.raises(ValueError):
-        serve.create_endpoint(
-            endpoint_name, backend="backend", route="/different")
-
-
-def test_reject_duplicate_endpoint_and_route(serve_instance):
-    class SimpleBackend(object):
-        def __init__(self, message):
-            self.message = message
-
-        def __call__(self, *args, **kwargs):
-            return {"message": self.message}
-
-    serve.create_backend("backend1", SimpleBackend, "First")
-    serve.create_backend("backend2", SimpleBackend, "Second")
-
-    serve.create_endpoint("test", backend="backend1", route="/test")
-    with pytest.raises(ValueError):
-        serve.create_endpoint("test", backend="backend2", route="/test")
-
-
-def test_set_traffic_missing_data(serve_instance):
-    endpoint_name = "foobar"
-    backend_name = "foo_backend"
-    serve.create_backend(backend_name, lambda: 5)
-    serve.create_endpoint(endpoint_name, backend=backend_name)
-    with pytest.raises(ValueError):
-        serve.set_traffic(endpoint_name, {"nonexistent_backend": 1.0})
-    with pytest.raises(ValueError):
-        serve.set_traffic("nonexistent_endpoint_name", {backend_name: 1.0})
+        A.options(name="B").deploy()
 
 
 def test_scaling_replicas(serve_instance):
+    @serve.deployment(name="counter", num_replicas=2)
     class Counter:
         def __init__(self):
             self.count = 0
@@ -240,333 +164,83 @@ def test_scaling_replicas(serve_instance):
             self.count += 1
             return self.count
 
-    config = BackendConfig(num_replicas=2)
-    serve.create_backend("counter:v1", Counter, config=config)
-
-    serve.create_endpoint("counter", backend="counter:v1", route="/increment")
+    Counter.deploy()
 
     counter_result = []
     for _ in range(10):
-        resp = requests.get("http://127.0.0.1:8000/increment").json()
+        resp = requests.get("http://127.0.0.1:8000/counter").json()
         counter_result.append(resp)
 
     # If the load is shared among two replicas. The max result cannot be 10.
     assert max(counter_result) < 10
 
-    update_config = BackendConfig(num_replicas=1)
-    serve.update_backend_config("counter:v1", update_config)
+    Counter.options(num_replicas=1).deploy()
 
     counter_result = []
     for _ in range(10):
-        resp = requests.get("http://127.0.0.1:8000/increment").json()
+        resp = requests.get("http://127.0.0.1:8000/counter").json()
         counter_result.append(resp)
     # Give some time for a replica to spin down. But majority of the request
     # should be served by the only remaining replica.
     assert max(counter_result) - min(counter_result) > 6
 
 
-def test_updating_config(serve_instance):
-    class BatchSimple:
-        def __init__(self):
-            self.count = 0
-
-        def __call__(self, request):
-            return 1
-
-    config = BackendConfig(max_concurrent_queries=2, num_replicas=3)
-    serve.create_backend("bsimple:v1", BatchSimple, config=config)
-    serve.create_endpoint("bsimple", backend="bsimple:v1", route="/bsimple")
-
-    controller = serve.api._global_client._controller
-    old_replica_tag_list = list(
-        ray.get(controller._all_replica_handles.remote())["bsimple:v1"].keys())
-
-    update_config = BackendConfig(max_concurrent_queries=5)
-    serve.update_backend_config("bsimple:v1", update_config)
-    new_replica_tag_list = list(
-        ray.get(controller._all_replica_handles.remote())["bsimple:v1"].keys())
-    new_all_tag_list = []
-    for worker_dict in ray.get(
-            controller._all_replica_handles.remote()).values():
-        new_all_tag_list.extend(list(worker_dict.keys()))
-
-    # the old and new replica tag list should be identical
-    # and should be subset of all_tag_list
-    assert set(old_replica_tag_list) <= set(new_all_tag_list)
-    assert set(old_replica_tag_list) == set(new_replica_tag_list)
-
-
 def test_delete_backend(serve_instance):
+    @serve.deployment(name="delete")
     def function(_):
         return "hello"
 
-    serve.create_backend("delete:v1", function)
-    serve.create_endpoint(
-        "delete_backend", backend="delete:v1", route="/delete-backend")
+    function.deploy()
 
-    assert requests.get("http://127.0.0.1:8000/delete-backend").text == "hello"
+    assert requests.get("http://127.0.0.1:8000/delete").text == "hello"
 
-    # Check that we can't delete the backend while it's in use.
-    with pytest.raises(ValueError):
-        serve.delete_backend("delete:v1")
+    function.delete()
 
-    serve.create_backend("delete:v2", function)
-    serve.set_traffic("delete_backend", {"delete:v1": 0.5, "delete:v2": 0.5})
-
-    with pytest.raises(ValueError):
-        serve.delete_backend("delete:v1")
-
-    # Check that the backend can be deleted once it's no longer in use.
-    serve.set_traffic("delete_backend", {"delete:v2": 1.0})
-    serve.delete_backend("delete:v1")
-
-    # Check that we can no longer use the previously deleted backend.
-    with pytest.raises(ValueError):
-        serve.set_traffic("delete_backend", {"delete:v1": 1.0})
-
+    @serve.deployment(name="delete")
     def function2(_):
         return "olleh"
 
-    # Check that we can now reuse the previously delete backend's tag.
-    serve.create_backend("delete:v1", function2)
-    serve.set_traffic("delete_backend", {"delete:v1": 1.0})
+    function2.deploy()
 
     for _ in range(10):
         try:
-            assert requests.get(
-                "http://127.0.0.1:8000/delete-backend").text == "olleh"
+            assert requests.get("http://127.0.0.1:8000/delete").text == "olleh"
             break
         except AssertionError:
-            time.sleep(0.5)  # wait for the traffic policy to propogate
+            time.sleep(0.5)  # Wait for the change to propagate.
     else:
-        assert requests.get(
-            "http://127.0.0.1:8000/delete-backend").text == "olleh"
-
-
-@pytest.mark.parametrize("route", [None, "/delete-endpoint"])
-def test_delete_endpoint(serve_instance, route):
-    def function(_):
-        return "hello"
-
-    backend_name = "delete-endpoint:v1"
-    serve.create_backend(backend_name, function)
-
-    endpoint_name = "delete_endpoint" + str(route)
-    serve.create_endpoint(endpoint_name, backend=backend_name, route=route)
-    serve.delete_endpoint(endpoint_name)
-
-    # Check that we can reuse a deleted endpoint name and route.
-    serve.create_endpoint(endpoint_name, backend=backend_name, route=route)
-
-    if route is not None:
-        assert requests.get(
-            "http://127.0.0.1:8000/delete-endpoint").text == "hello"
-    else:
-        handle = serve.get_handle(endpoint_name)
-        assert ray.get(handle.remote()) == "hello"
-
-    # Check that deleting the endpoint doesn't delete the backend.
-    serve.delete_endpoint(endpoint_name)
-    serve.create_endpoint(endpoint_name, backend=backend_name, route=route)
-
-    if route is not None:
-        assert requests.get(
-            "http://127.0.0.1:8000/delete-endpoint").text == "hello"
-    else:
-        handle = serve.get_handle(endpoint_name)
-        assert ray.get(handle.remote()) == "hello"
-
-
-def test_list_endpoints(serve_instance):
-    def f():
-        pass
-
-    serve.create_backend("backend", f)
-    serve.create_backend("backend2", f)
-    serve.create_backend("backend3", f)
-    serve.create_endpoint(
-        "endpoint", backend="backend", route="/api", methods=["GET", "POST"])
-    serve.create_endpoint("endpoint2", backend="backend2", methods=["POST"])
-    serve.shadow_traffic("endpoint", "backend3", 0.5)
-
-    endpoints = serve.list_endpoints()
-    assert "endpoint" in endpoints
-    assert endpoints["endpoint"] == {
-        "route": "/api",
-        "methods": ["GET", "POST"],
-        "traffic": {
-            "backend": 1.0
-        },
-        "shadows": {
-            "backend3": 0.5
-        },
-        "python_methods": [],
-    }
-
-    assert "endpoint2" in endpoints
-    assert endpoints["endpoint2"] == {
-        "route": None,
-        "methods": ["POST"],
-        "traffic": {
-            "backend2": 1.0
-        },
-        "shadows": {},
-        "python_methods": [],
-    }
-
-    serve.delete_endpoint("endpoint")
-    assert "endpoint2" in serve.list_endpoints()
-
-    serve.delete_endpoint("endpoint2")
-    assert len(serve.list_endpoints()) == 0
-
-
-def test_list_backends(serve_instance):
-    def f():
-        pass
-
-    config1 = BackendConfig(max_concurrent_queries=10)
-    serve.create_backend("backend", f, config=config1)
-    backends = serve.list_backends()
-    assert len(backends) == 1
-    assert "backend" in backends
-    assert backends["backend"].max_concurrent_queries == 10
-
-    config2 = BackendConfig(num_replicas=10)
-    serve.create_backend("backend2", f, config=config2)
-    backends = serve.list_backends()
-    assert len(backends) == 2
-    assert backends["backend2"].num_replicas == 10
-
-    serve.delete_backend("backend")
-    backends = serve.list_backends()
-    assert len(backends) == 1
-    assert "backend2" in backends
-
-    serve.delete_backend("backend2")
-    assert len(serve.list_backends()) == 0
-
-
-def test_endpoint_input_validation(serve_instance):
-    def f():
-        pass
-
-    serve.create_backend("backend", f)
-    with pytest.raises(TypeError):
-        serve.create_endpoint("endpoint")
-    with pytest.raises(TypeError):
-        serve.create_endpoint("endpoint", route="/hello")
-    with pytest.raises(TypeError):
-        serve.create_endpoint("endpoint", backend=2)
-    serve.create_endpoint("endpoint", backend="backend")
-
-
-def test_shadow_traffic(serve_instance):
-    @ray.remote
-    class RequestCounter:
-        def __init__(self):
-            self.requests = defaultdict(int)
-
-        def record(self, backend):
-            self.requests[backend] += 1
-
-        def get(self, backend):
-            return self.requests[backend]
-
-    counter = RequestCounter.remote()
-
-    def f(_):
-        ray.get(counter.record.remote("backend1"))
-        return "hello"
-
-    def f_shadow_1(_):
-        ray.get(counter.record.remote("backend2"))
-        return "oops"
-
-    def f_shadow_2(_):
-        ray.get(counter.record.remote("backend3"))
-        return "oops"
-
-    def f_shadow_3(_):
-        ray.get(counter.record.remote("backend4"))
-        return "oops"
-
-    serve.create_backend("backend1", f)
-    serve.create_backend("backend2", f_shadow_1)
-    serve.create_backend("backend3", f_shadow_2)
-    serve.create_backend("backend4", f_shadow_3)
-
-    serve.create_endpoint("endpoint", backend="backend1", route="/api")
-    serve.shadow_traffic("endpoint", "backend2", 1.0)
-    serve.shadow_traffic("endpoint", "backend3", 0.5)
-    serve.shadow_traffic("endpoint", "backend4", 0.1)
-
-    start = time.time()
-    num_requests = 100
-    for _ in range(num_requests):
-        assert requests.get("http://127.0.0.1:8000/api").text == "hello"
-    print("Finished 100 requests in {}s.".format(time.time() - start))
-
-    def requests_to_backend(backend):
-        return ray.get(counter.get.remote(backend))
-
-    def check_requests():
-        return all([
-            requests_to_backend("backend1") == num_requests,
-            requests_to_backend("backend2") == requests_to_backend("backend1"),
-            requests_to_backend("backend3") < requests_to_backend("backend2"),
-            requests_to_backend("backend4") < requests_to_backend("backend3"),
-            requests_to_backend("backend4") > 0,
-        ])
-
-    wait_for_condition(check_requests)
+        assert requests.get("http://127.0.0.1:8000/delete").text == "olleh"
 
 
 def test_starlette_request(serve_instance):
+    @serve.deployment(name="api")
     async def echo_body(starlette_request):
         data = await starlette_request.body()
         return data
 
-    UVICORN_HIGH_WATER_MARK = 65536  # max bytes in one message
+    echo_body.deploy()
 
     # Long string to test serialization of multiple messages.
+    UVICORN_HIGH_WATER_MARK = 65536  # max bytes in one message
     long_string = "x" * 10 * UVICORN_HIGH_WATER_MARK
-
-    serve.create_backend("echo:v1", echo_body)
-    serve.create_endpoint(
-        "endpoint", backend="echo:v1", route="/api", methods=["GET", "POST"])
 
     resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
     assert resp == long_string
 
 
-def test_variable_routes(serve_instance):
-    def f(starlette_request):
-        return starlette_request.path_params
+def test_start_idempotent(serve_instance):
+    @serve.deployment(name="start")
+    def func(*args):
+        pass
 
-    serve.create_backend("f", f)
-    serve.create_endpoint("basic", backend="f", route="/api/{username}")
+    func.deploy()
 
-    # Test multiple variables and test type conversion
-    serve.create_endpoint(
-        "complex",
-        backend="f",
-        route="/api/{user_id:int}/{number:float}",
-        methods=["POST"])
-
-    assert requests.get("http://127.0.0.1:8000/api/scaly").json() == {
-        "username": "scaly"
-    }
-
-    assert requests.post("http://127.0.0.1:8000/api/23/12.345").json() == {
-        "user_id": 23,
-        "number": 12.345
-    }
-
-    assert requests.get("http://127.0.0.1:8000/-/routes").json() == {
-        "/api/{username}": ["basic", ["GET"]],
-        "/api/{user_id:int}/{number:float}": ["complex", ["POST"]]
-    }
+    assert "start" in serve.list_deployments()
+    serve.start(detached=True)
+    serve.start()
+    serve.start(detached=True)
+    serve.start()
+    assert "start" in serve.list_deployments()
 
 
 if __name__ == "__main__":
