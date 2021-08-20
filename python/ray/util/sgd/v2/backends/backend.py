@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, TypeVar, List, Optional, Dict
+from typing import Callable, TypeVar, List, Optional, Dict, Tuple, Any
 
 import ray
 from ray.exceptions import RayActorError
@@ -77,6 +77,7 @@ class BackendExecutor:
                 loaded onto each worker and accessed by the training function
                 via ``sgd.load_checkpoint()``.
         """
+        self.train_func = train_func
 
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
@@ -152,7 +153,12 @@ class BackendExecutor:
 
         # Get next result from each worker.
         futures = self.worker_group.execute_async(get_next)
-        results = self.get_with_failure_handling(futures)
+        success, results = self.get_with_failure_handling(futures)
+        if not success:
+            # Worker failure has occurred and new workers have already been
+            # started.
+            # Try again.
+            return self._get_next_results()
 
         # Check if any worker returned None.
         if any(r is None for r in results):
@@ -261,7 +267,9 @@ class BackendExecutor:
         # Note: Reported results may still be enqueued at this point,
         #       and should be handled appropriately.
         futures = self.worker_group.execute_async(pause_reporting)
-        self.get_with_failure_handling(futures)
+        success, _ = self.get_with_failure_handling(futures)
+        if not success:
+            return self.finish_training()
 
         # Finish up processing checkpoints. Reporting has been disabled.
         while True:
@@ -274,9 +282,14 @@ class BackendExecutor:
                 self._process_checkpoint(results)
 
         futures = self.worker_group.execute_async(end_training)
-        return self.get_with_failure_handling(futures)
+        success, results = self.get_with_failure_handling(futures)
+        if not success:
+            return self.finish_training()
+        return results
 
-    def get_with_failure_handling(self, remote_values):
+    def get_with_failure_handling(self, remote_values) -> Tuple[bool,
+                                                                Optional[List[
+                                                                    Any]]]:
         """Gets the remote values while handling for worker failures.
 
         Args:
@@ -288,23 +301,31 @@ class BackendExecutor:
             The resolved objects represented by the passed in ObjectRefs.
         """
         unfinished = remote_values
-        try:
-            while len(unfinished) > 0:
-                finished, unfinished = ray.wait(unfinished)
-                # If a failure occurs the ObjectRef will be marked as finished.
-                # Calling ray.get will expose the failure as a RayActorError.
-                ray.get(finished)
-        except RayActorError as exc:
-            logger.exception(str(exc))
-            self.handle_failure()
-            return
-        return ray.get(remote_values)
+        dead_worker_indexes = []  # Store the indexes of the failed workers.
+        while len(unfinished) > 0:
+            finished, unfinished = ray.wait(unfinished)
+            # If a failure occurs the ObjectRef will be marked as finished.
+            # Calling ray.get will expose the failure as a RayActorError.
+            for object_ref in finished:
+                try:
+                    ray.get(finished)
+                except RayActorError as exc:
+                    logger.exception(str(exc))
+                    failed_actor_rank = remote_values.index(object_ref)
+                    logger.debug(f"Worker {failed_actor_rank} has failed.")
+                    dead_worker_indexes.append(failed_actor_rank)
+        if len(dead_worker_indexes) > 0:
+            self.handle_failure(failed_worker_indexes=dead_worker_indexes)
+            return False, None
+        else:
+            return True, ray.get(remote_values)
 
-    def handle_failure(self):
+    def handle_failure(self, failed_worker_indexes: List[int]):
         # TODO: Fault-tolerance/elastic training here.
-        self.shutdown()
-        raise RuntimeError("Worker crashed during training. "
-                           "Training unsuccessful.")
+        self.worker_group.remove_workers(failed_worker_indexes)
+        self._backend.on_shutdown(self.worker_group, self._backend_config)
+        self.worker_group.add_workers(len(failed_worker_indexes))
+        self.start_training(train_func=self.train_func, checkpoint=self.latest_checkpoint)
 
     def get_latest_checkpoint(self) -> Optional[Dict]:
         return self.latest_checkpoint

@@ -70,17 +70,24 @@ class WorkerGroup:
         self.workers = []
         self.start()
 
+    def _create_worker(self):
+        remote_cls = ray.remote(
+            num_cpus=self.num_cpus_per_worker,
+            num_gpus=self.num_gpus_per_worker)(BaseWorker)
+        return remote_cls.remote()
+
+
     def start(self):
         """Starts all the workers in this worker group."""
         if self.workers and len(self.workers) > 0:
             raise RuntimeError("The workers have already been started. "
                                "Please call `shutdown` first if you want to "
                                "restart them.")
-        remote_cls = ray.remote(
-            num_cpus=self.num_cpus_per_worker,
-            num_gpus=self.num_gpus_per_worker)(BaseWorker)
+
         logger.debug(f"Starting {self.num_workers} workers.")
-        self.workers = [remote_cls.remote() for _ in range(self.num_workers)]
+        self.workers = []
+        for _ in range(self.num_workers):
+            self.workers.append(self._create_worker())
         logger.debug(f"{len(self.workers)} workers have successfully started.")
 
     def shutdown(self, patience_s: float = 5):
@@ -180,6 +187,27 @@ class WorkerGroup:
 
         return ray.get(
             self.execute_single_async(worker_index, func, *args, **kwargs))
+
+    def remove_workers(self, worker_indexes: List[int]):
+        """Removes the workers with the specified indexes.
+
+        Args:
+            worker_indexes (List[int]): The indexes of the workers to remove.
+        """
+
+        for i in worker_indexes:
+            logger.debug(f"Removing worker {i} from worker group.")
+            del self.workers[i]
+
+    def add_workers(self, num_workers: int):
+        """Adds ``num_workers`` to this WorkerGroup.
+
+        Args:
+            num_workers (int): The number of workers to add.
+        """
+        for _ in range(num_workers):
+            self.workers.append(self._create_worker())
+
 
     def __len__(self):
         return len(self.workers)
