@@ -230,7 +230,10 @@ class GrpcCallbackClient {
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
                                   grpc::InsecureChannelCredentials(), argument);
     stub_ = GrpcService::NewStub(channel);
+    shutdown_ = std::make_shared<std::atomic<bool>>(false);
   }
+
+  ~GrpcCallbackClient() { shutdown_->store(true); }
 
   /// Call a unary RPC method.
   ///
@@ -262,13 +265,21 @@ class GrpcCallbackClient {
     auto stats_handle = io_context_.stats().RecordStart(call_name);
     (stub_->async()->*method)(
         ctx.get(), &request, response.get(),
-        // NOTE: We directly capture the io_context_ by reference instead of just
+        // NOTE: The below callback will be called in the gRPC nexting thread.
+        //
+        // We directly capture the io_context_ by reference instead of just
         // capturing `this` since the gRPC-level callback may outlive this
         // GrpcCallbackClient instance, while we're more confident that it will not
         // outlive the event loop, which should only be destroyed on process exit.
+        //
+        // We capture the shutdown_ atomic flag shared pointer by copy so we can check
+        // it after this GrpcCallbackClient has been destroyed; this serves as a proxy
+        // for an io_context_ lifetime check.
+        //
+        // TODO(Clark): Make this lifetime management nicer.
         [&io_context = io_context_, response, callback = std::move(callback), ctx,
-         stats_handle = std::move(stats_handle)](auto status) {
-          if (!io_context.stopped()) {
+         shutdown = shutdown_, stats_handle = std::move(stats_handle)](auto status) {
+          if (!shutdown->load() && !io_context.stopped()) {
             io_context.post(
                 // NOTE: We capture the client context to ensure that it isn't
                 // deallocated until the callback completes.
@@ -323,6 +334,10 @@ class GrpcCallbackClient {
   instrumented_io_context &io_context_;
   /// The gRPC-generated stub.
   std::unique_ptr<typename GrpcService::Stub> stub_;
+  /// Whether the client has been shutdown. This is used by the gRPC-level callback to
+  /// ensure that we don't try to reference any freed by-reference members, such as the
+  /// asio io_context.
+  std::shared_ptr<std::atomic<bool>> shutdown_;
 };
 
 }  // namespace rpc
