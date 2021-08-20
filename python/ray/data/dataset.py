@@ -528,7 +528,7 @@ class Dataset(Generic[T]):
         """Split the dataset at the given indices (like np.split).
 
         Examples:
-            >>> d1, d2, d3 = ray.data.range(10).split([2, 5])
+            >>> d1, d2, d3 = ray.data.range(10).split_at_indices([2, 5])
             >>> d1.take()
             [0, 1]
             >>> d2.take()
@@ -553,6 +553,8 @@ class Dataset(Generic[T]):
             raise ValueError("indices must be at least of length 1")
         if sorted(indices) != indices:
             raise ValueError("indices must be sorted")
+        if indices[0] < 0:
+            raise ValueError("indices must be positive")
 
         rest = self
         splits = []

@@ -863,6 +863,9 @@ def test_split_at_indices(ray_start_regular_shared):
         ds.split_at_indices([])
 
     with pytest.raises(ValueError):
+        ds.split_at_indices([-1])
+
+    with pytest.raises(ValueError):
         ds.split_at_indices([3, 1])
 
     splits = ds.split_at_indices([5])
@@ -880,6 +883,10 @@ def test_split_at_indices(ray_start_regular_shared):
     splits = ds.split_at_indices([100])
     r = [s.take() for s in splits]
     assert r == [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], []]
+
+    splits = ds.split_at_indices([0])
+    r = [s.take() for s in splits]
+    assert r == [[], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]
 
 
 def test_split(ray_start_regular_shared):
