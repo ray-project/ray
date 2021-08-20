@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from unittest.mock import patch
 
@@ -157,9 +159,37 @@ def test_checkpoint(ray_start_2_cpus):
     e.start_training(train)
     e.finish_training()
 
-    latest_checkpoint = e.get_latest_checkpoint()
-    assert latest_checkpoint is not None
-    assert latest_checkpoint["epoch"] == 1
+    assert e.latest_checkpoint is not None
+    assert e.latest_checkpoint["epoch"] == 1
+
+
+def test_persisted_checkpoint(ray_start_2_cpus):
+    def train():
+        for i in range(2):
+            sgd.save_checkpoint(epoch=i)
+
+    config = TestConfig()
+    e = BackendExecutor(config)
+    e.start()
+    e.start_training(train)
+    e.finish_training()
+
+    assert e._latest_checkpoint_id == 2
+    assert e.latest_checkpoint is not None
+    assert e.latest_checkpoint["epoch"] == 1
+    assert e.latest_checkpoint_path is not None
+
+    assert os.path.exists(e.latest_checkpoint_path)
+
+    def validate():
+        checkpoint = sgd.load_checkpoint()
+        assert checkpoint is not None
+        assert checkpoint["epoch"] == 1
+
+    e2 = BackendExecutor(config)
+    e2.start()
+    e2.start_training(validate, checkpoint=e.latest_checkpoint_path)
+    e2.finish_training()
 
 
 def test_mismatch_checkpoint_report(ray_start_2_cpus):

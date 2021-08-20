@@ -95,16 +95,6 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
-std::shared_ptr<const GcsActorWorkerAssignment> GcsActor::GetActorWorkerAssignment()
-    const {
-  return assignment_ptr_;
-}
-
-void GcsActor::SetActorWorkerAssignment(
-    std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr) {
-  assignment_ptr_ = std::move(assignment_ptr);
-}
-
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
