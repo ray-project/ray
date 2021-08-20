@@ -66,8 +66,9 @@ class HTTPState:
 
             name = format_actor_name(SERVE_PROXY_NAME, self._controller_name,
                                      node_id)
+            controller_namespace = ray.serve.api._get_controller_namespace()
             try:
-                proxy = ray.get_actor(name, namespace="serve")
+                proxy = ray.get_actor(name, namespace=controller_namespace)
             except ValueError:
                 logger.info("Starting HTTP proxy with name '{}' on node '{}' "
                             "listening on '{}:{}'".format(
