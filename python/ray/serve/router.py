@@ -14,8 +14,6 @@ from ray.serve.utils import compute_iterable_delta, logger
 import ray
 from ray.util import metrics
 
-REPORT_QUEUE_LENGTH_PERIOD_S = 1.0
-
 
 @dataclass
 class RequestMetadata:
@@ -49,7 +47,6 @@ class ReplicaSet:
 
     def __init__(
             self,
-            controller_handle,
             backend_tag,
             event_loop: asyncio.AbstractEventLoop,
     ):
@@ -80,17 +77,6 @@ class ReplicaSet:
         self.num_queued_queries_gauge.set_default_tags({
             "deployment": self.backend_tag
         })
-
-        self.long_poll_client = LongPollClient(
-            controller_handle,
-            {
-                (LongPollNamespace.BACKEND_CONFIGS, backend_tag): self.
-                set_max_concurrent_queries,
-                (LongPollNamespace.REPLICA_HANDLES, backend_tag): self.
-                update_worker_replicas,
-            },
-            call_in_event_loop=event_loop,
-        )
 
     def set_max_concurrent_queries(self, backend_config: BackendConfig):
         new_value: int = backend_config.max_concurrent_queries
@@ -193,14 +179,15 @@ class Router:
             self,
             controller_handle: ActorHandle,
             backend_tag: BackendTag,
-            loop: asyncio.BaseEventLoop = None,
+            event_loop: asyncio.BaseEventLoop = None,
     ):
         """Router process incoming queries: choose backend, and assign replica.
 
         Args:
             controller_handle(ActorHandle): The controller handle.
         """
-        self._replica_set = ReplicaSet(controller_handle, backend_tag, loop)
+        self._event_loop = event_loop
+        self._replica_set = ReplicaSet(backend_tag, event_loop)
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Counter(
@@ -208,6 +195,17 @@ class Router:
             description="The number of requests processed by the router.",
             tag_keys=("deployment", ))
         self.num_router_requests.set_default_tags({"deployment": backend_tag})
+
+        self.long_poll_client = LongPollClient(
+            controller_handle,
+            {
+                (LongPollNamespace.BACKEND_CONFIGS, backend_tag): self.
+                _replica_set.set_max_concurrent_queries,
+                (LongPollNamespace.REPLICA_HANDLES, backend_tag): self.
+                _replica_set.update_worker_replicas,
+            },
+            call_in_event_loop=event_loop,
+        )
 
     async def assign_request(
             self,

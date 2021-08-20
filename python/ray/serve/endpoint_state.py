@@ -24,8 +24,7 @@ class EndpointState:
 
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
-            (self._endpoints,
-             self._traffic_policies) = cloudpickle.loads(checkpoint)
+            self._endpoints = cloudpickle.loads(checkpoint)
 
         self._notify_route_table_changed()
 
@@ -33,9 +32,7 @@ class EndpointState:
         self._kv_store.delete(CHECKPOINT_KEY)
 
     def _checkpoint(self):
-        self._kv_store.put(
-            CHECKPOINT_KEY,
-            cloudpickle.dumps((self._endpoints, self._traffic_policies)))
+        self._kv_store.put(CHECKPOINT_KEY, cloudpickle.dumps(self._endpoints))
 
     def _notify_route_table_changed(self):
         self._long_poll_host.notify_changed(LongPollNamespace.ROUTE_TABLE,

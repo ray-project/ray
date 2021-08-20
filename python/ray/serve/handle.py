@@ -102,7 +102,7 @@ class RayServeHandle:
         return Router(
             self.controller_handle,
             self.endpoint_name,
-            asyncio.get_event_loop(),
+            event_loop=asyncio.get_event_loop(),
         )
 
     def options(
@@ -205,7 +205,7 @@ class RayServeSyncHandle(RayServeHandle):
         return Router(
             self.controller_handle,
             self.endpoint_name,
-            create_or_get_async_loop_in_thread(),
+            event_loop=create_or_get_async_loop_in_thread(),
         )
 
     def remote(self, *args, **kwargs):
@@ -229,7 +229,7 @@ class RayServeSyncHandle(RayServeHandle):
         coro = self._remote(self.endpoint_name, self.handle_options, args,
                             kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
-            coro, self.router._loop)
+            coro, self.router._event_loop)
         return future.result()
 
     def __reduce__(self):
