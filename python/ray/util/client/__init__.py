@@ -21,6 +21,7 @@ class _ClientContext:
         self.client_worker = None
         self._server = None
         self._connected_with_init = False
+        self._inside_client_test = False
 
     def _connect(self,
                  conn_str: str,

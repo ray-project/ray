@@ -131,8 +131,8 @@ def test_num_clients(init_and_serve_lazy):
     api2._disconnect()
     time.sleep(1)
 
-    api3 = RayAPIStub()
-    info3 = api3.connect("localhost:50051")
+    api3 = _ClientContext()
+    info3 = api3._connect("localhost:50051")
     job_id_3 = get_job_id(api3)
     assert info3["num_clients"] == 1, info3
     assert job_id_1 != job_id_3
@@ -142,16 +142,16 @@ def test_num_clients(init_and_serve_lazy):
     assert isinstance(info3["ray_commit"], str), info3
     assert isinstance(info3["python_version"], str), info3
     assert isinstance(info3["protocol_version"], str), info3
-    api3.disconnect()
+    api3._disconnect()
 
 
 def test_python_version(init_and_serve):
     server_handle = init_and_serve
-    ray = RayAPIStub()
-    info1 = ray.connect("localhost:50051")
+    ray = _ClientContext()
+    info1 = ray._connect("localhost:50051")
     assert info1["python_version"] == ".".join(
         [str(x) for x in list(sys.version_info)[:3]])
-    ray.disconnect()
+    ray._disconnect()
     time.sleep(1)
 
     def mock_connection_response():
@@ -167,23 +167,23 @@ def test_python_version(init_and_serve):
     server_handle.data_servicer._build_connection_response = \
         mock_connection_response
 
-    ray = RayAPIStub()
+    ray = _ClientContext()
     with pytest.raises(RuntimeError):
-        _ = ray.connect("localhost:50051")
+        _ = ray._connect("localhost:50051")
 
-    ray = RayAPIStub()
-    info3 = ray.connect("localhost:50051", ignore_version=True)
+    ray = _ClientContext()
+    info3 = ray._connect("localhost:50051", ignore_version=True)
     assert info3["num_clients"] == 1, info3
-    ray.disconnect()
+    ray._disconnect()
 
 
 def test_protocol_version(init_and_serve):
     server_handle = init_and_serve
-    ray = RayAPIStub()
-    info1 = ray.connect("localhost:50051")
+    ray = _ClientContext()
+    info1 = ray._connect("localhost:50051")
     local_py_version = ".".join([str(x) for x in list(sys.version_info)[:3]])
     assert info1["protocol_version"] == CURRENT_PROTOCOL_VERSION, info1
-    ray.disconnect()
+    ray._disconnect()
     time.sleep(1)
 
     def mock_connection_response():
@@ -199,14 +199,14 @@ def test_protocol_version(init_and_serve):
     server_handle.data_servicer._build_connection_response = \
         mock_connection_response
 
-    ray = RayAPIStub()
+    ray = _ClientContext()
     with pytest.raises(RuntimeError):
-        _ = ray.connect("localhost:50051")
+        _ = ray._connect("localhost:50051")
 
-    ray = RayAPIStub()
-    info3 = ray.connect("localhost:50051", ignore_version=True)
+    ray = _ClientContext()
+    info3 = ray._connect("localhost:50051", ignore_version=True)
     assert info3["num_clients"] == 1, info3
-    ray.disconnect()
+    ray._disconnect()
 
 
 @patch("ray.util.client.server.dataservicer.CLIENT_SERVER_MAX_THREADS", 6)
@@ -217,14 +217,14 @@ def test_max_clients(init_and_serve):
         return api.get_runtime_context().worker.current_job_id
 
     for i in range(3):
-        api1 = RayAPIStub()
-        info1 = api1.connect("localhost:50051")
+        api1 = _ClientContext()
+        info1 = api1._connect("localhost:50051")
 
         assert info1["num_clients"] == i + 1, info1
 
     with pytest.raises(ConnectionError):
-        api = RayAPIStub()
-        _ = api.connect("localhost:50051")
+        api = _ClientContext()
+        _ = api._connect("localhost:50051")
 
 
 if __name__ == "__main__":
