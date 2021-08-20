@@ -40,6 +40,7 @@ class SampleBatch(dict):
     DONES = "dones"
     INFOS = "infos"
     SEQ_LENS = "seq_lens"
+    T = "t"
 
     # Extra action fetches keys.
     ACTION_DIST_INPUTS = "action_dist_inputs"
@@ -48,6 +49,8 @@ class SampleBatch(dict):
 
     # Uniquely identifies an episode.
     EPS_ID = "eps_id"
+    # An env ID (e.g. the index for a vectorized sub-env).
+    ENV_ID = "env_id"
 
     # Uniquely identifies a sample batch. This is important to distinguish RNN
     # sequences from the same episode when multiple sample batches are

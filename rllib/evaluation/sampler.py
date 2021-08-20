@@ -833,19 +833,22 @@ def _process_observations(
             else:
                 # Add actions, rewards, next-obs to collectors.
                 values_dict = {
-                    "t": episode.length - 1,
-                    "env_id": env_id,
-                    "agent_index": episode._agent_index(agent_id),
+                    SampleBatchType.T: episode.length - 1,
+                    SampleBatchType.ENV_ID: env_id,
+                    SampleBatchType.AGENT_INDEX: episode._agent_index(
+                        agent_id),
                     # Action (slot 0) taken at timestep t.
-                    "actions": episode.last_action_for(agent_id),
+                    SampleBatchType.ACTIONS: episode.last_action_for(agent_id),
                     # Reward received after taking a at timestep t.
-                    "rewards": rewards[env_id].get(agent_id, 0.0),
+                    SampleBatchType.REWARDS: rewards[env_id].get(
+                        agent_id, 0.0),
                     # After taking action=a, did we reach terminal?
-                    "dones": (False if (no_done_at_end
-                                        or (hit_horizon and soft_horizon)) else
-                              agent_done),
+                    SampleBatchType.DONES: (False if
+                                            (no_done_at_end
+                                             or (hit_horizon and soft_horizon))
+                                            else agent_done),
                     # Next observation.
-                    "new_obs": filtered_obs,
+                    SampleBatchType.NEXT_OBS: filtered_obs,
                 }
                 # Add extra-action-fetches to collectors.
                 pol = worker.policy_map[policy_id]

@@ -85,14 +85,14 @@ class _AgentCollector:
                 single_row={
                     SampleBatch.OBS: init_obs,
                     SampleBatch.AGENT_INDEX: agent_index,
-                    "env_id": env_id,
-                    "t": t,
+                    SampleBatch.ENV_ID: env_id,
+                    SampleBatch.T: t,
                 })
         self.buffers[SampleBatch.OBS].append(init_obs)
         self.episode_id = episode_id
         self.buffers[SampleBatch.AGENT_INDEX].append(agent_index)
-        self.buffers["env_id"].append(env_id)
-        self.buffers["t"].append(t)
+        self.buffers[SampleBatch.ENV_ID].append(env_id)
+        self.buffers[SampleBatch.T].append(t)
 
     def add_action_reward_next_obs(self, values: Dict[str, TensorType]) -> \
             None:
@@ -279,7 +279,7 @@ class _AgentCollector:
                 continue
             shift = self.shift_before - (1 if col in [
                 SampleBatch.OBS, SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
-                "env_id", "t"
+                SampleBatch.ENV_ID, SampleBatch.T
             ] else 0)
             # Python primitive, tensor, or dict (e.g. INFOs).
             self.buffers[col] = [data for _ in range(shift)]
@@ -546,8 +546,8 @@ class SimpleListCollector(SampleCollector):
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
             delta = -1 if data_col in [
-                SampleBatch.OBS, "t", "env_id", SampleBatch.EPS_ID,
-                SampleBatch.AGENT_INDEX
+                SampleBatch.OBS, SampleBatch.ENV_ID, SampleBatch.EPS_ID,
+                SampleBatch.AGENT_INDEX, SampleBatch.T
             ] else 0
             # Range of shifts, e.g. "-100:0". Note: This includes index 0!
             if view_req.shift_from is not None:
