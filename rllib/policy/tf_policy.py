@@ -820,7 +820,7 @@ class TFPolicy(Policy):
             tf1.saved_model.utils.build_tensor_info(self._obs_input)
 
         if self._seq_lens is not None:
-            input_signature["seq_lens"] = \
+            input_signature[SampleBatch.SEQ_LENS] = \
                 tf1.saved_model.utils.build_tensor_info(self._seq_lens)
         if self._prev_action_input is not None:
             input_signature["prev_action"] = \
@@ -1043,7 +1043,7 @@ class TFPolicy(Policy):
         for key in state_keys:
             feed_dict[self._loss_input_dict[key]] = train_batch[key]
         if state_keys:
-            feed_dict[self._seq_lens] = train_batch["seq_lens"]
+            feed_dict[self._seq_lens] = train_batch[SampleBatch.SEQ_LENS]
 
         return feed_dict
 

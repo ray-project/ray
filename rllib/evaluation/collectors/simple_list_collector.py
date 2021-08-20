@@ -112,8 +112,8 @@ class _AgentCollector:
                 single_row={
                     SampleBatch.OBS: init_obs,
                     SampleBatch.AGENT_INDEX: agent_index,
-                    "env_id": env_id,
-                    "t": t,
+                    SampleBatch.ENV_ID: env_id,
+                    SampleBatch.T: t,
                     SampleBatch.EPS_ID: self.episode_id,
                     SampleBatch.UNROLL_ID: self.unroll_id,
                 })
@@ -123,8 +123,8 @@ class _AgentCollector:
         for i, sub_obs in enumerate(flattened):
             self.buffers[SampleBatch.OBS][i].append(sub_obs)
         self.buffers[SampleBatch.AGENT_INDEX][0].append(agent_index)
-        self.buffers["env_id"][0].append(env_id)
-        self.buffers["t"][0].append(t)
+        self.buffers[SampleBatch.ENV_ID][0].append(env_id)
+        self.buffers[SampleBatch.T][0].append(t)
         self.buffers[SampleBatch.EPS_ID][0].append(self.episode_id)
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
@@ -350,7 +350,7 @@ class _AgentCollector:
                 continue
             shift = self.shift_before - (1 if col in [
                 SampleBatch.OBS, SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
-                "env_id", "t"
+                SampleBatch.ENV_ID, SampleBatch.T
             ] else 0)
 
             # Store all data as flattened lists, except INFOS and state-out
@@ -621,8 +621,8 @@ class SimpleListCollector(SampleCollector):
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
             delta = -1 if data_col in [
-                SampleBatch.OBS, "t", "env_id", SampleBatch.EPS_ID,
-                SampleBatch.AGENT_INDEX
+                SampleBatch.OBS, SampleBatch.ENV_ID, SampleBatch.EPS_ID,
+                SampleBatch.AGENT_INDEX, SampleBatch.T
             ] else 0
             # Range of shifts, e.g. "-100:0". Note: This includes index 0!
             if view_req.shift_from is not None:
