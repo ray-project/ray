@@ -9,39 +9,16 @@ from xgboost_ray import RayDMatrix, RayParams, train
 
 from utils.utils import is_anyscale_connect
 
-FILENAME_CSV = "HIGGS.csv.gz"
-
-
-def download_higgs(target_file):
-    url = "https://archive.ics.uci.edu/ml/machine-learning-databases/" \
-          "00280/HIGGS.csv.gz"
-
-    try:
-        import urllib.request
-    except ImportError as e:
-        raise ValueError(
-            f"Automatic downloading of the HIGGS dataset requires `urllib`."
-            f"\nFIX THIS by running `pip install urllib` or manually "
-            f"downloading the dataset from {url}.") from e
-
-    print(f"Downloading HIGGS dataset to {target_file}")
-    urllib.request.urlretrieve(url, target_file)
-    return os.path.exists(target_file)
+FILE_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/" \
+           "00280/HIGGS.csv.gz"
 
 
 def main():
     print("Loading HIGGS data.")
 
-    if not os.path.exists(FILENAME_CSV):
-        assert download_higgs(FILENAME_CSV), \
-            "Downloading of HIGGS dataset failed."
-        print("HIGGS dataset downloaded.")
-    else:
-        print("HIGGS dataset found locally.")
-
     colnames = ["label"] + ["feature-%02d" % i for i in range(1, 29)]
 
-    data = pd.read_csv(os.path.abspath(FILENAME_CSV), names=colnames)
+    data = pd.read_csv(FILE_URL, names=colnames)
     if args.smoke_test:
         data = data.sample(frac=0.2, random_state=1)
 
