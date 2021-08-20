@@ -502,10 +502,10 @@ class SampleBatch(dict):
             )
         else:
             return SampleBatch(
-                {k: v[start:end]
-                 for k, v in self.items()},
+                tree.map_structure(lambda value: value[start:end], self),
                 _is_training=self.is_training,
-                _time_major=self.time_major)
+                _time_major=self.time_major,
+            )
 
     @PublicAPI
     def timeslices(self,
