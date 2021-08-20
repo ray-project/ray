@@ -1724,19 +1724,16 @@ class ApiTestFast(unittest.TestCase):
             self.assertEqual(capture["search_alg"].searcher.max_concurrent, 2)
 
             # max_concurrent_trials should not override ConcurrencyLimiter
-            tune.run(
-                train,
-                search_alg=ConcurrencyLimiter(
-                    HyperOptSearch(), max_concurrent=3),
-                max_concurrent_trials=2,
-                config={"a": tune.randint(0, 2)},
-                metric="metric",
-                mode="max",
-                stop={TRAINING_ITERATION: 1})
-
-            self.assertIsInstance(capture["search_alg"].searcher,
-                                  ConcurrencyLimiter)
-            self.assertEqual(capture["search_alg"].searcher.max_concurrent, 3)
+            with self.assertRaisesRegex(ValueError, "max_concurrent_trials"):
+                tune.run(
+                    train,
+                    search_alg=ConcurrencyLimiter(
+                        HyperOptSearch(), max_concurrent=3),
+                    max_concurrent_trials=2,
+                    config={"a": tune.randint(0, 2)},
+                    metric="metric",
+                    mode="max",
+                    stop={TRAINING_ITERATION: 1})
 
 
 if __name__ == "__main__":
