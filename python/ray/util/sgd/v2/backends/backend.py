@@ -433,6 +433,10 @@ class BackendExecutor:
         self.worker_group = InactiveWorkerGroup()
 
     @property
+    def is_started(self):
+        return not isinstance(self.worker_group, InactiveWorkerGroup)
+
+    @property
     def latest_run_dir(self) -> Optional[Path]:
         """Path to the latest run directory."""
         if self._run_id > 0:
@@ -473,7 +477,16 @@ class InactiveWorkerGroupError(Exception):
 
 class InactiveWorkerGroup():
     # TODO: fix inheritence. perhaps create WorkerGroupInterface.
-    def __getattribute__(self, *args, **kwargs):
+
+    # Need to define getstate and setstate so that getattr does not screwup
+    # pickling. See https://stackoverflow.com/a/50888571/11249691
+    def __getstate__(self):
+        return vars(self)
+
+    def __setstate__(self, state):
+        vars(self).update(state)
+
+    def __getattr__(self, name):
         raise InactiveWorkerGroupError()
 
     def __len__(self):

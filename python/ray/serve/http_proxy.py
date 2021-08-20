@@ -2,7 +2,7 @@ import asyncio
 import socket
 import time
 import pickle
-from typing import List, Dict, Optional, Tuple
+from typing import Callable, List, Dict, Optional, Tuple
 
 import uvicorn
 import starlette.responses
@@ -77,43 +77,12 @@ async def _send_request_to_handle(handle, scope, receive, send):
         await Response(result).send(scope, receive, send)
 
 
-class ServeStarletteEndpoint:
-    """Wraps the given Serve endpoint in a Starlette endpoint.
-
-    Implements the ASGI protocol.  Constructs a Starlette endpoint for use by
-    a Starlette app or Starlette Router which calls the given Serve endpoint.
-    Usage:
-        route = starlette.routing.Route(
-                "/api",
-                ServeStarletteEndpoint(endpoint_tag),
-                methods=methods)
-        app = starlette.applications.Starlette(routes=[route])
-    """
-
-    def __init__(self, endpoint_tag: EndpointTag, path_prefix: str):
-        self.endpoint_tag = endpoint_tag
-        self.path_prefix = path_prefix
-        self.handle = serve.get_handle(
-            self.endpoint_tag,
-            sync=False,
-            missing_ok=True,
-            _internal_pickled_http_request=True,
-        )
-
-    async def __call__(self, scope, receive, send):
-        # Modify the path and root path so that reverse lookups and redirection
-        # work as expected. We do this here instead of in replicas so it can be
-        # changed without restarting the replicas.
-        scope["path"] = scope["path"].replace(self.path_prefix, "", 1)
-        scope["root_path"] = self.path_prefix
-
-        await _send_request_to_handle(self.handle, scope, receive, send)
-
-
 class LongestPrefixRouter:
     """Router that performs longest prefix matches on incoming routes."""
 
-    def __init__(self):
+    def __init__(self, get_handle: Callable):
+        # Function to get a handle given a name. Used to mock for testing.
+        self._get_handle = get_handle
         # Routes sorted in order of decreasing length.
         self.sorted_routes: List[str] = list()
         # Endpoints and methods associated with the routes.
@@ -143,12 +112,7 @@ class LongestPrefixRouter:
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                self.handles[endpoint] = serve.get_handle(
-                    endpoint,
-                    sync=False,
-                    missing_ok=True,
-                    _internal_pickled_http_request=True,
-                )
+                self.handles[endpoint] = self._get_handle(endpoint)
 
         # Clean up any handles that are no longer used.
         for endpoint in existing_handles:
@@ -213,14 +177,15 @@ class HTTPProxy:
         # Used only for displaying the route table.
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
 
-        # NOTE(edoakes): we currently have both a Starlette router and a
-        # longest-prefix router to maintain compatibility with the old API.
-        # We first match on the Starlette router (which contains routes using
-        # the old API) and then fall back to the prefix router. The Starlette
-        # router can be removed once we deprecate the old API.
-        self.starlette_router = starlette.routing.Router(
-            default=self._fallback_to_prefix_router)
-        self.prefix_router = LongestPrefixRouter()
+        def get_handle(name):
+            return serve.api._get_global_client().get_handle(
+                name,
+                sync=False,
+                missing_ok=True,
+                _internal_pickled_http_request=True,
+            )
+
+        self.prefix_router = LongestPrefixRouter(get_handle)
         self.long_poll_client = LongPollClient(
             ray.get_actor(controller_name), {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
@@ -231,40 +196,14 @@ class HTTPProxy:
             description="The number of HTTP requests processed.",
             tag_keys=("route", ))
 
-    def _split_routes(
-            self, endpoints: Dict[EndpointTag, EndpointInfo]) -> Tuple[Dict[
-                EndpointTag, EndpointInfo], Dict[EndpointTag, EndpointInfo]]:
-        starlette_routes = {}
-        prefix_routes = {}
-        for endpoint, info in endpoints.items():
-            if info.legacy:
-                starlette_routes[endpoint] = info
-            else:
-                prefix_routes[endpoint] = info
-
-        return starlette_routes, prefix_routes
-
     def _update_routes(self,
                        endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
         for endpoint, info in endpoints.items():
-            if not info.legacy and info.route is None:
-                route = f"/{endpoint}"
-            else:
-                route = info.route
+            route = info.route if info.route is not None else f"/{endpoint}"
             self.route_info[route] = (endpoint, info.http_methods)
 
-        starlette_routes, prefix_routes = self._split_routes(endpoints)
-        self.starlette_router.routes = [
-            starlette.routing.Route(
-                info.route,
-                ServeStarletteEndpoint(endpoint, info.route),
-                methods=info.http_methods)
-            for endpoint, info in starlette_routes.items()
-            if info.route is not None
-        ]
-
-        self.prefix_router.update_routes(prefix_routes)
+        self.prefix_router.update_routes(endpoints)
 
     async def block_until_endpoint_exists(self, endpoint: EndpointTag,
                                           timeout_s: float):
@@ -286,22 +225,6 @@ class HTTPProxy:
             status_code=404)
         await response.send(scope, receive, send)
 
-    async def _fallback_to_prefix_router(self, scope, receive, send):
-        route_prefix, handle = self.prefix_router.match_route(
-            scope["path"], scope["method"])
-        if route_prefix is None:
-            return await self._not_found(scope, receive, send)
-
-        # Modify the path and root path so that reverse lookups and redirection
-        # work as expected. We do this here instead of in replicas so it can be
-        # changed without restarting the replicas.
-        if route_prefix != "/":
-            assert not route_prefix.endswith("/")
-            scope["path"] = scope["path"].replace(route_prefix, "", 1)
-            scope["root_path"] = route_prefix
-
-        await _send_request_to_handle(handle, scope, receive, send)
-
     async def __call__(self, scope, receive, send):
         """Implements the ASGI protocol.
 
@@ -316,7 +239,20 @@ class HTTPProxy:
             return await starlette.responses.JSONResponse(self.route_info)(
                 scope, receive, send)
 
-        await self.starlette_router(scope, receive, send)
+        route_prefix, handle = self.prefix_router.match_route(
+            scope["path"], scope["method"])
+        if route_prefix is None:
+            return await self._not_found(scope, receive, send)
+
+        # Modify the path and root path so that reverse lookups and redirection
+        # work as expected. We do this here instead of in replicas so it can be
+        # changed without restarting the replicas.
+        if route_prefix != "/":
+            assert not route_prefix.endswith("/")
+            scope["path"] = scope["path"].replace(route_prefix, "", 1)
+            scope["root_path"] = route_prefix
+
+        await _send_request_to_handle(handle, scope, receive, send)
 
 
 @ray.remote(num_cpus=0)

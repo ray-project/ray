@@ -2,6 +2,15 @@
 # Tests from the python/ray/util/sgd/v2/examples directory.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
+py_test(
+    name = "mlflow_fashion_mnist",
+    size = "medium",
+    main = "examples/mlflow_fashion_mnist.py",
+    srcs = ["examples/mlflow_fashion_mnist.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":sgd_v2_lib"],
+    args = ["--smoke-test"]
+)
 
 py_test(
     name = "transformers_example",
@@ -13,6 +22,16 @@ py_test(
     args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
     "--max_length=32", "--per_device_train_batch_size=64",
     "--max_train_steps=2", "--start_local", "--num_workers=2"]
+)
+
+py_test(
+    name = "tune_linear",
+    size = "medium",
+    main = "examples/tune_linear.py",
+    srcs = ["examples/tune_linear.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":sgd_v2_lib"],
+    args = ["--smoke-test"]
 )
 
 # --------------------------------------------------------------------
@@ -40,6 +59,14 @@ py_test(
     name = "test_trainer",
     size = "medium",
     srcs = ["tests/test_trainer.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":sgd_v2_lib"]
+)
+
+py_test(
+    name = "test_tune",
+    size = "medium",
+    srcs = ["tests/test_tune.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"]
 )

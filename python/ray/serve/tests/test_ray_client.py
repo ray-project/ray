@@ -52,8 +52,6 @@ serve.start(detached=True)
 """.format(ray_client_instance)
     run_string_as_driver(start)
 
-    serve.connect()
-
     deploy = """
 import ray
 ray.util.connect("{}", namespace="")
@@ -68,8 +66,7 @@ f.deploy()
 """.format(ray_client_instance)
     run_string_as_driver(deploy)
 
-    assert "test1" in serve.list_backends()
-    assert "test1" in serve.list_endpoints()
+    assert "test1" in serve.list_deployments()
     assert requests.get("http://localhost:8000/hello").text == "hello"
 
     delete = """
@@ -82,8 +79,7 @@ serve.get_deployment("test1").delete()
 """.format(ray_client_instance)
     run_string_as_driver(delete)
 
-    assert "test1" not in serve.list_backends()
-    assert "test1" not in serve.list_endpoints()
+    assert "test1" not in serve.list_deployments()
 
     fastapi = """
 import ray

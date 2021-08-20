@@ -47,6 +47,7 @@ from ray.includes.common cimport (
     CBuffer,
     CAddress,
     CLanguage,
+    CObjectReference,
     CRayObject,
     CRayStatus,
     CGcsClientOptions,
@@ -327,6 +328,7 @@ cdef prepare_args(
         int64_t total_inlined
         shared_ptr[CBuffer] arg_data
         c_vector[CObjectID] inlined_ids
+        c_vector[CObjectReference] inlined_refs
 
     worker = ray.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -367,11 +369,13 @@ cdef prepare_args(
                         Buffer.make(arg_data))
                 for object_ref in serialized_arg.contained_object_refs:
                     inlined_ids.push_back((<ObjectRef>object_ref).native())
+                inlined_refs = (CCoreWorkerProcess.GetCoreWorker()
+                                .GetObjectRefs(inlined_ids))
                 args_vector.push_back(
                     unique_ptr[CTaskArg](new CTaskArgByValue(
                         make_shared[CRayObject](
                             arg_data, string_to_buffer(metadata),
-                            inlined_ids))))
+                            inlined_refs))))
                 inlined_ids.clear()
                 total_inlined += <int64_t>size
             else:
@@ -614,10 +618,9 @@ cdef execute_task(
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.
         # Increase the task execution counter.
-        manager.increase_task_counter(job_id, function_descriptor)
-
+        manager.increase_task_counter(function_descriptor)
         # If we've reached the max number of executions for this worker, exit.
-        task_counter = manager.get_task_counter(job_id, function_descriptor)
+        task_counter = manager.get_task_counter(function_descriptor)
         if task_counter == execution_info.max_calls:
             exit = SystemExit(0)
             exit.is_ray_terminate = True
@@ -1178,8 +1181,9 @@ cdef class CoreWorker:
             shared_ptr[CBuffer] metadata
             int64_t put_threshold
             c_bool put_small_object_in_memory_store
-            c_vector[CObjectID] c_object_id_vector
             unique_ptr[CAddress] c_owner_address
+            c_vector[CObjectID] contained_object_ids
+            c_vector[CObjectReference] contained_object_refs
 
         metadata = string_to_buffer(serialized_object.metadata)
         put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -1187,9 +1191,11 @@ cdef class CoreWorker:
             RayConfig.instance().put_small_object_in_memory_store() and
             inline_small_object)
         total_bytes = serialized_object.total_bytes
+        contained_object_ids = ObjectRefsToVector(
+                serialized_object.contained_object_refs)
         object_already_exists = self._create_put_buffer(
             metadata, total_bytes, object_ref,
-            ObjectRefsToVector(serialized_object.contained_object_refs),
+            contained_object_ids,
             &c_object_id, &data, True, owner_address, inline_small_object)
 
         if not object_already_exists:
@@ -1198,14 +1204,16 @@ cdef class CoreWorker:
                     Buffer.make(data))
             if self.is_local_mode or (put_small_object_in_memory_store
                and <int64_t>total_bytes < put_threshold):
+                contained_object_refs = (
+                        CCoreWorkerProcess.GetCoreWorker().
+                        GetObjectRefs(contained_object_ids))
                 if owner_address is not None:
                     raise Exception(
                         "cannot put data into memory store directly"
                         " and assign owner at the same time")
-                c_object_id_vector.push_back(c_object_id)
                 check_status(CCoreWorkerProcess.GetCoreWorker().Put(
-                        CRayObject(data, metadata, c_object_id_vector),
-                        c_object_id_vector, c_object_id))
+                        CRayObject(data, metadata, contained_object_refs),
+                        contained_object_ids, c_object_id))
             else:
                 c_owner_address = move(self._convert_python_address(
                     owner_address))
@@ -1751,8 +1759,8 @@ cdef class CoreWorker:
                         CCoreWorkerProcess.GetCoreWorker().Put(
                             CRayObject(returns[0][i].get().GetData(),
                                        returns[0][i].get().GetMetadata(),
-                                       return_ids_vector),
-                            return_ids_vector, return_ids[i]))
+                                       c_vector[CObjectReference]()),
+                            c_vector[CObjectID](), return_ids[i]))
                     return_ids_vector.clear()
 
             with nogil:
