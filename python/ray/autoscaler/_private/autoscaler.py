@@ -396,8 +396,10 @@ class StandardAutoscaler:
 
         if self.disable_node_updaters:
             # If updaters are unavailable, terminate unhealthy nodes.
-            self.terminate_unhealthy_nodes(nodes, now)
-            nodes = self.workers()
+            nodes_to_terminate = self.get_unhealthy_nodes(nodes, now)
+            if nodes_to_terminate:
+                self._terminate_nodes_and_cleanup(nodes_to_terminate)
+                nodes = self.workers()
         else:
             # Attempt to recover unhealthy nodes
             for node_id in nodes:
@@ -717,8 +719,9 @@ class StandardAutoscaler:
                 return True
         return False
 
-    def terminate_unhealthy_nodes(self, nodes: List[NodeID], now: float):
-        """Terminate nodes for which we haven't received a heartbeat on time.
+    def get_unhealthy_nodes(self, nodes: List[NodeID], now: float) -> List[NodeID]:
+        """Determine nodes for which we haven't received a heartbeat on time.
+        These nodes are subsequently terminated.
 
         Used when node updaters are not available for recovery.
         """
@@ -749,8 +752,7 @@ class StandardAutoscaler:
                 aggregate=operator.add)
             nodes_to_terminate.append(node_id)
 
-        if nodes_to_terminate:
-            self._terminate_nodes_and_cleanup(nodes_to_terminate)
+        return nodes_to_terminate
 
     def recover_if_needed(self, node_id, now):
         if not self.can_update(node_id):
