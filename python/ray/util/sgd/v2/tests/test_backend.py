@@ -174,7 +174,7 @@ def test_persisted_checkpoint(ray_start_2_cpus):
     e.start_training(train)
     e.finish_training()
 
-    assert e.latest_checkpoint_id == 2
+    assert e._latest_checkpoint_id == 2
     assert e.latest_checkpoint is not None
     assert e.latest_checkpoint["epoch"] == 1
     assert e.latest_checkpoint_path is not None

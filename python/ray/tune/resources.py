@@ -7,7 +7,7 @@ from typing import Optional
 
 from six import string_types
 
-import ray
+from ray._private.resource_spec import NODE_ID_PREFIX
 from ray.tune import TuneError
 
 logger = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ class Resources(
         custom_summary = ", ".join([
             "{} {}".format(self.get_res_total(res), res)
             for res in self.custom_resources
-            if not res.startswith(ray.resource_spec.NODE_ID_PREFIX)
+            if not res.startswith(NODE_ID_PREFIX)
         ])
         if custom_summary:
             summary += " ({})".format(custom_summary)

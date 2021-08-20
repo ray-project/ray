@@ -1,5 +1,5 @@
-import os
 import time
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -31,6 +31,14 @@ def ray_start_2_cpus():
 @pytest.fixture
 def ray_start_2_cpus_2_gpus():
     address_info = ray.init(num_cpus=2, num_gpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_8_cpus():
+    address_info = ray.init(num_cpus=8)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -73,11 +81,12 @@ def gen_new_backend_executor(special_f):
     """Returns a BackendExecutor that runs special_f on worker 0."""
 
     class TestBackendExecutor(BackendExecutor):
-        def start_training(self, train_func, checkpoint):
+        def start_training(self, train_func, checkpoint, checkpoint_strategy):
             special_execute = gen_execute_single_async_special(special_f)
             with patch.object(WorkerGroup, "execute_single_async",
                               special_execute):
-                super().start_training(train_func, checkpoint)
+                super().start_training(train_func, checkpoint,
+                                       checkpoint_strategy)
 
     return TestBackendExecutor
 
@@ -211,6 +220,67 @@ def test_mismatch_report(ray_start_2_cpus):
             trainer.run(train)
 
 
+def test_run_iterator(ray_start_2_cpus):
+    config = TestConfig()
+
+    def train_func():
+        for i in range(3):
+            sgd.report(index=i)
+        return 1
+
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+    iterator = trainer.run_iterator(train_func)
+
+    count = 0
+    for results in iterator:
+        assert (value["index"] == count for value in results)
+        count += 1
+
+    assert count == 3
+    assert iterator.is_finished()
+    assert iterator.get_final_results() == [1, 1]
+
+    with pytest.raises(StopIteration):
+        next(iterator)
+
+
+def test_run_iterator_returns(ray_start_2_cpus):
+    config = TestConfig()
+
+    def train_func():
+        for i in range(3):
+            sgd.report(index=i)
+        return 1
+
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+    iterator = trainer.run_iterator(train_func)
+
+    assert iterator.get_final_results() is None
+    assert iterator.get_final_results(force=True) == [1, 1]
+
+    with pytest.raises(StopIteration):
+        next(iterator)
+
+
+def test_run_iterator_error(ray_start_2_cpus):
+    config = TestConfig()
+
+    def fail_train():
+        raise NotImplementedError
+
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+    iterator = trainer.run_iterator(fail_train)
+
+    with pytest.raises(NotImplementedError):
+        next(iterator)
+
+    assert iterator.get_final_results() is None
+    assert iterator.is_finished()
+
+
 def test_checkpoint(ray_start_2_cpus):
     config = TestConfig()
 
@@ -321,8 +391,10 @@ def test_load_checkpoint(ray_start_2_cpus):
     assert result[1] == [3, 4]
 
 
-@pytest.mark.parametrize(
-    "logdir", [None, "~/tmp/test/trainer/test_persisted_checkpoint"])
+@pytest.mark.parametrize("logdir", [
+    None, "/tmp/test/trainer/test_persisted_checkpoint",
+    "~/tmp/test/trainer/test_persisted_checkpoint"
+])
 def test_persisted_checkpoint(ray_start_2_cpus, logdir):
     config = TestConfig()
 
@@ -336,13 +408,11 @@ def test_persisted_checkpoint(ray_start_2_cpus, logdir):
 
     assert trainer.latest_checkpoint_path is not None
     if logdir is not None:
-        assert trainer.logdir == os.path.abspath(logdir)
-    assert os.path.isdir(trainer.checkpoint_dir)
-    assert os.path.isfile(trainer.latest_checkpoint_path)
-    assert os.path.basename(
-        trainer.latest_checkpoint_path) == f"checkpoint_{2:06d}"
-    assert os.path.basename(os.path.dirname(
-        trainer.latest_checkpoint_path)) == "checkpoints"
+        assert trainer.logdir == Path(logdir).expanduser().resolve()
+    assert trainer.latest_checkpoint_dir.is_dir()
+    assert trainer.latest_checkpoint_path.is_file()
+    assert trainer.latest_checkpoint_path.name == f"checkpoint_{2:06d}"
+    assert trainer.latest_checkpoint_path.parent.name == "checkpoints"
     latest_checkpoint = trainer.latest_checkpoint
 
     def validate():

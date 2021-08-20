@@ -78,7 +78,7 @@ def main(results=None):
         "logging_level": logging.WARNING
     }
 
-    def ray_connect_handler(job_config=None):
+    def ray_connect_handler(job_config=None, **ray_init_kwargs):
         from ray._private.client_mode_hook import disable_client_hook
         with disable_client_hook():
             import ray as real_ray

@@ -129,14 +129,14 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
     .. code-block:: shell
 
-      cd ray-template && bazel run //:example
+      cd ray-template && sh run.sh
 
     | - 2. Connect the example application to an existing Ray cluster by specifying the RAY_ADDRESS env var.
 
     .. code-block:: shell
 
       ray start --head
-      RAY_ADDRESS=127.0.0.1:6379 ./bazel-bin/example
+      RAY_ADDRESS=127.0.0.1:6379 sh run.sh
 
     | - Now you can build your own Ray C++ application based on this project template.
 
