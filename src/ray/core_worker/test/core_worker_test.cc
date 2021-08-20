@@ -145,7 +145,6 @@ class CoreWorkerTest : public ::testing::Test {
       options.node_manager_port = node_manager_port;
       options.raylet_ip_address = "127.0.0.1";
       options.driver_name = "core_worker_test";
-      options.ref_counting_enabled = true;
       options.num_workers = 1;
       options.metrics_agent_port = -1;
       CoreWorkerProcess::Initialize(options);
