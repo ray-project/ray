@@ -29,7 +29,7 @@ py_test(
     size = "medium",
     main = "examples/tune_linear.py",
     srcs = ["examples/tune_linear.py"],
-    tags = ["exclusive"],
+    tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"],
     args = ["--smoke-test"]
 )
@@ -67,7 +67,7 @@ py_test(
     name = "test_tune",
     size = "medium",
     srcs = ["tests/test_tune.py"],
-    tags = ["exclusive"],
+    tags = ["team:ml", "exclusive"],
     deps = [":sgd_v2_lib"]
 )
 
