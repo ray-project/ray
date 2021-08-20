@@ -14,8 +14,9 @@
 
   run:
     use_connect: True
+    autosuspend_mins: 15
     timeout: 3600
-    script: python workloads/modin_xgboost_test.py --smoke-test
+    script: python workloads/modin_xgboost_test.py
 
 - name: torch_tune_serve_test
   owner:
@@ -28,6 +29,7 @@
 
   run:
     use_connect: True
+    autosuspend_mins: 15
     timeout: 4200
-    script: python workloads/torch_tune_serve_test.py --smoke-test
+    script: python workloads/torch_tune_serve_test.py
 

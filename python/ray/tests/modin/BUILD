@@ -3,5 +3,5 @@ py_test(
  size = "small",
  srcs = ["test_modin.py"],
  deps = ["//:ray_lib"],
- tags = ["exclusive"],
+ tags = ["team:core", "exclusive"],
 )
