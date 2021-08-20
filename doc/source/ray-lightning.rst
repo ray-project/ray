@@ -211,7 +211,7 @@ API Reference
 .. autoclass:: ray_lightning.RayPlugin
     :members:
 
-.. autoclass:: ray_lightning.RayHorovodPlugin
+.. autoclass:: ray_lightning.HorovodRayPlugin
     :members:
 
 .. autoclass:: ray_lightning.RayShardedPlugin

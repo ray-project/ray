@@ -280,18 +280,6 @@ py_test(
     args = ["--no-gpu", "--mock-data", "--smoke-test", "--ray-num-workers=2", "--model=mobilenetv3_small_075", "data"]
 )
 
-<<<<<<< HEAD
-=======
-py_test(
-    name = "mnist-ptl",
-    size = "small",
-    srcs = ["torch/examples/pytorch-lightning/mnist-ptl.py"],
-    tags = ["team:ml", "exclusive", "pytorch", "pytorch-lightning"],
-    deps = [":sgd_lib"],
-    args = ["--smoke-test"]
-)
->>>>>>> 238941f85761a2959e6304759e689f6b530cdf2a
-
 # --------------------------------------------------------------------
 # SGD related tests from the ../../../../release directory.
 # Please keep these sorted alphabetically.

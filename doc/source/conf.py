@@ -102,12 +102,12 @@ import scipy.linalg
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
 
-for mod_name in CHILD_MOCK_MODULES:
-    sys.modules[mod_name] = ChildClassMock()
-
 # ray.rllib.models.action_dist.py and
 # ray.rllib.models.lstm.py will use tf.VERSION
 sys.modules["tensorflow"].VERSION = "9.9.9"
+
+for mod_name in CHILD_MOCK_MODULES:
+    sys.modules[mod_name] = ChildClassMock()
 
 assert "ray" not in sys.modules, (
     "If ray is already imported, we will not render documentation correctly!")
