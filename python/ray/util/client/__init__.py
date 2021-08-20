@@ -234,6 +234,9 @@ class RayAPIStub:
 
             if self.get_context() in _all_contexts:
                 _all_contexts.remove(self.get_context())
+            if len(_all_contexts) == 0:
+                _explicitly_disable_client_mode()
+
 
     def remote(self, *args, **kwargs):
         return self.get_context()._remote(*args, **kwargs)
@@ -263,6 +266,9 @@ class RayAPIStub:
 
             if self.get_context() in _all_contexts:
                 _all_contexts.remove(self.get_context())
+
+            if len(_all_contexts) == 0:
+                _explicitly_disable_client_mode()
 
 
 ray = RayAPIStub()
