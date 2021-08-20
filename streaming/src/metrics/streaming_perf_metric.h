@@ -1,0 +1,79 @@
+#pragma once
+#include "config/streaming_config.h"
+
+namespace ray {
+namespace streaming {
+#define METRIC_GROUP_JOIN(a, b, c) (a + "." + b + "." + c)
+
+class StreamingPerfBase {
+ public:
+  virtual ~StreamingPerfBase() = default;
+  virtual bool Start(const StreamingMetricsConfig &conf) = 0;
+
+  virtual void Shutdown() = 0;
+
+  virtual void UpdateCounter(const std::string &domain, const std::string &group_name,
+                             const std::string &short_name, double value) = 0;
+
+  virtual void UpdateGauge(const std::string &domain, const std::string &group_name,
+                           const std::string &short_name, double value,
+                           bool is_reset) = 0;
+
+  virtual void UpdateHistogram(const std::string &domain, const std::string &group_name,
+                               const std::string &short_name, double value,
+                               double min_value, double max_value) = 0;
+
+  virtual void UpdateCounter(const std::string &metric_name,
+                             const std::map<std::string, std::string> &tags,
+                             double value) = 0;
+
+  virtual void UpdateGauge(const std::string &metric_name,
+                           const std::map<std::string, std::string> &tags, double value,
+                           bool is_rest) = 0;
+
+  virtual void UpdateHistogram(const std::string &metric_name,
+                               const std::map<std::string, std::string> &tags,
+                               double value, double min_value, double max_value) = 0;
+
+  virtual void UpdateQPS(const std::string &metric_name,
+                         const std::map<std::string, std::string> &tags,
+                         double value) = 0;
+};
+
+class StreamingPerf : public StreamingPerfBase {
+ public:
+  StreamingPerf(){};
+  virtual ~StreamingPerf();
+  bool Start(const StreamingMetricsConfig &conf) override;
+  void Shutdown() override;
+  void UpdateCounter(const std::string &domain, const std::string &group_name,
+                     const std::string &short_name, double value) override;
+  void UpdateGauge(const std::string &domain, const std::string &group_name,
+                   const std::string &short_name, double value,
+                   bool is_reset = true) override;
+
+  void UpdateHistogram(const std::string &domain, const std::string &group_name,
+                       const std::string &short_name, double value, double min_value,
+                       double max_value) override;
+
+  void UpdateCounter(const std::string &metric_name,
+                     const std::map<std::string, std::string> &tags,
+                     double value) override;
+
+  void UpdateGauge(const std::string &metric_name,
+                   const std::map<std::string, std::string> &tags, double value,
+                   bool is_rest = true) override;
+
+  void UpdateHistogram(const std::string &metric_name,
+                       const std::map<std::string, std::string> &tags, double value,
+                       double min_value, double max_value) override;
+
+  void UpdateQPS(const std::string &metric_name,
+                 const std::map<std::string, std::string> &tags, double value) override;
+
+ private:
+  std::unique_ptr<StreamingPerfBase> impl_;
+};
+}  // namespace streaming
+
+}  // namespace ray
