@@ -80,6 +80,8 @@ class _AgentCollector:
         self.buffer_structs: Dict[str, Any] = {}
         # The episode ID for the agent for which we collect data.
         self.episode_id = None
+        # The unroll ID, unique across all rollouts (within a RolloutWorker).
+        self.unroll_id = None
         # The simple timestep count for this agent. Gets increased by one
         # each time a (non-initial!) observation is added.
         self.agent_steps = 0
@@ -99,9 +101,11 @@ class _AgentCollector:
             init_obs (TensorType): The initial observation tensor (after
             `env.reset()`).
         """
-        # Store episode ID, which will be constant throughout this
+        # Store episode ID + unroll ID, which will be constant throughout this
         # AgentCollector's lifecycle.
         self.episode_id = episode_id
+        self.unroll_id = self._next_unroll_id
+        self._next_unroll_id += 1
 
         if SampleBatch.OBS not in self.buffers:
             self._build_buffers(
@@ -110,6 +114,8 @@ class _AgentCollector:
                     SampleBatch.AGENT_INDEX: agent_index,
                     "env_id": env_id,
                     "t": t,
+                    SampleBatch.EPS_ID: self.episode_id,
+                    SampleBatch.UNROLL_ID: self.unroll_id,
                 })
 
         # Append data to existing buffers.
@@ -119,6 +125,8 @@ class _AgentCollector:
         self.buffers[SampleBatch.AGENT_INDEX][0].append(agent_index)
         self.buffers["env_id"][0].append(env_id)
         self.buffers["t"][0].append(t)
+        self.buffers[SampleBatch.EPS_ID][0].append(self.episode_id)
+        self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
     def add_action_reward_next_obs(self, values: Dict[str, TensorType]) -> \
             None:
@@ -130,16 +138,20 @@ class _AgentCollector:
                 SampleBatch.ACTIONS, REWARDS, DONES, and NEXT_OBS.
         """
 
+        # Next obs -> obs.
         assert SampleBatch.OBS not in values
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
-        # Make sure EPS_ID stays the same for this agent. Usually, it should
-        # not be part of `values` anyways.
+
+        # Make sure EPS_ID/UNROLL_ID stay the same for this agent.
         if SampleBatch.EPS_ID in values:
-            # Make sure eps_id did not change.
             assert values[SampleBatch.EPS_ID] == self.episode_id
-            # We'll add the eps_id field later when we build the SampleBatch.
             del values[SampleBatch.EPS_ID]
+        self.buffers[SampleBatch.EPS_ID][0].append(self.episode_id)
+        if SampleBatch.UNROLL_ID in values:
+            assert values[SampleBatch.UNROLL_ID] == self.unroll_id
+            del values[SampleBatch.UNROLL_ID]
+        self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         for k, v in values.items():
             if k not in self.buffers:
@@ -311,17 +323,6 @@ class _AgentCollector:
                 count -= max_seq_len
             batch["seq_lens"] = np.array(seq_lens)
             batch.max_seq_len = max_seq_len
-
-        # Add EPS_ID and UNROLL_ID to batch.
-        batch[SampleBatch.EPS_ID] = np.repeat(self.episode_id, batch.count)
-        if SampleBatch.UNROLL_ID not in batch:
-            # TODO: (sven) Once we have the additional
-            #  model.preprocess_train_batch in place (attention net PR), we
-            #  should not even need UNROLL_ID anymore:
-            #  Add "if SampleBatch.UNROLL_ID in view_requirements:" here.
-            batch[SampleBatch.UNROLL_ID] = np.repeat(
-                _AgentCollector._next_unroll_id, batch.count)
-            _AgentCollector._next_unroll_id += 1
 
         # This trajectory is continuing -> Copy data at the end (in the size of
         # self.shift_before) to the beginning of buffers and erase everything
