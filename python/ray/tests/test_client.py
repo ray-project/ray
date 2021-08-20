@@ -618,7 +618,13 @@ ray.client("localhost:50051").connect()
 def f():
     return 42
 
+@ray.remote
+class SomeClass:
+    pass
+
+
 obj_ref = f.remote()
+actor_ref = SomeClass.remote()
 """
 
 
