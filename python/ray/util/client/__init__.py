@@ -231,7 +231,6 @@ class RayAPIStub:
                 _all_contexts = set()
             else:
                 self.get_context()._disconnect(*args, **kw_args)
-
             if self.get_context() in _all_contexts:
                 _all_contexts.remove(self.get_context())
             if len(_all_contexts) == 0:
@@ -259,13 +258,10 @@ class RayAPIStub:
                 for cxt in _all_contexts:
                     cxt._shutdown(*args, **kwargs)
                 _all_contexts = set()
-                _explicitly_disable_client_mode()
             else:
                 self.get_context()._shutdown(*args, **kwargs)
-
             if self.get_context() in _all_contexts:
                 _all_contexts.remove(self.get_context())
-
             if len(_all_contexts) == 0:
                 _explicitly_disable_client_mode()
 

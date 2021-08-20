@@ -32,5 +32,4 @@ dask.base.collections_to_dsk([d_arr_p])
 d_arr_p.sum().compute()
 d_arr_p.min().compute()
 d_arr_p.max().compute()
-
 ray.shutdown()
