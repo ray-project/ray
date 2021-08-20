@@ -240,10 +240,7 @@ class RayAPIStub:
         return self.get_context().remote(*args, **kwargs)
 
     def __getattr__(self, name):
-        try:
-            return self.__getattribute__(name)
-        except Exception:
-            return self.get_context().__getattr__(name)
+        return self.get_context().__getattr__(name)
 
     def is_connected(self, *args, **kwargs):
         return self.get_context().is_connected(*args, **kwargs)

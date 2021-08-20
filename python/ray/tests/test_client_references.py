@@ -258,7 +258,7 @@ def test_named_actor_refcount(ray_start_regular):
 
         def connect_api():
             api = _ClientContext()
-            api._connect("localhost:50051", namespace="")
+            api.connect("localhost:50051", namespace="")
             api.get_actor("actor")
             return api
 
@@ -271,17 +271,17 @@ def test_named_actor_refcount(ray_start_regular):
         assert len(server.task_servicer.actor_refs) == 1
         assert len(server.task_servicer.named_actors) == 1
 
-        apis.pop(0)._disconnect()
+        apis.pop(0).disconnect()
         assert check_owners(2)
         assert len(server.task_servicer.actor_refs) == 1
         assert len(server.task_servicer.named_actors) == 1
 
-        apis.pop(0)._disconnect()
+        apis.pop(0).disconnect()
         assert check_owners(1)
         assert len(server.task_servicer.actor_refs) == 1
         assert len(server.task_servicer.named_actors) == 1
 
-        apis.pop(0)._disconnect()
+        apis.pop(0).disconnect()
         # no more owners should be seen
         assert check_owners(0)
         # actor refs shouldn't be removed
