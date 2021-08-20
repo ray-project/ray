@@ -233,7 +233,7 @@ class CustomEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
-def rest_response(success, message, convert_case=False,
+def rest_response(success, message, convert_case=True,
                   **kwargs) -> aiohttp.web.Response:
     # In the dev context we allow a dev server running on a
     # different port to consume the API, meaning we need to allow
