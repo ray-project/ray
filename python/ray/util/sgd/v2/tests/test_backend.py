@@ -25,11 +25,19 @@ def ray_start_2_cpus():
 def gen_execute_special(special_f):
     def execute_async_special(self, f):
         """Runs f on worker 0, special_f on worker 1."""
-        assert len(self.workers) == 2
-        return [
-            self.workers[0].execute.remote(f),
-            self.workers[0].execute.remote(special_f)
-        ]
+        if not hasattr(self, "failed"):
+            assert len(self.workers) == 2
+            self.failed = True
+            return [
+                self.workers[0].execute.remote(f),
+                self.workers[1].execute.remote(special_f)
+            ]
+        else:
+            return [
+                self.workers[0].execute.remote(f),
+                self.workers[0].execute.remote(f)
+            ]
+
 
     return execute_async_special
 

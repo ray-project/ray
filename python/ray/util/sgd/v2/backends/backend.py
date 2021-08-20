@@ -398,7 +398,7 @@ class BackendExecutor:
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
-        unfinished = remote_values
+        unfinished = remote_values.copy()
         dead_worker_indexes = []  # Store the indexes of the failed workers.
         while len(unfinished) > 0:
             finished, unfinished = ray.wait(unfinished)
@@ -410,7 +410,7 @@ class BackendExecutor:
                 except RayActorError as exc:
                     logger.exception(str(exc))
                     failed_actor_rank = remote_values.index(object_ref)
-                    logger.debug(f"Worker {failed_actor_rank} has failed.")
+                    logger.info(f"Worker {failed_actor_rank} has failed.")
                     dead_worker_indexes.append(failed_actor_rank)
         if len(dead_worker_indexes) > 0:
             self.handle_failure(failed_worker_indexes=dead_worker_indexes)
@@ -422,6 +422,9 @@ class BackendExecutor:
         # TODO: Fault-tolerance/elastic training here.
         self.worker_group.remove_workers(failed_worker_indexes)
         self._backend.on_shutdown(self.worker_group, self._backend_config)
+        def shutdown_session():
+            shutdown_session()
+        self.worker_group.execute(shutdown_session)
         self.worker_group.add_workers(len(failed_worker_indexes))
         self.start_training(train_func=self.train_func, checkpoint=self.latest_checkpoint)
 

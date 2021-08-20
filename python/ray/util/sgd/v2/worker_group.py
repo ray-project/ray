@@ -194,10 +194,11 @@ class WorkerGroup:
         Args:
             worker_indexes (List[int]): The indexes of the workers to remove.
         """
-
-        for i in worker_indexes:
-            logger.debug(f"Removing worker {i} from worker group.")
-            del self.workers[i]
+        new_workers = []
+        for i in range(len(self.workers)):
+            if i not in worker_indexes:
+                new_workers.append(self.workers[i])
+        self.workers = new_workers
 
     def add_workers(self, num_workers: int):
         """Adds ``num_workers`` to this WorkerGroup.
