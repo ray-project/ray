@@ -397,6 +397,7 @@ class StandardAutoscaler:
         if self.disable_node_updaters:
             # If updaters are unavailable, terminate unhealthy nodes.
             self.terminate_unhealthy_nodes(nodes, now)
+            nodes = self.workers()
         else:
             # Attempt to recover unhealthy nodes
             for node_id in nodes:
