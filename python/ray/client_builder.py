@@ -115,7 +115,7 @@ class ClientBuilder:
         if ray.util.client.ray.is_connected(
         ) and self._allow_multiple_connections:
             raise ValueError("It's in single-client mode. We can't create"
-                               " new client in multi-client mode")
+                             " new client in multi-client mode")
 
         if ray.util.client.num_connected_contexts(
         ) != 0 and not self._allow_multiple_connections:
