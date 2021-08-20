@@ -60,9 +60,24 @@ class _AgentCollector:
             (1
              if vr.data_col == SampleBatch.OBS or k == SampleBatch.OBS else 0)
             for k, vr in view_reqs.items())
-        # The actual data buffers (lists holding each timestep's data).
-        self.buffers = {}
-        self.buffer_structs = {}
+
+        # The actual data buffers. Keys are column names, values are lists
+        # that contain the sub-components (e.g. for complex obs spaces) with
+        # each sub-component holding a list of per-timestep tensors.
+        # E.g.: obs-space = Dict(a=Discrete(2), b=Box((2,)))
+        # buffers["obs"] = [
+        #    [0, 1],  # <- 1st sub-component of observation
+        #    [np.array([.2, .3]), np.array([.0, -.2])]  # <- 2nd sub-component
+        # ]
+        # NOTE: infos and state_out_... are not flattened due to them often
+        # using custom dict values whose structure may vary from timestep to
+        # timestep.
+        self.buffers: Dict[str, List[List[TensorType]]] = {}
+        # Maps column names to an example data item, which may be deeply
+        # nested. These are used such that we'll know how to unflatten
+        # the flattened data inside self.buffers when building the
+        # SampleBatch.
+        self.buffer_structs: Dict[str, Any] = {}
         # The episode ID for the agent for which we collect data.
         self.episode_id = None
         # The simple timestep count for this agent. Gets increased by one
@@ -84,8 +99,10 @@ class _AgentCollector:
             init_obs (TensorType): The initial observation tensor (after
             `env.reset()`).
         """
-        # Seems to be the first time, we call this method. Build our
-        # (list-based) buffers first.
+        # Store episode ID, which will be constant throughout this
+        # AgentCollector's lifecycle.
+        self.episode_id = episode_id
+
         if SampleBatch.OBS not in self.buffers:
             self._build_buffers(
                 single_row={
@@ -99,7 +116,6 @@ class _AgentCollector:
         flattened = tree.flatten(init_obs)
         for i, sub_obs in enumerate(flattened):
             self.buffers[SampleBatch.OBS][i].append(sub_obs)
-        self.episode_id = episode_id
         self.buffers[SampleBatch.AGENT_INDEX][0].append(agent_index)
         self.buffers["env_id"][0].append(env_id)
         self.buffers["t"][0].append(t)
@@ -120,14 +136,19 @@ class _AgentCollector:
         # Make sure EPS_ID stays the same for this agent. Usually, it should
         # not be part of `values` anyways.
         if SampleBatch.EPS_ID in values:
+            # Make sure eps_id did not change.
             assert values[SampleBatch.EPS_ID] == self.episode_id
+            # We'll add the eps_id field later when we build the SampleBatch.
             del values[SampleBatch.EPS_ID]
 
         for k, v in values.items():
             if k not in self.buffers:
                 self._build_buffers(single_row=values)
+            # Do not flatten infos or state_out_... (their values may be
+            # structs that change from timestep to timestep).
             if k == SampleBatch.INFOS or k.startswith("state_out_"):
                 self.buffers[k][0].append(v)
+            # Flatten all other columns.
             else:
                 flattened = tree.flatten(v)
                 for i, sub_list in enumerate(self.buffers[k]):
@@ -253,13 +274,14 @@ class _AgentCollector:
                     data = [d[self.shift_before:] for d in np_data[data_col]]
                 # Shift is positive: We still need to 0-pad at the end.
                 elif shift > 0:
-                    data = to_float_np_array(
-                        self.buffers[data_col][self.shift_before + shift:] + [
+                    data = [
+                        to_float_np_array(d[self.shift_before + shift:] + [
                             np.zeros(
                                 shape=view_req.space.shape,
                                 dtype=view_req.space.dtype)
                             for _ in range(shift)
-                        ])
+                        ]) for d in np_data[data_col]
+                    ]
                 # Shift is negative: Shift into the already existing and
                 # 0-padded "before" area of our buffers.
                 else:
@@ -304,11 +326,13 @@ class _AgentCollector:
         # This trajectory is continuing -> Copy data at the end (in the size of
         # self.shift_before) to the beginning of buffers and erase everything
         # else.
-        if not self.buffers[SampleBatch.DONES][-1]:
+        if not self.buffers[SampleBatch.DONES][0][-1]:
             # Copy data to beginning of buffer and cut lists.
             if self.shift_before > 0:
                 for k, data in self.buffers.items():
-                    self.buffers[k] = data[-self.shift_before:]
+                    # Loop through
+                    for i in range(len(data)):
+                        self.buffers[k][i] = data[i][-self.shift_before:]
             self.agent_steps = 0
 
         return batch
@@ -337,6 +361,8 @@ class _AgentCollector:
             else:
                 self.buffers[col] = [[v for _ in range(shift)]
                                      for v in tree.flatten(data)]
+                # Store an example data struct so we know, how to unflatten
+                # each data col.
                 self.buffer_structs[col] = data
 
 
@@ -582,6 +608,7 @@ class SimpleListCollector(SampleCollector):
         for k in keys:
             collector = self.agent_collectors[k]
             buffers[k] = collector.buffers
+        # Use one agent's buffer_structs (they should all be the same).
         buffer_structs = self.agent_collectors[keys[0]].buffer_structs
 
         input_dict = {}
