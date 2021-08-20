@@ -73,6 +73,10 @@ def get_cli_args():
 
 if __name__ == "__main__":
     args = get_cli_args()
+    assert args.framework == "tf",\
+        "No-preprocessing only working for tf so far! Complex input " \
+        "model must be changed to accept Dict spaces as well (besides " \
+        "Tuples)."
 
     ray.init(local_mode=args.local_mode)
 
