@@ -55,6 +55,12 @@ GCS_SERVER_EXECUTABLE = os.path.join(
 DEFAULT_WORKER_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
 
+DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
+    "Not all Ray Dashboard dependencies were "
+    "found. To use the dashboard please "
+    "install Ray using `pip install "
+    "ray[default]`.")
+
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
@@ -220,6 +226,16 @@ def get_ray_address_to_use_or_die():
     """
     return os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
                           find_redis_address_or_die())
+
+
+def _log_dashboard_dependency_warning_once():
+    if log_once("dashboard_failed_import"
+                ) and not os.getenv("RAY_DISABLE_IMPORT_WARNING") == "1":
+        warning_message = DASHBOARD_DEPENDENCY_ERROR_MESSAGE
+        warning_message += " To disable this message, set " \
+                           "RAY_DISABLE_IMPORT_WARNING " \
+                           "env var to '1'."
+        warnings.warn(warning_message)
 
 
 def find_redis_address_or_die():
@@ -1174,29 +1190,12 @@ def start_dashboard(require_dashboard,
 
         # Make sure the process can start.
         try:
-            # These checks have to come first because aiohttp looks
-            # for opencensus, too, and raises a different error otherwise.
-            import opencensus  # noqa: F401
-            import prometheus_client  # noqa: F401
-
-            import aiohttp  # noqa: F401
-            import aioredis  # noqa: F401
-            import aiohttp_cors  # noqa: F401
-            import grpc  # noqa: F401
+            import ray.new_dashboard.optional_deps  # noqa: F401
         except ImportError:
-            warning_message = (
-                "Not all Ray Dashboard dependencies were found. "
-                "To use the dashboard please install Ray like so: `pip "
-                "install ray[default]`.")
             if require_dashboard:
-                raise ImportError(warning_message)
+                raise ImportError(DASHBOARD_DEPENDENCY_ERROR_MESSAGE)
             else:
-                if log_once("dashboard_failed_import") and not os.getenv(
-                        "RAY_DISABLE_IMPORT_WARNING") == "1":
-                    warning_message += " To disable this message, set " \
-                                       "RAY_DISABLE_IMPORT_WARNING " \
-                                       "env var to '1'."
-                    warnings.warn(warning_message)
+                _log_dashboard_dependency_warning_once()
                 return None, None
 
         # Start the dashboard process.
@@ -1509,18 +1508,11 @@ def start_raylet(redis_address,
     # than just blindly importing the relevant packages.
     def check_should_start_agent():
         try:
-            import aiohttp  # noqa: F401
-            import aiohttp.web  # noqa: F401
-            import aiohttp_cors  # noqa: F401
-            from aiohttp import hdrs  # noqa: F401
-
-            import aioredis  # noqa: F401
+            import ray.new_dashboard.optional_deps  # noqa: F401
 
             return True
         except ImportError:
-            print("Not all Ray Dashboard dependecies were found. In Ray 1.4+, "
-                  "the Ray CLI, autoscaler, and dashboard will only be usable "
-                  "via `pip install 'ray[default]'`.")
+            _log_dashboard_dependency_warning_once()
 
         return False
 

@@ -10,13 +10,6 @@ import json
 import time
 import traceback
 
-import aiohttp
-import aiohttp.web
-import aiohttp_cors
-from aiohttp import hdrs
-
-import aioredis  # noqa: F401
-
 from grpc.experimental import aio as aiogrpc
 
 import ray
@@ -28,6 +21,11 @@ import ray._private.utils
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
+
+# All third-party dependencies that are not included in the minimal Ray
+# installation must be included in this file. This allows us to determine if
+# the agent has the necessary dependencies to be started.
+from ray.new_dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
 
 # Import psutil after ray so the packaged version is used.
 import psutil
