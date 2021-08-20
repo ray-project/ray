@@ -538,8 +538,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         PutObjectIntoPlasma(object, object_id);
         return Status::OK();
       },
-      options_.ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
-      options_.check_signals,
+      reference_counter_, local_raylet_client_, options_.check_signals,
       [this](const RayObject &obj) {
         // Run this on the event loop to avoid calling back into the language runtime
         // from the middle of user operations.
@@ -2211,9 +2210,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     RAY_LOG(DEBUG) << "Decrementing ref for borrowed ID " << borrowed_id;
     reference_counter_->RemoveLocalReference(borrowed_id, &deleted);
   }
-  if (options_.ref_counting_enabled) {
-    memory_store_->Delete(deleted);
-  }
+  memory_store_->Delete(deleted);
 
   if (task_spec.IsNormalTask() && reference_counter_->NumObjectIDsInScope() != 0) {
     RAY_LOG(DEBUG)

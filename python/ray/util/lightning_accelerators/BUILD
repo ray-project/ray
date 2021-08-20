@@ -7,7 +7,7 @@ py_test(
     name = "test_horovod_ray_accelerator",
     size = "medium",
     srcs = ["tests/test_horovod_ray_accelerator.py"],
-    tags = ["exclusive", "pytorch-lightning", "pytorch", "horovod"],
+    tags = ["team:ml", "exclusive", "pytorch-lightning", "pytorch", "horovod"],
     deps = [":accelerator_lib"],
 )
 
@@ -20,7 +20,7 @@ py_test(
     name = "ptl_horovod_ray_example",
     size = "medium",
     srcs = ["examples/ptl_horovod_ray_example.py"],
-    tags = ["exclusive", "example", "pytorch-lightning", "pytorch", "horovod"],
+    tags = ["team:ml", "exclusive", "example", "pytorch-lightning", "pytorch", "horovod"],
     deps = [":accelerator_lib"],
     args = ["--smoke-test"]
 )
