@@ -314,6 +314,8 @@ cdef class ClientActorRef(ActorID):
         client.ray.call_retain(id)
 
     def __dealloc__(self):
+        if client is None or client.ray is None:
+            return
         if client.ray.is_connected() and not self.data.IsNil():
             client.ray.call_release(self.id)
 
