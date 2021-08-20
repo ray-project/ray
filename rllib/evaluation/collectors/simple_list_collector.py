@@ -563,9 +563,13 @@ class SimpleListCollector(SampleCollector):
                     data_list.append(self.agent_collectors[k].episode_id)
                 else:
                     if data_col not in buffers[k]:
-                        fill_value = np.zeros_like(view_req.space.sample()) \
-                            if isinstance(view_req.space, Space) else \
-                            view_req.space
+                        if view_req.data_col is not None:
+                            space = policy.view_requirements[
+                                view_req.data_col].space
+                        else:
+                            space = view_req.space
+                        fill_value = np.zeros_like(space.sample()) \
+                            if isinstance(space, Space) else space
                         self.agent_collectors[k]._build_buffers({
                             data_col: fill_value
                         })

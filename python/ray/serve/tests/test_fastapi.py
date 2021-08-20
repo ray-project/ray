@@ -16,7 +16,7 @@ import ray
 from ray import serve
 from ray.exceptions import GetTimeoutError
 from ray.serve.http_util import make_fastapi_class_based_view
-from ray.test_utils import SignalActor
+from ray._private.test_utils import SignalActor
 
 
 def test_fastapi_function(serve_instance):

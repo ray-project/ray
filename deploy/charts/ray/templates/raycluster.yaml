@@ -76,13 +76,13 @@ spec:
                 {{- if .GPU }}
                 nvidia.com/gpu: {{ .GPU }}
                 {{- end }}
-          {{- if .Values.imagePullSecrets }}
-          imagePullSecrets:
-          {{ toYaml .Values.imagePullSecrets | indent 8 }}
-          {{- end }}
           {{- if .nodeSelector }}
           nodeSelector:
-              {{- toYaml .nodeSelector | nindent 12 }}
+          {{- toYaml $val.nodeSelector | nindent 10 }}
+          {{- end }}
+          {{- if $val.tolerations }}
+          tolerations:
+          {{- toYaml $val.tolerations | nindent 10 }}
           {{- end }}
     {{- end }}
   # Commands to start Ray on the head node. You don't need to change this.

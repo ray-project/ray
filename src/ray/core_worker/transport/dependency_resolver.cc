@@ -15,6 +15,7 @@
 #include "ray/core_worker/transport/dependency_resolver.h"
 
 namespace ray {
+namespace core {
 
 struct TaskState {
   TaskState(TaskSpecification t,
@@ -55,9 +56,9 @@ void InlineDependencies(
             const auto &metadata = it->second->GetMetadata();
             mutable_arg->set_metadata(metadata->Data(), metadata->Size());
           }
-          for (const auto &nested_id : it->second->GetNestedIds()) {
-            mutable_arg->add_nested_inlined_ids(nested_id.Binary());
-            contained_ids->push_back(nested_id);
+          for (const auto &nested_ref : it->second->GetNestedRefs()) {
+            mutable_arg->add_nested_inlined_refs()->CopyFrom(nested_ref);
+            contained_ids->push_back(ObjectID::FromBinary(nested_ref.object_id()));
           }
           inlined_dependency_ids->push_back(id);
         }
@@ -115,4 +116,5 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
   }
 }
 
+}  // namespace core
 }  // namespace ray

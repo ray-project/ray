@@ -392,7 +392,8 @@ def prepare_runtime_init_req(init_request: ray_client_pb2.DataRequest
         job_config = pickle.loads(req.job_config)
     new_job_config = ray_client_server_env_prep(job_config)
     modified_init_req = ray_client_pb2.InitRequest(
-        job_config=pickle.dumps(new_job_config))
+        job_config=pickle.dumps(new_job_config),
+        ray_init_kwargs=init_request.init.ray_init_kwargs)
 
     init_request.init.CopyFrom(modified_init_req)
     return (init_request, new_job_config)

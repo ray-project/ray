@@ -1364,7 +1364,8 @@ def exec(cluster_config_file, cmd, run_env, screen, tmux, stop, start,
         start=start,
         override_cluster_name=cluster_name,
         no_config_cache=no_config_cache,
-        port_forward=port_forward)
+        port_forward=port_forward,
+        _allow_uninitialized_state=True)
 
 
 @cli.command()
@@ -1425,7 +1426,7 @@ done
 @cli.command()
 def microbenchmark():
     """Run a local Ray microbenchmark on the current machine."""
-    from ray.ray_perf import main
+    from ray._private.ray_perf import main
     main()
 
 
@@ -1776,6 +1777,8 @@ def healthcheck(address, redis_password, component):
 
     if not address:
         address = services.get_ray_address_to_use_or_die()
+    else:
+        address = services.address_to_ip(address)
     redis_client = ray._private.services.create_redis_client(
         address, redis_password)
 
@@ -1933,7 +1936,7 @@ def cpp(show_library_path, generate_bazel_project_template_to, log_style,
         cli_logger.print(
             cf.bold(
                 f"    cd {os.path.abspath(generate_bazel_project_template_to)}"
-                " && bazel run //:example"))
+                " && sh run.sh"))
 
 
 def add_command_alias(command, name, hidden):

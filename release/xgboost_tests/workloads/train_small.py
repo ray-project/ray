@@ -11,7 +11,7 @@ import os
 import time
 
 import ray
-from ray.test_utils import wait_for_num_nodes
+from ray._private.test_utils import wait_for_num_nodes
 from xgboost_ray import RayParams
 
 from ray.util.xgboost.release_test_util import train_ray

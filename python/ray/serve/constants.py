@@ -48,3 +48,8 @@ ALL_HTTP_METHODS = [
     "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE",
     "PATCH"
 ]
+
+SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
+
+#: Number of historically deleted deployments to store in the checkpoint.
+MAX_NUM_DELETED_DEPLOYMENTS = 1000

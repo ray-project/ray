@@ -174,7 +174,7 @@ if __name__ == "__main__":
                     result["episode_reward_mean"] >= args.stop_reward:
                 break
 
-        # run manual test loop (only for RepeatAfterMe env)
+        # Run manual test loop (only for RepeatAfterMe env).
         if args.env == "RepeatAfterMeEnv":
             print("Finished training. Running manual test/inference loop.")
             # prepare env
@@ -204,8 +204,8 @@ if __name__ == "__main__":
                 ]
             print(f"Total reward in test episode: {total_reward}")
 
+    # Run with Tune for auto env and trainer creation and TensorBoard.
     else:
-        # run with Tune for auto env and trainer creation and TensorBoard
         results = tune.run(args.run, config=config, stop=stop, verbose=2)
 
         if args.as_test:

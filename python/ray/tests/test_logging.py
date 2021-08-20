@@ -5,7 +5,7 @@ import re
 
 import ray
 from ray import ray_constants
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 
 
 def set_logging_config(max_bytes, backup_count):

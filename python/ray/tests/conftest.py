@@ -9,7 +9,8 @@ import json
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.test_utils import init_error_pubsub
+from ray._private.test_utils import init_error_pubsub
+import ray._private.gcs_utils as gcs_utils
 
 
 @pytest.fixture
@@ -55,9 +56,9 @@ def _ray_start(**kwargs):
 @pytest.fixture
 def ray_start_with_dashboard(request):
     param = getattr(request, "param", {})
-
-    with _ray_start(
-            num_cpus=1, include_dashboard=True, **param) as address_info:
+    if param.get("num_cpus") is None:
+        param["num_cpus"] = 1
+    with _ray_start(include_dashboard=True, **param) as address_info:
         yield address_info
 
 
@@ -261,7 +262,7 @@ def error_pubsub():
 def log_pubsub():
     p = ray.worker.global_worker.redis_client.pubsub(
         ignore_subscribe_messages=True)
-    log_channel = ray.gcs_utils.LOG_FILE_CHANNEL
+    log_channel = gcs_utils.LOG_FILE_CHANNEL
     p.psubscribe(log_channel)
     yield p
     p.close()

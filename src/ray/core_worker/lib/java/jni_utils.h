@@ -24,6 +24,9 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/core_worker.h"
 
+using namespace ray;
+using namespace ray::core;
+
 /// Boolean class
 extern jclass java_boolean_class;
 /// Constructor of Boolean class
@@ -38,6 +41,8 @@ extern jmethodID java_double_double_value;
 extern jclass java_object_class;
 /// equals method of Object class
 extern jmethodID java_object_equals;
+/// hashCode method of Object class
+extern jmethodID java_object_hash_code;
 
 /// List class
 extern jclass java_list_class;
@@ -152,6 +157,8 @@ extern jfieldID java_call_options_name;
 extern jfieldID java_task_creation_options_group;
 /// bundleIndex field of CallOptions class
 extern jfieldID java_task_creation_options_bundle_index;
+/// concurrencyGroupName field of CallOptions class
+extern jfieldID java_call_options_concurrency_group_name;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
@@ -169,6 +176,17 @@ extern jfieldID java_actor_creation_options_max_concurrency;
 extern jfieldID java_actor_creation_options_group;
 /// bundleIndex field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_bundle_index;
+/// concurrencyGroups field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_concurrency_groups;
+
+/// ConcurrencyGroupImpl class
+extern jclass java_concurrency_group_impl_class;
+/// getFunctionDescriptors method of ConcurrencyGroupImpl class
+extern jmethodID java_concurrency_group_impl_get_function_descriptors;
+/// name field of ConcurrencyGroupImpl class
+extern jfieldID java_concurrency_group_impl_name;
+/// maxConcurrency field of ConcurrencyGroupImpl class
+extern jfieldID java_concurrency_group_impl_max_concurrency;
 
 /// PlacementGroupCreationOptions class
 extern jclass java_placement_group_creation_options_class;
@@ -261,7 +279,7 @@ extern JavaVM *jvm;
 /// Represents a byte buffer of Java byte array.
 /// The destructor will automatically call ReleaseByteArrayElements.
 /// NOTE: Instances of this class cannot be used across threads.
-class JavaByteArrayBuffer : public ray::Buffer {
+class JavaByteArrayBuffer : public Buffer {
  public:
   JavaByteArrayBuffer(JNIEnv *env, jbyteArray java_byte_array)
       : env_(env), java_byte_array_(java_byte_array) {
@@ -473,9 +491,9 @@ inline jobject NativeMapToJavaMap(
   return java_map;
 }
 
-/// Convert a C++ ray::Buffer to a Java byte array.
+/// Convert a C++ Buffer to a Java byte array.
 inline jbyteArray NativeBufferToJavaByteArray(JNIEnv *env,
-                                              const std::shared_ptr<ray::Buffer> buffer) {
+                                              const std::shared_ptr<Buffer> buffer) {
   if (!buffer) {
     return nullptr;
   }
@@ -496,9 +514,9 @@ inline std::shared_ptr<JavaByteArrayBuffer> JavaByteArrayToNativeBuffer(
   return std::make_shared<JavaByteArrayBuffer>(env, javaByteArray);
 }
 
-/// Convert a Java NativeRayObject to a C++ ray::RayObject.
-/// NOTE: the returned ray::RayObject cannot be used across threads.
-inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
+/// Convert a Java NativeRayObject to a C++ RayObject.
+/// NOTE: the returned RayObject cannot be used across threads.
+inline std::shared_ptr<RayObject> JavaNativeRayObjectToNativeRayObject(
     JNIEnv *env, const jobject &java_obj) {
   if (!java_obj) {
     return nullptr;
@@ -506,8 +524,8 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
   auto java_data = (jbyteArray)env->GetObjectField(java_obj, java_native_ray_object_data);
   auto java_metadata =
       (jbyteArray)env->GetObjectField(java_obj, java_native_ray_object_metadata);
-  std::shared_ptr<ray::Buffer> data_buffer = JavaByteArrayToNativeBuffer(env, java_data);
-  std::shared_ptr<ray::Buffer> metadata_buffer =
+  std::shared_ptr<Buffer> data_buffer = JavaByteArrayToNativeBuffer(env, java_data);
+  std::shared_ptr<Buffer> metadata_buffer =
       JavaByteArrayToNativeBuffer(env, java_metadata);
   if (data_buffer && data_buffer->Size() == 0) {
     data_buffer = nullptr;
@@ -518,19 +536,20 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
 
   auto java_contained_ids =
       env->GetObjectField(java_obj, java_native_ray_object_contained_object_ids);
-  std::vector<ray::ObjectID> contained_object_ids;
-  JavaListToNativeVector<ray::ObjectID>(
+  std::vector<ObjectID> contained_object_ids;
+  JavaListToNativeVector<ObjectID>(
       env, java_contained_ids, &contained_object_ids, [](JNIEnv *env, jobject id) {
-        return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
+        return JavaByteArrayToId<ObjectID>(env, static_cast<jbyteArray>(id));
       });
   env->DeleteLocalRef(java_contained_ids);
-  return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer,
-                                          contained_object_ids);
+  auto contained_object_refs =
+      CoreWorkerProcess::GetCoreWorker().GetObjectRefs(contained_object_ids);
+  return std::make_shared<RayObject>(data_buffer, metadata_buffer, contained_object_refs);
 }
 
-/// Convert a C++ ray::RayObject to a Java NativeRayObject.
+/// Convert a C++ RayObject to a Java NativeRayObject.
 inline jobject NativeRayObjectToJavaNativeRayObject(
-    JNIEnv *env, const std::shared_ptr<ray::RayObject> &rayObject) {
+    JNIEnv *env, const std::shared_ptr<RayObject> &rayObject) {
   if (!rayObject) {
     return nullptr;
   }
@@ -544,19 +563,18 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
   return java_obj;
 }
 
-// TODO(po): Convert C++ ray::FunctionDescriptor to Java FunctionDescriptor
+// TODO(po): Convert C++ FunctionDescriptor to Java FunctionDescriptor
 inline jobject NativeRayFunctionDescriptorToJavaStringList(
-    JNIEnv *env, const ray::FunctionDescriptor &function_descriptor) {
-  if (function_descriptor->Type() ==
-      ray::FunctionDescriptorType::kJavaFunctionDescriptor) {
-    auto typed_descriptor = function_descriptor->As<ray::JavaFunctionDescriptor>();
+    JNIEnv *env, const FunctionDescriptor &function_descriptor) {
+  if (function_descriptor->Type() == FunctionDescriptorType::kJavaFunctionDescriptor) {
+    auto typed_descriptor = function_descriptor->As<JavaFunctionDescriptor>();
     std::vector<std::string> function_descriptor_list = {typed_descriptor->ClassName(),
                                                          typed_descriptor->FunctionName(),
                                                          typed_descriptor->Signature()};
     return NativeStringVectorToJavaStringList(env, function_descriptor_list);
   } else if (function_descriptor->Type() ==
-             ray::FunctionDescriptorType::kPythonFunctionDescriptor) {
-    auto typed_descriptor = function_descriptor->As<ray::PythonFunctionDescriptor>();
+             FunctionDescriptorType::kPythonFunctionDescriptor) {
+    auto typed_descriptor = function_descriptor->As<PythonFunctionDescriptor>();
     std::vector<std::string> function_descriptor_list = {
         typed_descriptor->ModuleName(), typed_descriptor->ClassName(),
         typed_descriptor->FunctionName(), typed_descriptor->FunctionHash()};
@@ -594,16 +612,15 @@ inline std::string GetFullName(bool global, std::string name) {
     return "";
   }
   return global ? name
-                : ::ray::CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() +
-                      "-" + name;
+                : CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" + name;
 }
 
-inline std::shared_ptr<ray::LocalMemoryBuffer> SerializeActorCreationException(
+inline std::shared_ptr<LocalMemoryBuffer> SerializeActorCreationException(
     JNIEnv *env, jthrowable creation_exception) {
   jbyteArray exception_jbyte_array = static_cast<jbyteArray>(
       env->CallObjectMethod(creation_exception, java_ray_exception_to_bytes));
   int len = env->GetArrayLength(exception_jbyte_array);
-  auto buf = std::make_shared<ray::LocalMemoryBuffer>(len);
+  auto buf = std::make_shared<LocalMemoryBuffer>(len);
   env->GetByteArrayRegion(exception_jbyte_array, 0, len,
                           reinterpret_cast<jbyte *>(buf->Data()));
   return buf;

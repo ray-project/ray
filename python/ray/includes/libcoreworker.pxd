@@ -30,6 +30,7 @@ from ray.includes.common cimport (
     CBuffer,
     CPlacementGroupCreationOptions,
     CObjectLocation,
+    CObjectReference,
     CRayFunction,
     CRayObject,
     CRayStatus,
@@ -62,38 +63,38 @@ ctypedef void (*plasma_callback_function) \
 ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
 
 cdef extern from "ray/core_worker/profiling.h" nogil:
-    cdef cppclass CProfiler "ray::worker::Profiler":
+    cdef cppclass CProfiler "ray::core::worker::Profiler":
         void Start()
 
-    cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
+    cdef cppclass CProfileEvent "ray::core::worker::ProfileEvent":
         CProfileEvent(const shared_ptr[CProfiler] profiler,
                       const c_string &event_type)
         void SetExtraData(const c_string &extra_data)
 
 cdef extern from "ray/core_worker/profiling.h" nogil:
-    cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
+    cdef cppclass CProfileEvent "ray::core::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
 
 cdef extern from "ray/core_worker/fiber.h" nogil:
-    cdef cppclass CFiberEvent "ray::FiberEvent":
+    cdef cppclass CFiberEvent "ray::core::FiberEvent":
         CFiberEvent()
         void Wait()
         void Notify()
 
 cdef extern from "ray/core_worker/context.h" nogil:
-    cdef cppclass CWorkerContext "ray::WorkerContext":
+    cdef cppclass CWorkerContext "ray::core::WorkerContext":
         c_bool CurrentActorIsAsync()
         const c_string &GetCurrentSerializedRuntimeEnv()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
-    cdef cppclass CActorHandle "ray::ActorHandle":
+    cdef cppclass CActorHandle "ray::core::ActorHandle":
         CActorID GetActorID() const
         CJobID CreationJobID() const
         CLanguage ActorLanguage() const
         CFunctionDescriptor ActorCreationTaskFunctionDescriptor() const
         c_string ExtensionData() const
 
-    cdef cppclass CCoreWorker "ray::CoreWorker":
+    cdef cppclass CCoreWorker "ray::core::CoreWorker":
         void ConnectToRaylet()
         CWorkerType GetWorkerType()
         CLanguage GetLanguage()
@@ -171,6 +172,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                  const CObjectID &object_id)
         const CAddress &GetRpcAddress() const
         CAddress GetOwnerAddress(const CObjectID &object_id) const
+        c_vector[CObjectReference] GetObjectRefs(
+                const c_vector[CObjectID] &object_ids) const
+
         void PromoteObjectToPlasma(const CObjectID &object_id)
         void GetOwnershipInfo(const CObjectID &object_id,
                               CAddress *owner_address,
@@ -192,7 +196,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                const c_vector[CObjectID] &contained_object_ids,
                                CObjectID *object_id, shared_ptr[CBuffer] *data,
                                c_bool created_by_worker,
-                               const unique_ptr[CAddress] &owner_address)
+                               const unique_ptr[CAddress] &owner_address,
+                               c_bool inline_small_object)
         CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
                                   const size_t data_size,
                                   const CObjectID &object_id,
@@ -236,7 +241,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SetResource(const c_string &resource_name,
                                const double capacity,
                                const CNodeID &client_Id)
-        CRayStatus SpillObjects(const c_vector[CObjectID] &object_ids)
 
         CJobConfig GetJobConfig()
 
@@ -248,7 +252,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         int64_t GetNumLeasesRequested() const
 
-    cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
+    cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type
         CLanguage language
         c_string store_socket
@@ -295,7 +299,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[c_string]&) nogil) run_on_util_worker_handler
         (void(const CRayObject&) nogil) unhandled_exception_handler
         (void(c_string *stack_out) nogil) get_lang_stack
-        c_bool ref_counting_enabled
         c_bool is_local_mode
         int num_workers
         (c_bool() nogil) kill_main
@@ -307,7 +310,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int runtime_env_hash
         int worker_shim_pid
 
-    cdef cppclass CCoreWorkerProcess "ray::CoreWorkerProcess":
+    cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
         @staticmethod
         void Initialize(const CCoreWorkerOptions &options)
         # Only call this in CoreWorker.__cinit__,

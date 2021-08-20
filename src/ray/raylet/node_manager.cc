@@ -183,11 +183,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
                    config.worker_commands,
                    /*starting_worker_timeout_callback=*/
                    [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
-                   /*runtime_env_setup_failed_callback=*/
-                   [this](const TaskID &task_id) {
-                     RAY_CHECK(cluster_task_manager_->CancelTask(
-                         task_id, /*runtime_env_setup_failed=*/true));
-                   },
                    config.ray_debugger_external,
                    /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       client_call_manager_(io_service),
@@ -299,12 +294,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
   };
-  auto is_owner_alive = [this](const WorkerID &owner_worker_id,
-                               const NodeID &owner_node_id) {
-    return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
-             failed_nodes_cache_.count(owner_node_id) > 0);
-  };
-  auto announce_infeasible_task = [this](const Task &task) {
+  auto announce_infeasible_task = [this](const RayTask &task) {
     PublishInfeasibleTaskError(task);
   };
   RAY_CHECK(RayConfig::instance().max_task_args_memory_fraction() > 0 &&
@@ -320,6 +310,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
            "return values are greater than the remaining capacity.";
     max_task_args_memory = 0;
   }
+  auto is_owner_alive = [this](const WorkerID &owner_worker_id,
+                               const NodeID &owner_node_id) {
+    return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
+             failed_nodes_cache_.count(owner_node_id) > 0);
+  };
   cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
       self_node_id_,
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
@@ -471,10 +466,6 @@ ray::Status NodeManager::RegisterGcs() {
         "NodeManager.deadline_timer.flush_free_objects");
   }
   last_resource_report_at_ms_ = now_ms;
-  periodical_runner_.RunFnPeriodically(
-      [this] { ReportResourceUsage(); }, report_resources_period_ms_,
-      "NodeManager.deadline_timer.report_resource_usage");
-
   /// If periodic asio stats print is enabled, it will print it.
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
@@ -594,33 +585,6 @@ void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
   }
 }
 
-void NodeManager::ReportResourceUsage() {
-  if (initial_config_.pull_based_resource_reporting) {
-    return;
-  }
-  uint64_t now_ms = current_time_ms();
-  uint64_t interval = now_ms - last_resource_report_at_ms_;
-  if (interval >
-      RayConfig::instance().num_resource_report_periods_warning() *
-          RayConfig::instance().raylet_report_resources_period_milliseconds()) {
-    RAY_LOG(WARNING)
-        << "Last resource report was sent " << interval
-        << " ms ago. There might be resource pressure on this node. If "
-           "resource reports keep lagging, scheduling decisions of other nodes "
-           "may become stale";
-  }
-  last_resource_report_at_ms_ = now_ms;
-  auto resources_data = std::make_shared<rpc::ResourcesData>();
-  FillResourceReport(*resources_data);
-
-  if (resources_data->resources_total_size() > 0 ||
-      resources_data->resources_available_changed() ||
-      resources_data->resource_load_changed() || resources_data->should_global_gc()) {
-    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(resources_data,
-                                                                       /*done*/ nullptr));
-  }
-}
-
 void NodeManager::DoLocalGC() {
   auto all_workers = worker_pool_.GetAllRegisteredWorkers();
   for (const auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
@@ -709,7 +673,7 @@ void NodeManager::HandleReleaseUnusedBundles(
 // debug_dump_period_ milliseconds.
 // See https://github.com/ray-project/ray/issues/5790 for details.
 void NodeManager::WarnResourceDeadlock() {
-  ray::Task exemplar;
+  ray::RayTask exemplar;
   bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
@@ -1244,7 +1208,7 @@ void NodeManager::DisconnectClient(
       // If the worker was an actor, it'll be cleaned by GCS.
       if (actor_id.IsNil()) {
         // Return the resources that were being used by this worker.
-        Task task;
+        RayTask task;
         cluster_task_manager_->TaskFinished(worker, &task);
       }
 
@@ -1261,7 +1225,7 @@ void NodeManager::DisconnectClient(
         error_message << "A worker died or was killed while executing a task by an "
                          "unexpected system "
                          "error. To troubleshoot the problem, check the logs for the "
-                         "dead worker. Task ID: "
+                         "dead worker. RayTask ID: "
                       << task_id << " Worker ID: " << worker->WorkerId()
                       << " Node ID: " << self_node_id_
                       << " Worker IP address: " << worker->IpAddress()
@@ -1587,7 +1551,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   if (RayConfig::instance().report_worker_backlog()) {
     backlog_size = request.backlog_size();
   }
-  Task task(task_message, backlog_size);
+  RayTask task(task_message, backlog_size);
   bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
   metrics_num_task_scheduled_ += 1;
@@ -1848,7 +1812,7 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
-  Task task;
+  RayTask task;
   cluster_task_manager_->TaskFinished(worker_ptr, &task);
 
   const auto &spec = task.GetTaskSpecification();  //
@@ -1878,7 +1842,7 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
 }
 
 void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
-                                                  const Task &task) {
+                                                  const RayTask &task) {
   RAY_LOG(DEBUG) << "Finishing assigned actor creation task";
   const TaskSpecification task_spec = task.GetTaskSpecification();
   ActorID actor_id = task_spec.ActorCreationId();
@@ -2414,7 +2378,7 @@ void NodeManager::RecordMetrics() {
   object_directory_->RecordMetrics(duration_ms);
 }
 
-void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
+void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
   bool suppress_warning = false;
 
   if (!task.GetTaskSpecification().PlacementGroupBundleId().first.IsNil()) {
