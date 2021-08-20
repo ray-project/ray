@@ -875,7 +875,9 @@ class Policy(metaclass=ABCMeta):
                 else:
                     if isinstance(view_req.space, gym.spaces.Space):
                         ret[view_col] = get_dummy_batch_for_space(
-                            view_req.space, batch_size=batch_size, fill_value=0.0)
+                            view_req.space,
+                            batch_size=batch_size,
+                            fill_value=0.0)
                     else:
                         ret[view_col] = [
                             view_req.space for _ in range(batch_size)
