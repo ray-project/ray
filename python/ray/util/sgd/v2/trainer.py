@@ -5,7 +5,7 @@ from typing import Union, Callable, List, TypeVar, Optional, Any, Dict
 
 from ray.tune import Trainable
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendExecutor, \
-    InactiveWorkerGroupError, SGDBackendError
+    InactiveWorkerGroupError, SGDBackendError, TrainingWorkerError
 from ray.util.sgd.v2.backends.tensorflow import TensorflowConfig
 from ray.util.sgd.v2.backends.torch import TorchConfig
 from ray.util.sgd.v2.callbacks.callback import SGDCallback
@@ -151,6 +151,9 @@ class Trainer:
                         callback.handle_result(intermediate_results)
 
             return self._executor.finish_training()
+        except TrainingWorkerError:
+            # At this point workers have already restarted.
+            
         except InactiveWorkerGroupError:
             finished_with_errors = True
             raise RuntimeError(

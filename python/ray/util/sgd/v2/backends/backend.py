@@ -31,6 +31,9 @@ class BackendConfig:
 class SGDBackendError(Exception):
     """Errors with BackendExecutor that should not be exposed to user."""
 
+class TrainingWorkerError(Exception):
+    """Raised if a worker fails during training."""
+
 
 class BackendExecutor:
     """Main execution class for training backends.
@@ -215,12 +218,7 @@ class BackendExecutor:
 
         # Get next result from each worker.
         futures = self.worker_group.execute_async(get_next)
-        success, results = self.get_with_failure_handling(futures)
-        if not success:
-            # Worker failure has occurred and new workers have already been
-            # started.
-            # Try again.
-            return self._get_next_results()
+        results = self.get_with_failure_handling(futures)
 
         # Check if any worker returned None.
         if any(r is None for r in results):
@@ -365,9 +363,7 @@ class BackendExecutor:
         # Note: Reported results may still be enqueued at this point,
         #       and should be handled appropriately.
         futures = self.worker_group.execute_async(pause_reporting)
-        success, _ = self.get_with_failure_handling(futures)
-        if not success:
-            return self.finish_training()
+        self.get_with_failure_handling(futures)
 
         # Finish up processing checkpoints. Reporting has been disabled.
         while True:
@@ -380,14 +376,10 @@ class BackendExecutor:
                 self._process_checkpoint(results)
 
         futures = self.worker_group.execute_async(end_training)
-        success, results = self.get_with_failure_handling(futures)
-        if not success:
-            return self.finish_training()
+        results = self.get_with_failure_handling(futures)
         return results
 
-    def get_with_failure_handling(self, remote_values) -> Tuple[bool,
-                                                                Optional[List[
-                                                                    Any]]]:
+    def get_with_failure_handling(self, remote_values):
         """Gets the remote values while handling for worker failures.
 
         Args:
@@ -414,19 +406,21 @@ class BackendExecutor:
                     dead_worker_indexes.append(failed_actor_rank)
         if len(dead_worker_indexes) > 0:
             self.handle_failure(failed_worker_indexes=dead_worker_indexes)
-            return False, None
         else:
-            return True, ray.get(remote_values)
+            return ray.get(remote_values)
 
     def handle_failure(self, failed_worker_indexes: List[int]):
         # TODO: Fault-tolerance/elastic training here.
         self.worker_group.remove_workers(failed_worker_indexes)
         self._backend.on_shutdown(self.worker_group, self._backend_config)
+
         def shutdown_session():
             shutdown_session()
-        self.worker_group.execute(shutdown_session)
+
+        futures = self.worker_group.execute_async(shutdown_session)
+        self.get_with_failure_handling(futures)
         self.worker_group.add_workers(len(failed_worker_indexes))
-        self.start_training(train_func=self.train_func, checkpoint=self.latest_checkpoint)
+        raise TrainingWorkerError
 
     def shutdown(self):
         """Shuts down the workers in the worker group."""
