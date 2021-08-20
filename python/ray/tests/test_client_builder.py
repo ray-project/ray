@@ -234,7 +234,7 @@ def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
         assert namespace == "n1"
         assert ray.util.client.ray.is_connected()
 
-    with pytest.raises(Exception):
+    with pytest.raises(ray.exceptions.RaySystemError):
         ray.put(300)
 
     with ray.client(None).namespace("n1").connect():
@@ -243,7 +243,7 @@ def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
         assert namespace == "n1"
         assert not ray.util.client.ray.is_connected()
 
-    with pytest.raises(Exception):
+    with pytest.raises(ray.exceptions.RaySystemError):
         ray.put(300)
 
     ctx = ray.client("localhost:25555").namespace("n1").connect()
@@ -254,7 +254,7 @@ def test_disconnect(call_ray_stop_only, set_enable_auto_connect):
     ctx.disconnect()
     # Check idempotency
     ctx.disconnect()
-    with pytest.raises(Exception):
+    with pytest.raises(ray.exceptions.RaySystemError):
         ray.put(300)
 
 

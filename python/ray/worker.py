@@ -749,6 +749,7 @@ def init(
             logger.info(
                 f"Using address {address_env_var} set in the environment "
                 f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}")
+
     if address is not None and "://" in address:
         # Address specified a protocol, use ray client
         builder = ray.client(address)
@@ -935,6 +936,7 @@ def init(
     if driver_mode == SCRIPT_MODE and job_config:
         # Rewrite the URI. Note the package isn't uploaded to the URI until
         # later in the connect
+
         runtime_env_pkg.rewrite_runtime_env_uris(job_config)
     connect(
         _global_node,

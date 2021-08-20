@@ -45,12 +45,13 @@ class ClientContext:
 
     def disconnect(self) -> None:
         """
-        Disconnect Ray. This either disconnects from the remote Client Server
-        or shuts the current driver down.
+        Disconnect Ray. If it's a ray client and created with `allow_multiple`,
+        it will do nothing. For other cases this either disconnects from the
+        remote Client Server or shuts the current driver down.
         """
         if ray.util.client.ray.is_connected():
             if ray.util.client.ray.is_default():
-                # This is only a client connected to a server.
+                # This is the only client connection
                 ray.util.client_connect.disconnect()
         elif ray.worker.global_worker.node is None:
             # Already disconnected.
@@ -113,14 +114,14 @@ class ClientBuilder:
         old_ray_cxt = None
         if ray.util.client.ray.is_connected(
         ) and self._allow_multiple_connections:
-            raise RuntimeError("It's in single-client mode. We can't create"
+            raise ValueError("It's in single-client mode. We can't create"
                                " new client in multi-client mode")
 
         if ray.util.client.num_connected_contexts(
         ) != 0 and not self._allow_multiple_connections:
-            raise RuntimeError("Multiple clients are connected. Additional "
-                               "connections must be created with"
-                               " `ray.init(allow_multiple=True)`")
+            raise ValueError("Multiple clients are connected. Additional "
+                             "connections must be created with"
+                             " `ray.init(allow_multiple=True)`")
 
         if self._allow_multiple_connections:
             old_ray_cxt = ray.util.client.ray.set_context(None)
