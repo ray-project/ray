@@ -41,10 +41,15 @@ _UUID_RE = re.compile(
     "[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12}")
 
 
-def _get_controller_namespace():
+def _get_controller_namespace(detached):
     controller_namespace = ray.get_runtime_context().namespace
-    if not controller_namespace or _UUID_RE.fullmatch(
-            controller_namespace) is not None:
+    if controller_namespace == "":
+        controller_namespace = "serve"
+
+    if not detached:
+        return controller_namespace
+
+    if  _UUID_RE.fullmatch(controller_namespace) is not None:
         controller_namespace = "serve"
     return controller_namespace
 
@@ -154,7 +159,7 @@ class Client:
             started = time.time()
             while True:
                 try:
-                    controller_namespace = _get_controller_namespace()
+                    controller_namespace = _get_controller_namespace(self._detached)
                     ray.get_actor(
                         self._controller_name, namespace=controller_namespace)
                     if time.time() - started > 5:
@@ -638,7 +643,7 @@ def start(
     if not ray.is_initialized():
         ray.init(namespace="serve")
 
-    controller_namespace = _get_controller_namespace()
+    controller_namespace = _get_controller_namespace(detached)
 
     try:
         client = _get_global_client()
@@ -719,7 +724,7 @@ def connect() -> Client:
 
     # Try to get serve controller if it exists
     try:
-        controller_namespace = _get_controller_namespace()
+        controller_namespace = _get_controller_namespace(detached=True)
         controller = ray.get_actor(
             controller_name, namespace=controller_namespace)
     except ValueError:

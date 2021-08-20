@@ -25,7 +25,7 @@ def _shared_serve_instance():
     # Overriding task_retry_delay_ms to relaunch actors more quickly
     ray.init(
         num_cpus=36,
-        namespace="",
+        namespace="default_test_namespace",
         _metrics_export_port=9999,
         _system_config={
             "metrics_report_interval_ms": 1000,

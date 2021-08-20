@@ -62,7 +62,7 @@ def test_shutdown(ray_shutdown):
         for actor_name in actor_names:
             try:
                 if actor_name == serve_controller_name:
-                    ray.get_actor(actor_name, namespace="serve")
+                    ray.get_actor(actor_name, namespace=ray.get_runtime_context().namespace)
                 else:
                     ray.get_actor(actor_name)
             except ValueError:
@@ -79,7 +79,7 @@ def test_shutdown(ray_shutdown):
         for actor_name in actor_names:
             try:
                 if actor_name == serve_controller_name:
-                    ray.get_actor(actor_name, namespace="serve")
+                    ray.get_actor(actor_name, namespace=ray.get_runtime_context().namespace)
                 else:
                     ray.get_actor(actor_name)
                 return False
@@ -419,7 +419,13 @@ def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
     ray.init(namespace=namespace)
     serve.start(detached=detached)
     client = serve.api._global_client
-    controller_namespace = namespace or "serve"
+    if namespace:
+        controller_namespace = namespace
+    elif detached:
+        controller_namespace = "serve"
+    else:
+        controller_namespace = ray.get_runtime_context().namespace
+
     assert ray.get_actor(
         client._controller_name, namespace=controller_namespace)
 
