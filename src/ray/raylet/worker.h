@@ -93,14 +93,14 @@ class WorkerInterface {
 
   // Setter, geter, and clear methods  for allocated_instances_.
   virtual void SetAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
 
   virtual std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() = 0;
 
   virtual void ClearAllocatedInstances() = 0;
 
   virtual void SetLifetimeAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) = 0;
   virtual std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() = 0;
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
@@ -182,7 +182,7 @@ class Worker : public WorkerInterface {
 
   // Setter, geter, and clear methods  for allocated_instances_.
   void SetAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     allocated_instances_ = allocated_instances;
   };
 
@@ -193,7 +193,7 @@ class Worker : public WorkerInterface {
   void ClearAllocatedInstances() { allocated_instances_ = nullptr; };
 
   void SetLifetimeAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     lifetime_allocated_instances_ = allocated_instances;
   };
 
