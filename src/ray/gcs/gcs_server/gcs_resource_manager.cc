@@ -185,7 +185,7 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   resources_data->CopyFrom(data);
 
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+  if (RayConfig::instance().gcs_task_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, *resources_data);
   } else {
     if (node_resource_usages_.count(node_id) == 0 ||
@@ -346,11 +346,7 @@ void GcsResourceManager::DeleteResources(
 void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   auto node_id = NodeID::FromBinary(node.node_id());
   if (!cluster_scheduling_resources_.contains(node_id)) {
-    std::unordered_map<std::string, double> resource_mapping(
-        node.resources_total().begin(), node.resources_total().end());
-    // Update the cluster scheduling resources as new node is added.
-    ResourceSet node_resources(resource_mapping);
-    cluster_scheduling_resources_.emplace(node_id, SchedulingResources(node_resources));
+    cluster_scheduling_resources_.emplace(node_id, SchedulingResources());
   }
 }
 
@@ -361,7 +357,6 @@ void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
   }
   node_resource_usages_.erase(node_id);
   cluster_scheduling_resources_.erase(node_id);
-  latest_resources_normal_task_timestamp_.erase(node_id);
 }
 
 bool GcsResourceManager::AcquireResources(const NodeID &node_id,
@@ -448,11 +443,6 @@ std::string GcsResourceManager::DebugString() const {
   return stream.str();
 }
 
-void GcsResourceManager::AddResourcesChangedListener(std::function<void()> listener) {
-  RAY_CHECK(listener != nullptr);
-  resources_changed_listeners_.emplace_back(std::move(listener));
-}
-
 void GcsResourceManager::UpdateNodeNormalTaskResources(
     const NodeID &node_id, const rpc::ResourcesData &heartbeat) {
   auto iter = cluster_scheduling_resources_.find(node_id);
@@ -463,15 +453,8 @@ void GcsResourceManager::UpdateNodeNormalTaskResources(
   auto &scheduling_resoruces = iter->second;
   ResourceSet resources_normal_task(MapFromProtobuf(heartbeat.resources_normal_task()));
   if (heartbeat.resources_normal_task_changed() &&
-      heartbeat.resources_normal_task_timestamp() >
-          latest_resources_normal_task_timestamp_[node_id] &&
       !resources_normal_task.IsEqual(scheduling_resoruces.GetNormalTaskResources())) {
     scheduling_resoruces.SetNormalTaskResources(resources_normal_task);
-    latest_resources_normal_task_timestamp_[node_id] =
-        heartbeat.resources_normal_task_timestamp();
-    for (const auto &listener : resources_changed_listeners_) {
-      listener();
-    }
   }
 }
 

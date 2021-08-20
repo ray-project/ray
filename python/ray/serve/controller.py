@@ -2,7 +2,7 @@ import asyncio
 import json
 import time
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import ray
 from ray.actor import ActorHandle
@@ -21,9 +21,7 @@ from ray.serve.common import (
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
-    ALL_HTTP_METHODS,
-    RESERVED_VERSION_TAG,
-)
+    ALL_HTTP_METHODS, )
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.storage.kv_store import RayInternalKVStore
@@ -128,7 +126,8 @@ class ServeController:
     def _put_serve_snapshot(self) -> None:
         val = dict()
         for deployment_name, (backend_info,
-                              route_prefix) in self.list_deployments().items():
+                              route_prefix) in self.list_deployments(
+                                  include_deleted=True).items():
             entry = dict()
             entry["name"] = deployment_name
             entry["namespace"] = ray.get_runtime_context().namespace
@@ -142,28 +141,29 @@ class ServeController:
             # deployments with no HTTP route, update the below line.
             # Or refactor the route_prefix logic in the Deployment class.
             entry["http_route"] = route_prefix or f"/{deployment_name}"
-            entry["status"] = "RUNNING"
             entry["start_time"] = backend_info.start_time_ms
-            entry["end_time"] = 0
-
+            entry["end_time"] = backend_info.end_time_ms or 0
+            entry["status"] = ("DELETED"
+                               if backend_info.end_time_ms else "RUNNING")
             entry["actors"] = dict()
-            replica_state_container = self.backend_state._replicas[
-                deployment_name]
-            running_replicas = replica_state_container.get(
-                [ReplicaState.RUNNING])
-            for replica in running_replicas:
-                try:
-                    actor_handle = replica.actor_handle
-                except ValueError:
-                    # Actor died or hasn't yet been created.
-                    continue
-                actor_id = actor_handle._ray_actor_id.hex()
-                replica_tag = replica.replica_tag
-                replica_version = replica.version.code_version
-                entry["actors"][actor_id] = {
-                    "replica_tag": replica_tag,
-                    "version": replica_version
-                }
+            if entry["status"] == "RUNNING":
+                replica_state_container = self.backend_state._replicas[
+                    deployment_name]
+                running_replicas = replica_state_container.get(
+                    [ReplicaState.RUNNING])
+                for replica in running_replicas:
+                    try:
+                        actor_handle = replica.actor_handle
+                    except ValueError:
+                        # Actor died or hasn't yet been created.
+                        continue
+                    actor_id = actor_handle._ray_actor_id.hex()
+                    replica_tag = replica.replica_tag
+                    replica_version = replica.version.code_version
+                    entry["actors"][actor_id] = {
+                        "replica_tag": replica_tag,
+                        "version": replica_version
+                    }
 
             val[deployment_name] = entry
         self.kv_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
@@ -173,146 +173,9 @@ class ServeController:
         """Used for testing."""
         return self.backend_state.get_running_replica_handles()
 
-    def get_all_backends(self) -> Dict[BackendTag, BackendConfig]:
-        """Returns a dictionary of backend tag to backend config."""
-        return self.backend_state.get_backend_configs()
-
     def get_all_endpoints(self) -> Dict[EndpointTag, Dict[BackendTag, Any]]:
         """Returns a dictionary of backend tag to backend config."""
         return self.endpoint_state.get_endpoints()
-
-    def _validate_traffic_dict(self, traffic_dict: Dict[str, float]):
-        for backend in traffic_dict:
-            if self.backend_state.get_backend(backend) is None:
-                raise ValueError(
-                    "Attempted to assign traffic to a backend '{}' that "
-                    "is not registered.".format(backend))
-
-    async def set_traffic(self, endpoint: str,
-                          traffic_dict: Dict[str, float]) -> None:
-        """Sets the traffic policy for the specified endpoint."""
-        async with self.write_lock:
-            self._validate_traffic_dict(traffic_dict)
-
-            logger.info("Setting traffic for endpoint "
-                        f"'{endpoint}' to '{traffic_dict}'.")
-
-            self.endpoint_state.set_traffic_policy(endpoint,
-                                                   TrafficPolicy(traffic_dict))
-
-    async def shadow_traffic(self, endpoint_name: str, backend_tag: BackendTag,
-                             proportion: float) -> None:
-        """Shadow traffic from the endpoint to the backend."""
-        async with self.write_lock:
-            if self.backend_state.get_backend(backend_tag) is None:
-                raise ValueError(
-                    "Attempted to shadow traffic to a backend '{}' that "
-                    "is not registered.".format(backend_tag))
-
-            logger.info(
-                "Shadowing '{}' of traffic to endpoint '{}' to backend '{}'.".
-                format(proportion, endpoint_name, backend_tag))
-
-            self.endpoint_state.shadow_traffic(endpoint_name, backend_tag,
-                                               proportion)
-
-    async def create_endpoint(
-            self,
-            endpoint: str,
-            traffic_dict: Dict[str, float],
-            route: Optional[str],
-            methods: Set[str],
-    ) -> None:
-        """Create a new endpoint with the specified route and methods.
-
-        If the route is None, this is a "headless" endpoint that will not
-        be exposed over HTTP and can only be accessed via a handle.
-        """
-        async with self.write_lock:
-            self._validate_traffic_dict(traffic_dict)
-
-            logger.info(
-                "Registering route '{}' to endpoint '{}' with methods '{}'.".
-                format(route, endpoint, methods))
-
-            self.endpoint_state.create_endpoint(
-                endpoint, EndpointInfo(methods, route=route),
-                TrafficPolicy(traffic_dict))
-
-        # TODO(simon): Use GoalID mechanism for this so client can check for
-        # goal id and http_state complete the goal id.
-        await self.http_state.ensure_http_route_exists(endpoint, timeout_s=30)
-
-    async def delete_endpoint(self, endpoint: str) -> None:
-        """Delete the specified endpoint.
-
-        Does not modify any corresponding backends.
-        """
-        logger.info("Deleting endpoint '{}'".format(endpoint))
-        async with self.write_lock:
-            self.endpoint_state.delete_endpoint(endpoint)
-
-    async def create_backend(
-            self,
-            backend_tag: BackendTag,
-            backend_config: BackendConfig,
-            replica_config: ReplicaConfig,
-            deployer_job_id: Optional["Optional[ray._raylet.JobID]"] = None
-    ) -> Optional[GoalId]:
-        """Register a new backend under the specified tag."""
-        async with self.write_lock:
-            backend_info = BackendInfo(
-                actor_def=ray.remote(
-                    create_backend_replica(
-                        backend_tag, replica_config.serialized_backend_def)),
-                version=RESERVED_VERSION_TAG,
-                backend_config=backend_config,
-                replica_config=replica_config,
-                start_time_ms=int(time.time() * 1000),
-                deployer_job_id=deployer_job_id)
-            goal_id, _ = self.backend_state.deploy_backend(
-                backend_tag, backend_info)
-            return goal_id
-
-    async def delete_backend(self,
-                             backend_tag: BackendTag,
-                             force_kill: bool = False) -> Optional[GoalId]:
-        async with self.write_lock:
-            # Check that the specified backend isn't used by any endpoints.
-            for endpoint, info in self.endpoint_state.get_endpoints().items():
-                if (backend_tag in info["traffic"]
-                        or backend_tag in info["shadows"]):
-                    raise ValueError(f"Backend '{backend_tag}' is used by "
-                                     f"endpoint '{endpoint}' and cannot be "
-                                     "deleted. Please remove the backend "
-                                     "from all endpoints and try again.")
-            return self.backend_state.delete_backend(backend_tag, force_kill)
-
-    async def update_backend_config(self, backend_tag: BackendTag,
-                                    config_options: BackendConfig) -> GoalId:
-        """Set the config for the specified backend."""
-        async with self.write_lock:
-            existing_info = self.backend_state.get_backend(backend_tag)
-            if existing_info is None:
-                raise ValueError(f"Backend {backend_tag} is not registered.")
-
-            backend_info = BackendInfo(
-                actor_def=existing_info.actor_def,
-                version=existing_info.version,
-                backend_config=existing_info.backend_config.copy(
-                    update=config_options.dict(exclude_unset=True)),
-                replica_config=existing_info.replica_config,
-                deployer_job_id=existing_info.deployer_job_id,
-                start_time_ms=existing_info.start_time_ms)
-            goal_id, _ = self.backend_state.deploy_backend(
-                backend_tag, backend_info)
-            return goal_id
-
-    def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
-        """Get the current config for the specified backend."""
-        if self.backend_state.get_backend(backend_tag) is None:
-            raise ValueError(f"Backend {backend_tag} is not registered.")
-        return self.backend_state.get_backend(backend_tag).backend_config
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
@@ -401,10 +264,24 @@ class ServeController:
 
         return backend_info, route
 
-    def list_deployments(self) -> Dict[str, Tuple[BackendInfo, str]]:
-        """Gets the current information about all active deployments."""
+    def list_deployments(self, include_deleted: Optional[bool] = False
+                         ) -> Dict[str, Tuple[BackendInfo, str]]:
+        """Gets the current information about all deployments.
+
+        Args:
+            include_deleted(bool): Whether to include information about
+                deployments that have been deleted.
+
+        Returns:
+            Dict(deployment_name, (BackendInfo, route))
+
+        Raises:
+            KeyError if the deployment doesn't exist.
+        """
         return {
-            name: (self.backend_state.get_backend(name),
+            name: (self.backend_state.get_backend(
+                name, include_deleted=include_deleted),
                    self.endpoint_state.get_endpoint_route(name))
-            for name in self.backend_state.get_backend_configs()
+            for name in self.backend_state.get_backend_configs(
+                include_deleted=include_deleted)
         }
