@@ -216,6 +216,8 @@ class ClientActorHandle(ClientStub):
                                        is_function_or_method)).keys())
 
     def __del__(self) -> None:
+        if ray is None:
+            return
         if ray.is_connected():
             ray.call_release(self.actor_ref.id)
 
