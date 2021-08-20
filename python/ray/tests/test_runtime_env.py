@@ -874,17 +874,18 @@ def test_no_spurious_worker_startup(ray_start_cluster):
     session_path = Path(session_dir)
     debug_state_path = session_path / "debug_state.txt"
 
-    def get_num_workers() -> int:
+    def get_num_workers():
         with open(debug_state_path) as f:
             for line in f.readlines():
                 num_workers_prefix = "- num PYTHON workers: "
                 if num_workers_prefix in line:
                     return int(line[len(num_workers_prefix):])
-        return 0
+        return None
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
     start = time.time()
-    wait_for_condition(lambda: get_num_workers() > 0)
+    wait_for_condition(
+        lambda: get_num_workers() is not None and get_num_workers() > 0)
     time_waited = time.time() - start
     print(f"Waited {time_waited} for debug_state.txt to be updated")
 
@@ -894,10 +895,16 @@ def test_no_spurious_worker_startup(ray_start_cluster):
     # within a few seconds.  Adjusting the default update period for
     # debut_state.txt via this cluster_utils pytest fixture seems to be broken,
     # so just check it for the next 10 seconds (the default period).
-    for i in range(100):
+    start = time.time()
+    got_num_workers = False
+    while time.time() - start < 10:
         # Check that no more workers were started.
-        assert get_num_workers() <= 1
+        num_workers = get_num_workers()
+        if num_workers is not None:
+            got_num_workers = True
+            assert num_workers <= 1
         time.sleep(0.1)
+    assert got_num_workers, "failed to read num workers for 10 seconds"
 
 
 if __name__ == "__main__":
