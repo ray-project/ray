@@ -38,7 +38,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   config.grpc_server_thread_num),
       client_call_manager_(
           main_service,
-          /*num_threads=*/RayConfig::instance().gcs_server_rpc_server_thread_num()),
+          /*num_threads=*/RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
       pubsub_periodical_runner_(main_service_) {}
