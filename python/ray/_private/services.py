@@ -1476,13 +1476,7 @@ def start_raylet(redis_address,
     # inserting them into start_worker_command and later erasing them if
     # needed.
     python_executable = sys.executable
-    start_worker_command = [
-        python_executable,
-        setup_worker_path,
-        f"--worker-setup-hook={worker_setup_hook}",
-        f"--session-dir={session_dir}",
-        f"--worker-entrypoint={python_executable}",
-        "--worker-language=python",
+    start_worker_command_args = [
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1496,7 +1490,14 @@ def start_raylet(redis_address,
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
     if redis_password:
-        start_worker_command += [f"--redis-password={redis_password}"]
+        start_worker_command_args += [f"--redis-password={redis_password}"]
+    start_worker_command = _wrap_worker_command(setup_worker_path,
+                                                worker_setup_hook,
+                                                session_dir,
+                                                python_executable,
+                                                "python",
+                                                start_worker_command_args
+                                                )
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.
@@ -1586,6 +1587,27 @@ def start_raylet(redis_address,
     return process_info
 
 
+def _wrap_worker_command(setup_worker_path,
+                         worker_setup_hook,
+                         session_dir,
+                         worker_entrypoint,
+                         worker_language,
+                         worker_command
+                         ):
+    if sys.platform == "win32":
+        return [worker_entrypoint] + worker_command
+    wrapped_worker_command = [
+        sys.executable,
+        setup_worker_path,
+        f"--worker-setup-hook={worker_setup_hook}",
+        f"--session-dir={session_dir}",
+        f"--worker-entrypoint={worker_entrypoint}",
+        f"--worker-language={worker_language}"
+    ]
+    wrapped_worker_command += worker_command
+    return wrapped_worker_command
+
+
 def get_ray_jars_dir():
     """Return a directory where all ray-related jars and
       their dependencies locate."""
@@ -1642,21 +1664,21 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    command = [sys.executable, setup_worker_path]
-    command += [f"--worker-setup-hook={worker_setup_hook}"]
-    command += [f"--session-dir={session_dir}"]
-    command += ["--worker-entrypoint=java"]
-    command += ["--worker-language=java"]
-    command += ["-D{}={}".format(*pair) for pair in pairs]
+    command_args = ["-D{}={}".format(*pair) for pair in pairs]
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
-    command += ["-cp", ray_jars]
+    command_args += ["-cp", ray_jars]
 
-    command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
-    command += ["io.ray.runtime.runner.worker.DefaultWorker"]
+    command_args += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
+    command_args += ["io.ray.runtime.runner.worker.DefaultWorker"]
 
-    return command
+    return _wrap_worker_command(setup_worker_path,
+                                worker_setup_hook,
+                                session_dir,
+                                "java",
+                                "java",
+                                command_args)
 
 
 def build_cpp_worker_command(cpp_worker_options, setup_worker_path,
@@ -1679,13 +1701,7 @@ def build_cpp_worker_command(cpp_worker_options, setup_worker_path,
         The command string for starting CPP worker.
     """
 
-    command = [
-        sys.executable,
-        setup_worker_path,
-        f"--worker-setup-hook={worker_setup_hook}",
-        f"--session-dir={session_dir}",
-        f"--worker-entrypoint={DEFAULT_WORKER_EXECUTABLE}",
-        "--worker-language=cpp",
+    command_args = [
         f"--ray_plasma_store_socket_name={plasma_store_name}",
         f"--ray_raylet_socket_name={raylet_name}",
         "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1697,7 +1713,12 @@ def build_cpp_worker_command(cpp_worker_options, setup_worker_path,
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 
-    return command
+    return _wrap_worker_command(setup_worker_path,
+                                worker_setup_hook,
+                                session_dir,
+                                DEFAULT_WORKER_EXECUTABLE,
+                                "cpp",
+                                command_args)
 
 
 def determine_plasma_store_config(object_store_memory,
