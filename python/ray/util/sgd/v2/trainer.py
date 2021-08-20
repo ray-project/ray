@@ -189,7 +189,7 @@ class Trainer:
         with the intermediate results or how to use the ``Trainer`` with Ray
         Tune.
 
-        .. code_block:: python
+        .. code-block:: python
 
             def train_func(config):
                 ...
