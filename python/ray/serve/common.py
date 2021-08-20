@@ -22,7 +22,6 @@ class EndpointInfo:
     http_methods: List[str]
     python_methods: Optional[List[str]] = field(default_factory=list)
     route: Optional[str] = None
-    legacy: Optional[bool] = True
 
 
 class BackendInfo:
@@ -32,7 +31,8 @@ class BackendInfo:
                  start_time_ms: int,
                  actor_def: Optional[ActorClass] = None,
                  version: Optional[str] = None,
-                 deployer_job_id: "Optional[ray._raylet.JobID]" = None):
+                 deployer_job_id: "Optional[ray._raylet.JobID]" = None,
+                 end_time_ms: Optional[int] = None):
         self.backend_config = backend_config
         self.replica_config = replica_config
         # The time when .deploy() was first called for this deployment.
@@ -40,6 +40,8 @@ class BackendInfo:
         self.actor_def = actor_def
         self.version = version
         self.deployer_job_id = deployer_job_id
+        # The time when this deployment was deleted.
+        self.end_time_ms = end_time_ms
 
 
 class TrafficPolicy:

@@ -68,8 +68,8 @@ class TaskArgByValue : public TaskArg {
       const auto &metadata = value_->GetMetadata();
       arg_proto->set_metadata(metadata->Data(), metadata->Size());
     }
-    for (const auto &nested_id : value_->GetNestedIds()) {
-      arg_proto->add_nested_inlined_ids(nested_id.Binary());
+    for (const auto &nested_ref : value_->GetNestedRefs()) {
+      arg_proto->add_nested_inlined_refs()->CopyFrom(nested_ref);
     }
   }
 

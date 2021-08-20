@@ -99,6 +99,13 @@ def my_func(request):
   return "hello"
 
 my_func.deploy()
+
+@serve.deployment(version="v1")
+def my_func_deleted(request):
+  return "hello"
+
+my_func_deleted.deploy()
+my_func_deleted.delete()
     """
 
     run_string_as_driver(detached_serve_driver_script)
@@ -127,7 +134,7 @@ my_func.deploy()
     pprint.pprint(data)
     jsonschema.validate(instance=data, schema=json.load(open(schema_path)))
 
-    assert len(data["data"]["snapshot"]["deployments"]) == 2
+    assert len(data["data"]["snapshot"]["deployments"]) == 3
 
     entry = data["data"]["snapshot"]["deployments"]["myFunc"]
     assert entry["name"] == "my_func"
@@ -148,6 +155,17 @@ my_func.deploy()
     assert metadata["version"] == "v1"
     assert len(metadata["replicaTag"]) > 0
 
+    entry_deleted = data["data"]["snapshot"]["deployments"]["myFuncDeleted"]
+    assert entry_deleted["name"] == "my_func_deleted"
+    assert entry_deleted["version"] == "v1"
+    assert entry_deleted["namespace"] == "serve"
+    assert entry_deleted["httpRoute"] == "/my_func_deleted"
+    assert entry_deleted["className"] == "my_func_deleted"
+    assert entry_deleted["status"] == "DELETED"
+    assert entry["rayJobId"] is not None
+    assert entry_deleted["startTime"] > 0
+    assert entry_deleted["endTime"] > entry_deleted["startTime"]
+
     entry_nondetached = data["data"]["snapshot"]["deployments"][
         "myFuncNondetached"]
     assert entry_nondetached["name"] == "my_func_nondetached"
@@ -167,6 +185,8 @@ my_func.deploy()
     assert metadata["deploymentName"] == "my_func_nondetached"
     assert metadata["version"] == "v1"
     assert len(metadata["replicaTag"]) > 0
+
+    my_func_nondetached.delete()
 
 
 if __name__ == "__main__":
