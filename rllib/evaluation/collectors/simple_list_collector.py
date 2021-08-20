@@ -357,8 +357,8 @@ class _AgentCollector:
             else:
                 shift = self.shift_before - (1 if col in [
                     SampleBatch.OBS, SampleBatch.EPS_ID,
-                    SampleBatch.AGENT_INDEX, SampleBatch.ENV_ID,
-                    SampleBatch.T, SampleBatch.UNROLL_ID
+                    SampleBatch.AGENT_INDEX, SampleBatch.ENV_ID, SampleBatch.T,
+                    SampleBatch.UNROLL_ID
                 ] else 0)
                 self.buffers[col] = [[v for _ in range(shift)]
                                      for v in tree.flatten(data)]
