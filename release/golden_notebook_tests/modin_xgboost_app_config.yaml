@@ -10,6 +10,7 @@ python:
     - s3fs
     - fastapi
     - uvicorn
+    - tblib
   conda_packages: [ ]
 
 post_build_cmds:

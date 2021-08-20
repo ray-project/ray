@@ -10,6 +10,7 @@ python:
     - torchvision
     - fastapi
     - uvicorn
+    - tblib
   conda_packages: [ ]
 
 post_build_cmds:
