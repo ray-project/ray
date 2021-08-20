@@ -1,8 +1,8 @@
 #pragma once
 
-#include <string>
 #include <boost/asio.hpp>
 #include <boost/thread/thread.hpp>
+#include <string>
 
 #include "common/status.h"
 #include "config/streaming_config.h"
@@ -33,7 +33,7 @@ class RuntimeContext {
   inline void MarkMockTest() { is_mock_test_ = true; }
   inline bool IsMockTest() { return is_mock_test_; }
 
-	void InitMetricsReporter();
+  void InitMetricsReporter();
   void ReportMetrics(const std::string &metric_name, double value,
                      const std::map<std::string, std::string> &tags = {});
   void EnableTimer(std::function<void()> report_timer_handler);
@@ -53,7 +53,7 @@ class RuntimeContext {
 
   std::unique_ptr<boost::asio::deadline_timer> metrics_timer_;
   std::shared_ptr<std::thread> timer_thread_;
-  std::atomic_flag report_flag_ = ATOMIC_FLAG_INIT; 
+  std::atomic_flag report_flag_ = ATOMIC_FLAG_INIT;
 
   StreamingConfig config_;
   RuntimeStatus runtime_status_;

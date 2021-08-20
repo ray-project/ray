@@ -27,9 +27,8 @@ void RuntimeContext::SetConfig(const uint8_t *data, uint32_t size) {
 
 RuntimeContext::~RuntimeContext() {}
 
-RuntimeContext::RuntimeContext() : 
-  enable_timer_service_(false),
-  runtime_status_(RuntimeStatus::Init) {}
+RuntimeContext::RuntimeContext()
+    : enable_timer_service_(false), runtime_status_(RuntimeStatus::Init) {}
 
 void RuntimeContext::InitMetricsReporter() {
   STREAMING_LOG(INFO) << "init metrics";
@@ -60,7 +59,8 @@ void RuntimeContext::ReportMetrics(const std::string &metric_name, double value,
 void RuntimeContext::RunTimer() {
   AutoSpinLock lock(report_flag_);
   if (runtime_status_ != RuntimeStatus::Running) {
-    STREAMING_LOG(WARNING) << "Run timer failed in state " << static_cast<uint8_t>(runtime_status_);
+    STREAMING_LOG(WARNING) << "Run timer failed in state "
+                           << static_cast<uint8_t>(runtime_status_);
     return;
   }
   STREAMING_LOG(INFO) << "Streaming metric timer called, interval="
