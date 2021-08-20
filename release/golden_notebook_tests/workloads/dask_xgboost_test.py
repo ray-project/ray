@@ -9,18 +9,13 @@ import ray
 from ray.util.dask import ray_dask_get
 from xgboost_ray import RayDMatrix, RayParams, train
 
+from utils.utils import is_anyscale_connect
+
 FILE_URL = "https://archive.ics.uci.edu/ml/machine-learning-databases/" \
            "00280/HIGGS.csv.gz"
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--smoke-test", action="store_true", help="Finish quickly for testing.")
-args = parser.parse_args()
-
 
 def main():
-    ray.client("anyscale://").connect()
-
     print("Loading HIGGS data.")
 
     dask.config.set(scheduler=ray_dask_get)
@@ -33,10 +28,10 @@ def main():
 
     # partition on a column
     df_train = data[(data["feature-01"] < 0.4)]
-    df_train = df_train.persist()
+    # df_train = df_train.persist()
     df_validation = data[(data["feature-01"] >= 0.4)
                          & (data["feature-01"] < 0.8)]
-    df_validation = df_validation.persist()
+    # df_validation = df_validation.persist()
 
     dtrain = RayDMatrix(df_train, label="label", columns=colnames)
     dvalidation = RayDMatrix(df_validation, label="label")
@@ -55,8 +50,24 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        help="Finish quickly for testing.")
+    args = parser.parse_args()
+
     start = time.time()
+
+    addr = os.environ.get("RAY_ADDRESS")
+    job_name = os.environ.get("RAY_JOB_NAME", "dask_xgboost_test")
+    if is_anyscale_connect(addr):
+        ray.client(address=addr).job_name(job_name).connect()
+    else:
+        ray.init(address="auto")
+
     main()
+
     taken = time.time() - start
     result = {
         "time_taken": taken,

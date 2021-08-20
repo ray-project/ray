@@ -4,8 +4,10 @@
     compute_template: compute_tpl.yaml
 
   run:
-    timeout: 1800
-    script: python workloads/dask_xgboost_test.py --smoke-test
+    use_connect: True
+    autosuspend_mins: 15
+    timeout: 3600
+    script: python workloads/dask_xgboost_test.py
 
 - name: modin_xgboost_test
   cluster:
