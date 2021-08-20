@@ -348,11 +348,6 @@ class _AgentCollector:
         for col, data in single_row.items():
             if col in self.buffers:
                 continue
-            shift = self.shift_before - (1 if col in [
-                SampleBatch.OBS, SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
-                SampleBatch.ENV_ID, SampleBatch.T
-            ] else 0)
-
             # Store all data as flattened lists, except INFOS and state-out
             # lists. These are monolithic items (infos is a dict that
             # should not be further split, same for state-out items, which
@@ -360,6 +355,11 @@ class _AgentCollector:
             if col == SampleBatch.INFOS or col.startswith("state_out_"):
                 self.buffers[col] = [[data]]
             else:
+                shift = self.shift_before - (1 if col in [
+                    SampleBatch.OBS, SampleBatch.EPS_ID,
+                    SampleBatch.AGENT_INDEX, SampleBatch.ENV_ID,
+                    SampleBatch.T, SampleBatch.UNROLL_ID
+                ] else 0)
                 self.buffers[col] = [[v for _ in range(shift)]
                                      for v in tree.flatten(data)]
                 # Store an example data struct so we know, how to unflatten

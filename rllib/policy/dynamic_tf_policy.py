@@ -508,8 +508,8 @@ class DynamicTFPolicy(TFPolicy):
             if batch_size >= len(self._loaded_single_cpu_batch):
                 sliced_batch = self._loaded_single_cpu_batch
             else:
-                sliced_batch = self._loaded_single_cpu_batch[offset:offset +
-                                                             batch_size]
+                sliced_batch = self._loaded_single_cpu_batch.slice(offset, offset +
+                                                             batch_size)
             return self.learn_on_batch(sliced_batch)
 
         return self.multi_gpu_tower_stacks[buffer_index].optimize(
