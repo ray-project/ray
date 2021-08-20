@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import jsonschema
+import hashlib
 
 import pprint
 import pytest
@@ -94,7 +95,7 @@ ray.init(
 
 serve.start(detached=True)
 
-@serve.deployment(version="v1")
+@serve.deployment
 def my_func(request):
   return "hello"
 
@@ -136,9 +137,10 @@ my_func_deleted.delete()
 
     assert len(data["data"]["snapshot"]["deployments"]) == 3
 
-    entry = data["data"]["snapshot"]["deployments"]["myFunc"]
+    entry = data["data"]["snapshot"]["deployments"][hashlib.sha1(
+        "my_func".encode()).hexdigest()]
     assert entry["name"] == "my_func"
-    assert entry["version"] == "v1"
+    assert entry["version"] == "Unversioned"
     assert entry["namespace"] == "serve"
     assert entry["httpRoute"] == "/my_func"
     assert entry["className"] == "my_func"
@@ -152,10 +154,11 @@ my_func_deleted.delete()
     metadata = data["data"]["snapshot"]["actors"][actor_id]["metadata"][
         "serve"]
     assert metadata["deploymentName"] == "my_func"
-    assert metadata["version"] == "v1"
+    assert metadata["version"] == "Unversioned"
     assert len(metadata["replicaTag"]) > 0
 
-    entry_deleted = data["data"]["snapshot"]["deployments"]["myFuncDeleted"]
+    entry_deleted = data["data"]["snapshot"]["deployments"][hashlib.sha1(
+        "my_func_deleted".encode()).hexdigest()]
     assert entry_deleted["name"] == "my_func_deleted"
     assert entry_deleted["version"] == "v1"
     assert entry_deleted["namespace"] == "serve"
@@ -166,8 +169,8 @@ my_func_deleted.delete()
     assert entry_deleted["startTime"] > 0
     assert entry_deleted["endTime"] > entry_deleted["startTime"]
 
-    entry_nondetached = data["data"]["snapshot"]["deployments"][
-        "myFuncNondetached"]
+    entry_nondetached = data["data"]["snapshot"]["deployments"][hashlib.sha1(
+        "my_func_nondetached".encode()).hexdigest()]
     assert entry_nondetached["name"] == "my_func_nondetached"
     assert entry_nondetached["version"] == "v1"
     assert entry_nondetached["namespace"] == ""
