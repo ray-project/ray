@@ -15,6 +15,8 @@
 #include "ray/util/event.h"
 #include <boost/filesystem.hpp>
 
+#include "absl/time/time.h"
+
 namespace ray {
 ///
 /// LogEventReporter
@@ -76,15 +78,13 @@ std::string LogEventReporter::EventToString(const rpc::Event &event,
   json j;
 
   auto time_stamp = event.timestamp();
-  std::stringstream time_stamp_buffer;
-  char time_buffer[30];
   time_t epoch_time_as_time_t = time_stamp / 1000000;
 
-  struct tm *dt = localtime(&epoch_time_as_time_t);
-  strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S.", dt);
-
-  time_stamp_buffer << std::string(time_buffer) << std::setw(6) << std::setfill('0')
-                    << time_stamp % 1000000;
+  absl::Time absl_time = absl::FromTimeT(epoch_time_as_time_t);
+  std::stringstream time_stamp_buffer;
+  time_stamp_buffer << absl::FormatTime("%Y-%m-%d %H:%M:%S.", absl_time,
+                                        absl::LocalTimeZone())
+                    << std::setw(6) << std::setfill('0') << time_stamp % 1000000;
 
   j["time_stamp"] = time_stamp_buffer.str();
   j["severity"] = Event_Severity_Name(event.severity());

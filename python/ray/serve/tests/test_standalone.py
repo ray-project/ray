@@ -68,7 +68,7 @@ def test_shutdown(ray_shutdown):
 
     serve.shutdown()
     with pytest.raises(RayServeException):
-        serve.list_backends()
+        serve.list_deployments()
 
     def check_dead():
         for actor_name in actor_names:
@@ -124,12 +124,12 @@ def test_connect(detached, ray_shutdown):
     serve.start(detached=detached)
 
     @serve.deployment
-    def connect_in_backend(*args):
-        connect_in_backend.options(name="backend-ception").deploy()
+    def connect_in_deployment(*args):
+        connect_in_deployment.options(name="deployment-ception").deploy()
 
-    connect_in_backend.deploy()
-    ray.get(connect_in_backend.get_handle().remote())
-    assert "backend-ception" in serve.list_backends()
+    connect_in_deployment.deploy()
+    ray.get(connect_in_deployment.get_handle().remote())
+    assert "deployment-ception" in serve.list_deployments()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
