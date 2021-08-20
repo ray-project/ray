@@ -13,7 +13,7 @@ import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.cluster_utils import Cluster
-from ray.test_utils import run_string_as_driver_nonblocking
+from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.tune import register_trainable
 from ray.tune.experiment import Experiment
 from ray.tune.error import TuneError
