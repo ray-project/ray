@@ -41,8 +41,8 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
         async def __init__(self, backend_tag, replica_tag, init_args,
-                           backend_config: BackendConfig,
-                           controller_name: str, detached: bool):
+                           backend_config: BackendConfig, controller_name: str,
+                           detached: bool):
             backend_def = cloudpickle.loads(serialized_backend_def)
             if isinstance(backend_def, str):
                 backend = import_attr(backend_def)
@@ -80,7 +80,8 @@ def create_backend_replica(name: str, serialized_backend_def: bytes):
                 servable_object=_callable)
 
             assert controller_name, "Must provide a valid controller_name"
-            controller_namespace = ray.serve.api._get_controller_namespace(detached)
+            controller_namespace = ray.serve.api._get_controller_namespace(
+                detached)
             controller_handle = ray.get_actor(
                 controller_name, namespace=controller_namespace)
             self.backend = RayServeReplica(_callable, backend_config,

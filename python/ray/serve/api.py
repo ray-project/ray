@@ -44,12 +44,15 @@ _UUID_RE = re.compile(
 def _get_controller_namespace(detached):
     controller_namespace = ray.get_runtime_context().namespace
     if controller_namespace == "":
+        logger.warning('Serve instance cannot be started in namespace "".')
         controller_namespace = "serve"
 
     if not detached:
         return controller_namespace
 
-    if  _UUID_RE.fullmatch(controller_namespace) is not None:
+    # Start controller in "serve" namespace if detached and currently
+    # in anonymous namespace.
+    if _UUID_RE.fullmatch(controller_namespace) is not None:
         controller_namespace = "serve"
     return controller_namespace
 
@@ -159,7 +162,8 @@ class Client:
             started = time.time()
             while True:
                 try:
-                    controller_namespace = _get_controller_namespace(self._detached)
+                    controller_namespace = _get_controller_namespace(
+                        self._detached)
                     ray.get_actor(
                         self._controller_name, namespace=controller_namespace)
                     if time.time() - started > 5:

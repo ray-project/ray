@@ -21,7 +21,8 @@ class HTTPState:
     def __init__(self, controller_name: str, detached: bool,
                  config: HTTPOptions):
         self._controller_name = controller_name
-        self._controller_namespace = ray.serve.api._get_controller_namespace(detached)
+        self._controller_namespace = ray.serve.api._get_controller_namespace(
+            detached)
         self._detached = detached
         self._config = config
         self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
@@ -68,7 +69,8 @@ class HTTPState:
             name = format_actor_name(SERVE_PROXY_NAME, self._controller_name,
                                      node_id)
             try:
-                proxy = ray.get_actor(name, namespace=self._controller_namespace)
+                proxy = ray.get_actor(
+                    name, namespace=self._controller_namespace)
             except ValueError:
                 logger.info("Starting HTTP proxy with name '{}' on node '{}' "
                             "listening on '{}:{}'".format(

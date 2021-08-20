@@ -732,6 +732,7 @@ ray.get(actor.ping.remote())
     # even if the driver of the detached actor has exited.
     assert ray.get(detached_actor.foobar.remote()) == ["bar", "bar"]
 
+
 @pytest.mark.skip()
 def test_detached_actor_cleanup(ray_start_regular):
     @ray.remote
@@ -806,6 +807,7 @@ while actor_status["State"] != gcs_utils.ActorTableData.DEAD:
     # at other scripts.
     create_and_kill_actor(dup_actor_name)
 
+
 @pytest.mark.skip()
 @pytest.mark.parametrize(
     "ray_start_regular", [{
@@ -843,6 +845,7 @@ def test_get_actor_local_mode(ray_start_regular):
     a = A.options(name="hi").remote()  # noqa: F841
     b = ray.get_actor("hi")
     assert ray.get(b.hi.remote()) == "hi"
+
 
 @pytest.mark.skip()
 @pytest.mark.parametrize(

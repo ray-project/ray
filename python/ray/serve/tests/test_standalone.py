@@ -62,7 +62,9 @@ def test_shutdown(ray_shutdown):
         for actor_name in actor_names:
             try:
                 if actor_name == serve_controller_name:
-                    ray.get_actor(actor_name, namespace=ray.get_runtime_context().namespace)
+                    ray.get_actor(
+                        actor_name,
+                        namespace=ray.get_runtime_context().namespace)
                 else:
                     ray.get_actor(actor_name)
             except ValueError:
@@ -79,7 +81,9 @@ def test_shutdown(ray_shutdown):
         for actor_name in actor_names:
             try:
                 if actor_name == serve_controller_name:
-                    ray.get_actor(actor_name, namespace=ray.get_runtime_context().namespace)
+                    ray.get_actor(
+                        actor_name,
+                        namespace=ray.get_runtime_context().namespace)
                 else:
                     ray.get_actor(actor_name)
                 return False
