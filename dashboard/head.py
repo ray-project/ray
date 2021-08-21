@@ -5,9 +5,6 @@ import asyncio
 import logging
 import ipaddress
 
-import aiohttp
-import aiohttp.web
-from aiohttp import hdrs
 from grpc.experimental import aio as aiogrpc
 
 import ray._private.services
@@ -18,6 +15,11 @@ from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.new_dashboard.datacenter import DataOrganizer
 from ray.new_dashboard.utils import async_loop_forever
+
+# All third-party dependencies that are not included in the minimal Ray
+# installation must be included in this file. This allows us to determine if
+# the agent has the necessary dependencies to be started.
+from ray.new_dashboard.optional_deps import aiohttp, hdrs
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
