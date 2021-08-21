@@ -48,7 +48,8 @@ class TestSimpleQ(unittest.TestCase):
             check_compute_single_action(trainer)
 
             # Test, whether the replay buffer is saved along with
-            # a checkpoint.
+            # a checkpoint (no point in doing it for all frameworks since
+            # this is framework agnostic).
             if fw == "tf":
                 checkpoint = trainer.save()
                 new_trainer = dqn.SimpleQTrainer(config, env="CartPole-v0")
