@@ -33,7 +33,7 @@
 namespace ray {
 
 /// Ray OwnershipBasedObjectDirectory declaration.
-class OwnershipBasedObjectDirectory : public ObjectDirectory {
+class OwnershipBasedObjectDirectory : public IObjectDirectory {
  public:
   /// Create an ownership based object directory.
   ///
@@ -47,6 +47,12 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
       std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed);
 
   virtual ~OwnershipBasedObjectDirectory() {}
+
+  void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
+
+  std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
+
+  void HandleNodeRemoved(const NodeID &node_id) override;
 
   ray::Status LookupLocations(const ObjectID &object_id,
                               const rpc::Address &owner_address,
@@ -72,6 +78,35 @@ class OwnershipBasedObjectDirectory : public ObjectDirectory {
   RAY_DISALLOW_COPY_AND_ASSIGN(OwnershipBasedObjectDirectory);
 
  private:
+  /// Callbacks associated with a call to GetLocations.
+  struct LocationListenerState {
+    /// The callback to invoke when object locations are found.
+    std::unordered_map<UniqueID, OnLocationsFound> callbacks;
+    /// The current set of known locations of this object.
+    std::unordered_set<NodeID> current_object_locations;
+    /// The location where this object has been spilled, if any.
+    std::string spilled_url = "";
+    // The node id that spills the object to the disk.
+    // It will be Nil if it uses a distributed external storage.
+    NodeID spilled_node_id = NodeID::Nil();
+    /// The size of the object.
+    size_t object_size = 0;
+    /// This flag will get set to true if received any notification of the object.
+    /// It means current_object_locations is up-to-date with GCS. It
+    /// should never go back to false once set to true. If this is true, and
+    /// the current_object_locations is empty, then this means that the object
+    /// does not exist on any nodes due to eviction or the object never getting created.
+    bool subscribed;
+    /// The address of the owner.
+    rpc::Address owner_address;
+  };
+
+  /// Reference to the event loop.
+  instrumented_io_context &io_service_;
+  /// Reference to the gcs client.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
+  /// Info about subscribers to object locations.
+  std::unordered_map<ObjectID, LocationListenerState> listeners_;
   /// The client call manager used to create the RPC clients.
   rpc::ClientCallManager client_call_manager_;
   /// The object location subscriber.

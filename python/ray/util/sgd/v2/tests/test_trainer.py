@@ -7,6 +7,7 @@ import ray
 import ray.util.sgd.v2 as sgd
 import tensorflow as tf
 import torch
+
 from ray.util.sgd.v2 import Trainer
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface, \
     BackendExecutor
@@ -31,6 +32,14 @@ def ray_start_2_cpus():
 @pytest.fixture
 def ray_start_2_cpus_2_gpus():
     address_info = ray.init(num_cpus=2, num_gpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_8_cpus():
+    address_info = ray.init(num_cpus=8)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -210,6 +219,67 @@ def test_mismatch_report(ray_start_2_cpus):
         trainer.start()
         with pytest.raises(RuntimeError):
             trainer.run(train)
+
+
+def test_run_iterator(ray_start_2_cpus):
+    config = TestConfig()
+
+    def train_func():
+        for i in range(3):
+            sgd.report(index=i)
+        return 1
+
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+    iterator = trainer.run_iterator(train_func)
+
+    count = 0
+    for results in iterator:
+        assert (value["index"] == count for value in results)
+        count += 1
+
+    assert count == 3
+    assert iterator.is_finished()
+    assert iterator.get_final_results() == [1, 1]
+
+    with pytest.raises(StopIteration):
+        next(iterator)
+
+
+def test_run_iterator_returns(ray_start_2_cpus):
+    config = TestConfig()
+
+    def train_func():
+        for i in range(3):
+            sgd.report(index=i)
+        return 1
+
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+    iterator = trainer.run_iterator(train_func)
+
+    assert iterator.get_final_results() is None
+    assert iterator.get_final_results(force=True) == [1, 1]
+
+    with pytest.raises(StopIteration):
+        next(iterator)
+
+
+def test_run_iterator_error(ray_start_2_cpus):
+    config = TestConfig()
+
+    def fail_train():
+        raise NotImplementedError
+
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+    iterator = trainer.run_iterator(fail_train)
+
+    with pytest.raises(NotImplementedError):
+        next(iterator)
+
+    assert iterator.get_final_results() is None
+    assert iterator.is_finished()
 
 
 def test_checkpoint(ray_start_2_cpus):

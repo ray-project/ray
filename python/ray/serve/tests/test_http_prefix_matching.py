@@ -1,5 +1,3 @@
-from unittest.mock import patch
-
 import pytest
 
 from ray.serve.common import EndpointInfo
@@ -8,13 +6,10 @@ from ray.serve.http_proxy import LongestPrefixRouter
 
 @pytest.fixture
 def mock_longest_prefix_router() -> LongestPrefixRouter:
-    with patch("ray.serve.get_handle") as mock_get_handle:
+    def mock_get_handle(name, *args, **kwargs):
+        return name
 
-        def side_effect(name, *args, **kwargs):
-            return name
-
-        mock_get_handle.side_effect = side_effect
-        yield LongestPrefixRouter()
+    yield LongestPrefixRouter(mock_get_handle)
 
 
 def test_no_match(mock_longest_prefix_router):
