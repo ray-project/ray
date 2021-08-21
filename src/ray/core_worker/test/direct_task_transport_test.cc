@@ -304,7 +304,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-  auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
+  auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
   ASSERT_TRUE(store->Put(data, obj1));
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
@@ -1035,7 +1035,7 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-  auto plasma_data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
+  auto plasma_data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
   ASSERT_TRUE(store->Put(plasma_data, plasma1));
   ASSERT_TRUE(store->Put(plasma_data, plasma2));
 

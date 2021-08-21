@@ -203,8 +203,10 @@ TEST_F(ObjectLifecycleManagerTest, GetObject) {
 }
 
 TEST_F(ObjectLifecycleManagerTest, SealObject) {
-  EXPECT_CALL(*object_store_, SealObject(id1_)).Times(1).WillOnce(Return(&object2_));
-  EXPECT_EQ(&object2_, manager_->SealObject(id1_));
+  EXPECT_CALL(*object_store_, SealObject(id1_))
+      .Times(1)
+      .WillOnce(Return(&sealed_object_));
+  EXPECT_EQ(&sealed_object_, manager_->SealObject(id1_));
 }
 
 TEST_F(ObjectLifecycleManagerTest, AbortFailure) {

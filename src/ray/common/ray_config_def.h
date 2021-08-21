@@ -71,9 +71,6 @@ RAY_CONFIG(bool, record_ref_creation_sites, true)
 /// cluster. If set, then this is the duration between attempts to flush the
 /// local cache. If this is set to 0, then the objects will be freed as soon as
 /// they enter the cache. To disable eager eviction, set this to -1.
-/// NOTE(swang): If distributed_ref_counting_enabled is off, then this will
-/// likely cause spurious object lost errors for Object IDs that were
-/// serialized, then either passed as an argument or returned from a task.
 /// NOTE(swang): The timer is checked by the raylet during every heartbeat, so
 /// this should be set to a value larger than
 /// raylet_heartbeat_period_milliseconds.

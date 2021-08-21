@@ -83,8 +83,8 @@ async def test_runner_wraps_error():
 
 
 async def test_servable_function(serve_instance, mock_controller_with_name):
-    def echo(request):
-        return request.query_params["i"]
+    def echo(i):
+        return i
 
     worker, router = await add_servable_to_router(echo,
                                                   *mock_controller_with_name)
@@ -100,8 +100,8 @@ async def test_servable_class(serve_instance, mock_controller_with_name):
         def __init__(self, inc):
             self.increment = inc
 
-        def __call__(self, request):
-            return request.query_params["i"] + self.increment
+        def __call__(self, i):
+            return i + self.increment
 
     worker, router = await add_servable_to_router(
         MyAdder, *mock_controller_with_name, init_args=(3, ))
@@ -115,10 +115,10 @@ async def test_servable_class(serve_instance, mock_controller_with_name):
 async def test_task_runner_custom_method_single(serve_instance,
                                                 mock_controller_with_name):
     class NonBatcher:
-        def a(self, _):
+        def a(self, *args):
             return "a"
 
-        def b(self, _):
+        def b(self, *args):
             return "b"
 
     worker, router = await add_servable_to_router(NonBatcher,
@@ -179,7 +179,7 @@ async def test_user_config_update(serve_instance, mock_controller_with_name):
         def __init__(self):
             self.retval = ""
 
-        def __call__(self, starlette_request):
+        def __call__(self, *args):
             return self.retval
 
         def reconfigure(self, config):
@@ -225,7 +225,7 @@ async def test_graceful_shutdown(serve_instance, mock_controller_with_name):
             if config["release"]:
                 [event.set() for event in self.events]
 
-        async def __call__(self, _):
+        async def __call__(self, *args):
             e = asyncio.Event()
             self.events.append(e)
             await e.wait()
