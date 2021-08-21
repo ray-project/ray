@@ -98,11 +98,6 @@ class IEvictionPolicy {
   /// \param object_id The ID of the object that is now being used.
   virtual void RemoveObject(const ObjectID &object_id) = 0;
 
-  /// Returns whether the object exists or not.
-  ///
-  /// \param object_id The ID of the object.
-  virtual bool IsObjectExists(const ObjectID &object_id) const = 0;
-
   /// Returns debugging information for this eviction policy.
   virtual std::string DebugString() const = 0;
 };
@@ -179,13 +174,14 @@ class EvictionPolicy : public IEvictionPolicy {
 
   void RemoveObject(const ObjectID &object_id) override;
 
-  bool IsObjectExists(const ObjectID &object_id) const override;
-
   std::string DebugString() const override;
 
  private:
   /// Returns the size of the object
   int64_t GetObjectSize(const ObjectID &object_id) const;
+
+  /// Returns whether the object exist in cache or not
+  bool IsObjectExists(const ObjectID &object_id) const;
 
   /// The number of bytes pinned by applications.
   int64_t pinned_memory_bytes_;
@@ -196,6 +192,8 @@ class EvictionPolicy : public IEvictionPolicy {
   const IObjectStore &object_store_;
 
   const IAllocator &allocator_;
+
+  FRIEND_TEST(EvictionPolicyTest, Test);
 };
 
 }  // namespace plasma

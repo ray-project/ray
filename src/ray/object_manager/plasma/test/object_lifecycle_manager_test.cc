@@ -35,7 +35,6 @@ class MockEvictionPolicy : public IEvictionPolicy {
   MOCK_METHOD2(ChooseObjectsToEvict, int64_t(int64_t, std::vector<ObjectID> &));
   MOCK_METHOD1(RemoveObject, void(const ObjectID &));
   MOCK_CONST_METHOD0(DebugString, std::string());
-  MOCK_CONST_METHOD1(IsObjectExists, bool(const ObjectID &));
 };
 
 class MockObjectStore : public IObjectStore {
