@@ -30,6 +30,7 @@ from ray.includes.common cimport (
     CBuffer,
     CPlacementGroupCreationOptions,
     CObjectLocation,
+    CObjectReference,
     CRayFunction,
     CRayObject,
     CRayStatus,
@@ -171,6 +172,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                  const CObjectID &object_id)
         const CAddress &GetRpcAddress() const
         CAddress GetOwnerAddress(const CObjectID &object_id) const
+        c_vector[CObjectReference] GetObjectRefs(
+                const c_vector[CObjectID] &object_ids) const
+
         void PromoteObjectToPlasma(const CObjectID &object_id)
         void GetOwnershipInfo(const CObjectID &object_id,
                               CAddress *owner_address,
