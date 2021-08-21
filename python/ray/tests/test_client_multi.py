@@ -152,6 +152,7 @@ def test_multi_cli_actor(call_ray_start):
 def test_multi_cli_threading(call_ray_start):
     import threading
     b = threading.Barrier(2)
+
     def get(idx):
         cli = ray.init("ray://localhost:25001", allow_multiple=True)
         with cli:
@@ -159,12 +160,14 @@ def test_multi_cli_threading(call_ray_start):
             b.wait()
             assert 20 == ray.get(a)
             b.wait()
+
     t1 = threading.Thread(target=get, args=(0, ))
     t2 = threading.Thread(target=get, args=(1, ))
     t1.start()
     t2.start()
     t1.join()
     t2.join()
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
