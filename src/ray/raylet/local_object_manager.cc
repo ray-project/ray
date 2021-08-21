@@ -410,7 +410,6 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
 
 void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size) {
   std::vector<std::string> object_urls_to_delete;
-  RAY_LOG(ERROR) << "Sang " << spilled_object_pending_delete_.size();
   // Process upto batch size of objects to delete.
   while (!spilled_object_pending_delete_.empty() &&
          object_urls_to_delete.size() < max_batch_size) {
