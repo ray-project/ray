@@ -100,8 +100,9 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
            << "been created because named actor creation is asynchronous. "
            << "4. You did not use a namespace matching the namespace of the "
            << "actor.";
-    RAY_LOG(WARNING) << stream.str();
-    return std::make_pair(nullptr, Status::NotFound(stream.str()));
+    auto error_msg = stream.str();
+    RAY_LOG(WARNING) << error_msg;
+    return std::make_pair(nullptr, Status::NotFound(error_msg));
   }
 
   return std::make_pair(GetActorHandle(actor_id), Status::OK());
