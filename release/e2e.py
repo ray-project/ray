@@ -216,7 +216,7 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
-def getenv_default(key: str, default: str = ""):
+def getenv_default(key: str, default: Optional[str] = None):
     """Return environment variable with default value"""
     # If the environment variable is set but "", still return default
     return os.environ.get(key, None) or default
