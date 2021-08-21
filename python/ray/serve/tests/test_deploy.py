@@ -722,16 +722,16 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
         ConstructorFailureDeploymentOneReplica.deploy()
 
     # Test failed to deploy with total of 2 replicas
-    @serve.deployment(num_replicas=2)
-    class ConstructorFailureDeploymentTwoReplicas:
-        def __init__(self):
-            raise RuntimeError("Intentionally throwing on both replicas")
+    # @serve.deployment(num_replicas=2)
+    # class ConstructorFailureDeploymentTwoReplicas:
+    #     def __init__(self):
+    #         raise RuntimeError("Intentionally throwing on both replicas")
 
-        async def serve(self, request):
-            return "hi"
+    #     async def serve(self, request):
+    #         return "hi"
 
-    with pytest.raises(RuntimeError):
-        ConstructorFailureDeploymentTwoReplicas.deploy()
+    # with pytest.raises(RuntimeError):
+    #     ConstructorFailureDeploymentTwoReplicas.deploy()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

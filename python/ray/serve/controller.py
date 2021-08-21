@@ -2,16 +2,17 @@ import asyncio
 import json
 import time
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
-from ray.serve.backend_state_manager import ReplicaState, BackendStateManager
+from ray.serve.backend_state import ReplicaState, BackendState
 from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
     BackendInfo,
     BackendTag,
+    EndpointTag,
     EndpointInfo,
     GoalId,
     NodeId,
@@ -23,7 +24,7 @@ from ray.serve.constants import (
     ALL_HTTP_METHODS,
     CONTROL_LOOP_PERIOD_S,
 )
-from ray.serve.endpoint_state_manager import EndpointStateManager
+from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
@@ -80,9 +81,9 @@ class ServeController:
 
         self.goal_manager = AsyncGoalManager()
         self.http_state = HTTPState(controller_name, detached, http_config)
-        self.endpoint_state_manager = EndpointStateManager(
+        self.endpoint_state = EndpointState(
             self.kv_store, self.long_poll_host)
-        self.backend_state_manager = BackendStateManager(
+        self.backend_state = BackendState(
             controller_name, detached, self.kv_store, self.long_poll_host,
             self.goal_manager)
 
@@ -105,6 +106,10 @@ class ServeController:
         return await (
             self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
 
+    def get_all_endpoints(self) -> Dict[EndpointTag, Dict[BackendTag, Any]]:
+        """Returns a dictionary of backend tag to backend config."""
+        return self.endpoint_state.get_endpoints()
+
     def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
         """Returns a dictionary of node ID to http_proxy actor handles."""
         return self.http_state.get_http_proxy_handles()
@@ -117,7 +122,7 @@ class ServeController:
                 except Exception as e:
                     logger.error(f"Exception updating HTTP state: {e}")
                 try:
-                    self.backend_state_manager.update()
+                    self.backend_state.update()
                 except Exception as e:
                     logger.error(f"Exception updating backend state: {e}")
             self._put_serve_snapshot()
@@ -147,7 +152,7 @@ class ServeController:
                                if backend_info.end_time_ms else "RUNNING")
             entry["actors"] = dict()
             if entry["status"] == "RUNNING":
-                replica_state_container = self.backend_state_manager._replicas[
+                replica_state_container = self.backend_state._replicas[
                     deployment_name]
                 running_replicas = replica_state_container.get(
                     [ReplicaState.RUNNING])
@@ -171,7 +176,7 @@ class ServeController:
     def _all_replica_handles(
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
         """Used for testing."""
-        return self.backend_state_manager.get_running_replica_handles()
+        return self.backend_state.get_running_replica_handles()
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
@@ -180,8 +185,8 @@ class ServeController:
     async def shutdown(self) -> List[GoalId]:
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            goal_ids = self.backend_state_manager.shutdown()
-            self.endpoint_state_manager.shutdown()
+            goal_ids = self.backend_state.shutdown()
+            self.endpoint_state.shutdown()
             self.http_state.shutdown()
 
             return goal_ids
@@ -201,7 +206,7 @@ class ServeController:
 
         async with self.write_lock:
             if prev_version is not None:
-                existing_backend_info = self.backend_state_manager.get_backend(
+                existing_backend_info = self.backend_state.get_backend(
                     name)
                 if (existing_backend_info is None
                         or not existing_backend_info.version):
@@ -223,22 +228,22 @@ class ServeController:
                 deployer_job_id=deployer_job_id,
                 start_time_ms=int(time.time() * 1000))
 
-            goal_id, updating = self.backend_state_manager.deploy_backend(
+            goal_id, updating = self.backend_state.deploy_backend(
                 name, backend_info)
             endpoint_info = EndpointInfo(
                 ALL_HTTP_METHODS,
                 route=route_prefix,
                 python_methods=python_methods,
                 legacy=False)
-            self.endpoint_state_manager.update_endpoint(
+            self.endpoint_state.update_endpoint(
                 name, endpoint_info, TrafficPolicy({
                     name: 1.0
                 }))
             return goal_id, updating
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
-        self.endpoint_state_manager.delete_endpoint(name)
-        return self.backend_state_manager.delete_backend(
+        self.endpoint_state.delete_endpoint(name)
+        return self.backend_state.delete_backend(
             name, force_kill=False)
 
     def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
@@ -253,12 +258,12 @@ class ServeController:
         Raises:
             KeyError if the deployment doesn't exist.
         """
-        backend_info: BackendInfo = self.backend_state_manager.get_backend(
+        backend_info: BackendInfo = self.backend_state.get_backend(
             name)
         if backend_info is None:
             raise KeyError(f"Deployment {name} does not exist.")
 
-        route = self.endpoint_state_manager.get_endpoint_route(name)
+        route = self.endpoint_state.get_endpoint_route(name)
 
         return backend_info, route
 
@@ -277,9 +282,9 @@ class ServeController:
             KeyError if the deployment doesn't exist.
         """
         return {
-            name: (self.backend_state_manager.get_backend(
+            name: (self.backend_state.get_backend(
                 name, include_deleted=include_deleted),
-                   self.endpoint_state_manager.get_endpoint_route(name))
-            for name in self.backend_state_manager.get_backend_configs(
+                   self.endpoint_state.get_endpoint_route(name))
+            for name in self.backend_state.get_backend_configs(
                 include_deleted=include_deleted)
         }

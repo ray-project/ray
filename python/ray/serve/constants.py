@@ -22,8 +22,10 @@ CONTROL_LOOP_PERIOD_S = 0.1
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
 
-#: Default retry count for allowing failures in replica constructor.
-REPLICA_CONSTRUCTOR_RETRY_COUNT = 3
+#: Max retry count for allowing failures in replica constructor.
+#: If no replicas at target version is running by the time we're at
+#: max construtor retry count, deploy() is considered failed.
+MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = 50
 
 #: Default histogram buckets for latency tracker.
 DEFAULT_LATENCY_BUCKET_MS = [
