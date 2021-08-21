@@ -348,18 +348,19 @@ class _AgentCollector:
         for col, data in single_row.items():
             if col in self.buffers:
                 continue
+
+            shift = self.shift_before - (1 if col in [
+                SampleBatch.OBS, SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
+                SampleBatch.ENV_ID, SampleBatch.T, SampleBatch.UNROLL_ID
+            ] else 0)
+
             # Store all data as flattened lists, except INFOS and state-out
             # lists. These are monolithic items (infos is a dict that
             # should not be further split, same for state-out items, which
             # could be custom dicts as well).
             if col == SampleBatch.INFOS or col.startswith("state_out_"):
-                self.buffers[col] = [[data]]
+                self.buffers[col] = [[data for _ in range(shift)]]
             else:
-                shift = self.shift_before - (1 if col in [
-                    SampleBatch.OBS, SampleBatch.EPS_ID,
-                    SampleBatch.AGENT_INDEX, SampleBatch.ENV_ID, SampleBatch.T,
-                    SampleBatch.UNROLL_ID
-                ] else 0)
                 self.buffers[col] = [[v for _ in range(shift)]
                                      for v in tree.flatten(data)]
                 # Store an example data struct so we know, how to unflatten
@@ -635,51 +636,46 @@ class SimpleListCollector(SampleCollector):
             # Loop through agents and add up their data (batch).
             data = None
             for k in keys:
-                if data_col == SampleBatch.EPS_ID:
-                    if data is None:
-                        data = [[]]
-                    data[0].append(self.agent_collectors[k].episode_id)
-                else:
-                    # Buffer for the data does not exist yet: Create dummy
-                    # (zero) data.
-                    if data_col not in buffers[k]:
-                        if view_req.data_col is not None:
-                            space = policy.view_requirements[
-                                view_req.data_col].space
-                        else:
-                            space = view_req.space
+                # Buffer for the data does not exist yet: Create dummy
+                # (zero) data.
+                if data_col not in buffers[k]:
+                    if view_req.data_col is not None:
+                        space = policy.view_requirements[
+                            view_req.data_col].space
+                    else:
+                        space = view_req.space
 
+                    if isinstance(space, Space):
                         fill_value = get_dummy_batch_for_space(
                             space,
                             batch_size=0,
-                        ) if isinstance(space, Space) else space
+                        )
+                    else:
+                        fill_value = space
 
-                        self.agent_collectors[k]._build_buffers({
-                            data_col: fill_value
-                        })
+                    self.agent_collectors[k]._build_buffers({
+                        data_col: fill_value
+                    })
 
-                    if data is None:
-                        data = [
-                            [] for _ in range(len(buffers[keys[0]][data_col]))
-                        ]
+                if data is None:
+                    data = [[] for _ in range(len(buffers[keys[0]][data_col]))]
 
-                    # `shift_from` and `shift_to` are defined: User wants a
-                    # view with some time-range.
-                    if isinstance(time_indices, tuple):
-                        # `shift_to` == -1: Until the end (including(!) the
-                        # last item).
-                        if time_indices[1] == -1:
-                            for d, b in zip(data, buffers[k][data_col]):
-                                d.append(b[time_indices[0]:])
-                        # `shift_to` != -1: "Normal" range.
-                        else:
-                            for d, b in zip(data, buffers[k][data_col]):
-                                d.append(
-                                    b[time_indices[0]:time_indices[1] + 1])
-                    # Single index.
+                # `shift_from` and `shift_to` are defined: User wants a
+                # view with some time-range.
+                if isinstance(time_indices, tuple):
+                    # `shift_to` == -1: Until the end (including(!) the
+                    # last item).
+                    if time_indices[1] == -1:
+                        for d, b in zip(data, buffers[k][data_col]):
+                            d.append(b[time_indices[0]:])
+                    # `shift_to` != -1: "Normal" range.
                     else:
                         for d, b in zip(data, buffers[k][data_col]):
-                            d.append(b[time_indices])
+                            d.append(b[time_indices[0]:time_indices[1] + 1])
+                # Single index.
+                else:
+                    for d, b in zip(data, buffers[k][data_col]):
+                        d.append(b[time_indices])
 
             np_data = [np.array(d) for d in data]
             if data_col in buffer_structs:
