@@ -121,7 +121,7 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
 
 
 def execution_plan(trainer: Trainer, workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+                   config: TrainerConfigDict, **kwargs) -> LocalIterator[dict]:
     """Execution plan of the Simple Q algorithm. Defines the distributed dataflow.
 
     Args:

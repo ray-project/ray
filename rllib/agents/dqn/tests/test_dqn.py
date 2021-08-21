@@ -22,9 +22,11 @@ class TestDQN(unittest.TestCase):
         """Test whether a DQNTrainer can be built on all frameworks."""
         config = dqn.DEFAULT_CONFIG.copy()
         config["num_workers"] = 2
+        # Test with saved replay buffer.
+        config["store_buffer_in_checkpoints"] = True
         num_iterations = 1
 
-        for _ in framework_iterator(config):
+        for fw in framework_iterator(config):
             # Double-dueling DQN.
             print("Double-dueling")
             plain_config = config.copy()
@@ -50,6 +52,22 @@ class TestDQN(unittest.TestCase):
                 print(results)
 
             check_compute_single_action(trainer)
+
+            # Test, whether the replay buffer is saved along with
+            # a checkpoint (no point in doing it for all frameworks since
+            # this is framework agnostic).
+            if fw == "torch":
+                checkpoint = trainer.save()
+                new_trainer = dqn.DQNTrainer(rainbow_config, env="CartPole-v0")
+                new_trainer.restore(checkpoint)
+                # Get some data from the buffer and compare.
+                data = trainer._local_replay_buffer.replay_buffers[
+                    "default_policy"]._storage[42:42 + 42]
+                new_data = new_trainer._local_replay_buffer.replay_buffers[
+                    "default_policy"]._storage[42:42 + 42]
+                check(data, new_data)
+                new_trainer.stop()
+
             trainer.stop()
 
     def test_dqn_fake_multi_gpu_learning(self):
