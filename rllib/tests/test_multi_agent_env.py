@@ -166,7 +166,6 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(obs, {0: {0: 0}, 1: {0: 0}})
 
     def test_multi_agent_sample(self):
-
         def policy_mapping_fn(agent_id, episode, **kwargs):
             return "p{}".format(agent_id % 2)
 
@@ -195,7 +194,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             # This signature will raise a soft-deprecation warning due
             # to the new signature we are using (agent_id, episode, **kwargs),
             # but should not break this test.
-            policy_mapping_fn=(lambda agent_id: "p{}".format(int(agent_id[-1]) % 2)),
+            policy_mapping_fn=(lambda agent_id: "p{}".format(agent_id % 2)),
             rollout_fragment_length=50,
             num_envs=4,
             remote_worker_envs=True,
@@ -218,8 +217,6 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.count, 200)
 
     def test_multi_agent_sample_with_horizon(self):
-        act_space = gym.spaces.Discrete(2)
-        obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
             policy_spec={
@@ -233,8 +230,6 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.count, 50)
 
     def test_sample_from_early_done_env(self):
-        act_space = gym.spaces.Discrete(2)
-        obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: EarlyDoneMultiAgent(),
             policy_spec={
