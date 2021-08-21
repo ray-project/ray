@@ -404,6 +404,7 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
 
   manager.SpillObjects(object_ids,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
+
   std::vector<std::string> urls;
   for (size_t i = 0; i < object_ids.size(); i++) {
     ASSERT_TRUE(manager.GetSpilledObjectURL(object_ids[i]).empty());
@@ -972,9 +973,10 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   owner_address.set_worker_id(WorkerID::FromRandom().Binary());
   std::vector<ObjectID> object_ids;
   std::vector<std::unique_ptr<RayObject>> objects;
+  size_t spilled_urls_size = 2;
 
   // Objects are pinned.
-  for (size_t i = 0; i < free_objects_batch_size; i++) {
+  for (size_t i = 0; i < spilled_urls_size; i++) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
@@ -986,48 +988,58 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   manager.WaitForObjectFree(owner_address, object_ids);
 
   // Objects are spilled.
-  std::vector<ObjectID> object_ids_to_spill;
-  int spilled_urls_size = free_objects_batch_size;
-  for (int i = 0; i < spilled_urls_size; i++) {
-    object_ids_to_spill.push_back(object_ids[i]);
+  std::vector<ObjectID> spill_set_1;
+  std::vector<ObjectID> spill_set_2;
+  int spill_set_1_size = spilled_urls_size / 2;
+  int spill_set_2_size = spilled_urls_size - spill_set_1_size;
+
+  for (int i = 0; i < spill_set_1_size; i++) {
+    spill_set_1.push_back(object_ids[i]);
   }
-  manager.SpillObjects(object_ids_to_spill,
+  for (int i = spill_set_1_size; i < spilled_urls_size; i++) {
+    spill_set_2.push_back(object_ids[i]);
+  }
+  manager.SpillObjects(spill_set_1,
+                       [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
+  manager.SpillObjects(spill_set_2,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
 
-  std::vector<std::string> urls;
-  // Only 1 object's spilling is done. Everything else is still spilling.
-  for (size_t i = 0; i < object_ids_to_spill.size(); i++) {
-    urls.push_back(BuildURL("url" + std::to_string(i)));
+  std::vector<std::string> urls_spill_set_1;
+  std::vector<std::string> urls_spill_set_2;
+  for (size_t i = 0; i < spill_set_1_size; i++) {
+    urls_spill_set_1.push_back(BuildURL("url" + std::to_string(i)));
   }
-  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
-  for (size_t i = 0; i < 1; i++) {
+  for (size_t i = spill_set_1_size; i < spilled_urls_size; i++) {
+    urls_spill_set_2.push_back(BuildURL("url" + std::to_string(i)));
+  }
+
+  // Spillset 1 objects are spilled.
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls_spill_set_1));
+  for (size_t i = 0; i < spill_set_1_size; i++) {
     ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
   }
   // Every object has gone out of scope.
-  for (size_t i = 0; i < free_objects_batch_size; i++) {
+  for (size_t i = 0; i < spilled_urls_size; i++) {
     EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
-  // // Now, deletion queue would process only the first object. Everything else won't be
+  // Now, deletion queue would process only the first spill set. Everything else won't be
   // deleted although it is out of scope because they are still spilling.
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   // Only the first entry that is already spilled will be deleted.
-  ASSERT_EQ(deleted_urls_size, 1);
+  ASSERT_EQ(deleted_urls_size, spill_set_1_size);
 
   // Now spilling is completely done.
-  std::vector<std::string> new_urls;
-  for (size_t i = 1; i < object_ids_to_spill.size(); i++) {
-    new_urls.push_back(BuildURL("url" + std::to_string(i)));
-  }
-  for (size_t i = 1; i < object_ids_to_spill.size(); i++) {
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls_spill_set_2));
+  for (size_t i = 0; i < spill_set_2_size; i++) {
     ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
   }
 
   // Every object is now deleted.
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
-  ASSERT_EQ(deleted_urls_size, object_ids_to_spill.size() - 1);
+  ASSERT_EQ(deleted_urls_size, spill_set_2_size);
 }
 
 TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
