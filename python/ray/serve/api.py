@@ -461,12 +461,13 @@ def _connect() -> Client:
     # ensure that the correct instance is connected to.
     if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
+        controller_namespace = _get_controller_namespace(detached=True)
     else:
         controller_name = _INTERNAL_REPLICA_CONTEXT._internal_controller_name
+        controller_namespace = _get_controller_namespace(detached=False)
 
     # Try to get serve controller if it exists
     try:
-        controller_namespace = _get_controller_namespace(detached=True)
         controller = ray.get_actor(
             controller_name, namespace=controller_namespace)
     except ValueError:
