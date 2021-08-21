@@ -990,13 +990,13 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   // Objects are spilled.
   std::vector<ObjectID> spill_set_1;
   std::vector<ObjectID> spill_set_2;
-  int spill_set_1_size = spilled_urls_size / 2;
-  int spill_set_2_size = spilled_urls_size - spill_set_1_size;
+  size_t spill_set_1_size = spilled_urls_size / 2;
+  size_t spill_set_2_size = spilled_urls_size - spill_set_1_size;
 
-  for (int i = 0; i < spill_set_1_size; i++) {
+  for (size_t i = 0; i < spill_set_1_size; i++) {
     spill_set_1.push_back(object_ids[i]);
   }
-  for (int i = spill_set_1_size; i < spilled_urls_size; i++) {
+  for (size_t i = spill_set_1_size; i < spilled_urls_size; i++) {
     spill_set_2.push_back(object_ids[i]);
   }
   manager.SpillObjects(spill_set_1,
