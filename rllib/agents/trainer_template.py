@@ -11,7 +11,7 @@ from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy import Policy
 from ray.rllib.utils import add_mixins
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import override, Deprecated, DeveloperAPI
 from ray.rllib.utils.typing import EnvConfigDict, EnvType, \
     PartialTrainerConfigDict, ResultDict, TrainerConfigDict
 
@@ -280,3 +280,8 @@ def build_trainer_class(
     trainer_cls.__name__ = name
     trainer_cls.__qualname__ = name
     return trainer_cls
+
+
+@Deprecated(new="build_trainer_class", error=False)
+def build_trainer(*args, **kwargs):
+    return build_trainer_class(*args, **kwargs)
