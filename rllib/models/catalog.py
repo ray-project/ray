@@ -670,7 +670,7 @@ class ModelCatalog:
                                                        options)
 
     @staticmethod
-    @Deprecated(error=False)
+    @DeveloperAPI
     def get_preprocessor_for_space(observation_space: gym.Space,
                                    options: dict = None) -> Preprocessor:
         """Returns a suitable preprocessor for the given observation space.
@@ -882,7 +882,8 @@ class ModelCatalog:
         if config.get("custom_preprocessor") is not None:
             deprecation_warning(
                 old="model.custom_preprocessor",
-                new="gym.ObservationWrapper around your env",
+                new="gym.ObservationWrapper around your env or handle complex "
+                "inputs inside your Model",
                 error=False,
             )
 

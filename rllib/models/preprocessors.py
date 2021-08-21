@@ -4,7 +4,7 @@ import numpy as np
 import gym
 from typing import Any, List
 
-from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.images import resize
@@ -177,7 +177,6 @@ class OneHotPreprocessor(Preprocessor):
         array[offset:offset + self.size] = self.transform(observation)
 
 
-@Deprecated(error=False)
 class NoPreprocessor(Preprocessor):
     @override(Preprocessor)
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:

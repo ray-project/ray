@@ -2363,16 +2363,14 @@ py_test(
     args = ["--stop-iters=2"]
 )
 
-# Not supported for torch yet (complex-input model needs
-# to accept dict spaces as well)
-# py_test(
-#    name = "examples/preprocessing_disabled_torch",
-#    main = "examples/preprocessing_disabled.py",
-#    tags = ["team:ml", "examples", "examples_P"],
-#    size = "small",
-#    srcs = ["examples/preprocessing_disabled.py"],
-#    args = ["--framework=torch", "--stop-iters=2"]
-# )
+py_test(
+    name = "examples/preprocessing_disabled_torch",
+    main = "examples/preprocessing_disabled.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "small",
+    srcs = ["examples/preprocessing_disabled.py"],
+    args = ["--framework=torch", "--stop-iters=2"]
+)
 
 py_test(
     name = "examples/remote_envs_with_inference_done_on_main_node_tf",

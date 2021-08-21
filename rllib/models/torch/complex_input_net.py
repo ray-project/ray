@@ -1,16 +1,19 @@
-from gym.spaces import Box, Discrete, Tuple
+from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
+import tree  # pip install dm_tree
 
 # TODO (sven): add IMPALA-style option.
 # from ray.rllib.examples.models.impala_vision_nets import TorchImpalaVisionNet
 from ray.rllib.models.torch.misc import normc_initializer as \
     torch_normc_initializer, SlimFC
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.modelv2 import ModelV2, restore_original_dimensions
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.utils import get_filter_config
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.torch_ops import one_hot
 
 torch, nn = try_import_torch()
@@ -32,15 +35,16 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
-        # TODO: (sven) Support Dicts as well.
         self.original_space = obs_space.original_space if \
             hasattr(obs_space, "original_space") else obs_space
-        assert isinstance(self.original_space, (Tuple)), \
-            "`obs_space.original_space` must be Tuple!"
+        assert isinstance(self.original_space, (Dict, Tuple)), \
+            "`obs_space.original_space` must be [Dict|Tuple]!"
 
         nn.Module.__init__(self)
         TorchModelV2.__init__(self, self.original_space, action_space,
                               num_outputs, model_config, name)
+
+        self.flattened_input_space = flatten_space(self.original_space)
 
         # Atari type CNNs or IMPALA type CNNs (with residual layers)?
         # self.cnn_type = self.model_config["custom_model_config"].get(
@@ -51,7 +55,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
         self.one_hot = {}
         self.flatten = {}
         concat_size = 0
-        for i, component in enumerate(self.original_space):
+        for i, component in enumerate(self.flattened_input_space):
             # Image space.
             if len(component.shape) == 3:
                 config = {
@@ -81,11 +85,13 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 concat_size += cnn.num_outputs
                 self.cnns[i] = cnn
                 self.add_module("cnn_{}".format(i), cnn)
-            # Discrete inputs -> One-hot encode.
+            # Discrete|MultiDiscrete inputs -> One-hot encode.
             elif isinstance(component, Discrete):
                 self.one_hot[i] = True
                 concat_size += component.n
-            # TODO: (sven) Multidiscrete (see e.g. our auto-LSTM wrappers).
+            elif isinstance(component, MultiDiscrete):
+                self.one_hot[i] = True
+                concat_size += sum(component.nvec)
             # Everything else (1D Box).
             else:
                 self.flatten[i] = int(np.product(component.shape))
@@ -131,20 +137,25 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
+        if SampleBatch.OBS in input_dict and "obs_flat" in input_dict:
+            orig_obs = input_dict[SampleBatch.OBS]
+        else:
+            orig_obs = restore_original_dimensions(input_dict[SampleBatch.OBS],
+                                                   self.obs_space, "tf")
         # Push image observations through our CNNs.
         outs = []
-        for i, component in enumerate(input_dict["obs"]):
+        for i, component in enumerate(tree.flatten(orig_obs)):
             if i in self.cnns:
-                cnn_out, _ = self.cnns[i]({"obs": component})
+                cnn_out, _ = self.cnns[i]({SampleBatch.OBS: component})
                 outs.append(cnn_out)
             elif i in self.one_hot:
-                outs.append(one_hot(component, self.original_space.spaces[i]))
+                outs.append(one_hot(component, self.flattened_input_space[i]))
             else:
                 outs.append(torch.reshape(component, [-1, self.flatten[i]]))
         # Concat all outputs and the non-image inputs.
         out = torch.cat(outs, dim=1)
         # Push through (optional) FC-stack (this may be an empty stack).
-        out, _ = self.post_fc_stack({"obs": out}, [], None)
+        out, _ = self.post_fc_stack({SampleBatch.OBS: out}, [], None)
 
         # No logits/value branches.
         if self.logits_layer is None:

@@ -217,6 +217,8 @@ class ModelV2:
         else:
             restored = input_dict.copy()
 
+        # Input to this Model went through a Preprocessor.
+        # Generate extra keys: "obs_flat" vs "obs".
         if hasattr(self.obs_space, "original_space"):
             restored["obs"] = restore_original_dimensions(
                 input_dict["obs"], self.obs_space, self.framework)
@@ -228,8 +230,11 @@ class ModelV2:
                     restored["obs_flat"] = input_dict["obs"]
             except AttributeError:
                 restored["obs_flat"] = input_dict["obs"]
+        # No Preprocessor used: `config.preprocessor_pref`=None.
         # TODO: This is unnecessary for when no preprocessor is used.
-        #  Obs are not flat then anymore.
+        #  Obs are not flat then anymore. We keep this here for
+        #  backward-compatibility until Preprocessors have been fully
+        #  deprecated.
         else:
             restored["obs_flat"] = input_dict["obs"]
 

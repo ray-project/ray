@@ -21,12 +21,6 @@ def get_cli_args():
     """Create CLI parser and return parsed arguments"""
     parser = argparse.ArgumentParser()
 
-    # example-specific args
-    parser.add_argument(
-        "--no-attention",
-        action="store_true",
-        help="Do NOT use attention. For comparison: The agent will not learn.")
-
     # general args
     parser.add_argument(
         "--run", default="PPO", help="The RLlib-registered algorithm to use.")
@@ -73,10 +67,6 @@ def get_cli_args():
 
 if __name__ == "__main__":
     args = get_cli_args()
-    assert args.framework == "tf",\
-        "No-preprocessing only working for tf so far! Complex input " \
-        "model must be changed to accept Dict spaces as well (besides " \
-        "Tuples)."
 
     ray.init(local_mode=args.local_mode)
 
