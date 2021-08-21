@@ -246,7 +246,11 @@ class RayAPIStub:
         return self.get_context().is_connected(*args, **kwargs)
 
     def init(self, *args, **kwargs):
-        return self.get_context().init(*args, **kwargs)
+        ret = self.get_context().init(*args, **kwargs)
+        global _lock, _all_contexts
+        with _lock:
+            _all_contexts.add(self._cxt.handler)
+        return ret
 
     def shutdown(self, *args, **kwargs):
         global _lock, _all_contexts
