@@ -39,10 +39,10 @@ def test_multi_cli_basic(call_ray_start):
     with cli2:
         assert 20 == ray.get(b)
 
-    with pytest.raises(Exception), cl1:
+    with pytest.raises(Exception), cli1:
         ray.get(c)
 
-    with pytest.raises(Exception), cl2:
+    with pytest.raises(Exception), cli2:
         ray.get(c)
 
 
