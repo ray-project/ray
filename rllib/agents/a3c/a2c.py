@@ -10,6 +10,7 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import ComputeGradients, AverageGradients, \
     ApplyGradients, MultiGPUTrainOneStep, TrainOneStep
 from ray.rllib.utils import merge_dicts
+from ray.rllib.utils.events.events import AFTER_VALIDATE_CONFIG
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.policy import Policy
@@ -31,7 +32,7 @@ A2C_DEFAULT_CONFIG = merge_dicts(
 
 
 def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> Optional[Type[Policy]]:
+                   config: TrainerConfigDict):
     """Execution plan of the MARWIL/BC algorithm. Defines the distributed
     dataflow.
 
@@ -90,7 +91,7 @@ A2CTrainer = build_trainer_class(
     default_policy=A3CTFPolicy,
     get_policy_class=get_policy_class,
     execution_plan=execution_plan,
-    event_handlers={
-        "after_validate_config": validate_config,
+    event_subscriptions={
+        AFTER_VALIDATE_CONFIG: [validate_config],
     },
 )

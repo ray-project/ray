@@ -1,7 +1,8 @@
+from collections import defaultdict
 import concurrent.futures
 from functools import partial
 import logging
-from typing import Callable, Iterable, List, Optional, Type
+from typing import Callable, DefaultDict, Iterable, List, Optional, Type
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.env.env_context import EnvContext
@@ -12,6 +13,7 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy import Policy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, Deprecated, DeveloperAPI
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.typing import EnvConfigDict, EnvType, \
     PartialTrainerConfigDict, ResultDict, TrainerConfigDict
 
@@ -54,11 +56,16 @@ def build_trainer_class(
         name: str,
         *,
         default_config: Optional[TrainerConfigDict] = None,
+        allow_unknown_configs: bool = False,
+        allow_unknown_subkeys: Optional[List[str]] = None,
+        override_all_subkeys_if_type_changes: Optional[List[str]] = None,
         validate_config: Optional[Callable[[TrainerConfigDict], None]] = None,
         default_policy: Optional[Type[Policy]] = None,
         get_policy_class: Optional[Callable[[TrainerConfigDict], Optional[Type[
             Policy]]]] = None,
-        event_handlers: Optional[Dict[EventName, Callable]] = None,
+
+        event_subscriptions: Optional[Dict[EventName, List[Callable]]] = None,
+
         # OBSOLETE:
         validate_env: Optional[Callable[[EnvType, EnvContext], None]] = None,
         before_init: Optional[Callable[[Trainer], None]] = None,
@@ -68,16 +75,13 @@ def build_trainer_class(
         execution_plan: Optional[Callable[[
             WorkerSet, TrainerConfigDict
         ], Iterable[ResultDict]]] = default_execution_plan,
-        allow_unknown_configs: bool = False,
-        allow_unknown_subkeys: Optional[List[str]] = None,
-        override_all_subkeys_if_type_changes: Optional[List[str]] = None,
 ) -> Type[Trainer]:
     """Helper function for defining a custom trainer.
 
     Functions will be run in this order to initialize the trainer:
         1. Config setup: validate_config, get_policy
-        2. Worker setup: before_init, execution_plan
-        3. Post setup: after_init
+        2. Worker setup: trigger_event("before_make_workers"), execution_plan
+        3. Post setup: trigger_event("after_make_workers")
 
     Args:
         name (str): name of the trainer (e.g., "PPO")
@@ -93,19 +97,6 @@ def build_trainer_class(
             that takes a config and returns the policy class or None. If None
             is returned, will use `default_policy` (which must be provided
             then).
-        validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
-            Optional callable to validate the generated environment (only
-            on worker=0).
-        before_init (Optional[Callable[[Trainer], None]]): Optional callable to
-            run before anything is constructed inside Trainer (Workers with
-            Policies, execution plan, etc..). Takes the Trainer instance as
-            argument.
-        after_init (Optional[Callable[[Trainer], None]]): Optional callable to
-            run at the end of trainer init (after all Workers and the exec.
-            plan have been constructed). Takes the Trainer instance as
-            argument.
-        before_evaluate_fn (Optional[Callable[[Trainer], None]]): Callback to
-            run before evaluation. This takes the trainer instance as argument.
         mixins (list): list of any class mixins for the returned trainer class.
             These mixins will be applied in order and will have higher
             precedence than the Trainer class.
@@ -122,9 +113,52 @@ def build_trainer_class(
             value (dict), iff the "type" key in that value dict changes.
             Appends to Trainer class defaults.
 
+        #Deprecated:
+        validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
+            Optional callable to validate the generated environment (only
+            on worker=0).
+        before_init (Optional[Callable[[Trainer], None]]): Now: event
+            "before_make_workers".
+            Optional callable to run before anything is constructed inside
+            Trainer (Workers with Policies, execution plan, etc..). Takes the
+            Trainer instance as argument.
+        after_init (Optional[Callable[[Trainer], None]]): Now event
+            "after_make_workers".
+            Optional callable to run at the end of trainer init (after all
+            Workers and the exec. plan have been constructed). Takes the
+            Trainer instance as argument.
+        before_evaluate_fn (Optional[Callable[[Trainer], None]]): Now event
+            "before_evaluate".
+            Callback to run before evaluation. This takes the trainer instance
+            as argument.
+
     Returns:
         Type[Trainer]: A Trainer sub-class configured by the specified args.
     """
+
+    event_subscriptions = event_subscriptions or defaultdict(list)
+
+    # Handle deprecated kwargs.
+    if validate_env != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="validate_env",
+            new="event_subscriptions['after_validate_env']", error=False)
+        event_subscriptions["after_validate_env"].append(validate_env)
+    if before_evaluate_fn != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="before_evaluate_fn",
+            new="event_subscriptions['before_evaluate']", error=False)
+        event_subscriptions["before_evaluate"].append(before_evaluate_fn)
+    if before_init != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="before_init",
+            new="event_subscriptions['before_make_workers']", error=False)
+        event_subscriptions["before_make_workers"].append(before_init)
+    if after_init != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="after_init", new="event_subscriptions['after_make_workers']",
+            error=False)
+        event_subscriptions["after_make_workers"].append(after_init)
 
     original_kwargs = locals().copy()
     base = add_mixins(Trainer, mixins)
@@ -165,8 +199,7 @@ def build_trainer_class(
                     assert default_policy is not None
                     self._policy_class = default_policy
 
-            if before_init:
-                before_init(self)
+            self.trigger_event("before_make_workers", self)
 
             # Creating all workers (excluding evaluation workers).
             self.workers = self._make_workers(
@@ -178,8 +211,7 @@ def build_trainer_class(
             self.execution_plan = execution_plan
             self.train_exec_impl = execution_plan(self.workers, config)
 
-            if after_init:
-                after_init(self)
+            self.trigger_event("after_make_workers", self)
 
         @override(Trainer)
         def step(self):
@@ -212,7 +244,7 @@ def build_trainer_class(
                     evaluation_metrics = self.evaluate()
 
                 assert isinstance(evaluation_metrics, dict), \
-                    "_evaluate() needs to return a dict."
+                    "Trainer.evaluate() needs to return a dict."
                 res.update(evaluation_metrics)
 
             # Check `env_task_fn` for possible update of the env's task.
@@ -233,10 +265,10 @@ def build_trainer_class(
 
             return res
 
-        @override(Trainer)
-        def _before_evaluate(self):
-            if before_evaluate_fn:
-                before_evaluate_fn(self)
+        #@override(Trainer)
+        #def _before_evaluate(self):
+        #    if before_evaluate_fn:
+        #        before_evaluate_fn(self)
 
         @override(Trainer)
         def __getstate__(self):

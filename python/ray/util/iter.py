@@ -66,7 +66,7 @@ def from_iterators(generators: List[Iterable[T]],
                    repeat: bool = False,
                    name=None) -> "ParallelIterator[T]":
     """Create a parallel iterator from a list of iterables.
-    An iterable can be a conatiner (list, str, tuple, set, etc.),
+    An iterable can be a container (list, str, tuple, set, etc.),
     a generator, or a custom class that implements __iter__ or __getitem__.
 
     An actor will be created for each iterable.
@@ -496,7 +496,7 @@ class ParallelIterator(Generic[T]):
         New items will be fetched from the shards asynchronously as soon as
         the previous one is computed. Items arrive in non-deterministic order.
 
-        Arguments:
+        Args:
             batch_ms (int): Batches items for batch_ms milliseconds
                 on each shard before retrieving it.
                 Increasing batch_ms increases latency but improves throughput.
@@ -888,7 +888,7 @@ class LocalIterator(Generic[T]):
 
     def shuffle(self, shuffle_buffer_size: int,
                 seed: int = None) -> "LocalIterator[T]":
-        """Shuffle items of this iterator
+        """Shuffle items of this iterator.
 
         Args:
             shuffle_buffer_size (int): The algorithm fills a buffer with
@@ -896,11 +896,10 @@ class LocalIterator(Generic[T]):
                 this buffer, replacing the selected elements with new elements.
                 For perfect shuffling, this argument should be greater than or
                 equal to the largest iterator size.
-            seed (int): Seed to use for
-                randomness. Default value is None.
+            seed (int): Seed to use for randomness. Default value is None.
 
         Returns:
-            A new LocalIterator with shuffling applied
+            A new LocalIterator with shuffling applied.
         """
         shuffle_random = random.Random(seed)
 

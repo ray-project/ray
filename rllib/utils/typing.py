@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 # Note: Policy config dicts are usually the same as TrainerConfigDict, but
 # parts of it may sometimes be altered in e.g. a multi-agent setup,
 # where we have >1 Policies in the same Trainer.
+
 TrainerConfigDict = dict
 
 # A trainer config dict that only has overrides. It needs to be combined with

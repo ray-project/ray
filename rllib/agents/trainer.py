@@ -31,6 +31,8 @@ from ray.rllib.utils import deep_update, FilterManager, merge_dicts, \
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, \
     PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
+from ray.rllib.utils.events.events import TriggersEvent
+from ray.rllib.utils.events.observable import Observable
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces import space_utils
@@ -501,7 +503,7 @@ def with_common_config(
 
 
 @PublicAPI
-class Trainer(Trainable, metaclass=ABCMeta):
+class Trainer(Trainable, Observable, metaclass=ABCMeta):
     """A trainer coordinates the optimization of one or more RL policies.
 
     All RLlib trainers extend this base class, e.g., the A3CTrainer implements
@@ -534,22 +536,23 @@ class Trainer(Trainable, metaclass=ABCMeta):
 
     @PublicAPI
     def __init__(self,
-                 config: TrainerConfigDict = None,
+                 config: PartialTrainerConfigDict = None,
                  env: str = None,
                  logger_creator: Callable[[], Logger] = None):
         """Initialize an RLLib trainer.
 
         Args:
-            config (dict): Algorithm-specific configuration data.
+            config (PartialTrainerConfigDict): User provided config (this is w/o
+                the default Trainer's `COMMON_CONFIG` (see above)). Will get
+                merged with COMMON_CONFIG in self.setup().
             env (str): Name of the environment to use. Note that this can also
                 be specified as the `env` key in config.
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
+        # Call the Observable constructor.
+        Observable.__init__(self)
 
-        # User provided config (this is w/o the default Trainer's
-        # `COMMON_CONFIG` (see above)). Will get merged with COMMON_CONFIG
-        # in self.setup().
         config = config or {}
 
         # Trainers allow env ids to be passed directly to the constructor.
@@ -591,7 +594,8 @@ class Trainer(Trainable, metaclass=ABCMeta):
 
             logger_creator = default_logger_creator
 
-        super().__init__(config, logger_creator)
+        # Call the Trainable constructor.
+        Trainable.__init__(self, config, logger_creator)
 
     @classmethod
     @override(Trainable)
@@ -705,11 +709,11 @@ class Trainer(Trainable, metaclass=ABCMeta):
             "on_config_complete", trainer=self, config=self.config)
 
         # Validate the config.
-        self.trigger_event(
-            "before_validate_config", trainer=self, config=self.config)
+        #self.trigger_event(
+        #    "before_validate_config", trainer=self, config=self.config)
         self._validate_config(self.config, trainer_obj_or_none=self)
-        self.trigger_event(
-            "after_validate_config", trainer=self, config=self.config)
+        #self.trigger_event(
+        #    "after_validate_config", trainer=self, config=self.config)
 
         # Create the Trainer's Callbacks object (Policies and
         # RolloutWorkers will have their own).
@@ -827,6 +831,7 @@ class Trainer(Trainable, metaclass=ABCMeta):
         return self.evaluate()
 
     @PublicAPI
+    @TriggersEvent(before=True, after=True)
     def evaluate(self) -> dict:
         """Evaluates current policy under `evaluation_config` settings.
 
@@ -839,9 +844,6 @@ class Trainer(Trainable, metaclass=ABCMeta):
         if self.config.get("framework") in ["tf2", "tfe"] and \
                 not tf.executing_eagerly():
             tf1.enable_eager_execution()
-
-        # Call the `_before_evaluate` hook.
-        self._before_evaluate()
 
         if self.evaluation_workers is not None:
             # Sync weights to the evaluation WorkerSet.
@@ -908,7 +910,7 @@ class Trainer(Trainable, metaclass=ABCMeta):
                     self.evaluation_workers.remote_workers())
         return {"evaluation": metrics}
 
-    @DeveloperAPI
+    @Deprecated(new="subscribe to `before_evaluate` on Trainer", error=False)
     def _before_evaluate(self):
         """Pre-evaluation callback."""
         pass
@@ -1349,6 +1351,7 @@ class Trainer(Trainable, metaclass=ABCMeta):
                            cls._override_all_subkeys_if_type_changes)
 
     @staticmethod
+    @TriggersEvent(name="validate_config", before=True, after=True)
     def _validate_config(config: PartialTrainerConfigDict,
                          trainer_obj_or_none: Optional["Trainer"] = None):
         # Check and resolve DL framework settings.

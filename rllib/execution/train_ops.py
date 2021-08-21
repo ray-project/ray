@@ -16,6 +16,7 @@ from ray.rllib.execution.common import \
 from ray.rllib.policy.policy import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
+from ray.rllib.utils.annotations import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
@@ -238,7 +239,9 @@ class MultiGPUTrainOneStep:
 
 
 # Backward compatibility.
-TrainTFMultiGPU = MultiGPUTrainOneStep
+@Deprecated(new="MultiGPUTrainOneStep", error=False)
+class TrainTFMultiGPU(MultiGPUTrainOneStep):
+    pass
 
 
 def all_tower_reduce(path, *tower_data):
