@@ -142,5 +142,28 @@ def test_multi_cli_actor(call_ray_start):
         ray.get(o1)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="PSUtil does not work the same on windows.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25001 --port 0"],
+    indirect=True)
+def test_multi_cli_threading(call_ray_start):
+    import threading
+    b = threading.Barrier(2)
+    def get():
+        cli = ray.init("ray://localhost:25001", allow_multiple=True)
+        with cli:
+            a = ray.put(20)
+            b.wait()
+            assert 20 == ray.get(a)
+    t1 = threading.Thread(target=get)
+    t2 = threading.Thread(target=get)
+    t1.run()
+    t2.run()
+    t1.join()
+    t2.join()
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
