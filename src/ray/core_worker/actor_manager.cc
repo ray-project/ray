@@ -86,7 +86,9 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
       std::ostringstream stream;
       stream << "There was timeout in getting the actor handle, "
                 "probably because the GCS server is dead or under high load .";
-      return std::make_pair(nullptr, Status::TimedOut(stream.str()));
+      std::string error_str = stream.str();
+      RAY_LOG(ERROR) << error_str;
+      return std::make_pair(nullptr, Status::TimedOut(error_str));
     }
   }
 
@@ -98,6 +100,7 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
            << "been created because named actor creation is asynchronous. "
            << "4. You did not use a namespace matching the namespace of the "
            << "actor.";
+    RAY_LOG(WARNING) << stream.str();
     return std::make_pair(nullptr, Status::NotFound(stream.str()));
   }
 

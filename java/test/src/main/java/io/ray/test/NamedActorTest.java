@@ -98,4 +98,8 @@ public class NamedActorTest extends BaseTest {
     // Registering with the same name should fail.
     Ray.actor(Counter::new).setName(name).remote();
   }
+
+  public void test_getNonExistingNamedActor() {
+    Assert.assertTrue(!Ray.getActor("non_existing_actor").isPresent());
+  }
 }
