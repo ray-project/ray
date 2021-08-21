@@ -32,9 +32,11 @@ class TestSimpleQ(unittest.TestCase):
         config["num_workers"] = 0
         # Test with compression.
         config["compress_observations"] = True
+        # Test with saved replay buffer.
+        config["store_buffer_in_checkpoints"] = True
         num_iterations = 2
 
-        for _ in framework_iterator(config):
+        for fw in framework_iterator(config):
             trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
             rw = trainer.workers.local_worker()
             for i in range(num_iterations):
@@ -44,6 +46,22 @@ class TestSimpleQ(unittest.TestCase):
                 print(results)
 
             check_compute_single_action(trainer)
+
+            # Test, whether the replay buffer is saved along with
+            # a checkpoint.
+            if fw == "tf":
+                checkpoint = trainer.save()
+                new_trainer = dqn.SimpleQTrainer(config, env="CartPole-v0")
+                new_trainer.restore(checkpoint)
+                # Get some data from the buffer and compare.
+                data = trainer._local_replay_buffer.replay_buffers[
+                    "default_policy"]._storage[:42]
+                new_data = new_trainer._local_replay_buffer.replay_buffers[
+                    "default_policy"]._storage[:42]
+                check(data, new_data)
+                new_trainer.stop()
+
+            trainer.stop()
 
     def test_simple_q_fake_multi_gpu_learning(self):
         """Test whether SimpleQTrainer learns CartPole w/ fake GPUs."""
