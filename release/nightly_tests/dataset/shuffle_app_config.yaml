@@ -1,0 +1,11 @@
+base_image: "anyscale/ray-ml:pinned-nightly-py37-gpu"
+env_vars: {}
+
+python:
+  pip_packages: ["boto3", "numpy", "torch", "tqdm", "pyarrow"]
+  conda_packages: []
+
+post_build_cmds:
+  - pip uninstall -y ray
+  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install -U ray[default]
