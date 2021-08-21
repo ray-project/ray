@@ -75,6 +75,8 @@ message ClientTask {
   TaskOptions options = 7;
   // Options passed to create the default remote task excution environment.
   TaskOptions baseline_options = 8;
+  // A namespace parameter.
+  string namespace = 9;
 }
 
 message ClientTaskTicket {
@@ -253,6 +255,7 @@ message KVListResponse {
 message InitRequest {
   // job_config of ray.init
   bytes job_config = 1;
+  string ray_init_kwargs = 2;
 }
 
 message InitResponse {
