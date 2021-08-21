@@ -112,17 +112,6 @@ class ClientBuilder:
                 dashboard_url.
         """
         old_ray_cxt = None
-        if ray.util.client.ray.is_connected(
-        ) and self._allow_multiple_connections:
-            raise ValueError("It's in single-client mode. We can't create"
-                             " new client in multi-client mode")
-
-        if ray.util.client.num_connected_contexts(
-        ) != 0 and not self._allow_multiple_connections:
-            raise ValueError("Multiple clients are connected. Additional "
-                             "connections must be created with"
-                             " `ray.init(allow_multiple=True)`")
-
         if self._allow_multiple_connections:
             old_ray_cxt = ray.util.client.ray.set_context(None)
         client_info_dict = ray.util.client_connect.connect(

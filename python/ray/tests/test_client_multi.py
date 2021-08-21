@@ -30,12 +30,21 @@ def test_multi_cli_basic(call_ray_start):
     with pytest.raises(Exception), cli1:
         ray.get(b)
 
+    ray.init("ray://localhost:25001")
+    c = ray.put(30)
+
     with cli1:
         assert 10 == ray.get(a)
 
     with cli2:
         assert 20 == ray.get(b)
 
+    with pytest.raises(Exception), cl1:
+        ray.get(c)
+
+    with pytest.raises(Exception), cl2:
+        ray.get(c)
+
 
 @pytest.mark.skipif(
     sys.platform == "win32",
@@ -44,23 +53,12 @@ def test_multi_cli_basic(call_ray_start):
     "call_ray_start",
     ["ray start --head --ray-client-server-port 25001 --port 0"],
     indirect=True)
-def test_multi_cli_error_1(call_ray_start):
+def test_multi_cli_init(call_ray_start):
     cli1 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
-    with pytest.raises(ValueError):
-        cli2 = ray.init("ray://localhost:25001")  # noqa
-
-
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="PSUtil does not work the same on windows.")
-@pytest.mark.parametrize(
-    "call_ray_start",
-    ["ray start --head --ray-client-server-port 25001 --port 0"],
-    indirect=True)
-def test_multi_cli_error_2(call_ray_start):
-    cli1 = ray.init("ray://localhost:25001")  # noqa
-    with pytest.raises(ValueError):
-        cli2 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
+    cli2 = ray.init("ray://localhost:25001")  # noqa
+    cli3 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
+    with pytest.raises(Exception):
+        ray.init("ray://localhost:25001")
 
 
 @pytest.mark.skipif(
