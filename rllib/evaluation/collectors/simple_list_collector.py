@@ -94,7 +94,7 @@ class _AgentCollector:
             episode_id (EpisodeID): Unique ID for the episode we are adding the
                 initial observation for.
             agent_index (int): Unique int index (starting from 0) for the agent
-                within its episode.
+                within its episode. Not to be confused with AGENT_ID (Any).
             env_id (EnvID): The environment index (in a vectorized setup).
             t (int): The time step (episode length - 1). The initial obs has
                 ts=-1(!), then an action/reward/next-obs at t=0, etc..
