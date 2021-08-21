@@ -92,7 +92,12 @@ def client_mode_hook(func):
 
 
 def client_mode_should_convert():
-    return is_client_mode_enabled and _get_client_hook_status_on_thread()
+    # This is for testing with RAY_CLIENT_MODE.
+    # When RAY_CLIENT_MODE=1, it means that for all the tests
+    # will run with client mode.
+    # is_client_mode_enabled will be set to be off when client is off
+    return (is_client_mode_enabled or is_client_mode_enabled_by_default) and \
+      _get_client_hook_status_on_thread()
 
 
 def client_mode_wrap(func):
