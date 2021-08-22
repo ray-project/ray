@@ -1,3 +1,4 @@
+import concurrent.futures
 from contextlib import redirect_stdout, redirect_stderr
 import copy
 from datetime import datetime
@@ -57,7 +58,7 @@ class Trainable:
     """
 
     def __init__(self, config=None, logger_creator=None):
-        """Initialize an Trainable.
+        """Initializes a Trainable instance.
 
         Sets up logging and points ``self.logdir`` to a directory in which
         training outputs should be placed.

@@ -18,7 +18,7 @@ from ray.tune.utils import merge_dicts, deep_update
 def add_mixins(base, mixins):
     """Returns a new class with mixins applied in priority order."""
 
-    mixins = list(mixins or [])
+    mixins = force_list(mixins)
 
     while mixins:
 

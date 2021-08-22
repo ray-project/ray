@@ -1,19 +1,18 @@
 import math
-from typing import Optional, Type
 
 from ray.rllib.agents.a3c.a3c import DEFAULT_CONFIG as A3C_CONFIG, \
     validate_config, get_policy_class
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
+from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import ComputeGradients, AverageGradients, \
     ApplyGradients, MultiGPUTrainOneStep, TrainOneStep
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.events.events import AFTER_VALIDATE_CONFIG
+import ray.rllib.utils.events.events as events
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.policy.policy import Policy
 
 A2C_DEFAULT_CONFIG = merge_dicts(
     A3C_CONFIG,
@@ -31,12 +30,15 @@ A2C_DEFAULT_CONFIG = merge_dicts(
 )
 
 
-def execution_plan(workers: WorkerSet,
+def execution_plan(trainer: Trainer,
+                   workers: WorkerSet,
                    config: TrainerConfigDict):
     """Execution plan of the MARWIL/BC algorithm. Defines the distributed
     dataflow.
 
     Args:
+        trainer (Trainer): The Trainer object for which to determine the
+            execution plan.
         workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
             of the Trainer.
         config (TrainerConfigDict): The trainer's configuration dict.
@@ -89,9 +91,10 @@ A2CTrainer = build_trainer_class(
     name="A2C",
     default_config=A2C_DEFAULT_CONFIG,
     default_policy=A3CTFPolicy,
-    get_policy_class=get_policy_class,
-    execution_plan=execution_plan,
+    # Customizations (event subscriptions).
     event_subscriptions={
-        AFTER_VALIDATE_CONFIG: [validate_config],
+        events.AFTER_VALIDATE_CONFIG: validate_config,
+        events.SUGGEST_DEFAULT_POLICY_CLASS: get_policy_class,
+        events.SUGGEST_EXECUTION_PLAN: execution_plan,
     },
 )

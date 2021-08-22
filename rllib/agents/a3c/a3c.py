@@ -2,11 +2,12 @@ import logging
 from typing import Optional, Type
 
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
-from ray.rllib.agents.trainer import with_common_config
+from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.agents.trainer_template import build_trainer_class
 from ray.rllib.execution.rollout_ops import AsyncGradients
 from ray.rllib.execution.train_ops import ApplyGradients
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
+import ray.rllib.utils.events.events as events
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.util.iter import LocalIterator
@@ -47,25 +48,29 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Policy class picker function. Class is chosen based on DL-framework.
+def get_policy_class(trainer: Trainer, config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    """Policy class picker function.
+    
+    If None is returned, Trainer will use its built-in default policy class
+    (which may be None as well, in which case, an error is raised).
 
     Args:
+        trainer (Trainer): The Trainer object for which to determine the
+            (default) policy class.
         config (TrainerConfigDict): The trainer's configuration dict.
 
     Returns:
         Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
             If None, use `default_policy` provided in build_trainer_class().
     """
+    # Class is chosen based on DL-framework.
     if config["framework"] == "torch":
         from ray.rllib.agents.a3c.a3c_torch_policy import \
             A3CTorchPolicy
         return A3CTorchPolicy
-    else:
-        return A3CTFPolicy
 
 
-def validate_config(config: TrainerConfigDict) -> None:
+def validate_config(trainer: Trainer, config: TrainerConfigDict) -> None:
     """Checks and updates the config based on settings.
 
     Rewrites rollout_fragment_length to take into account n_step truncation.
@@ -103,6 +108,11 @@ A3CTrainer = build_trainer_class(
     name="A3C",
     default_config=DEFAULT_CONFIG,
     default_policy=A3CTFPolicy,
-    get_policy_class=get_policy_class,
-    validate_config=validate_config,
-    execution_plan=execution_plan)
+    execution_plan=execution_plan,
+    # Customizations (event subscriptions).
+    event_subscriptions={
+        events.AFTER_VALIDATE_CONFIG: validate_config,
+        events.SUGGEST_DEFAULT_POLICY_CLASS: get_policy_class,
+        #events.SUGGEST_EXECUTION_PLAN: execution_plan,
+    }
+)

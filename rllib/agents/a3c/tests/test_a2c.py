@@ -11,7 +11,7 @@ class TestA2C(unittest.TestCase):
     """Sanity tests for A2C exec impl."""
 
     def setUp(self):
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, local_mode=True)#TODO
 
     def tearDown(self):
         ray.shutdown()

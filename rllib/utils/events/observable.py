@@ -1,6 +1,7 @@
 import collections
-from typing import Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional, Union
 
+from ray.rllib.utils import force_list
 from ray.rllib.utils.typing import EventName
 
 
@@ -31,7 +32,7 @@ class Observable:
         self.subscribers: Dict[str, List[Callable]] = \
             collections.defaultdict(list)
 
-    def subscribe_to(self, event: EventName, callback: Callable) -> None:
+    def subscribe_to(self, event: EventName, callbacks: Union[Callable, List[Callable]]) -> None:
         """Binds a callback to an event (str) on this Observable.
 
         The callback may be a function or a bound method of some observer
@@ -40,13 +41,16 @@ class Observable:
 
         Args:
             event (EventName): The name of the event to subscribe to.
-            callback (Callable): The callable to be called whenever the event
-                is triggered.
+            callback (Union[Callable, List[Callable]]): The callable(s) to be
+                called whenever the event is triggered.
         """
-        self.subscribers[event].append(callback)
+        callbacks = force_list(callbacks)
+        for callback in callbacks:
+            if not callable(callback):
+                raise ValueError(f"`callback` ({callback}) must be a callable!")
+            self.subscribers[event].append(callback)
 
-    # TODO: good debugging: warn if a registered event doesn't get triggered for a long time?
-    def trigger_event(self, event: EventName, *args, **kwargs) -> None:
+    def trigger_event(self, event: EventName, *args, **kwargs) -> Optional[Any]:
         """Triggers an event and specifies the callbacks' args/kwargs.
 
         Args:
@@ -57,10 +61,24 @@ class Observable:
             kwargs (Any): The **kwargs to be passed to all subscribed callables.
         """
         # Make sure there are any listeners for this specific event.
-        if event in self.subscribers:
-            # Call each listener with the given args/kwargs.
-            for callback in self.subscribers[event]:
-                callback(*args, **kwargs)
+        if event not in self.subscribers:
+            return
+
+        suggestions = []
+        # Call each listener with the given args/kwargs.
+        for callback in self.subscribers[event]:
+            ret = callback(self, *args, **kwargs)
+            if ret is not None:
+                suggestions.append(ret)
+        # If this is a "suggest_..." event, make sure there is only one
+        # suggestion and return that one (or None).
+        if event.startswith("suggest_"):
+            if len(suggestions) > 1:
+                raise ValueError(
+                    "More than one suggestion received for event "
+                    f"{event}! Only exactly one suggestion allowed to be "
+                    f"returned in total from all subscribers.")
+            return suggestions[0] if len(suggestions) == 1 else None
 
     def unsubscribe_from(self, event: EventName, callback: Callable) -> None:
         """Unsubscribes from an event.

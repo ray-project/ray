@@ -31,6 +31,7 @@ from ray.rllib.utils import deep_update, FilterManager, merge_dicts, \
 from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, override, \
     PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
+import ray.rllib.utils.events.events as events
 from ray.rllib.utils.events.events import TriggersEvent
 from ray.rllib.utils.events.observable import Observable
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
@@ -200,6 +201,14 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Whether to use "rllib" or "deepmind" preprocessors by default
     "preprocessor_pref": "deepmind",
 
+    # === Customizations ===
+    # Callbacks that will be run during various phases of training. See the
+    # `DefaultCallbacks` class and `examples/custom_metrics_and_callbacks.py`
+    # for more usage information.
+    "callbacks": DefaultCallbacks,
+    # Experimental: Event subscriptions.
+    "_event_subscriptions": None,
+
     # === Debug Settings ===
     # Set the ray.rllib.* log level for the agent process and its workers.
     # Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level will also
@@ -208,10 +217,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # `rllib train` command, you can also use the `-v` and `-vv` flags as
     # shorthand for INFO and DEBUG.
     "log_level": "WARN",
-    # Callbacks that will be run during various phases of training. See the
-    # `DefaultCallbacks` class and `examples/custom_metrics_and_callbacks.py`
-    # for more usage information.
-    "callbacks": DefaultCallbacks,
     # Whether to attempt to continue training if a worker crashes. The number
     # of currently healthy workers is reported as the "num_healthy_workers"
     # metric.
@@ -520,19 +525,28 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
     # Whether to allow unknown top-level config keys.
     _allow_unknown_configs = False
 
-    # List of top-level keys with value=dict, for which new sub-keys are
+    # List of top-level config keys with value=dict, for which new sub-keys are
     # allowed to be added to the value dict.
     _allow_unknown_subkeys = [
         "tf_session_args", "local_tf_session_args", "env_config", "model",
         "optimizer", "multiagent", "custom_resources_per_worker",
         "evaluation_config", "exploration_config",
         "extra_python_environs_for_driver", "extra_python_environs_for_worker",
-        "input_config"
+        "input_config", "_event_subscriptions"
     ]
 
     # List of top level keys with value=dict, for which we always override the
     # entire value (dict), iff the "type" key in that value dict changes.
     _override_all_subkeys_if_type_changes = ["exploration_config"]
+
+    # A default Policy class to use. When building a new Trainer class with
+    # `build_trainer_class(default_policy_class=...)`, this is first set to
+    # the value of the `default_policy_class` arg. Then the event
+    # "ON_SET_DEFAULT_POLICY_CLASS" is triggered allowing subscribers to set
+    # this to another default class. In the multi-agent case, each defined
+    # Policy can define its own class within the PolicySpecs defined in the
+    # config.multiagent.policies dict.
+    _policy_class = None
 
     @PublicAPI
     def __init__(self,
@@ -542,11 +556,11 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
         """Initialize an RLLib trainer.
 
         Args:
-            config (PartialTrainerConfigDict): User provided config (this is w/o
-                the default Trainer's `COMMON_CONFIG` (see above)). Will get
-                merged with COMMON_CONFIG in self.setup().
+            config (PartialTrainerConfigDict): User provided config (this may
+                be w/o the default Trainer's `COMMON_CONFIG` (see above)).
+                Will get merged with COMMON_CONFIG in self.setup().
             env (str): Name of the environment to use. Note that this can also
-                be specified as the `env` key in config.
+                be specified via the `env` key in config.
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
@@ -554,6 +568,10 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
         Observable.__init__(self)
 
         config = config or {}
+
+        # Subscribe to custom events defined in user's config.
+        for event, handlers in config.get("_event_subscriptions", {}).items():
+            self.subscribe_to(event, handlers)
 
         # Trainers allow env ids to be passed directly to the constructor.
         self._env_id = self._register_if_needed(
@@ -665,6 +683,59 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
 
         return result
 
+    @TriggersEvent(before=True, after=True)
+    def step(self):
+        # self._iteration gets incremented after this function returns,
+        # meaning that e. g. the first time this function is called,
+        # self._iteration will be 0.
+        evaluate_this_iter = \
+            self.config["evaluation_interval"] and \
+            (self._iteration + 1) % self.config["evaluation_interval"] == 0
+
+        # No evaluation necessary.
+        if not evaluate_this_iter:
+            res = next(self.execution_plan)
+        # We have to evaluate in this training iteration.
+        else:
+            # No parallelism.
+            if not self.config["evaluation_parallel_to_training"]:
+                res = next(self.execution_plan)
+
+            # Kick off evaluation-loop (and parallel train() call,
+            # if requested).
+            # Parallel eval + training.
+            if self.config["evaluation_parallel_to_training"]:
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    eval_future = executor.submit(self.evaluate)
+                    res = next(self.execution_plan)
+                    evaluation_metrics = eval_future.result()
+            # Sequential: train (already done above), then eval.
+            else:
+                evaluation_metrics = self.evaluate()
+
+            assert isinstance(evaluation_metrics, dict), \
+                "Trainer.evaluate() needs to return a dict."
+            res.update(evaluation_metrics)
+
+        # TODO: Replace this with event handling API as well.
+        # Check `env_task_fn` for possible update of the env's task.
+        if self.config["env_task_fn"] is not None:
+            if not callable(self.config["env_task_fn"]):
+                raise ValueError(
+                    "`env_task_fn` must be None or a callable taking "
+                    "[train_results, env, env_ctx] as args!")
+
+            def fn(env, env_context, task_fn):
+                new_task = task_fn(res, env, env_context)
+                cur_task = env.get_task()
+                if cur_task != new_task:
+                    env.set_task(new_task)
+
+            fn = partial(fn, task_fn=self.config["env_task_fn"])
+            self.workers.foreach_env_with_context(fn)
+
+        return res
+
     def _sync_filters_if_needed(self, workers: WorkerSet):
         if self.config.get("observation_filter", "NoFilter") != "NoFilter":
             FilterManager.synchronize(
@@ -706,14 +777,10 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
         self.config = self.merge_trainer_configs(self._default_config, config,
                                                  self._allow_unknown_configs)
         self.trigger_event(
-            "on_config_complete", trainer=self, config=self.config)
+            events.AFTER_CONFIG_COMPLETE, trainer=self, config=self.config)
 
         # Validate the config.
-        #self.trigger_event(
-        #    "before_validate_config", trainer=self, config=self.config)
-        self._validate_config(self.config, trainer_obj_or_none=self)
-        #self.trigger_event(
-        #    "after_validate_config", trainer=self, config=self.config)
+        self.validate_config(self.config)
 
         # Create the Trainer's Callbacks object (Policies and
         # RolloutWorkers will have their own).
@@ -744,8 +811,7 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
                     extra_config["in_evaluation"] is True
                 evaluation_config = merge_dicts(self.config, extra_config)
                 # Validate evaluation config.
-                self._validate_config(
-                    evaluation_config, trainer_obj_or_none=self)
+                self.validate_config(evaluation_config)
                 # Switch on complete_episode rollouts (evaluations are
                 # always done on n complete episodes) and set the
                 # `in_evaluation` flag.
@@ -759,18 +825,18 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
                 # If evaluation_num_workers=0, use the evaluation set's local
                 # worker for evaluation, otherwise, use its remote workers
                 # (parallelized evaluation).
-                self.evaluation_workers = self._make_workers(
+                self.evaluation_workers = self.make_workers(
                     env_creator=self.env_creator,
-                    validate_env=None,
+                    #validate_env=None,
                     policy_class=self._policy_class,
                     config=evaluation_config,
                     num_workers=self.config["evaluation_num_workers"])
 
     @override(Trainable)
     def cleanup(self):
-        if hasattr(self, "workers"):
+        if self.workers is not None:
             self.workers.stop()
-        if hasattr(self, "optimizer") and self.optimizer:
+        if self.optimizer is not None:
             self.optimizer.stop()
 
     @override(Trainable)
@@ -786,12 +852,19 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
         extra_data = pickle.load(open(checkpoint_path, "rb"))
         self.__setstate__(extra_data)
 
+    @Deprecated(new="make_workers", error=False)
+    def _make_workers(self, *args, **kwargs):
+        return self.make_workers(*args, **kwargs)
+
     @DeveloperAPI
-    def _make_workers(
+    @TriggersEvent(before=True, after=True)
+    def make_workers(
             self, *, env_creator: Callable[[EnvContext], EnvType],
-            validate_env: Optional[Callable[[EnvType, EnvContext], None]],
             policy_class: Type[Policy], config: TrainerConfigDict,
-            num_workers: int) -> WorkerSet:
+            num_workers: int,
+            # Deprecated.
+            validate_env=DEPRECATED_VALUE,
+    ) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
         Override this method by passing a custom `make_workers` into
@@ -800,9 +873,6 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
         Args:
             env_creator (callable): A function that return and Env given an env
                 config.
-            validate_env (Optional[Callable[[EnvType, EnvContext], None]]):
-                Optional callable to validate the generated environment (only
-                on worker=0).
             policy (Type[Policy]): The Policy class to use for creating the
                 policies of the workers.
             config (TrainerConfigDict): The Trainer's config.
@@ -812,9 +882,15 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
         Returns:
             WorkerSet: The created WorkerSet.
         """
+        # Handle deprecated args.
+        if validate_env != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="`validate_env`",
+                new="config.event_subscriptions['after_validate_env'] = func",
+                error=True)
+
         return WorkerSet(
             env_creator=env_creator,
-            validate_env=validate_env,
             policy_class=policy_class,
             trainer_config=config,
             num_workers=num_workers,
@@ -1351,9 +1427,16 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
                            cls._override_all_subkeys_if_type_changes)
 
     @staticmethod
-    @TriggersEvent(name="validate_config", before=True, after=True)
-    def _validate_config(config: PartialTrainerConfigDict,
-                         trainer_obj_or_none: Optional["Trainer"] = None):
+    @Deprecated(new="validate_config", error=False)
+    def _validate_config(config, trainer_obj_or_none):
+        #
+        assert trainer_obj_or_none is not None
+        return trainer_obj_or_none.validate_config(config)
+
+    @TriggersEvent(before=True, after=True)
+    def validate_config(self, config: PartialTrainerConfigDict) -> None:
+        """TODO
+        """
         # Check and resolve DL framework settings.
         # Enable eager/tracing support.
         if tf1 and config["framework"] in ["tf2", "tfe"]:
@@ -1567,7 +1650,11 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
 
         logger.warning("Recreating execution plan after failure")
         workers.reset(healthy_workers)
-        self.train_exec_impl = self.execution_plan(workers, self.config)
+        execution_plan_suggestion = self.trigger_event("suggest_execution_plan", workers, config)
+        if execution_plan_suggestion:
+            self.execution_plan = TriggersEvent(before=True, after=True)(
+                execution_plan_suggestion)
+            #self.execution_plan(workers, self.config)
 
     @override(Trainable)
     def _export_model(self, export_formats: List[str],
@@ -1620,6 +1707,10 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
             state["worker"] = self.workers.local_worker().save()
         if hasattr(self, "optimizer") and hasattr(self.optimizer, "save"):
             state["optimizer"] = self.optimizer.save()
+        # Store metrics.
+        if self.execution_plan is not None:
+            state["train_exec_impl"] = \
+                self.execution_plan.shared_metrics.get().save()
         return state
 
     def __setstate__(self, state: dict):
@@ -1630,6 +1721,9 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
                 r.restore.remote(remote_state)
         if "optimizer" in state and hasattr(self, "optimizer"):
             self.optimizer.restore(state["optimizer"])
+        if self.execution_plan is not None:
+            self.execution_plan.shared_metrics.get().restore(
+                state["train_exec_impl"])
 
     @staticmethod
     def with_updates(**overrides) -> Type["Trainer"]:

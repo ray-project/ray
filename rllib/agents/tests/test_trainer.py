@@ -27,12 +27,14 @@ class TestTrainer(unittest.TestCase):
         times on COMMON_CONFIG will be idempotent
         """
         # Given:
-        standard_config = copy.deepcopy(COMMON_CONFIG)
+        standard_config = copy.deepcopy(pg.DEFAULT_CONFIG)
+
+        trainer = pg.PGTrainer(standard_config)
 
         # When (we validate config 2 times), ...
-        Trainer._validate_config(standard_config)
+        trainer.validate_config(standard_config)
         config_v1 = copy.deepcopy(standard_config)
-        Trainer._validate_config(standard_config)
+        trainer.validate_config(standard_config)
         config_v2 = copy.deepcopy(standard_config)
 
         # ... then ...

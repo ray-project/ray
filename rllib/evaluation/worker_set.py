@@ -13,7 +13,8 @@ from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
     ShuffledInput, D4RLReader
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils import merge_dicts
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import EnvType, PolicyID, TrainerConfigDict
@@ -37,20 +38,18 @@ class WorkerSet:
     def __init__(self,
                  *,
                  env_creator: Optional[Callable[[EnvContext], EnvType]] = None,
-                 validate_env: Optional[Callable[[EnvType], None]] = None,
                  policy_class: Optional[Type[Policy]] = None,
                  trainer_config: Optional[TrainerConfigDict] = None,
                  num_workers: int = 0,
                  logdir: Optional[str] = None,
-                 _setup: bool = True):
+                 _setup: bool = True,
+                 validate_env=DEPRECATED_VALUE,
+                 ):
         """Create a new WorkerSet and initialize its workers.
 
         Args:
             env_creator (Optional[Callable[[EnvContext], EnvType]]): Function
                 that returns env given env config.
-            validate_env (Optional[Callable[[EnvType], None]]): Optional
-                callable to validate the generated environment (only on
-                worker=0).
             policy (Optional[Type[Policy]]): A rllib.policy.Policy class.
             trainer_config (Optional[TrainerConfigDict]): Optional dict that
                 extends the common config of the Trainer class.
@@ -58,6 +57,12 @@ class WorkerSet:
             logdir (Optional[str]): Optional logging directory for workers.
             _setup (bool): Whether to setup workers. This is only for testing.
         """
+        # Handle deprecated args.
+        if validate_env != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="`validate_env`",
+                new="config.event_subscriptions['after_validate_env'] = func",
+                error=True)
 
         if not trainer_config:
             from ray.rllib.agents.trainer import COMMON_CONFIG
@@ -75,7 +80,7 @@ class WorkerSet:
 
             # Create a number of remote workers.
             self._remote_workers = []
-            self.add_workers(num_workers)
+            self.add_remote_workers(num_workers)
 
             # If num_workers > 0, get the action_spaces and observation_spaces
             # to not be forced to create an Env on the local worker.
@@ -126,7 +131,11 @@ class WorkerSet:
             for e in self.remote_workers():
                 e.set_weights.remote(weights)
 
-    def add_workers(self, num_workers: int) -> None:
+    @Deprecated(new="add_remote_workers", error=False)
+    def add_workers(self, *args, **kwargs):
+        return self.add_remote_workers(*args, **kwargs)
+
+    def add_remote_workers(self, num_workers: int) -> None:
         """Creates and add a number of remote workers to this worker set.
 
         Args:
