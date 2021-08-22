@@ -10,6 +10,7 @@ import logging
 import os
 import pkgutil
 import socket
+import time
 import traceback
 from abc import ABCMeta, abstractmethod
 from base64 import b64decode
@@ -17,19 +18,17 @@ from collections import namedtuple
 from collections.abc import MutableMapping, Mapping, Sequence
 from typing import Any
 
-import aiohttp.signals
-import aiohttp.web
-import aioredis
-import time
-from aiohttp import hdrs
-from aiohttp.frozenlist import FrozenList
-from aiohttp.typedefs import PathLike
-from aiohttp.web import RouteDef
 from google.protobuf.json_format import MessageToDict
 
 import ray.new_dashboard.consts as dashboard_consts
 from ray.ray_constants import env_bool
 from ray._private.utils import binary_to_hex
+
+# All third-party dependencies that are not included in the minimal Ray
+# installation must be included in this file. This allows us to determine if
+# the agent has the necessary dependencies to be started.
+from ray.new_dashboard.optional_deps import (aiohttp, aioredis, hdrs,
+                                             FrozenList, PathLike, RouteDef)
 
 try:
     create_task = asyncio.create_task

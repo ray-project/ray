@@ -22,7 +22,6 @@ class EndpointInfo:
     http_methods: List[str]
     python_methods: Optional[List[str]] = field(default_factory=list)
     route: Optional[str] = None
-    legacy: Optional[bool] = True
 
 
 class BackendInfo:

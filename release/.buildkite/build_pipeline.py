@@ -78,6 +78,7 @@ CORE_NIGHTLY_TESTS = {
     ],
     "~/ray/release/nightly_tests/dataset/dataset_test.yaml": [
         "inference",
+        "shuffle_data_loader",
     ],
 }
 
