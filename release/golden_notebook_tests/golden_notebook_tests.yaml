@@ -5,7 +5,7 @@
 
   run:
     use_connect: True
-    autosuspend_mins: 15
+    autosuspend_mins: 30
     timeout: 3600
     script: python workloads/dask_xgboost_test.py
 
@@ -16,7 +16,7 @@
 
   run:
     use_connect: True
-    autosuspend_mins: 15
+    autosuspend_mins: 30
     timeout: 3600
     script: python workloads/modin_xgboost_test.py
 
@@ -31,7 +31,7 @@
 
   run:
     use_connect: True
-    autosuspend_mins: 15
+    autosuspend_mins: 30
     timeout: 4200
     script: python workloads/torch_tune_serve_test.py
 
