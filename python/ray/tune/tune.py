@@ -284,9 +284,9 @@ def run(
         max_concurrent_trials (int): Maximum number of trials to run
             concurrently. Must be non-negative. If None or 0, no limit will
             be applied. This is achieved by wrapping the ``search_alg`` in
-            a :class:`ConcurrencyLimiter`, and thus this argument is ignored
-            if the ``search_alg`` is already a :class:`ConcurrencyLimiter`.
-            Defaults to None.
+            a :class:`ConcurrencyLimiter`, and thus this setting this argument
+            will raise an exception if the ``search_alg`` is already a
+            :class:`ConcurrencyLimiter`. Defaults to None.
         _remote (bool): Whether to run the Tune driver in a remote function.
             This is disabled automatically if a custom trial executor is
             passed in. This is enabled by default in Ray client mode.
