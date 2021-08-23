@@ -13,7 +13,7 @@ bazel build //:libcore_worker_library_go.so
 # start ray
 cd $raySourceDir
 
-export LD_LIBRARY_PATH=./bazel-bin/:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=${PWD}/bazel-bin/:$LD_LIBRARY_PATH
 
 ray start --head --port=6379
 
@@ -24,7 +24,5 @@ go build -o worker pkg/worker/main.go
 
 #test driver (in golang directory)
 cd $raySourceDir/golang
-
-LD_LIBRARY_PATH=../bazel-bin/:$LD_LIBRARY_PATH
 
 go run pkg/driver/test.go

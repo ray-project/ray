@@ -1,13 +1,10 @@
 package main
 
 import (
-    "time"
-
     "github.com/ray-project/ray-go-worker/pkg/actor"
     "github.com/ray-project/ray-go-worker/pkg/ray"
     "github.com/ray-project/ray-go-worker/pkg/util"
 )
-import "fmt"
 
 func main() {
     ray.Init("127.0.0.1:6379", "5241590000000000")
@@ -24,24 +21,19 @@ func main() {
     util.Logger.Infof("invoke increase")
     values := actor_ref.Task((*actor.Count).Get).Remote().Get()
     util.Logger.Infof("invoke get")
-    for _, v := range values {
-        fmt.Println("v:", v)
+    getValue, ok := values[0].(*int)
+    if !ok {
+        util.Logger.Infof("remote get failed")
+    } else {
+        util.Logger.Infof("remote get result:%d", *getValue)
     }
-    fmt.Println("ok!")
+
     values = actor_ref.Task((*actor.Count).Hello).Remote().Get()
-    fmt.Printf("get values:%v\n", values)
 
     hello, ok := values[0].(*string)
     if !ok {
-        fmt.Printf("failed to get string:%v\n", hello)
+        util.Logger.Infof("failed to get string")
+    } else {
+        util.Logger.Infof("get string:%s", *hello)
     }
-    fmt.Printf("get string:%s\n", *hello)
-
-    time.Sleep(time.Minute * 5)
-}
-
-type Summable int
-
-func (s Summable) Add(n int) int {
-    return int(s) + n
 }
