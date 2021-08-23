@@ -39,8 +39,7 @@ class ObjectManagerClientPool {
 
   /// Return an existing ObjectManagerClient if exists, and connect to one if it does
   /// not. The returned pointer is borrowed, and expected to be used briefly.
-  shared_ptr<rpc::ObjectManagerClient> GetOrConnectByAddress(
-      const rpc::Address &address);
+  shared_ptr<rpc::ObjectManagerClient> GetOrConnectByAddress(const rpc::Address &address);
 
   /// Removes a connection to the worker from the pool, if one exists. Since the
   /// shared pointer will no longer be retained in the pool, the connection will
@@ -58,8 +57,8 @@ class ObjectManagerClientPool {
   /// deprecated and brought internal to the pool, so this is our bridge.
   ObjectManagerClientFactoryFn defaultClientFactory(rpc::ClientCallManager &ccm) const {
     return [&](const rpc::Address &addr) {
-    auto object_manager_client = std::make_shared<rpc::ObjectManagerClient>(
-        addr.ip_address(), addr.port(), ccm);
+      auto object_manager_client =
+          std::make_shared<rpc::ObjectManagerClient>(addr.ip_address(), addr.port(), ccm);
       return object_manager_client;
     };
   };
