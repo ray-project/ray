@@ -6,6 +6,7 @@ debian_packages:
 python:
   pip_packages:
     - pytest
+    - pandas>=1.3.0
     - xgboost_ray
     - dask
     - fastapi
