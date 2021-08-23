@@ -804,7 +804,8 @@ class Policy(metaclass=ABCMeta):
                                 self._dummy_batch.added_keys
             for key in all_accessed_keys:
                 if key not in self.view_requirements:
-                    self.view_requirements[key] = ViewRequirement()
+                    self.view_requirements[key] = ViewRequirement(
+                        used_for_compute_actions=False)
             if self._loss:
                 # Tag those only needed for post-processing (with some
                 # exceptions).
