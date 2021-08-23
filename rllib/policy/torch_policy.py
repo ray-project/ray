@@ -859,7 +859,7 @@ class TorchPolicy(Policy):
         # returned empty internal states list).
         if "state_in_0" not in self._dummy_batch:
             self._dummy_batch["state_in_0"] = \
-                self._dummy_batch["seq_lens"] = np.array([1.0])
+                self._dummy_batch[SampleBatch.SEQ_LENS] = np.array([1.0])
 
         state_ins = []
         i = 0
@@ -874,7 +874,7 @@ class TorchPolicy(Policy):
         if not os.path.exists(export_dir):
             os.makedirs(export_dir)
 
-        seq_lens = self._dummy_batch["seq_lens"]
+        seq_lens = self._dummy_batch[SampleBatch.SEQ_LENS]
         if onnx:
             file_name = os.path.join(export_dir, "model.onnx")
             torch.onnx.export(
@@ -884,14 +884,14 @@ class TorchPolicy(Policy):
                 opset_version=onnx,
                 do_constant_folding=True,
                 input_names=list(dummy_inputs.keys()) +
-                ["state_ins", "seq_lens"],
+                ["state_ins", SampleBatch.SEQ_LENS],
                 output_names=["output", "state_outs"],
                 dynamic_axes={
                     k: {
                         0: "batch_size"
                     }
                     for k in list(dummy_inputs.keys()) +
-                    ["state_ins", "seq_lens"]
+                    ["state_ins", SampleBatch.SEQ_LENS]
                 })
         else:
             traced = torch.jit.trace(self.model,
