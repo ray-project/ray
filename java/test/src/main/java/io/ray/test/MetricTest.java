@@ -89,6 +89,17 @@ public class MetricTest extends BaseTest {
     gauge.unregister();
   }
 
+  public void testAddGaugeWithTagMap() {
+    Map<String, String> tags = new HashMap<>();
+    tags.put("tag1", "value1");
+
+    Gauge gauge = new Gauge("metric1", "", tags);
+    gauge.update(2);
+    gauge.record();
+    Assert.assertTrue(doubleEqual(gauge.getValue(), 2.0));
+    gauge.unregister();
+  }
+
   public void testAddCount() {
     Map<TagKey, String> tags = new HashMap<>();
     tags.put(new TagKey("tag1"), "value1");

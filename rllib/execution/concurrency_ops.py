@@ -64,8 +64,8 @@ def Concurrently(ops: List[LocalIterator],
         round_robin_weights=round_robin_weights)
 
     if output_indexes:
-        output = (output.filter(lambda tup: tup[0] in output_indexes)
-                  .for_each(lambda tup: tup[1]))
+        output = (output.filter(lambda tup: tup[0] in output_indexes).for_each(
+            lambda tup: tup[1]))
 
     return output
 
@@ -95,7 +95,7 @@ class Enqueue:
 
     def __call__(self, x: Any) -> Any:
         try:
-            self.queue.put_nowait(x)
+            self.queue.put(x, timeout=0.001)
         except queue.Full:
             return _NextValueNotReady()
         return x
@@ -128,7 +128,7 @@ def Dequeue(input_queue: queue.Queue,
     def base_iterator(timeout=None):
         while check():
             try:
-                item = input_queue.get_nowait()
+                item = input_queue.get(timeout=0.001)
                 yield item
             except queue.Empty:
                 yield _NextValueNotReady()

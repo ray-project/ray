@@ -96,13 +96,6 @@ def parse_request_item(request_item):
             assert isinstance(arg, bytes)
             arg: HTTPRequestWrapper = pickle.loads(arg)
             return (build_starlette_request(arg.scope, arg.body), ), {}
-        elif request_item.metadata.use_serve_request:
-            return (ServeRequest(
-                arg,
-                request_item.kwargs,
-                headers=request_item.metadata.http_headers,
-                method=request_item.metadata.http_method,
-            ), ), {}
 
     return request_item.args, request_item.kwargs
 
@@ -202,7 +195,7 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
     if controller_name is None:
         name = actor_name
     else:
-        name = "{}:{}".format(actor_name, controller_name)
+        name = "{}:{}".format(controller_name, actor_name)
 
     for modifier in modifiers:
         name += "-{}".format(modifier)
@@ -235,32 +228,6 @@ def get_node_id_for_actor(actor_handle):
 
     return ray.state.actors()[actor_handle._actor_id.hex()]["Address"][
         "NodeID"]
-
-
-async def mock_imported_function(request):
-    return await request.body()
-
-
-class MockImportedBackend:
-    """Used for testing backends.ImportedBackend.
-
-    This is necessary because we need the class to be installed in the worker
-    processes. We could instead mock out importlib but doing so is messier and
-    reduces confidence in the test (it isn't truly end-to-end).
-    """
-
-    def __init__(self, arg):
-        self.arg = arg
-        self.config = None
-
-    def reconfigure(self, config):
-        self.config = config
-
-    def __call__(self, request):
-        return {"arg": self.arg, "config": self.config}
-
-    async def other_method(self, request):
-        return await request.body()
 
 
 def compute_iterable_delta(old: Iterable,
