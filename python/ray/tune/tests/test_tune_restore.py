@@ -189,18 +189,28 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 self._checked = True
 
     class CheckTrialResourcesCallback(Callback):
-        """Checks if unfinished trials are resumed with updated resources."""
+        """Checks if pending trials are requesting the right amount of
+        resources.
 
-        def __init__(self, expected_new_cpu: int):
-            self._expected_new_cpu = expected_new_cpu
+        The check happens exactly once after `check_after` number of calls
+        to on_step_begin(). Note, we deliberately delay the check to after
+        `check_after` number of steps. This is because when we start a
+        tuning job from fresh (rather than restored), trial list is still
+        empty - any check now would be trivial and thus wasted.
+        """
+
+        def __init__(self, expected_cpu: int, check_after: int = 1):
+            self._expected_cpu = expected_cpu
             self._checked = False
+            self._check_after = check_after
 
         def on_step_begin(self, iteration: int, trials: List["Trial"], **info):
-            if not self._checked:
+            if not self._checked and self._check_after == 0:
                 for trial in trials:
                     if trial.status == Trial.PENDING:
                         assert trial.resources.cpu == self._expected_new_cpu
                 self._checked = True
+                self._check_after -= 1
 
     def setUp(self):
         self.logdir = tempfile.mkdtemp()
@@ -271,7 +281,10 @@ class TuneFailResumeGridTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             tune.run(
                 "trainable",
-                callbacks=[self.FailureInjectorCallback()],
+                callbacks=[
+                    self.FailureInjectorCallback(),
+                    self.CheckTrialResourcesCallback(1)
+                ],
                 **config)
 
         analysis = tune.run(
