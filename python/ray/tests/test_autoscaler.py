@@ -204,6 +204,10 @@ class MockProvider(NodeProvider):
             return self.mock_nodes[node_id].state in ["stopped", "terminated"]
 
     def node_tags(self, node_id):
+        # Don't assume that node providers can retrieve tags from
+        # terminated nodes.
+        if self.is_terminated(node_id):
+            raise Exception(f"The node with id {node_id} has been terminated!")
         with self.lock:
             return self.mock_nodes[node_id].tags
 

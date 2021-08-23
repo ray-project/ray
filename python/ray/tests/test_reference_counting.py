@@ -572,7 +572,9 @@ def test_remove_actor_immediately_after_creation(ray_start_regular):
 
 
 # https://github.com/ray-project/ray/issues/17553
-def test_return_nested_ids(ray_start_regular):
+def test_return_nested_ids(shutdown_only):
+    ray.init()
+
     class Nested:
         def __init__(self, blocks):
             self._blocks = blocks

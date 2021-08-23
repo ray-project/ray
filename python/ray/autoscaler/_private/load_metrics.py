@@ -1,4 +1,4 @@
-from collections import namedtuple
+from collections import namedtuple, Counter
 from functools import reduce
 import logging
 import time
@@ -9,7 +9,6 @@ import ray.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES,\
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
-from ray.autoscaler._private.util import add_resources, freq_of_dicts
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.resource_demand_scheduler import \
     NodeIP, ResourceDict
@@ -21,6 +20,47 @@ LoadMetricsSummary = namedtuple("LoadMetricsSummary", [
     "head_ip", "usage", "resource_demand", "pg_demand", "request_demand",
     "node_types"
 ])
+
+
+def add_resources(dict1: Dict[str, float],
+                  dict2: Dict[str, float]) -> Dict[str, float]:
+    """Add the values in two dictionaries.
+
+    Returns:
+        dict: A new dictionary (inputs remain unmodified).
+    """
+    new_dict = dict1.copy()
+    for k, v in dict2.items():
+        new_dict[k] = v + new_dict.get(k, 0)
+    return new_dict
+
+
+def freq_of_dicts(dicts: List[Dict],
+                  serializer=lambda d: frozenset(d.items()),
+                  deserializer=dict):
+    """Count a list of dictionaries (or unhashable types).
+
+    This is somewhat annoying because mutable data structures aren't hashable,
+    and set/dict keys must be hashable.
+
+    Args:
+        dicts (List[D]): A list of dictionaries to be counted.
+        serializer (D -> S): A custom serailization function. The output type S
+            must be hashable. The default serializer converts a dictionary into
+            a frozenset of KV pairs.
+        deserializer (S -> U): A custom deserialization function. See the
+            serializer for information about type S. For dictionaries U := D.
+
+    Returns:
+        List[Tuple[U, int]]: Returns a list of tuples. Each entry in the list
+            is a tuple containing a unique entry from `dicts` and its
+            corresponding frequency count.
+    """
+    freqs = Counter(map(lambda d: serializer(d), dicts))
+    as_list = []
+    for as_set, count in freqs.items():
+        as_list.append((deserializer(as_set), count))
+    return as_list
 
 
 class LoadMetrics:
