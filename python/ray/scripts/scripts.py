@@ -588,6 +588,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                 "If the primary one is not reachable, we starts new one(s) "
                 "with `{}` in local.", cf.bold("--address"), cf.bold("--port"))
             external_addresses = address.split(",")
+            # We reuse primary redis as sharding when there's only one instance provided.
+            if len(external_addresses) == 1:
+                external_addresses.append(external_addresses[0])
             reachable = False
             try:
                 [primary_redis_ip, port] = external_addresses[0].split(":")
@@ -604,7 +607,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             if reachable:
                 ray_params.update_if_absent(
                     external_addresses=external_addresses)
-                num_redis_shards = len(external_addresses)
+                num_redis_shards = len(external_addresses) - 1
                 if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
                     cli_logger.warning(
                         "`{}` should not be specified as empty string if "

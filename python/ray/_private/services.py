@@ -895,7 +895,7 @@ def start_redis(node_ip_address,
     last_shard_port = new_port(denylist=port_denylist) - 1
     for i in range(num_redis_shards):
         if external_addresses is not None:
-            shard_address = external_addresses[i]
+            shard_address = external_addresses[i + 1]
         else:
             redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
             redis_executable = REDIS_EXECUTABLE
