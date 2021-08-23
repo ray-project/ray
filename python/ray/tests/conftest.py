@@ -10,6 +10,7 @@ import json
 import ray
 from ray.cluster_utils import Cluster
 from ray.test_utils import init_error_pubsub
+from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
 
 
 @pytest.fixture
@@ -203,6 +204,25 @@ def call_ray_start(request):
     address = address.split("'")[0]
 
     yield address
+
+    # Disconnect from the Ray cluster.
+    ray.shutdown()
+    # Kill the Ray cluster.
+    subprocess.check_call(["ray", "stop"])
+
+
+@pytest.fixture
+def call_ray_start_with_external_redis(request):
+    ports = getattr(
+        request, "param", "6379")
+    port_list = ports.split(",")
+    for port in port_list:
+        _start_redis_instance(REDIS_EXECUTABLE, int(port), password="123")
+    address_str = ",".join(map(lambda x: "localhost:" + x, port_list))
+    cmd = f"ray start --head --address={address_str} --redis-password=123".split(" ")
+    subprocess.call(cmd)
+
+    yield address_str.split(",")[0]
 
     # Disconnect from the Ray cluster.
     ray.shutdown()
