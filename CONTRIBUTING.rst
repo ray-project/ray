@@ -6,9 +6,9 @@ Reporting bugs and asking questions
 
 You can post questions or issues or feedback through the following channels:
 
-1. `Github Discussions`_: For discussions about development, questions about usage, and feature requests.
+1. `Ray Discuss`_: For discussions about development, questions about usage, and feature requests.
 2. `GitHub Issues`_: For bug reports and feature requests.
-3. `StackOverflow`_
+3. `StackOverflow`_: For general how-to usage and questions about Ray framework, native libraries and library integrations.
 
 To contribute a patch:
 ----------------------
@@ -21,7 +21,7 @@ To contribute a patch:
    a git hook that will run the linter before you push your changes.
 5. Add new unit tests for your code.
 
-.. _`Github Discussions`: https://github.com/ray-project/ray/discussions
+.. _`Ray Discuss`: https://discuss.ray.io/
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 
