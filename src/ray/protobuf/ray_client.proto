@@ -362,8 +362,19 @@ message DataResponse {
   }
 }
 
+message DataKeepAliveRequest {
+ int32 echo_request = 1;
+}
+
+message DataKeepAliveResponse {
+  int32 echo_response = 1;
+}
+
 service RayletDataStreamer {
   rpc Datapath(stream DataRequest) returns (stream DataResponse) {
+  }
+
+  rpc KeepAlive(DataKeepAliveRequest) returns (DataKeepAliveResponse) {
   }
 }
 
@@ -389,7 +400,18 @@ message LogData {
   string name = 3;
 }
 
+message LogKeepAliveRequest {
+ int32 echo_request = 1;
+}
+
+message LogKeepAliveResponse {
+  int32 echo_response = 1;
+}
+
 service RayletLogStreamer {
   rpc Logstream(stream LogSettingsRequest) returns (stream LogData) {
+  }
+
+  rpc KeepAlive(LogKeepAliveRequest) returns (LogKeepAliveResponse) {
   }
 }
