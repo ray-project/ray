@@ -161,9 +161,8 @@ class ServeController:
                         continue
                     actor_id = actor_handle._ray_actor_id.hex()
                     replica_tag = replica.replica_tag
-                    replica_version = ("None"
-                                       if replica.version.unversioned else
-                                       replica.version.code_version)
+                    replica_version = ("None" if replica.version.unversioned
+                                       else replica.version.code_version)
                     entry["actors"][actor_id] = {
                         "replica_tag": replica_tag,
                         "version": replica_version
