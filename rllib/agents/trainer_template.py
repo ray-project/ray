@@ -180,7 +180,7 @@ def build_trainer(
                                                       config)
             except TypeError as e:
                 # Keyword error: Try old way w/o kwargs.
-                if "default_execution_plan() takes 2 positional" in e.args[0]:
+                if "() takes 2 positional arguments but 3" in e.args[0]:
                     self.train_exec_impl = execution_plan(self.workers, config)
                     logger.warning(
                         "`execution_plan` functions should accept "
