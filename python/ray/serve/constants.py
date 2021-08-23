@@ -38,10 +38,6 @@ DEFAULT_LATENCY_BUCKET_MS = [
 #: Name of backend reconfiguration method implemented by user.
 BACKEND_RECONFIGURE_METHOD = "reconfigure"
 
-#: Internally reserved version tag that cannot be used by applications.
-# TODO(edoakes): this should be removed when we remove the old codepath.
-RESERVED_VERSION_TAG = "__serve_version__"
-
 #: All defined HTTP methods.
 # https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
 ALL_HTTP_METHODS = [
@@ -50,3 +46,6 @@ ALL_HTTP_METHODS = [
 ]
 
 SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
+
+#: Number of historically deleted deployments to store in the checkpoint.
+MAX_NUM_DELETED_DEPLOYMENTS = 1000

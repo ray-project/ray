@@ -131,14 +131,15 @@ class ClientAPI:
         """
         return self.worker.close()
 
-    def get_actor(self, name: str) -> "ClientActorHandle":
+    def get_actor(self, name: str,
+                  namespace: Optional[str] = None) -> "ClientActorHandle":
         """Returns a handle to an actor by name.
 
         Args:
             name: The name passed to this actor by
               Actor.options(name="name").remote()
         """
-        return self.worker.get_actor(name)
+        return self.worker.get_actor(name, namespace)
 
     def list_named_actors(self, all_namespaces: bool = False) -> List[str]:
         """List all named actors in the system.

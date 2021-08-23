@@ -1,7 +1,7 @@
 import pytest
 import ray
 from filelock import FileLock
-from ray.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver, SignalActor
 from ray.experimental import workflow
 from ray.tests.conftest import *  # noqa
 
@@ -34,7 +34,7 @@ def test_step_resources(workflow_start_regular, tmp_path):
     lock_path = str(tmp_path / "lock")
     # We use signal actor here because we can't guarantee the order of tasks
     # sent from worker to raylet.
-    signal_actor = ray.test_utils.SignalActor.remote()
+    signal_actor = SignalActor.remote()
 
     @workflow.step
     def step_run():
