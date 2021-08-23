@@ -90,7 +90,7 @@ def r2d2_loss(policy: Policy, model, _,
         model,
         train_batch,
         state_batches=state_batches,
-        seq_lens=train_batch.get("seq_lens"),
+        seq_lens=train_batch.get(SampleBatch.SEQ_LENS),
         explore=False,
         is_training=True)
 
@@ -100,7 +100,7 @@ def r2d2_loss(policy: Policy, model, _,
         target_model,
         train_batch,
         state_batches=state_batches,
-        seq_lens=train_batch.get("seq_lens"),
+        seq_lens=train_batch.get(SampleBatch.SEQ_LENS),
         explore=False,
         is_training=True)
 
@@ -148,7 +148,7 @@ def r2d2_loss(policy: Policy, model, _,
                 config["gamma"] ** config["n_step"] * q_target_best_masked_tp1
 
         # Seq-mask all loss-related terms.
-        seq_mask = sequence_mask(train_batch["seq_lens"], T)[:, :-1]
+        seq_mask = sequence_mask(train_batch[SampleBatch.SEQ_LENS], T)[:, :-1]
         # Mask away also the burn-in sequence at the beginning.
         burn_in = policy.config["burn_in"]
         if burn_in > 0 and burn_in < T:

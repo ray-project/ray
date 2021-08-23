@@ -1,6 +1,7 @@
 import argparse
 
 import numpy as np
+import ray.util.sgd.v2 as sgd
 import torch
 import torch.nn as nn
 from ray.util.sgd.v2 import Trainer, TorchConfig
@@ -80,6 +81,7 @@ def train_func(config):
     for _ in range(epochs):
         train(train_loader, model, loss_fn, optimizer)
         result = validate(validation_loader, model, loss_fn)
+        sgd.report(**result)
         results.append(result)
 
     return results

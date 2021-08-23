@@ -135,9 +135,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
       const NodeID &node_id,
       const std::unordered_map<std::string, double> &changed_resources);
 
-  /// Add resources changed listener.
-  void AddResourcesChangedListener(std::function<void()> listener);
-
   // Update node normal task resources.
   void UpdateNodeNormalTaskResources(const NodeID &node_id,
                                      const rpc::ResourcesData &heartbeat);
@@ -208,12 +205,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   absl::flat_hash_map<NodeID, SchedulingResources> cluster_scheduling_resources_;
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
-  /// Normal task resources could be uploaded by 1) Raylets' periodical reporters; 2)
-  /// Rejected RequestWorkerLeaseReply. So we need the timestamps to decide whether an
-  /// upload is latest.
-  absl::flat_hash_map<NodeID, int64_t> latest_resources_normal_task_timestamp_;
-  /// The resources changed listeners.
-  std::vector<std::function<void()>> resources_changed_listeners_;
+
   /// Max batch size for broadcasting
   size_t max_broadcasting_batch_size_;
 

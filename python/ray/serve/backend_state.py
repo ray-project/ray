@@ -14,8 +14,7 @@ from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
                               ReplicaTag)
 from ray.serve.config import BackendConfig
-from ray.serve.constants import (RESERVED_VERSION_TAG,
-                                 MAX_NUM_DELETED_DEPLOYMENTS)
+from ray.serve.constants import MAX_NUM_DELETED_DEPLOYMENTS
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
@@ -700,18 +699,9 @@ class BackendState:
             # Redeploying should not reset the deployment's start time.
             backend_info.start_time_ms = existing_info.start_time_ms
 
-            # Old codepath. We use RESERVED_VERSION_TAG to distinguish that
-            # we shouldn't use versions at all to determine redeployment
-            # because `None` is used to indicate always redeploying.
-            if backend_info.version == RESERVED_VERSION_TAG:
-                if (existing_info.backend_config == backend_info.backend_config
-                        and existing_info.replica_config ==
-                        backend_info.replica_config):
-                    return self._backend_goals.get(backend_tag, None), False
-            # New codepath: treat version as ground truth for implementation.
-            elif (existing_info.backend_config == backend_info.backend_config
-                  and backend_info.version is not None
-                  and existing_info.version == backend_info.version):
+            if (existing_info.backend_config == backend_info.backend_config
+                    and backend_info.version is not None
+                    and existing_info.version == backend_info.version):
                 return self._backend_goals.get(backend_tag, None), False
 
         if backend_tag not in self._replicas:
@@ -761,12 +751,6 @@ class BackendState:
         This includes both explicit code version updates and changes to the
         user_config.
         """
-        # NOTE(edoakes): this short-circuits when using the legacy
-        # `create_backend` codepath -- it can be removed once we deprecate
-        # that as the version should never be None.
-        if target_version is None:
-            return 0
-
         # Short circuit if target replicas is 0 (the backend is being deleted)
         # because this will be handled in the main loop.
         if target_replicas == 0:
