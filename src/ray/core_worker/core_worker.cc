@@ -630,12 +630,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         PushError(options_.job_id, "excess_queueing_warning", stream.str(), timestamp));
   };
 
-  std::shared_ptr<ActorCreatorInterface> actor_creator =
-      std::make_shared<DefaultActorCreator>(gcs_client_);
+  actor_creator_ = std::make_shared<DefaultActorCreator>(gcs_client_);
 
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(core_worker_client_pool_, memory_store_,
-                                             task_manager_, on_excess_queueing));
+      new CoreWorkerDirectActorTaskSubmitter(*core_worker_client_pool_, *memory_store_,
+                                             *task_manager_,
+                                             *actor_creator_,
+                                             on_excess_queueing));
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;
@@ -658,7 +659,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   direct_task_submitter_ = std::make_unique<CoreWorkerDirectTaskSubmitter>(
       rpc_address_, local_raylet_client_, core_worker_client_pool_, raylet_client_factory,
       std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
-      RayConfig::instance().worker_lease_timeout_milliseconds(), std::move(actor_creator),
+      RayConfig::instance().worker_lease_timeout_milliseconds(), actor_creator_,
       RayConfig::instance().max_tasks_in_flight_per_worker(),
       boost::asio::steady_timer(io_service_));
   auto report_locality_data_callback =

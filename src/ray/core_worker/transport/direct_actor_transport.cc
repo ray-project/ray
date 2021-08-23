@@ -87,7 +87,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   if (task_queued) {
     // We must release the lock before resolving the task dependencies since
     // the callback may get called in the same call stack.
-    resolver_.ResolveDependencies(task_spec, [this, send_pos, actor_id]() {
+    resolver_.ResolveDependencies(task_spec, [this, send_pos, actor_id](Status status) {
       absl::MutexLock lock(&mu_);
       auto queue = client_queues_.find(actor_id);
       RAY_CHECK(queue != client_queues_.end());
@@ -95,13 +95,19 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       // Only dispatch tasks if the submitted task is still queued. The task
       // may have been dequeued if the actor has since failed.
       if (it != queue->second.requests.end()) {
-        it->second.second = true;
-        SendPendingTasks(actor_id);
+        if(status.ok()) {
+          it->second.second = true;
+          SendPendingTasks(actor_id);
+        } else {
+          auto task_id = it->second.first.TaskId();
+          queue->second.requests.erase(it);
+          task_finisher_.PendingTaskFailed(task_id, rpc::ErrorType::DEPEDENCE_RESOLVING_FAILED, &status);
+        }
       }
     });
   } else {
     // Do not hold the lock while calling into task_finisher_.
-    task_finisher_->MarkTaskCanceled(task_id);
+    task_finisher_.MarkTaskCanceled(task_id);
     std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
     {
       absl::MutexLock lock(&mu_);
@@ -111,7 +117,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     auto status = Status::IOError("cancelling task of dead actor");
     // No need to increment the number of completed tasks since the actor is
     // dead.
-    RAY_UNUSED(!task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED,
+    RAY_UNUSED(!task_finisher_.PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED,
                                                   &status, creation_task_exception));
   }
 
@@ -122,7 +128,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
   queue.rpc_client = nullptr;
-  core_worker_client_pool_->Disconnect(WorkerID::FromBinary(queue.worker_id));
+  core_worker_client_pool_.Disconnect(WorkerID::FromBinary(queue.worker_id));
   queue.worker_id.clear();
   queue.pending_force_kill.reset();
 }
@@ -167,7 +173,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   // Update the mapping so new RPCs go out with the right intended worker id.
   queue->second.worker_id = address.worker_id();
   // Create a new connection to the actor.
-  queue->second.rpc_client = core_worker_client_pool_->GetOrConnect(address);
+  queue->second.rpc_client = core_worker_client_pool_.GetOrConnect(address);
   // TODO(swang): This assumes that all replies from the previous incarnation
   // of the actor have been received. Fix this by setting an epoch for each
   // actor task, so we can ignore completed tasks from old epochs.
@@ -214,10 +220,10 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     auto status = Status::IOError("cancelling all pending tasks of dead actor");
     while (head != requests.end()) {
       const auto &task_spec = head->second.first;
-      task_finisher_->MarkTaskCanceled(task_spec.TaskId());
+      task_finisher_.MarkTaskCanceled(task_spec.TaskId());
       // No need to increment the number of completed tasks since the actor is
       // dead.
-      RAY_UNUSED(!task_finisher_->PendingTaskFailed(task_spec.TaskId(),
+      RAY_UNUSED(!task_finisher_.PendingTaskFailed(task_spec.TaskId(),
                                                     rpc::ErrorType::ACTOR_DIED, &status,
                                                     creation_task_exception));
       head = requests.erase(head);
@@ -228,7 +234,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     RAY_LOG(INFO) << "Failing tasks waiting for death info, size="
                   << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
     for (auto &net_err_task : wait_for_death_info_tasks) {
-      RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
+      RAY_UNUSED(task_finisher_.MarkPendingTaskFailed(
           net_err_task.second.TaskId(), net_err_task.second, rpc::ErrorType::ACTOR_DIED,
           creation_task_exception));
     }
@@ -253,7 +259,7 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
     while (deque_itr != queue.wait_for_death_info_tasks.end() &&
            /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
       auto task_spec = deque_itr->second;
-      task_finisher_->MarkPendingTaskFailed(task_spec.TaskId(), task_spec,
+      task_finisher_.MarkPendingTaskFailed(task_spec.TaskId(), task_spec,
                                             rpc::ErrorType::ACTOR_DIED);
       deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
     }
@@ -356,7 +362,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
           // because the tasks are pushed directly to the actor, not placed on any queues
           // in task_finisher_.
         } else if (status.ok()) {
-          task_finisher_->CompletePendingTask(task_id, reply, addr);
+          task_finisher_.CompletePendingTask(task_id, reply, addr);
         } else {
           // push task failed due to network error. For example, actor is dead
           // and no process response for the push task.
@@ -366,7 +372,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
           auto &queue = queue_pair->second;
 
           bool immediately_mark_object_fail = (queue.state == rpc::ActorTableData::DEAD);
-          bool will_retry = task_finisher_->PendingTaskFailed(
+          bool will_retry = task_finisher_.PendingTaskFailed(
               task_id, rpc::ErrorType::ACTOR_DIED, &status, queue.creation_task_exception,
               immediately_mark_object_fail);
           if (will_retry) {

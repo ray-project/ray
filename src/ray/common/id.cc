@@ -236,6 +236,22 @@ ObjectID ObjectID::ForActorHandle(const ActorID &actor_id) {
                              /*return_index=*/1);
 }
 
+bool ObjectID::IsActorID(const ObjectID& object_id) {
+  for(size_t i = 0; i < (ObjectID::kLength - ActorID::kLength); ++i) {
+    if(object_id.id_[i] != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+ActorID ObjectID::ToActorID(const ObjectID& object_id) {
+  std::string actor_id(
+      reinterpret_cast<const char*>(object_id.id_ + (ObjectID::kLength - ActorID::kLength)),
+      reinterpret_cast<const char*>(object_id.id_ + ObjectID::kLength));
+  return ActorID::FromBinary(actor_id);
+}
+
 ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,
                                     ObjectIDIndexType object_index) {
   RAY_CHECK(task_id_binary.size() == TaskID::Size());
