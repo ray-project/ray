@@ -164,6 +164,7 @@ def test_multi_cli_threading(call_ray_start):
     import threading
     b = threading.Barrier(2)
     ret = [0, 0]
+
     def get(idx):
         cli = ray.init("ray://localhost:25001", allow_multiple=True)
         with cli:
