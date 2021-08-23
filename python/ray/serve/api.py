@@ -43,9 +43,6 @@ _UUID_RE = re.compile(
 
 def _get_controller_namespace(detached):
     controller_namespace = ray.get_runtime_context().namespace
-    if controller_namespace == "":
-        logger.warning('Serve instance cannot be started in namespace "".')
-        controller_namespace = "serve"
 
     if not detached:
         return controller_namespace
