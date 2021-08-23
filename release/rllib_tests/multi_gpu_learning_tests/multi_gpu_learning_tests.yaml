@@ -139,7 +139,7 @@ ppo-cartpole-v0:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: 150.0
-        timesteps_total: 500000
+        timesteps_total: 300000
     stop:
         time_total_s: 600
     config:
