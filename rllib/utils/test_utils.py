@@ -183,7 +183,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 "ERROR: x ({}) is not the same as y ({})!".format(x, y)
     # String/byte comparisons.
     elif hasattr(x, "dtype") and \
-            (x.dtype == np.object or x.dtype == np.dtype("<U216")):
+            (x.dtype == np.object or str(x.dtype) == "<U216"):
         try:
             np.testing.assert_array_equal(x, y)
             if false is True:
