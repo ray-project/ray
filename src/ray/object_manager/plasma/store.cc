@@ -50,6 +50,7 @@
 #include "ray/object_manager/plasma/malloc.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
+#include "ray/object_manager/plasma/get_request_queue.h"
 #include "ray/util/util.h"
 
 namespace fb = plasma::flatbuf;
@@ -79,69 +80,6 @@ void ToPlasmaObject(const LocalObject &entry, PlasmaObject *object, bool check_s
   object->mmap_size = entry.allocation.mmap_size;
 }
 }  // namespace
-
-struct GetRequest {
-  GetRequest(instrumented_io_context &io_context, const std::shared_ptr<Client> &client,
-             const std::vector<ObjectID> &object_ids, bool is_from_worker);
-  /// The client that called get.
-  std::shared_ptr<Client> client;
-  /// The object IDs involved in this request. This is used in the reply.
-  std::vector<ObjectID> object_ids;
-  /// The object information for the objects in this request. This is used in
-  /// the reply.
-  std::unordered_map<ObjectID, PlasmaObject> objects;
-  /// The minimum number of objects to wait for in this request.
-  int64_t num_objects_to_wait_for;
-  /// The number of object requests in this wait request that are already
-  /// satisfied.
-  int64_t num_satisfied;
-  /// Whether or not the request comes from the core worker. It is used to track the size
-  /// of total objects that are consumed by core worker.
-  bool is_from_worker;
-
-  void AsyncWait(int64_t timeout_ms,
-                 std::function<void(const boost::system::error_code &)> on_timeout) {
-    RAY_CHECK(!is_removed_);
-    // Set an expiry time relative to now.
-    timer_.expires_from_now(std::chrono::milliseconds(timeout_ms));
-    timer_.async_wait(on_timeout);
-  }
-
-  void CancelTimer() {
-    RAY_CHECK(!is_removed_);
-    timer_.cancel();
-  }
-
-  /// Mark that the get request is removed.
-  void MarkRemoved() {
-    RAY_CHECK(!is_removed_);
-    is_removed_ = true;
-  }
-
-  bool IsRemoved() const { return is_removed_; }
-
- private:
-  /// The timer that will time out and cause this wait to return to
-  /// the client if it hasn't already returned.
-  boost::asio::steady_timer timer_;
-  /// Whether or not if this get request is removed.
-  /// Once the get request is removed, any operation on top of the get request shouldn't
-  /// happen.
-  bool is_removed_ = false;
-};
-
-GetRequest::GetRequest(instrumented_io_context &io_context,
-                       const std::shared_ptr<Client> &client,
-                       const std::vector<ObjectID> &object_ids, bool is_from_worker)
-    : client(client),
-      object_ids(object_ids.begin(), object_ids.end()),
-      objects(object_ids.size()),
-      num_satisfied(0),
-      is_from_worker(is_from_worker),
-      timer_(io_context) {
-  std::unordered_set<ObjectID> unique_ids(object_ids.begin(), object_ids.end());
-  num_objects_to_wait_for = unique_ids.size();
-}
 
 PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allocator,
                          const std::string &socket_name, uint32_t delay_on_oom_ms,
@@ -189,6 +127,7 @@ void PlasmaStore::Stop() { acceptor_.close(); }
 
 // If this client is not already using the object, add the client to the
 // object's list of clients, otherwise do nothing.
+// TODO: MissionToMars Can be move to GetRequestQueue
 void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
                                        const LocalObject *entry,
                                        const std::shared_ptr<Client> &client) {
@@ -422,6 +361,7 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_req) {
   RemoveGetRequest(get_req);
 }
 
+/// TODO: MissionToMars Can be move to get_request_queue.h
 void PlasmaStore::UpdateObjectGetRequests(const ObjectID &object_id) {
   auto it = object_get_requests_.find(object_id);
   // If there are no get requests involving this object, then return.

@@ -338,6 +338,7 @@ cc_library(
         "src/ray/object_manager/plasma/plasma_allocator.cc",
         "src/ray/object_manager/plasma/store.cc",
         "src/ray/object_manager/plasma/store_runner.cc",
+        "src/ray/object_manager/plasma/get_request_queue.cc",
     ],
     hdrs = [
         "src/ray/object_manager/common.h",
@@ -349,6 +350,7 @@ cc_library(
         "src/ray/object_manager/plasma/store.h",
         "src/ray/object_manager/plasma/store_runner.h",
         "src/ray/thirdparty/dlmalloc.c",
+        "src/ray/object_manager/plasma/get_request_queue.h",
     ],
     copts = PLASMA_COPTS,
     linkopts = PLASMA_LINKOPTS,
