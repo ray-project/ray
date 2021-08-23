@@ -120,3 +120,8 @@ class LogstreamServicer(ray_client_pb2_grpc.RayletLogStreamerServicer):
             with self.client_lock:
                 if initialized:
                     self.num_clients -= 1
+
+    def KeepAlive(self, request, context):
+        echo = request.echo_request
+        response = ray_client_pb2.LogKeepAliveResponse(echo_response=echo)
+        return response

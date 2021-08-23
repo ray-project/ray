@@ -4,7 +4,9 @@ the ray clientserver.
 import sys
 import logging
 import queue
+import random
 import threading
+import time
 import grpc
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -15,6 +17,9 @@ logger = logging.getLogger(__name__)
 # The client logger need its own root -- possibly this one.
 # For the moment, let's just not propogate beyond this point.
 logger.propagate = False
+
+# How often to make manual KeepAlive calls
+LOGSCLIENT_KEEPALIVE_INTERVAL = 30
 
 
 class LogstreamClient:
@@ -28,15 +33,21 @@ class LogstreamClient:
         self.channel = channel
         self._metadata = metadata
         self.request_queue = queue.Queue()
+        self.stub = ray_client_pb2_grpc.RayletLogStreamerStub(self.channel)
         self.log_thread = self._start_logthread()
         self.log_thread.start()
+        self.keepalive_thread = self._start_keepalive_thread()
+        self.keepalive_thread.start()
 
     def _start_logthread(self) -> threading.Thread:
         return threading.Thread(target=self._log_main, args=(), daemon=True)
 
+    def _start_keepalive_thread(self) -> threading.Thread:
+        return threading.Thread(
+            target=self._keepalive_main, args=(), daemon=True)
+
     def _log_main(self) -> None:
-        stub = ray_client_pb2_grpc.RayletLogStreamerStub(self.channel)
-        log_stream = stub.Logstream(
+        log_stream = self.stub.Logstream(
             iter(self.request_queue.get, None), metadata=self._metadata)
         try:
             for record in log_stream:
@@ -54,6 +65,31 @@ class LogstreamClient:
                 # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
                 # in practice we may need to think about the correct semantics
                 # here.
+                logger.info("Server disconnected from logs channel")
+            else:
+                # Some other, unhandled, gRPC error
+                logger.exception(
+                    f"Got Error from logger channel -- shutting down: {e}")
+
+    def _keepalive_main(self) -> None:
+        try:
+            while True:
+                start = time.time()
+                request = ray_client_pb2.LogKeepAliveRequest(
+                    echo_request=random.randint(0, 2**16))
+                duration = time.time() - start
+                response = self.stub.KeepAlive(request)
+                if response.echo_response != request.echo_request:
+                    logger.warning("Data client keepalive echo did not match.")
+                time.sleep(max(LOGSCLIENT_KEEPALIVE_INTERVAL - duration, 0))
+        except grpc.RpcError as e:
+            if e.code() == grpc.StatusCode.CANCELLED:
+                # Graceful shutdown. We've cancelled our own connection.
+                logger.info("Shutting down logs keep alive thread")
+            elif e.code() in (grpc.StatusCode.UNAVAILABLE,
+                              grpc.StatusCode.RESOURCE_EXHAUSTED):
+                # Server may have dropped. Similar to _log_main we could
+                # technically attempt a reconnect here
                 logger.info("Server disconnected from logs channel")
             else:
                 # Some other, unhandled, gRPC error

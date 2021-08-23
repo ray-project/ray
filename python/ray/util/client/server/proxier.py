@@ -473,6 +473,11 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 logger.debug(f"Client detached: {client_id}")
                 self.num_clients -= 1
 
+    def KeepAlive(self, request, context):
+        echo = request.echo_request
+        response = ray_client_pb2.DataKeepAliveRequest(echo_response=echo)
+        return response
+
 
 class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
     def __init__(self, proxy_manager: ProxyManager):
@@ -510,6 +515,11 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
                 yield resp
         except Exception:
             logger.exception("Proxying Logstream failed!")
+
+    def KeepAlive(self, request, context):
+        echo = request.echo_request
+        response = ray_client_pb2.LogKeepAliveResponse(echo_response=echo)
+        return response
 
 
 def serve_proxier(connection_str: str,

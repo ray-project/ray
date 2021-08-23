@@ -143,6 +143,11 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         logger.debug("Shutting down ray.")
                         ray.shutdown()
 
+    def KeepAlive(self, request, context):
+        echo = request.echo_request
+        response = ray_client_pb2.DataKeepAliveRequest(echo_response=echo)
+        return response
+
     def _init(self, client_id: str, context: Any):
         """
         Checks if resources allow for another client.

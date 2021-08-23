@@ -3,7 +3,9 @@ back to the ray clientserver.
 """
 import logging
 import queue
+import random
 import threading
+import time
 import grpc
 
 from typing import Any, Callable, Dict, Optional
@@ -18,6 +20,9 @@ logger = logging.getLogger(__name__)
 INT32_MAX = (2**31) - 1
 
 ResponseCallable = Callable[[ray_client_pb2.DataResponse], None]
+
+# How often to make manual KeepAlive calls
+DATACLIENT_KEEPALIVE_INTERVAL = 30
 
 
 class DataClient:
@@ -44,6 +49,7 @@ class DataClient:
         self._client_id = client_id
         self._metadata = metadata
         self._in_shutdown = False
+        self.stub = ray_client_pb2_grpc.RayletDataStreamerStub(self.channel)
         self.data_thread.start()
 
     def _next_id(self) -> int:
@@ -59,9 +65,12 @@ class DataClient:
     def _start_datathread(self) -> threading.Thread:
         return threading.Thread(target=self._data_main, args=(), daemon=True)
 
+    def _start_keepalive_thread(self) -> threading.Thread:
+        return threading.Thread(
+            target=self._keepalive_main, args=(), daemon=True)
+
     def _data_main(self) -> None:
-        stub = ray_client_pb2_grpc.RayletDataStreamerStub(self.channel)
-        resp_stream = stub.Datapath(
+        resp_stream = self.stub.Datapath(
             iter(self.request_queue.get, None),
             metadata=self._metadata,
             wait_for_ready=True)
@@ -99,6 +108,31 @@ class DataClient:
             else:
                 logger.exception(
                     "Got Error from data channel -- shutting down:")
+
+    def _keepalive_main(self) -> None:
+        try:
+            while True:
+                start = time.time()
+                request = ray_client_pb2.LogKeepAliveRequest(
+                    echo_request=random.randint(0, 2**16))
+                duration = time.time() - start
+                response = self.stub.KeepAlive(request)
+                if response.echo_response != request.echo_request:
+                    logger.warning("Data client keepalive echo did not match.")
+                time.sleep(max(DATACLIENT_KEEPALIVE_INTERVAL - duration, 0))
+        except grpc.RpcError as e:
+            if e.code() == grpc.StatusCode.CANCELLED:
+                # Graceful shutdown. We've cancelled our own connection.
+                logger.info("Shutting down logs keep alive thread")
+            elif e.code() in (grpc.StatusCode.UNAVAILABLE,
+                              grpc.StatusCode.RESOURCE_EXHAUSTED):
+                # Server may have dropped. Similar to _log_main we could
+                # technically attempt a reconnect here
+                logger.info("Server disconnected from logs channel")
+            else:
+                # Some other, unhandled, gRPC error
+                logger.exception(
+                    f"Got Error from logger channel -- shutting down: {e}")
 
     def close(self) -> None:
         if self.request_queue is not None:
