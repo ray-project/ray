@@ -37,7 +37,9 @@ class DataClient:
         """
         self.channel = channel
         self.request_queue = queue.Queue()
+        self.stop_keepalive = threading.Event()
         self.data_thread = self._start_datathread()
+        self.keepalive_thread = self._start_keepalive_thread()
         self.ready_data: Dict[int, Any] = {}
         self.cv = threading.Condition()
         self.lock = threading.RLock()
@@ -51,6 +53,7 @@ class DataClient:
         self._in_shutdown = False
         self.stub = ray_client_pb2_grpc.RayletDataStreamerStub(self.channel)
         self.data_thread.start()
+        self.keepalive_thread.start()
 
     def _next_id(self) -> int:
         with self.lock:
@@ -111,7 +114,7 @@ class DataClient:
 
     def _keepalive_main(self) -> None:
         try:
-            while True:
+            while not self.stop_keepalive.is_set():
                 start = time.time()
                 request = ray_client_pb2.KeepAliveRequest(
                     echo_request=random.randint(0, 2**16))
@@ -119,7 +122,10 @@ class DataClient:
                 response = self.stub.KeepAlive(request)
                 if response.echo_response != request.echo_request:
                     logger.warning("Data client keepalive echo did not match.")
-                time.sleep(max(DATACLIENT_KEEPALIVE_INTERVAL - duration, 0))
+                wait_time = max(DATACLIENT_KEEPALIVE_INTERVAL - duration, 0)
+                if self.stop_keepalive.wait(timeout=wait_time):
+                    # Keep looping until the stop_keepalive event is set
+                    break
         except grpc.RpcError as e:
             if e.code() == grpc.StatusCode.CANCELLED:
                 # Graceful shutdown. We've cancelled our own connection.
@@ -135,10 +141,13 @@ class DataClient:
                     f"Got Error from logger channel -- shutting down: {e}")
 
     def close(self) -> None:
+        self.stop_keepalive.set()
         if self.request_queue is not None:
             self.request_queue.put(None)
         if self.data_thread is not None:
             self.data_thread.join()
+        if self.keepalive_thread is not None:
+            self.keepalive_thread.join()
 
     def _blocking_send(self, req: ray_client_pb2.DataRequest
                        ) -> ray_client_pb2.DataResponse:

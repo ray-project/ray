@@ -36,6 +36,7 @@ class LogstreamClient:
         self.stub = ray_client_pb2_grpc.RayletLogStreamerStub(self.channel)
         self.log_thread = self._start_logthread()
         self.log_thread.start()
+        self.stop_keepalive = threading.Event()
         self.keepalive_thread = self._start_keepalive_thread()
         self.keepalive_thread.start()
 
@@ -73,7 +74,7 @@ class LogstreamClient:
 
     def _keepalive_main(self) -> None:
         try:
-            while True:
+            while not self.stop_keepalive.is_set():
                 start = time.time()
                 request = ray_client_pb2.KeepAliveRequest(
                     echo_request=random.randint(0, 2**16))
@@ -81,7 +82,10 @@ class LogstreamClient:
                 response = self.stub.KeepAlive(request)
                 if response.echo_response != request.echo_request:
                     logger.warning("Logs client keepalive echo did not match.")
-                time.sleep(max(LOGSCLIENT_KEEPALIVE_INTERVAL - duration, 0))
+                wait_time = max(LOGSCLIENT_KEEPALIVE_INTERVAL - duration, 0)
+                if self.stop_keepalive.wait(timeout=wait_time):
+                    # Keep looping until the stop_keepalive event is set
+                    break
         except grpc.RpcError as e:
             if e.code() == grpc.StatusCode.CANCELLED:
                 # Graceful shutdown. We've cancelled our own connection.
@@ -125,9 +129,12 @@ class LogstreamClient:
         self.request_queue.put(req)
 
     def close(self) -> None:
+        self.stop_keepalive.set()
         self.request_queue.put(None)
         if self.log_thread is not None:
             self.log_thread.join()
+        if self.keepalive_thread is not None:
+            self.keepalive_thread.join()
 
     def disable_logs(self) -> None:
         req = ray_client_pb2.LogSettingsRequest()
