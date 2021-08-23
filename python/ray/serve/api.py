@@ -15,21 +15,20 @@ from starlette.requests import Request
 from uvicorn.lifespan.on import LifespanOn
 from uvicorn.config import Config
 
+import ray
 from ray import cloudpickle
 from ray.actor import ActorHandle
 from ray.util.annotations import PublicAPI
 from ray.serve.common import BackendInfo, GoalId
-from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
-from ray.serve.constants import (HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME)
+from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
+from ray.serve.constants import HTTP_PROXY_TIMEOUT, SERVE_CONTROLLER_NAME
 from ray.serve.controller import ReplicaTag, ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.http_util import (ASGIHTTPSender, make_fastapi_class_based_view)
+from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.utils import (ensure_serialization_context, format_actor_name,
                              get_current_node_resource_key, get_random_letters,
                              logger, LoggingContext)
-
-import ray
 
 if TYPE_CHECKING:
     from fastapi import APIRouter, FastAPI  # noqa: F401

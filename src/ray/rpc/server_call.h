@@ -242,7 +242,7 @@ class ServerCallImpl : public ServerCall {
   grpc::ServerContext context_;
 
   /// The response writer.
-  grpc_impl::ServerAsyncResponseWriter<Reply> response_writer_;
+  grpc::ServerAsyncResponseWriter<Reply> response_writer_;
 
   /// The event loop.
   instrumented_io_context &io_service_;
@@ -276,7 +276,7 @@ class ServerCallImpl : public ServerCall {
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class Request, class Reply>
 using RequestCallFunction = void (GrpcService::AsyncService::*)(
-    grpc::ServerContext *, Request *, grpc_impl::ServerAsyncResponseWriter<Reply> *,
+    grpc::ServerContext *, Request *, grpc::ServerAsyncResponseWriter<Reply> *,
     grpc::CompletionQueue *, grpc::ServerCompletionQueue *, void *);
 
 /// Implementation of `ServerCallFactory`
