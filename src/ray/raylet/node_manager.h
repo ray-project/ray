@@ -103,9 +103,6 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The minimum object size that can be spilled by each spill operation.
   int64_t min_spilling_size;
-  // Whether to the raylet should push resource reports to GCS or wait for GCS to pull the
-  // reports from raylets.
-  bool pull_based_resource_reporting;
 };
 
 class HeartbeatSender {
@@ -248,9 +245,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Fill out the resource report. This can be called by either method to transport the
   /// report to GCS.
   void FillResourceReport(rpc::ResourcesData &resources_data);
-
-  /// Report resource usage to the GCS.
-  void ReportResourceUsage();
 
   /// Write out debug state to a file.
   void DumpDebugState() const;
@@ -633,7 +627,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::unique_ptr<pubsub::SubscriberInterface> core_worker_subscriber_;
   /// The object table. This is shared between the object manager and node
   /// manager.
-  std::unique_ptr<ObjectDirectoryInterface> object_directory_;
+  std::unique_ptr<IObjectDirectory> object_directory_;
   /// Manages client requests for object transfers and availability.
   ObjectManager object_manager_;
   /// A Plasma object store client. This is used for creating new objects in

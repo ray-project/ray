@@ -5,7 +5,7 @@ from ray.tests.conftest import *  # noqa
 import pytest
 from filelock import FileLock
 import ray
-from ray.test_utils import run_string_as_driver_nonblocking
+from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.exceptions import RaySystemError
 from ray.experimental import workflow
 from ray.experimental.workflow.tests import utils

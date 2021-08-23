@@ -5,6 +5,7 @@ import platform
 import random
 import signal
 import sys
+import time
 
 import numpy as np
 
@@ -13,7 +14,7 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray.internal.internal_api import memory_summary
-from ray.test_utils import SignalActor, put_object, wait_for_condition
+from ray._private.test_utils import SignalActor, put_object, wait_for_condition
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -531,6 +532,46 @@ def test_object_unpin_stress(ray_start_cluster):
 
     wait_for_condition(lambda: ((f"Plasma memory usage {total_size}"
                                  " MiB") in memory_summary(stats_only=True)))
+
+
+@pytest.mark.parametrize("inline_args", [True, False])
+def test_inlined_nested_refs(ray_start_cluster, inline_args):
+    cluster = ray_start_cluster
+    config = {}
+    if not inline_args:
+        config["max_direct_call_object_size"] = 0
+    cluster.add_node(
+        num_cpus=2,
+        object_store_memory=100 * 1024 * 1024,
+        _system_config=config)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            return
+
+        def nested(self):
+            return ray.put("x")
+
+    @ray.remote
+    def nested_nested(a):
+        return a.nested.remote()
+
+    @ray.remote
+    def foo(ref):
+        time.sleep(1)
+        return ray.get(ref)
+
+    a = Actor.remote()
+    nested_nested_ref = nested_nested.remote(a)
+    # We get nested_ref's value directly from its owner.
+    nested_ref = ray.get(nested_nested_ref)
+
+    del nested_nested_ref
+    x = foo.remote(nested_ref)
+    del nested_ref
+    ray.get(x)
 
 
 if __name__ == "__main__":
