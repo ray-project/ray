@@ -130,7 +130,7 @@ enum ErrorType {
   ACTOR_CREATION_FAILED = 6;
   // Indicates that the runtime_env failed to be created.
   RUNTIME_ENV_SETUP_FAILED = 7;
-
+  // Indicates there is some error when resolving the dependence
   DEPEDENCE_RESOLVING_FAILED = 8;
 }
 
