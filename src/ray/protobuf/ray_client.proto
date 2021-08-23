@@ -61,6 +61,8 @@ message ClientTask {
   // A name parameter, if the payload can be called in more than one way
   // (like a method on a payload object).
   string name = 2;
+  // A namespace parameter.
+  string namespace = 9;
   // A reference to the payload.
   bytes payload_id = 3;
   // Positional parameters to pass to this call.
@@ -252,6 +254,7 @@ message KVListResponse {
 message InitRequest {
   // job_config of ray.init
   bytes job_config = 1;
+  string ray_init_kwargs = 2;
 }
 
 message InitResponse {

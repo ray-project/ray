@@ -780,13 +780,13 @@ class Policy(metaclass=ABCMeta):
                 i += 1
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
-            postprocessed_batch["seq_lens"] = seq_lens
+            postprocessed_batch[SampleBatch.SEQ_LENS] = seq_lens
         # Switch on lazy to-tensor conversion on `postprocessed_batch`.
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         # Calling loss, so set `is_training` to True.
         train_batch.is_training = True
         if seq_lens is not None:
-            train_batch["seq_lens"] = seq_lens
+            train_batch[SampleBatch.SEQ_LENS] = seq_lens
         train_batch.count = self._dummy_batch.count
         # Call the loss function, if it exists.
         if self._loss is not None:
@@ -934,15 +934,21 @@ class Policy(metaclass=ABCMeta):
             else:
                 space = state
             for vr in view_reqs:
-                vr["state_in_{}".format(i)] = ViewRequirement(
-                    "state_out_{}".format(i),
-                    shift=-1,
-                    used_for_compute_actions=True,
-                    batch_repeat_value=self.config.get("model", {}).get(
-                        "max_seq_len", 1),
-                    space=space)
-                vr["state_out_{}".format(i)] = ViewRequirement(
-                    space=space, used_for_training=True)
+                # Only override if user has not already provided
+                # custom view-requirements for state_in_n.
+                if "state_in_{}".format(i) not in vr:
+                    vr["state_in_{}".format(i)] = ViewRequirement(
+                        "state_out_{}".format(i),
+                        shift=-1,
+                        used_for_compute_actions=True,
+                        batch_repeat_value=self.config.get("model", {}).get(
+                            "max_seq_len", 1),
+                        space=space)
+                # Only override if user has not already provided
+                # custom view-requirements for state_out_n.
+                if "state_out_{}".format(i) not in vr:
+                    vr["state_out_{}".format(i)] = ViewRequirement(
+                        space=space, used_for_training=True)
 
     @Deprecated(new="save", error=False)
     def export_checkpoint(self, export_dir: str) -> None:
