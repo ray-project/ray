@@ -32,6 +32,14 @@ class ActorCreatorInterface {
   /// \return Status
   virtual Status RegisterActor(const TaskSpecification &task_spec) = 0;
 
+  /// Asynchronously request GCS to register the actor.
+  /// \param task_spec The specification for the actor creation task.
+  /// \param callback Callback that will be called after the actor info is registered to
+  /// GCS
+  /// \return Status
+  virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                                    const gcs::StatusCallback &callback) = 0;
+
   /// Asynchronously request GCS to create the actor.
   ///
   /// \param task_spec The specification for the actor creation task.
@@ -60,6 +68,11 @@ class DefaultActorCreator : public ActorCreatorInterface {
       return Status::TimedOut(stream.str());
     }
     return status;
+  }
+
+  Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                            const gcs::StatusCallback &callback) override {
+    return gcs_client_->Actors().AsyncRegisterActor(task_spec, callback);
   }
 
   Status AsyncCreateActor(const TaskSpecification &task_spec,

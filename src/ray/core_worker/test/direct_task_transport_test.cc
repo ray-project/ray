@@ -231,6 +231,11 @@ class MockActorCreator : public ActorCreatorInterface {
     return Status::OK();
   }
 
+  Status AsyncRegisterActor(const TaskSpecification &task_spec,
+                            const gcs::StatusCallback &callback) override {
+    return Status::OK();
+  }
+
   ~MockActorCreator() {}
 };
 
