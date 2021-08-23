@@ -39,45 +39,6 @@ void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
   }
 }
 
-void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
-                                           const std::vector<ObjectID> &object_ids) {
-  for (const auto &object_id : object_ids) {
-    // Create a object eviction subscription message.
-    auto wait_request = std::make_unique<rpc::WorkerObjectEvictionSubMessage>();
-    wait_request->set_object_id(object_id.Binary());
-    wait_request->set_intended_worker_id(owner_address.worker_id());
-    rpc::Address subscriber_address;
-    subscriber_address.set_raylet_id(self_node_id_.Binary());
-    subscriber_address.set_ip_address(self_node_address_);
-    subscriber_address.set_port(self_node_port_);
-    wait_request->mutable_subscriber_address()->CopyFrom(subscriber_address);
-
-    // If the subscription succeeds, register the subscription callback.
-    // Callback is invoked when the owner publishes the object to evict.
-    auto subscription_callback = [this, owner_address](const rpc::PubMessage &msg) {
-      RAY_CHECK(msg.has_worker_object_eviction_message());
-      const auto object_eviction_msg = msg.worker_object_eviction_message();
-      const auto object_id = ObjectID::FromBinary(object_eviction_msg.object_id());
-      ReleaseFreedObject(object_id);
-      core_worker_subscriber_->Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                                           owner_address, object_id.Binary());
-    };
-
-    // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this](const std::string &object_id_binary) {
-      const auto object_id = ObjectID::FromBinary(object_id_binary);
-      ReleaseFreedObject(object_id);
-    };
-
-    auto sub_message = std::make_unique<rpc::SubMessage>();
-    sub_message->mutable_worker_object_eviction_message()->Swap(wait_request.get());
-
-    core_worker_subscriber_->Subscribe(
-        std::move(sub_message), rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address,
-        object_id.Binary(), subscription_callback, owner_dead_callback);
-  }
-}
-
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Unpinning object " << object_id;
   // The object should be in one of these stats. pinned, spilling, or spilled.
@@ -130,7 +91,7 @@ void LocalObjectManager::SpillObjectUptoMaxThroughput() {
   }
 }
 
-bool LocalObjectManager::IsSpillingInProgress() {
+bool LocalObjectManager::IsSpillingInProgress() const {
   absl::MutexLock lock(&mutex_);
   return num_active_workers_ > 0;
 }
@@ -349,6 +310,7 @@ std::string LocalObjectManager::GetLocalSpilledObjectURL(const ObjectID &object_
     // In that case, the URL is supposed to be obtained by OBOD.
     return "";
   }
+
   auto entry = spilled_objects_url_.find(object_id);
   if (entry != spilled_objects_url_.end()) {
     return entry->second;

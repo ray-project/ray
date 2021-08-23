@@ -39,21 +39,17 @@ class LocalObjectManager {
   LocalObjectManager(
       const NodeID &node_id, std::string self_node_address, int self_node_port,
       size_t free_objects_batch_size, int64_t free_objects_period_ms,
-      IOWorkerPoolInterface &io_worker_pool,
-      gcs::ObjectInfoAccessor &object_info_accessor,
-      rpc::CoreWorkerClientPool &owner_client_pool, int max_io_workers,
-      int64_t min_spilling_size, bool is_external_storage_type_fs,
+      IOWorkerPoolInterface &io_worker_pool, rpc::CoreWorkerClientPool &owner_client_pool,
+      int max_io_workers, int64_t min_spilling_size, bool is_external_storage_type_fs,
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
-      std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
-      pubsub::SubscriberInterface *core_worker_subscriber)
+      std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable)
       : self_node_id_(node_id),
         self_node_address_(self_node_address),
         self_node_port_(self_node_port),
         free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
-        object_info_accessor_(object_info_accessor),
         owner_client_pool_(owner_client_pool),
         on_objects_freed_(on_objects_freed),
         last_free_objects_at_ms_(current_time_ms()),
@@ -62,8 +58,7 @@ class LocalObjectManager {
         max_active_workers_(max_io_workers),
         is_plasma_object_spillable_(is_plasma_object_spillable),
         is_external_storage_type_fs_(is_external_storage_type_fs),
-        max_fused_object_count_(max_fused_object_count),
-        core_worker_subscriber_(core_worker_subscriber) {}
+        max_fused_object_count_(max_fused_object_count) {}
 
   /// Pin objects.
   ///
@@ -75,14 +70,8 @@ class LocalObjectManager {
                   std::vector<std::unique_ptr<RayObject>> &&objects,
                   const rpc::Address &owner_address);
 
-  /// Wait for the objects' owner to free the object.  The objects will be
-  /// released when the owner at the given address fails or replies that the
-  /// object can be evicted.
-  ///
-  /// \param owner_address The address of the owner of the objects.
-  /// \param object_ids The objects to be freed.
-  void WaitForObjectFree(const rpc::Address &owner_address,
-                         const std::vector<ObjectID> &object_ids);
+  /// Release an object that has been freed by its owner.
+  void ReleaseFreedObject(const ObjectID &object_id);
 
   /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
@@ -113,16 +102,6 @@ class LocalObjectManager {
   /// objects.
   void FlushFreeObjects();
 
-  /// Judge if objects are deletable from pending_delete_queue and delete them if
-  /// necessary.
-  /// TODO(sang): We currently only use 1 IO worker per each call to this method because
-  /// delete is a low priority tasks. But we can potentially support more workers to be
-  /// used at once.
-  ///
-  /// \param max_batch_size Maximum number of objects that can be deleted by one
-  /// invocation.
-  void ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size);
-
   /// Return True if spilling is in progress.
   /// This is a narrow interface that is accessed by plasma store.
   /// We are using the narrow interface here because plasma store is running in a
@@ -130,7 +109,7 @@ class LocalObjectManager {
   /// which is against the general raylet design.
   ///
   /// \return True if spilling is still in progress. False otherwise.
-  bool IsSpillingInProgress();
+  bool IsSpillingInProgress() const;
 
   /// Populate object spilling stats.
   ///
@@ -168,9 +147,6 @@ class LocalObjectManager {
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
                             std::function<void(const ray::Status &)> callback);
 
-  /// Release an object that has been freed by its owner.
-  void ReleaseFreedObject(const ObjectID &object_id);
-
   /// Do operations that are needed after spilling objects such as
   /// 1. Unpin the pending spilling object.
   /// 2. Update the spilled URL to the owner.
@@ -184,6 +160,16 @@ class LocalObjectManager {
   /// \param urls_to_delete List of urls to delete from external storages.
   void DeleteSpilledObjects(std::vector<std::string> &urls_to_delete);
 
+  /// Judge if objects are deletable from pending_delete_queue and delete them if
+  /// necessary.
+  /// TODO(sang): We currently only use 1 IO worker per each call to this method because
+  /// delete is a low priority tasks. But we can potentially support more workers to be
+  /// used at once.
+  ///
+  /// \param max_batch_size Maximum number of objects that can be deleted by one
+  /// invocation.
+  void ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size);
+
   const NodeID self_node_id_;
   const std::string self_node_address_;
   const int self_node_port_;
@@ -196,9 +182,6 @@ class LocalObjectManager {
 
   /// A worker pool, used for spilling and restoring objects.
   IOWorkerPoolInterface &io_worker_pool_;
-
-  /// A GCS client, used to update locations for spilled objects.
-  gcs::ObjectInfoAccessor &object_info_accessor_;
 
   /// Cache of gRPC clients to owners of objects pinned on
   /// this node.

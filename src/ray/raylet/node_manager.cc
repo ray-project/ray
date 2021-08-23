@@ -256,7 +256,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           self_node_id_, config.node_manager_address, config.node_manager_port,
           RayConfig::instance().free_objects_batch_size(),
           RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
-          gcs_client_->Objects(), worker_rpc_pool_,
+          worker_rpc_pool_,
           /*max_io_workers*/ config.max_io_workers,
           /*min_spilling_size*/ config.min_spilling_size,
           /*is_external_storage_type_fs*/
@@ -270,8 +270,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           /*is_plasma_object_spillable*/
           [this](const ObjectID &object_id) {
             return object_manager_.IsPlasmaObjectSpillable(object_id);
-          },
-          /*core_worker_subscriber_=*/core_worker_subscriber_.get()),
+          }),
       high_plasma_storage_usage_(RayConfig::instance().high_plasma_storage_usage()),
       local_gc_run_time_ns_(absl::GetCurrentTimeNanos()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
@@ -2073,8 +2072,43 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     return;
   }
   local_object_manager_.PinObjects(object_ids, std::move(results), owner_address);
+
   // Wait for the object to be freed by the owner, which keeps the ref count.
-  local_object_manager_.WaitForObjectFree(owner_address, object_ids);
+  for (const auto &object_id : object_ids) {
+    // Create a object eviction subscription message.
+    auto wait_request = std::make_unique<rpc::WorkerObjectEvictionSubMessage>();
+    wait_request->set_object_id(object_id.Binary());
+    wait_request->set_intended_worker_id(owner_address.worker_id());
+    rpc::Address subscriber_address;
+    subscriber_address.set_raylet_id(self_node_id_.Binary());
+    subscriber_address.set_ip_address(initial_config_.node_manager_address);
+    subscriber_address.set_port(initial_config_.node_manager_port);
+    wait_request->mutable_subscriber_address()->CopyFrom(subscriber_address);
+
+    // If the subscription succeeds, register the subscription callback.
+    // Callback is invoked when the owner publishes the object to evict.
+    auto subscription_callback = [this, owner_address](const rpc::PubMessage &msg) {
+      RAY_CHECK(msg.has_worker_object_eviction_message());
+      const auto object_eviction_msg = msg.worker_object_eviction_message();
+      const auto object_id = ObjectID::FromBinary(object_eviction_msg.object_id());
+      local_object_manager_.ReleaseFreedObject(object_id);
+      core_worker_subscriber_->Unsubscribe(rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                           owner_address, object_id.Binary());
+    };
+
+    // Callback that is invoked when the owner of the object id is dead.
+    auto owner_dead_callback = [this](const std::string &object_id_binary) {
+      const auto object_id = ObjectID::FromBinary(object_id_binary);
+      local_object_manager_.ReleaseFreedObject(object_id);
+    };
+
+    auto sub_message = std::make_unique<rpc::SubMessage>();
+    sub_message->mutable_worker_object_eviction_message()->Swap(wait_request.get());
+
+    core_worker_subscriber_->Subscribe(
+        std::move(sub_message), rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address,
+        object_id.Binary(), subscription_callback, owner_dead_callback);
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
