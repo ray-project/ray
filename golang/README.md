@@ -1,8 +1,30 @@
-#
+# build ray
+https://docs.ray.io/en/master/development.html#building-ray-on-linux-macos-full
 
-#build ray golang worker
+cd $raySourceDir/python
+
+pip install -e . --verbose
+
+# build golang shared library
+cd $raySourceDir
+
+bazel build //:libcore_worker_library_go.so
+
+# start ray
+cd $raySourceDir
+
+export LD_LIBRARY_PATH=./bazel-bin/:$LD_LIBRARY_PATH
+
+ray start --head --port=6379
+
+#build ray golang worker (in golang directory)
+cd $raySourceDir/golang
+
 go build -o worker pkg/worker/main.go
 
-#test driver
-LD_LIBRARY_PATH=/root/ray/bazel-bin/:$LD_LIBRARY_PATH
+#test driver (in golang directory)
+cd $raySourceDir/golang
+
+LD_LIBRARY_PATH=../bazel-bin/:$LD_LIBRARY_PATH
+
 go run pkg/driver/test.go

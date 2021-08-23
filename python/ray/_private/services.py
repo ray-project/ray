@@ -53,6 +53,9 @@ GCS_SERVER_EXECUTABLE = os.path.join(
 DEFAULT_WORKER_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
 
+GOLANG_WORKER_EXECUTABLE = os.path.join(
+    RAY_PATH, "../../golang/worker" + EXE_SUFFIX)
+
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
