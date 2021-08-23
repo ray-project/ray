@@ -60,10 +60,10 @@ def ppo_surrogate_loss(
         # Derive max_seq_len from the data itself, not from the seq_lens
         # tensor. This is in case e.g. seq_lens=[2, 3], but the data is still
         # 0-padded up to T=5 (as it's the case for attention nets).
-        B = tf.shape(train_batch["seq_lens"])[0]
+        B = tf.shape(train_batch[SampleBatch.SEQ_LENS])[0]
         max_seq_len = tf.shape(logits)[0] // B
 
-        mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
+        mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
         mask = tf.reshape(mask, [-1])
 
         def reduce_mean_valid(t):
