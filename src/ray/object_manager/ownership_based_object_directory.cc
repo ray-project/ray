@@ -115,7 +115,7 @@ std::shared_ptr<rpc::CoreWorkerClient> OwnershipBasedObjectDirectory::GetClient(
 ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
     const ObjectID &object_id, const NodeID &node_id, const ObjectInfo &object_info) {
   const WorkerID &worker_id = object_info.owner_worker_id;
-  rpc::Address owner_address = GetOwnerAddressFromObjectInfo(object_info);
+  const auto owner_address = GetOwnerAddressFromObjectInfo(object_info);
   std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
   if (rpc_client == nullptr) {
     RAY_LOG(DEBUG) << "Object " << object_id << " does not have owner. "
@@ -123,38 +123,16 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
                    << "This should only happen for Plasma store warmup objects.";
     return Status::OK();
   }
-  rpc::AddObjectLocationOwnerRequest request;
-  request.set_intended_worker_id(object_info.owner_worker_id.Binary());
-  request.set_object_id(object_id.Binary());
-  request.set_node_id(node_id.Binary());
-
   metrics_num_object_locations_added_++;
-
-  auto operation = [rpc_client, request, worker_id, object_id,
-                    node_id](const SequencerDoneCallback &done_callback) {
-    rpc_client->AddObjectLocationOwner(
-        request, [worker_id, object_id, node_id, done_callback](
-                     Status status, const rpc::AddObjectLocationOwnerReply &reply) {
-          if (!status.ok()) {
-            RAY_LOG(DEBUG) << "Worker " << worker_id << " failed to add the location "
-                           << node_id << " for " << object_id
-                           << ", the object has most likely been freed: "
-                           << status.ToString();
-          } else {
-            RAY_LOG(DEBUG) << "Added location " << node_id << " for object " << object_id
-                           << " on owner " << worker_id;
-          }
-          done_callback();
-        });
-  };
-  sequencer_.Post(object_id, operation);
+  location_buffers_[worker_id][object_id] = rpc::ObjectLocationState::ADDED;
+  SendObjectLocationUpdateBatchIfPossible(worker_id, node_id, owner_address);
   return Status::OK();
 }
 
 ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
     const ObjectID &object_id, const NodeID &node_id, const ObjectInfo &object_info) {
   const WorkerID &worker_id = object_info.owner_worker_id;
-  rpc::Address owner_address = GetOwnerAddressFromObjectInfo(object_info);
+  const auto owner_address = GetOwnerAddressFromObjectInfo(object_info);
   std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
   if (rpc_client == nullptr) {
     RAY_LOG(DEBUG) << "Object " << object_id << " does not have owner. "
@@ -162,34 +140,70 @@ ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
                    << "This should only happen for Plasma store warmup objects.";
     return Status::OK();
   }
-
-  rpc::RemoveObjectLocationOwnerRequest request;
-  request.set_intended_worker_id(worker_id.Binary());
-  request.set_object_id(object_id.Binary());
-  request.set_node_id(node_id.Binary());
-
   metrics_num_object_locations_removed_++;
-
-  auto operation = [rpc_client, request, worker_id, object_id,
-                    node_id](const SequencerDoneCallback &done_callback) {
-    rpc_client->RemoveObjectLocationOwner(
-        request, [worker_id, object_id, node_id, done_callback](
-                     Status status, const rpc::RemoveObjectLocationOwnerReply &reply) {
-          if (!status.ok()) {
-            RAY_LOG(DEBUG) << "Worker " << worker_id << " failed to remove the location "
-                           << node_id << " for " << object_id
-                           << ", the object has most likely been freed: "
-                           << status.ToString();
-          } else {
-            RAY_LOG(DEBUG) << "Removed location " << node_id << " for object "
-                           << object_id << " on owner " << worker_id;
-          }
-          done_callback();
-        });
-  };
-  sequencer_.Post(object_id, operation);
+  location_buffers_[worker_id][object_id] = rpc::ObjectLocationState::REMOVED;
+  SendObjectLocationUpdateBatchIfPossible(worker_id, node_id, owner_address);
   return Status::OK();
 };
+
+void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfPossible(
+    const WorkerID &worker_id, const NodeID &node_id, const rpc::Address &owner_address) {
+  auto it = in_flight_requests_.find(worker_id);
+  if (it != in_flight_requests_.end()) {
+    // If there's an in-flight request, the buffer will be sent once the request is
+    // replied from the owner.
+    return;
+  }
+
+  in_flight_requests_.emplace(worker_id);
+  // Do nothing if there's no update to this owner.
+  auto location_buffer_it = location_buffers_.find(worker_id);
+  if (location_buffer_it == location_buffers_.end()) {
+    return;
+  }
+
+  const auto &object_state_buffers = location_buffer_it->second;
+  RAY_CHECK(object_state_buffers.size() != 0);
+
+  rpc::UpdateObjectLocationBatchRequest request;
+  request.set_intended_worker_id(worker_id.Binary());
+  request.set_node_id(node_id.Binary());
+  auto object_state_buffers_it = object_state_buffers.begin();
+  auto batch_size = 0;
+  auto max_batch_size = 1000;
+  while (object_state_buffers_it != object_state_buffers.end() &&
+         batch_size <= max_batch_size) {
+    const auto &object_id = object_state_buffers_it->first;
+    const auto &object_state = object_state_buffers_it->second;
+
+    auto state = request.add_object_location_states();
+    state->set_object_id(object_id.Binary());
+    state->set_state(object_state);
+    batch_size++;
+    object_state_buffers_it++;
+  }
+  location_buffer_it->second.erase(object_state_buffers.begin(), object_state_buffers_it);
+
+  if (object_state_buffers.size() == 0) {
+    location_buffers_.erase(location_buffer_it);
+  }
+
+  auto owner_client = GetClient(owner_address);
+  owner_client->UpdateObjectLocationBatch(
+      request, [this, worker_id, node_id, owner_address](
+                   Status status, const rpc::UpdateObjectLocationBatchReply &reply) {
+        // TODO(sang): Handle network failures.
+        if (!status.ok()) {
+          RAY_LOG(DEBUG) << "Owner " << worker_id << " failed to update locations for "
+                         << node_id << ". The owner is most likely dead. Status: "
+                         << status.ToString();
+        }
+        auto in_flight_request_it = in_flight_requests_.find(worker_id);
+        RAY_CHECK(in_flight_request_it != in_flight_requests_.end());
+        in_flight_requests_.erase(in_flight_request_it);
+        SendObjectLocationUpdateBatchIfPossible(worker_id, node_id, owner_address);
+      });
+}
 
 void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
     const rpc::WorkerObjectLocationsPubMessage &location_info, const ObjectID &object_id,

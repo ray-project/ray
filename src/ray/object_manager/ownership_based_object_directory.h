@@ -65,8 +65,13 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   ray::Status UnsubscribeObjectLocations(const UniqueID &callback_id,
                                          const ObjectID &object_id) override;
 
+  /// Report to the owner that the given object is added to the current node.
+  /// This method guarantees ordering and batches requests.
   ray::Status ReportObjectAdded(const ObjectID &object_id, const NodeID &node_id,
                                 const ObjectInfo &object_info) override;
+
+  /// Report to the owner that the given object is removed to the current node.
+  /// This method guarantees ordering and batches requests.
   ray::Status ReportObjectRemoved(const ObjectID &object_id, const NodeID &node_id,
                                   const ObjectInfo &object_info) override;
 
@@ -119,9 +124,16 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// for any subsequent requests.
   absl::flat_hash_map<WorkerID, std::shared_ptr<rpc::CoreWorkerClient>>
       worker_rpc_clients_;
-  /// Used to order add/remove updates for a single ObjectID,
-  /// so we don't lose updates at the directory.
-  Sequencer<ObjectID> sequencer_;
+  // /// Used to order add/remove updates for a single ObjectID,
+  // /// so we don't lose updates at the directory.
+  // Sequencer<ObjectID> sequencer_;
+
+  /// A buffer for batch object location updates.
+  absl::flat_hash_map<WorkerID, absl::flat_hash_map<ObjectID, rpc::ObjectLocationState>>
+      location_buffers_;
+
+  /// A set of in-flight UpdateObjectLocationBatch requests.
+  absl::flat_hash_set<WorkerID> in_flight_requests_;
 
   /// Get or create the rpc client in the worker_rpc_clients.
   std::shared_ptr<rpc::CoreWorkerClient> GetClient(const rpc::Address &owner_address);
@@ -130,6 +142,12 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   void ObjectLocationSubscriptionCallback(
       const rpc::WorkerObjectLocationsPubMessage &location_info,
       const ObjectID &object_id, bool location_lookup_failed);
+
+  /// Send object location update batch from the location_buffers_ if there's no in-flight
+  /// request.
+  void SendObjectLocationUpdateBatchIfPossible(const WorkerID &worker_id,
+                                               const NodeID &node_id,
+                                               const rpc::Address &owner_address);
 
   /// Metrics
 
