@@ -1,6 +1,5 @@
 import math
 import time
-import random
 from abc import ABC
 from collections import defaultdict, OrderedDict
 from collections.abc import Iterable
@@ -15,9 +14,8 @@ from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
                               ReplicaTag)
 from ray.serve.config import BackendConfig
-from ray.serve.constants import (
-    MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-    MAX_NUM_DELETED_DEPLOYMENTS)
+from ray.serve.constants import (MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+                                 MAX_NUM_DELETED_DEPLOYMENTS)
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
@@ -26,12 +24,14 @@ CHECKPOINT_KEY = "serve-backend-state-checkpoint"
 SLOW_STARTUP_WARNING_S = 30
 SLOW_STARTUP_WARNING_PERIOD_S = 30
 
+
 class ReplicaState(Enum):
     SHOULD_START = 1
     STARTING_OR_UPDATING = 2
     RUNNING = 3
     SHOULD_STOP = 4
     STOPPING = 5
+
 
 class ReplicaStartingStatus(Enum):
     PENDING = 1
@@ -355,7 +355,7 @@ class BackendReplica(VersionedReplica):
             self._state = ReplicaState.RUNNING
         elif start_status == ReplicaStartingStatus.PENDING:
             if time.time() - self._start_time > SLOW_STARTUP_WARNING_S:
-                start_status =  ReplicaStartingStatus.PENDING_SLOW_START
+                start_status = ReplicaStartingStatus.PENDING_SLOW_START
         elif start_status == ReplicaStartingStatus.FAILED:
             self._state = ReplicaState.SHOULD_STOP
 
@@ -586,8 +586,8 @@ class BackendState:
         self._prev_startup_warnings: Dict[BackendTag, float] = defaultdict(
             float)
 
-        self._replica_failed_to_start_counter: Dict[
-            BackendTag, int] = defaultdict(int)
+        self._replica_failed_to_start_counter: Dict[BackendTag,
+                                                    int] = defaultdict(int)
         # Keep track of backend info in case of failed deploy() rollback
         self._cur_backend_info: Dict[BackendTag, BackendInfo] = dict()
         self._prev_backend_info: Dict[BackendTag, BackendInfo] = dict()
@@ -757,7 +757,7 @@ class BackendState:
         # Set deploy() retry counter and previous
         if backend_tag in self._cur_backend_info:
             self._prev_backend_info = self._cur_backend_info[backend_tag]
-        self._cur_backend_info = backend_info
+        self._cur_backend_info[backend_tag] = backend_info
 
         self._replica_failed_to_start_counter[backend_tag] = 0
 
@@ -974,10 +974,8 @@ class BackendState:
         if checkpoint_needed:
             self._checkpoint()
 
-    def _check_completed_goals(self) -> Tuple[
-            List[Tuple[str, GoalId]],
-            List[Tuple[str, GoalId]]
-        ]:
+    def _check_completed_goals(
+            self) -> Tuple[List[Tuple[str, GoalId]], List[Tuple[str, GoalId]]]:
         """
         In each update() cycle, upon finished calling _scale_all_backends(),
         check difference between target vs. running relica count for each
@@ -999,10 +997,10 @@ class BackendState:
                 backend_tag]
             failed_to_start_threshold = min(
                 MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-                target_replica_count * 3
-            )
+                target_replica_count * 3)
             # Got to make a call to complete current deploy() goal after
-            # start failure threshold reached
+            # start failure threshold reached, while we might still have
+            # pending replicas in current goal.
             if failed_to_start_count >= failed_to_start_threshold:
                 running_count = self._replicas[backend_tag].count(states=[
                     ReplicaState.RUNNING,
@@ -1010,21 +1008,14 @@ class BackendState:
                 if running_count > 0:
                     # At least one RUNNING replica at target state, partial
                     # success
-                    completed_goals.append(
-                        (
-                            backend_tag,
-                            self._backend_goals.pop(backend_tag, None)
-                        )
-                    )
-                    self._replica_failed_to_start_counter[backend_tag] = -1
+                    completed_goals.append((backend_tag,
+                                            self._backend_goals.pop(
+                                                backend_tag, None)))
+
                 else:
-                    failed_goals.append(
-                        (
-                            backend_tag,
-                            self._backend_goals.pop(backend_tag, None)
-                        )
-                    )
-                    self._replica_failed_to_start_counter[backend_tag] = -1
+                    failed_goals.append((backend_tag,
+                                         self._backend_goals.pop(
+                                             backend_tag, None)))
 
             # If we have pending ops, the current goal is *not* ready.
             if (self._replicas[backend_tag].count(states=[
@@ -1049,22 +1040,16 @@ class BackendState:
             # Check for deleting.
             if target_replica_count == 0 and len(all_running_replica) == 0:
                 deleted_backends.append(backend_tag)
-                completed_goals.append(
-                    (
-                        backend_tag,
-                        self._backend_goals.pop(backend_tag, None)
-                    )
-                )
+                completed_goals.append((backend_tag,
+                                        self._backend_goals.pop(
+                                            backend_tag, None)))
 
             # Check for a non-zero number of backends.
             elif target_replica_count == len(
                     running_at_target_version_replica):
-                completed_goals.append(
-                    (
-                        backend_tag,
-                        self._backend_goals.pop(backend_tag, None)
-                    )
-                )
+                completed_goals.append((backend_tag,
+                                        self._backend_goals.pop(
+                                            backend_tag, None)))
 
         for backend_tag in deleted_backends:
             end_time_ms = int(time.time() * 1000)
@@ -1176,24 +1161,27 @@ class BackendState:
 
         # After observe & shuffle is done with replicas sitting at new state,
         # determine which deployment goals succeeded or failed.
-        (complete_goal_ids,
-         failed_goal_ids) = self._check_completed_goals()
+        (complete_goal_ids, failed_goal_ids) = self._check_completed_goals()
 
-        for _, goal_id in complete_goal_ids:
+        for backend_tag, goal_id in complete_goal_ids:
+            self._replica_failed_to_start_counter[backend_tag] = -1
             self._goal_manager.complete_goal(goal_id)
         for backend_tag, goal_id in failed_goal_ids:
+            self._replica_failed_to_start_counter[backend_tag] = -1
             self._goal_manager.complete_goal(
                 goal_id,
                 # TODO:(jiaodong) Do we want to surface original constructor
                 # exception from other actor instead ? Might need controller
                 # level global exception handler
                 RuntimeError(f"Deployment with goal_id {goal_id} "
-                             f"failed to start. See worker exception above.")
-            )
+                             f"failed to start. See worker exception above."))
 
             if backend_tag in self._prev_backend_info:
-                logger.info(f">>>>> Reverting backend to previous backend info. {self._prev_backend_info}")
-                self.deploy_backend(backend_tag, self._prev_backend_info[backend_tag])
+                logger.info("Reverting backend to previous backend "
+                            f"info. {self._prev_backend_info}")
+                self.deploy_backend(backend_tag,
+                                    self._prev_backend_info[backend_tag])
             else:
-                logger.info(f">>>>> Reverting backend to previous backend info by deleting.")
+                logger.info("Reverting backend to previous backend "
+                            f"info by deleting backend {backend_tag}")
                 self.delete_backend(backend_tag)

@@ -23,7 +23,7 @@ from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import (
     ALL_HTTP_METHODS,
     CONTROL_LOOP_PERIOD_S,
-)[]
+)
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.storage.kv_store import RayInternalKVStore
@@ -81,11 +81,10 @@ class ServeController:
 
         self.goal_manager = AsyncGoalManager()
         self.http_state = HTTPState(controller_name, detached, http_config)
-        self.endpoint_state = EndpointState(
-            self.kv_store, self.long_poll_host)
-        self.backend_state = BackendState(
-            controller_name, detached, self.kv_store, self.long_poll_host,
-            self.goal_manager)
+        self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
+        self.backend_state = BackendState(controller_name, detached,
+                                          self.kv_store, self.long_poll_host,
+                                          self.goal_manager)
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
@@ -206,8 +205,7 @@ class ServeController:
 
         async with self.write_lock:
             if prev_version is not None:
-                existing_backend_info = self.backend_state.get_backend(
-                    name)
+                existing_backend_info = self.backend_state.get_backend(name)
                 if (existing_backend_info is None
                         or not existing_backend_info.version):
                     raise ValueError(
@@ -242,8 +240,7 @@ class ServeController:
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
         self.endpoint_state.delete_endpoint(name)
-        return self.backend_state.delete_backend(
-            name, force_kill=False)
+        return self.backend_state.delete_backend(name, force_kill=False)
 
     def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
         """Get the current information about a deployment.
@@ -257,8 +254,7 @@ class ServeController:
         Raises:
             KeyError if the deployment doesn't exist.
         """
-        backend_info: BackendInfo = self.backend_state.get_backend(
-            name)
+        backend_info: BackendInfo = self.backend_state.get_backend(name)
         if backend_info is None:
             raise KeyError(f"Deployment {name} does not exist.")
 
