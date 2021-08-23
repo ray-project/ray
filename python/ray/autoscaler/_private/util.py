@@ -277,7 +277,7 @@ def fill_node_type_min_max_workers(config):
             else:
                 global_max_workers = config["max_workers"]
                 logger.info(f"setting max workers for {node_type_name} to "
-                            "{global_max_workers}")
+                            f"{global_max_workers}")
                 node_type_data.setdefault("max_workers", global_max_workers)
 
 
