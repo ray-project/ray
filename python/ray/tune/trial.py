@@ -656,6 +656,7 @@ class Trial:
             generated_dirname = f"{str(self)}_{self.experiment_tag}"
             generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
             generated_dirname += f"_{date_str()}"
+        # This is the file path used by rsync. ['/', '(', ')'] are not allowed.
         return re.sub("[/()]", "_", generated_dirname)
 
     def invalidate_json_state(self):
