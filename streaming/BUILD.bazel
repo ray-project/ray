@@ -104,10 +104,10 @@ cc_library(
 cc_library(
     name = "streaming_metrics",
     srcs = glob([
-        "src/metrics/*.cc"
+        "src/metrics/*.cc",
     ]),
     hdrs = glob([
-      "src/metrics/*.h",
+        "src/metrics/*.h",
     ]),
     copts = COPTS,
     strip_include_prefix = "src",
