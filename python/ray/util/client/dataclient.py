@@ -126,7 +126,7 @@ class DataClient:
                 logger.info("Shutting down logs keep alive thread")
             elif e.code() in (grpc.StatusCode.UNAVAILABLE,
                               grpc.StatusCode.RESOURCE_EXHAUSTED):
-                # Server may have dropped. Similar to _log_main we could
+                # Server may have dropped. Similar to _data_main we could
                 # technically attempt a reconnect here
                 logger.info("Server disconnected from logs channel")
             else:

@@ -80,7 +80,7 @@ class LogstreamClient:
                 duration = time.time() - start
                 response = self.stub.KeepAlive(request)
                 if response.echo_response != request.echo_request:
-                    logger.warning("Data client keepalive echo did not match.")
+                    logger.warning("Logs client keepalive echo did not match.")
                 time.sleep(max(LOGSCLIENT_KEEPALIVE_INTERVAL - duration, 0))
         except grpc.RpcError as e:
             if e.code() == grpc.StatusCode.CANCELLED:
