@@ -351,7 +351,8 @@ class TFPolicy(Policy):
         if self.config["num_gpus"] <= 1:
             if not self._update_ops:
                 self._update_ops = tf1.get_collection(
-                    tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
+                    tf1.GraphKeys.UPDATE_OPS,
+                    scope=tf1.get_variable_scope().name)
             if self._update_ops:
                 logger.info("Update ops to run on apply gradient: {}".format(
                     self._update_ops))
