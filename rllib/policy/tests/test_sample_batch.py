@@ -22,11 +22,12 @@ class TestSampleBatch(unittest.TestCase):
             "b": {
                 "c": np.array([4, 5, 6])
             },
-            "seq_lens": [1, 2],
+            SampleBatch.SEQ_LENS: [1, 2],
         })
         check(len(s1), 3)
-        check(s1.size_bytes(),
-              s1["a"].nbytes + s1["b"]["c"].nbytes + s1["seq_lens"].nbytes)
+        check(
+            s1.size_bytes(), s1["a"].nbytes + s1["b"]["c"].nbytes +
+            s1[SampleBatch.SEQ_LENS].nbytes)
 
     def test_dict_properties_of_sample_batches(self):
         base_dict = {
@@ -60,7 +61,7 @@ class TestSampleBatch(unittest.TestCase):
             "b": {
                 "c": np.array([4, 5, 6])
             },
-            "seq_lens": [1, 2],
+            SampleBatch.SEQ_LENS: [1, 2],
         })
         s1.right_zero_pad(max_seq_len=5)
         check(
@@ -69,7 +70,7 @@ class TestSampleBatch(unittest.TestCase):
                 "b": {
                     "c": [4, 0, 0, 0, 0, 5, 6, 0, 0, 0]
                 },
-                "seq_lens": [1, 2]
+                SampleBatch.SEQ_LENS: [1, 2]
             })
 
     def test_concat(self):
@@ -100,7 +101,7 @@ class TestSampleBatch(unittest.TestCase):
             "b": {
                 "c": np.array([[4, 4], [5, 5], [6, 6]])
             },
-            "seq_lens": np.array([1, 2]),
+            SampleBatch.SEQ_LENS: np.array([1, 2]),
         })
         check(
             next(s1.rows()),
@@ -109,7 +110,7 @@ class TestSampleBatch(unittest.TestCase):
                 "b": {
                     "c": [4, 4]
                 },
-                "seq_lens": [1]
+                SampleBatch.SEQ_LENS: [1]
             },
         )
 
@@ -188,7 +189,7 @@ class TestSampleBatch(unittest.TestCase):
             "b": {
                 "c": np.array([4, 5, 6, 5, 6, 7])
             },
-            "seq_lens": [2, 3, 1],
+            SampleBatch.SEQ_LENS: [2, 3, 1],
             "state_in_0": [1.0, 3.0, 4.0],
         })
         # We would expect a=[1, 2, 3] now, but due to the sequence
@@ -199,7 +200,7 @@ class TestSampleBatch(unittest.TestCase):
                 "b": {
                     "c": [4, 5]
                 },
-                "seq_lens": [2],
+                SampleBatch.SEQ_LENS: [2],
                 "state_in_0": [1.0],
             })
         # Split exactly at a seq-len boundary.
@@ -209,7 +210,7 @@ class TestSampleBatch(unittest.TestCase):
                 "b": {
                     "c": [4, 5, 6, 5, 6]
                 },
-                "seq_lens": [2, 3],
+                SampleBatch.SEQ_LENS: [2, 3],
                 "state_in_0": [1.0, 3.0],
             })
         check(
@@ -218,7 +219,7 @@ class TestSampleBatch(unittest.TestCase):
                 "b": {
                     "c": [4, 5, 6, 5, 6, 7]
                 },
-                "seq_lens": [2, 3, 1],
+                SampleBatch.SEQ_LENS: [2, 3, 1],
                 "state_in_0": [1.0, 3.0, 4.0],
             })
 
@@ -228,31 +229,35 @@ class TestSampleBatch(unittest.TestCase):
             "b": {
                 "c": np.array([4, 5, 6, 5, 6, 7])
             },
-            "seq_lens": [2, 3, 1],
+            SampleBatch.SEQ_LENS: [2, 3, 1],
             "state_in_0": [1.0, 3.0, 4.0],
         })
         s_copy = s.copy(shallow=False)
         s_copy["a"][0] = 100
         s_copy["b"]["c"][0] = 200
-        s_copy["seq_lens"][0] = 3
-        s_copy["seq_lens"][1] = 2
+        s_copy[SampleBatch.SEQ_LENS][0] = 3
+        s_copy[SampleBatch.SEQ_LENS][1] = 2
         s_copy["state_in_0"][0] = 400.0
         self.assertNotEqual(s["a"][0], s_copy["a"][0])
         self.assertNotEqual(s["b"]["c"][0], s_copy["b"]["c"][0])
-        self.assertNotEqual(s["seq_lens"][0], s_copy["seq_lens"][0])
-        self.assertNotEqual(s["seq_lens"][1], s_copy["seq_lens"][1])
+        self.assertNotEqual(s[SampleBatch.SEQ_LENS][0],
+                            s_copy[SampleBatch.SEQ_LENS][0])
+        self.assertNotEqual(s[SampleBatch.SEQ_LENS][1],
+                            s_copy[SampleBatch.SEQ_LENS][1])
         self.assertNotEqual(s["state_in_0"][0], s_copy["state_in_0"][0])
 
         s_copy = s.copy(shallow=True)
         s_copy["a"][0] = 100
         s_copy["b"]["c"][0] = 200
-        s_copy["seq_lens"][0] = 3
-        s_copy["seq_lens"][1] = 2
+        s_copy[SampleBatch.SEQ_LENS][0] = 3
+        s_copy[SampleBatch.SEQ_LENS][1] = 2
         s_copy["state_in_0"][0] = 400.0
         self.assertEqual(s["a"][0], s_copy["a"][0])
         self.assertEqual(s["b"]["c"][0], s_copy["b"]["c"][0])
-        self.assertEqual(s["seq_lens"][0], s_copy["seq_lens"][0])
-        self.assertEqual(s["seq_lens"][1], s_copy["seq_lens"][1])
+        self.assertEqual(s[SampleBatch.SEQ_LENS][0],
+                         s_copy[SampleBatch.SEQ_LENS][0])
+        self.assertEqual(s[SampleBatch.SEQ_LENS][1],
+                         s_copy[SampleBatch.SEQ_LENS][1])
         self.assertEqual(s["state_in_0"][0], s_copy["state_in_0"][0])
 
 

@@ -115,6 +115,15 @@ class instrumented_io_context : public boost::asio::io_context {
   void post(std::function<void()> handler, std::shared_ptr<StatsHandle> handle)
       LOCKS_EXCLUDED(mutex_);
 
+  /// A proxy post function that collects count, queueing, and execution statistics for
+  /// the given handler.
+  ///
+  /// \param handler The handler to be posted to the event loop.
+  /// \param name A human-readable name for the handler, to be used for viewing stats
+  /// for the provided handler. Defaults to UNKNOWN.
+  void dispatch(std::function<void()> handler, const std::string name = "UNKNOWN")
+      LOCKS_EXCLUDED(mutex_);
+
   /// Sets the queueing start time, increments the current and cumulative counts and
   /// returns an opaque handle for these stats. This is used in conjunction with
   /// RecordExecution() to manually instrument an event loop handler that doesn't call

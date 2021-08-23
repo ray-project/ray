@@ -104,7 +104,7 @@ class ClientCallImpl : public ClientCall {
   std::shared_ptr<StatsHandle> stats_handle_;
 
   /// The response reader.
-  std::unique_ptr<grpc_impl::ClientAsyncResponseReader<Reply>> response_reader_;
+  std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> response_reader_;
 
   /// gRPC status of this request.
   grpc::Status status_;
@@ -158,9 +158,9 @@ class ClientCallTag {
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class Request, class Reply>
-using PrepareAsyncFunction =
-    std::unique_ptr<grpc_impl::ClientAsyncResponseReader<Reply>> (GrpcService::Stub::*)(
-        grpc::ClientContext *context, const Request &request, grpc::CompletionQueue *cq);
+using PrepareAsyncFunction = std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> (
+    GrpcService::Stub::*)(grpc::ClientContext *context, const Request &request,
+                          grpc::CompletionQueue *cq);
 
 /// `ClientCallManager` is used to manage outgoing gRPC requests and the lifecycles of
 /// `ClientCall` objects.
@@ -181,7 +181,7 @@ class ClientCallManager {
     // Start the polling threads.
     cqs_.reserve(num_threads_);
     for (int i = 0; i < num_threads_; i++) {
-      cqs_.emplace_back();
+      cqs_.push_back(std::make_unique<grpc::CompletionQueue>());
       polling_threads_.emplace_back(&ClientCallManager::PollEventsFromCompletionQueue,
                                     this, i);
     }
@@ -190,7 +190,7 @@ class ClientCallManager {
   ~ClientCallManager() {
     shutdown_ = true;
     for (auto &cq : cqs_) {
-      cq.Shutdown();
+      cq->Shutdown();
     }
     for (auto &polling_thread : polling_threads_) {
       polling_thread.join();
@@ -222,7 +222,7 @@ class ClientCallManager {
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
-        &call->context_, request, &cqs_[rr_index_++ % num_threads_]);
+        &call->context_, request, cqs_[rr_index_++ % num_threads_].get());
     call->response_reader_->StartCall();
     // Create a new tag object. This object will eventually be deleted in the
     // `ClientCallManager::PollEventsFromCompletionQueue` when reply is received.
@@ -251,7 +251,7 @@ class ClientCallManager {
     while (true) {
       auto deadline = gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
                                    gpr_time_from_millis(250, GPR_TIMESPAN));
-      auto status = cqs_[index].AsyncNext(&got_tag, &ok, deadline);
+      auto status = cqs_[index]->AsyncNext(&got_tag, &ok, deadline);
       if (status == grpc::CompletionQueue::SHUTDOWN) {
         break;
       } else if (status == grpc::CompletionQueue::TIMEOUT && shutdown_) {
@@ -293,7 +293,7 @@ class ClientCallManager {
   std::atomic<unsigned int> rr_index_;
 
   /// The gRPC `CompletionQueue` object used to poll events.
-  std::vector<grpc::CompletionQueue> cqs_;
+  std::vector<std::unique_ptr<grpc::CompletionQueue>> cqs_;
 
   /// Polling threads to check the completion queue.
   std::vector<std::thread> polling_threads_;
