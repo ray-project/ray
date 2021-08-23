@@ -29,7 +29,7 @@ def ray_client_instance(scope="module"):
 
 @pytest.fixture
 def serve_with_client(ray_client_instance):
-    ray.util.connect(ray_client_instance, namespace="")
+    ray.util.connect(ray_client_instance, namespace="default_test_namespace")
     assert ray.util.client.ray.is_connected()
 
     yield
