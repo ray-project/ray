@@ -4,7 +4,7 @@ ax-platform==0.2.1; python_version >= '3.7'
 bayesian-optimization==1.2.0
 ConfigSpace==0.4.18
 dask[complete]==2021.03.0; python_version < '3.7'
-dask[complete]==2021.06.1; python_version >= '3.7'
+dask[complete]==2021.8.1; python_version >= '3.7'
 dragonfly-opt==0.1.6
 flaml==0.5.2
 freezegun==1.1.0
@@ -21,7 +21,7 @@ keras==2.4.3
 kubernetes==17.17.0
 lightgbm==3.2.1
 matplotlib==3.3.4; python_version < '3.7'
-matplotlib==3.4.2; python_version >= '3.7'
+matplotlib==3.4.3; python_version >= '3.7'
 mlflow==1.19.0
 mock==4.0.3
 mxnet==1.8.0.post0
