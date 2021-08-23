@@ -15,6 +15,7 @@
 #include "ray/core_worker/task_manager.h"
 
 #include "ray/common/buffer.h"
+#include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
 #include "ray/util/util.h"
 
@@ -42,8 +43,9 @@ void TaskManager::AddPendingTask(const rpc::Address &caller_address,
       task_deps.push_back(spec.ArgId(i));
       RAY_LOG(DEBUG) << "Adding arg ID " << spec.ArgId(i);
     } else {
-      const auto &inlined_ids = spec.ArgInlinedIds(i);
-      for (const auto &inlined_id : inlined_ids) {
+      const auto &inlined_refs = spec.ArgInlinedRefs(i);
+      for (const auto &inlined_ref : inlined_refs) {
+        const auto inlined_id = ObjectID::FromBinary(inlined_ref.object_id());
         task_deps.push_back(inlined_id);
         RAY_LOG(DEBUG) << "Adding inlined ID " << inlined_id;
       }
@@ -109,9 +111,9 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
     if (spec.ArgByRef(i)) {
       task_deps->push_back(spec.ArgId(i));
     } else {
-      const auto &inlined_ids = spec.ArgInlinedIds(i);
-      for (const auto &inlined_id : inlined_ids) {
-        task_deps->push_back(inlined_id);
+      const auto &inlined_refs = spec.ArgInlinedRefs(i);
+      for (const auto &inlined_ref : inlined_refs) {
+        task_deps->push_back(ObjectID::FromBinary(inlined_ref.object_id()));
       }
     }
   }
@@ -189,6 +191,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
                    << return_object.size();
 
+    const auto nested_refs =
+        VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
     if (return_object.in_plasma()) {
       const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
       if (check_node_alive_(pinned_at_raylet_id)) {
@@ -221,13 +225,21 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                 reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
             return_object.metadata().size());
       }
+
       bool stored_in_direct_memory = in_memory_store_->Put(
-          RayObject(data_buffer, metadata_buffer,
-                    IdVectorFromProtobuf<ObjectID>(return_object.nested_inlined_ids())),
-          object_id);
+          RayObject(data_buffer, metadata_buffer, nested_refs), object_id);
       if (stored_in_direct_memory) {
         direct_return_ids.push_back(object_id);
       }
+    }
+
+    rpc::Address owner_address;
+    if (reference_counter_->GetOwner(object_id, &owner_address) && !nested_refs.empty()) {
+      std::vector<ObjectID> nested_ids;
+      for (const auto &nested_ref : nested_refs) {
+        nested_ids.emplace_back(ObjectRefToId(nested_ref));
+      }
+      reference_counter_->AddNestedObjectIds(object_id, nested_ids, owner_address);
     }
   }
 
@@ -383,9 +395,10 @@ void TaskManager::RemoveFinishedTaskReferences(
     if (spec.ArgByRef(i)) {
       plasma_dependencies.push_back(spec.ArgId(i));
     } else {
-      const auto &inlined_ids = spec.ArgInlinedIds(i);
-      plasma_dependencies.insert(plasma_dependencies.end(), inlined_ids.begin(),
-                                 inlined_ids.end());
+      const auto &inlined_refs = spec.ArgInlinedRefs(i);
+      for (const auto &inlined_ref : inlined_refs) {
+        plasma_dependencies.push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+      }
     }
   }
   if (spec.IsActorTask()) {
@@ -425,9 +438,10 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
       if (it->second.spec.ArgByRef(i)) {
         released_objects->push_back(it->second.spec.ArgId(i));
       } else {
-        const auto &inlined_ids = it->second.spec.ArgInlinedIds(i);
-        released_objects->insert(released_objects->end(), inlined_ids.begin(),
-                                 inlined_ids.end());
+        const auto &inlined_refs = it->second.spec.ArgInlinedRefs(i);
+        for (const auto &inlined_ref : inlined_refs) {
+          released_objects->push_back(ObjectID::FromBinary(inlined_ref.object_id()));
+        }
       }
     }
 

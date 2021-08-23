@@ -18,9 +18,9 @@ import redis
 import requests
 
 from ray import ray_constants
-from ray.test_utils import (format_web_url, wait_for_condition,
-                            wait_until_server_available, run_string_as_driver,
-                            wait_until_succeeded_without_exception)
+from ray._private.test_utils import (
+    format_web_url, wait_for_condition, wait_until_server_available,
+    run_string_as_driver, wait_until_succeeded_without_exception)
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
 from ray.new_dashboard import dashboard

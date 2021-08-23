@@ -11,6 +11,10 @@ common: &common
     LANG: en_US.UTF-8
 
 prelude_commands: &prelude_commands |-
+  # Warm up ebs to avoid cold start
+  # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-initialize.html
+  df
+  dd if=/dev/disk2s5  of=/dev/null
   ./ci/travis/upload_build_info.sh
   (which bazel && bazel clean) || true;
   . ./ci/travis/ci.sh init && source ~/.zshrc
@@ -55,8 +59,8 @@ steps:
     - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
     - python .buildkite/copy_files.py --destination branch_jars --path ./.jar/darwin
     # Upload to latest directory.
-    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
-    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
+    - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
+    - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
 
 
 - label: ":mac: :apple: Ray C++ and Libraries"
