@@ -348,7 +348,7 @@ class TFPolicy(Policy):
                 [], self.get_session(), self.variables())
 
         # Gather update ops for any batch norm layers.
-        if self.config["num_gpus"] <= 1:
+        if len(self.devices) <= 1:
             if not self._update_ops:
                 self._update_ops = tf1.get_collection(
                     tf1.GraphKeys.UPDATE_OPS,

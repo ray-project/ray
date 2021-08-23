@@ -84,15 +84,16 @@ class TestGPUs(unittest.TestCase):
         config["env"] = "CartPole-v0"
 
         # Expect no errors in local mode.
-        for num_gpus in [4]:#0, 0.1, 1, actual_gpus_available + 4]:
+        for num_gpus in [0, 0.1, 1, actual_gpus_available + 4]:
             print(f"num_gpus={num_gpus}")
-            for fake_gpus in [False]:#, True]:
+            for fake_gpus in [False, True]:
                 print(f"_fake_gpus={fake_gpus}")
                 config["num_gpus"] = num_gpus
                 config["_fake_gpus"] = fake_gpus
                 frameworks = ("tf", "torch") if num_gpus > 1 else \
                     ("tf2", "tf", "torch")
-                for _ in framework_iterator(config, frameworks="tf"):#TODOframeworks
+                for _ in framework_iterator(
+                        config, frameworks=frameworks):
                     print("direct RLlib")
                     trainer = PGTrainer(config, env="CartPole-v0")
                     trainer.stop()

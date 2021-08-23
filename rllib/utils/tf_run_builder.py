@@ -86,8 +86,5 @@ def run_timeline(sess, ops, debug_name, feed_dict={}, timeline_dir=None):
             logger.info(
                 "Executing TF run without tracing. To dump TF timeline traces "
                 "to disk, set the TF_TIMELINE_DIR environment variable.")
-        try:#TODO
-            fetches = sess.run(ops, feed_dict=feed_dict)
-        except Exception as e:
-            raise e
+        fetches = sess.run(ops, feed_dict=feed_dict)
     return fetches
