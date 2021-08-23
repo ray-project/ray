@@ -152,7 +152,7 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       }
     } else {
       // `ok == false` will occur in two situations:
-      
+
       // First, server has sent reply to client and failed, the server call's status is
       // SENDING_REPLY.
       if (server_call->GetState() == ServerCallState::SENDING_REPLY) {

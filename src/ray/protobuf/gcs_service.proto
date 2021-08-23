@@ -657,3 +657,14 @@ message GcsStatus {
   string message = 2;
 }
 ///////////////////////////////////////////////////////////////////////////////
+
+
+// Serivce that is only used to test GrpcServer
+message SleepRequest {
+  int64 sleep_time_ms = 1;
+}
+message SleepReply {
+}
+service TestService {
+  rpc sleep(SleepRequest) returns (SleepReply);
+}
