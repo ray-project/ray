@@ -50,20 +50,6 @@ class IObjectDirectory {
  public:
   virtual ~IObjectDirectory() {}
 
-  /// Lookup how to connect to a remote object manager.
-  ///
-  /// \param connection_info The connection information to fill out. This
-  /// should be pre-populated with the requested node ID. If the directory
-  /// has information about the requested node, then the rest of the fields
-  /// in this struct will be populated accordingly.
-  virtual void LookupRemoteConnectionInfo(
-      RemoteConnectionInfo &connection_info) const = 0;
-
-  /// Get information for all connected remote object managers.
-  ///
-  /// \return A vector of information for all connected remote object managers.
-  virtual std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const = 0;
-
   /// Lookup object locations. Callback may be invoked with empty list of client ids.
   ///
   /// \param object_id The object's ObjectID.

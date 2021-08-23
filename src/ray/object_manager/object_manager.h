@@ -33,10 +33,12 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/object_manager/chunk_object_reader.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
+#include "ray/object_manager/object_manager_client_pool.h"
 #include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/object_manager/plasma/store_runner.h"
 #include "ray/object_manager/pull_manager.h"
@@ -168,7 +170,8 @@ class ObjectManager : public ObjectManagerInterface,
       SpillObjectsCallback spill_objects_callback,
       std::function<void()> object_store_full_callback,
       AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
-      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object);
+      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
+      gcs::GcsClient *gcs_client);
 
   ~ObjectManager();
 
@@ -418,11 +421,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param client_id Remote server client id
   void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
 
-  /// Get the rpc client according to the node ID
-  ///
-  /// \param node_id Remote node id, will send rpc request to it
-  std::shared_ptr<rpc::ObjectManagerClient> GetRpcClient(const NodeID &node_id);
-
   /// Weak reference to main service. We ensure this object is destroyed before
   /// main_service_ is stopped.
   instrumented_io_context *main_service_;
@@ -493,6 +491,9 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Object pull manager.
   std::unique_ptr<PullManager> pull_manager_;
+
+  /// Object Manager client pool.
+  std::unique_ptr<ObjectManagerClientPool> object_manager_client_pool_;
 
   /// Running sum of the amount of memory used in the object store.
   int64_t used_memory_ = 0;

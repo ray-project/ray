@@ -48,10 +48,6 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
 
   virtual ~OwnershipBasedObjectDirectory() {}
 
-  void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
-
-  std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
-
   void HandleNodeRemoved(const NodeID &node_id) override;
 
   ray::Status LookupLocations(const ObjectID &object_id,
