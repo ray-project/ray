@@ -314,7 +314,7 @@ class Client:
         return handle
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 def start(
         detached: bool = False,
         http_options: Optional[Union[dict, HTTPOptions]] = None,

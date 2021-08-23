@@ -20,8 +20,7 @@ from ray.serve.common import (
     TrafficPolicy,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import (
-    ALL_HTTP_METHODS, )
+from ray.serve.constants import ALL_HTTP_METHODS
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
 from ray.serve.storage.kv_store import RayInternalKVStore
@@ -232,8 +231,7 @@ class ServeController:
             endpoint_info = EndpointInfo(
                 ALL_HTTP_METHODS,
                 route=route_prefix,
-                python_methods=python_methods,
-                legacy=False)
+                python_methods=python_methods)
             self.endpoint_state.update_endpoint(name, endpoint_info,
                                                 TrafficPolicy({
                                                     name: 1.0
