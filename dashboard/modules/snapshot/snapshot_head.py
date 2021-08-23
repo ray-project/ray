@@ -94,7 +94,7 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
             actors[actor_id] = entry
 
             deployments = await self.get_serve_info()
-            for deployment_name_hash, deployment_info in deployments.items():
+            for _, deployment_info in deployments.items():
                 for replica_actor_id, actor_info in deployment_info[
                         "actors"].items():
                     if replica_actor_id in actors:
