@@ -22,7 +22,7 @@ from ray.tune.registry import get_trainable_cls
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, \
     SearchGenerator
-from ray.tune.suggest.suggestion import Searcher
+from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
 from ray.tune.trainable import Trainable
@@ -434,6 +434,11 @@ def run(
         from ray.tune.suggest import create_searcher
         search_alg = create_searcher(search_alg)
 
+    # if local_mode=True is set during ray.init().
+    is_local_mode = ray.worker._mode() == ray.worker.LOCAL_MODE
+    if search_alg and is_local_mode:
+        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1)
+
     if isinstance(scheduler, str):
         # importing at top level causes a recursive dependency
         from ray.tune.schedulers import create_scheduler
@@ -443,7 +448,8 @@ def run(
         search_alg = SearchGenerator(search_alg)
 
     if not search_alg:
-        search_alg = BasicVariantGenerator()
+        search_alg = BasicVariantGenerator(
+            max_concurrent=1 if is_local_mode else 0)
 
     if config and not search_alg.set_search_properties(metric, mode, config):
         if has_unresolved_values(config):
