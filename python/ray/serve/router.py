@@ -30,14 +30,6 @@ class RequestMetadata:
     http_method: str = "GET"
     http_headers: Dict[str, str] = field(default_factory=dict)
 
-    is_shadow_query: bool = False
-
-    # Determines whether or not the backend implementation will be presented
-    # with a ServeRequest object or directly passed args and kwargs. This is
-    # used to maintain backward compatibility and will be removed in the
-    # future.
-    use_serve_request: bool = True
-
     # This flag will be set to true if the input argument is manually pickled
     # and it needs to be deserialized by the backend worker.
     http_arg_is_pickled: bool = False
