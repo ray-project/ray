@@ -55,10 +55,11 @@ def test_multi_cli_basic(call_ray_start):
     indirect=True)
 def test_multi_cli_init(call_ray_start):
     cli1 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
-    with pytest.raises(ValueError,
-                       match="The client has already connected to the cluster "
-                       "with allow_multiple=True. Please set allow_multiple=True"
-                       " to proceed"):
+    with pytest.raises(
+            ValueError,
+            match="The client has already connected to the cluster "
+            "with allow_multiple=True. Please set allow_multiple=True"
+            " to proceed"):
         ray.init("ray://localhost:25001")
     cli2 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
 
@@ -66,7 +67,7 @@ def test_multi_cli_init(call_ray_start):
     cli2.disconnect()
 
     ray.init("ray://localhost:25001")
-    cli1 = ray.init("ray://localhost:25001", allow_multiple=True) # noqa
+    cli1 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
 
 
 @pytest.mark.skipif(

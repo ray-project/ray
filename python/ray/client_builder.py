@@ -49,7 +49,6 @@ class ClientContext:
             self._context_to_restore = ray.util.client.ray.set_context(
                 self._context_to_restore)
 
-
     def _disconnect_with_context(self, force_disconnect: bool) -> None:
         """
         Disconnect Ray. If it's a ray client and created with `allow_multiple`,
@@ -124,15 +123,16 @@ class ClientBuilder:
         # with allow_multiple=True is allowed
         default_cli_connected = ray.util.client.ray.is_connected()
         has_cli_connected = ray.util.client.num_connected_contexts() > 0
-        if not self._allow_multiple_connections and not default_cli_connected and has_cli_connected:
-            raise ValueError("The client has already connected to the cluster "
-                             "with allow_multiple=True. Please set allow_multiple=True"
-                             " to proceed")
+        if not self._allow_multiple_connections and \
+           not default_cli_connected and has_cli_connected:
+            raise ValueError(
+                "The client has already connected to the cluster "
+                "with allow_multiple=True. Please set allow_multiple=True"
+                " to proceed")
 
         old_ray_cxt = None
         if self._allow_multiple_connections:
             old_ray_cxt = ray.util.client.ray.set_context(None)
-
 
         client_info_dict = ray.util.client_connect.connect(
             self.address,
