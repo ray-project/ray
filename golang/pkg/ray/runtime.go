@@ -1,8 +1,8 @@
 package ray
 
 /*
-   #cgo CFLAGS: -I/root/ray/src/ray/core_worker/lib/golang
-   #cgo LDFLAGS: -shared  -L/root/ray/bazel-bin/ -lcore_worker_library_go -lstdc++
+   #cgo CFLAGS: -I../../../src/ray/core_worker/lib/golang
+   #cgo LDFLAGS: -shared  -L../../../bazel-bin/ -lcore_worker_library_go -lstdc++
    #include <stdlib.h>
    #include "go_worker.h"
 */
@@ -143,11 +143,6 @@ type Param interface {
 
 type Convert func(a, i Param)
 
-<<<<<<< HEAD
-// 缺少泛型的支持，所以只能传入参数名
-// 参数填这里
-=======
->>>>>>> 9e2fb41fb8084ffa9edfee18f65428be2c943afe
 func (ah *ActorHandle) Task(f interface{}, args ...interface{}) *ActorTaskCaller {
     methodType := reflect.TypeOf(f)
     methodName := GetFunctionName(f)
@@ -184,10 +179,6 @@ func GetFunctionName(i interface{}) string {
 
 type ID unsafe.Pointer
 
-<<<<<<< HEAD
-// 发出调用
-=======
->>>>>>> 9e2fb41fb8084ffa9edfee18f65428be2c943afe
 func (atc *ActorTaskCaller) Remote() *ObjectRef {
     returnNum := atc.invokeMethod.NumOut()
     returObjectIds := make([]unsafe.Pointer, returnNum, returnNum)

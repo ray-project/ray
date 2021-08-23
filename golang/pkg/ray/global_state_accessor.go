@@ -1,8 +1,8 @@
 package ray
 
 /*
-   #cgo CFLAGS: -I/root/ray/src/ray/core_worker/lib/golang
-   #cgo LDFLAGS: -shared  -L/root/ray/bazel-bin/ -lcore_worker_library_go -lstdc++
+   #cgo CFLAGS: -I../../../src/ray/core_worker/lib/golang
+   #cgo LDFLAGS: -shared  -L../../../bazel-bin/ -lcore_worker_library_go -lstdc++
    #include <stdlib.h>
    #include "go_worker.h"
 */
