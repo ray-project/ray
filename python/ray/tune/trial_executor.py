@@ -16,16 +16,28 @@ from ray.tune.cluster_info import is_ray_cluster
 logger = logging.getLogger(__name__)
 
 
-def _can_fulfill(cluster_resources: Dict, trial: Trial) -> bool:
-    """Decides for an autoscaler disabled cluster, whether there is enough
-        resources for a PENDING trial."""
+# Ideally we want to use @cache; but it's only available for python 3.9.
+# Caching is only helpful for no autoscaler case.
+@lru_cache()
+def _get_cluster_resources_no_autoscaler() -> Dict:
+    return ray.cluster_resources()
+
+
+def _can_fulfill_no_autoscaler(trial: Trial) -> bool:
+    """Calculates if there is enough resources for a PENDING trial.
+
+    For no autoscaler case.
+    """
     assert trial.status == Trial.PENDING
-    return trial.resources.cpu <= cluster_resources.get(
-        "CPU", 0) and trial.resources.gpu <= cluster_resources.get("GPU", 0)
+    total_cpu = trial.resources.cpu + trial.resources.extra_cpu
+    total_gpu = trial.resources.gpu + trial.resources.extra_gpu
+    return total_cpu <= _get_cluster_resources_no_autoscaler().get(
+        "CPU", 0) and total_gpu <= _get_cluster_resources_no_autoscaler().get(
+            "GPU", 0)
 
 
 @lru_cache()
-def _get_warning_threshold() -> float:
+def _get_insufficient_resources_warning_threshold() -> float:
     if is_ray_cluster():
         return float(
             os.environ.get(
@@ -36,12 +48,13 @@ def _get_warning_threshold() -> float:
 
 
 @lru_cache()
-def _get_warning_msg() -> str:
+def _get_insufficient_resources_warning_msg() -> str:
     if is_ray_cluster():
         return (
             f"If autoscaler is still scaling up, ignore this message. No "
             f"trial is running and no new trial has been started within at "
-            f"least the last {_get_warning_threshold()} seconds. "
+            f"least the last {_get_insufficient_resources_warning_threshold()}"
+            f" seconds. "
             f"This could be due to the cluster not having enough "
             f"resources available to start the next trial. Please stop the "
             f"tuning job and readjust resources_per_trial argument passed "
@@ -49,7 +62,8 @@ def _get_warning_msg() -> str:
             f"InstanceType specified in cluster.yaml.")
     else:
         return (f"No trial is running and no new trial has been started within"
-                f" at least the last {_get_warning_threshold()} seconds. "
+                f" at least the last "
+                f"{_get_insufficient_resources_warning_threshold()} seconds. "
                 f"This could be due to the cluster not having enough "
                 f"resources available to start the next trial. Please stop "
                 f"the tuning job and readjust resources_per_trial argument "
@@ -258,18 +272,19 @@ class TrialExecutor(metaclass=ABCMeta):
             if self._no_running_trials_since == -1:
                 self._no_running_trials_since = time.monotonic()
             elif time.monotonic(
-            ) - self._no_running_trials_since > _get_warning_threshold():
+            ) - self._no_running_trials_since > _get_insufficient_resources_warning_threshold(  # noqa
+            ):
                 if not is_ray_cluster():  # autoscaler not enabled
-                    cluster_resources = ray.cluster_resources()
                     # If any of the pending trial cannot be fulfilled,
                     # that's a good enough hint of trial resources not enough.
                     if any(trial.status == Trial.PENDING
-                           and not _can_fulfill(cluster_resources, trial)
+                           and not _can_fulfill_no_autoscaler(trial)
                            for trial in all_trials):
-                        raise TuneError(_get_warning_msg())
+                        raise TuneError(
+                            _get_insufficient_resources_warning_msg())
                 # TODO(xwjiang): Output a more helpful msg for autoscaler case.
                 # https://github.com/ray-project/ray/issues/17799
-                logger.warning(_get_warning_msg())
+                logger.warning(_get_insufficient_resources_warning_msg())
                 self._no_running_trials_since = time.monotonic()
         else:
             self._no_running_trials_since = -1
