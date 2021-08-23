@@ -18,7 +18,8 @@
     timeout: 14400
     script: python multi_gpu_learning_tests/run.py
 
-# 2-GPU learning tests (CartPole and Pendulum) + LSTM=True for major algos.
+# 2-GPU learning tests (StatelessCartPole) + LSTM=True for major algos
+# (that support RNN models).
 - name: multi_gpu_with_lstm_learning_tests
   cluster:
     app_config: app_config.yaml

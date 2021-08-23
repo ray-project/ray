@@ -1,6 +1,7 @@
 import numpy as np
 import gym
 from gym.spaces import Box, Discrete, MultiDiscrete
+import logging
 from typing import Dict, List, Optional, Type
 
 from ray.rllib.models.modelv2 import ModelV2
@@ -14,6 +15,7 @@ from ray.rllib.utils.tf_ops import one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -178,7 +180,9 @@ class LSTMWrapper(RecurrentNetwork):
         self._rnn_model = tf.keras.Model(
             inputs=[input_layer, seq_in, state_in_h, state_in_c],
             outputs=[logits, values, state_h, state_c])
-        self._rnn_model.summary()
+        # Print out model summary in debug mode.
+        if logger.isEnabledFor(logging.INFO):
+            self._rnn_model.summary()
 
         # Add prev-a/r to this model's view, if required.
         if model_config["lstm_use_prev_action"]:
