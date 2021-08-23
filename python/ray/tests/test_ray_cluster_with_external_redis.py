@@ -34,7 +34,6 @@ def test_using_hostnames(call_ray_start_with_external_redis):
             self.count += 1
             return self.count
 
-
     counter = Counter.remote()
     assert ray.get(counter.inc_and_get.remote()) == 1
 
