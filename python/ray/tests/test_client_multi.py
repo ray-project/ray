@@ -11,16 +11,17 @@ import ray
     ["ray start --head --ray-client-server-port 25001 --port 0"],
     indirect=True)
 def test_multi_cli_basic(call_ray_start):
+    ray.init("ray://localhost:25001")
     cli1 = ray.init("ray://localhost:25001", allow_multiple=True)
     cli2 = ray.init("ray://localhost:25001", allow_multiple=True)
     with cli1:
         a = ray.put(10)
+
     with cli2:
         b = ray.put(20)
 
-    with pytest.raises(Exception):
-        ray.put(30)
-
+    # TODO better error message.
+    # Right now, it's EOFError actually
     with pytest.raises(Exception):
         ray.get(a)
 
@@ -30,7 +31,6 @@ def test_multi_cli_basic(call_ray_start):
     with pytest.raises(Exception), cli1:
         ray.get(b)
 
-    ray.init("ray://localhost:25001")
     c = ray.put(30)
 
     with cli1:
@@ -55,10 +55,18 @@ def test_multi_cli_basic(call_ray_start):
     indirect=True)
 def test_multi_cli_init(call_ray_start):
     cli1 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
-    cli2 = ray.init("ray://localhost:25001")  # noqa
-    cli3 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError,
+                       match="The client has already connected to the cluster "
+                       "with allow_multiple=True. Please set allow_multiple=True"
+                       " to proceed"):
         ray.init("ray://localhost:25001")
+    cli2 = ray.init("ray://localhost:25001", allow_multiple=True)  # noqa
+
+    cli1.disconnect()
+    cli2.disconnect()
+
+    ray.init("ray://localhost:25001")
+    cli1 = ray.init("ray://localhost:25001", allow_multiple=True) # noqa
 
 
 @pytest.mark.skipif(
@@ -76,6 +84,8 @@ def test_multi_cli_func(call_ray_start):
     cli1 = ray.init("ray://localhost:25001", allow_multiple=True)
     cli2 = ray.init("ray://localhost:25001", allow_multiple=True)
 
+    # TODO better error message.
+    # Right now, it's EOFError actually
     with pytest.raises(Exception):
         ray.get(hello.remote())
 
@@ -87,8 +97,6 @@ def test_multi_cli_func(call_ray_start):
         o2 = hello.remote()
         assert "world" == ray.get(o2)
 
-    # TODO better error message.
-    # Right now, it's EOFError actually
     with pytest.raises(Exception), cli1:
         ray.get(o2)
 
@@ -115,6 +123,8 @@ def test_multi_cli_actor(call_ray_start):
     cli1 = ray.init("ray://localhost:25001", allow_multiple=True)
     cli2 = ray.init("ray://localhost:25001", allow_multiple=True)
 
+    # TODO better error message.
+    # Right now, it's EOFError actually
     with pytest.raises(Exception):
         a = Actor.remote(10)
         ray.get(a.double.remote())

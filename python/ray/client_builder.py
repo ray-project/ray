@@ -32,25 +32,32 @@ class ClientContext:
     _context_to_restore: Optional[ray.util.client.RayAPIStub]
 
     def __enter__(self) -> "ClientContext":
-        if self._context_to_restore is not None:
-            self._context_to_restore = ray.util.client.ray.set_context(
-                self._context_to_restore)
+        self._swap_context()
         return self
 
     def __exit__(self, *exc) -> None:
-        self.disconnect()
+        self._disconnect_with_context(False)
+        self._swap_context()
+
+    def disconnect(self) -> None:
+        self._swap_context()
+        self._disconnect_with_context(True)
+        self._swap_context()
+
+    def _swap_context(self):
         if self._context_to_restore is not None:
             self._context_to_restore = ray.util.client.ray.set_context(
                 self._context_to_restore)
 
-    def disconnect(self) -> None:
+
+    def _disconnect_with_context(self, force_disconnect: bool) -> None:
         """
         Disconnect Ray. If it's a ray client and created with `allow_multiple`,
         it will do nothing. For other cases this either disconnects from the
         remote Client Server or shuts the current driver down.
         """
         if ray.util.client.ray.is_connected():
-            if ray.util.client.ray.is_default():
+            if ray.util.client.ray.is_default() or force_disconnect:
                 # This is the only client connection
                 ray.util.client_connect.disconnect()
         elif ray.worker.global_worker.node is None:
@@ -111,9 +118,22 @@ class ClientBuilder:
                 includes the server's version of Python & Ray as well as the
                 dashboard_url.
         """
+        # If it has already connected to the cluster with allow_multiple=True,
+        # connect to the default one is not allowed.
+        # But if it has connected to the default one, connect to other clients
+        # with allow_multiple=True is allowed
+        default_cli_connected = ray.util.client.ray.is_connected()
+        has_cli_connected = ray.util.client.num_connected_contexts() > 0
+        if not self._allow_multiple_connections and not default_cli_connected and has_cli_connected:
+            raise ValueError("The client has already connected to the cluster "
+                             "with allow_multiple=True. Please set allow_multiple=True"
+                             " to proceed")
+
         old_ray_cxt = None
         if self._allow_multiple_connections:
             old_ray_cxt = ray.util.client.ray.set_context(None)
+
+
         client_info_dict = ray.util.client_connect.connect(
             self.address,
             job_config=self._job_config,
