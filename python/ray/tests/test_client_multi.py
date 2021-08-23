@@ -163,14 +163,16 @@ def test_multi_cli_actor(call_ray_start):
 def test_multi_cli_threading(call_ray_start):
     import threading
     b = threading.Barrier(2)
-
+    ret = [0, 0]
     def get(idx):
         cli = ray.init("ray://localhost:25001", allow_multiple=True)
         with cli:
-            a = ray.put(20)
+            a = ray.put(idx)
             b.wait()
-            assert 20 == ray.get(a)
+            v = ray.get(a)
+            assert idx == v
             b.wait()
+            ret[idx] = v
 
     t1 = threading.Thread(target=get, args=(0, ))
     t2 = threading.Thread(target=get, args=(1, ))
@@ -178,6 +180,7 @@ def test_multi_cli_threading(call_ray_start):
     t2.start()
     t1.join()
     t2.join()
+    assert ret == [0, 1]
 
 
 if __name__ == "__main__":
