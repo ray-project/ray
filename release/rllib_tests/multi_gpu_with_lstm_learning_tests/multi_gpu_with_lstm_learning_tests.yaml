@@ -1,5 +1,5 @@
 
-a2c-cartpole-v0:
+a2c-stateless-cartpole:
     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
     run: A2C
     # Minimum reward and total ts (in given time_total_s) to pass this test.
@@ -16,7 +16,7 @@ a2c-cartpole-v0:
         model:
             use_lstm: true
 
-appo-cartpole-v0-no-vtrace:
+appo-stateless-cartpole-no-vtrace:
     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
     run: APPO
     # Minimum reward and total ts (in given time_total_s) to pass this test.
@@ -42,7 +42,7 @@ appo-cartpole-v0-no-vtrace:
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
-appo-cartpole-v0-vtrace:
+appo-stateless-cartpole-vtrace:
     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
     run: APPO
     # Minimum reward and total ts (in given time_total_s) to pass this test.
@@ -67,7 +67,7 @@ appo-cartpole-v0-vtrace:
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
-impala-cartpole-v0:
+impala-stateless-cartpole:
     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
     run: IMPALA
     # Minimum reward and total ts (in given time_total_s) to pass this test.
@@ -86,7 +86,7 @@ impala-cartpole-v0:
         model:
             use_lstm: true
 
-pg-cartpole-v0:
+pg-stateless-cartpole:
     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
     run: PG
     # Minimum reward and total ts (in given time_total_s) to pass this test.
@@ -106,7 +106,7 @@ pg-cartpole-v0:
             # Test w/ LSTMs.
             use_lstm: true
 
-ppo-cartpole-v0:
+ppo-stateless-cartpole:
     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
     run: PPO
     # Minimum reward and total ts (in given time_total_s) to pass this test.

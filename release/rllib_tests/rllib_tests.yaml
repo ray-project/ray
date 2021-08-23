@@ -12,10 +12,10 @@
 - name: multi_gpu_learning_tests
   cluster:
     app_config: app_config.yaml
-    compute_template: 4gpus_64cpus.yaml
+    compute_template: 8gpus_96cpus.yaml
 
   run:
-    timeout: 14400
+    timeout: 7200
     script: python multi_gpu_learning_tests/run.py
 
 # 2-GPU learning tests (StatelessCartPole) + LSTM=True for major algos
@@ -23,10 +23,10 @@
 - name: multi_gpu_with_lstm_learning_tests
   cluster:
     app_config: app_config.yaml
-    compute_template: 4gpus_96cpus.yaml
+    compute_template: 8gpus_96cpus.yaml
 
   run:
-    timeout: 14400
+    timeout: 7200
     script: python multi_gpu_with_lstm_learning_tests/run.py
 
 
