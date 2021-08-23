@@ -548,6 +548,9 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
     # config.multiagent.policies dict.
     _policy_class = None
 
+    name = "Trainer"
+    default_config = COMMON_CONFIG
+
     @PublicAPI
     def __init__(self,
                  config: PartialTrainerConfigDict = None,
@@ -582,7 +585,7 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
             # Default logdir prefix containing the agent's name and the
             # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir_prefix = "{}_{}_{}".format(self._name, self._env_id,
+            logdir_prefix = "{}_{}_{}".format(self.name, self._env_id,
                                               timestr)
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
@@ -986,7 +989,8 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
                     self.evaluation_workers.remote_workers())
         return {"evaluation": metrics}
 
-    @Deprecated(new="subscribe to `before_evaluate` on Trainer", error=False)
+    @Deprecated(new=f"subscribe to `{events.BEFORE_EVALUATE}` on Trainer",
+                error=False)
     def _before_evaluate(self):
         """Pre-evaluation callback."""
         pass
@@ -1190,15 +1194,17 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
         else:
             return actions
 
+    # TODO: Deprecate this. Sub-classes can just set the property directly.
     @property
     def _name(self) -> str:
         """Subclasses should override this to declare their name."""
-        raise NotImplementedError
+        return self.name
 
+    # TODO: Deprecate this. Sub-classes can just set the property directly.
     @property
     def _default_config(self) -> TrainerConfigDict:
         """Subclasses should override this to declare their default config."""
-        raise NotImplementedError
+        return self.default_config
 
     @PublicAPI
     def get_policy(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> Policy:
@@ -1536,8 +1542,7 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
             elif is_multiagent:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 from ray.rllib.policy.torch_policy import TorchPolicy
-                default_policy_cls = None if trainer_obj_or_none is None else \
-                    getattr(trainer_obj_or_none, "_policy_class", None)
+                default_policy_cls = self._policy_class
                 if any((p[0] or default_policy_cls) is None
                        or not issubclass(p[0] or default_policy_cls,
                                          (DynamicTFPolicy, TorchPolicy))
@@ -1761,4 +1766,4 @@ class Trainer(Trainable, Observable, metaclass=ABCMeta):
             "(e.g., YourEnvCls) or a registered env id (e.g., \"your_env\").")
 
     def __repr__(self):
-        return self._name
+        return self.name

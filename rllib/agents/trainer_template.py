@@ -12,9 +12,9 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, Deprecated, DeveloperAPI
 import ray.rllib.utils.events.events as events
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import EnvConfigDict, EnvType, EventName, \
-    PartialTrainerConfigDict, ResultDict, TrainerConfigDict
+    ResultDict, TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -143,53 +143,53 @@ def build_trainer_class(
 
     # Handle deprecated kwargs.
     if validate_config != DEPRECATED_VALUE:
-        deprecation_warning(
-            old="validate_config",
-            new=f"event_subscriptions[{events.AFTER_CONFIG_COMPLETE}]",
-            error=False)
+        # deprecation_warning(
+        #    old="validate_config",
+        #    new=f"event_subscriptions[{events.AFTER_CONFIG_COMPLETE}]",
+        #    error=False)
         # Shim new `trainer` arg (backward compatibility).
         event_subscriptions[events.AFTER_CONFIG_COMPLETE].append(
             lambda trainer, config: validate_config(config))
     if validate_env != DEPRECATED_VALUE:
-        deprecation_warning(
-            old="`validate_env`",
-            new=f"event_subscriptions[{events.AFTER_VALIDATE_ENV}]",
-            error=False)
+        # deprecation_warning(
+        #    old="`validate_env`",
+        #    new=f"event_subscriptions[{events.AFTER_VALIDATE_ENV}]",
+        #    error=False)
         # Shim new `trainer` arg (backward compatibility).
         event_subscriptions[events.AFTER_VALIDATE_ENV].append(
             lambda worker, env, env_ctx: validate_env(env, env_ctx))
     if before_evaluate_fn != DEPRECATED_VALUE:
-        deprecation_warning(
-            old="before_evaluate_fn",
-            new="event_subscriptions['before_evaluate']", error=False)
+        # deprecation_warning(
+        #    old="before_evaluate_fn",
+        #    new="event_subscriptions['before_evaluate']", error=False)
         event_subscriptions[events.BEFORE_EVALUATE].append(before_evaluate_fn)
     if before_init != DEPRECATED_VALUE:
-        deprecation_warning(
-            "before_init",
-            f"event_subscriptions[{events.BEFORE_CREATE_ROLLOUT_WORKERS}]",
-            error=False)
+        # deprecation_warning(
+        #    "before_init",
+        #    f"event_subscriptions[{events.BEFORE_CREATE_ROLLOUT_WORKERS}]",
+        #    error=False)
         event_subscriptions[events.BEFORE_CREATE_ROLLOUT_WORKERS].append(
             before_init)
     if after_init != DEPRECATED_VALUE:
-        deprecation_warning(
-            old="after_init",
-            new=f"event_subscriptions[{events.AFTER_CREATE_ROLLOUT_WORKERS}]",
-            error=False)
+        # deprecation_warning(
+        #    old="after_init",
+        #    new=f"event_subscriptions[{events.AFTER_CREATE_ROLLOUT_WORKERS}]",
+        #    error=False)
         event_subscriptions[events.AFTER_CREATE_ROLLOUT_WORKERS].append(
             after_init)
     if get_policy_class != DEPRECATED_VALUE:
-        deprecation_warning(
-            old="get_policy_class",
-            new="event_subscriptions[{events.SUGGEST_DEFAULT_POLICY_CLASS}]",
-            error=False)
+        # deprecation_warning(
+        #    old="get_policy_class",
+        #    new="event_subscriptions[{events.SUGGEST_DEFAULT_POLICY_CLASS}]",
+        #    error=False)
         # Shim new `trainer` arg (backward compatibility).
         event_subscriptions[events.SUGGEST_DEFAULT_POLICY_CLASS].append(
             lambda trainer, config: get_policy_class(config))
     if execution_plan != DEPRECATED_VALUE:
-        deprecation_warning(
-            old="`execution_plan`",
-            new=f"event_subscriptions[{events.SUGGEST_EXECUTION_PLAN}]",
-            error=False)
+        # deprecation_warning(
+        #    old="`execution_plan`",
+        #    new=f"event_subscriptions[{events.SUGGEST_EXECUTION_PLAN}]",
+        #    error=False)
         event_subscriptions[events.SUGGEST_EXECUTION_PLAN].append(
             execution_plan)
     # Make sure we use the default_execution plan if nothing else.
@@ -267,9 +267,6 @@ def build_trainer_class(
                 ... True
             """
             return build_trainer_class(**dict(original_kwargs, **overrides))
-
-        def __repr__(self):
-            return self._name
 
     trainer_cls.__name__ = name
     trainer_cls.__qualname__ = name
