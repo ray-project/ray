@@ -92,8 +92,7 @@ class TestGPUs(unittest.TestCase):
                 config["_fake_gpus"] = fake_gpus
                 frameworks = ("tf", "torch") if num_gpus > 1 else \
                     ("tf2", "tf", "torch")
-                for _ in framework_iterator(
-                        config, frameworks=frameworks):
+                for _ in framework_iterator(config, frameworks=frameworks):
                     print("direct RLlib")
                     trainer = PGTrainer(config, env="CartPole-v0")
                     trainer.stop()
