@@ -311,6 +311,10 @@ void raylet::RayletClient::RequestWorkerLease(
   google::protobuf::Arena arena;
   auto request =
       google::protobuf::Arena::CreateMessage<rpc::RequestWorkerLeaseRequest>(&arena);
+  // The unsafe allocating here is actually safe because the life-cycle of
+  // task_spec is longer than request.
+  // Request will be sent before the end of this call, and after that, it won't be
+  // used any more.
   request->unsafe_arena_set_allocated_resource_spec(
       const_cast<rpc::TaskSpec *>(&task_spec));
   request->set_backlog_size(backlog_size);

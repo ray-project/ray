@@ -82,6 +82,10 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
 void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
                                           rpc::GetAllNodeInfoReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
+  // Here the unsafe allocate is safe here, because entry.second's life cycle is longer
+  // then reply.
+  // The request will be sent when call send_reply_callback and after that, reply will
+  // not be used any more. But entry is still valid.
   for (const auto &entry : alive_nodes_) {
     reply->mutable_node_info_list()->UnsafeArenaAddAllocated(entry.second.get());
   }

@@ -227,6 +227,8 @@ class ServerCallImpl : public ServerCall {
     response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
 
+  /// The memory pool for this request. It's used for reply.
+  /// With arena, we'll be able to setup the reply without copying some field.
   google::protobuf::Arena arena_;
 
   /// State of this call.
@@ -254,7 +256,8 @@ class ServerCallImpl : public ServerCall {
   /// The request message.
   Request request_;
 
-  /// The reply message.
+  /// The reply message. This one is owned by arena. It's not valid beyond
+  /// the life-cycle of this call.
   Reply *reply_;
 
   /// Human-readable name for this RPC call.
