@@ -53,7 +53,8 @@ optional<shared_ptr<rpc::ObjectManagerClient>> ObjectManagerClientPool::GetOrCon
   return it->second;
 }
 
-std::vector<shared_ptr<rpc::ObjectManagerClient>> ObjectManagerClientPool::GetAllObjectManagerClients() {
+std::vector<shared_ptr<rpc::ObjectManagerClient>>
+ObjectManagerClientPool::GetAllObjectManagerClients() {
   std::vector<shared_ptr<rpc::ObjectManagerClient>> clients;
   const auto &node_map = gcs_client_->Nodes().GetAll();
   for (const auto &item : node_map) {

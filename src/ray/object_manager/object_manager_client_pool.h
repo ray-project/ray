@@ -14,13 +14,13 @@
 
 #pragma once
 
-#include "ray/common/id.h"
-#include "ray/gcs/gcs_client.h"
-#include "ray/rpc/object_manager/object_manager_client.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/id.h"
+#include "ray/gcs/gcs_client.h"
+#include "ray/rpc/object_manager/object_manager_client.h"
 
 using absl::optional;
 using std::shared_ptr;
@@ -36,7 +36,8 @@ class IObjectManagerClientPool {
 
   /// Return an existing ObjectManagerClient if exists, and connect to one if it does
   /// not. The returned pointer is borrowed, and expected to be used briefly.
-  virtual optional<shared_ptr<rpc::ObjectManagerClient>> GetOrConnectByID(ray::NodeID id) = 0; 
+  virtual optional<shared_ptr<rpc::ObjectManagerClient>> GetOrConnectByID(
+      ray::NodeID id) = 0;
 
   /// Return an existing ObjectManagerClient if exists, and connect to one if it does
   /// not. The returned pointer is borrowed, and expected to be used briefly.
@@ -49,23 +50,24 @@ class IObjectManagerClientPool {
   virtual void Disconnect(ray::NodeID id) = 0;
 
   /// Get all available object manager clients in this cluster.
-  virtual std::vector<shared_ptr<rpc::ObjectManagerClient>> GetAllObjectManagerClients() = 0;
+  virtual std::vector<shared_ptr<rpc::ObjectManagerClient>>
+  GetAllObjectManagerClients() = 0;
 };
 
 class ObjectManagerClientPool : public IObjectManagerClientPool {
  public:
-  optional<shared_ptr<rpc::ObjectManagerClient>> GetOrConnectByID(ray::NodeID id) override;
+  optional<shared_ptr<rpc::ObjectManagerClient>> GetOrConnectByID(
+      ray::NodeID id) override;
 
   shared_ptr<rpc::ObjectManagerClient> GetOrConnectByAddress(
       const rpc::Address &address) override;
 
   void Disconnect(ray::NodeID id) override;
 
-  std::vector<shared_ptr<rpc::ObjectManagerClient>>GetAllObjectManagerClients() override;
+  std::vector<shared_ptr<rpc::ObjectManagerClient>> GetAllObjectManagerClients() override;
 
   ObjectManagerClientPool(rpc::ClientCallManager &ccm, gcs::GcsClient *gcs_client)
-      : client_factory_(defaultClientFactory(ccm)),
-        gcs_client_(gcs_client) {};
+      : client_factory_(defaultClientFactory(ccm)), gcs_client_(gcs_client){};
 
   virtual ~ObjectManagerClientPool() {}
 
@@ -77,8 +79,8 @@ class ObjectManagerClientPool : public IObjectManagerClientPool {
   /// deprecated and brought internal to the pool, so this is our bridge.
   ObjectManagerClientFactoryFn defaultClientFactory(rpc::ClientCallManager &ccm) const {
     return [&](const rpc::Address &addr) {
-    auto object_manager_client = std::make_shared<rpc::ObjectManagerClient>(
-        addr.ip_address(), addr.port(), ccm);
+      auto object_manager_client =
+          std::make_shared<rpc::ObjectManagerClient>(addr.ip_address(), addr.port(), ccm);
       return object_manager_client;
     };
   };
