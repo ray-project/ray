@@ -118,7 +118,6 @@ class ReplayBuffer:
             random.randint(0,
                            len(self._storage) - 1) for _ in range(num_items)
         ]
-        self._num_sampled += num_items
         return self._encode_sample(idxes)
 
     @DeveloperAPI
@@ -474,6 +473,9 @@ class LocalVanillaReplayBuffer(LocalReplayBuffer):
         prioritized_replay_beta=0.4,
         prioritized_replay_eps=1e-6,
         replay_mode: str = "independent",
+        replay_sequence_length: int = 1,
+        replay_burn_in: int = 0,
+        replay_zero_init_states: bool = True,
         multiagent_sync_replay=False,
     ):
         self.replay_starts = learning_starts // num_shards
@@ -482,6 +484,9 @@ class LocalVanillaReplayBuffer(LocalReplayBuffer):
         self.prioritized_replay_beta = prioritized_replay_beta
         self.prioritized_replay_eps = prioritized_replay_eps
         self.replay_mode = replay_mode
+        self.replay_sequence_length = replay_sequence_length
+        self.replay_burn_in = replay_burn_in
+        self.replay_zero_init_states = replay_zero_init_states
         self.multiagent_sync_replay = multiagent_sync_replay
 
         if replay_mode not in ["lockstep", "independent"]:
