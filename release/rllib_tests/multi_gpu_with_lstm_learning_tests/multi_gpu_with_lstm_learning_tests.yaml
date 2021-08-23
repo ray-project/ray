@@ -10,7 +10,7 @@ a2c-stateless-cartpole:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 31
+        num_workers: 23
         lr: 0.001
         # Test w/ LSTMs.
         model:
@@ -78,7 +78,7 @@ impala-stateless-cartpole:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 31
+        num_workers: 23
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
@@ -97,7 +97,7 @@ pg-stateless-cartpole:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 31
+        num_workers: 23
         # Double batch size (2 GPUs).
         train_batch_size: 400
         model:
@@ -112,12 +112,12 @@ ppo-stateless-cartpole:
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
         episode_reward_mean: 150.0
-        timesteps_total: 500000
+        timesteps_total: 200000
     stop:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 31
+        num_workers: 23
         lr: 0.0003
         observation_filter: MeanStdFilter
         num_sgd_iter: 6

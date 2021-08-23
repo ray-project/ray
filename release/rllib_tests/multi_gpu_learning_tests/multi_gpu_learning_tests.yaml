@@ -10,7 +10,7 @@ a2c-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 31
+        num_workers: 23
         lr: 0.001
 
 appo-cartpole-v0-no-vtrace:
@@ -111,7 +111,7 @@ impala-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 31
+        num_workers: 23
         # Double batch size (2 GPUs).
         train_batch_size: 1000
 
@@ -126,7 +126,7 @@ pg-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 31
+        num_workers: 23
         # Double batch size (2 GPUs).
         train_batch_size: 400
         model:
@@ -144,7 +144,7 @@ ppo-cartpole-v0:
         time_total_s: 600
     config:
         num_gpus: 2
-        num_workers: 31
+        num_workers: 23
         lr: 0.0003
         observation_filter: MeanStdFilter
         num_sgd_iter: 6
