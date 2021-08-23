@@ -647,14 +647,13 @@ py_test(
     srcs = ["agents/dqn/tests/test_simple_q.py"]
 )
 
-# TODO: enable once we have a MuJoCo-independent test case.
-## Dreamer
-#py_test(
-#    name = "test_dreamer",
-#    tags = ["trainers_dir"],
-#    size = "small",
-#    srcs = ["agents/dreamer/tests/test_dreamer.py"]
-#)
+# Dreamer
+py_test(
+    name = "test_dreamer",
+    tags = ["trainers_dir"],
+    size = "small",
+    srcs = ["agents/dreamer/tests/test_dreamer.py"]
+)
 
 # ES
 py_test(
@@ -742,7 +741,7 @@ py_test(
 py_test(
     name = "test_appo",
     tags = ["trainers_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/ppo/tests/test_appo.py"]
 )
 
@@ -766,7 +765,7 @@ py_test(
 py_test(
     name = "test_td3",
     tags = ["trainers_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/ddpg/tests/test_td3.py"]
 )
 
@@ -1614,13 +1613,6 @@ py_test(
     srcs = ["tests/test_timesteps.py"]
 )
 
-py_test(
-    name = "tests/test_trainer",
-    tags = ["tests_dir", "tests_dir_T"],
-    size = "small",
-    srcs = ["tests/test_trainer.py"]
-)
-
 # --------------------------------------------------------------------
 # examples/ directory
 #
@@ -1822,7 +1814,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/complex_struct_space_tf", main = "examples/complex_struct_space.py",
+    name = "examples/complex_struct_space_tf",
+    main = "examples/complex_struct_space.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/complex_struct_space.py"],
@@ -1830,7 +1823,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/complex_struct_space_tf_eager", main = "examples/complex_struct_space.py",
+    name = "examples/complex_struct_space_tf_eager",
+    main = "examples/complex_struct_space.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/complex_struct_space.py"],
@@ -1838,7 +1832,8 @@ py_test(
 )
 
 py_test(
-    name = "examples/complex_struct_space_torch", main = "examples/complex_struct_space.py",
+    name = "examples/complex_struct_space_torch",
+    main = "examples/complex_struct_space.py",
     tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/complex_struct_space.py"],

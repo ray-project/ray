@@ -69,6 +69,7 @@ spec:
             requests:
               cpu: 1000m
               memory: 512Mi
+              ephemeral-storage: 1Gi
             limits:
               # The maximum memory that this pod is allowed to use. The
               # limit will be detected by ray and split to use 10% for
@@ -114,6 +115,7 @@ spec:
             requests:
               cpu: 1000m
               memory: 512Mi
+              ephemeral-storage: 1Gi
             limits:
               # The maximum memory that this pod is allowed to use. The
               # limit will be detected by ray and split to use 10% for
