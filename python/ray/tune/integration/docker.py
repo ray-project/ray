@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 
 from ray import services
 from ray.autoscaler.sdk import rsync, configure_logging
+from ray.util.debug import log_once
 from ray.tune.syncer import NodeSyncer
 from ray.tune.sync_client import SyncClient
 from ray.ray_constants import env_integer
@@ -95,15 +96,22 @@ class DockerSyncClient(SyncClient):
         # Add trailing slashes for rsync
         source = os.path.join(source, "")
         target_dir = os.path.join(target_dir, "")
-
-        rsync(
-            cluster_config=self._cluster_config_file,
-            source=source,
-            target=target_dir,
-            down=False,
-            ip_address=target_node,
-            should_bootstrap=self._should_bootstrap,
-            use_internal_ip=True)
+        import click
+        try:
+            rsync(
+                cluster_config=self._cluster_config_file,
+                source=source,
+                target=target_dir,
+                down=False,
+                ip_address=target_node,
+                should_bootstrap=self._should_bootstrap,
+                use_internal_ip=True)
+        except click.ClickException:
+            if log_once("docker_rsync_up_fail"):
+                logger.warning(
+                    "Rsync-up failed. Consider using a durable trainable "
+                    "or setting the `TUNE_SYNC_DISABLE_BOOTSTRAP=1` env var.")
+            raise
 
         return True
 
@@ -114,15 +122,22 @@ class DockerSyncClient(SyncClient):
         # Add trailing slashes for rsync
         source_dir = os.path.join(source_dir, "")
         target = os.path.join(target, "")
-
-        rsync(
-            cluster_config=self._cluster_config_file,
-            source=source_dir,
-            target=target,
-            down=True,
-            ip_address=source_node,
-            should_bootstrap=self._should_bootstrap,
-            use_internal_ip=True)
+        import click
+        try:
+            rsync(
+                cluster_config=self._cluster_config_file,
+                source=source_dir,
+                target=target,
+                down=True,
+                ip_address=source_node,
+                should_bootstrap=self._should_bootstrap,
+                use_internal_ip=True)
+        except click.ClickException:
+            if log_once("docker_rsync_down_fail"):
+                logger.warning(
+                    "Rsync-up failed. Consider using a durable trainable "
+                    "or setting the `TUNE_SYNC_DISABLE_BOOTSTRAP=1` env var.")
+            raise
 
         return True
 
