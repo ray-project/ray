@@ -127,6 +127,8 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
   while (cqs_[index]->Next(&tag, &ok)) {
     auto *server_call = static_cast<ServerCall *>(tag);
     bool delete_call = false;
+    // A new call is needed after the server sends a reply, no matter the reply is
+    // successful or failed.
     bool need_new_call = false;
     if (ok) {
       switch (server_call->GetState()) {
@@ -141,7 +143,7 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
         server_call->OnReplySent();
         // The rpc call has finished and can be deleted now.
         delete_call = true;
-        // A new call should be suplied
+        // A new call should be suplied.
         need_new_call = true;
         break;
       default:
@@ -150,14 +152,17 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       }
     } else {
       // `ok == false` will occur in two situations:
-      // First, the server has been shut down, the server call's status is PENDING
-      // Second, server has sent reply to client and failed, the server call's status is
-      // SENDING_REPLY
+      
+      // First, server has sent reply to client and failed, the server call's status is
+      // SENDING_REPLY.
       if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
         server_call->OnReplyFailed();
-        // A new call should be suplied
+        // A new call should be suplied.
         need_new_call = true;
       }
+
+      // Second, the server has been shut down, the server call's status is PENDING.
+      // And don't need to do anything other than deleting this call.
       delete_call = true;
     }
     if (delete_call) {
