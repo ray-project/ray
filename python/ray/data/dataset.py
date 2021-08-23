@@ -1462,6 +1462,11 @@ class Dataset(Generic[T]):
         """
         return list(self._blocks)
 
+    @DeveloperAPI
+    def get_block_locations(self) -> List[bytes]:
+        core_worker = ray.worker.global_worker.core_worker
+        return [core_worker.get_owner_address(block) for block in self.get_blocks()]
+
     def __repr__(self) -> str:
         schema = self.schema()
         if schema is None:
