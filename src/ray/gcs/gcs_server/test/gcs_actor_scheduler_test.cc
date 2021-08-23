@@ -20,7 +20,7 @@
 #include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
-class RayletBasedActorSchedulerTest : public ::testing::Test {
+class GcsActorSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
@@ -66,7 +66,7 @@ class RayletBasedActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
 };
 
-TEST_F(RayletBasedActorSchedulerTest, TestScheduleFailedWithZeroNode) {
+TEST_F(GcsActorSchedulerTest, TestScheduleFailedWithZeroNode) {
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
 
   auto job_id = JobID::FromInt(1);
@@ -85,7 +85,7 @@ TEST_F(RayletBasedActorSchedulerTest, TestScheduleFailedWithZeroNode) {
   ASSERT_TRUE(actor->GetNodeID().IsNil());
 }
 
-TEST_F(RayletBasedActorSchedulerTest, TestScheduleActorSuccess) {
+TEST_F(GcsActorSchedulerTest, TestScheduleActorSuccess) {
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
@@ -120,7 +120,7 @@ TEST_F(RayletBasedActorSchedulerTest, TestScheduleActorSuccess) {
   ASSERT_EQ(actor->GetWorkerID(), worker_id);
 }
 
-TEST_F(RayletBasedActorSchedulerTest, TestScheduleRetryWhenLeasing) {
+TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenLeasing) {
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
@@ -165,7 +165,7 @@ TEST_F(RayletBasedActorSchedulerTest, TestScheduleRetryWhenLeasing) {
   ASSERT_EQ(actor->GetWorkerID(), worker_id);
 }
 
-TEST_F(RayletBasedActorSchedulerTest, TestScheduleRetryWhenCreating) {
+TEST_F(GcsActorSchedulerTest, TestScheduleRetryWhenCreating) {
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
@@ -206,7 +206,7 @@ TEST_F(RayletBasedActorSchedulerTest, TestScheduleRetryWhenCreating) {
   ASSERT_EQ(actor->GetWorkerID(), worker_id);
 }
 
-TEST_F(RayletBasedActorSchedulerTest, TestNodeFailedWhenLeasing) {
+TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
@@ -244,7 +244,7 @@ TEST_F(RayletBasedActorSchedulerTest, TestNodeFailedWhenLeasing) {
   ASSERT_EQ(0, failure_actors_.size());
 }
 
-TEST_F(RayletBasedActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
+TEST_F(GcsActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
@@ -278,7 +278,7 @@ TEST_F(RayletBasedActorSchedulerTest, TestLeasingCancelledWhenLeasing) {
   ASSERT_EQ(0, failure_actors_.size());
 }
 
-TEST_F(RayletBasedActorSchedulerTest, TestNodeFailedWhenCreating) {
+TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
@@ -320,7 +320,7 @@ TEST_F(RayletBasedActorSchedulerTest, TestNodeFailedWhenCreating) {
   ASSERT_EQ(0, failure_actors_.size());
 }
 
-TEST_F(RayletBasedActorSchedulerTest, TestWorkerFailedWhenCreating) {
+TEST_F(GcsActorSchedulerTest, TestWorkerFailedWhenCreating) {
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   gcs_node_manager_->AddNode(node);
@@ -359,7 +359,7 @@ TEST_F(RayletBasedActorSchedulerTest, TestWorkerFailedWhenCreating) {
   ASSERT_EQ(0, failure_actors_.size());
 }
 
-TEST_F(RayletBasedActorSchedulerTest, TestSpillback) {
+TEST_F(GcsActorSchedulerTest, TestSpillback) {
   auto node1 = Mocker::GenNodeInfo();
   auto node_id_1 = NodeID::FromBinary(node1->node_id());
   gcs_node_manager_->AddNode(node1);
@@ -419,7 +419,7 @@ TEST_F(RayletBasedActorSchedulerTest, TestSpillback) {
   ASSERT_EQ(actor->GetWorkerID(), worker_id);
 }
 
-TEST_F(RayletBasedActorSchedulerTest, TestReschedule) {
+TEST_F(GcsActorSchedulerTest, TestReschedule) {
   auto node1 = Mocker::GenNodeInfo();
   auto node_id_1 = NodeID::FromBinary(node1->node_id());
   gcs_node_manager_->AddNode(node1);
@@ -468,7 +468,7 @@ TEST_F(RayletBasedActorSchedulerTest, TestReschedule) {
   ASSERT_EQ(2, success_actors_.size());
 }
 
-TEST_F(RayletBasedActorSchedulerTest, TestReleaseUnusedWorkers) {
+TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkers) {
   // Test the case that GCS won't send `RequestWorkerLease` request to the raylet,
   // if there is still a pending `ReleaseUnusedWorkers` request.
 

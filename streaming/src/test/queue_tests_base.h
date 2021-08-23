@@ -79,7 +79,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
     std::vector<std::unique_ptr<TaskArg>> args;
     args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
-        msg.ToBytes(), nullptr, std::vector<ObjectID>(), true)));
+        msg.ToBytes(), nullptr, std::vector<rpc::ObjectReference>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options{"", 0, resources};
     std::vector<ObjectID> return_ids;
@@ -94,8 +94,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
     std::vector<std::unique_ptr<TaskArg>> args;
-    args.emplace_back(new TaskArgByValue(
-        std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
+    args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+        buffer, nullptr, std::vector<rpc::ObjectReference>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options("", 0, resources);
     std::vector<ObjectID> return_ids;
@@ -110,8 +110,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
     std::vector<std::unique_ptr<TaskArg>> args;
-    args.emplace_back(new TaskArgByValue(
-        std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>(), true)));
+    args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+        buffer, nullptr, std::vector<rpc::ObjectReference>(), true)));
     std::unordered_map<std::string, double> resources;
     TaskOptions options{"", 1, resources};
     std::vector<ObjectID> return_ids;
@@ -178,8 +178,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "", "", "actor creation task", "")};
     std::vector<std::unique_ptr<TaskArg>> args;
-    args.emplace_back(new TaskArgByValue(
-        std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
+    args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
+        buffer, nullptr, std::vector<rpc::ObjectReference>())));
 
     std::string name = "";
     std::string ray_namespace = "";
@@ -232,7 +232,6 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     options.node_manager_port = node_manager_port_;
     options.raylet_ip_address = "127.0.0.1";
     options.driver_name = "queue_tests";
-    options.ref_counting_enabled = true;
     options.num_workers = 1;
     InitShutdownRAII core_worker_raii(CoreWorkerProcess::Initialize,
                                       CoreWorkerProcess::Shutdown, options);

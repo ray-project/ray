@@ -501,7 +501,6 @@ class StreamingWorker {
     options.raylet_ip_address = "127.0.0.1";
     options.task_execution_callback = std::bind(&StreamingWorker::ExecuteTask, this, _1,
                                                 _2, _3, _4, _5, _6, _7, _8, _9);
-    options.ref_counting_enabled = true;
     options.num_workers = 1;
     CoreWorkerProcess::Initialize(options);
     STREAMING_LOG(INFO) << "StreamingWorker constructor";
@@ -541,8 +540,9 @@ class StreamingWorker {
       STREAMING_LOG(INFO) << "Test name: " << typed_descriptor->ClassName();
       test_suite_->ExecuteTest(typed_descriptor->ClassName());
     } else if (func_name == "check_current_test_status") {
-      results->push_back(std::make_shared<RayObject>(test_suite_->CheckCurTestStatus(),
-                                                     nullptr, std::vector<ObjectID>()));
+      results->push_back(
+          std::make_shared<RayObject>(test_suite_->CheckCurTestStatus(), nullptr,
+                                      std::vector<rpc::ObjectReference>()));
     } else if (func_name == "reader_sync_call_func") {
       if (test_suite_->TestDone()) {
         STREAMING_LOG(WARNING) << "Test has done!!";
@@ -552,8 +552,8 @@ class StreamingWorker {
           std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
                                               args[1]->GetData()->Size(), true);
       auto result_buffer = reader_client_->OnReaderMessageSync(local_buffer);
-      results->push_back(
-          std::make_shared<RayObject>(result_buffer, nullptr, std::vector<ObjectID>()));
+      results->push_back(std::make_shared<RayObject>(
+          result_buffer, nullptr, std::vector<rpc::ObjectReference>()));
     } else if (func_name == "reader_async_call_func") {
       if (test_suite_->TestDone()) {
         STREAMING_LOG(WARNING) << "Test has done!!";
@@ -572,8 +572,8 @@ class StreamingWorker {
           std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
                                               args[1]->GetData()->Size(), true);
       auto result_buffer = writer_client_->OnWriterMessageSync(local_buffer);
-      results->push_back(
-          std::make_shared<RayObject>(result_buffer, nullptr, std::vector<ObjectID>()));
+      results->push_back(std::make_shared<RayObject>(
+          result_buffer, nullptr, std::vector<rpc::ObjectReference>()));
     } else if (func_name == "writer_async_call_func") {
       if (test_suite_->TestDone()) {
         STREAMING_LOG(WARNING) << "Test has done!!";

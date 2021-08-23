@@ -48,7 +48,6 @@ class MockWorker {
     options.raylet_ip_address = "127.0.0.1";
     options.task_execution_callback =
         std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8, _9);
-    options.ref_counting_enabled = true;
     options.num_workers = 1;
     CoreWorkerProcess::Initialize(options);
   }
@@ -93,8 +92,8 @@ class MockWorker {
         const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(pid_string.data()));
     auto memory_buffer =
         std::make_shared<LocalMemoryBuffer>(data, pid_string.size(), true);
-    results->push_back(
-        std::make_shared<RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
+    results->push_back(std::make_shared<RayObject>(memory_buffer, nullptr,
+                                                   std::vector<rpc::ObjectReference>()));
     return Status::OK();
   }
 
@@ -122,8 +121,8 @@ class MockWorker {
 
     // Write the merged content to each of return ids.
     for (size_t i = 0; i < return_ids.size(); i++) {
-      results->push_back(
-          std::make_shared<RayObject>(memory_buffer, nullptr, std::vector<ObjectID>()));
+      results->push_back(std::make_shared<RayObject>(
+          memory_buffer, nullptr, std::vector<rpc::ObjectReference>()));
     }
 
     return Status::OK();

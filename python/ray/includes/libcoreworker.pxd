@@ -30,6 +30,7 @@ from ray.includes.common cimport (
     CBuffer,
     CPlacementGroupCreationOptions,
     CObjectLocation,
+    CObjectReference,
     CRayFunction,
     CRayObject,
     CRayStatus,
@@ -171,6 +172,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                  const CObjectID &object_id)
         const CAddress &GetRpcAddress() const
         CAddress GetOwnerAddress(const CObjectID &object_id) const
+        c_vector[CObjectReference] GetObjectRefs(
+                const c_vector[CObjectID] &object_ids) const
+
         void PromoteObjectToPlasma(const CObjectID &object_id)
         void GetOwnershipInfo(const CObjectID &object_id,
                               CAddress *owner_address,
@@ -295,7 +299,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[c_string]&) nogil) run_on_util_worker_handler
         (void(const CRayObject&) nogil) unhandled_exception_handler
         (void(c_string *stack_out) nogil) get_lang_stack
-        c_bool ref_counting_enabled
         c_bool is_local_mode
         int num_workers
         (c_bool() nogil) kill_main
