@@ -108,17 +108,14 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     // passed to other workers. In this case, the actor tasks will hang forever.
     // So we fixed this issue by synchronously registering the actor. If the owner dies
     // before dependencies are resolved, GCS will notice this and mark the actor as dead.
-    auto ct = absl::GetCurrentTimeNanos();
     auto status = actor_creator_->AsyncRegisterActor(
-        task_spec, [ct, task_spec, after_resolver_cb = std::move(after_resolver_cb),
+        task_spec, [task_spec, after_resolver_cb = std::move(after_resolver_cb),
                     this](Status status) mutable {
                      if (!status.ok()) {
                        RAY_LOG(ERROR) << "Failed to register actor: " << task_spec.ActorCreationId()
                                       << ". Error message: " << status.ToString();
                      } else {
                        resolver_.ResolveDependencies(task_spec, std::move(after_resolver_cb));
-                       auto et = absl::GetCurrentTimeNanos();
-                       RAY_LOG(INFO) << "CreateActor:Register " << (et - ct);
                      }
                    });
   } else {

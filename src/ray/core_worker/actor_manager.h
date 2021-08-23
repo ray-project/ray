@@ -47,6 +47,8 @@ class ActorCreatorInterface {
   /// \return Status
   virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
                                   const gcs::StatusCallback &callback) = 0;
+
+  virtual Status WaitForActorRegisterFinish(ActorID)
 };
 
 class DefaultActorCreator : public ActorCreatorInterface {

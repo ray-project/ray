@@ -306,6 +306,7 @@ class RemoteFunction:
                 assert not self._is_cross_language, \
                     "Cross language remote function " \
                     "cannot be executed locally."
+            print(list_args)
             object_refs = worker.core_worker.submit_task(
                 self._language,
                 self._function_descriptor,

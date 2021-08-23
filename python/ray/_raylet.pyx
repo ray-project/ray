@@ -378,6 +378,7 @@ cdef prepare_args(
                             inlined_refs))))
                 inlined_ids.clear()
                 total_inlined += <int64_t>size
+                print("ARGS@@@ByValue", arg, serialized_arg, metadata, serialized_arg.contained_object_refs)
             else:
                 args_vector.push_back(unique_ptr[CTaskArg](
                     new CTaskArgByReference(CObjectID.FromBinary(

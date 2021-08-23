@@ -77,6 +77,12 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
     if (task.ArgByRef(i)) {
       local_dependencies.emplace(task.ArgId(i), nullptr);
     }
+    RAY_LOG(ERROR) << "DBG: ArgInfo: " << task.ArgByRef(i) << "|" << task.ArgId(i).Hex() << "|" <<
+        std::string((char*)task.ArgMetadata(i), task.ArgMetadataSize(i));
+    RAY_LOG(ERROR) << "DBG: INLINED: " << task.ArgInlinedRefs(i).size();
+    for(const auto& in : task.ArgInlinedRefs(i)) {
+      RAY_LOG(ERROR) << "DBG: INLINED_ARGS: " << ObjectID::FromBinary(in.object_id()).Hex();
+    }
   }
   if (local_dependencies.empty()) {
     on_complete();
