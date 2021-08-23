@@ -666,5 +666,5 @@ message SleepRequest {
 message SleepReply {
 }
 service TestService {
-  rpc sleep(SleepRequest) returns (SleepReply);
+  rpc Sleep(SleepRequest) returns (SleepReply);
 }

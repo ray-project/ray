@@ -1297,7 +1297,7 @@ cc_test(
     name = "grpc_server_test",
     size = "small",
     srcs = [
-        "src/ray/rpc/grpc_server_test.cc",
+        "src/ray/rpc/test/grpc_server_test.cc",
     ],
     deps = [
         ":gcs_service_cc_grpc",
