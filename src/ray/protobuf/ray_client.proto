@@ -363,7 +363,7 @@ message DataResponse {
 }
 
 message DataKeepAliveRequest {
- int32 echo_request = 1;
+  int32 echo_request = 1;
 }
 
 message DataKeepAliveResponse {
@@ -401,7 +401,7 @@ message LogData {
 }
 
 message LogKeepAliveRequest {
- int32 echo_request = 1;
+  int32 echo_request = 1;
 }
 
 message LogKeepAliveResponse {
