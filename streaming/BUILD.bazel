@@ -106,12 +106,14 @@ cc_library(
     srcs = glob([
         "src/metrics/*.cc"]
     ),
-    hdrs = glob([
+    hdrs = glob(
+      [
         "src/metrics/*.h",
-    ]),
+      ]
+    ),
     copts = COPTS,
-    visibility = ["//visibility:public"],
     strip_include_prefix = "src",
+    visibility = ["//visibility:public"],
     deps = [
         ":stats_lib.so",
         ":streaming_config",
