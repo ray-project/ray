@@ -272,7 +272,7 @@ def fill_node_type_min_max_workers(config):
         node_type_data.setdefault("min_workers", 0)
         if "max_workers" not in node_type_data:
             if node_type_name == config["head_node_type"]:
-                logger.info("setting max workers for head node to 0")
+                logger.info("setting max workers for head node type to 0")
                 node_type_data.setdefault("max_workers", 0)
             else:
                 global_max_workers = config["max_workers"]
