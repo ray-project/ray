@@ -113,7 +113,7 @@ class DataClient:
         try:
             while True:
                 start = time.time()
-                request = ray_client_pb2.LogKeepAliveRequest(
+                request = ray_client_pb2.KeepAliveRequest(
                     echo_request=random.randint(0, 2**16))
                 duration = time.time() - start
                 response = self.stub.KeepAlive(request)

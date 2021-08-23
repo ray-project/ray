@@ -145,7 +145,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
 
     def KeepAlive(self, request, context):
         echo = request.echo_request
-        response = ray_client_pb2.DataKeepAliveRequest(echo_response=echo)
+        response = ray_client_pb2.KeepAliveResponse(echo_response=echo)
         return response
 
     def _init(self, client_id: str, context: Any):
