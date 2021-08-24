@@ -473,7 +473,8 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 logger.debug(f"Client detached: {client_id}")
                 self.num_clients -= 1
 
-    def KeepAlive(self, request, context):
+    def KeepAlive(self, request: ray_client_pb2.KeepAliveRequest,
+                  context: Any):
         client_id = _get_client_id_from_context(context)
         if client_id == "":
             return
