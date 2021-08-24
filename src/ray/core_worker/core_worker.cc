@@ -1157,13 +1157,15 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                bool created_by_worker,
                                const std::unique_ptr<rpc::Address> &owner_address,
                                bool inline_small_object) {
-  WaitForActorRegistered(contained_object_ids);
+  auto status = WaitForActorRegistered(contained_object_ids);
+  if(!status.ok()) {
+    return status;
+  }
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
                                    worker_context_.GetNextPutIndex());
   rpc::Address real_owner_address =
       owner_address != nullptr ? *owner_address : rpc_address_;
   bool owned_by_us = real_owner_address.worker_id() == rpc_address_.worker_id();
-  auto status = Status::OK();
   if (owned_by_us) {
     reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
                                        CurrentCallSite(), data_size + metadata->Size(),
@@ -3153,32 +3155,49 @@ std::shared_ptr<gcs::GcsClient> CoreWorker::GetGcsClient() const { return gcs_cl
 bool CoreWorker::IsExiting() const { return exiting_; }
 
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
-  std::promise<Status> promise;
-  auto future = promise.get_future();
   std::vector<ActorID> actor_ids;
   for(const auto& id : ids) {
     if(ObjectID::IsActorID(id)) {
       actor_ids.emplace_back(ObjectID::ToActorID(id));
     }
   }
-
-  io_service_.post([promise = std::move(promise), actor_ids = std::move(actor_ids), actor_creator_] (){
-                     std::shared_ptr<int> counter(0);
+  RAY_LOG(ERROR) << "DBG: actor_ids.size(): " << actor_ids.size();
+  if(actor_ids.empty()) {
+    return Status::OK();
+  }
+  std::promise<void> promise;
+  auto future = promise.get_future();
+  std::vector<Status> ret;
+  int counter = 0;
+  // Post to service pool to avoid mutex
+  io_service_.post([&, this] () {
                      for(const auto& id : actor_ids) {
                        if(actor_creator_->IsActorInRegistering(id)) {
-                         ++(*counter);
+                         ++counter;
+                         RAY_LOG(ERROR) << "DBG: counter: " << counter;
                          actor_creator_->AsyncWaitForActorRegisterFinish(
                              id,
-                             [counter]() {
-                               --(*counter);
-                               if(*counter == 0) {
-
+                             [&counter, &promise, &ret](Status status) {
+                               ret.push_back(status);
+                               --counter;
+                               RAY_LOG(ERROR) << "DBG: After: counter: " << counter;
+                               if(counter == 0) {
+                                 promise.set_value();
                                }
-                             }
-                       }
+                             });
+                     }
+                   }
+                     if(counter == 0) {
+                       promise.set_value();
                      }
                    });
   future.wait();
+  for(const auto s : ret) {
+    if(!s.ok()) {
+      return s;
+    }
+  }
+  return Status::OK();
 }
 
 }  // namespace core
