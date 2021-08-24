@@ -11,6 +11,8 @@ import shutil
 import time
 import traceback
 
+from datetime import datetime
+
 import ray.ray_constants as ray_constants
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
@@ -26,6 +28,15 @@ logger = logging.getLogger(__name__)
 JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-(\d+)-(\d+)")
 # The groups are job id.
 RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
+# Log name update interval under pressure.
+# We need it because log name update is CPU intensive and uses 100%
+# of cpu when there are many log files.
+LOG_NAME_UPDATE_INTERVAL_S = float(
+    os.getenv("LOG_NAME_UPDATE_INTERVAL_S", 0.5))
+# Once there are more files than this threshold,
+# log monitor start giving backpressure to lower cpu usages.
+RAY_LOG_MONITOR_MANY_FILES_THRESHOLD = int(
+    os.getenv("RAY_LOG_MONITOR_MANY_FILES_THRESHOLD", 1000))
 
 
 class LogFileInfo:
@@ -176,7 +187,7 @@ class LogMonitor:
                         worker_pid=worker_pid))
                 log_filename = os.path.basename(file_path)
                 logger.info(f"Beginning to track file {log_filename}")
-                total_files += 1
+            total_files += 1
         return total_files
 
     def open_closed_files(self):
@@ -245,6 +256,7 @@ class LogMonitor:
         anything_published = False
         for file_info in self.open_file_infos:
             assert not file_info.file_handle.closed
+            logger.error(f"reading a file {file_info.filename}")
 
             lines_to_publish = []
             max_num_lines_to_read = 100
@@ -300,18 +312,24 @@ class LogMonitor:
         This will query Redis once every second to check if there are new log
         files to monitor. It will also store those log files in Redis.
         """
+        total_log_files = 0
+        last_updated = datetime.now()
         while True:
-            total_files = self.update_log_filenames()
+            elapsed_seconds = (datetime.now() - last_updated).seconds
+            logger.error(f"files: {self.log_filenames}")
+            if (total_log_files < RAY_LOG_MONITOR_MANY_FILES_THRESHOLD
+                    or elapsed_seconds > LOG_NAME_UPDATE_INTERVAL_S):
+                logger.error(f"total log files: {total_log_files}")
+                logger.error(f"time elapsed: {elapsed_seconds}")
+                total_log_files = self.update_log_filenames()
+                last_updated = datetime.now()
+            logger.error(f"time elapsed outer: {elapsed_seconds}")
             self.open_closed_files()
             anything_published = self.check_log_files_and_publish_updates()
             # If nothing was published, then wait a little bit before checking
             # for logs to avoid using too much CPU.
             if not anything_published:
                 time.sleep(0.1)
-            if total_files > 1000:
-                # If there are more than 1000 files, sleep to reduce cpu usage.
-                # glob uses lots of cpu.
-                time.sleep(1)
 
 
 if __name__ == "__main__":
