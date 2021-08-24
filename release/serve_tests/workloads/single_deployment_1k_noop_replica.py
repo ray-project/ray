@@ -29,6 +29,7 @@ import json
 import math
 import os
 
+import ray
 from ray import serve
 from ray.serve.utils import logger
 from serve_test_utils import (
@@ -120,7 +121,9 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
     logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
-    all_endpoints = list(serve.list_endpoints().keys())
+    all_endpoints = list(
+        ray.get(serve_client._controller.get_all_endpoints.remote()).keys())
+
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
         trial_length,
         NUM_CONNECTIONS,
