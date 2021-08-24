@@ -104,7 +104,11 @@ def checkpoint_deleter(trial_id, runner):
                     logger.warning("Checkpoint dir not found during deletion.")
 
             # TODO(ujvl): Batch remote deletes.
-            runner.delete_checkpoint.remote(checkpoint.value)
+            # In single process case, everything is checkpointed on driver node.
+            # Nothing to be deleted on remote worker.
+            # TODO(xwjiang): Pass is_single_process through ctor.
+            if not bool(os.environ.get("IS_SINGLE_PROCESS", 0)):
+                runner.delete_checkpoint.remote(checkpoint.value)
 
     return delete
 
@@ -223,7 +227,10 @@ class Trial:
         The args here take the same meaning as the command line flags defined
         in ray.tune.config_parser.
         """
-        validate_trainable(trainable_name)
+
+        self._is_single_process = bool(os.environ.get("IS_SINGLE_PROCESS", 0))
+        validate_trainable(
+            trainable_name, is_single_process=self._is_single_process)
         # Trial config
         self.trainable_name = trainable_name
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
@@ -603,7 +610,8 @@ class Trial:
         self.invalidate_json_state()
 
     def get_trainable_cls(self):
-        return get_trainable_cls(self.trainable_name)
+        return get_trainable_cls(
+            self.trainable_name, is_single_process=self._is_single_process)
 
     def is_finished(self):
         return self.status in [Trial.ERROR, Trial.TERMINATED]
@@ -700,7 +708,8 @@ class Trial:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         self.__dict__.update(state)
-        validate_trainable(self.trainable_name)
+        validate_trainable(
+            self.trainable_name, is_single_process=self._is_single_process)
 
         # Avoid creating logdir in client mode for returned trial results,
         # since the dir might not be creatable locally. TODO(ekl) thsi is kind

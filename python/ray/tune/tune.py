@@ -290,7 +290,8 @@ def run(
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
-
+    # TODO(xwjiang): Pass in through Tune.run args.
+    is_single_process = bool(os.environ.get("IS_SINGLE_PROCESS", 0))
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 
@@ -417,7 +418,8 @@ def run(
                 checkpoint_score_attr=checkpoint_score_attr,
                 export_formats=export_formats,
                 max_failures=max_failures,
-                restore=restore)
+                restore=restore,
+                is_single_process=is_single_process)
     else:
         logger.debug("Ignoring some parameters passed into tune.run.")
 
@@ -443,7 +445,7 @@ def run(
         search_alg = SearchGenerator(search_alg)
 
     if not search_alg:
-        search_alg = BasicVariantGenerator()
+        search_alg = BasicVariantGenerator(max_concurrent=1)
 
     if config and not search_alg.set_search_properties(metric, mode, config):
         if has_unresolved_values(config):

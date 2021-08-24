@@ -212,6 +212,7 @@ class TrialRunner:
                  metric=None):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
+        # TODO(xwjiang): choose different executor based on local_mode.
         self.trial_executor = trial_executor or RayTrialExecutor()
         self._pending_trial_queue_times = {}
 
@@ -557,6 +558,7 @@ class TrialRunner:
                 num_pending_trials += 1
 
         # Update status of staged placement groups
+        # TODO(xwjiang): Figure out what's the implication of this step in single process mode.
         self.trial_executor.stage_and_update_status(self._live_trials)
 
         def _start_trial(trial: Trial) -> bool:

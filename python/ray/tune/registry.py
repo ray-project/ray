@@ -20,28 +20,59 @@ KNOWN_CATEGORIES = [
     RLLIB_ACTION_DIST, RLLIB_INPUT, TEST
 ]
 
+from enum import Enum
+
+
+class Mode(Enum):
+    LOCAL = 1  # Used when is_single_process==True, no serialization is needed.
+    GLOBAL = 2  # Used whenever remote fn needs to be put and get through GCS. Serialization needed.
+
+
 logger = logging.getLogger(__name__)
 
+_registry = None
+_mode = None
 
-def has_trainable(trainable_name):
-    return _global_registry.contains(TRAINABLE_CLASS, trainable_name)
+
+def _get_or_create_registry(is_single_process=False):
+    global _registry
+    global _mode
+    if _registry is not None:
+        # No support of switching mode in the middle.
+        assert _mode == Mode.LOCAL if is_single_process else Mode.GLOBAL
+        return _registry
+    if is_single_process:
+        _registry = _LocalRegistry()
+        _mode = Mode.LOCAL
+    else:
+        _registry = _Registry()
+        _mode = Mode.GLOBAL
+        ray.worker._post_init_hooks.append(_registry.flush_values)
+    return _registry
 
 
-def get_trainable_cls(trainable_name):
+def has_trainable(trainable_name, is_single_process=False):
+    return _get_or_create_registry(is_single_process).contains(
+        TRAINABLE_CLASS, trainable_name)
+
+
+def get_trainable_cls(trainable_name, is_single_process=False):
     validate_trainable(trainable_name)
-    return _global_registry.get(TRAINABLE_CLASS, trainable_name)
+    return _get_or_create_registry(is_single_process).get(
+        TRAINABLE_CLASS, trainable_name)
 
 
-def validate_trainable(trainable_name):
-    if not has_trainable(trainable_name):
+def validate_trainable(trainable_name, is_single_process=False):
+    if not has_trainable(trainable_name, is_single_process=is_single_process):
         # Make sure everything rllib-related is registered.
         from ray.rllib import _register_all
-        _register_all()
-        if not has_trainable(trainable_name):
+        _register_all(is_single_process=is_single_process)
+        if not has_trainable(
+                trainable_name, is_single_process=is_single_process):
             raise TuneError("Unknown trainable: " + trainable_name)
 
 
-def register_trainable(name, trainable, warn=True):
+def register_trainable(name, trainable, warn=True, is_single_process=False):
     """Register a trainable function or class.
 
     This enables a class or function to be accessed on every Ray process
@@ -53,7 +84,7 @@ def register_trainable(name, trainable, warn=True):
             take (config, status_reporter) as arguments and will be
             automatically converted into a class during registration.
     """
-
+    print("====================is_single_process={}".format(is_single_process))
     from ray.tune.trainable import Trainable
     from ray.tune.function_runner import wrap_function
 
@@ -70,10 +101,11 @@ def register_trainable(name, trainable, warn=True):
     if not issubclass(trainable, Trainable):
         raise TypeError("Second argument must be convertable to Trainable",
                         trainable)
-    _global_registry.register(TRAINABLE_CLASS, name, trainable)
+    _get_or_create_registry(is_single_process).register(
+        TRAINABLE_CLASS, name, trainable)
 
 
-def register_env(name, env_creator):
+def register_env(name, env_creator, is_single_process=False):
     """Register a custom environment for use with RLlib.
 
     This enables the environment to be accessed on every Ray process
@@ -86,10 +118,12 @@ def register_env(name, env_creator):
 
     if not callable(env_creator):
         raise TypeError("Second argument must be callable.", env_creator)
-    _global_registry.register(ENV_CREATOR, name, env_creator)
+    _get_or_create_registry(is_single_process).register(
+        ENV_CREATOR, name, env_creator)
 
 
-def register_input(name: str, input_creator: Callable):
+def register_input(name: str, input_creator: Callable,
+                   is_single_process=False):
     """Register a custom input api for RLLib.
 
     Args:
@@ -99,19 +133,21 @@ def register_input(name: str, input_creator: Callable):
     """
     if not callable(input_creator):
         raise TypeError("Second argument must be callable.", input_creator)
-    _global_registry.register(RLLIB_INPUT, name, input_creator)
+    _get_or_create_registry(is_single_process).register(
+        RLLIB_INPUT, name, input_creator)
 
 
-def registry_contains_input(name: str) -> bool:
-    return _global_registry.contains(RLLIB_INPUT, name)
+def registry_contains_input(name: str, is_single_process=False) -> bool:
+    return _get_or_create_registry(is_single_process).contains(
+        RLLIB_INPUT, name)
 
 
-def registry_get_input(name: str) -> Callable:
-    return _global_registry.get(RLLIB_INPUT, name)
+def registry_get_input(name: str, is_single_process=False) -> Callable:
+    return _get_or_create_registry(is_single_process).get(RLLIB_INPUT, name)
 
 
 def check_serializability(key, value):
-    _global_registry.register(TEST, key, value)
+    _get_or_create_registry(is_single_process=False).register(TEST, key, value)
 
 
 def _make_key(category, key):
@@ -126,6 +162,29 @@ def _make_key(category, key):
     """
     return (b"TuneRegistry:" + category.encode("ascii") + b"/" +
             key.encode("ascii"))
+
+
+# A trivial implementation for is_single_process=True, a.k.a, single process mode.
+class _LocalRegistry:
+    def __init__(self):
+        self._data = {}
+
+    def register(self, category, key, value):
+        if category not in KNOWN_CATEGORIES:
+            from ray.tune import TuneError
+            raise TuneError("Unknown category {} not among {}".format(
+                category, KNOWN_CATEGORIES))
+        self._data[(category, key)] = value
+
+    def contains(self, category, key):
+        return (category, key) in self._data
+
+    def get(self, category, key):
+        value = self._data.get((category, key))
+        if value is None:
+            raise ValueError("Registry value for {}/{} doesn't exist.".format(
+                category, key))
+        return value
 
 
 class _Registry:
@@ -168,10 +227,6 @@ class _Registry:
         for (category, key), value in self._to_flush.items():
             _internal_kv_put(_make_key(category, key), value, overwrite=True)
         self._to_flush.clear()
-
-
-_global_registry = _Registry()
-ray.worker._post_init_hooks.append(_global_registry.flush_values)
 
 
 class _ParameterRegistry:

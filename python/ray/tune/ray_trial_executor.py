@@ -154,6 +154,12 @@ class RayTrialExecutor(TrialExecutor):
                  result_buffer_length: Optional[int] = None,
                  refresh_period: Optional[float] = None,
                  wait_for_placement_group: Optional[float] = None):
+        # TODO(xwjiang): Expose this through executor's ctor.
+        self._is_single_process = bool(os.environ.get("IS_SINGLE_PROCESS", 0))
+        # The following 2 are only meaningful in single process mode.
+        self._results = {}
+        self._runner = None  # All the trials of the tuning job need to reuse the same runner.
+
         super(RayTrialExecutor, self).__init__(queue_trials)
         # Check for if we are launching a trial without resources in kick off
         # autoscaler.
@@ -262,11 +268,33 @@ class RayTrialExecutor(TrialExecutor):
 
         return None
 
-    def _setup_remote_runner(self, trial):
+    def _get_or_create_single_process_runner(self, trial, logger_creator):
+        # TODO(xwjiang): Is this a valid assumption that all trials have the same Trainable class?
+        # We can only use once runner per process - a restriction imposed by Tune session.
+        if not self._runner:
+            self._runner = trial.get_trainable_cls()()
+            trial.set_runner(self._runner)
+        else:
+            trial.set_runner(self._runner)
+            # TODO(xwjiang): This part of the code is duplicated with _setup_runner, should be consolidated.
+            if not self.reset_trial(trial, trial.config, trial.experiment_tag,
+                                    logger_creator):
+                raise AbortTrialExecution(
+                    "Trainable runner reuse requires reset_config() to be "
+                    "implemented and return True.")
+        return self._runner
+
+    def _setup_runner(self, trial):
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
         self.try_checkpoint_metadata(trial)
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
+
+        if self._is_single_process:
+            # This bypasses all PG stuff for single process case.
+            runner = self._get_or_create_single_process_runner(
+                trial, logger_creator)
+            return runner
 
         if self._reuse_actors and self._cached_actor_pg[0] is not None:
             logger.debug(f"Trial {trial}: Reusing cached runner "
@@ -418,11 +446,18 @@ class RayTrialExecutor(TrialExecutor):
                             "If used with a custom stopper or early stopping, "
                             "checkpoints may be created later than desired.")
 
-            if buffer_length > 1:
+            if buffer_length > 1 and not self._is_single_process:
                 if trial.checkpoint_freq > 0:
                     buffer_length = min(buffer_length, trial.checkpoint_freq)
                 remote = trial.runner.train_buffered.remote(
                     buffer_time_s, buffer_length)
+            elif self._is_single_process:  # train happens immediately in a blocking fashion.
+                train_result = trial.runner.train()
+                import uuid
+                uid = uuid.uuid4()
+                self._running[uid] = trial
+                self._results[uid] = train_result
+                return
             else:
                 remote = trial.runner.train.remote()
 
@@ -455,7 +490,7 @@ class RayTrialExecutor(TrialExecutor):
         prior_status = trial.status
         self.set_status(trial, Trial.PENDING)
         if runner is None:
-            runner = self._setup_remote_runner(trial)
+            runner = self._setup_runner(trial)
             if not runner:
                 return False
         trial.set_runner(runner)
@@ -517,6 +552,8 @@ class RayTrialExecutor(TrialExecutor):
 
         try:
             trial.write_error_log(error_msg)
+            if self._is_single_process:
+                return  # early return, the rest is just PG stuff.
             if hasattr(trial, "runner") and trial.runner:
                 if (not error and self._reuse_actors
                         and self._cached_actor_pg[0] is None):
@@ -672,9 +709,14 @@ class RayTrialExecutor(TrialExecutor):
         with self._change_working_directory(trial):
             with warn_if_slow("reset"):
                 try:
-                    reset_val = ray.get(
-                        trainable.reset.remote(extra_config, logger_creator),
-                        timeout=DEFAULT_GET_TIMEOUT)
+                    if not self._is_single_process:
+                        reset_val = ray.get(
+                            trainable.reset.remote(extra_config,
+                                                   logger_creator),
+                            timeout=DEFAULT_GET_TIMEOUT)
+                    else:
+                        reset_val = trainable.reset(extra_config,
+                                                    logger_creator)
                 except GetTimeoutError:
                     logger.exception("Trial %s: reset timed out.", trial)
                     return False
@@ -720,6 +762,11 @@ class RayTrialExecutor(TrialExecutor):
             self, timeout: Optional[float] = None) -> Optional[Trial]:
         if not self._running:
             return None
+
+        # In single process mode, shuffling is not needed. And we (probably) only have one running trial running anyways.
+        if self._is_single_process:
+            return self._running[list(self._running)[0]]
+
         shuffled_results = list(self._running.keys())
         random.shuffle(shuffled_results)
 
@@ -745,12 +792,21 @@ class RayTrialExecutor(TrialExecutor):
             self._last_nontrivial_wait = time.time()
         return self._running[result_id]
 
-    def fetch_result(self, trial) -> List[Trial]:
+    def fetch_result(self, trial):
         """Fetches result list of the running trials.
 
         Returns:
             Result of the most recent trial training run.
         """
+        if self._is_single_process:
+            result_uuid = self._find_item(self._running, trial)
+            if not trial:
+                raise ValueError("Trial was not running.")
+            self._running.pop(result_uuid[0])
+            result = self._results[result_uuid[0]]
+            del self._results[result_uuid[0]]
+            return [result]
+
         trial_future = self._find_item(self._running, trial)
         if not trial_future:
             raise ValueError("Trial was not running.")
@@ -1039,20 +1095,29 @@ class RayTrialExecutor(TrialExecutor):
             # Note that we don't store the remote since in-memory checkpoints
             # don't guarantee fault tolerance and don't need to be waited on.
             with self._change_working_directory(trial):
-                trial.runner.restore_from_object.remote(value)
+                if not self._is_single_process:
+                    trial.runner.restore_from_object.remote(value)
+                else:
+                    trial.runner.restore_from_object(value)
         else:
             logger.debug("Trial %s: Attempting restore from %s", trial, value)
             if issubclass(trial.get_trainable_cls(),
                           DurableTrainable) or not trial.sync_on_checkpoint:
                 with self._change_working_directory(trial):
-                    remote = trial.runner.restore.remote(value)
+                    if not self._is_single_process:
+                        remote = trial.runner.restore.remote(value)
+                    else:
+                        trial.runner.restore(value)
             elif trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
                 # case where a DurableTrainable is not provided.
                 logger.debug("Trial %s: Reading checkpoint into memory", trial)
                 obj = TrainableUtil.checkpoint_to_object(value)
                 with self._change_working_directory(trial):
-                    remote = trial.runner.restore_from_object.remote(obj)
+                    if not self._is_single_process:
+                        remote = trial.runner.restore_from_object.remote(obj)
+                    else:
+                        trial.runner.restore_from_object(obj)
             else:
                 raise AbortTrialExecution(
                     "Pass in `sync_on_checkpoint=True` for driver-based trial"
@@ -1062,21 +1127,26 @@ class RayTrialExecutor(TrialExecutor):
 
             if block:
                 ray.get(remote)
-            else:
+
+            elif not self._is_single_process:
                 self._running[remote] = trial
                 trial.restoring_from = checkpoint
 
     def export_trial_if_needed(self, trial: Trial) -> Dict:
-        """Exports model of this trial based on trial.export_formats.
+        """Synchronously exports model of this trial based on trial.export_formats.
 
         Return:
             A dict that maps ExportFormats to successfully exported models.
         """
         if trial.export_formats and len(trial.export_formats) > 0:
             with self._change_working_directory(trial):
-                return ray.get(
-                    trial.runner.export_model.remote(trial.export_formats),
-                    timeout=DEFAULT_GET_TIMEOUT)
+                if self._is_single_process:
+                    return ray.get(
+                        trial.runner.export_model.remote(trial.export_formats),
+                        timeout=DEFAULT_GET_TIMEOUT)
+                else:
+                    return trial.runner.export_model(
+                        trial.export_formats, timeout=DEFAULT_GET_TIMEOUT)
         return {}
 
     def has_gpus(self) -> bool:

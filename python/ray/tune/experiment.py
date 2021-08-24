@@ -127,8 +127,10 @@ class Experiment:
                  checkpoint_score_attr=None,
                  export_formats=None,
                  max_failures=0,
-                 restore=None):
+                 restore=None,
+                 is_single_process=False):
 
+        self._is_single_process = is_single_process
         if loggers is not None:
             # Most users won't run into this as `tune.run()` does not pass
             # the argument anymore. However, we will want to inform users
@@ -153,7 +155,8 @@ class Experiment:
                     "'checkpoint_freq' cannot be used with a "
                     "checkpointable function. You can specify checkpoints "
                     "within your trainable function.")
-        self._run_identifier = Experiment.register_if_needed(run)
+        self._run_identifier = Experiment.register_if_needed(
+            run, is_single_process=self._is_single_process)
         self.name = name or self._run_identifier
 
         # If the name has been set explicitly, we don't want to create
@@ -263,7 +266,7 @@ class Experiment:
         return exp
 
     @classmethod
-    def register_if_needed(cls, run_object):
+    def register_if_needed(cls, run_object, is_single_process=False):
         """Registers Trainable or Function at runtime.
 
         Assumes already registered if run_object is a string.
@@ -299,7 +302,8 @@ class Experiment:
                 logger.warning(
                     "No name detected on trainable. Using {}.".format(name))
             try:
-                register_trainable(name, run_object)
+                register_trainable(
+                    name, run_object, is_single_process=is_single_process)
             except (TypeError, PicklingError) as e:
                 extra_msg = ("Other options: "
                              "\n-Try reproducing the issue by calling "
