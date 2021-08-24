@@ -155,6 +155,23 @@ def test_get_named_step_output_error(workflow_start_regular, tmp_path):
         ray.get(outer)
 
 
+def test_get_named_step_default(workflow_start_regular, tmp_path):
+    @workflow.step
+    def factorial(n, r=1):
+        if n == 1:
+            return r
+        return factorial.step(n - 1, r * n)
+
+    import math
+    assert math.factorial(5) == factorial.step(5).run("factorial")
+    for i in range(5):
+        step_name = "test_basic_workflows_2.test_get_named_step_default.locals.factorial"
+        if i != 0:
+            step_name += "." + str(i)
+        assert math.factorial(5) == ray.get(
+            workflow.get_output("factorial", step_name))
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
