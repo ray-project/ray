@@ -14,8 +14,8 @@
 
 #include "ray/object_manager/plasma/get_request_queue.h"
 
-#include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
 using namespace ray;
 using namespace testing;
@@ -37,12 +37,11 @@ struct GetRequestQueueTest : public Test {
     test_ = std::make_shared<MyTest>(100);
   }
 
-
  protected:
   std::shared_ptr<MyTest> test_;
 };
 
-} // namespace plasma
+}  // namespace plasma
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

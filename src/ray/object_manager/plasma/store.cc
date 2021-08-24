@@ -81,7 +81,8 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allo
       allocator_(allocator),
       add_object_callback_(add_object_callback),
       delete_object_callback_(delete_object_callback),
-      object_lifecycle_mgr_(allocator_, delete_object_callback_),
+      object_lifecycle_mgr_(
+          std::make_shared<ObjectLifecycleManager>(allocator_, delete_object_callback_)),
       delay_on_oom_ms_(delay_on_oom_ms),
       object_spilling_threshold_(object_spilling_threshold),
       create_request_queue_(
@@ -117,7 +118,7 @@ void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
   if (object_ids.find(object_id) != object_ids.end()) {
     return;
   }
-  RAY_CHECK(object_lifecycle_mgr_.AddReference(object_id));
+  RAY_CHECK(object_lifecycle_mgr_->AddReference(object_id));
   // Add object id to the list of object ids that this client is using.
   object_ids.insert(object_id);
 }
@@ -167,7 +168,8 @@ PlasmaError PlasmaStore::CreateObject(const ray::ObjectInfo &object_info,
                                       fb::ObjectSource source,
                                       const std::shared_ptr<Client> &client,
                                       bool fallback_allocator, PlasmaObject *result) {
-  auto pair = object_lifecycle_mgr_.CreateObject(object_info, source, fallback_allocator);
+  auto pair =
+      object_lifecycle_mgr_->CreateObject(object_info, source, fallback_allocator);
   auto entry = pair.first;
   auto error = pair.second;
   if (entry == nullptr) {
@@ -191,7 +193,7 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_req) {
   std::vector<MEMFD_TYPE> store_fds;
   std::vector<int64_t> mmap_sizes;
   for (const auto &object_id : get_req->object_ids) {
-    /// NOTE:(MissionToMars) Record that the client is using the object. 
+    /// NOTE:(MissionToMars) Record that the client is using the object.
     /// This operation is defered when all objects are ready, to make our
     /// code cleaner.
     AddToClientObjectIds(object_id, get_req->client);
@@ -207,7 +209,8 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_req) {
     }
   }
   // Send the get reply to the client.
-  Status s = SendGetReply(std::dynamic_pointer_cast<Client>(get_req->client), &get_req->object_ids[0], get_req->objects,
+  Status s = SendGetReply(std::dynamic_pointer_cast<Client>(get_req->client),
+                          &get_req->object_ids[0], get_req->objects,
                           get_req->object_ids.size(), store_fds, mmap_sizes);
   // If we successfully sent the get reply message to the client, then also send
   // the file descriptors.
@@ -240,7 +243,7 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
     client->object_ids.erase(it);
     RAY_LOG(DEBUG) << "Object " << object_id << " no longer in use by client";
     // Decrease reference count.
-    object_lifecycle_mgr_.RemoveReference(object_id);
+    object_lifecycle_mgr_->RemoveReference(object_id);
     // Return 1 to indicate that the client was removed.
     return 1;
   } else {
@@ -251,7 +254,7 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
 
 void PlasmaStore::ReleaseObject(const ObjectID &object_id,
                                 const std::shared_ptr<Client> &client) {
-  auto entry = object_lifecycle_mgr_.GetObject(object_id);
+  auto entry = object_lifecycle_mgr_->GetObject(object_id);
   RAY_CHECK(entry != nullptr);
   // Remove the client from the object's array of clients.
   RAY_CHECK(RemoveFromClientObjectIds(object_id, client) == 1);
@@ -260,7 +263,7 @@ void PlasmaStore::ReleaseObject(const ObjectID &object_id,
 void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
   for (size_t i = 0; i < object_ids.size(); ++i) {
     RAY_LOG(DEBUG) << "sealing object " << object_ids[i];
-    auto entry = object_lifecycle_mgr_.SealObject(object_ids[i]);
+    auto entry = object_lifecycle_mgr_->SealObject(object_ids[i]);
     RAY_CHECK(entry) << object_ids[i] << " is missing or not sealed.";
     add_object_callback_(entry->GetObjectInfo());
   }
@@ -279,7 +282,7 @@ int PlasmaStore::AbortObject(const ObjectID &object_id,
     return 0;
   }
   // The client requesting the abort is the creator. Free the object.
-  RAY_CHECK(object_lifecycle_mgr_.AbortObject(object_id) == PlasmaError::OK);
+  RAY_CHECK(object_lifecycle_mgr_->AbortObject(object_id) == PlasmaError::OK);
   client->object_ids.erase(it);
   return 1;
 }
@@ -300,7 +303,7 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
   // Release all the objects that the client was using.
   std::unordered_map<ObjectID, const LocalObject *> sealed_objects;
   for (const auto &object_id : client->object_ids) {
-    auto entry = object_lifecycle_mgr_.GetObject(object_id);
+    auto entry = object_lifecycle_mgr_->GetObject(object_id);
     if (entry == nullptr) {
       continue;
     }
@@ -311,7 +314,7 @@ void PlasmaStore::DisconnectClient(const std::shared_ptr<Client> &client) {
       sealed_objects[object_id] = entry;
     } else {
       // Abort unsealed object.
-      object_lifecycle_mgr_.AbortObject(object_id);
+      object_lifecycle_mgr_->AbortObject(object_id);
     }
   }
 
@@ -402,13 +405,13 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     RAY_RETURN_NOT_OK(ReadDeleteRequest(input, input_size, &object_ids));
     error_codes.reserve(object_ids.size());
     for (auto &object_id : object_ids) {
-      error_codes.push_back(object_lifecycle_mgr_.DeleteObject(object_id));
+      error_codes.push_back(object_lifecycle_mgr_->DeleteObject(object_id));
     }
     RAY_RETURN_NOT_OK(SendDeleteReply(client, object_ids, error_codes));
   } break;
   case fb::MessageType::PlasmaContainsRequest: {
     RAY_RETURN_NOT_OK(ReadContainsRequest(input, input_size, &object_id));
-    if (object_lifecycle_mgr_.IsObjectSealed(object_id)) {
+    if (object_lifecycle_mgr_->IsObjectSealed(object_id)) {
       RAY_RETURN_NOT_OK(SendContainsReply(client, object_id, 1));
     } else {
       RAY_RETURN_NOT_OK(SendContainsReply(client, object_id, 0));
@@ -423,7 +426,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     // This code path should only be used for testing.
     int64_t num_bytes;
     RAY_RETURN_NOT_OK(ReadEvictRequest(input, input_size, &num_bytes));
-    int64_t num_bytes_evicted = object_lifecycle_mgr_.RequireSpace(num_bytes);
+    int64_t num_bytes_evicted = object_lifecycle_mgr_->RequireSpace(num_bytes);
     RAY_RETURN_NOT_OK(SendEvictReply(client, num_bytes_evicted));
   } break;
   case fb::MessageType::PlasmaConnectRequest: {
@@ -436,7 +439,7 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     break;
   case fb::MessageType::PlasmaGetDebugStringRequest: {
     RAY_RETURN_NOT_OK(SendGetDebugStringReply(
-        client, object_lifecycle_mgr_.EvictionPolicyDebugString()));
+        client, object_lifecycle_mgr_->EvictionPolicyDebugString()));
   } break;
   default:
     // This code should be unreachable.
@@ -508,7 +511,7 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
   // The lock is acquired when a request is received to the plasma store.
   // recursive mutex is used here to allow
   std::lock_guard<std::recursive_mutex> guard(mutex_);
-  auto entry = object_lifecycle_mgr_.GetObject(object_id);
+  auto entry = object_lifecycle_mgr_->GetObject(object_id);
   if (!entry) {
     // Object already evicted or deleted.
     return false;
@@ -530,12 +533,12 @@ std::string PlasmaStore::GetDebugDump() const {
   buffer << "Current usage: " << (allocator_.Allocated() / 1e9) << " / "
          << (allocator_.GetFootprintLimit() / 1e9) << " GB\n";
   buffer << "- num bytes created total: "
-         << object_lifecycle_mgr_.GetNumBytesCreatedTotal() << "\n";
+         << object_lifecycle_mgr_->GetNumBytesCreatedTotal() << "\n";
   auto num_pending_requests = create_request_queue_.NumPendingRequests();
   auto num_pending_bytes = create_request_queue_.NumPendingBytes();
   buffer << num_pending_requests << " pending objects of total size "
          << num_pending_bytes / 1024 / 1024 << "MB\n";
-  object_lifecycle_mgr_.GetDebugDump(buffer);
+  object_lifecycle_mgr_->GetDebugDump(buffer);
   return buffer.str();
 }
 

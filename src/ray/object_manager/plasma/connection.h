@@ -34,9 +34,7 @@ class Client : public ray::ClientConnection, public ClientInterface {
 
   ray::Status SendFd(MEMFD_TYPE fd) override;
 
-  std::unordered_set<ray::ObjectID> &GetObjectIDs() override {
-    return object_ids;
-  }
+  std::unordered_set<ray::ObjectID> &GetObjectIDs() override { return object_ids; }
 
   /// Object ids that are used by this client.
   std::unordered_set<ray::ObjectID> object_ids;

@@ -22,7 +22,8 @@
 namespace plasma {
 
 struct GetRequest {
-  GetRequest(instrumented_io_context &io_context, const std::shared_ptr<ClientInterface> &client,
+  GetRequest(instrumented_io_context &io_context,
+             const std::shared_ptr<ClientInterface> &client,
              const std::vector<ObjectID> &object_ids, bool is_from_worker,
              std::function<void(const std::shared_ptr<GetRequest> &get_req)> &callback);
   /// The client that called get.
@@ -80,7 +81,7 @@ class GetRequestQueue {
       std::function<void(const std::shared_ptr<GetRequest> &get_req)>;
 
   GetRequestQueue(instrumented_io_context &io_context,
-                  ObjectLifecycleManager &object_lifecycle_mgr)
+                  std::shared_ptr<IObjectLifecycleManager> object_lifecycle_mgr)
       : io_context_(io_context), object_lifecycle_mgr_(object_lifecycle_mgr) {}
   void AddRequest(const std::shared_ptr<ClientInterface> &client,
                   const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
@@ -107,7 +108,7 @@ class GetRequestQueue {
   std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
       object_get_requests_;
 
-  ObjectLifecycleManager &object_lifecycle_mgr_;
+  std::shared_ptr<IObjectLifecycleManager> object_lifecycle_mgr_;
 };
 
 }  // namespace plasma

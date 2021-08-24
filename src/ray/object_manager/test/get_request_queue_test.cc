@@ -14,8 +14,8 @@
 
 #include "ray/object_manager/plasma/get_request_queue.h"
 
-#include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
 using namespace ray;
 using namespace testing;
@@ -33,45 +33,27 @@ class MockClient : public ClientInterface {
   MOCK_METHOD0(GetObjectIDs, std::unordered_set<ray::ObjectID> &());
 };
 
-class MockEvictionPolicy : public IEvictionPolicy {
+class MockObjectLifecycleManager : public IObjectLifecycleManager {
  public:
-  MOCK_METHOD2(ObjectCreated, void(const ObjectID &, bool));
-  MOCK_METHOD2(RequireSpace, int64_t(int64_t, std::vector<ObjectID> *));
-  MOCK_METHOD1(BeginObjectAccess, void(const ObjectID &));
-  MOCK_METHOD1(EndObjectAccess, void(const ObjectID &));
-  MOCK_METHOD2(ChooseObjectsToEvict, int64_t(int64_t, std::vector<ObjectID> *));
-  MOCK_METHOD1(RemoveObject, void(const ObjectID &));
-  MOCK_CONST_METHOD0(DebugString, std::string());
+  MOCK_METHOD3(CreateObject,
+               std::pair<const LocalObject *, flatbuf::PlasmaError>(
+                   const ray::ObjectInfo &object_info,
+                   plasma::flatbuf::ObjectSource source, bool fallback_allocator));
+  MOCK_CONST_METHOD1(GetObject, const LocalObject *(const ObjectID &object_id));
+  MOCK_METHOD1(SealObject, const LocalObject *(const ObjectID &object_id));
+  MOCK_METHOD1(AbortObject, flatbuf::PlasmaError(const ObjectID &object_id));
+  MOCK_METHOD1(DeleteObject, flatbuf::PlasmaError(const ObjectID &object_id));
+  MOCK_METHOD1(AddReference, bool(const ObjectID &object_id));
+  MOCK_METHOD1(RemoveReference, bool(const ObjectID &object_id));
 };
-
-class MockObjectStore : public IObjectStore {
- public:
-  MOCK_METHOD3(CreateObject, const LocalObject *(const ray::ObjectInfo &,
-                                                 plasma::flatbuf::ObjectSource, bool));
-  MOCK_CONST_METHOD1(GetObject, const LocalObject *(const ObjectID &));
-  MOCK_METHOD1(SealObject, const LocalObject *(const ObjectID &));
-  MOCK_METHOD1(DeleteObject, bool(const ObjectID &));
-  MOCK_CONST_METHOD0(GetNumBytesCreatedTotal, int64_t());
-  MOCK_CONST_METHOD0(GetNumBytesUnsealed, int64_t());
-  MOCK_CONST_METHOD0(GetNumObjectsUnsealed, int64_t());
-  MOCK_CONST_METHOD1(GetDebugDump, void(std::stringstream &buffer));
-};
-
 struct GetRequestQueueTest : public Test {
  public:
   GetRequestQueueTest() : io_work_(io_context_) {}
   void SetUp() override {
     Test::SetUp();
-    thread_ = std::thread([this] {
-      io_context_.run();
-    });
-    
-    auto eviction_policy = std::make_unique<MockEvictionPolicy>();
-    auto object_store = std::make_unique<MockObjectStore>();
-    manager_ = std::make_unique<ObjectLifecycleManager>(
-	    ObjectLifecycleManager(std::move(object_store), std::move(eviction_policy),
-                               [this](auto &id) {}));
-    get_request_queue_ = std::make_shared<GetRequestQueue>(io_context_, *manager_);
+    thread_ = std::thread([this] { io_context_.run(); });
+    manager_ = std::make_shared<MockObjectLifecycleManager>();
+    get_request_queue_ = std::make_shared<GetRequestQueue>(io_context_, manager_);
   }
 
   void TearDown() {
@@ -86,18 +68,27 @@ struct GetRequestQueueTest : public Test {
   boost::asio::io_service::work io_work_;
   std::thread thread_;
   std::shared_ptr<GetRequestQueue> get_request_queue_;
-  std::unique_ptr<ObjectLifecycleManager> manager_;
+  std::shared_ptr<MockObjectLifecycleManager> manager_;
 };
 
 TEST_F(GetRequestQueueTest, TestAddRequest) {
   auto client = std::make_shared<MockClient>();
   std::vector<ObjectID> object_ids{ObjectID::FromRandom()};
-  EXPECT_CALL(manager_, GetObject()).Times(1).WillOnce();
-  get_request_queue_->AddRequest(client, object_ids, 1000, false, [](const std::shared_ptr<GetRequest> &get_req) {
-    RAY_LOG(INFO) << "AddRequest callback";
-  });
+  LocalObject object1{Allocation()};
+  object1.object_info.data_size = 10;
+  object1.object_info.metadata_size = 0;
+  /// Mock the object already sealed.
+  object1.state = ObjectState::PLASMA_SEALED;
+  EXPECT_CALL(*manager_, GetObject(_)).Times(1).WillOnce(Return(&object1));
+  bool satisfied = false;
+  get_request_queue_->AddRequest(client, object_ids, 1000, false,
+                                 [&](const std::shared_ptr<GetRequest> &get_req) {
+                                   RAY_LOG(INFO) << "AddRequest callback";
+                                   satisfied = true;
+                                 });
+  EXPECT_TRUE(satisfied);
 }
-} // namespace plasma
+}  // namespace plasma
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
