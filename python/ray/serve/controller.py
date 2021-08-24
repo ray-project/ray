@@ -17,7 +17,6 @@ from ray.serve.common import (
     GoalId,
     NodeId,
     ReplicaTag,
-    TrafficPolicy,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import ALL_HTTP_METHODS
@@ -232,10 +231,7 @@ class ServeController:
                 ALL_HTTP_METHODS,
                 route=route_prefix,
                 python_methods=python_methods)
-            self.endpoint_state.update_endpoint(name, endpoint_info,
-                                                TrafficPolicy({
-                                                    name: 1.0
-                                                }))
+            self.endpoint_state.update_endpoint(name, endpoint_info)
             return goal_id, updating
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:

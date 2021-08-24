@@ -1,5 +1,5 @@
 import pytest
-from ray.util.client import RayAPIStub
+from ray.util.client import _ClientContext
 from ray.util.client.common import ClientActorRef, ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.ray_client_helpers import (
@@ -257,7 +257,7 @@ def test_named_actor_refcount(ray_start_regular):
         ActorTest.options(name="actor", lifetime="detached").remote()
 
         def connect_api():
-            api = RayAPIStub()
+            api = _ClientContext()
             api.connect("localhost:50051", namespace="")
             api.get_actor("actor")
             return api
