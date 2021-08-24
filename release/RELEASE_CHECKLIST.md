@@ -82,6 +82,7 @@ This checklist is meant to be used in conjunction with the RELEASE_PROCESS.rst d
     - [ ] ft_small_elastic
 
 ## Final Steps
+- [ ] Anyscale Docker images built and deployed
 - [ ] ML Docker Image Updated
 - [ ] Wheels uploaded to Test PyPI
 - [ ] Wheel sanity checks with Test PyPI

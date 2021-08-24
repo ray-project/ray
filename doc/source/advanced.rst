@@ -49,7 +49,7 @@ When you have multiple tasks that need to wait on some condition, you can use a 
 
 .. code-block:: python
 
-    # Also available via `from ray.test_utils import SignalActor`
+    # Also available via `from ray._private.test_utils import SignalActor`
     import ray
     import asyncio
 
@@ -434,7 +434,7 @@ Runtime Environments
 
 .. note::
 
-    This feature requires a full installation of Ray using `pip install "ray[default]"`.
+    This feature requires a full installation of Ray using ``pip install "ray[default]"``.
 
 On Mac OS and Linux, Ray 1.4+ supports dynamically setting the runtime environment of tasks, actors, and jobs so that they can depend on different Python libraries (e.g., conda environments, pip dependencies) while all running on the same Ray cluster.
 
@@ -500,7 +500,7 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
   In the first two cases, the Ray and Python dependencies will be automatically injected into the environment to ensure compatibility, so there is no need to manually include them.
   Note that the ``conda`` and ``pip`` keys of ``runtime_env`` cannot both be specified at the same time---to use them together, please use ``conda`` and add your pip dependencies in the ``"pip"`` field in your conda ``environment.yaml``.
 
-  - Example: ``{"conda": {"dependencies": ["pytorch", “torchvision”, "pip", {"pip": ["pendulum"]}]}}``
+  - Example: ``{"dependencies": ["pytorch", “torchvision”, "pip", {"pip": ["pendulum"]}]}``
 
   - Example: ``"./environment.yml"``
 

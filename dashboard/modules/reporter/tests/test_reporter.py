@@ -10,9 +10,9 @@ from ray import ray_constants
 from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.new_dashboard.utils import Bunch
 from ray.new_dashboard.modules.reporter.reporter_agent import ReporterAgent
-from ray.test_utils import (format_web_url, RayTestTimeoutException,
-                            wait_until_server_available, wait_for_condition,
-                            fetch_prometheus)
+from ray._private.test_utils import (format_web_url, RayTestTimeoutException,
+                                     wait_until_server_available,
+                                     wait_for_condition, fetch_prometheus)
 
 try:
     import prometheus_client

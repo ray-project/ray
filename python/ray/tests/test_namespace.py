@@ -4,7 +4,7 @@ import time
 
 import ray
 from ray import ray_constants
-from ray.test_utils import get_error_message, init_error_pubsub, \
+from ray._private.test_utils import get_error_message, init_error_pubsub, \
     run_string_as_driver
 from ray.cluster_utils import Cluster
 

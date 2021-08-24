@@ -6,8 +6,8 @@ import pytest
 
 from ray.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
-from ray.test_utils import (init_error_pubsub, get_error_message,
-                            run_string_as_driver)
+from ray._private.test_utils import (init_error_pubsub, get_error_message,
+                                     run_string_as_driver)
 
 
 def test_connect_with_disconnected_node(shutdown_only):

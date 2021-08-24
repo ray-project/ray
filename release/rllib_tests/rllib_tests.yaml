@@ -10,10 +10,10 @@
 - name: multi_gpu_learning_tests
   cluster:
     app_config: app_config.yaml
-    compute_template: 2gpus_32cpus.yaml
+    compute_template: 4gpus_64cpus.yaml
 
   run:
-    timeout: 7200
+    timeout: 14400
     script: python multi_gpu_learning_tests/run_multi_gpu_learning_tests.py
 
 # We'll have these as per-PR tests soon.
