@@ -11,7 +11,7 @@ from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.backends.torch import TorchConfig
 
 from ray.util.sgd.v2.backends.backend import BackendInterface, \
-    InactiveWorkerGroupError, SGDBackendError
+    InactiveWorkerGroupError, SGDBackendError, TrainingWorkerError
 
 
 @pytest.fixture
@@ -24,19 +24,11 @@ def ray_start_2_cpus():
 
 def gen_execute_special(special_f):
     def execute_async_special(self, f):
-        """Runs f on worker 0, special_f on worker 1."""
-        if not hasattr(self, "failed"):
-            assert len(self.workers) == 2
-            self.failed = True
-            return [
-                self.workers[0].execute.remote(f),
-                self.workers[1].execute.remote(special_f)
-            ]
-        else:
-            return [
-                self.workers[0].execute.remote(f),
-                self.workers[0].execute.remote(f)
-            ]
+        """Runs f on worker 0, special_f on other workers."""
+        futures = [self.workers[0].execute.remote(f)]
+        for worker in self.workers[1:]:
+            futures.append(worker.execute.remote(special_f))
+        return futures
 
 
     return execute_async_special
@@ -132,7 +124,7 @@ def test_worker_failure(ray_start_2_cpus):
 
     new_execute_func = gen_execute_special(train_fail)
     with patch.object(WorkerGroup, "execute_async", new_execute_func):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(TrainingWorkerError):
             e.start_training(lambda: 1)
             e.finish_training()
 

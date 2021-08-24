@@ -173,7 +173,7 @@ class BackendExecutor:
                     train_func=train_func,
                     checkpoint=checkpoint_dict))
 
-        ray.get(futures)
+        self.get_with_failure_handling(futures)
 
         # Run the training function asynchronously in its own thread.
         def train_async():
@@ -410,13 +410,10 @@ class BackendExecutor:
             return ray.get(remote_values)
 
     def handle_failure(self, failed_worker_indexes: List[int]):
-        # TODO: Fault-tolerance/elastic training here.
+        #import pdb; pdb.set_trace()
         self.worker_group.remove_workers(failed_worker_indexes)
         self._backend.on_shutdown(self.worker_group, self._backend_config)
-
-        def shutdown_session():
-            shutdown_session()
-
+        # If a failure occurs during handling of another failure.
         futures = self.worker_group.execute_async(shutdown_session)
         self.get_with_failure_handling(futures)
         self.worker_group.add_workers(len(failed_worker_indexes))
