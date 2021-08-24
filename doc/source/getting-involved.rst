@@ -224,17 +224,9 @@ API stability
 
 Ray provides stability guarantees for its public APIs in Ray core and libraries. The level of stability provided depends on how the API is annotated.
 
-* ``@PublicAPI``
-    * These APIs will remain stable across minor Ray releases (e.g., Ray 1.4 -> 1.8).
-
-* ``@PublicAPI(stability="beta")``
-    * These APIs are in beta but will eventually be stabilized.
-
-* ``@DeveloperAPI``
-    * Low-level integration APIs that may change across minor Ray versions.
-
-* ``@Deprecated``
-    * This API is deprecated and may be removed in future Ray versions.
+.. autofunction:: ray.util.annotations.PublicAPI
+.. autofunction:: ray.util.annotations.DeveloperAPI
+.. autofunction:: ray.util.annotations.Deprecated
 
 Undecorated functions can be generally assumed to not be part of the Ray public API.
 
