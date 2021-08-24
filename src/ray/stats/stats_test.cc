@@ -35,7 +35,10 @@ DECLARE_stats(test_declare);
 namespace ray {
 
 auto GetMetricsAgentAddress = [](const ray::stats::GetAgentAddressCallback &callback) {
-  callback(Status::OK(), std::string("[\"127.0.0.1\", 10054]"));
+  rpc::RegisterAgentRequest register_agent;
+  register_agent.set_agent_ip_address("127.0.0.1");
+  register_agent.set_agent_port(10054);
+  callback(Status::OK(), register_agent.SerializeAsString());
 };
 
 class MockExporter : public opencensus::stats::StatsExporter::Handler {

@@ -105,7 +105,7 @@ class RayParams:
             monitor the log files for all processes on this node and push their
             contents to Redis.
         autoscaling_config: path to autoscaling config file.
-        dashboard_agent_port(int): The port to bind metrics agent.
+        dashboard_agent_port(int): The port to bind dashboard agent.
         metrics_export_port(int): The port at which metrics are exposed
             through a Prometheus endpoint.
         no_monitor(bool): If True, the ray autoscaler monitor for this cluster
