@@ -71,9 +71,6 @@ RAY_CONFIG(bool, record_ref_creation_sites, true)
 /// cluster. If set, then this is the duration between attempts to flush the
 /// local cache. If this is set to 0, then the objects will be freed as soon as
 /// they enter the cache. To disable eager eviction, set this to -1.
-/// NOTE(swang): If distributed_ref_counting_enabled is off, then this will
-/// likely cause spurious object lost errors for Object IDs that were
-/// serialized, then either passed as an argument or returned from a task.
 /// NOTE(swang): The timer is checked by the raylet during every heartbeat, so
 /// this should be set to a value larger than
 /// raylet_heartbeat_period_milliseconds.
@@ -216,7 +213,9 @@ RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
 /// Number of threads used by rpc server in gcs server.
-RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
+RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 4)
+/// Number of threads used by client call manager in gcs server.
+RAY_CONFIG(uint32_t, gcs_server_rpc_client_thread_num, 4)
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
@@ -413,9 +412,9 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
 
 /// Whether to enable GCS-based actor scheduling.
-RAY_CONFIG(bool, gcs_actor_scheduling_enabled,
-           getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") != nullptr &&
-               getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") == std::string("true"))
+RAY_CONFIG(bool, gcs_task_scheduling_enabled,
+           getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") != nullptr &&
+               getenv("RAY_GCS_TASK_SCHEDULING_ENABLED") == std::string("true"))
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 

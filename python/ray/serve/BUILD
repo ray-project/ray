@@ -16,14 +16,6 @@ py_test(
 )
 
 py_test(
-    name = "test_api_new",
-    size = "medium",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
     name = "test_deploy",
     size = "large",
     srcs = serve_tests_srcs,
@@ -105,14 +97,6 @@ py_test(
 
 py_test(
     name = "test_backend_state",
-    size = "small",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_backend_worker",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -207,14 +191,6 @@ py_test(
 
 py_test(
     name = "test_util",
-    size = "small",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_imported_backend",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -321,13 +297,3 @@ py_test(
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"]
 )
-
-# Disable the deployment tutorial test because it requires
-# ray start --head in the background
-# py_test(
-    #name = "tutorial_deploy",
-    #size = "small",
-    #srcs = glob(["examples/doc/*.py"]),
-    #tags = ["exclusive", "team:serve"],
-    #deps = [":serve_lib"]
-# )

@@ -95,16 +95,6 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
-std::shared_ptr<const GcsActorWorkerAssignment> GcsActor::GetActorWorkerAssignment()
-    const {
-  return assignment_ptr_;
-}
-
-void GcsActor::SetActorWorkerAssignment(
-    std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr) {
-  assignment_ptr_ = std::move(assignment_ptr);
-}
-
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(
     std::shared_ptr<GcsActorSchedulerInterface> scheduler,
@@ -240,7 +230,8 @@ void GcsActorManager::HandleGetNamedActorInfo(
     rpc::SendReplyCallback send_reply_callback) {
   const std::string &name = request.name();
   const std::string &ray_namespace = request.ray_namespace();
-  RAY_LOG(DEBUG) << "Getting actor info, name = " << name;
+  RAY_LOG(DEBUG) << "Getting actor info, name = " << name
+                 << " , namespace = " << ray_namespace;
 
   // Try to look up the actor ID for the named actor.
   ActorID actor_id = GetActorIDByName(name, ray_namespace);

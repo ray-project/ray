@@ -216,6 +216,11 @@ class ClientActorHandle(ClientStub):
                                        is_function_or_method)).keys())
 
     def __del__(self) -> None:
+        if ray is None:
+            # The ray API stub might be set to None when the script exits.
+            # Should be safe to skip call_release in this case, since the
+            # client should have already disconnected at this point.
+            return
         if ray.is_connected():
             ray.call_release(self.actor_ref.id)
 
