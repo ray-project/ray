@@ -49,7 +49,9 @@ def init(reporter, ignore_reinit_error=True):
             "A Tune session already exists in the current process. "
             "If you are using ray.init(local_mode=True), "
             "you must set ray.init(..., num_cpus=1, num_gpus=1) to limit "
-            "available concurrency.")
+            "available concurrency. If you are supplying a wrapped "
+            "Searcher(concurrency, repeating) or customized SearchAlgo. Please"
+            " try limiting the concurrency to 1 there.")
         if ignore_reinit_error:
             logger.warning(reinit_msg)
             return

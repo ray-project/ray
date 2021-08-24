@@ -436,8 +436,19 @@ def run(
 
     # if local_mode=True is set during ray.init().
     is_local_mode = ray.worker._mode() == ray.worker.LOCAL_MODE
+
     if search_alg and is_local_mode:
-        search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1)
+        if isinstance(search_alg,
+                      Searcher) and not hasattr(search_alg, "searcher"):
+            # A vanilla Searcher is supplied.
+            search_alg = ConcurrencyLimiter(search_alg, max_concurrent=1)
+        else:
+            # It's hard to retroactively apply concurrency limiter plus we are
+            # not sure if this concurrency limiter is the right API we want to
+            # use in the long run yet. Relying on user to reconcile for now.
+            # An error will be raised in tune session if multiple sessions are
+            # instantiated during local_mode=True.
+            pass
 
     if isinstance(scheduler, str):
         # importing at top level causes a recursive dependency
