@@ -54,7 +54,7 @@ GRPC_OPTIONS = [
 CLIENT_SERVER_MAX_THREADS = float(
     os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 
-MANUAL_KEEPALIVE_INTERVAL = 15
+MANUAL_KEEPALIVE_INTERVAL = 10
 
 # Aliases for compatibility.
 ClientObjectRef = raylet.ClientObjectRef
