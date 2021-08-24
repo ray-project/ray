@@ -199,7 +199,7 @@ class PlasmaStore {
                            const ObjectID &object_id, uint64_t req_id);
 
   void AddToClientObjectIds(const ObjectID &object_id,
-                            const std::shared_ptr<Client> &client);
+                            const std::shared_ptr<ClientInterface> &client);
 
   void ReturnFromGet(const std::shared_ptr<GetRequest> &get_req);
 

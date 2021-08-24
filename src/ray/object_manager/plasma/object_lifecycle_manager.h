@@ -140,6 +140,8 @@ class ObjectLifecycleManager {
   friend struct ObjectStatsCollectorTest;
   FRIEND_TEST(ObjectLifecycleManagerTest, DeleteFailure);
   FRIEND_TEST(ObjectLifecycleManagerTest, RemoveReferenceOneRefEagerlyDeletion);
+  friend struct GetRequestQueueTest;
+  FRIEND_TEST(GetRequestQueueTest, TestAddRequest);
 
   std::unique_ptr<IObjectStore> object_store_;
   std::unique_ptr<IEvictionPolicy> eviction_policy_;

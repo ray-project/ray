@@ -111,14 +111,15 @@ void PlasmaStore::Stop() { acceptor_.close(); }
 // If this client is not already using the object, add the client to the
 // object's list of clients, otherwise do nothing.
 void PlasmaStore::AddToClientObjectIds(const ObjectID &object_id,
-                                       const std::shared_ptr<Client> &client) {
+                                       const std::shared_ptr<ClientInterface> &client) {
   // Check if this client is already using the object.
-  if (client->object_ids.find(object_id) != client->object_ids.end()) {
+  auto &object_ids = client->GetObjectIDs();
+  if (object_ids.find(object_id) != object_ids.end()) {
     return;
   }
   RAY_CHECK(object_lifecycle_mgr_.AddReference(object_id));
   // Add object id to the list of object ids that this client is using.
-  client->object_ids.insert(object_id);
+  object_ids.insert(object_id);
 }
 
 PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
@@ -190,6 +191,10 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_req) {
   std::vector<MEMFD_TYPE> store_fds;
   std::vector<int64_t> mmap_sizes;
   for (const auto &object_id : get_req->object_ids) {
+    /// NOTE:(MissionToMars) Record that the client is using the object. 
+    /// This operation is defered when all objects are ready, to make our
+    /// code cleaner.
+    AddToClientObjectIds(object_id, get_req->client);
     const PlasmaObject &object = get_req->objects[object_id];
     MEMFD_TYPE fd = object.store_fd;
     if (object.data_size != -1 && fds_to_send.count(fd) == 0 && fd.first != INVALID_FD) {
@@ -202,7 +207,7 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_req) {
     }
   }
   // Send the get reply to the client.
-  Status s = SendGetReply(get_req->client, &get_req->object_ids[0], get_req->objects,
+  Status s = SendGetReply(std::dynamic_pointer_cast<Client>(get_req->client), &get_req->object_ids[0], get_req->objects,
                           get_req->object_ids.size(), store_fds, mmap_sizes);
   // If we successfully sent the get reply message to the client, then also send
   // the file descriptors.

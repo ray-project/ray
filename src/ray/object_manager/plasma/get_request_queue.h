@@ -22,11 +22,11 @@
 namespace plasma {
 
 struct GetRequest {
-  GetRequest(instrumented_io_context &io_context, const std::shared_ptr<Client> &client,
+  GetRequest(instrumented_io_context &io_context, const std::shared_ptr<ClientInterface> &client,
              const std::vector<ObjectID> &object_ids, bool is_from_worker,
              std::function<void(const std::shared_ptr<GetRequest> &get_req)> &callback);
   /// The client that called get.
-  std::shared_ptr<Client> client;
+  std::shared_ptr<ClientInterface> client;
   /// The object IDs involved in this request. This is used in the reply.
   std::vector<ObjectID> object_ids;
   /// The object information for the objects in this request. This is used in
@@ -82,25 +82,22 @@ class GetRequestQueue {
   GetRequestQueue(instrumented_io_context &io_context,
                   ObjectLifecycleManager &object_lifecycle_mgr)
       : io_context_(io_context), object_lifecycle_mgr_(object_lifecycle_mgr) {}
-  void AddRequest(const std::shared_ptr<Client> &client,
+  void AddRequest(const std::shared_ptr<ClientInterface> &client,
                   const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
                   bool is_from_worker, ObjectReadyCallback callback);
 
   /// Remove all of the GetRequests for a given client.
   ///
   /// \param client The client whose GetRequests should be removed.
-  void RemoveGetRequestsForClient(const std::shared_ptr<Client> &client);
-
-  /// Remove a GetRequest and clean up the relevant data structures.
-  ///
-  /// \param get_request The GetRequest to remove.
-  void RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request);
+  void RemoveGetRequestsForClient(const std::shared_ptr<ClientInterface> &client);
 
   void ObjectSealed(const ObjectID &object_id);
 
  private:
-  void AddToClientObjectIds(const ObjectID &object_id,
-                            const std::shared_ptr<Client> &client);
+  /// Remove a GetRequest and clean up the relevant data structures.
+  ///
+  /// \param get_request The GetRequest to remove.
+  void RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request);
 
   instrumented_io_context &io_context_;
 

@@ -21,6 +21,9 @@ using PlasmaStoreMessageHandler = std::function<ray::Status(
 class ClientInterface {
  public:
   virtual ~ClientInterface() {}
+
+  virtual ray::Status SendFd(MEMFD_TYPE fd) = 0;
+  virtual std::unordered_set<ray::ObjectID> &GetObjectIDs() = 0;
 };
 
 /// Contains all information that is associated with a Plasma store client.
@@ -29,7 +32,11 @@ class Client : public ray::ClientConnection, public ClientInterface {
   static std::shared_ptr<Client> Create(PlasmaStoreMessageHandler message_handler,
                                         ray::local_stream_socket &&socket);
 
-  ray::Status SendFd(MEMFD_TYPE fd);
+  ray::Status SendFd(MEMFD_TYPE fd) override;
+
+  std::unordered_set<ray::ObjectID> &GetObjectIDs() override {
+    return object_ids;
+  }
 
   /// Object ids that are used by this client.
   std::unordered_set<ray::ObjectID> object_ids;

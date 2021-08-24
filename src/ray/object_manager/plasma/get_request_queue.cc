@@ -3,7 +3,7 @@
 namespace plasma {
 
 GetRequest::GetRequest(
-    instrumented_io_context &io_context, const std::shared_ptr<Client> &client,
+    instrumented_io_context &io_context, const std::shared_ptr<ClientInterface> &client,
     const std::vector<ObjectID> &object_ids, bool is_from_worker,
     std::function<void(const std::shared_ptr<GetRequest> &get_req)> &callback)
     : client(client),
@@ -17,7 +17,7 @@ GetRequest::GetRequest(
   num_objects_to_wait_for = unique_ids.size();
 };
 
-void GetRequestQueue::AddRequest(const std::shared_ptr<Client> &client,
+void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
                                  const std::vector<ObjectID> &object_ids,
                                  int64_t timeout_ms, bool is_from_worker,
                                  ObjectReadyCallback callback) {
@@ -32,9 +32,6 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<Client> &client,
       // Update the get request to take into account the present object.
       ToPlasmaObject(*entry, &get_req->objects[object_id], /* checksealed */ true);
       get_req->num_satisfied += 1;
-      // If necessary, record that this client is using this object. In the case
-      // where entry == NULL, this will be called from SealObject.
-      AddToClientObjectIds(object_id, client);
     } else {
       // Add a placeholder plasma object to the get request to indicate that the
       // object is not present. This will be parsed by the client. We set the
@@ -66,7 +63,7 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<Client> &client,
   }
 }
 
-void GetRequestQueue::RemoveGetRequestsForClient(const std::shared_ptr<Client> &client) {
+void GetRequestQueue::RemoveGetRequestsForClient(const std::shared_ptr<ClientInterface> &client) {
   std::unordered_set<std::shared_ptr<GetRequest>> get_requests_to_remove;
   for (auto const &pair : object_get_requests_) {
     for (const auto &get_request : pair.second) {
@@ -127,10 +124,6 @@ void GetRequestQueue::ObjectSealed(const ObjectID &object_id) {
     RAY_CHECK(entry != nullptr);
     ToPlasmaObject(*entry, &get_req->objects[object_id], /* check sealed */ true);
     get_req->num_satisfied += 1;
-    // Record the fact that this client will be using this object and will
-    // be responsible for releasing this object.
-    AddToClientObjectIds(object_id, get_req->client);
-
     // If this get request is done, reply to the client.
     if (get_req->num_satisfied == get_req->num_objects_to_wait_for) {
       get_req->callback(get_req);
@@ -150,16 +143,5 @@ void GetRequestQueue::ObjectSealed(const ObjectID &object_id) {
   if (it != object_get_requests_.end()) {
     object_get_requests_.erase(object_id);
   }
-}
-
-void GetRequestQueue::AddToClientObjectIds(const ObjectID &object_id,
-                                           const std::shared_ptr<Client> &client) {
-  // Check if this client is already using the object.
-  if (client->object_ids.find(object_id) != client->object_ids.end()) {
-    return;
-  }
-  RAY_CHECK(object_lifecycle_mgr_.AddReference(object_id));
-  // Add object id to the list of object ids that this client is using.
-  client->object_ids.insert(object_id);
 }
 }  // namespace plasma
