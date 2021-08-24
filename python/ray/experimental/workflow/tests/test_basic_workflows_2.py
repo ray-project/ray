@@ -165,7 +165,8 @@ def test_get_named_step_default(workflow_start_regular, tmp_path):
     import math
     assert math.factorial(5) == factorial.step(5).run("factorial")
     for i in range(5):
-        step_name = "test_basic_workflows_2.test_get_named_step_default.locals.factorial"
+        step_name = ("test_basic_workflows_2."
+                     "test_get_named_step_default.locals.factorial")
         if i != 0:
             step_name += "." + str(i)
         assert math.factorial(5) == ray.get(
