@@ -403,7 +403,7 @@ def _keepalive_main(stop_keepalive_event: threading.Event,
                                 ray_client_pb2_grpc.RayletDataStreamerStub],
                     logger: logging.Logger, metadata: list) -> None:
     """
-    Keepalive loop for data/logs client. Sounds a keep alive request with
+    Keepalive loop for data/logs client. Sends a keep alive request with
     random int and waits for echo from server.
     Args:
         stop_keepalive_event: Event used by the dataclient/logsclient to
