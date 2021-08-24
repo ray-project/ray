@@ -169,25 +169,9 @@ class BackendExecutor:
                     "calling `start_training` again.")
 
         if dataset is not None:
-            # First make sure size of dataset is divisible by num_workers.
-            dataset_size = dataset.count()
-            num_workers = len(self.worker_group)
-            total_rows = math.ceil(dataset_size / num_workers) * num_workers
-            assert dataset_size <= total_rows
-            # Pad the dataset so it's divisible by ``num_workers``.
-            if dataset_size < total_rows:
-                dataset = dataset.union(dataset.limit(limit=total_rows-dataset_size))
-
-            if dataset.num_blocks() < num_workers:
-                dataset = dataset.repartition(num_blocks=num_workers)
-            print(dataset.count())
-            datasets = dataset.split(
-                num_workers, equal=True,
-                locality_hints=self.worker_group.workers)
-            total_size = sum(ds.count() for ds in datasets)
-            assert total_size == total_rows, (total_size, total_rows)
+            dataset_shards = self._split_dataset(dataset)
         else:
-            datasets = [None] * len(self.worker_group)
+            dataset_shards = [None] * len(self.worker_group)
 
         checkpoint_dict = self._load_checkpoint(checkpoint)
 
@@ -199,7 +183,7 @@ class BackendExecutor:
                     initialize_session,
                     world_rank=index,
                     train_func=train_func,
-                    dataset_shard=datasets[index],
+                    dataset_shard=dataset_shards[index],
                     checkpoint=checkpoint_dict))
 
         ray.get(futures)
@@ -475,6 +459,24 @@ class BackendExecutor:
         else:
             return None
 
+    def _split_dataset(self, dataset: RayDataset) -> List[RayDataset]:
+        # First make sure size of dataset is divisible by num_workers.
+        dataset_size = dataset.count()
+        num_workers = len(self.worker_group)
+        total_rows = math.ceil(dataset_size / num_workers) * num_workers
+        assert dataset_size <= total_rows
+        # Pad the dataset so it's divisible by ``num_workers``.
+        if dataset_size < total_rows:
+            dataset = dataset.union(
+                dataset.limit(limit=total_rows - dataset_size))
+        assert dataset.count() == total_rows
+
+        per_worker_size = total_rows / len(self.worker_group)
+        split_indices = [per_worker_size*(i+1) for i in range(len(
+            self.worker_group))]
+        datasets = dataset.split_at_indices(split_indices)
+        assert [ds.count() == datasets[0].count() for ds in datasets]
+        return datasets
 
 class BackendInterface:
     def on_start(self, worker_group: WorkerGroup,

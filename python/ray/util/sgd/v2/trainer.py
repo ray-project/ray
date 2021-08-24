@@ -143,7 +143,7 @@ class Trainer:
                 currently there are NO default Callbacks.
             dataset (Optional[Union[Dataset, DatasetPipeline]]):
                 Distributed Ray Dataset or DatasetPipeline to pass into
-                worker. Sharding and locality hints will automatically be
+                worker. Sharding will automatically be
                 handled by the Trainer.
             checkpoint (Optional[Dict|str|Path]): The checkpoint data that
                 should be loaded onto each worker and accessed by the training
@@ -337,13 +337,18 @@ class Trainer:
         """Shuts down the training execution service."""
         self._executor.shutdown()
 
-    def to_tune_trainable(self, train_func: Callable[[Dict[str, Any]], T]
+    def to_tune_trainable(self, train_func: Callable[[Dict[str, Any]], T],
+                          dataset: Optional[RayDataset] = None,
                           ) -> Type[Trainable]:
         """Creates a Tune ``Trainable`` from the input training function.
 
         Args:
             func (Callable): The function that should be executed on each
                 training worker.
+            dataset (Optional[Union[Dataset, DatasetPipeline]]):
+                Distributed Ray Dataset or DatasetPipeline to pass into
+                worker. Sharding will automatically be
+                handled by the Trainer.
 
         Returns:
             A Trainable that can directly be passed into ``tune.run()``.
@@ -357,7 +362,7 @@ class Trainer:
                                "`to_tune_trainable`. Either shutdown the "
                                "Trainer or don't start it in the first place.")
 
-        return _create_tune_trainable(train_func, self._backend,
+        return _create_tune_trainable(train_func, dataset, self._backend,
                                       self._num_workers, self._use_gpu,
                                       self._resources_per_worker)
 
@@ -450,7 +455,7 @@ class SGDIterator:
         return self._final_results
 
 
-def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
+def _create_tune_trainable(train_func, dataset, backend, num_workers, use_gpu,
                            resources_per_worker):
     """Creates a Tune Trainable class for SGD training.
 
@@ -467,7 +472,7 @@ def _create_tune_trainable(train_func, backend, num_workers, use_gpu,
 
         trainer.start()
 
-        iterator = trainer.run_iterator(train_func, config)
+        iterator = trainer.run_iterator(train_func, config, dataset=dataset)
 
         for results in iterator:
             first_worker_results = results[0]
