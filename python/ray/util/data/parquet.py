@@ -5,7 +5,7 @@ from typing import List, Optional, Union
 import pyarrow.parquet as pq
 from pandas import DataFrame
 
-import ray.util.annotations import Deprecated
+from ray.util.annotations import Deprecated
 import ray.util.iter as para_iter
 from .dataset import MLDataset
 from .interface import _SourceShard
