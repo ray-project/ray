@@ -619,11 +619,7 @@ class ActorClass:
             elif name == "":
                 raise ValueError("Actor name cannot be an empty string.")
         if namespace is not None:
-            if not isinstance(namespace, str):
-                raise TypeError(f"namespace must be None or a string, "
-                                f"got: '{type(namespace)}'.")
-            elif namespace == "":
-                raise ValueError("Actor namespace cannot be an empty string.")
+            ray._private.utils.validate_namespace(namespace)
 
         # Check whether the name is already taken.
         # TODO(edoakes): this check has a race condition because two drivers
