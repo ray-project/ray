@@ -969,6 +969,20 @@ cc_test(
 )
 
 cc_test(
+    name = "ownership_based_object_directory_test",
+    size = "small",
+    srcs = [
+        "src/ray/object_manager/test/ownership_based_object_directory_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":object_manager",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "push_manager_test",
     size = "small",
     srcs = [
