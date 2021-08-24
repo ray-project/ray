@@ -20,9 +20,6 @@ INT32_MAX = (2**31) - 1
 
 ResponseCallable = Callable[[ray_client_pb2.DataResponse], None]
 
-# How often to make manual KeepAlive calls
-DATACLIENT_KEEPALIVE_INTERVAL = 30
-
 
 class DataClient:
     def __init__(self, channel: "grpc._channel.Channel", client_id: str,

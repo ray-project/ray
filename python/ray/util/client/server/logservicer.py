@@ -8,6 +8,8 @@ import logging
 import grpc
 import uuid
 
+from typing import Any
+
 from ray.worker import print_worker_logs
 from ray.util.client.common import CLIENT_SERVER_MAX_THREADS
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
@@ -121,7 +123,8 @@ class LogstreamServicer(ray_client_pb2_grpc.RayletLogStreamerServicer):
                 if initialized:
                     self.num_clients -= 1
 
-    def KeepAlive(self, request, context):
+    def KeepAlive(self, request: ray_client_pb2.KeepAliveRequest,
+                  context: Any):
         echo = request.echo_request
         response = ray_client_pb2.KeepAliveResponse(echo_response=echo)
         return response

@@ -17,9 +17,6 @@ logger = logging.getLogger(__name__)
 # For the moment, let's just not propogate beyond this point.
 logger.propagate = False
 
-# How often to make manual KeepAlive calls
-LOGSCLIENT_KEEPALIVE_INTERVAL = 30
-
 
 class LogstreamClient:
     def __init__(self, channel: "grpc._channel.Channel", metadata: list):
