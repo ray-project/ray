@@ -347,16 +347,18 @@ class TFPolicy(Policy):
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 [], self.get_session(), self.variables())
 
-        # gather update ops for any batch norm layers
-        if not self._update_ops:
-            self._update_ops = tf1.get_collection(
-                tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name)
-        if self._update_ops:
-            logger.info("Update ops to run on apply gradient: {}".format(
-                self._update_ops))
-        with tf1.control_dependencies(self._update_ops):
-            self._apply_op = self.build_apply_op(self._optimizer,
-                                                 self._grads_and_vars)
+        # Gather update ops for any batch norm layers.
+        if len(self.devices) <= 1:
+            if not self._update_ops:
+                self._update_ops = tf1.get_collection(
+                    tf1.GraphKeys.UPDATE_OPS,
+                    scope=tf1.get_variable_scope().name)
+            if self._update_ops:
+                logger.info("Update ops to run on apply gradient: {}".format(
+                    self._update_ops))
+            with tf1.control_dependencies(self._update_ops):
+                self._apply_op = self.build_apply_op(self._optimizer,
+                                                     self._grads_and_vars)
 
         if log_once("loss_used"):
             logger.debug(
