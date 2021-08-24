@@ -22,7 +22,7 @@ spec:
       {{- if $val.minWorkers }}
       minWorkers: {{ $val.minWorkers }}
       {{- end }}
-      {{- if $val.minWorkers }}
+      {{- if $val.manWorkers }}
       maxWorkers: {{ $val.maxWorkers }}
       {{- end }}
       {{- if $val.rayResources }}
