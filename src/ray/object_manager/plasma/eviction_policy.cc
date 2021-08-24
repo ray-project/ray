@@ -77,12 +77,12 @@ std::string LRUCache::DebugString() const {
 }
 
 int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
-                                       std::vector<ObjectID> *objects_to_evict) {
+                                       std::vector<ObjectID> &objects_to_evict) {
   int64_t bytes_evicted = 0;
   auto it = item_list_.end();
   while (bytes_evicted < num_bytes_required && it != item_list_.begin()) {
     it--;
-    objects_to_evict->push_back(it->first);
+    objects_to_evict.push_back(it->first);
     bytes_evicted += it->second;
     bytes_evicted_total_ += it->second;
     num_evictions_total_ += 1;
@@ -90,39 +90,43 @@ int64_t LRUCache::ChooseObjectsToEvict(int64_t num_bytes_required,
   return bytes_evicted;
 }
 
-EvictionPolicy::EvictionPolicy(PlasmaStoreInfo *store_info, int64_t max_size)
-    : pinned_memory_bytes_(0), store_info_(store_info), cache_("global lru", max_size) {}
+bool LRUCache::Exists(const ObjectID &key) const { return item_map_.count(key) > 0; }
+
+EvictionPolicy::EvictionPolicy(const IObjectStore &object_store,
+                               const IAllocator &allocator)
+    : pinned_memory_bytes_(0),
+      cache_("global lru", allocator.GetFootprintLimit()),
+      object_store_(object_store),
+      allocator_(allocator) {}
 
 int64_t EvictionPolicy::ChooseObjectsToEvict(int64_t num_bytes_required,
-                                             std::vector<ObjectID> *objects_to_evict) {
+                                             std::vector<ObjectID> &objects_to_evict) {
   int64_t bytes_evicted =
       cache_.ChooseObjectsToEvict(num_bytes_required, objects_to_evict);
   // Update the LRU cache.
-  for (auto &object_id : *objects_to_evict) {
+  for (auto &object_id : objects_to_evict) {
     cache_.Remove(object_id);
   }
   return bytes_evicted;
 }
 
-void EvictionPolicy::ObjectCreated(const ObjectID &object_id, bool is_create) {
+void EvictionPolicy::ObjectCreated(const ObjectID &object_id) {
   cache_.Add(object_id, GetObjectSize(object_id));
 }
 
 int64_t EvictionPolicy::RequireSpace(int64_t size,
-                                     std::vector<ObjectID> *objects_to_evict) {
+                                     std::vector<ObjectID> &objects_to_evict) {
   // Check if there is enough space to create the object.
-  int64_t required_space =
-      PlasmaAllocator::Allocated() + size - PlasmaAllocator::GetFootprintLimit();
+  int64_t required_space = allocator_.Allocated() + size - allocator_.GetFootprintLimit();
   // Try to free up at least as much space as we need right now but ideally
   // up to 20% of the total capacity.
-  int64_t space_to_free =
-      std::max(required_space, PlasmaAllocator::GetFootprintLimit() / 5);
+  int64_t space_to_free = std::max(required_space, allocator_.GetFootprintLimit() / 5);
   // Choose some objects to evict, and update the return pointers.
   int64_t num_bytes_evicted = ChooseObjectsToEvict(space_to_free, objects_to_evict);
   RAY_LOG(DEBUG) << "There is not enough space to create this object, so evicting "
-                 << objects_to_evict->size() << " objects to free up "
-                 << num_bytes_evicted << " bytes. The number of bytes in use (before "
-                 << "this eviction) is " << PlasmaAllocator::Allocated() << ".";
+                 << objects_to_evict.size() << " objects to free up " << num_bytes_evicted
+                 << " bytes. The number of bytes in use (before "
+                 << "this eviction) is " << allocator_.Allocated() << ".";
   return required_space - num_bytes_evicted;
 }
 
@@ -145,10 +149,12 @@ void EvictionPolicy::RemoveObject(const ObjectID &object_id) {
 }
 
 int64_t EvictionPolicy::GetObjectSize(const ObjectID &object_id) const {
-  auto entry = store_info_->objects[object_id].get();
-  return entry->data_size + entry->metadata_size;
+  return object_store_.GetObject(object_id)->GetObjectSize();
+}
+
+bool EvictionPolicy::IsObjectExists(const ObjectID &object_id) const {
+  return cache_.Exists(object_id);
 }
 
 std::string EvictionPolicy::DebugString() const { return cache_.DebugString(); }
-
 }  // namespace plasma

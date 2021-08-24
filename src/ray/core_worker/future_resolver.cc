@@ -15,6 +15,7 @@
 #include "ray/core_worker/future_resolver.h"
 
 namespace ray {
+namespace core {
 
 void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
                                         const rpc::Address &owner_address) {
@@ -29,13 +30,14 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id,
   request.set_object_id(object_id.Binary());
   request.set_owner_worker_id(owner_address.worker_id());
   conn->GetObjectStatus(
-      request,
-      [this, object_id](const Status &status, const rpc::GetObjectStatusReply &reply) {
-        ProcessResolvedObject(object_id, status, reply);
+      request, [this, object_id, owner_address](const Status &status,
+                                                const rpc::GetObjectStatusReply &reply) {
+        ProcessResolvedObject(object_id, owner_address, status, reply);
       });
 }
 
 void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
+                                           const rpc::Address &owner_address,
                                            const Status &status,
                                            const rpc::GetObjectStatusReply &reply) {
   if (!status.ok()) {
@@ -87,11 +89,16 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
           const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(metadata.data())),
           metadata.size());
     }
-    auto inlined_ids =
-        IdVectorFromProtobuf<ObjectID>(reply.object().nested_inlined_ids());
-    RAY_UNUSED(in_memory_store_->Put(RayObject(data_buffer, metadata_buffer, inlined_ids),
-                                     object_id));
+    auto inlined_refs =
+        VectorFromProtobuf<rpc::ObjectReference>(reply.object().nested_inlined_refs());
+    for (const auto &inlined_ref : inlined_refs) {
+      reference_counter_->AddBorrowedObject(ObjectID::FromBinary(inlined_ref.object_id()),
+                                            object_id, inlined_ref.owner_address());
+    }
+    RAY_UNUSED(in_memory_store_->Put(
+        RayObject(data_buffer, metadata_buffer, inlined_refs), object_id));
   }
 }
 
+}  // namespace core
 }  // namespace ray

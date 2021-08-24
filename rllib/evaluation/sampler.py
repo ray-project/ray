@@ -5,6 +5,7 @@ import numpy as np
 import queue
 import threading
 import time
+import tree  # pip install dm_tree
 from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
     Type, TYPE_CHECKING, Union
 
@@ -23,6 +24,7 @@ from ray.rllib.env.wrappers.atari_wrappers import get_wrapper_by_cls, \
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import InputReader
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning
@@ -216,9 +218,8 @@ class SyncSampler(SamplerInput):
         self.render = render
 
         # Create the rollout generator to use for calls to `get_data()`.
-        self.rollout_provider = _env_runner(
-            worker, self.base_env, self.extra_batches.put,
-            self.rollout_fragment_length, self.horizon, clip_rewards,
+        self._env_runner = _env_runner(
+            worker, self.base_env, self.extra_batches.put, self.horizon,
             normalize_actions, clip_actions, multiple_episodes_in_batch,
             callbacks, self.perf_stats, soft_horizon, no_done_at_end,
             observation_fn, self.sample_collector, self.render)
@@ -227,7 +228,7 @@ class SyncSampler(SamplerInput):
     @override(SamplerInput)
     def get_data(self) -> SampleBatchType:
         while True:
-            item = next(self.rollout_provider)
+            item = next(self._env_runner)
             if isinstance(item, RolloutMetrics):
                 self.metrics_queue.put(item)
             else:
@@ -371,11 +372,11 @@ class AsyncSampler(threading.Thread, SamplerInput):
         if not sample_collector_class:
             sample_collector_class = SimpleListCollector
         self.sample_collector = sample_collector_class(
-            worker.policy_map,
-            clip_rewards,
-            callbacks,
-            multiple_episodes_in_batch,
-            rollout_fragment_length,
+            self.worker.policy_map,
+            self.clip_rewards,
+            self.callbacks,
+            self.multiple_episodes_in_batch,
+            self.rollout_fragment_length,
             count_steps_by=count_steps_by)
 
     @override(threading.Thread)
@@ -394,9 +395,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             queue_putter = self.queue.put
             extra_batches_putter = (
                 lambda x: self.extra_batches.put(x, timeout=600.0))
-        rollout_provider = _env_runner(
-            self.worker, self.base_env, extra_batches_putter,
-            self.rollout_fragment_length, self.horizon, self.clip_rewards,
+        env_runner = _env_runner(
+            self.worker, self.base_env, extra_batches_putter, self.horizon,
             self.normalize_actions, self.clip_actions,
             self.multiple_episodes_in_batch, self.callbacks, self.perf_stats,
             self.soft_horizon, self.no_done_at_end, self.observation_fn,
@@ -405,7 +405,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
             # set to some large number. This is an empirical observation.
-            item = next(rollout_provider)
+            item = next(env_runner)
             if isinstance(item, RolloutMetrics):
                 self.metrics_queue.put(item)
             else:
@@ -449,9 +449,7 @@ def _env_runner(
         worker: "RolloutWorker",
         base_env: BaseEnv,
         extra_batch_callback: Callable[[SampleBatchType], None],
-        rollout_fragment_length: int,
         horizon: int,
-        clip_rewards: bool,
         normalize_actions: bool,
         clip_actions: bool,
         multiple_episodes_in_batch: bool,
@@ -469,11 +467,7 @@ def _env_runner(
         worker (RolloutWorker): Reference to the current rollout worker.
         base_env (BaseEnv): Env implementing BaseEnv.
         extra_batch_callback (fn): function to send extra batch data to.
-        rollout_fragment_length (int): Number of episode steps before
-            `SampleBatch` is yielded. Set to infinity to yield complete
-            episodes.
         horizon (int): Horizon of the episode.
-        clip_rewards (bool): Whether to clip rewards before postprocessing.
         multiple_episodes_in_batch (bool): Whether to pack multiple
             episodes into each batch. This guarantees batches will be exactly
             `rollout_fragment_length` in size.
@@ -554,8 +548,12 @@ def _env_runner(
             extra_batch_callback,
             env_id=env_id)
         # Call each policy's Exploration.on_episode_start method.
-        # types: Policy
-        for p in worker.policy_map.values():
+        # Note: This may break the exploration (e.g. ParameterNoise) of
+        # policies in the `policy_map` that have not been recently used
+        # (and are therefore stashed to disk). However, we certainly do not
+        # want to loop through all (even stashed) policies here as that
+        # would counter the purpose of the LRU policy caching.
+        for p in worker.policy_map.cache.values():
             if getattr(p, "exploration", None) is not None:
                 p.exploration.on_episode_start(
                     policy=p,
@@ -778,7 +776,8 @@ def _process_observations(
                     obs_sp = worker.policy_map[episode.policy_for(
                         ag_id)].observation_space
                     obs_sp = getattr(obs_sp, "original_space", obs_sp)
-                    all_agents_obs[ag_id] = np.zeros_like(obs_sp.sample())
+                    all_agents_obs[ag_id] = tree.map_structure(
+                        np.zeros_like, obs_sp.sample())
         else:
             hit_horizon = False
             all_agents_done = False
@@ -835,19 +834,20 @@ def _process_observations(
             else:
                 # Add actions, rewards, next-obs to collectors.
                 values_dict = {
-                    "t": episode.length - 1,
-                    "env_id": env_id,
-                    "agent_index": episode._agent_index(agent_id),
+                    SampleBatch.T: episode.length - 1,
+                    SampleBatch.ENV_ID: env_id,
+                    SampleBatch.AGENT_INDEX: episode._agent_index(agent_id),
                     # Action (slot 0) taken at timestep t.
-                    "actions": episode.last_action_for(agent_id),
+                    SampleBatch.ACTIONS: episode.last_action_for(agent_id),
                     # Reward received after taking a at timestep t.
-                    "rewards": rewards[env_id].get(agent_id, 0.0),
+                    SampleBatch.REWARDS: rewards[env_id].get(agent_id, 0.0),
                     # After taking action=a, did we reach terminal?
-                    "dones": (False if (no_done_at_end
-                                        or (hit_horizon and soft_horizon)) else
-                              agent_done),
+                    SampleBatch.DONES: (False
+                                        if (no_done_at_end
+                                            or (hit_horizon and soft_horizon))
+                                        else agent_done),
                     # Next observation.
-                    "new_obs": filtered_obs,
+                    SampleBatch.NEXT_OBS: filtered_obs,
                 }
                 # Add extra-action-fetches to collectors.
                 pol = worker.policy_map[policy_id]
@@ -902,8 +902,14 @@ def _process_observations(
             if ma_sample_batch:
                 outputs.append(ma_sample_batch)
 
-            # Call each policy's Exploration.on_episode_end method.
-            for p in worker.policy_map.values():
+            # Call each (in-memory) policy's Exploration.on_episode_end
+            # method.
+            # Note: This may break the exploration (e.g. ParameterNoise) of
+            # policies in the `policy_map` that have not been recently used
+            # (and are therefore stashed to disk). However, we certainly do not
+            # want to loop through all (even stashed) policies here as that
+            # would counter the purpose of the LRU policy caching.
+            for p in worker.policy_map.cache.values():
                 if getattr(p, "exploration", None) is not None:
                     p.exploration.on_episode_end(
                         policy=p,

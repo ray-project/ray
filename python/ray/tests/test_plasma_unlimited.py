@@ -7,17 +7,14 @@ import platform
 import pytest
 
 import ray
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray.internal.internal_api import memory_summary
 
 MB = 1024 * 1024
 
 
 def _init_ray():
-    return ray.init(
-        num_cpus=2,
-        object_store_memory=700e6,
-        _system_config={"plasma_unlimited": True})
+    return ray.init(num_cpus=2, object_store_memory=700e6)
 
 
 def _check_spilled_mb(address, spilled=None, restored=None, fallback=None):

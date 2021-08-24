@@ -14,6 +14,7 @@
 
   run:
     use_connect: True
+    autosuspend_mins: 15
     timeout: 1800
     script: python workloads/modin_xgboost_test.py
 
@@ -28,6 +29,7 @@
 
   run:
     use_connect: True
-    timeout: 1800
+    autosuspend_mins: 15
+    timeout: 2700
     script: python workloads/torch_tune_serve_test.py
 

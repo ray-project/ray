@@ -48,6 +48,7 @@ Each release test requires the following:
    `--smoke-test` argument.
    Usually the command should write its result metrics to a json file.
    The json filename is available in the TEST_OUTPUT_JSON env variable.
+5. Add your test in release/.buildkite/build_pipeline.py.
 
 The script will have access to these environment variables:
 
@@ -96,6 +97,25 @@ python e2e.py --no-report --test-config ~/ray/release/xgboost_tests/xgboost_test
 The `--no-report` option disables storing the results in the DB and
 artifacts on S3. If you set this option, you do not need access to the
 ray-ossci AWS user.
+
+Using Compilation on Product + App Config Override
+--------------------------------------------------
+For quick iteration when debugging a release test, go/compile-on-product allows
+you to easily modify and recompile Ray, such that the recompilation happens
+within an app build step and can benefit from a warm Bazel cache. See
+go/compile-on-product for more information.
+
+After kicking off the app build, you can give the app config ID to this script
+as an app config override, where the indicated app config will be used instead
+of the app config given in the test config. E.g., running
+
+python e2e.py --no-report --test-config ~/ray/benchmarks/benchmark_tests.yaml --test-name=single_node --app-config-id-override=apt_TBngEXXXrhipMXgexVcrpC9i
+
+would run the single_node benchmark test with the apt_TBngEXXXrhipMXgexVcrpC9i
+app config instead of the app config given in
+~/ray/benchmarks/benchmark_tests.yaml. If the build for the app config is still
+in progress, the script will wait until it completes, same as for a locally
+defined app config.
 
 Running on Head Node vs Running with Anyscale Connect
 -----------------------------------------------------
@@ -195,32 +215,39 @@ formatter = logging.Formatter(fmt="[%(levelname)s %(asctime)s] "
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+
+def getenv_default(key: str, default: Optional[str] = None):
+    """Return environment variable with default value"""
+    # If the environment variable is set but "", still return default
+    return os.environ.get(key, None) or default
+
+
 GLOBAL_CONFIG = {
-    "ANYSCALE_USER": os.environ.get("ANYSCALE_USER",
+    "ANYSCALE_USER": getenv_default("ANYSCALE_USER",
                                     "release-automation@anyscale.com"),
-    "ANYSCALE_HOST": os.environ.get("ANYSCALE_HOST",
+    "ANYSCALE_HOST": getenv_default("ANYSCALE_HOST",
                                     "https://beta.anyscale.com"),
-    "ANYSCALE_CLI_TOKEN": os.environ.get("ANYSCALE_CLI_TOKEN"),
-    "ANYSCALE_CLOUD_ID": os.environ.get(
+    "ANYSCALE_CLI_TOKEN": getenv_default("ANYSCALE_CLI_TOKEN"),
+    "ANYSCALE_CLOUD_ID": getenv_default(
         "ANYSCALE_CLOUD_ID",
         "cld_4F7k8814aZzGG8TNUGPKnc"),  # cld_4F7k8814aZzGG8TNUGPKnc
-    "ANYSCALE_PROJECT": os.environ.get("ANYSCALE_PROJECT", ""),
-    "RAY_VERSION": os.environ.get("RAY_VERSION", "2.0.0.dev0"),
-    "RAY_REPO": os.environ.get("RAY_REPO",
+    "ANYSCALE_PROJECT": getenv_default("ANYSCALE_PROJECT", ""),
+    "RAY_VERSION": getenv_default("RAY_VERSION", "2.0.0.dev0"),
+    "RAY_REPO": getenv_default("RAY_REPO",
                                "https://github.com/ray-project/ray.git"),
-    "RAY_BRANCH": os.environ.get("RAY_BRANCH", "master"),
-    "RELEASE_AWS_BUCKET": os.environ.get("RELEASE_AWS_BUCKET",
+    "RAY_BRANCH": getenv_default("RAY_BRANCH", "master"),
+    "RELEASE_AWS_BUCKET": getenv_default("RELEASE_AWS_BUCKET",
                                          "ray-release-automation-results"),
-    "RELEASE_AWS_LOCATION": os.environ.get("RELEASE_AWS_LOCATION", "dev"),
-    "RELEASE_AWS_DB_NAME": os.environ.get("RELEASE_AWS_DB_NAME", "ray_ci"),
-    "RELEASE_AWS_DB_TABLE": os.environ.get("RELEASE_AWS_DB_TABLE",
+    "RELEASE_AWS_LOCATION": getenv_default("RELEASE_AWS_LOCATION", "dev"),
+    "RELEASE_AWS_DB_NAME": getenv_default("RELEASE_AWS_DB_NAME", "ray_ci"),
+    "RELEASE_AWS_DB_TABLE": getenv_default("RELEASE_AWS_DB_TABLE",
                                            "release_test_result"),
-    "RELEASE_AWS_DB_SECRET_ARN": os.environ.get(
+    "RELEASE_AWS_DB_SECRET_ARN": getenv_default(
         "RELEASE_AWS_DB_SECRET_ARN",
         "arn:aws:secretsmanager:us-west-2:029272617770:secret:"
         "rds-db-credentials/cluster-7RB7EYTTBK2EUC3MMTONYRBJLE/ray_ci-MQN2hh",
     ),
-    "RELEASE_AWS_DB_RESOURCE_ARN": os.environ.get(
+    "RELEASE_AWS_DB_RESOURCE_ARN": getenv_default(
         "RELEASE_AWS_DB_RESOURCE_ARN",
         "arn:aws:rds:us-west-2:029272617770:cluster:ci-reporting",
     ),
@@ -495,7 +522,8 @@ def report_result(test_suite: str, test_name: str, status: str, logs: str,
 def _cleanup_session(sdk: AnyscaleSDK, session_id: str):
     if session_id:
         # Just trigger a request. No need to wait until session shutdown.
-        sdk.stop_session(session_id=session_id, stop_session_options={})
+        sdk.terminate_session(
+            session_id=session_id, terminate_session_options={})
 
 
 def search_running_session(sdk: AnyscaleSDK, project_id: str,
@@ -651,7 +679,7 @@ def install_matching_ray():
         return
     assert "manylinux2014_x86_64" in wheel, wheel
     if sys.platform == "darwin":
-        platform = "macosx_10_13_intel"
+        platform = "macosx_10_15_intel"
     elif sys.platform == "win32":
         platform = "win_amd64"
     else:
@@ -728,11 +756,12 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
 
 def run_job(cluster_name: str, compute_tpl_name: str, cluster_env_name: str,
             job_name: str, min_workers: str, script: str,
-            script_args: List[str],
-            env_vars: Dict[str, str]) -> Tuple[int, str]:
+            script_args: List[str], env_vars: Dict[str, str],
+            autosuspend: int) -> Tuple[int, str]:
     # Start cluster and job
     address = f"anyscale://{cluster_name}?cluster_compute={compute_tpl_name}" \
-              f"&cluster_env={cluster_env_name}&autosuspend=5&&update=True"
+              f"&cluster_env={cluster_env_name}&autosuspend={autosuspend}" \
+               "&&update=True"
     logger.info(f"Starting job {job_name} with Ray address: {address}")
     env = copy.deepcopy(os.environ)
     env.update(GLOBAL_CONFIG)
@@ -1015,6 +1044,7 @@ def run_test_config(
         kick_off_only: bool = False,
         check_progress: bool = False,
         upload_artifacts: bool = True,
+        app_config_id_override: Optional[str] = None,
 ) -> Dict[Any, Any]:
     """
 
@@ -1091,11 +1121,25 @@ def run_test_config(
     # If a test is long running, timeout does not mean it failed
     is_long_running = test_config["run"].get("long_running", False)
 
+    build_id_override = None
     if test_config["run"].get("use_connect"):
+        autosuspend_mins = test_config["run"].get("autosuspend_mins", 5)
         assert not kick_off_only, \
             "Unsupported for running with Anyscale connect."
+        if app_config_id_override is not None:
+            logger.info(
+                "Using connect and an app config override, waiting until "
+                "build finishes so we can fetch the app config in order to "
+                "install its pip packages locally.")
+            build_id_override = wait_for_build_or_raise(
+                sdk, app_config_id_override)
+            response = sdk.get_cluster_environment_build(build_id_override)
+            app_config = response.result.config_json
         install_app_config_packages(app_config)
         install_matching_ray()
+    elif "autosuspend_mins" in test_config["run"]:
+        raise ValueError(
+            "'autosuspend_mins' is only supported if 'use_connect' is True.")
 
     # Add information to results dict
     def _update_results(results: Dict):
@@ -1214,7 +1258,9 @@ def run_test_config(
             # First, look for running sessions
             session_id = search_running_session(sdk, project_id, session_name)
             compute_tpl_name = None
+            app_config_id = app_config_id_override
             app_config_name = None
+            build_id = build_id_override
             if not session_id:
                 logger.info("No session found.")
                 # Start session
@@ -1240,9 +1286,22 @@ def run_test_config(
                                 f"{anyscale_compute_tpl_url(compute_tpl_id)}")
 
                     # Find/create app config
-                    app_config_id, app_config_name = create_or_find_app_config(
-                        sdk, project_id, app_config)
-                    build_id = wait_for_build_or_raise(sdk, app_config_id)
+                    if app_config_id is None:
+                        (
+                            app_config_id,
+                            app_config_name,
+                        ) = create_or_find_app_config(sdk, project_id,
+                                                      app_config)
+                    else:
+                        logger.info(
+                            f"Using override app config {app_config_id}")
+                        app_config_name = sdk.get_app_config(
+                            app_config_id).result.name
+                    if build_id is None:
+                        # We might have already retrieved the build ID when
+                        # installing app config packages locally if using
+                        # connect, so only get the build ID if it's not set.
+                        build_id = wait_for_build_or_raise(sdk, app_config_id)
 
                     session_options["compute_template_id"] = compute_tpl_id
                     session_options["build_id"] = build_id
@@ -1265,6 +1324,8 @@ def run_test_config(
                 min_workers = 0
                 for node_type in compute_tpl["worker_node_types"]:
                     min_workers += node_type["min_workers"]
+                # Build completed, use job timeout
+                result_queue.put(State("CMD_RUN", time.time(), None))
                 returncode, logs = run_job(
                     cluster_name=test_name,
                     compute_tpl_name=compute_tpl_name,
@@ -1273,7 +1334,8 @@ def run_test_config(
                     min_workers=min_workers,
                     script=test_config["run"]["script"],
                     script_args=script_args,
-                    env_vars=env_vars)
+                    env_vars=env_vars,
+                    autosuspend=autosuspend_mins)
                 _process_finished_client_command(returncode, logs)
                 return
 
@@ -1637,7 +1699,8 @@ def run_test(test_config_file: str,
              kick_off_only: bool = False,
              check_progress=False,
              report=True,
-             session_name=None):
+             session_name=None,
+             app_config_id_override=None):
     with open(test_config_file, "rt") as f:
         test_configs = yaml.load(f, Loader=yaml.FullLoader)
 
@@ -1684,7 +1747,8 @@ def run_test(test_config_file: str,
         no_terminate=no_terminate,
         kick_off_only=kick_off_only,
         check_progress=check_progress,
-        upload_artifacts=report)
+        upload_artifacts=report,
+        app_config_id_override=app_config_id_override)
 
     status = result.get("status", "invalid")
 
@@ -1734,7 +1798,9 @@ def run_test(test_config_file: str,
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "--test-config", type=str, required=True, help="Test config file")
     parser.add_argument("--test-name", type=str, help="Test name in config")
@@ -1772,6 +1838,12 @@ if __name__ == "__main__":
         required=False,
         type=str,
         help="Name of the session to run this test.")
+    parser.add_argument(
+        "--app-config-id-override",
+        required=False,
+        type=str,
+        help=("An app config ID, which will override the test config app "
+              "config."))
     args, _ = parser.parse_known_args()
 
     if not GLOBAL_CONFIG["ANYSCALE_PROJECT"]:
@@ -1782,6 +1854,7 @@ if __name__ == "__main__":
 
     if args.ray_wheels:
         os.environ["RAY_WHEELS"] = str(args.ray_wheels)
+        url = str(args.ray_wheels)
     elif not args.check:
         url = find_ray_wheels(
             GLOBAL_CONFIG["RAY_REPO"],
@@ -1807,4 +1880,5 @@ if __name__ == "__main__":
         check_progress=args.check,
         report=not args.no_report,
         session_name=args.session_name,
+        app_config_id_override=args.app_config_id_override,
     )

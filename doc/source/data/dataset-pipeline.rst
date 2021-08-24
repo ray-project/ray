@@ -1,12 +1,12 @@
 Dataset Pipelines
 =================
 
-Concepts
+Overview
 --------
 
 Datasets execute their transformations synchronously in blocking calls. However, it can be useful to overlap dataset computations with output. This can be done with a `DatasetPipeline <package-ref.html#datasetpipeline-api>`__.
 
-A DatasetPipeline is an unified iterator over a (potentially infinite) sequence of Ray Datasets. Conceptually it is similar to a `Spark DStream <https://spark.apache.org/docs/latest/streaming-programming-guide.html#discretized-streams-dstreams>`__. Ray computes each dataset on-demand and stitches their output together into a single iterator where data can be pulled from. DatasetPipeline implements most of the same transformation and output methods as Datasets (e.g., map, filter, split, iter_rows, to_torch, etc.).
+A DatasetPipeline is an unified iterator over a (potentially infinite) sequence of Ray Datasets. Conceptually it is similar to a `Spark DStream <https://spark.apache.org/docs/latest/streaming-programming-guide.html#discretized-streams-dstreams>`__, but manages execution over a bounded amount of source data instead of an unbounded stream. Ray computes each dataset on-demand and stitches their output together into a single logical data iterator. DatasetPipeline implements most of the same transformation and output methods as Datasets (e.g., map, filter, split, iter_rows, to_torch, etc.).
 
 Creating a DatasetPipeline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -29,7 +29,7 @@ A DatasetPipeline can be constructed in two ways: either by pipelining the execu
     # Create a dataset and then create a pipeline from it.
     base = ray.data.range(1000000)
     print(base)
-    # -> Dataset(num_rows=1000000, num_blocks=200, schema=<class 'int'>)
+    # -> Dataset(num_blocks=200, num_rows=1000000, schema=<class 'int'>)
     pipe = base.pipeline(parallelism=10)
     print(pipe)
     # -> DatasetPipeline(length=20, num_stages=1)

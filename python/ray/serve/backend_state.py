@@ -1,7 +1,7 @@
 import math
 import time
 from abc import ABC
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from collections.abc import Iterable
 from enum import Enum
 import os
@@ -14,8 +14,8 @@ from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
                               ReplicaTag)
 from ray.serve.config import BackendConfig
-from ray.serve.constants import RESERVED_VERSION_TAG
-from ray.serve.kv_store import RayInternalKVStore
+from ray.serve.constants import MAX_NUM_DELETED_DEPLOYMENTS
+from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
 
@@ -91,8 +91,9 @@ class ActorReplicaWrapper:
                     self._placement_group_name)
             except ValueError:
                 logger.debug(
-                    "Creating placement group '{}' for backend '{}'".format(
-                        self._placement_group_name, self._backend_tag))
+                    "Creating placement group '{}' for deployment '{}'".format(
+                        self._placement_group_name, self._backend_tag) +
+                    f" component=serve deployment={self._backend_tag}")
                 self._placement_group = ray.util.placement_group(
                     [self._actor_resources],
                     lifetime="detached" if self._detached else None,
@@ -101,8 +102,10 @@ class ActorReplicaWrapper:
         try:
             self._actor_handle = ray.get_actor(self._actor_name)
         except ValueError:
-            logger.debug("Starting replica '{}' for backend '{}'.".format(
-                self._replica_tag, self._backend_tag))
+            logger.debug("Starting replica '{}' for deployment '{}'.".format(
+                self._replica_tag, self._backend_tag) +
+                         f" component=serve deployment={self._backend_tag} "
+                         f"replica={self._replica_tag}")
             self._actor_handle = backend_info.actor_def.options(
                 name=self._actor_name,
                 lifetime="detached" if self._detached else None,
@@ -363,7 +366,9 @@ class BackendReplica(VersionedReplica):
             # This will be called repeatedly until the replica shuts down.
             logger.debug(
                 f"Replica {self._replica_tag} did not shutdown after "
-                f"{self._graceful_shutdown_timeout_s}s, force-killing.")
+                f"{self._graceful_shutdown_timeout_s}s, force-killing. "
+                f"component=serve deployment={self._backend_tag} "
+                f"replica={self._replica_tag}")
 
             self._actor.force_stop()
         return False
@@ -534,6 +539,8 @@ class BackendState:
         self._goal_manager = goal_manager
         self._replicas: Dict[BackendTag, ReplicaStateContainer] = dict()
         self._backend_metadata: Dict[BackendTag, BackendInfo] = dict()
+        self._deleted_backend_metadata: Dict[BackendTag,
+                                             BackendInfo] = OrderedDict()
         self._target_replicas: Dict[BackendTag, int] = defaultdict(int)
         self._backend_goals: Dict[BackendTag, GoalId] = dict()
         self._target_versions: Dict[BackendTag, BackendVersion] = dict()
@@ -542,7 +549,8 @@ class BackendState:
 
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
-            (self._replicas, self._backend_metadata, self._target_replicas,
+            (self._replicas, self._backend_metadata,
+             self._deleted_backend_metadata, self._target_replicas,
              self._target_versions,
              self._backend_goals) = cloudpickle.loads(checkpoint)
 
@@ -583,7 +591,8 @@ class BackendState:
         self._kv_store.put(
             CHECKPOINT_KEY,
             cloudpickle.dumps(
-                (self._replicas, self._backend_metadata, self._target_replicas,
+                (self._replicas, self._backend_metadata,
+                 self._deleted_backend_metadata, self._target_replicas,
                  self._target_versions, self._backend_goals)))
 
     def _notify_backend_configs_changed(
@@ -616,18 +625,28 @@ class BackendState:
                 list(replica_dict.values()),
             )
 
-    def get_backend_configs(
-            self,
-            filter_tag: Optional[BackendTag] = None,
-    ) -> Dict[BackendTag, BackendConfig]:
+    def get_backend_configs(self,
+                            filter_tag: Optional[BackendTag] = None,
+                            include_deleted: Optional[bool] = False
+                            ) -> Dict[BackendTag, BackendConfig]:
+        metadata = self._backend_metadata.copy()
+        if include_deleted:
+            metadata.update(self._deleted_backend_metadata)
         return {
             tag: info.backend_config
-            for tag, info in self._backend_metadata.items()
+            for tag, info in metadata.items()
             if filter_tag is None or tag == filter_tag
         }
 
-    def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
-        return self._backend_metadata.get(backend_tag)
+    def get_backend(self,
+                    backend_tag: BackendTag,
+                    include_deleted: Optional[bool] = False
+                    ) -> Optional[BackendInfo]:
+        if not include_deleted:
+            return self._backend_metadata.get(backend_tag)
+        else:
+            return self._backend_metadata.get(
+                backend_tag) or self._deleted_backend_metadata.get(backend_tag)
 
     def _set_backend_goal(self, backend_tag: BackendTag,
                           backend_info: Optional[BackendInfo]) -> None:
@@ -679,18 +698,12 @@ class BackendState:
         # Ensures this method is idempotent.
         existing_info = self._backend_metadata.get(backend_tag)
         if existing_info is not None:
-            # Old codepath. We use RESERVED_VERSION_TAG to distinguish that
-            # we shouldn't use versions at all to determine redeployment
-            # because `None` is used to indicate always redeploying.
-            if backend_info.version == RESERVED_VERSION_TAG:
-                if (existing_info.backend_config == backend_info.backend_config
-                        and existing_info.replica_config ==
-                        backend_info.replica_config):
-                    return self._backend_goals.get(backend_tag, None), False
-            # New codepath: treat version as ground truth for implementation.
-            elif (existing_info.backend_config == backend_info.backend_config
-                  and backend_info.version is not None
-                  and existing_info.version == backend_info.version):
+            # Redeploying should not reset the deployment's start time.
+            backend_info.start_time_ms = existing_info.start_time_ms
+
+            if (existing_info.backend_config == backend_info.backend_config
+                    and backend_info.version is not None
+                    and existing_info.version == backend_info.version):
                 return self._backend_goals.get(backend_tag, None), False
 
         if backend_tag not in self._replicas:
@@ -698,6 +711,9 @@ class BackendState:
 
         new_goal_id, existing_goal_id = self._set_backend_goal(
             backend_tag, backend_info)
+
+        if backend_tag in self._deleted_backend_metadata:
+            del self._deleted_backend_metadata[backend_tag]
 
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
@@ -737,12 +753,6 @@ class BackendState:
         This includes both explicit code version updates and changes to the
         user_config.
         """
-        # NOTE(edoakes): this short-circuits when using the legacy
-        # `create_backend` codepath -- it can be removed once we deprecate
-        # that as the version should never be None.
-        if target_version is None:
-            return 0
-
         # Short circuit if target replicas is 0 (the backend is being deleted)
         # because this will be handled in the main loop.
         if target_replicas == 0:
@@ -811,12 +821,15 @@ class BackendState:
                 assert False, "Update must be code version or user config."
 
         if code_version_changes > 0:
-            logger.info(f"Stopping {code_version_changes} replicas of backend "
-                        f"'{backend_tag}' with outdated versions.")
+            logger.info(f"Stopping {code_version_changes} replicas of "
+                        f"deployment '{backend_tag}' with outdated versions. "
+                        f"component=serve deployment={backend_tag}")
 
         if user_config_changes > 0:
-            logger.info(f"Updating {user_config_changes} replicas of backend "
-                        f"'{backend_tag}' with outdated user_configs.")
+            logger.info(f"Updating {user_config_changes} replicas of "
+                        f"deployment '{backend_tag}' with outdated "
+                        f"user_configs. component=serve "
+                        f"deployment={backend_tag}")
 
         return len(replicas_to_update)
 
@@ -866,8 +879,9 @@ class BackendState:
             ])
             to_add = max(delta_replicas - stopping_replicas, 0)
             if to_add > 0:
-                logger.info(f"Adding {to_add} replicas "
-                            f"to backend '{backend_tag}'.")
+                logger.info(f"Adding {to_add} replicas to deployment "
+                            f"'{backend_tag}'. component=serve "
+                            f"deployment={backend_tag}")
             for _ in range(to_add):
                 replica_tag = "{}#{}".format(backend_tag, get_random_letters())
                 self._replicas[backend_tag].add(
@@ -877,8 +891,9 @@ class BackendState:
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
-            logger.info(f"Removing {to_remove} replicas "
-                        f"from backend '{backend_tag}'.")
+            logger.info(f"Removing {to_remove} replicas from deployment "
+                        f"'{backend_tag}'. component=serve "
+                        f"deployment={backend_tag}")
             replicas_to_stop = self._replicas[backend_tag].pop(
                 states=[
                     ReplicaState.SHOULD_START,
@@ -936,6 +951,14 @@ class BackendState:
                         self._backend_goals.pop(backend_tag, None))
 
         for backend_tag in deleted_backends:
+            end_time_ms = int(time.time() * 1000)
+            self._backend_metadata[backend_tag].end_time_ms = end_time_ms
+            if (len(self._deleted_backend_metadata) >
+                    MAX_NUM_DELETED_DEPLOYMENTS):
+                self._deleted_backend_metadata.popitem(last=False)
+            self._deleted_backend_metadata[
+                backend_tag] = self._backend_metadata[backend_tag]
+
             del self._replicas[backend_tag]
             del self._backend_metadata[backend_tag]
             del self._target_replicas[backend_tag]
@@ -958,8 +981,10 @@ class BackendState:
                     replicas.add(ReplicaState.RUNNING, replica)
                 else:
                     logger.warning(
-                        f"Replica {replica.replica_tag} of backend "
-                        f"{backend_tag} failed health check, stopping it.")
+                        f"Replica {replica.replica_tag} of deployment "
+                        f"{backend_tag} failed health check, stopping it. "
+                        f"component=serve deployment={backend_tag} "
+                        f"replica={replica.replica_tag}")
                     replica.set_should_stop(0)
                     replicas.add(ReplicaState.SHOULD_STOP, replica)
 
@@ -994,13 +1019,13 @@ class BackendState:
                 required, available = slow_start_replicas[
                     0].resource_requirements()
                 logger.warning(
-                    f"Backend '{backend_tag}' has {len(slow_start_replicas)} "
-                    "replicas that have taken more than "
-                    f"{SLOW_STARTUP_WARNING_S}s to start up. This may be "
-                    "caused by waiting for the cluster to auto-scale or "
-                    "because the constructor is slow. Resources required "
+                    f"Deployment '{backend_tag}' has "
+                    f"{len(slow_start_replicas)} replicas that have taken "
+                    f"more than {SLOW_STARTUP_WARNING_S}s to start up. This "
+                    "may be caused by waiting for the cluster to auto-scale "
+                    "or because the constructor is slow. Resources required "
                     f"for each replica: {required}, resources available: "
-                    f"{available}.")
+                    f"{available}. component=serve deployment={backend_tag}")
 
                 self._prev_startup_warnings[backend_tag] = time.time()
 

@@ -23,13 +23,14 @@
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
+namespace core {
 
 // Used to prevent leases from timing out when not testing that logic. It would
 // be better to use a mock clock or lease manager interface, but that's high
 // overhead for the very simple timeout logic we currently have.
 int64_t kLongTimeout = 1024 * 1024 * 1024;
 TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &resources,
-                                const ray::FunctionDescriptor &function_descriptor);
+                                const FunctionDescriptor &function_descriptor);
 // Calls BuildTaskSpec with empty resources map and empty function descriptor
 TaskSpecification BuildEmptyTaskSpec();
 
@@ -134,8 +135,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
 class MockRayletClient : public WorkerLeaseInterface {
  public:
-  ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
-                           bool disconnect_worker) override {
+  Status ReturnWorker(int worker_port, const WorkerID &worker_id,
+                      bool disconnect_worker) override {
     if (disconnect_worker) {
       num_workers_disconnected++;
     } else {
@@ -145,7 +146,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   }
 
   void RequestWorkerLease(
-      const ray::TaskSpecification &resource_spec,
+      const TaskSpecification &resource_spec,
       const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size) override {
     num_workers_requested += 1;
@@ -295,7 +296,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-  auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
+  auto data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
   ASSERT_TRUE(store->Put(data, obj1));
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
@@ -391,7 +392,7 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
 }
 
 TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &resources,
-                                const ray::FunctionDescriptor &function_descriptor) {
+                                const FunctionDescriptor &function_descriptor) {
   TaskSpecBuilder builder;
   rpc::Address empty_address;
   builder.SetCommonTaskSpec(TaskID::Nil(), "dummy_task", Language::PYTHON,
@@ -403,8 +404,8 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
 
 TaskSpecification BuildEmptyTaskSpec() {
   std::unordered_map<std::string, double> empty_resources;
-  ray::FunctionDescriptor empty_descriptor =
-      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
+  FunctionDescriptor empty_descriptor =
+      FunctionDescriptorBuilder::BuildPython("", "", "", "");
   return BuildTaskSpec(empty_resources, empty_descriptor);
 }
 
@@ -996,10 +997,10 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
 
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});
   std::unordered_map<std::string, double> resources2({{"b", 2.0}});
-  ray::FunctionDescriptor descriptor1 =
-      ray::FunctionDescriptorBuilder::BuildPython("a", "", "", "");
-  ray::FunctionDescriptor descriptor2 =
-      ray::FunctionDescriptorBuilder::BuildPython("b", "", "", "");
+  FunctionDescriptor descriptor1 =
+      FunctionDescriptorBuilder::BuildPython("a", "", "", "");
+  FunctionDescriptor descriptor2 =
+      FunctionDescriptorBuilder::BuildPython("b", "", "", "");
 
   // Tasks with different resources should request different worker leases.
   RAY_LOG(INFO) << "Test different resources";
@@ -1026,7 +1027,7 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-  auto plasma_data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
+  auto plasma_data = RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
   ASSERT_TRUE(store->Put(plasma_data, plasma1));
   ASSERT_TRUE(store->Put(plasma_data, plasma2));
 
@@ -1984,6 +1985,7 @@ TEST(DirectTaskTransportTest, TestNoWorkerRequestedIfStealingUnavailable) {
   ASSERT_EQ(worker_client->steal_callbacks.size(), 0);
 }
 
+}  // namespace core
 }  // namespace ray
 
 int main(int argc, char **argv) {

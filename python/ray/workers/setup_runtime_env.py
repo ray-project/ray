@@ -26,6 +26,16 @@ logger = logging.getLogger(__name__)
 parser = argparse.ArgumentParser()
 
 parser.add_argument(
+    "--worker-entrypoint",
+    type=str,
+    help="the worker entrypoint: python,java etc. ")
+
+parser.add_argument(
+    "--worker-language",
+    type=str,
+    help="the worker entrypoint: python,java,cpp etc.")
+
+parser.add_argument(
     "--serialized-runtime-env",
     type=str,
     help="the serialized parsed runtime env dict")
@@ -139,7 +149,8 @@ def setup_worker(input_args):
     args, remaining_args = parser.parse_known_args(args=input_args)
 
     commands = []
-    py_executable: str = sys.executable
+    worker_executable: str = args.worker_entrypoint
+    worker_language: str = args.worker_language
     runtime_env: dict = json.loads(args.serialized_runtime_env or "{}")
     runtime_env_context: RuntimeEnvContext = None
 
@@ -154,7 +165,7 @@ def setup_worker(input_args):
 
     # activate conda
     if runtime_env_context and runtime_env_context.conda_env_name:
-        py_executable = "python"
+        worker_executable = "python"
         conda_activate_commands = get_conda_activate_commands(
             runtime_env_context.conda_env_name)
         if (conda_activate_commands):
@@ -166,14 +177,29 @@ def setup_worker(input_args):
             "the context %s.", args.serialized_runtime_env,
             args.serialized_runtime_env_context)
 
-    commands += [
-        " ".join(
-            [f"exec {py_executable}"] + remaining_args +
-            # Pass the runtime for working_dir setup.
-            # We can't do it in shim process here because it requires
-            # connection to gcs.
-            ["--serialized-runtime-env", f"'{args.serialized_runtime_env}'"])
-    ]
+    worker_command = [f"exec {worker_executable}"]
+    if worker_language == "java":
+        # Java worker don't parse the command parameters, add option.
+        remaining_args.insert(
+            len(remaining_args) - 1, "-D{}={}".format(
+                "serialized-runtime-env", f"'{args.serialized_runtime_env}'"))
+        worker_command += remaining_args
+    elif worker_language == "cpp":
+        worker_command += remaining_args
+        # cpp worker flags must use underscore
+        worker_command += [
+            "--serialized_runtime_env", f"'{args.serialized_runtime_env}'"
+        ]
+    else:
+        worker_command += remaining_args
+        # Pass the runtime for working_dir setup.
+        # We can't do it in shim process here because it requires
+        # connection to gcs.
+        worker_command += [
+            "--serialized-runtime-env", f"'{args.serialized_runtime_env}'"
+        ]
+
+    commands += [" ".join(worker_command)]
     command_separator = " && "
     command_str = command_separator.join(commands)
 
@@ -181,6 +207,7 @@ def setup_worker(input_args):
     if runtime_env.get("env_vars"):
         env_vars = runtime_env["env_vars"]
         os.environ.update(env_vars)
+
     os.execvp("bash", ["bash", "-c", command_str])
 
 
@@ -231,9 +258,8 @@ def current_ray_pip_specifier() -> Optional[str]:
         built from source locally (likely if you are developing Ray).
 
     Examples:
-        Returns "ray[all]==1.4.0" if running the stable release
-        Returns "https://s3-us-west-2.amazonaws.com/ray-wheels/master/[..].whl"
-            if running the nightly or a specific commit
+        Returns "https://s3-us-west-2.amazonaws.com/ray-wheels/[..].whl"
+            if running a stable release, a nightly or a specific commit
     """
     logger = get_hook_logger()
     if os.environ.get("RAY_CI_POST_WHEEL_TESTS"):
@@ -245,12 +271,12 @@ def current_ray_pip_specifier() -> Optional[str]:
             Path(__file__).resolve().parents[3], ".whl", get_wheel_filename())
     elif ray.__commit__ == "{{RAY_COMMIT_SHA}}":
         # Running on a version built from source locally.
-        logger.warning(
-            "Current Ray version could not be detected, most likely "
-            "because you are using a version of Ray "
-            "built from source.  If you wish to use runtime_env, "
-            "you can try building a wheel and including the wheel "
-            "explicitly as a pip dependency.")
+        if os.environ.get("RAY_RUNTIME_ENV_LOCAL_DEV_MODE") != "1":
+            logger.warning(
+                "Current Ray version could not be detected, most likely "
+                "because you have manually built Ray from source.  To use "
+                "runtime_env in this case, set the environment variable "
+                "RAY_RUNTIME_ENV_LOCAL_DEV_MODE=1.")
         return None
     elif "dev" in ray.__version__:
         # Running on a nightly wheel.

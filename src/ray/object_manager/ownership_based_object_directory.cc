@@ -22,7 +22,8 @@ OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
     instrumented_io_context &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client,
     pubsub::SubscriberInterface *object_location_subscriber,
     std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed)
-    : ObjectDirectory(io_service, gcs_client),
+    : io_service_(io_service),
+      gcs_client_(gcs_client),
       client_call_manager_(io_service),
       object_location_subscriber_(object_location_subscriber),
       mark_as_failed_(mark_as_failed) {}
@@ -43,7 +44,6 @@ void FilterRemovedNodes(std::shared_ptr<gcs::GcsClient> gcs_client,
 
 /// Update object location data based on response from the owning core worker.
 bool UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_info,
-                           const ObjectID &object_id,
                            std::shared_ptr<gcs::GcsClient> gcs_client,
                            std::unordered_set<NodeID> *node_ids, std::string *spilled_url,
                            NodeID *spilled_node_id, size_t *object_size) {
@@ -205,7 +205,7 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
 
   // Update entries for this object.
   auto location_updated = UpdateObjectLocations(
-      location_info, object_id, gcs_client_, &it->second.current_object_locations,
+      location_info, gcs_client_, &it->second.current_object_locations,
       &it->second.spilled_url, &it->second.spilled_node_id, &it->second.object_size);
 
   // If the lookup has failed, that means the object is lost. Trigger the callback in this
@@ -377,12 +377,11 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
 
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Worker " << worker_id << " failed to get the location for "
-                           << object_id;
+                           << object_id << status.ToString();
             mark_as_failed_(object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE);
           } else {
-            UpdateObjectLocations(reply.object_location_info(), object_id, gcs_client_,
-                                  &node_ids, &spilled_url, &spilled_node_id,
-                                  &object_size);
+            UpdateObjectLocations(reply.object_location_info(), gcs_client_, &node_ids,
+                                  &spilled_url, &spilled_node_id, &object_size);
           }
           RAY_LOG(DEBUG) << "Looked up locations for " << object_id
                          << ", returning: " << node_ids.size()
@@ -397,6 +396,54 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
         });
   }
   return Status::OK();
+}
+
+void OwnershipBasedObjectDirectory::LookupRemoteConnectionInfo(
+    RemoteConnectionInfo &connection_info) const {
+  auto node_info = gcs_client_->Nodes().Get(connection_info.node_id);
+  if (node_info) {
+    NodeID result_node_id = NodeID::FromBinary(node_info->node_id());
+    RAY_CHECK(result_node_id == connection_info.node_id);
+    connection_info.ip = node_info->node_manager_address();
+    connection_info.port = static_cast<uint16_t>(node_info->object_manager_port());
+  }
+}
+
+std::vector<RemoteConnectionInfo>
+OwnershipBasedObjectDirectory::LookupAllRemoteConnections() const {
+  std::vector<RemoteConnectionInfo> remote_connections;
+  const auto &node_map = gcs_client_->Nodes().GetAll();
+  for (const auto &item : node_map) {
+    RemoteConnectionInfo info(item.first);
+    LookupRemoteConnectionInfo(info);
+    if (info.Connected() && info.node_id != gcs_client_->Nodes().GetSelfId()) {
+      remote_connections.push_back(info);
+    }
+  }
+  return remote_connections;
+}
+
+void OwnershipBasedObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
+  for (auto &listener : listeners_) {
+    const ObjectID &object_id = listener.first;
+    if (listener.second.current_object_locations.count(node_id) > 0) {
+      // If the subscribed object has the removed node as a location, update
+      // its locations with an empty update so that the location will be removed.
+      UpdateObjectLocations({}, gcs_client_, &listener.second.current_object_locations,
+                            &listener.second.spilled_url,
+                            &listener.second.spilled_node_id,
+                            &listener.second.object_size);
+      // Re-call all the subscribed callbacks for the object, since its
+      // locations have changed.
+      for (const auto &callback_pair : listener.second.callbacks) {
+        // It is safe to call the callback directly since this is already running
+        // in the subscription callback stack.
+        callback_pair.second(object_id, listener.second.current_object_locations,
+                             listener.second.spilled_url, listener.second.spilled_node_id,
+                             listener.second.object_size);
+      }
+    }
+  }
 }
 
 void OwnershipBasedObjectDirectory::RecordMetrics(uint64_t duration_ms) {

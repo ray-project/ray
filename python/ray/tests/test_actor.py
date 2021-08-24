@@ -11,9 +11,8 @@ import sys
 import tempfile
 import datetime
 
-from ray.test_utils import client_test_enabled
-from ray.test_utils import wait_for_condition
-from ray.test_utils import wait_for_pid_to_exit
+from ray._private.test_utils import (client_test_enabled, wait_for_condition,
+                                     wait_for_pid_to_exit)
 from ray.tests.client_test_utils import create_remote_signal_actor
 
 import ray
@@ -864,6 +863,55 @@ def test_inherit_actor_from_class(ray_start_regular_shared):
 def test_get_non_existing_named_actor(ray_start_regular_shared):
     with pytest.raises(ValueError):
         _ = ray.get_actor("non_existing_actor")
+
+
+# https://github.com/ray-project/ray/issues/17843
+def test_actor_namespace(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def f(self):
+            return "ok"
+
+    a = Actor.options(name="foo", namespace="f1").remote()
+
+    with pytest.raises(ValueError):
+        ray.get_actor(name="foo", namespace="f2")
+
+    a1 = ray.get_actor(name="foo", namespace="f1")
+    assert ray.get(a1.f.remote()) == "ok"
+    del a
+
+
+def test_named_actor_cache(ray_start_regular_shared):
+    """Verify that named actor cache works well."""
+
+    @ray.remote(max_restarts=-1)
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def inc_and_get(self):
+            self.count += 1
+            return self.count
+
+    a = Counter.options(name="hi").remote()
+    first_get = ray.get_actor("hi")
+    assert ray.get(first_get.inc_and_get.remote()) == 1
+    second_get = ray.get_actor("hi")
+    assert ray.get(second_get.inc_and_get.remote()) == 2
+    ray.kill(a, no_restart=True)
+
+    def actor_removed():
+        try:
+            ray.get_actor("hi")
+            return False
+        except ValueError:
+            return True
+
+    wait_for_condition(actor_removed)
+
+    get_after_restart = Counter.options(name="hi").remote()
+    assert ray.get(get_after_restart.inc_and_get.remote()) == 1
 
 
 def test_wrapped_actor_handle(ray_start_regular_shared):

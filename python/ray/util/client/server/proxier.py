@@ -392,7 +392,8 @@ def prepare_runtime_init_req(init_request: ray_client_pb2.DataRequest
         job_config = pickle.loads(req.job_config)
     new_job_config = ray_client_server_env_prep(job_config)
     modified_init_req = ray_client_pb2.InitRequest(
-        job_config=pickle.dumps(new_job_config))
+        job_config=pickle.dumps(new_job_config),
+        ray_init_kwargs=init_request.init.ray_init_kwargs)
 
     init_request.init.CopyFrom(modified_init_req)
     return (init_request, new_job_config)
@@ -443,7 +444,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         f"using JobConfig: {job_config}!")
                     raise RuntimeError(
                         "Starting up Server Failed! Check "
-                        "`ray_client_server.err` on the cluster.")
+                        "`ray_client_server_[port].err` on the cluster.")
                 channel = self.proxy_manager.get_channel(client_id)
                 if channel is None:
                     logger.error(f"Channel not found for {client_id}")

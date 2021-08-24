@@ -29,6 +29,7 @@
 namespace {}  // namespace
 
 namespace ray {
+namespace core {
 
 bool ReferenceCounter::OwnObjects() const {
   absl::MutexLock lock(&mutex_);
@@ -68,7 +69,7 @@ ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
     const ReferenceTableProto &proto) {
   ReferenceTable refs;
   for (const auto &ref : proto) {
-    refs.emplace(ray::ObjectID::FromBinary(ref.reference().object_id()),
+    refs.emplace(ObjectID::FromBinary(ref.reference().object_id()),
                  Reference::FromProto(ref));
   }
   return refs;
@@ -94,7 +95,9 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
                                                  const ObjectID &outer_id,
                                                  const rpc::Address &owner_address) {
   auto it = object_id_refs_.find(object_id);
-  RAY_CHECK(it != object_id_refs_.end());
+  if (it == object_id_refs_.end()) {
+    it = object_id_refs_.emplace(object_id, Reference()).first;
+  }
 
   RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
   // Skip adding this object as a borrower if we already have ownership info.
@@ -832,10 +835,13 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
       // until the outer object goes out of scope.
       for (const auto &inner_id : inner_ids) {
         it->second.contains.insert(inner_id);
-        auto inner_it = object_id_refs_.find(inner_id);
-        RAY_CHECK(inner_it != object_id_refs_.end());
         RAY_LOG(DEBUG) << "Setting inner ID " << inner_id
                        << " contained_in_owned: " << object_id;
+      }
+      // WARNING: Following loop could invalidate `it` iterator on insertion.
+      // That's why we use two loops, and we should avoid using `it` hearafter.
+      for (const auto &inner_id : inner_ids) {
+        auto inner_it = object_id_refs_.emplace(inner_id, Reference()).first;
         inner_it->second.contained_in_owned.insert(object_id);
       }
     }
@@ -847,7 +853,9 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
                      << owner_address.port << " to id " << inner_id
                      << ", borrower owns outer ID " << object_id;
       auto inner_it = object_id_refs_.find(inner_id);
-      RAY_CHECK(inner_it != object_id_refs_.end());
+      if (inner_it == object_id_refs_.end()) {
+        inner_it = object_id_refs_.emplace(inner_id, Reference()).first;
+      }
       // Add the task's caller as a borrower.
       if (inner_it->second.owned_by_us) {
         auto inserted = inner_it->second.borrowers.insert(owner_address).second;
@@ -1226,4 +1234,5 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref) const 
   }
 }
 
+}  // namespace core
 }  // namespace ray

@@ -17,7 +17,7 @@ Performance and known benchmarks
 We are continuously benchmarking Ray Serve. The metrics we care about are latency, throughput, and scalability. We can confidently say:
 
 - Ray Serve’s latency overhead is single digit milliseconds, around 1-2 milliseconds on average.
-- For throughput, Serve achieves about 3-4k queries per second on a single machine (8 cores) using 1 http proxy and 8 backend replicas performing noop requests.
+- For throughput, Serve achieves about 3-4k queries per second on a single machine (8 cores) using 1 http proxy and 8 replicas performing noop requests.
 - It is horizontally scalable so you can add more machines to increase the overall throughput. Ray Serve is built on top of Ray, 
   so its scalability is bounded by Ray’s scalability. Please check out Ray’s `scalability envelope <https://github.com/ray-project/ray/blob/master/benchmarks/README.md>`_
   to learn more about the maximum number of nodes and other limitations.
@@ -31,7 +31,7 @@ The performance issue you're most likely to encounter is high latency and/or low
 
 If you have set up :ref:`monitoring <serve-monitoring>` with Ray and Ray Serve, you will likely observe that
 ``serve_num_router_requests`` is constant while your load increases
-``serve_backend_queuing_latency_ms`` is spiking up as queries queue up in the background
+``serve_deployment_queuing_latency_ms`` is spiking up as queries queue up in the background
 
 Given the symptom, there are several ways to fix it.
 
@@ -46,15 +46,14 @@ Async functions
 Are you using ``async def`` in your callable? If you are using asyncio and
 hitting the same queuing issue mentioned above, you might want to increase 
 ``max_concurrent_queries``. Serve sets a low number by default so the client gets 
-proper backpressure. You can increase the value in the :mod:`backend config <ray.serve.config.BackendConfig>`
-to allow more coroutines running in the same replica.
+proper backpressure. You can increase the value in the Deployment decorator.
 
 Batching
 ^^^^^^^^
-If your backend can process a batch at a time at a sublinear latency 
+If your deployment can process a batch at a time at a sublinear latency 
 (for example, if it takes 1ms to process 1 query and 5ms to process 10 of them) 
 then batching is your best approach. Check out the :ref:`batching guide <serve-batching>` to 
-make your backend accept batches (especially for GPU-based ML inference). You might want to tune your ``max_batch_size`` and ``batch_wait_timeout`` in the ``@serve.batch`` decorator to maximize the benefits:
+make your deployment accept batches (especially for GPU-based ML inference). You might want to tune your ``max_batch_size`` and ``batch_wait_timeout`` in the ``@serve.batch`` decorator to maximize the benefits:
 
 - ``max_batch_size`` specifies how big the batch should be. Generally, 
   we recommend choosing the largest batch size your function can handle 

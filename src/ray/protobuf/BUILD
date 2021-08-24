@@ -226,3 +226,9 @@ cc_proto_library(
     name = "runtime_env_agent_cc_proto",
     deps = [":runtime_env_agent_proto"],
 )
+
+proto_library(
+    name = "serve_proto",
+    srcs = ["serve.proto"],
+    visibility = ["//java:__subpackages__"],
+)

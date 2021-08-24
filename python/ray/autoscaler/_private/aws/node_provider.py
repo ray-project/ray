@@ -1,7 +1,7 @@
 import random
 import copy
 import threading
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import logging
 import time
 from typing import Any, Dict, List
@@ -81,6 +81,8 @@ def list_ec2_instances(region: str, aws_credentials: Dict[str, Any] = None
 
 
 class AWSNodeProvider(NodeProvider):
+    max_terminate_nodes = 1000
+
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes",
@@ -241,7 +243,8 @@ class AWSNodeProvider(NodeProvider):
         Returns dict mapping instance id to ec2.Instance object for the created
         instances.
         """
-        tags = copy.deepcopy(tags)
+        # sort tags by key to support deterministic unit test stubbing
+        tags = OrderedDict(sorted(copy.deepcopy(tags).items()))
 
         reused_nodes_dict = {}
         # Try to reuse previously stopped nodes with compatible configs
@@ -310,6 +313,38 @@ class AWSNodeProvider(NodeProvider):
         all_created_nodes.update(created_nodes_dict)
         return all_created_nodes
 
+    @staticmethod
+    def _merge_tag_specs(tag_specs: List[Dict[str, Any]],
+                         user_tag_specs: List[Dict[str, Any]]) -> None:
+        """
+        Merges user-provided node config tag specifications into a base
+        list of node provider tag specifications. The base list of
+        node provider tag specs is modified in-place.
+
+        This allows users to add tags and override values of existing
+        tags with their own, and only applies to the resource type
+        "instance". All other resource types are appended to the list of
+        tag specs.
+
+        Args:
+            tag_specs (List[Dict[str, Any]]): base node provider tag specs
+            user_tag_specs (List[Dict[str, Any]]): user's node config tag specs
+        """
+
+        for user_tag_spec in user_tag_specs:
+            if user_tag_spec["ResourceType"] == "instance":
+                for user_tag in user_tag_spec["Tags"]:
+                    exists = False
+                    for tag in tag_specs[0]["Tags"]:
+                        if user_tag["Key"] == tag["Key"]:
+                            exists = True
+                            tag["Value"] = user_tag["Value"]
+                            break
+                    if not exists:
+                        tag_specs[0]["Tags"] += [user_tag]
+            else:
+                tag_specs += [user_tag_spec]
+
     def _create_node(self, node_config, tags, count):
         created_nodes_dict = {}
 
@@ -330,23 +365,7 @@ class AWSNodeProvider(NodeProvider):
             "Tags": tag_pairs,
         }]
         user_tag_specs = conf.get("TagSpecifications", [])
-        # Allow users to add tags and override values of existing
-        # tags with their own. This only applies to the resource type
-        # "instance". All other resource types are appended to the list of
-        # tag specs.
-        for user_tag_spec in user_tag_specs:
-            if user_tag_spec["ResourceType"] == "instance":
-                for user_tag in user_tag_spec["Tags"]:
-                    exists = False
-                    for tag in tag_specs[0]["Tags"]:
-                        if user_tag["Key"] == tag["Key"]:
-                            exists = True
-                            tag["Value"] = user_tag["Value"]
-                            break
-                    if not exists:
-                        tag_specs[0]["Tags"] += [user_tag]
-            else:
-                tag_specs += [user_tag_spec]
+        AWSNodeProvider._merge_tag_specs(tag_specs, user_tag_specs)
 
         # SubnetIds is not a real config key: we must resolve to a
         # single SubnetId before invoking the AWS API.
@@ -442,6 +461,21 @@ class AWSNodeProvider(NodeProvider):
     def terminate_nodes(self, node_ids):
         if not node_ids:
             return
+
+        terminate_instances_func = self.ec2.meta.client.terminate_instances
+        stop_instances_func = self.ec2.meta.client.stop_instances
+
+        # In some cases, this function stops some nodes, but terminates others.
+        # Each of these requires a different EC2 API call. So, we use the
+        # "nodes_to_terminate" dict below to keep track of exactly which API
+        # call will be used to stop/terminate which set of nodes. The key is
+        # the function to use, and the value is the list of nodes to terminate
+        # with that function.
+        nodes_to_terminate = {
+            terminate_instances_func: [],
+            stop_instances_func: []
+        }
+
         if self.cache_stopped_nodes:
             spot_ids = []
             on_demand_ids = []
@@ -461,16 +495,24 @@ class AWSNodeProvider(NodeProvider):
                         "under `provider` in the cluster configuration)"),
                     cli_logger.render_list(on_demand_ids))
 
-                self.ec2.meta.client.stop_instances(InstanceIds=on_demand_ids)
             if spot_ids:
                 cli_logger.print(
                     "Terminating instances {} " +
                     cf.dimmed("(cannot stop spot instances, only terminate)"),
                     cli_logger.render_list(spot_ids))
 
-                self.ec2.meta.client.terminate_instances(InstanceIds=spot_ids)
+            nodes_to_terminate[stop_instances_func] = on_demand_ids
+            nodes_to_terminate[terminate_instances_func] = spot_ids
         else:
-            self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
+            nodes_to_terminate[terminate_instances_func] = node_ids
+
+        max_terminate_nodes = self.max_terminate_nodes if \
+            self.max_terminate_nodes is not None else len(node_ids)
+
+        for terminate_func, nodes in nodes_to_terminate.items():
+            for start in range(0, len(nodes), max_terminate_nodes):
+                terminate_func(InstanceIds=nodes[start:start +
+                                                 max_terminate_nodes])
 
     def _get_node(self, node_id):
         """Refresh and get info for this node, updating the cache."""

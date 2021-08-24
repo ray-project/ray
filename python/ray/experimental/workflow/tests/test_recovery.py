@@ -5,7 +5,7 @@ from ray.tests.conftest import *  # noqa
 import pytest
 from filelock import FileLock
 import ray
-from ray.test_utils import run_string_as_driver_nonblocking
+from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.exceptions import RaySystemError
 from ray.experimental import workflow
 from ray.experimental.workflow.tests import utils
@@ -92,7 +92,7 @@ def test_recovery_complex(workflow_start_regular):
 
 
 def test_recovery_non_exists_workflow(workflow_start_regular):
-    with pytest.raises(RaySystemError):
+    with pytest.raises(ValueError):
         ray.get(workflow.resume("this_workflow_id_does_not_exist"))
 
 
