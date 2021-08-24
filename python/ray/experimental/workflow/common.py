@@ -151,22 +151,12 @@ class Workflow:
         self._data = workflow_data
         self._executed: bool = False
         self._result: Optional[WorkflowExecutionResult] = None
-        if workflow_data.name is None:
-            f = self._data.func_body
-            self._name = f"{get_module(f)}.{slugify(get_qualname(f))}"
-        else:
-            self._name = workflow_data.name
         # step id will be generated during runtime
         self._step_id: StepID = None
-        self._workflow_id = None
 
-    def set_workflow_id(self, workflow_id):
-        self._workflow_id = workflow_id
 
     @property
-    def workflow_id(self):
-        if self._workflow_id is not None:
-            return self._workflow_id
+    def _workflow_id(self):
         from ray.experimental.workflow.workflow_context import get_current_workflow_id
         return get_current_workflow_id()
 
@@ -181,12 +171,22 @@ class Workflow:
         return self._result
 
     @property
+    def _name(self) -> str:
+        if self.data.name:
+            name = self.data.name
+        else:
+            f = self._data.func_body
+            name = f"{get_module(f)}.{slugify(get_qualname(f))}"
+        return name
+
+    @property
     def step_id(self) -> StepID:
         if self._step_id is not None:
             return self._step_id
+
         from ray.experimental.workflow.workflow_access import get_or_create_management_actor
         mgr = get_or_create_management_actor()
-        self._step_id = ray.get(mgr.gen_step_id.remote(self.workflow_id, self._name))
+        self._step_id = ray.get(mgr.gen_step_id.remote(self._workflow_id, self._name))
         return self._step_id
 
     def iter_workflows_in_dag(self) -> Iterator["Workflow"]:

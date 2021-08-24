@@ -162,7 +162,6 @@ def execute_workflow(
     if workflow.executed:
         return workflow.result
     workflow_data = workflow.data
-    workflow.set_workflow_id(workflow_context.get_current_workflow_id())
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
     persisted_output, volatile_output = _workflow_step_executor.options(

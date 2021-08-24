@@ -188,9 +188,13 @@ class WorkflowManagementActor:
             logger.info(f"Workflow job [id={workflow_id}] started.")
         return result
 
-    def gen_step_id(self, workflow_id: str, step_name: str):
-        import uuid
-        return f"{workflow_id}.{step_name}.{str(uuid.uuid4())}"
+    def gen_step_id(self, workflow_id: str, step_name: str) -> int:
+        wf_store = workflow_storage.WorkflowStorage(workflow_id, self._store)
+        idx = wf_store.gen_step_id(step_name)
+        if idx == 0:
+            return step_name
+        else:
+            return f"{step_name}.{idx}"
 
     def update_step_status(self, workflow_id: str, step_id: str,
                            status: common.WorkflowStatus,
@@ -299,7 +303,7 @@ class WorkflowManagementActor:
         if name is None:
             step_id = wf_store.get_entrypoint_step_id()
         else:
-            step_id = wf_store.get_named_step_id(name)
+            step_id = name
             if step_id is None:
                 raise ValueError(
                     f"Load such step {step_id} in workflow {workflow_id}")

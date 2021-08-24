@@ -31,7 +31,7 @@ STEP_FUNC_BODY = "func_body.pkl"
 CLASS_BODY = "class_body.pkl"
 WORKFLOW_META = "workflow_meta.json"
 WORKFLOW_PROGRESS = "progress.json"
-NAMED_STEP = "named_step"
+STEP_DEDUPE = "step_dedupe"
 
 
 # TODO: Get rid of this and use asyncio.run instead once we don't support py36
@@ -157,6 +157,19 @@ class WorkflowStorage:
             A callable function.
         """
         return asyncio_run(self._get(self._key_step_function_body(step_id)))
+
+    def gen_step_id(self, step_name: str) -> int:
+        async def _gen_step_id():
+            key = self._key_step_dedupe(step_name)
+            try:
+                val = await self._get(key, True)
+                await self._put(key, val + 1, True)
+                return val + 1
+            except KeyNotFoundError:
+                await self._put(key, 0, True)
+                return 0
+        return asyncio_run(_gen_step_id())
+
 
     def load_step_args(
             self, step_id: StepID, workflows: List[Any],
@@ -329,9 +342,6 @@ class WorkflowStorage:
             self._put(self._key_step_function_body(step_id), inputs.func_body),
             self._put(self._key_step_args(step_id), args_obj)
         ]
-        if inputs.name is not None:
-            save_tasks.append(
-                self._put(self._key_step_name(inputs.name), step_id))
         await asyncio.gather(*save_tasks)
 
     def save_subworkflow(self, workflow: Workflow) -> None:
@@ -394,21 +404,6 @@ class WorkflowStorage:
             metadata = asyncio_run(
                 self._get(self._key_workflow_metadata(), True))
             return WorkflowMetaData(status=WorkflowStatus(metadata["status"]))
-        except KeyNotFoundError:
-            return None
-
-    def get_named_step_id(self, name: str) -> Optional[str]:
-        """Get the step id from the step name
-
-        Args:
-            name: the name of the step
-
-        Returns:
-            The step id associated with the name. Return None if it doesn't
-            exist.
-        """
-        try:
-            return asyncio_run(self._get(self._key_step_name(name)))
         except KeyNotFoundError:
             return None
 
@@ -510,8 +505,8 @@ class WorkflowStorage:
     def _key_workflow_metadata(self):
         return [self._workflow_id, WORKFLOW_META]
 
-    def _key_step_name(self, name):
-        return [self._workflow_id, NAMED_STEP, name]
+    def _key_step_dedupe(self, name):
+        return [self._workflow_id, STEP_DEDUPE, name]
 
 
 def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:

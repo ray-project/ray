@@ -6,6 +6,7 @@ import uuid
 
 import ray
 
+from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import workflow_storage
 from ray.experimental.workflow.common import (Workflow, WorkflowStatus,
                                               WorkflowMetaData, StepType)
@@ -36,22 +37,23 @@ def run(entry_workflow: Workflow,
         workflow_id = f"{str(uuid.uuid4())}.{time.time():.9f}"
     logger.info(f"Workflow job created. [id=\"{workflow_id}\", storage_url="
                 f"\"{store.storage_url}\"].")
-    entry_workflow.set_workflow_id(workflow_id)
-    # checkpoint the workflow
-    ws = workflow_storage.get_workflow_storage(workflow_id)
-    commit_step(ws, "", entry_workflow)
-    workflow_manager = get_or_create_management_actor()
-    ignore_existing = (entry_workflow.data.step_type != StepType.FUNCTION)
-    # NOTE: It is important to 'ray.get' the returned output. This
-    # ensures caller of 'run()' holds the reference to the workflow
-    # result. Otherwise if the actor removes the reference of the
-    # workflow output, the caller may fail to resolve the result.
-    result: "WorkflowExecutionResult" = ray.get(
-        workflow_manager.run_or_resume.remote(workflow_id, ignore_existing))
-    if entry_workflow.data.step_type == StepType.FUNCTION:
-        return flatten_workflow_output(workflow_id, result.persisted_output)
-    else:
-        return flatten_workflow_output(workflow_id, result.volatile_output)
+
+    with workflow_context.workflow_step_context(workflow_id, store.storage_url):
+        # checkpoint the workflow
+        ws = workflow_storage.get_workflow_storage(workflow_id)
+        commit_step(ws, "", entry_workflow)
+        workflow_manager = get_or_create_management_actor()
+        ignore_existing = (entry_workflow.data.step_type != StepType.FUNCTION)
+        # NOTE: It is important to 'ray.get' the returned output. This
+        # ensures caller of 'run()' holds the reference to the workflow
+        # result. Otherwise if the actor removes the reference of the
+        # workflow output, the caller may fail to resolve the result.
+        result: "WorkflowExecutionResult" = ray.get(
+            workflow_manager.run_or_resume.remote(workflow_id, ignore_existing))
+        if entry_workflow.data.step_type == StepType.FUNCTION:
+            return flatten_workflow_output(workflow_id, result.persisted_output)
+        else:
+            return flatten_workflow_output(workflow_id, result.volatile_output)
 
 
 # TODO(suquark): support recovery with ObjectRef inputs.
