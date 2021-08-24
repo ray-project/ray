@@ -941,8 +941,9 @@ class BackendState:
                     ReplicaState.SHOULD_START,
                     BackendReplica(self._controller_name, self._detached,
                                    replica_tag, backend_tag, target_version))
-                print(f"Adding SHOULD_START to replica_tag: {replica_tag}, "
-                      f"backend_tag: {backend_tag}")
+                logger.debug(
+                    f"Adding SHOULD_START to replica_tag: {replica_tag}, "
+                    f"backend_tag: {backend_tag}")
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
@@ -957,8 +958,8 @@ class BackendState:
                 max_replicas=to_remove)
 
             for replica in replicas_to_stop:
-                print(f"Adding SHOULD_STOP to replica_tag: {replica}, "
-                      f"backend_tag: {backend_tag}")
+                logger.debug(f"Adding SHOULD_STOP to replica_tag: {replica}, "
+                             f"backend_tag: {backend_tag}")
                 replica.set_should_stop(graceful_shutdown_timeout_s)
                 self._replicas[backend_tag].add(ReplicaState.SHOULD_STOP,
                                                 replica)
@@ -1114,7 +1115,7 @@ class BackendState:
                     transitioned_backend_tags.add(backend_tag)
                 elif start_status == ReplicaStartingStatus.FAILED:
                     # Replica reconfigure (deploy / upgrade) failed
-                    if self._replica_failed_to_start_counter[backend_tag] != -1:
+                    if self._replica_failed_to_start_counter[backend_tag] >= 0:
                         # Increase startup failure counter if we're tracking it
                         self._replica_failed_to_start_counter[backend_tag] += 1
 

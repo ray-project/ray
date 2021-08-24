@@ -749,7 +749,6 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
 def test_deploy_with_partial_constructor_failure(serve_instance):
     # Test deploy with 2 replicas but one of them failed all
     # attempts
-
     with tempfile.TemporaryDirectory() as tmpdir:
         file_path = os.path.join(tmpdir, "test_deploy.txt")
 
