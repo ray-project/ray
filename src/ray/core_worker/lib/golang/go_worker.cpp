@@ -79,8 +79,10 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
                   reinterpret_cast<uint8_t *>(return_value->meta->p),
                   return_value->meta->size, false);
           std::vector<ray::ObjectID> contained_object_ids;
+          auto contained_object_refs =
+              ray::core::CoreWorkerProcess::GetCoreWorker().GetObjectRefs(contained_object_ids);
           auto value = std::make_shared<ray::RayObject>(data_buffer, meta_buffer,
-                                                        contained_object_ids);
+                                                        contained_object_refs);
           results->emplace_back(value);
           int64_t task_output_inlined_bytes = 0;
           RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
