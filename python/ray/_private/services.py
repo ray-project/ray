@@ -1448,6 +1448,8 @@ def start_raylet(redis_address,
     include_java = has_java_command and ray_java_installed
     if include_java is True:
         java_worker_command = build_java_worker_command(
+            setup_worker_path,
+            worker_setup_hook,
             redis_address,
             plasma_store_name,
             raylet_name,
@@ -1460,8 +1462,9 @@ def start_raylet(redis_address,
 
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
-            "", redis_address, plasma_store_name, raylet_name, redis_password,
-            session_dir, log_dir, node_ip_address)
+            "", setup_worker_path, worker_setup_hook, redis_address,
+            plasma_store_name, raylet_name, redis_password, session_dir,
+            log_dir, node_ip_address)
     else:
         cpp_worker_command = []
 
@@ -1469,11 +1472,8 @@ def start_raylet(redis_address,
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if
     # needed.
-    start_worker_command = [
-        sys.executable,
-        setup_worker_path,
-        f"--worker-setup-hook={worker_setup_hook}",
-        f"--session-dir={session_dir}",
+    python_executable = sys.executable
+    start_worker_command_args = [
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1486,7 +1486,10 @@ def start_raylet(redis_address,
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
     if redis_password:
-        start_worker_command += [f"--redis-password={redis_password}"]
+        start_worker_command_args += [f"--redis-password={redis_password}"]
+    start_worker_command = _wrap_worker_command(
+        setup_worker_path, worker_setup_hook, session_dir, python_executable,
+        "python", start_worker_command_args)
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.
@@ -1592,6 +1595,21 @@ def start_raylet(redis_address,
     return process_info
 
 
+def _wrap_worker_command(setup_worker_path, worker_setup_hook, session_dir,
+                         worker_entrypoint, worker_language, worker_command):
+    if sys.platform == "win32":
+        return [worker_entrypoint] + worker_command
+    wrapped_worker_command = [
+        sys.executable, setup_worker_path,
+        f"--worker-setup-hook={worker_setup_hook}",
+        f"--session-dir={session_dir}",
+        f"--worker-entrypoint={worker_entrypoint}",
+        f"--worker-language={worker_language}"
+    ]
+    wrapped_worker_command += worker_command
+    return wrapped_worker_command
+
+
 def get_ray_jars_dir():
     """Return a directory where all ray-related jars and
       their dependencies locate."""
@@ -1605,6 +1623,8 @@ def get_ray_jars_dir():
 
 
 def build_java_worker_command(
+        setup_worker_path,
+        worker_setup_hook,
         redis_address,
         plasma_store_name,
         raylet_name,
@@ -1646,19 +1666,21 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
+    command_args = ["-D{}={}".format(*pair) for pair in pairs]
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
-    command += ["-cp", ray_jars]
+    command_args += ["-cp", ray_jars]
 
-    command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
-    command += ["io.ray.runtime.runner.worker.DefaultWorker"]
+    command_args += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
+    command_args += ["io.ray.runtime.runner.worker.DefaultWorker"]
 
-    return command
+    return _wrap_worker_command(setup_worker_path, worker_setup_hook,
+                                session_dir, "java", "java", command_args)
 
 
-def build_cpp_worker_command(cpp_worker_options, redis_address,
+def build_cpp_worker_command(cpp_worker_options, setup_worker_path,
+                             worker_setup_hook, redis_address,
                              plasma_store_name, raylet_name, redis_password,
                              session_dir, log_dir, node_ip_address):
     """This method assembles the command used to start a CPP worker.
@@ -1677,8 +1699,7 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
         The command string for starting CPP worker.
     """
 
-    command = [
-        DEFAULT_WORKER_EXECUTABLE,
+    command_args = [
         f"--ray_plasma_store_socket_name={plasma_store_name}",
         f"--ray_raylet_socket_name={raylet_name}",
         "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1690,7 +1711,9 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 
-    return command
+    return _wrap_worker_command(setup_worker_path, worker_setup_hook,
+                                session_dir, DEFAULT_WORKER_EXECUTABLE, "cpp",
+                                command_args)
 
 
 def determine_plasma_store_config(object_store_memory,
@@ -1928,10 +1951,12 @@ def start_ray_client_server(redis_address,
     conda_shim_flag = (
         "--worker-setup-hook=" + ray_constants.DEFAULT_WORKER_SETUP_HOOK)
 
+    python_executable = sys.executable
     command = [
-        sys.executable,
+        python_executable,
         setup_worker_path,
         conda_shim_flag,  # These two args are to use the shim process.
+        f"--worker-entrypoint={python_executable}",
         "-m",
         "ray.util.client.server",
         "--redis-address=" + str(redis_address),
