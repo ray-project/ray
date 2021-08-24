@@ -80,20 +80,20 @@ void InlineDependencies(
   RAY_CHECK(found >= dependencies.size());
 }
 
-void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
-                                                  std::function<void(Status)> on_complete) {
+void LocalDependencyResolver::ResolveDependencies(
+    TaskSpecification &task, std::function<void(Status)> on_complete) {
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> local_dependencies;
   std::vector<ActorID> actor_dependences;
   for (size_t i = 0; i < task.NumArgs(); i++) {
     if (task.ArgByRef(i)) {
       local_dependencies.emplace(task.ArgId(i), nullptr);
     }
-    for(const auto& in : task.ArgInlinedRefs(i)) {
+    for (const auto &in : task.ArgInlinedRefs(i)) {
       auto object_id = ObjectID::FromBinary(in.object_id());
 
-      if(ObjectID::IsActorID(object_id)) {
+      if (ObjectID::IsActorID(object_id)) {
         auto actor_id = ObjectID::ToActorID(object_id);
-        if(actor_creator_.IsActorInRegistering(actor_id)) {
+        if (actor_creator_.IsActorInRegistering(actor_id)) {
           actor_dependences.emplace_back(ObjectID::ToActorID(object_id));
         }
       }
@@ -106,8 +106,8 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
   }
 
   // This is deleted when the last dependency fetch callback finishes.
-  std::shared_ptr<TaskState> state =
-      std::make_shared<TaskState>(task, std::move(local_dependencies), std::move(actor_dependences));
+  std::shared_ptr<TaskState> state = std::make_shared<TaskState>(
+      task, std::move(local_dependencies), std::move(actor_dependences));
   num_pending_ += 1;
 
   for (const auto &it : state->local_dependencies) {
@@ -124,7 +124,7 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
         if (--state->obj_dependencies_remaining == 0) {
           InlineDependencies(state->local_dependencies, state->task,
                              &inlined_dependency_ids, &contained_ids);
-          if(state->actor_dependencies_remaining == 0) {
+          if (state->actor_dependencies_remaining == 0) {
             complete = true;
             num_pending_ -= 1;
           }
@@ -142,15 +142,14 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
   for (const auto &actor_id : state->actor_dependencies) {
     actor_creator_.AsyncWaitForActorRegisterFinish(
         actor_id, [state, on_complete](Status status) {
-                    if (!status.ok()) {
-                      state->status = status;
-                    }
-                    if (--state->actor_dependencies_remaining == 0) {
-                      on_complete(state->status);
-                    }
-                  });
+          if (!status.ok()) {
+            state->status = status;
+          }
+          if (--state->actor_dependencies_remaining == 0) {
+            on_complete(state->status);
+          }
+        });
   }
-
 }
 
 }  // namespace core

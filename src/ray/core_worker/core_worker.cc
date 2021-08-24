@@ -634,8 +634,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(*core_worker_client_pool_, *memory_store_,
-                                             *task_manager_,
-                                             *actor_creator_,
+                                             *task_manager_, *actor_creator_,
                                              on_excess_queueing));
 
   auto node_addr_factory = [this](const NodeID &node_id) {
@@ -1158,7 +1157,7 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                const std::unique_ptr<rpc::Address> &owner_address,
                                bool inline_small_object) {
   auto status = WaitForActorRegistered(contained_object_ids);
-  if(!status.ok()) {
+  if (!status.ok()) {
     return status;
   }
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
@@ -3156,13 +3155,13 @@ bool CoreWorker::IsExiting() const { return exiting_; }
 
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
   std::vector<ActorID> actor_ids;
-  for(const auto& id : ids) {
-    if(ObjectID::IsActorID(id)) {
+  for (const auto &id : ids) {
+    if (ObjectID::IsActorID(id)) {
       actor_ids.emplace_back(ObjectID::ToActorID(id));
     }
   }
   RAY_LOG(ERROR) << "DBG: actor_ids.size(): " << actor_ids.size();
-  if(actor_ids.empty()) {
+  if (actor_ids.empty()) {
     return Status::OK();
   }
   std::promise<void> promise;
@@ -3170,30 +3169,29 @@ Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
   std::vector<Status> ret;
   int counter = 0;
   // Post to service pool to avoid mutex
-  io_service_.post([&, this] () {
-                     for(const auto& id : actor_ids) {
-                       if(actor_creator_->IsActorInRegistering(id)) {
-                         ++counter;
-                         RAY_LOG(ERROR) << "DBG: counter: " << counter;
-                         actor_creator_->AsyncWaitForActorRegisterFinish(
-                             id,
-                             [&counter, &promise, &ret](Status status) {
-                               ret.push_back(status);
-                               --counter;
-                               RAY_LOG(ERROR) << "DBG: After: counter: " << counter;
-                               if(counter == 0) {
-                                 promise.set_value();
-                               }
-                             });
-                     }
-                   }
-                     if(counter == 0) {
-                       promise.set_value();
-                     }
-                   });
+  io_service_.post([&, this]() {
+    for (const auto &id : actor_ids) {
+      if (actor_creator_->IsActorInRegistering(id)) {
+        ++counter;
+        RAY_LOG(ERROR) << "DBG: counter: " << counter;
+        actor_creator_->AsyncWaitForActorRegisterFinish(
+            id, [&counter, &promise, &ret](Status status) {
+              ret.push_back(status);
+              --counter;
+              RAY_LOG(ERROR) << "DBG: After: counter: " << counter;
+              if (counter == 0) {
+                promise.set_value();
+              }
+            });
+      }
+    }
+    if (counter == 0) {
+      promise.set_value();
+    }
+  });
   future.wait();
-  for(const auto s : ret) {
-    if(!s.ok()) {
+  for (const auto s : ret) {
+    if (!s.ok()) {
       return s;
     }
   }

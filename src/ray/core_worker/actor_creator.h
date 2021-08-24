@@ -13,12 +13,11 @@
 // limitations under the License.
 
 #pragma once
-#include "ray/gcs/gcs_client.h"
 #include <memory>
+#include "ray/gcs/gcs_client.h"
 
 namespace ray {
 namespace core {
-
 
 class ActorCreatorInterface {
  public:
@@ -45,10 +44,10 @@ class ActorCreatorInterface {
   virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
                                   const gcs::StatusCallback &callback) = 0;
 
-  virtual void AsyncWaitForActorRegisterFinish(
-      const ActorID&, gcs::StatusCallback callback) = 0;
+  virtual void AsyncWaitForActorRegisterFinish(const ActorID &,
+                                               gcs::StatusCallback callback) = 0;
 
-  virtual bool IsActorInRegistering(const ActorID& actor_id) const = 0;
+  virtual bool IsActorInRegistering(const ActorID &actor_id) const = 0;
 };
 
 class DefaultActorCreator : public ActorCreatorInterface {
@@ -77,23 +76,22 @@ class DefaultActorCreator : public ActorCreatorInterface {
     auto actor_id = task_spec.ActorCreationId();
     registering_actors_[actor_id].emplace_back(std::move(callback));
     return gcs_client_->Actors().AsyncRegisterActor(
-        task_spec,
-        [actor_id, this](Status status) {
+        task_spec, [actor_id, this](Status status) {
           std::vector<ray::gcs::StatusCallback> cbs;
           cbs = std::move(registering_actors_[actor_id]);
           registering_actors_.erase(actor_id);
-          for(auto& cb : cbs) {
+          for (auto &cb : cbs) {
             cb(status);
           }
         });
   }
 
-  bool IsActorInRegistering(const ActorID& actor_id) const override {
+  bool IsActorInRegistering(const ActorID &actor_id) const override {
     return registering_actors_.find(actor_id) != registering_actors_.end();
   }
 
-  void AsyncWaitForActorRegisterFinish(
-      const ActorID& actor_id, gcs::StatusCallback callback) {
+  void AsyncWaitForActorRegisterFinish(const ActorID &actor_id,
+                                       gcs::StatusCallback callback) {
     auto iter = registering_actors_.find(actor_id);
     RAY_CHECK(iter != registering_actors_.end());
     iter->second.emplace_back(std::move(callback));
@@ -108,8 +106,7 @@ class DefaultActorCreator : public ActorCreatorInterface {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   absl::flat_hash_map<ActorID, std::vector<ray::gcs::StatusCallback>> registering_actors_;
-
 };
 
-}
-}
+}  // namespace core
+}  // namespace ray

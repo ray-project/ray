@@ -385,12 +385,12 @@ void TaskManager::OnTaskDependenciesInlined(
       /*argument_ids_to_add=*/contained_ids,
       /*argument_ids_to_remove=*/inlined_dependency_ids, &deleted);
   in_memory_store_->Delete(deleted);
-  for(auto id : inlined_dependency_ids) {
-    RAY_LOG(ERROR) << "DBG: InlinedDepedencyIds: "  << id.Hex();
+  for (auto id : inlined_dependency_ids) {
+    RAY_LOG(ERROR) << "DBG: InlinedDepedencyIds: " << id.Hex();
   }
 
-  for(auto id : contained_ids) {
-    RAY_LOG(ERROR) << "DBG: ContainedIds: "  << id.Hex();
+  for (auto id : contained_ids) {
+    RAY_LOG(ERROR) << "DBG: ContainedIds: " << id.Hex();
   }
 }
 

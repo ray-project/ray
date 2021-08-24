@@ -15,14 +15,13 @@
 #pragma once
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/actor_creator.h"
+#include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/gcs_client.h"
 namespace ray {
 namespace core {
-
 
 /// Class to manage lifetimes of actors that we create (actor children).
 /// Currently this class is only used to publish actor DEAD event

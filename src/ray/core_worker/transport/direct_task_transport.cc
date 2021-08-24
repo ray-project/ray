@@ -24,12 +24,12 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   num_tasks_submitted_++;
 
   auto after_resolver_cb = [this, task_spec](Status status) {
-                             if(!status.ok()) {
-                               RAY_LOG(ERROR) << "Resolving task dependencies failed " << status.ToString();
-                               RAY_UNUSED(task_finisher_->PendingTaskFailed(
-                                   task_spec.TaskId(), rpc::ErrorType::DEPEDENCE_RESOLVING_FAILED, &status));
-                               return;
-                             }
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Resolving task dependencies failed " << status.ToString();
+      RAY_UNUSED(task_finisher_->PendingTaskFailed(
+          task_spec.TaskId(), rpc::ErrorType::DEPEDENCE_RESOLVING_FAILED, &status));
+      return;
+    }
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
     if (task_spec.IsActorCreationTask()) {
       // If gcs actor management is enabled, the actor creation task will be sent to
@@ -117,13 +117,13 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     auto status = actor_creator_->AsyncRegisterActor(
         task_spec, [task_spec, after_resolver_cb = std::move(after_resolver_cb),
                     this](Status status) mutable {
-                     if (!status.ok()) {
-                       RAY_LOG(ERROR) << "Failed to register actor: " << task_spec.ActorCreationId()
-                                      << ". Error message: " << status.ToString();
-                     } else {
-                       resolver_.ResolveDependencies(task_spec, std::move(after_resolver_cb));
-                     }
-                   });
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to register actor: " << task_spec.ActorCreationId()
+                           << ". Error message: " << status.ToString();
+          } else {
+            resolver_.ResolveDependencies(task_spec, std::move(after_resolver_cb));
+          }
+        });
   } else {
     resolver_.ResolveDependencies(task_spec, std::move(after_resolver_cb));
   }

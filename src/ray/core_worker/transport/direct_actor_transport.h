@@ -28,11 +28,11 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
+#include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
-#include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -67,10 +67,8 @@ class CoreWorkerDirectActorTaskSubmitter
     : public CoreWorkerDirectActorTaskSubmitterInterface {
  public:
   CoreWorkerDirectActorTaskSubmitter(
-      rpc::CoreWorkerClientPool& core_worker_client_pool,
-      CoreWorkerMemoryStore& store,
-      TaskFinisherInterface& task_finisher,
-      ActorCreatorInterface& actor_creator,
+      rpc::CoreWorkerClientPool &core_worker_client_pool, CoreWorkerMemoryStore &store,
+      TaskFinisherInterface &task_finisher, ActorCreatorInterface &actor_creator,
       std::function<void(const ActorID &, int64_t)> warn_excess_queueing)
       : core_worker_client_pool_(core_worker_client_pool),
         resolver_(store, task_finisher, actor_creator),
@@ -262,7 +260,7 @@ class CoreWorkerDirectActorTaskSubmitter
   bool IsActorAlive(const ActorID &actor_id) const;
 
   /// Pool for producing new core worker clients.
-  rpc::CoreWorkerClientPool& core_worker_client_pool_;
+  rpc::CoreWorkerClientPool &core_worker_client_pool_;
 
   /// Mutex to protect the various maps below.
   mutable absl::Mutex mu_;
@@ -273,7 +271,7 @@ class CoreWorkerDirectActorTaskSubmitter
   LocalDependencyResolver resolver_;
 
   /// Used to complete tasks.
-  TaskFinisherInterface& task_finisher_;
+  TaskFinisherInterface &task_finisher_;
 
   /// Used to warn of excessive queueing.
   std::function<void(const ActorID &, int64_t num_queued)> warn_excess_queueing_;

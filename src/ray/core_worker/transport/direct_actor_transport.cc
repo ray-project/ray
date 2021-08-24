@@ -95,13 +95,14 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       // Only dispatch tasks if the submitted task is still queued. The task
       // may have been dequeued if the actor has since failed.
       if (it != queue->second.requests.end()) {
-        if(status.ok()) {
+        if (status.ok()) {
           it->second.second = true;
           SendPendingTasks(actor_id);
         } else {
           auto task_id = it->second.first.TaskId();
           queue->second.requests.erase(it);
-          task_finisher_.PendingTaskFailed(task_id, rpc::ErrorType::DEPEDENCE_RESOLVING_FAILED, &status);
+          task_finisher_.PendingTaskFailed(
+              task_id, rpc::ErrorType::DEPEDENCE_RESOLVING_FAILED, &status);
         }
       }
     });
@@ -118,7 +119,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     // No need to increment the number of completed tasks since the actor is
     // dead.
     RAY_UNUSED(!task_finisher_.PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED,
-                                                  &status, creation_task_exception));
+                                                 &status, creation_task_exception));
   }
 
   // If the task submission subsequently fails, then the client will receive
@@ -224,8 +225,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       // No need to increment the number of completed tasks since the actor is
       // dead.
       RAY_UNUSED(!task_finisher_.PendingTaskFailed(task_spec.TaskId(),
-                                                    rpc::ErrorType::ACTOR_DIED, &status,
-                                                    creation_task_exception));
+                                                   rpc::ErrorType::ACTOR_DIED, &status,
+                                                   creation_task_exception));
       head = requests.erase(head);
     }
 
@@ -260,7 +261,7 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
            /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
       auto task_spec = deque_itr->second;
       task_finisher_.MarkPendingTaskFailed(task_spec.TaskId(), task_spec,
-                                            rpc::ErrorType::ACTOR_DIED);
+                                           rpc::ErrorType::ACTOR_DIED);
       deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
     }
   }
