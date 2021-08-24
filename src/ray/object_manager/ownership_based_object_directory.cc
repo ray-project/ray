@@ -21,11 +21,14 @@ namespace ray {
 OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
     instrumented_io_context &io_service, std::shared_ptr<gcs::GcsClient> &gcs_client,
     pubsub::SubscriberInterface *object_location_subscriber,
+    rpc::CoreWorkerClientPool *owner_client_pool, int64_t max_object_report_batch_size,
     std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed)
     : io_service_(io_service),
       gcs_client_(gcs_client),
       client_call_manager_(io_service),
       object_location_subscriber_(object_location_subscriber),
+      owner_client_pool_(owner_client_pool),
+      max_object_report_batch_size_(max_object_report_batch_size),
       mark_as_failed_(mark_as_failed) {}
 
 namespace {
@@ -95,58 +98,50 @@ rpc::Address GetOwnerAddressFromObjectInfo(const ObjectInfo &object_info) {
 
 }  // namespace
 
-std::shared_ptr<rpc::CoreWorkerClient> OwnershipBasedObjectDirectory::GetClient(
+std::shared_ptr<rpc::CoreWorkerClientInterface> OwnershipBasedObjectDirectory::GetClient(
     const rpc::Address &owner_address) {
-  WorkerID worker_id = WorkerID::FromBinary(owner_address.worker_id());
-  if (worker_id.IsNil()) {
+  if (WorkerID::FromBinary(owner_address.worker_id()).IsNil()) {
     // If an object does not have owner, return nullptr.
     return nullptr;
   }
-  auto it = worker_rpc_clients_.find(worker_id);
-  if (it == worker_rpc_clients_.end()) {
-    it = worker_rpc_clients_
-             .emplace(worker_id, std::make_shared<rpc::CoreWorkerClient>(
-                                     owner_address, client_call_manager_))
-             .first;
-  }
-  return it->second;
+  return owner_client_pool_->GetOrConnect(owner_address);
 }
 
-ray::Status OwnershipBasedObjectDirectory::ReportObjectAdded(
-    const ObjectID &object_id, const NodeID &node_id, const ObjectInfo &object_info) {
+void OwnershipBasedObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
+                                                      const NodeID &node_id,
+                                                      const ObjectInfo &object_info) {
   const WorkerID &worker_id = object_info.owner_worker_id;
   const auto owner_address = GetOwnerAddressFromObjectInfo(object_info);
-  std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
-  if (rpc_client == nullptr) {
+  auto owner_client = GetClient(owner_address);
+  if (owner_client == nullptr) {
     RAY_LOG(DEBUG) << "Object " << object_id << " does not have owner. "
                    << "ReportObjectAdded becomes a no-op."
                    << "This should only happen for Plasma store warmup objects.";
-    return Status::OK();
+    return;
   }
   metrics_num_object_locations_added_++;
   location_buffers_[worker_id][object_id] = rpc::ObjectLocationState::ADDED;
-  SendObjectLocationUpdateBatchIfPossible(worker_id, node_id, owner_address);
-  return Status::OK();
+  SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address);
 }
 
-ray::Status OwnershipBasedObjectDirectory::ReportObjectRemoved(
-    const ObjectID &object_id, const NodeID &node_id, const ObjectInfo &object_info) {
+void OwnershipBasedObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,
+                                                        const NodeID &node_id,
+                                                        const ObjectInfo &object_info) {
   const WorkerID &worker_id = object_info.owner_worker_id;
   const auto owner_address = GetOwnerAddressFromObjectInfo(object_info);
-  std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
-  if (rpc_client == nullptr) {
+  auto owner_client = GetClient(owner_address);
+  if (owner_client == nullptr) {
     RAY_LOG(DEBUG) << "Object " << object_id << " does not have owner. "
                    << "ReportObjectRemoved becomes a no-op. "
                    << "This should only happen for Plasma store warmup objects.";
-    return Status::OK();
+    return;
   }
   metrics_num_object_locations_removed_++;
   location_buffers_[worker_id][object_id] = rpc::ObjectLocationState::REMOVED;
-  SendObjectLocationUpdateBatchIfPossible(worker_id, node_id, owner_address);
-  return Status::OK();
+  SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address);
 };
 
-void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfPossible(
+void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
     const WorkerID &worker_id, const NodeID &node_id, const rpc::Address &owner_address) {
   auto it = in_flight_requests_.find(worker_id);
   if (it != in_flight_requests_.end()) {
@@ -155,7 +150,6 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfPossible(
     return;
   }
 
-  in_flight_requests_.emplace(worker_id);
   // Do nothing if there's no update to this owner.
   auto location_buffer_it = location_buffers_.find(worker_id);
   if (location_buffer_it == location_buffers_.end()) {
@@ -170,9 +164,8 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfPossible(
   request.set_node_id(node_id.Binary());
   auto object_state_buffers_it = object_state_buffers.begin();
   auto batch_size = 0;
-  auto max_batch_size = 1000;
   while (object_state_buffers_it != object_state_buffers.end() &&
-         batch_size <= max_batch_size) {
+         batch_size < max_object_report_batch_size_) {
     const auto &object_id = object_state_buffers_it->first;
     const auto &object_state = object_state_buffers_it->second;
 
@@ -188,6 +181,7 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfPossible(
     location_buffers_.erase(location_buffer_it);
   }
 
+  in_flight_requests_.emplace(worker_id);
   auto owner_client = GetClient(owner_address);
   owner_client->UpdateObjectLocationBatch(
       request, [this, worker_id, node_id, owner_address](
@@ -201,7 +195,7 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfPossible(
         auto in_flight_request_it = in_flight_requests_.find(worker_id);
         RAY_CHECK(in_flight_request_it != in_flight_requests_.end());
         in_flight_requests_.erase(in_flight_request_it);
-        SendObjectLocationUpdateBatchIfPossible(worker_id, node_id, owner_address);
+        SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address);
       });
 }
 
@@ -268,7 +262,7 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
                                          /*location_lookup_failed*/ false);
     };
 
-    auto failure_callback = [this](const std::string &object_id_binary) {
+    auto failure_callback = [this, owner_address](const std::string &object_id_binary) {
       const auto object_id = ObjectID::FromBinary(object_id_binary);
       mark_as_failed_(object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE);
       rpc::WorkerObjectLocationsPubMessage location_info;
@@ -332,6 +326,8 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
     object_location_subscriber_->Unsubscribe(
         rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, entry->second.owner_address,
         object_id.Binary());
+    owner_client_pool_->Disconnect(
+        WorkerID::FromBinary(entry->second.owner_address.worker_id()));
     listeners_.erase(entry);
   }
   return Status::OK();
@@ -361,8 +357,8 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
         "ObjectDirectory.LookupLocations");
   } else {
     WorkerID worker_id = WorkerID::FromBinary(owner_address.worker_id());
-    std::shared_ptr<rpc::CoreWorkerClient> rpc_client = GetClient(owner_address);
-    if (rpc_client == nullptr) {
+    auto owner_client = GetClient(owner_address);
+    if (owner_client == nullptr) {
       RAY_LOG(WARNING) << "Object " << object_id << " does not have owner. "
                        << "LookupLocations returns an empty list of locations.";
       // We post the callback to the event loop in order to avoid mutating data structures
@@ -381,7 +377,7 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
     object_location_request->set_intended_worker_id(owner_address.worker_id());
     object_location_request->set_object_id(object_id.Binary());
 
-    rpc_client->GetObjectLocationsOwner(
+    owner_client->GetObjectLocationsOwner(
         request, [this, worker_id, object_id, callback](
                      Status status, const rpc::GetObjectLocationsOwnerReply &reply) {
           std::unordered_set<NodeID> node_ids;
