@@ -3,7 +3,6 @@ from collections import deque
 import re
 from typing import Dict, List, Optional, Callable, Set, Iterator, Any
 import unicodedata
-import uuid
 
 from dataclasses import dataclass
 
@@ -154,10 +153,10 @@ class Workflow:
         # step id will be generated during runtime
         self._step_id: StepID = None
 
-
     @property
     def _workflow_id(self):
-        from ray.experimental.workflow.workflow_context import get_current_workflow_id
+        from ray.experimental.workflow.workflow_context import \
+            get_current_workflow_id
         return get_current_workflow_id()
 
     @property
@@ -184,9 +183,11 @@ class Workflow:
         if self._step_id is not None:
             return self._step_id
 
-        from ray.experimental.workflow.workflow_access import get_or_create_management_actor
+        from ray.experimental.workflow.workflow_access import \
+            get_or_create_management_actor
         mgr = get_or_create_management_actor()
-        self._step_id = ray.get(mgr.gen_step_id.remote(self._workflow_id, self._name))
+        self._step_id = ray.get(
+            mgr.gen_step_id.remote(self._workflow_id, self._name))
         return self._step_id
 
     def iter_workflows_in_dag(self) -> Iterator["Workflow"]:
@@ -272,4 +273,5 @@ class Workflow:
         """
         # TODO(suquark): avoid cyclic importing
         from ray.experimental.workflow.execution import run
+        self._step_id = None
         return run(self, workflow_id)

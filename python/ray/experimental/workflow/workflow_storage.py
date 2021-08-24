@@ -95,10 +95,6 @@ class WorkflowStorage:
         self._storage = store
         self._workflow_id = workflow_id
 
-    @property
-    def workflow_id() -> str:
-        return self._workflow_id
-
     def load_step_output(self, step_id: StepID) -> Any:
         """Load the output of the workflow step from checkpoint.
 
@@ -168,8 +164,8 @@ class WorkflowStorage:
             except KeyNotFoundError:
                 await self._put(key, 0, True)
                 return 0
-        return asyncio_run(_gen_step_id())
 
+        return asyncio_run(_gen_step_id())
 
     def load_step_args(
             self, step_id: StepID, workflows: List[Any],

@@ -38,7 +38,8 @@ def run(entry_workflow: Workflow,
     logger.info(f"Workflow job created. [id=\"{workflow_id}\", storage_url="
                 f"\"{store.storage_url}\"].")
 
-    with workflow_context.workflow_step_context(workflow_id, store.storage_url):
+    with workflow_context.workflow_step_context(workflow_id,
+                                                store.storage_url):
         # checkpoint the workflow
         ws = workflow_storage.get_workflow_storage(workflow_id)
         commit_step(ws, "", entry_workflow)
@@ -49,9 +50,11 @@ def run(entry_workflow: Workflow,
         # result. Otherwise if the actor removes the reference of the
         # workflow output, the caller may fail to resolve the result.
         result: "WorkflowExecutionResult" = ray.get(
-            workflow_manager.run_or_resume.remote(workflow_id, ignore_existing))
+            workflow_manager.run_or_resume.remote(workflow_id,
+                                                  ignore_existing))
         if entry_workflow.data.step_type == StepType.FUNCTION:
-            return flatten_workflow_output(workflow_id, result.persisted_output)
+            return flatten_workflow_output(workflow_id,
+                                           result.persisted_output)
         else:
             return flatten_workflow_output(workflow_id, result.volatile_output)
 
