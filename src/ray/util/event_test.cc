@@ -271,9 +271,9 @@ TEST(EVENT_TEST, MULTI_THREAD_CONTEXT_COPY) {
   TestEventReporter::event_list.clear();
 
   std::thread private_thread_2 = std::thread(std::bind([&]() {
-    ray::RayEventContext::Instance().SetCustomField("job_id", "job 1");
     ray::RayEventContext::Instance().SetSourceType(
         rpc::Event_SourceType::Event_SourceType_RAYLET);
+    ray::RayEventContext::Instance().SetCustomField("job_id", "job 1");
     RAY_EVENT(INFO, "label 2") << "send message 2";
   }));
 

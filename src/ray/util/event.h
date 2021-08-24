@@ -31,6 +31,8 @@
 
 #include "nlohmann/json.hpp"
 
+#include <gtest/gtest_prod.h>
+
 using json = nlohmann::json;
 
 namespace ray {
@@ -122,7 +124,7 @@ class RayEventContext final {
  public:
   static RayEventContext &Instance();
 
-  static RayEventContext &OriginContext();
+  RayEventContext() {}
 
   void SetEventContext(rpc::Event_SourceType source_type,
                        const std::unordered_map<std::string, std::string> &custom_fields =
@@ -132,12 +134,8 @@ class RayEventContext final {
 
   void SetCustomFields(const std::unordered_map<std::string, std::string> &custom_fields);
 
-  // Only for test, isn't thread-safe with SetEventContext.
-  void ResetEventContext();
-
   inline void SetSourceType(rpc::Event_SourceType source_type) {
     source_type_ = source_type;
-    initialized_ = true;
   }
 
   inline const rpc::Event_SourceType &GetSourceType() const { return source_type_; }
@@ -150,27 +148,36 @@ class RayEventContext final {
     return custom_fields_;
   }
 
-  inline bool GetInitialzed() const { return initialized_; }
+  inline bool GetInitialzed() const {
+    return source_type_ != rpc::Event_SourceType::Event_SourceType_COMMON;
+  }
 
  private:
-  RayEventContext() {}
+  static RayEventContext &GlobalInstance();
 
   RayEventContext(const RayEventContext &event_context) = delete;
 
   const RayEventContext &operator=(const RayEventContext &event_context) = delete;
 
- private:
+  // Only for test, isn't thread-safe with SetEventContext.
+  void ResetEventContext();
+
+  FRIEND_TEST(EVENT_TEST, MULTI_THREAD_CONTEXT_COPY);
+
   rpc::Event_SourceType source_type_ = rpc::Event_SourceType::Event_SourceType_COMMON;
   std::string source_hostname_ = boost::asio::ip::host_name();
   int32_t source_pid_ = getpid();
   std::unordered_map<std::string, std::string> custom_fields_;
-  bool initialized_ = false;
 
   static thread_local std::unique_ptr<RayEventContext> context_;
 
-  static std::unique_ptr<RayEventContext> first_instance_;
-  static std::atomic<bool> first_instance_finished_setting_;
-  static std::atomic<int> first_instance_started_setting_;
+  // This is a global context copied from the first context created by `SetEventContext`.
+  // We make this global context in order to get a basic context in other private threads.
+  static std::unique_ptr<RayEventContext> global_context_;
+  static std::atomic<bool> global_context_finished_setting_;
+  static std::atomic<int> global_context_started_setting_;
+
+  friend class RayEvent;
 };
 
 // when the RayEvent is deconstructed, the context information is obtained from the
