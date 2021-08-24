@@ -15,13 +15,16 @@
 #pragma once
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/id.h"
 #include "ray/object_manager/plasma/connection.h"
+#include "ray/object_manager/plasma/object_lifecycle_manager.h"
 
 namespace plasma {
 
 struct GetRequest {
   GetRequest(instrumented_io_context &io_context, const std::shared_ptr<Client> &client,
-             const std::vector<ObjectID> &object_ids, bool is_from_worker);
+             const std::vector<ObjectID> &object_ids, bool is_from_worker,
+             std::function<void(const std::shared_ptr<GetRequest> &get_req)> &callback);
   /// The client that called get.
   std::shared_ptr<Client> client;
   /// The object IDs involved in this request. This is used in the reply.
@@ -37,6 +40,8 @@ struct GetRequest {
   /// Whether or not the request comes from the core worker. It is used to track the size
   /// of total objects that are consumed by core worker.
   bool is_from_worker;
+
+  std::function<void(const std::shared_ptr<GetRequest> &get_req)> callback;
 
   void AsyncWait(int64_t timeout_ms,
                  std::function<void(const boost::system::error_code &)> on_timeout) {
@@ -69,27 +74,43 @@ struct GetRequest {
   bool is_removed_ = false;
 };
 
-GetRequest::GetRequest(instrumented_io_context &io_context,
-                       const std::shared_ptr<Client> &client,
-                       const std::vector<ObjectID> &object_ids, bool is_from_worker)
-    : client(client),
-      object_ids(object_ids.begin(), object_ids.end()),
-      objects(object_ids.size()),
-      num_satisfied(0),
-      is_from_worker(is_from_worker),
-      timer_(io_context) {
-  std::unordered_set<ObjectID> unique_ids(object_ids.begin(), object_ids.end());
-  num_objects_to_wait_for = unique_ids.size();
-};
-
 class GetRequestQueue {
  public:
-  using ObjectReadyCallback = std::function<void(const ObjectID &object_id, std::shared_ptr<Client> client)>;
+  using ObjectReadyCallback =
+      std::function<void(const std::shared_ptr<GetRequest> &get_req)>;
 
-  GetRequestQueue(instrumented_io_context &io_context);
-  void AddRequest(const std::shared_ptr<Client> &client, const std::vector<ObjectID> &object_ids, bool is_from_worker,
-  			ObjectReadyCallback &callback);
-  void RemoveDisconnectedClientRequests(const std::shared_ptr<ClientInterface> &client);
+  GetRequestQueue(instrumented_io_context &io_context,
+                  ObjectLifecycleManager &object_lifecycle_mgr)
+      : io_context_(io_context), object_lifecycle_mgr_(object_lifecycle_mgr) {}
+  void AddRequest(const std::shared_ptr<Client> &client,
+                  const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+                  bool is_from_worker, ObjectReadyCallback callback);
+
+  /// Remove all of the GetRequests for a given client.
+  ///
+  /// \param client The client whose GetRequests should be removed.
+  void RemoveGetRequestsForClient(const std::shared_ptr<Client> &client);
+
+  /// Remove a GetRequest and clean up the relevant data structures.
+  ///
+  /// \param get_request The GetRequest to remove.
+  void RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request);
+
+  void ObjectSealed(const ObjectID &object_id);
+
+ private:
+  void AddToClientObjectIds(const ObjectID &object_id,
+                            const std::shared_ptr<Client> &client);
+
+  instrumented_io_context &io_context_;
+
+  /// The object store stores created objects.
+  /// A hash table mapping object IDs to a vector of the get requests that are
+  /// waiting for the object to arrive.
+  std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
+      object_get_requests_;
+
+  ObjectLifecycleManager &object_lifecycle_mgr_;
 };
 
 }  // namespace plasma

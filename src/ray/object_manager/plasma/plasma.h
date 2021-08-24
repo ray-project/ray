@@ -64,4 +64,6 @@ enum class ObjectStatus : int {
   /// The object was found.
   OBJECT_FOUND = 1
 };
+
+void ToPlasmaObject(const LocalObject &entry, PlasmaObject *object, bool check_sealed);
 }  // namespace plasma

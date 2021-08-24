@@ -24,4 +24,18 @@ namespace plasma {
 LocalObject::LocalObject(Allocation allocation)
     : allocation(std::move(allocation)), ref_count(0) {}
 
+void ToPlasmaObject(const LocalObject &entry, PlasmaObject *object, bool check_sealed) {
+  RAY_DCHECK(object != nullptr);
+  if (check_sealed) {
+    RAY_DCHECK(entry.Sealed());
+  }
+  object->store_fd = entry.GetAllocation().fd;
+  object->data_offset = entry.GetAllocation().offset;
+  object->metadata_offset =
+      entry.GetAllocation().offset + entry.GetObjectInfo().data_size;
+  object->data_size = entry.GetObjectInfo().data_size;
+  object->metadata_size = entry.GetObjectInfo().metadata_size;
+  object->device_num = entry.GetAllocation().device_num;
+  object->mmap_size = entry.GetAllocation().mmap_size;
+}
 }  // namespace plasma

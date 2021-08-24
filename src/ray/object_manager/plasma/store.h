@@ -32,6 +32,7 @@
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/create_request_queue.h"
 #include "ray/object_manager/plasma/eviction_policy.h"
+#include "ray/object_manager/plasma/get_request_queue.h"
 #include "ray/object_manager/plasma/object_lifecycle_manager.h"
 #include "ray/object_manager/plasma/object_store.h"
 #include "ray/object_manager/plasma/plasma.h"
@@ -47,8 +48,6 @@ enum class PlasmaError;
 }  // namespace flatbuf
 
 using flatbuf::PlasmaError;
-
-struct GetRequest;
 
 class PlasmaStore {
  public:
@@ -202,19 +201,7 @@ class PlasmaStore {
   void AddToClientObjectIds(const ObjectID &object_id,
                             const std::shared_ptr<Client> &client);
 
-  /// Remove a GetRequest and clean up the relevant data structures.
-  ///
-  /// \param get_request The GetRequest to remove.
-  void RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request);
-
-  /// Remove all of the GetRequests for a given client.
-  ///
-  /// \param client The client whose GetRequests should be removed.
-  void RemoveGetRequestsForClient(const std::shared_ptr<Client> &client);
-
   void ReturnFromGet(const std::shared_ptr<GetRequest> &get_req);
-
-  void NotifyObjectSealedToGetRequests(const ObjectID &object_id);
 
   int RemoveFromClientObjectIds(const ObjectID &object_id,
                                 const std::shared_ptr<Client> &client);
@@ -232,20 +219,8 @@ class PlasmaStore {
   ray::local_stream_socket socket_;
   /// The allocator that allocates mmaped memory.
   IAllocator &allocator_;
-  /// The object store stores created objects.
-  /// A hash table mapping object IDs to a vector of the get requests that are
-  /// waiting for the object to arrive.
-  std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
-      object_get_requests_;
 
   std::unordered_set<ObjectID> deletion_cache_;
-
-  /// A callback to asynchronously spill objects when space is needed. The
-  /// callback returns the amount of space still needed after the spilling is
-  /// complete.
-  /// NOTE: This function should guarantee the thread-safety because the callback is
-  /// shared with the main raylet thread.
-  const ray::SpillObjectsCallback spill_objects_callback_;
 
   /// A callback to asynchronously notify that an object is sealed.
   /// NOTE: This function should guarantee the thread-safety because the callback is
@@ -291,6 +266,8 @@ class PlasmaStore {
   /// Whether we have dumped debug information on OOM yet. This limits dump
   /// (which can be expensive) to once per OOM event.
   bool dumped_on_oom_ = false;
+
+  GetRequestQueue get_request_queue_;
 };
 
 }  // namespace plasma
