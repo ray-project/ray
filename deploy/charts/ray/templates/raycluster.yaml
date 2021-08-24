@@ -21,6 +21,7 @@ spec:
     - name: {{ $key }}
       minWorkers: {{ $val.minWorkers | default 0}}
       maxWorkers: {{ $val.maxWorkers | default 0}}
+      {{- if $val.rayResources }}
       rayResources:
         {{- toYaml $val.rayResources | nindent 8 }}
       {{- end }}
