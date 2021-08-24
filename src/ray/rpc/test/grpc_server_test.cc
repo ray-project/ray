@@ -1,7 +1,7 @@
-#include "src/ray/protobuf/gcs_service.grpc.pb.h"
 #include "ray/rpc/grpc_server.h"
-#include "gtest/gtest.h"
 #include <chrono>
+#include "gtest/gtest.h"
+#include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -40,49 +40,61 @@ class TestGrpcService : public GrpcService {
   TestServiceHandler &service_handler_;
 };
 
-TEST(TestGcsServer, TestBasic) {
-  // Prepare and start test server.
+class TestGrpcServerFixture : public ::testing::Test {
+ public:
+  void SetUp() {
+    // Prepare and start test server.
+    thread = std::make_unique<std::thread>([this]() {
+      /// The asio work to keep io_service_ alive.
+      boost::asio::io_service::work io_service_work_(io_service);
+      io_service.run();
+    });
+    test_service.reset(new TestGrpcService(io_service, test_service_handler));
+    grpc_server.reset(new GrpcServer("test", 123321));
+    grpc_server->RegisterService(*test_service);
+    grpc_server->Run();
+
+    // Prepare a client
+    channel = grpc::CreateChannel("localhost:123321", grpc::InsecureChannelCredentials());
+    test_service_stub = TestService::NewStub(channel);
+  }
+
+  void TearDown() {
+    // Cleanup stuffs.
+    grpc_server->Shutdown();
+    io_service.stop();
+    if (thread->joinable()) {
+      thread->join();
+    }
+  }
+
+ protected:
   TestServiceHandler test_service_handler;
   instrumented_io_context io_service;
-  auto thread = std::thread([&io_service]() {
-    /// The asio work to keep io_service_ alive.
-    boost::asio::io_service::work io_service_work_(io_service);
-    io_service.run();
-  });
-  TestGrpcService test_service(io_service, test_service_handler);
-  GrpcServer grpc_server("test", 123321);
-  grpc_server.RegisterService(test_service);
-  grpc_server.Run();
-
-  // Prepare a client
-  grpc::ClientContext context;
-  auto channel =
-      grpc::CreateChannel("localhost:123321", grpc::InsecureChannelCredentials());
-  std::unique_ptr<TestService::Stub> test_service_stub(TestService::NewStub(channel));
+  std::unique_ptr<std::thread> thread;
+  std::unique_ptr<TestGrpcService> test_service;
+  std::unique_ptr<GrpcServer> grpc_server;
   grpc::CompletionQueue cq;
+  std::shared_ptr<grpc::Channel> channel;
+  std::unique_ptr<TestService::Stub> test_service_stub;
+};
 
+TEST_F(TestGrpcServerFixture, TestBasic) {
   // Send request
   SleepRequest request;
   SleepReply reply;
+  grpc::ClientContext context;
   request.set_sleep_time_ms(1000);
   std::unique_ptr<grpc::ClientAsyncResponseReader<SleepReply>> rpc(
       test_service_stub->AsyncSleep(&context, request, &cq));
   grpc::Status status;
   rpc->Finish(&reply, &status, (void *)1);
-
   // Wait for reply
   void *got_tag;
   bool ok = false;
   cq.Next(&got_tag, &ok);
   if (ok && got_tag == (void *)1) {
     RAY_LOG(INFO) << ok;
-  }
-
-  // Cleanup stuffs.
-  grpc_server.Shutdown();
-  io_service.stop();
-  if (thread.joinable()) {
-    thread.join();
   }
 }
 }  // namespace rpc
