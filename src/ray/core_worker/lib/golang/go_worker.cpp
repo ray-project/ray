@@ -24,7 +24,7 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
     char *redis_password, char *serialized_job_config) {
   auto task_execution_callback =
       [](ray::TaskType task_type, const std::string task_name,
-         const ray::RayFunction &ray_function,
+         const ray::core::RayFunction &ray_function,
          const std::unordered_map<std::string, double> &required_resources,
          const std::vector<std::shared_ptr<ray::RayObject>> &args,
          const std::vector<ObjectID> &arg_reference_ids,
@@ -82,17 +82,18 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
           auto value = std::make_shared<ray::RayObject>(data_buffer, meta_buffer,
                                                         contained_object_ids);
           results->emplace_back(value);
-          RAY_CHECK_OK(ray::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
+          int64_t task_output_inlined_bytes = 0;
+          RAY_CHECK_OK(ray::core::CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
               result_id, value->GetData()->Size(), value->GetMetadata(),
-              contained_object_ids, &value));
+              contained_object_ids, task_output_inlined_bytes, &value));
           RAY_CHECK_OK(
-              ray::CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, value));
+              ray::core::CoreWorkerProcess::GetCoreWorker().SealReturnObject(result_id, value));
         }
         return ray::Status::OK();
       };
 
-  ray::CoreWorkerOptions options;
-  options.worker_type = static_cast<ray::WorkerType>(workerMode);
+  ray::core::CoreWorkerOptions options;
+  options.worker_type = static_cast<ray::core::WorkerType>(workerMode);
   options.language = ray::Language::GOLANG;
   options.store_socket = store_socket;
   options.raylet_socket = raylet_socket;
@@ -114,17 +115,14 @@ __attribute__((visibility("default"))) void go_worker_Initialize(
   options.task_execution_callback = task_execution_callback;
   //  options.on_worker_shutdown = on_worker_shutdown;
   //  options.gc_collect = gc_collect;
-  options.ref_counting_enabled = true;
   options.num_workers = 1;
   options.serialized_job_config = serialized_job_config;
   options.metrics_agent_port = -1;
-  ray::CoreWorkerProcess::Initialize(options);
-
-  SayHello((char *)"have_fun friends!");
+  ray::core::CoreWorkerProcess::Initialize(options);
 }
 
 __attribute__((visibility("default"))) void go_worker_Run() {
-  ray::CoreWorkerProcess::RunTaskExecutionLoop();
+  ray::core::CoreWorkerProcess::RunTaskExecutionLoop();
   _Exit(0);
 }
 
@@ -186,11 +184,11 @@ __attribute__((visibility("default"))) int go_worker_CreateActor(char *type_name
       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::GOLANG,
                                                  function_descriptor_list);
   ActorID actor_id;
-  ray::RayFunction ray_function = ray::RayFunction(ray::rpc::GOLANG, function_descriptor);
+  ray::core::RayFunction ray_function = ray::core::RayFunction(ray::rpc::GOLANG, function_descriptor);
   // TODO
   std::string full_name = "";
   std::string ray_namespace = "";
-  ray::ActorCreationOptions actor_creation_options{
+  ray::core::ActorCreationOptions actor_creation_options{
       0,
       0,  // TODO: Allow setting max_task_retries from Java.
       static_cast<int>(1),
@@ -201,7 +199,7 @@ __attribute__((visibility("default"))) int go_worker_CreateActor(char *type_name
       full_name,
       ray_namespace,
       /*is_asyncio=*/false};
-  auto status = ray::CoreWorkerProcess::GetCoreWorker().CreateActor(
+  auto status = ray::core::CoreWorkerProcess::GetCoreWorker().CreateActor(
       ray_function, {}, actor_creation_options,
       /*extension_data*/ "", &actor_id);
   if (!status.ok()) {
@@ -224,13 +222,13 @@ __attribute__((visibility("default"))) int go_worker_SubmitActorTask(void *actor
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(ray::rpc::GOLANG,
                                                  function_descriptor_list);
-  ray::RayFunction ray_function = ray::RayFunction(ray::rpc::GOLANG, function_descriptor);
+  ray::core::RayFunction ray_function = ray::core::RayFunction(ray::rpc::GOLANG, function_descriptor);
   std::string name = "";
   std::unordered_map<std::string, double> resources;
-  ray::TaskOptions task_options{name, num_returns, resources};
+  ray::core::TaskOptions task_options{name, num_returns, resources};
 
   std::vector<ObjectID> obj_ids;
-  ray::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id_obj, ray_function, {},
+  ray::core::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id_obj, ray_function, {},
                                                           task_options, &obj_ids);
 
   int object_id_size = ObjectID::Size();
@@ -266,7 +264,7 @@ __attribute__((visibility("default"))) int go_worker_Get(void **object_ids,
   }
   std::vector<std::shared_ptr<ray::RayObject>> results;
   auto status =
-      ray::CoreWorkerProcess::GetCoreWorker().Get(object_ids_data, timeout, &results);
+      ray::core::CoreWorkerProcess::GetCoreWorker().Get(object_ids_data, timeout, &results);
   // todo throw error, not exit now
   if (!status.ok()) {
     RAY_LOG(FATAL) << "Failed to get object";
