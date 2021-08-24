@@ -474,9 +474,12 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 self.num_clients -= 1
 
     def KeepAlive(self, request, context):
-        echo = request.echo_request
-        response = ray_client_pb2.KeepAliveResponse(echo_response=echo)
-        return response
+        client_id = _get_client_id_from_context(context)
+        if client_id == "":
+            return
+        channel = self.proxy_manager.get_channel(client_id)
+        stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
+        return stub.KeepAlive(request)
 
 
 class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
@@ -484,23 +487,25 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
         super().__init__()
         self.proxy_manager = proxy_manager
 
-    def Logstream(self, request_iterator, context):
-        client_id = _get_client_id_from_context(context)
-        if client_id == "":
-            return
-        logger.debug(f"New logstream connection from client {client_id}: ")
-
-        channel = None
+    def _try_get_channel(self, client_id):
         # We need to retry a few times because the LogClient *may* connect
         # Before the DataClient has finished connecting.
         for i in range(LOGSTREAM_RETRIES):
             channel = self.proxy_manager.get_channel(client_id)
 
             if channel is not None:
-                break
+                return channel
             logger.warning(
                 f"Retrying Logstream connection. {i+1} attempts failed.")
             time.sleep(LOGSTREAM_RETRY_INTERVAL_SEC)
+
+    def Logstream(self, request_iterator, context):
+        client_id = _get_client_id_from_context(context)
+        if client_id == "":
+            return
+        logger.debug(f"New logstream connection from client {client_id}: ")
+
+        channel = self._try_get_channel(client_id)
 
         if channel is None:
             context.set_code(grpc.StatusCode.UNAVAILABLE)
@@ -517,9 +522,12 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
             logger.exception("Proxying Logstream failed!")
 
     def KeepAlive(self, request, context):
-        echo = request.echo_request
-        response = ray_client_pb2.KeepAliveResponse(echo_response=echo)
-        return response
+        client_id = _get_client_id_from_context(context)
+        if client_id == "":
+            return
+        channel = self._try_get_channel(client_id)
+        stub = ray_client_pb2_grpc.RayletLogStreamerStub(channel)
+        return stub.KeepAlive(request)
 
 
 def serve_proxier(connection_str: str,

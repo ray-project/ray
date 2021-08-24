@@ -77,9 +77,10 @@ class LogstreamClient:
             while not self.stop_keepalive.is_set():
                 start = time.time()
                 request = ray_client_pb2.KeepAliveRequest(
-                    echo_request=random.randint(0, 2**16))
+                    echo_request=random.randint(0, 2**16), )
                 duration = time.time() - start
-                response = self.stub.KeepAlive(request)
+                response = self.stub.KeepAlive(
+                    request, metadata=self._metadata)
                 if response.echo_response != request.echo_request:
                     logger.warning("Logs client keepalive echo did not match.")
                 wait_time = max(LOGSCLIENT_KEEPALIVE_INTERVAL - duration, 0)
