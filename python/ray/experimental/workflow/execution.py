@@ -2,6 +2,7 @@ import asyncio
 import logging
 import time
 from typing import Set, List, Tuple, Optional, TYPE_CHECKING
+import uuid
 
 import ray
 
@@ -32,10 +33,10 @@ def run(entry_workflow: Workflow,
     assert ray.is_initialized()
     if workflow_id is None:
         # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
-        workflow_id = f"{entry_workflow.id}.{time.time():.9f}"
+        workflow_id = f"{str(uuid.uuid4())}.{time.time():.9f}"
     logger.info(f"Workflow job created. [id=\"{workflow_id}\", storage_url="
                 f"\"{store.storage_url}\"].")
-
+    entry_workflow.set_workflow_id(workflow_id)
     # checkpoint the workflow
     ws = workflow_storage.get_workflow_storage(workflow_id)
     commit_step(ws, "", entry_workflow)

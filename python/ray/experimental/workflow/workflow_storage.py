@@ -95,6 +95,10 @@ class WorkflowStorage:
         self._storage = store
         self._workflow_id = workflow_id
 
+    @property
+    def workflow_id() -> str:
+        return self._workflow_id
+
     def load_step_output(self, step_id: StepID) -> Any:
         """Load the output of the workflow step from checkpoint.
 
@@ -123,12 +127,12 @@ class WorkflowStorage:
         tasks = []
         if isinstance(ret, Workflow):
             # This workflow step returns a nested workflow.
-            assert step_id != ret.id
+            assert step_id != ret.step_id
             tasks.append(
                 self._put(
                     self._key_step_output_metadata(step_id),
-                    {"output_step_id": ret.id}, True))
-            dynamic_output_id = ret.id
+                    {"output_step_id": ret.step_id}, True))
+            dynamic_output_id = ret.step_id
         else:
             # This workflow step returns a object.
             ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
@@ -339,7 +343,7 @@ class WorkflowStorage:
         """
         assert not workflow.executed
         tasks = [
-            self._write_step_inputs(w.id, w.data)
+            self._write_step_inputs(w.step_id, w.data)
             for w in workflow.iter_workflows_in_dag()
         ]
         asyncio_run(asyncio.gather(*tasks))

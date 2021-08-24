@@ -162,13 +162,13 @@ def execute_workflow(
     if workflow.executed:
         return workflow.result
     workflow_data = workflow.data
-
+    workflow.set_workflow_id(workflow_context.get_current_workflow_id())
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
     persisted_output, volatile_output = _workflow_step_executor.options(
         **workflow_data.ray_options).remote(
             workflow_data.step_type, workflow_data.func_body,
-            workflow_context.get_workflow_step_context(), workflow.id,
+            workflow_context.get_workflow_step_context(), workflow.step_id,
             baked_inputs, outer_most_step_id, workflow_data.catch_exceptions,
             workflow_data.max_retries, last_step_of_workflow)
 
@@ -176,7 +176,7 @@ def execute_workflow(
         raise TypeError("Unexpected return type of the workflow.")
 
     if workflow_data.step_type != StepType.READONLY_ACTOR_METHOD:
-        _record_step_status(workflow.id, WorkflowStatus.RUNNING,
+        _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
                             [volatile_output])
 
     result = WorkflowExecutionResult(persisted_output, volatile_output)

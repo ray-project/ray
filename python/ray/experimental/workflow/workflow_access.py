@@ -188,6 +188,10 @@ class WorkflowManagementActor:
             logger.info(f"Workflow job [id={workflow_id}] started.")
         return result
 
+    def gen_step_id(self, workflow_id: str, step_name: str):
+        import uuid
+        return f"{workflow_id}.{step_name}.{str(uuid.uuid4())}"
+
     def update_step_status(self, workflow_id: str, step_id: str,
                            status: common.WorkflowStatus,
                            outputs: List[ray.ObjectRef]):
