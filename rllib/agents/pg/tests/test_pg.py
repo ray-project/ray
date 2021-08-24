@@ -22,15 +22,17 @@ class TestPG(unittest.TestCase):
     def test_pg_compilation(self):
         """Test whether a PGTrainer can be built with both frameworks."""
         config = pg.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0
-        num_iterations = 2
+        config["num_workers"] = 1
+        config["rollout_fragment_length"] = 500
+        num_iterations = 1
 
         for _ in framework_iterator(config):
-            trainer = pg.PGTrainer(config=config, env="CartPole-v0")
-            for i in range(num_iterations):
-                print(trainer.train())
-            check_compute_single_action(
-                trainer, include_prev_action_reward=True)
+            for env in ["FrozenLake-v0", "CartPole-v0"]:
+                trainer = pg.PGTrainer(config=config, env=env)
+                for i in range(num_iterations):
+                    print(trainer.train())
+                check_compute_single_action(
+                    trainer, include_prev_action_reward=True)
 
     def test_pg_fake_multi_gpu_learning(self):
         """Test whether PGTrainer can learn CartPole w/ faked multi-GPU."""

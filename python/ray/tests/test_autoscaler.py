@@ -29,7 +29,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER, NODE_KIND_HEAD, \
     NODE_KIND_WORKER, STATUS_UNINITIALIZED, TAG_RAY_CLUSTER_NAME
 from ray.autoscaler.node_provider import NodeProvider
-from ray.test_utils import RayTestTimeoutException
+from ray._private.test_utils import RayTestTimeoutException
 import pytest
 
 
@@ -204,6 +204,10 @@ class MockProvider(NodeProvider):
             return self.mock_nodes[node_id].state in ["stopped", "terminated"]
 
     def node_tags(self, node_id):
+        # Don't assume that node providers can retrieve tags from
+        # terminated nodes.
+        if self.is_terminated(node_id):
+            raise Exception(f"The node with id {node_id} has been terminated!")
         with self.lock:
             return self.mock_nodes[node_id].tags
 
@@ -2682,6 +2686,18 @@ MemAvailable:   33000000 kB
             TAG_RAY_NODE_STATUS: "update-failed"
         }, 1)
 
+        # `_allow_uninitialized_state` should return the head node
+        # in the `update-failed` state.
+        allow_failed = commands._get_running_head_node(
+            config,
+            "/fake/path",
+            override_cluster_name=None,
+            create_if_needed=False,
+            _provider=self.provider,
+            _allow_uninitialized_state=True)
+
+        assert allow_failed == 0
+
         # Node 1 is okay.
         self.provider.create_node({}, {
             TAG_RAY_CLUSTER_NAME: "default",
@@ -2697,6 +2713,18 @@ MemAvailable:   33000000 kB
             _provider=self.provider)
 
         assert node == 1
+
+        # `_allow_uninitialized_state` should return the up-to-date head node
+        # if it is present.
+        optionally_failed = commands._get_running_head_node(
+            config,
+            "/fake/path",
+            override_cluster_name=None,
+            create_if_needed=False,
+            _provider=self.provider,
+            _allow_uninitialized_state=True)
+
+        assert optionally_failed == 1
 
     def testNodeTerminatedDuringUpdate(self):
         """

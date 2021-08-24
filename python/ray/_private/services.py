@@ -55,6 +55,12 @@ GCS_SERVER_EXECUTABLE = os.path.join(
 DEFAULT_WORKER_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
 
+DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
+    "Not all Ray Dashboard dependencies were "
+    "found. To use the dashboard please "
+    "install Ray using `pip install "
+    "ray[default]`.")
+
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
@@ -220,6 +226,16 @@ def get_ray_address_to_use_or_die():
     """
     return os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE,
                           find_redis_address_or_die())
+
+
+def _log_dashboard_dependency_warning_once():
+    if log_once("dashboard_failed_import"
+                ) and not os.getenv("RAY_DISABLE_IMPORT_WARNING") == "1":
+        warning_message = DASHBOARD_DEPENDENCY_ERROR_MESSAGE
+        warning_message += " To disable this message, set " \
+                           "RAY_DISABLE_IMPORT_WARNING " \
+                           "env var to '1'."
+        warnings.warn(warning_message)
 
 
 def find_redis_address_or_die():
@@ -1174,29 +1190,12 @@ def start_dashboard(require_dashboard,
 
         # Make sure the process can start.
         try:
-            # These checks have to come first because aiohttp looks
-            # for opencensus, too, and raises a different error otherwise.
-            import opencensus  # noqa: F401
-            import prometheus_client  # noqa: F401
-
-            import aiohttp  # noqa: F401
-            import aioredis  # noqa: F401
-            import aiohttp_cors  # noqa: F401
-            import grpc  # noqa: F401
+            import ray.new_dashboard.optional_deps  # noqa: F401
         except ImportError:
-            warning_message = (
-                "Not all Ray Dashboard dependencies were found. "
-                "To use the dashboard please install Ray like so: `pip "
-                "install ray[default]`.")
             if require_dashboard:
-                raise ImportError(warning_message)
+                raise ImportError(DASHBOARD_DEPENDENCY_ERROR_MESSAGE)
             else:
-                if log_once("dashboard_failed_import") and not os.getenv(
-                        "RAY_DISABLE_IMPORT_WARNING") == "1":
-                    warning_message += " To disable this message, set " \
-                                       "RAY_DISABLE_IMPORT_WARNING " \
-                                       "env var to '1'."
-                    warnings.warn(warning_message)
+                _log_dashboard_dependency_warning_once()
                 return None, None
 
         # Start the dashboard process.
@@ -1275,6 +1274,7 @@ def start_dashboard(require_dashboard,
 
 
 def start_gcs_server(redis_address,
+                     log_dir,
                      stdout_file=None,
                      stderr_file=None,
                      redis_password=None,
@@ -1286,6 +1286,7 @@ def start_gcs_server(redis_address,
     """Start a gcs server.
     Args:
         redis_address (str): The address that the Redis server is listening on.
+        log_dir (str): The path of the dir where log files are created.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1309,6 +1310,7 @@ def start_gcs_server(redis_address,
         GCS_SERVER_EXECUTABLE,
         f"--redis_address={gcs_ip_address}",
         f"--redis_port={gcs_port}",
+        f"--log_dir={log_dir}",
         f"--config_list={config_str}",
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
@@ -1448,6 +1450,8 @@ def start_raylet(redis_address,
     include_java = has_java_command and ray_java_installed
     if include_java is True:
         java_worker_command = build_java_worker_command(
+            setup_worker_path,
+            worker_setup_hook,
             redis_address,
             plasma_store_name,
             raylet_name,
@@ -1460,8 +1464,9 @@ def start_raylet(redis_address,
 
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
-            "", redis_address, plasma_store_name, raylet_name, redis_password,
-            session_dir, log_dir, node_ip_address)
+            "", setup_worker_path, worker_setup_hook, redis_address,
+            plasma_store_name, raylet_name, redis_password, session_dir,
+            log_dir, node_ip_address)
     else:
         cpp_worker_command = []
 
@@ -1469,11 +1474,8 @@ def start_raylet(redis_address,
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if
     # needed.
-    start_worker_command = [
-        sys.executable,
-        setup_worker_path,
-        f"--worker-setup-hook={worker_setup_hook}",
-        f"--session-dir={session_dir}",
+    python_executable = sys.executable
+    start_worker_command_args = [
         worker_path,
         f"--node-ip-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
@@ -1487,7 +1489,10 @@ def start_raylet(redis_address,
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
     if redis_password:
-        start_worker_command += [f"--redis-password={redis_password}"]
+        start_worker_command_args += [f"--redis-password={redis_password}"]
+    start_worker_command = _wrap_worker_command(
+        setup_worker_path, worker_setup_hook, session_dir, python_executable,
+        "python", start_worker_command_args)
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.
@@ -1500,30 +1505,47 @@ def start_raylet(redis_address,
     if max_worker_port is None:
         max_worker_port = 0
 
-    # Create agent command
-    agent_command = [
-        sys.executable,
-        "-u",
-        os.path.join(RAY_PATH, "new_dashboard/agent.py"),
-        f"--node-ip-address={node_ip_address}",
-        f"--redis-address={redis_address}",
-        f"--metrics-export-port={metrics_export_port}",
-        f"--dashboard-agent-port={metrics_agent_port}",
-        f"--listen-port={dashboard_agent_listen_port}",
-        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--object-store-name={plasma_store_name}",
-        f"--raylet-name={raylet_name}",
-        f"--temp-dir={temp_dir}",
-        f"--session-dir={session_dir}",
-        f"--runtime-env-dir={resource_dir}",
-        f"--runtime-env-setup-hook={runtime_env_setup_hook}",
-        f"--log-dir={log_dir}",
-        f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}",
-    ]
+    # Check to see if we should start the dashboard agent or not based on the
+    # Ray installation version the user has installed (ray vs. ray[default]).
+    # Unfortunately there doesn't seem to be a cleaner way to detect this other
+    # than just blindly importing the relevant packages.
+    def check_should_start_agent():
+        try:
+            import ray.new_dashboard.optional_deps  # noqa: F401
 
-    if redis_password is not None and len(redis_password) != 0:
-        agent_command.append("--redis-password={}".format(redis_password))
+            return True
+        except ImportError:
+            _log_dashboard_dependency_warning_once()
+
+        return False
+
+    if not check_should_start_agent():
+        # An empty agent command will cause the raylet not to start it.
+        agent_command = []
+    else:
+        agent_command = [
+            sys.executable,
+            "-u",
+            os.path.join(RAY_PATH, "new_dashboard/agent.py"),
+            f"--node-ip-address={node_ip_address}",
+            f"--redis-address={redis_address}",
+            f"--metrics-export-port={metrics_export_port}",
+            f"--dashboard-agent-port={metrics_agent_port}",
+            f"--listen-port={dashboard_agent_listen_port}",
+            "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+            f"--object-store-name={plasma_store_name}",
+            f"--raylet-name={raylet_name}",
+            f"--temp-dir={temp_dir}",
+            f"--session-dir={session_dir}",
+            f"--runtime-env-dir={resource_dir}",
+            f"--runtime-env-setup-hook={runtime_env_setup_hook}",
+            f"--log-dir={log_dir}",
+            f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}",
+        ]
+
+        if redis_password is not None and len(redis_password) != 0:
+            agent_command.append("--redis-password={}".format(redis_password))
 
     command = [
         RAYLET_EXECUTABLE,
@@ -1544,6 +1566,7 @@ def start_raylet(redis_address,
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
+        f"--log_dir={log_dir}",
         f"--resource_dir={resource_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
@@ -1576,6 +1599,21 @@ def start_raylet(redis_address,
     return process_info
 
 
+def _wrap_worker_command(setup_worker_path, worker_setup_hook, session_dir,
+                         worker_entrypoint, worker_language, worker_command):
+    if sys.platform == "win32":
+        return [worker_entrypoint] + worker_command
+    wrapped_worker_command = [
+        sys.executable, setup_worker_path,
+        f"--worker-setup-hook={worker_setup_hook}",
+        f"--session-dir={session_dir}",
+        f"--worker-entrypoint={worker_entrypoint}",
+        f"--worker-language={worker_language}"
+    ]
+    wrapped_worker_command += worker_command
+    return wrapped_worker_command
+
+
 def get_ray_jars_dir():
     """Return a directory where all ray-related jars and
       their dependencies locate."""
@@ -1589,6 +1627,8 @@ def get_ray_jars_dir():
 
 
 def build_java_worker_command(
+        setup_worker_path,
+        worker_setup_hook,
         redis_address,
         plasma_store_name,
         raylet_name,
@@ -1630,19 +1670,21 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
+    command_args = ["-D{}={}".format(*pair) for pair in pairs]
 
     # Add ray jars path to java classpath
     ray_jars = os.path.join(get_ray_jars_dir(), "*")
-    command += ["-cp", ray_jars]
+    command_args += ["-cp", ray_jars]
 
-    command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
-    command += ["io.ray.runtime.runner.worker.DefaultWorker"]
+    command_args += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
+    command_args += ["io.ray.runtime.runner.worker.DefaultWorker"]
 
-    return command
+    return _wrap_worker_command(setup_worker_path, worker_setup_hook,
+                                session_dir, "java", "java", command_args)
 
 
-def build_cpp_worker_command(cpp_worker_options, redis_address,
+def build_cpp_worker_command(cpp_worker_options, setup_worker_path,
+                             worker_setup_hook, redis_address,
                              plasma_store_name, raylet_name, redis_password,
                              session_dir, log_dir, node_ip_address):
     """This method assembles the command used to start a CPP worker.
@@ -1661,20 +1703,21 @@ def build_cpp_worker_command(cpp_worker_options, redis_address,
         The command string for starting CPP worker.
     """
 
-    command = [
-        DEFAULT_WORKER_EXECUTABLE,
-        f"--ray-plasma-store-socket-name={plasma_store_name}",
-        f"--ray-raylet-socket-name={raylet_name}",
-        "--ray-node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--ray-address={redis_address}",
-        f"--ray-redis-password={redis_password}",
-        f"--ray-session-dir={session_dir}",
-        f"--ray-logs-dir={log_dir}",
-        f"--ray-node-ip-address={node_ip_address}",
+    command_args = [
+        f"--ray_plasma_store_socket_name={plasma_store_name}",
+        f"--ray_raylet_socket_name={raylet_name}",
+        "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--ray_address={redis_address}",
+        f"--ray_redis_password={redis_password}",
+        f"--ray_session_dir={session_dir}",
+        f"--ray_logs_dir={log_dir}",
+        f"--ray_node_ip_address={node_ip_address}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
 
-    return command
+    return _wrap_worker_command(setup_worker_path, worker_setup_hook,
+                                session_dir, DEFAULT_WORKER_EXECUTABLE, "cpp",
+                                command_args)
 
 
 def determine_plasma_store_config(object_store_memory,
@@ -1912,10 +1955,12 @@ def start_ray_client_server(redis_address,
     conda_shim_flag = (
         "--worker-setup-hook=" + ray_constants.DEFAULT_WORKER_SETUP_HOOK)
 
+    python_executable = sys.executable
     command = [
-        sys.executable,
+        python_executable,
         setup_worker_path,
         conda_shim_flag,  # These two args are to use the shim process.
+        f"--worker-entrypoint={python_executable}",
         "-m",
         "ray.util.client.server",
         "--redis-address=" + str(redis_address),

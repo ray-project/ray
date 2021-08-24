@@ -185,6 +185,16 @@ def validate_config(config: TrainerConfigDict) -> None:
                 "'complete_episodes'. Setting batch_mode=complete_episodes.")
             config["batch_mode"] = "complete_episodes"
 
+    if config.get("prioritized_replay"):
+        if config["multiagent"]["replay_mode"] == "lockstep":
+            raise ValueError("Prioritized replay is not supported when "
+                             "replay_mode=lockstep.")
+    else:
+        if config.get("worker_side_prioritization"):
+            raise ValueError(
+                "Worker side prioritization is not supported when "
+                "prioritized_replay=False.")
+
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
     """Policy class picker function. Class is chosen based on DL-framework.

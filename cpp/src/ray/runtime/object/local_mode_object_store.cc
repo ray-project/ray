@@ -24,8 +24,7 @@
 #include "../abstract_ray_runtime.h"
 
 namespace ray {
-namespace api {
-
+namespace internal {
 LocalModeObjectStore::LocalModeObjectStore(LocalModeRayRuntime &local_mode_ray_tuntime)
     : local_mode_ray_tuntime_(local_mode_ray_tuntime) {
   memory_store_ = std::make_unique<CoreWorkerMemoryStore>();
@@ -41,7 +40,7 @@ void LocalModeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
       reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
   auto status = memory_store_->Put(
-      ::ray::RayObject(buffer, nullptr, std::vector<ObjectID>()), object_id);
+      ::ray::RayObject(buffer, nullptr, std::vector<rpc::ObjectReference>()), object_id);
   if (!status) {
     throw RayException("Put object error");
   }
@@ -106,5 +105,5 @@ std::vector<bool> LocalModeObjectStore::Wait(const std::vector<ObjectID> &ids,
 void LocalModeObjectStore::AddLocalReference(const std::string &id) { return; }
 
 void LocalModeObjectStore::RemoveLocalReference(const std::string &id) { return; }
-}  // namespace api
+}  // namespace internal
 }  // namespace ray

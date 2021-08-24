@@ -37,7 +37,7 @@ class NestedSpaceRepeatAfterMeEnv(gym.Env):
                                self.flattened_action_space):
             # Box: -abs(diff).
             if isinstance(space, gym.spaces.Box):
-                reward -= np.abs(np.sum(a - o))
+                reward -= np.sum(np.abs(a - o))
             # Discrete: +1.0 if exact match.
             if isinstance(space, gym.spaces.Discrete):
                 reward += 1.0 if a == o else 0.0

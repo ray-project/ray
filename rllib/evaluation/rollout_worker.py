@@ -537,7 +537,7 @@ class RolloutWorker(ParallelIteratorWorker):
                         # Not all Operations support this.
                         torch.use_deterministic_algorithms(True)
                     else:
-                        torch.set_determinstic(True)
+                        torch.set_deterministic(True)
                 # This is only for Convolution no problem.
                 torch.backends.cudnn.deterministic = True
             # Tf2.x.
@@ -779,10 +779,8 @@ class RolloutWorker(ParallelIteratorWorker):
             logger.info("Completed sample batch:\n\n{}\n".format(
                 summarize(batch)))
 
-        if self.compress_observations == "bulk":
-            batch.compress(bulk=True)
-        elif self.compress_observations:
-            batch.compress()
+        if self.compress_observations:
+            batch.compress(bulk=self.compress_observations == "bulk")
 
         if self.fake_sampler:
             self.last_batch = batch

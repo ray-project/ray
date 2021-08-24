@@ -62,7 +62,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.state_lock = threading.Lock()
         self.ray_connect_handler = ray_connect_handler
 
-    def Init(self, request, context=None) -> ray_client_pb2.InitResponse:
+    def Init(self, request: ray_client_pb2.InitRequest,
+             context=None) -> ray_client_pb2.InitResponse:
         if request.job_config:
             job_config = pickle.loads(request.job_config)
             job_config.client_job = True
@@ -74,7 +75,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 worker = ray.worker.global_worker
                 current_job_config = worker.core_worker.get_job_config()
             else:
-                self.ray_connect_handler(job_config)
+                extra_kwargs = json.loads(request.ray_init_kwargs or "{}")
+                try:
+                    self.ray_connect_handler(job_config, **extra_kwargs)
+                except Exception as e:
+                    logger.exception("Running Ray Init failed:")
+                    return ray_client_pb2.InitResponse(
+                        ok=False,
+                        msg="Call to `ray.init()` on the server "
+                        f"failed with: {e}")
         if job_config is None:
             return ray_client_pb2.InitResponse(ok=True)
         job_config = job_config.get_proto_job_config()
@@ -477,7 +486,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                               task: ray_client_pb2.ClientTask,
                               context=None) -> ray_client_pb2.ClientTaskTicket:
         assert len(task.payload_id) == 0
-        actor = ray.get_actor(task.name)
+        # Convert empty string back to None.
+        actor = ray.get_actor(task.name, task.namespace or None)
         bin_actor_id = actor._actor_id.binary()
         self.actor_refs[bin_actor_id] = actor
         self.actor_owners[task.client_id].add(bin_actor_id)
@@ -579,10 +589,11 @@ def decode_options(
 
 
 def serve(connection_str, ray_connect_handler=None):
-    def default_connect_handler(job_config: JobConfig = None):
+    def default_connect_handler(job_config: JobConfig = None,
+                                **ray_init_kwargs: Dict[str, Any]):
         with disable_client_hook():
             if not ray.is_initialized():
-                return ray.init(job_config=job_config)
+                return ray.init(job_config=job_config, **ray_init_kwargs)
 
     ray_connect_handler = ray_connect_handler or default_connect_handler
     server = grpc.server(
@@ -613,7 +624,7 @@ def init_and_serve(connection_str, *args, **kwargs):
         # Disable client mode inside the worker's environment
         info = ray.init(*args, **kwargs)
 
-    def ray_connect_handler(job_config=None):
+    def ray_connect_handler(job_config=None, **ray_init_kwargs):
         # Ray client will disconnect from ray when
         # num_clients == 0.
         if ray.is_initialized():
@@ -633,17 +644,21 @@ def shutdown_with_server(server, _exiting_interpreter=False):
 
 
 def create_ray_handler(redis_address, redis_password):
-    def ray_connect_handler(job_config: JobConfig = None):
+    def ray_connect_handler(job_config: JobConfig = None, **ray_init_kwargs):
         if redis_address:
             if redis_password:
                 ray.init(
                     address=redis_address,
                     _redis_password=redis_password,
-                    job_config=job_config)
+                    job_config=job_config,
+                    **ray_init_kwargs)
             else:
-                ray.init(address=redis_address, job_config=job_config)
+                ray.init(
+                    address=redis_address,
+                    job_config=job_config,
+                    **ray_init_kwargs)
         else:
-            ray.init(job_config=job_config)
+            ray.init(job_config=job_config, **ray_init_kwargs)
 
     return ray_connect_handler
 

@@ -203,11 +203,11 @@ test_cpp() {
   # shellcheck disable=SC2046
   bazel test --config=ci $(./scripts/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
   # run cluster mode test with external cluster
-  bazel test //cpp:cluster_mode_test --test_arg=--external-cluster=true --test_arg=--redis-password="1234" \
-    --test_arg=--ray-redis-password="1234"
-  # run the cpp example
-  cd cpp/example && bazel --nosystem_rc --nohome_rc run //:example
+  bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
+    --test_arg=--ray_redis_password="1234"
 
+  # run the cpp example
+  cd cpp/example && sh run.sh
 }
 
 test_wheels() {
@@ -296,11 +296,16 @@ _bazel_build_before_install() {
   fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
 
-  # Build in debug mode if RAY_DEBUG_BUILD=1
-  if [ -z "${RAY_DEBUG_BUILD-}" ] || [ "${RAY_DEBUG_BUILD}" -ne "1" ]; then
+  if [ -z "${RAY_DEBUG_BUILD-}" ]; then
     bazel build "${target}"
-  else
+  elif [ "${RAY_DEBUG_BUILD}" = "asan" ]; then
+    # bazel build --config asan "${target}"
+    echo "Not needed"
+  elif [ "${RAY_DEBUG_BUILD}" = "debug" ]; then
     bazel build --config debug "${target}"
+  else
+    echo "Invalid config given"
+    exit 1
   fi
 }
 
@@ -449,6 +454,12 @@ _lint() {
 
     # lint copyright
     lint_copyright
+
+    # lint test script
+    pushd "${WORKSPACE_DIR}"
+       bazel query 'kind("cc_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
+       bazel query 'kind("py_test", //...)' --output=xml | python "${ROOT_DIR}"/check-bazel-team-owner.py
+    popd
   fi
 }
 

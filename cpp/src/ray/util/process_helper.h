@@ -19,7 +19,7 @@
 #include "ray/core_worker/core_worker.h"
 
 namespace ray {
-namespace api {
+namespace internal {
 
 using ray::core::CoreWorkerOptions;
 
@@ -27,7 +27,9 @@ class ProcessHelper {
  public:
   void RayStart(CoreWorkerOptions::TaskExecutionCallback callback);
   void RayStop();
-  void StartRayNode(int redis_port, std::string redis_password);
+  void StartRayNode(const int redis_port, const std::string redis_password,
+                    const int num_cpus = -1, const int num_gpus = -1,
+                    const std::unordered_map<std::string, int> resources = {});
   void StopRayNode();
 
   static ProcessHelper &GetInstance() {
@@ -41,5 +43,5 @@ class ProcessHelper {
  private:
   ProcessHelper(){};
 };
-}  // namespace api
+}  // namespace internal
 }  // namespace ray
