@@ -124,7 +124,7 @@ class LogstreamServicer(ray_client_pb2_grpc.RayletLogStreamerServicer):
                     self.num_clients -= 1
 
     def KeepAlive(self, request: ray_client_pb2.KeepAliveRequest,
-                  context: Any):
+                  context: Any) -> ray_client_pb2.KeepAliveResponse:
         echo = request.echo_request
         response = ray_client_pb2.KeepAliveResponse(echo_response=echo)
         return response

@@ -144,7 +144,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         logger.debug("Shutting down ray.")
                         ray.shutdown()
 
-    def KeepAlive(self, request: KeepAliveRequest, context: Any):
+    def KeepAlive(self, request: KeepAliveRequest,
+                  context: Any) -> ray_client_pb2.KeepAliveResponse:
         echo = request.echo_request
         response = ray_client_pb2.KeepAliveResponse(echo_response=echo)
         return response

@@ -474,7 +474,7 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 self.num_clients -= 1
 
     def KeepAlive(self, request: ray_client_pb2.KeepAliveRequest,
-                  context: Any):
+                  context: Any) -> ray_client_pb2.KeepAliveResponse:
         client_id = _get_client_id_from_context(context)
         if client_id == "":
             return
@@ -524,7 +524,7 @@ class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
             logger.exception("Proxying Logstream failed!")
 
     def KeepAlive(self, request: ray_client_pb2.KeepAliveRequest,
-                  context: Any):
+                  context: Any) -> ray_client_pb2.KeepAliveResponse:
         client_id = _get_client_id_from_context(context)
         if client_id == "":
             return
