@@ -39,11 +39,6 @@ class IObjectManagerClientPool {
   virtual optional<shared_ptr<rpc::ObjectManagerClient>> GetOrConnectByID(
       ray::NodeID id) = 0;
 
-  /// Return an existing ObjectManagerClient if exists, and connect to one if it does
-  /// not. The returned pointer is borrowed, and expected to be used briefly.
-  virtual shared_ptr<rpc::ObjectManagerClient> GetOrConnectByAddress(
-      const rpc::Address &address) = 0;
-
   /// Removes a connection to the worker from the pool, if one exists. Since the
   /// shared pointer will no longer be retained in the pool, the connection will
   /// be open until it's no longer used, at which time it will disconnect.
@@ -58,9 +53,6 @@ class ObjectManagerClientPool : public IObjectManagerClientPool {
  public:
   optional<shared_ptr<rpc::ObjectManagerClient>> GetOrConnectByID(
       ray::NodeID id) override;
-
-  shared_ptr<rpc::ObjectManagerClient> GetOrConnectByAddress(
-      const rpc::Address &address) override;
 
   void Disconnect(ray::NodeID id) override;
 
@@ -84,6 +76,11 @@ class ObjectManagerClientPool : public IObjectManagerClientPool {
       return object_manager_client;
     };
   };
+
+  /// Return an existing ObjectManagerClient if exists, and connect to one if it does
+  /// not. The returned pointer is borrowed, and expected to be used briefly.
+  shared_ptr<rpc::ObjectManagerClient> GetOrConnectByAddress(const rpc::Address &address)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// This factory function does the connection to ObjectManagerClient, and is
   /// provided by the constructor (either the default implementation, above, or a
