@@ -136,7 +136,8 @@ class ObjectRecoveryManagerTest : public ::testing::Test {
                        reinterpret_cast<const uint8_t *>(meta.data()));
                    auto meta_buffer =
                        std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-                   auto data = RayObject(nullptr, meta_buffer, std::vector<ObjectID>());
+                   auto data = RayObject(nullptr, meta_buffer,
+                                         std::vector<rpc::ObjectReference>());
                    RAY_CHECK(memory_store_->Put(data, object_id));
                  },
                  /*lineage_reconstruction_enabled=*/true) {}

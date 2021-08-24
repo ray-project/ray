@@ -1,21 +1,5 @@
 import sys
 
-try:
-    import opencensus  # noqa: F401
-    import prometheus_client  # noqa: F401
-
-    import aiohttp.web
-    import aiohttp
-    import aiohttp_cors  # noqa: F401
-    import aioredis  # noqa: F401
-except (ModuleNotFoundError, ImportError):
-    print("Not all Ray Dashboard dependencies were found. "
-          "In Ray 1.4+, the Ray CLI, autoscaler, and dashboard will "
-          "only be usable via `pip install 'ray[default]'`. Please "
-          "update your install command.")
-    # Set an exit code different from throwing an exception.
-    sys.exit(2)
-
 import argparse
 import asyncio
 import errno
@@ -33,6 +17,11 @@ import ray._private.services
 import ray._private.utils
 from ray._private.ray_logging import setup_component_logger
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
+
+# All third-party dependencies that are not included in the minimal Ray
+# installation must be included in this file. This allows us to determine if
+# the agent has the necessary dependencies to be started.
+from ray.new_dashboard.optional_deps import aiohttp
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at

@@ -71,9 +71,6 @@ RAY_CONFIG(bool, record_ref_creation_sites, true)
 /// cluster. If set, then this is the duration between attempts to flush the
 /// local cache. If this is set to 0, then the objects will be freed as soon as
 /// they enter the cache. To disable eager eviction, set this to -1.
-/// NOTE(swang): If distributed_ref_counting_enabled is off, then this will
-/// likely cause spurious object lost errors for Object IDs that were
-/// serialized, then either passed as an argument or returned from a task.
 /// NOTE(swang): The timer is checked by the raylet during every heartbeat, so
 /// this should be set to a value larger than
 /// raylet_heartbeat_period_milliseconds.
@@ -216,7 +213,9 @@ RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
 /// Number of threads used by rpc server in gcs server.
-RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
+RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 4)
+/// Number of threads used by client call manager in gcs server.
+RAY_CONFIG(uint32_t, gcs_server_rpc_client_thread_num, 4)
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
@@ -241,9 +240,6 @@ RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
 // The number of concurrent polls to polls to GCS.
 RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
-// Feature flag to turn on resource report polling. Polling and raylet pushing are
-// mutually exlusive.
-RAY_CONFIG(bool, pull_based_resource_reporting, true)
 // Feature flag to use grpc instead of redis for resource broadcast.
 // TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
 RAY_CONFIG(bool, grpc_based_resource_broadcast, false)
@@ -252,9 +248,6 @@ RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
-
-/// The amount of time to wait between logging plasma space usage debug messages.
-RAY_CONFIG(uint64_t, object_store_usage_log_interval_s, 10 * 60)
 
 /// The threshold to trigger a global gc
 RAY_CONFIG(double, high_plasma_storage_usage, 0.7)
@@ -297,8 +290,8 @@ RAY_CONFIG(int64_t, enable_metrics_collection, true)
 /// Whether put small objects in the local memory store.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
 
-// Max number bytes of inlined objects in a task execution result.
-RAY_CONFIG(int64_t, task_output_inlined_bytes_limit, 10 * 1024 * 1024)
+// Max number bytes of inlined objects in a task rpc request/response.
+RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
 /// Maximum number of tasks that can be in flight between an owner and a worker for which
 /// the owner has been granted a lease. A value >1 is used when we want to enable
@@ -456,3 +449,12 @@ RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 
 /// ServerCall instance number of each RPC service handler
 RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
+
+/// grpc keepalive sent interval
+RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000);
+
+/// grpc keepalive timeout
+RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
+
+/// Whether to use log reporter in event framework
+RAY_CONFIG(bool, event_log_reporter_enabled, false)

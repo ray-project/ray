@@ -391,7 +391,9 @@ def build_eager_tf_policy(
                 samples,
                 shuffle=False,
                 max_seq_len=self._max_seq_len,
-                batch_divisibility_req=self.batch_divisibility_req)
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
 
             self._is_training = True
             samples["is_training"] = True

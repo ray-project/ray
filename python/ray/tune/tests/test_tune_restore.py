@@ -16,7 +16,7 @@ from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 
 import ray
 from ray import tune
-from ray.test_utils import recursive_fnmatch
+from ray._private.test_utils import recursive_fnmatch
 from ray.rllib import _register_all
 from ray.tune.callback import Callback
 from ray.tune.suggest.basic_variant import BasicVariantGenerator

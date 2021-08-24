@@ -12,6 +12,7 @@ import time
 import traceback
 
 import ray.ray_constants as ray_constants
+import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
 import ray._private.utils
 from ray._private.ray_logging import setup_component_logger
@@ -281,7 +282,7 @@ class LogMonitor:
 
             if len(lines_to_publish) > 0:
                 self.redis_client.publish(
-                    ray.gcs_utils.LOG_FILE_CHANNEL,
+                    gcs_utils.LOG_FILE_CHANNEL,
                     json.dumps({
                         "ip": self.ip,
                         "pid": file_info.worker_pid,

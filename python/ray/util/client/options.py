@@ -24,6 +24,7 @@ options = {
                     "or a positive integer"),
     "max_concurrency": (),
     "name": (),
+    "namespace": (),
     "lifetime": (),
     "memory": (),
     "object_store_memory": (),

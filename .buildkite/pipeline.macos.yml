@@ -55,8 +55,8 @@ steps:
     - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
     - python .buildkite/copy_files.py --destination branch_jars --path ./.jar/darwin
     # Upload to latest directory.
-    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
-    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
+    - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
+    - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
 
 
 - label: ":mac: :apple: Ray C++ and Libraries"
@@ -67,6 +67,13 @@ steps:
     - bazel test --config=ci --test_env=CI $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,-flaky-mac --
       //:all python/ray/serve/... python/ray/new_dashboard/... -rllib/... -core_worker_test
     - *epilogue_commands
+
+- label: ":mac: :apple: Worker"
+  <<: *common
+  commands:
+    - *prelude_commands
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/travis/ci.sh test_cpp
 
 - label: ":mac: :apple: Small and Large"
   <<: *common
