@@ -1047,6 +1047,19 @@ cc_test(
 )
 
 cc_test(
+    name = "eviction_policy_test",
+    srcs = [
+        "src/ray/object_manager/plasma/test/eviction_policy_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":plasma_store_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "create_request_queue_test",
     size = "small",
     srcs = [
