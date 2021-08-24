@@ -253,6 +253,7 @@ class Worker:
         self._load_code_from_local = load_code_from_local
 
     def put_object(self, value, object_ref=None, owner_address=None):
+        print("put", value)
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in

@@ -237,8 +237,8 @@ ObjectID ObjectID::ForActorHandle(const ActorID &actor_id) {
 }
 
 bool ObjectID::IsActorID(const ObjectID& object_id) {
-  for(size_t i = 0; i < (ObjectID::kLength - ActorID::kLength); ++i) {
-    if(object_id.id_[i] != 0) {
+  for(size_t i = 0; i < (TaskID::kLength - ActorID::kLength); ++i) {
+    if(object_id.id_[i] != 0xff) {
       return false;
     }
   }

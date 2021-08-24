@@ -1117,7 +1117,7 @@ Status CoreWorker::Put(const RayObject &object,
 Status CoreWorker::Put(const RayObject &object,
                        const std::vector<ObjectID> &contained_object_ids,
                        const ObjectID &object_id, bool pin_object) {
-  bool object_exists;
+  WaitForActorRegistered(contained_object_ids);
   if (options_.is_local_mode ||
       (RayConfig::instance().put_small_object_in_memory_store() &&
        static_cast<int64_t>(object.GetSize()) < max_direct_call_object_size_)) {
@@ -1125,6 +1125,7 @@ Status CoreWorker::Put(const RayObject &object,
     RAY_CHECK(memory_store_->Put(object, object_id));
     return Status::OK();
   }
+  bool object_exists;
   RAY_RETURN_NOT_OK(plasma_store_provider_->Put(
       object, object_id, /* owner_address = */ rpc_address_, &object_exists));
   if (!object_exists) {
@@ -1156,6 +1157,7 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                bool created_by_worker,
                                const std::unique_ptr<rpc::Address> &owner_address,
                                bool inline_small_object) {
+  WaitForActorRegistered(contained_object_ids);
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
                                    worker_context_.GetNextPutIndex());
   rpc::Address real_owner_address =
@@ -3149,6 +3151,35 @@ const rpc::JobConfig &CoreWorker::GetJobConfig() const { return *job_config_; }
 std::shared_ptr<gcs::GcsClient> CoreWorker::GetGcsClient() const { return gcs_client_; }
 
 bool CoreWorker::IsExiting() const { return exiting_; }
+
+Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
+  std::promise<Status> promise;
+  auto future = promise.get_future();
+  std::vector<ActorID> actor_ids;
+  for(const auto& id : ids) {
+    if(ObjectID::IsActorID(id)) {
+      actor_ids.emplace_back(ObjectID::ToActorID(id));
+    }
+  }
+
+  io_service_.post([promise = std::move(promise), actor_ids = std::move(actor_ids), actor_creator_] (){
+                     std::shared_ptr<int> counter(0);
+                     for(const auto& id : actor_ids) {
+                       if(actor_creator_->IsActorInRegistering(id)) {
+                         ++(*counter);
+                         actor_creator_->AsyncWaitForActorRegisterFinish(
+                             id,
+                             [counter]() {
+                               --(*counter);
+                               if(*counter == 0) {
+
+                               }
+                             }
+                       }
+                     }
+                   });
+  future.wait();
+}
 
 }  // namespace core
 }  // namespace ray

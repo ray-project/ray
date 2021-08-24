@@ -90,6 +90,7 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
     }
     for(const auto& in : task.ArgInlinedRefs(i)) {
       auto object_id = ObjectID::FromBinary(in.object_id());
+
       if(ObjectID::IsActorID(object_id)) {
         auto actor_id = ObjectID::ToActorID(object_id);
         if(actor_creator_.IsActorInRegistering(actor_id)) {
@@ -98,6 +99,7 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
       }
     }
   }
+  RAY_LOG(ERROR) << "Num?? " << actor_dependences.size();
   if (local_dependencies.empty() && actor_dependences.empty()) {
     on_complete(Status::OK());
     return;

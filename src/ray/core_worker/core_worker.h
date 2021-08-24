@@ -1249,6 +1249,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     return call_site;
   }
 
+  Status WaitForActorRegistered(const std::vector<ObjectID> &ids);
+
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.

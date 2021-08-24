@@ -79,10 +79,12 @@ class DefaultActorCreator : public ActorCreatorInterface {
     return gcs_client_->Actors().AsyncRegisterActor(
         task_spec,
         [actor_id, this](Status status) {
-          for(auto& cb : registering_actors_[actor_id]) {
+          std::vector<ray::gcs::StatusCallback> cbs;
+          cbs = std::move(registering_actors_[actor_id]);
+          registering_actors_.erase(actor_id);
+          for(auto& cb : cbs) {
             cb(status);
           }
-          registering_actors_.erase(actor_id);
         });
   }
 
@@ -104,6 +106,7 @@ class DefaultActorCreator : public ActorCreatorInterface {
 
  private:
   std::shared_ptr<gcs::GcsClient> gcs_client_;
+
   absl::flat_hash_map<ActorID, std::vector<ray::gcs::StatusCallback>> registering_actors_;
 
 };

@@ -289,6 +289,7 @@ class SerializationContext:
                 ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode("ascii")
             value = value.to_bytes()
         elif isinstance(value, ray.actor.ActorHandle):
+            print("serialize actor handler")
             # TODO(fyresone): ActorHandle should be serialized via the
             # custom type feature of cross-language.
             serialized, actor_handle_id = value._serialization_helper()
@@ -325,6 +326,7 @@ class SerializationContext:
         Args:
             value: The value to serialize.
         """
+        print("serialize!!", value)
         if isinstance(value, bytes):
             # If the object is a byte array, skip serializing it and
             # use a special metadata to indicate it's raw binary. So

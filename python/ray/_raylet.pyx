@@ -1193,6 +1193,7 @@ cdef class CoreWorker:
         total_bytes = serialized_object.total_bytes
         contained_object_ids = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
+        print("refssss", serialized_object.contained_object_refs)
         object_already_exists = self._create_put_buffer(
             metadata, total_bytes, object_ref,
             contained_object_ids,
