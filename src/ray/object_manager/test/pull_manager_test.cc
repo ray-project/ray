@@ -43,7 +43,8 @@ class PullManagerTestWithCapacity {
               restore_object_callback_ = callback;
             },
             [this]() { return fake_time_; }, 10000, num_available_bytes,
-            [this](const ObjectID &object_id) { return PinReturn(); }) {}
+            [this](const ObjectID &object_id) { return PinReturn(); },
+            [this](const ObjectID &object_id) { return GetSpilledObjectURL(); }) {}
 
   void AssertNoLeaks() {
     ASSERT_TRUE(pull_manager_.get_request_bundles_.empty());
@@ -70,6 +71,8 @@ class PullManagerTestWithCapacity {
     }
   }
 
+  std::string GetSpilledObjectURL(const ObjectID &oid) { return spilled_url_[oid]; }
+
   NodeID self_node_id_;
   bool object_is_local_;
   bool allow_pin_ = false;
@@ -79,6 +82,7 @@ class PullManagerTestWithCapacity {
   double fake_time_;
   PullManager pull_manager_;
   std::unordered_map<ObjectID, int> num_abort_calls_;
+  std::unordered_map<ObjectID, std::string> spilled_url_;
 };
 
 class PullManagerTest : public PullManagerTestWithCapacity,

@@ -140,7 +140,10 @@ class LocalObjectManager {
   /// Record object spilling stats to metrics.
   void RecordObjectSpillingStats() const;
 
-  /// Return the spilled object URL or the empty string.
+  /// Return the spilled object URL if the object is spilled locally,
+  /// or the empty string otherwise.
+  /// If the external storage is cloud, this will always return an empty string.
+  /// In that case, the URL is supposed to be obtained by the object directory.
   std::string GetSpilledObjectURL(const ObjectID &object_id);
 
   std::string DebugString() const;

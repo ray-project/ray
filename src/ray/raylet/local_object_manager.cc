@@ -345,6 +345,11 @@ void LocalObjectManager::AddSpilledUrls(const std::vector<ObjectID> &object_ids,
 }
 
 std::string LocalObjectManager::GetSpilledObjectURL(const ObjectID &object_id) {
+  if (!is_external_storage_type_fs_) {
+    // If the external storage is cloud storage like S3, returns the empty string.
+    // In that case, the URL is supposed to be obtained by OBOD.
+    return "";
+  }
   auto entry = spilled_objects_url_.find(object_id);
   if (entry != spilled_objects_url_.end()) {
     return entry->second;
