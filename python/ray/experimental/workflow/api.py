@@ -178,7 +178,7 @@ def resume(workflow_id: str) -> ray.ObjectRef:
     return execution.resume(workflow_id)
 
 
-def get_output(workflow_id: str, name: Optional[str] = None) -> ray.ObjectRef:
+def get_output(workflow_id: str, *, name: Optional[str] = None) -> ray.ObjectRef:
     """Get the output of a running workflow.
 
     Args:

@@ -68,8 +68,10 @@ class WorkflowStepFunction:
                 If it's set to be true, (Optional[R], Optional[E]) will be
                 returned.
                 If it's false, the normal result will be returned.
-            name(str): The name of this step which can be used to fetch
-                the result of this step later.
+            name(str): The name of this step, which will be used to
+                generate the step_id of the step. The name will be used directly
+                as the step id if possible, otherwise deduplicated by appending
+                .N suffixes.
             **ray_options(dict): All parameters in this fields will be passed
                 to ray remote function options.
 
