@@ -408,9 +408,9 @@ def _keepalive_main(stop_keepalive_event: threading.Event,
     Args:
         stop_keepalive_event: Event used by the dataclient/logsclient to
             signal that the keep alive loop should be stopped.
-        stub: Stub to use to send the KeepAlive requests
+        stub: Stub to use to make KeepAlive calls
         logger: Logger for data client/logs client
-        metadata: metadata to attach to the keep alive request
+        metadata: Metadata to attach to the keep alive request
     """
     try:
         while not stop_keepalive_event.is_set():
