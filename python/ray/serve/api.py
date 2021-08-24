@@ -159,13 +159,9 @@ class Client:
 
         ready, _ = ray.wait(
             [self._controller.wait_for_goal.remote(goal_id)], timeout=timeout)
-
         # Goal as asyncio.Future could return exception if set, ray.get()
-        # retrieves it.
-        try:
-            ray.get(ready)
-        except Exception as e:
-            raise e
+        # retrieves and throws it to user code explicitly.
+        ray.get(ready)
 
         return len(ready) == 1
 

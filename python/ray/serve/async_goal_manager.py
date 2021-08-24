@@ -65,7 +65,9 @@ class AsyncGoalManager:
 
     def check_complete(self, goal_id: GoalId) -> bool:
         """
-        Check if given goal is completed.
+        Check if given goal is completed. If the goal previously errored but
+        was removed, original exception won't be re-raised since we lost the
+        corresponding future object.
         """
         if goal_id not in self._pending_goals:
             return True

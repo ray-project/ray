@@ -50,7 +50,7 @@ class ActorReplicaWrapper:
     This is primarily defined so that we can mock out actual Ray operations
     for unit testing.
 
-    *All Ray API calls should be made here, not in BackendStateManager.*
+    *All Ray API calls should be made here, not in BackendState.*
     """
 
     def __init__(self, actor_name: str, detached: bool, controller_name: str,
@@ -275,7 +275,6 @@ class BackendReplica(VersionedReplica):
             format_actor_name(replica_tag, controller_name), detached,
             controller_name, replica_tag, backend_tag)
         self._controller_name = controller_name
-        self._detached = detached
         self._replica_tag = replica_tag
         self._backend_tag = backend_tag
         self._version = version
@@ -1030,23 +1029,21 @@ class BackendState:
             # thus we can start tracking completed goals.
             target_version = self._target_versions[backend_tag]
 
-            all_running_replica = self._replicas[backend_tag].get(
+            all_running_replica_cnt = self._replicas[backend_tag].count(
                 states=[ReplicaState.RUNNING])
-            running_at_target_version_replica = []
-            for replica in all_running_replica:
-                if replica.version == target_version:
-                    running_at_target_version_replica.append(replica)
+            running_at_target_version_replica_cnt = self._replicas[
+                backend_tag].count(
+                    states=[ReplicaState.RUNNING], version=target_version)
 
             # Check for deleting.
-            if target_replica_count == 0 and len(all_running_replica) == 0:
+            if target_replica_count == 0 and all_running_replica_cnt == 0:
                 deleted_backends.append(backend_tag)
                 completed_goals.append((backend_tag,
                                         self._backend_goals.pop(
                                             backend_tag, None)))
 
             # Check for a non-zero number of backends.
-            elif target_replica_count == len(
-                    running_at_target_version_replica):
+            elif target_replica_count == running_at_target_version_replica_cnt:
                 completed_goals.append((backend_tag,
                                         self._backend_goals.pop(
                                             backend_tag, None)))

@@ -25,7 +25,8 @@ HTTP_PROXY_TIMEOUT = 60
 #: Max retry count for allowing failures in replica constructor.
 #: If no replicas at target version is running by the time we're at
 #: max construtor retry count, deploy() is considered failed.
-MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = 50
+#: By default we set threshold as min(num_replicas * 3, this value)
+MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT = 100
 
 #: Default histogram buckets for latency tracker.
 DEFAULT_LATENCY_BUCKET_MS = [
