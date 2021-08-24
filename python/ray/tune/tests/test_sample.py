@@ -1203,7 +1203,7 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testConvertSkOpt(self):
         from ray.tune.suggest.skopt import SkOptSearch
-        from skopt.space import Real, Integer
+        from skopt.space import Real, Integer, Categorical
 
         # Grid search not supported, should raise ValueError
         with self.assertRaises(ValueError):
@@ -1213,6 +1213,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
+            "a2": tune.sample.Categorical([2, 10]).uniform(),
             "b": {
                 "x": tune.sample.Integer(0, 5),
                 "y": 4,
@@ -1221,7 +1222,8 @@ class SearchSpaceTest(unittest.TestCase):
         }
         converted_config = SkOptSearch.convert_search_space(config)
         skopt_config = {
-            "a": [2, 3, 4],
+            "a": Categorical([2, 3, 4]),
+            "a2": Categorical([2, 10]),
             "b/x": Integer(0, 4),
             "b/z": Real(1e-4, 1e-2, prior="log-uniform")
         }
@@ -1236,6 +1238,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         self.assertEqual(config1, config2)
         self.assertIn(config1["a"], [2, 3, 4])
+        self.assertIn(config1["a2"], [2, 10])
         self.assertIn(config1["b"]["x"], list(range(5)))
         self.assertLess(1e-4, config1["b"]["z"])
         self.assertLess(config1["b"]["z"], 1e-2)
@@ -1245,6 +1248,7 @@ class SearchSpaceTest(unittest.TestCase):
             _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
         self.assertIn(trial.config["a"], [2, 3, 4])
+        self.assertIn(trial.config["a2"], [2, 10])
         self.assertEqual(trial.config["b"]["y"], 4)
 
         mixed_config = {"a": tune.uniform(5, 6), "b": (8, 9)}

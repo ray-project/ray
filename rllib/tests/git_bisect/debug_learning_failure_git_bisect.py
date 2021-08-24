@@ -159,10 +159,13 @@ if __name__ == "__main__":
         os.chdir("../")
 
     try:
-        subprocess.run("ray start --head --include-dashboard false".split(" "))
+        subprocess.run("ray start --head".split(" "))
     except Exception:
         subprocess.run("ray stop".split(" "))
-        subprocess.run("ray start --head --include-dashboard false".split(" "))
+        try:
+            subprocess.run("ray start --head".split(" "))
+        except Exception as e:
+            print(f"ERROR: {e.args[0]}")
 
     # Run the training experiment.
     importlib.invalidate_caches()
@@ -184,9 +187,12 @@ if __name__ == "__main__":
     elif args.stop_timesteps and args.stop_time:
         last_result = results.trials[0].last_result
         total_timesteps = last_result["timesteps_total"]
+        total_time = last_result["time_total_s"]
+        desired_speed = args.stop_timesteps / args.stop_time
+        actual_speed = total_timesteps / total_time
         # We stopped because we reached the time limit ->
         # Means throughput is too slow (time steps not reached).
-        if total_timesteps - 100 < args.stop_timesteps:
+        if desired_speed < actual_speed:
             raise ValueError(
                 "`stop-timesteps` of {} not reached in {}sec!".format(
                     args.stop_timesteps, args.stop_time))
