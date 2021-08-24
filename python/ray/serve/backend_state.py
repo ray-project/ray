@@ -1011,7 +1011,6 @@ class BackendState:
                     completed_goals.append((backend_tag,
                                             self._backend_goals.pop(
                                                 backend_tag, None)))
-
                 else:
                     failed_goals.append((backend_tag,
                                          self._backend_goals.pop(
@@ -1032,10 +1031,10 @@ class BackendState:
 
             all_running_replica = self._replicas[backend_tag].get(
                 states=[ReplicaState.RUNNING])
-            running_at_target_version_replica = [
-                replica.version == target_version
-                for replica in all_running_replica
-            ]
+            running_at_target_version_replica = []
+            for replica in all_running_replica:
+                if replica.version == target_version:
+                    running_at_target_version_replica.append(replica)
 
             # Check for deleting.
             if target_replica_count == 0 and len(all_running_replica) == 0:
@@ -1177,11 +1176,11 @@ class BackendState:
                              f"failed to start. See worker exception above."))
 
             if backend_tag in self._prev_backend_info:
-                logger.info("Reverting backend to previous backend "
-                            f"info. {self._prev_backend_info}")
+                logger.error("Reverting backend {backend_tag} to previous "
+                             f"backend info. {self._prev_backend_info}")
                 self.deploy_backend(backend_tag,
                                     self._prev_backend_info[backend_tag])
             else:
-                logger.info("Reverting backend to previous backend "
-                            f"info by deleting backend {backend_tag}")
+                logger.error("Reverting backend to previous backend "
+                             f"info by deleting backend {backend_tag}")
                 self.delete_backend(backend_tag)

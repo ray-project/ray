@@ -1,6 +1,7 @@
 import time
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import patch, Mock
+from uuid import uuid4
 
 import pytest
 
@@ -10,12 +11,14 @@ from ray.serve.common import (
     BackendConfig,
     BackendInfo,
     BackendTag,
+    GoalId,
     ReplicaConfig,
     ReplicaTag,
 )
 from ray.serve.backend_state import (
     BackendState,
     BackendVersion,
+    ReplicaStartingStatus,
     ReplicaState,
     ReplicaStateContainer,
     VersionedReplica,
@@ -150,7 +153,7 @@ class MockReplicaActorWrapper:
         return None
 
     def set_ready(self):
-        self.ready = True
+        self.ready = ReplicaStartingStatus.SUCCEEDED
 
     def set_done_stopping(self):
         self.done_stopping = True
@@ -161,16 +164,20 @@ class MockReplicaActorWrapper:
     def start_or_update(self, backend_info: BackendInfo):
         self.started = True
 
-    def check_ready(self) -> bool:
+    def check_ready(self) -> ReplicaStartingStatus:
         assert self.started
         ready = self.ready
-        self.ready = False
+        self.ready = ReplicaStartingStatus.PENDING
         return ready
 
     def resource_requirements(
             self) -> Tuple[Dict[str, float], Dict[str, float]]:
         assert self.started
         return {"REQUIRED_RESOURCE": 1.0}, {"AVAILABLE_RESOURCE": 1.0}
+
+    @property
+    def actor_resources(self) -> Dict[str, float]:
+        return {"CPU": 0.1}
 
     def graceful_stop(self) -> None:
         assert self.started
@@ -188,6 +195,45 @@ class MockReplicaActorWrapper:
     def check_health(self):
         self.health_check_called = True
         return self.healthy
+
+
+class MockAsyncGoalManager:
+    def __init__(self):
+        self._pending_goals = dict()
+
+        self._completed_goals = set()
+        self._failed_goals = set()
+
+    def num_pending_goals(self) -> int:
+        return len(self._pending_goals)
+
+    def create_goal(self, goal_id: Optional[GoalId] = None) -> GoalId:
+        if goal_id is None:
+            goal_id = uuid4()
+
+        self._pending_goals[goal_id] = Mock()
+
+        return goal_id
+
+    def complete_goal(self,
+                      goal_id: GoalId,
+                      exception: Optional[Exception] = None) -> None:
+
+        mock_future = self._pending_goals.pop(goal_id, None)
+        if mock_future:
+            if exception:
+                self._failed_goals.add(goal_id)
+            else:
+                self._completed_goals.add(goal_id)
+
+    def check_complete(self, goal_id: GoalId) -> bool:
+        if goal_id not in self._pending_goals:
+            return True
+
+        return (goal_id in self._completed_goals
+                or goal_id in self._failed_goals)
+
+    # def wait_for_goal(self, goal_id: GoalId) -> GoalId:
 
 
 def backend_info(version: Optional[str] = None,
@@ -237,12 +283,14 @@ def mock_backend_state() -> Tuple[BackendState, Mock, Mock]:
                     "ray.serve.long_poll.LongPollHost"
                 ) as mock_long_poll, patch.object(
                     BackendState, "_checkpoint") as mock_checkpoint:
+
         mock_kv_store.get = Mock(return_value=None)
-        goal_manager = AsyncGoalManager()
+        # goal_manager = AsyncGoalManager()
+        mock_goal_manager = MockAsyncGoalManager()
         backend_state = BackendState("name", True, mock_kv_store,
-                                     mock_long_poll, goal_manager)
+                                     mock_long_poll, mock_goal_manager)
         mock_checkpoint.return_value = None
-        yield backend_state, timer, goal_manager
+        yield backend_state, timer, mock_goal_manager
 
 
 def replica(version: Optional[BackendVersion] = None) -> VersionedReplica:
@@ -472,7 +520,11 @@ def check_counts(backend_state: BackendState,
                  tag: Optional[str] = TEST_TAG,
                  by_state: Optional[List[Tuple[ReplicaState, int]]] = None):
     if total is not None:
-        assert backend_state._replicas[tag].count(version=version) == total
+        if tag not in backend_state._replicas:
+            # Backend deleted with entries removed from backend_state
+            assert total == 0
+        else:
+            assert backend_state._replicas[tag].count(version=version) == total
 
     if by_state is not None:
         for state, count in by_state:
@@ -854,7 +906,7 @@ def test_deploy_new_config_same_version(mock_backend_state):
     assert len(backend_state._replicas) == 0
 
     b_info_1, b_version_1 = backend_info(version="1")
-    create_goal = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    goal_id, updated = backend_state.deploy_backend(TEST_TAG, b_info_1)
 
     # Create the replica initially.
     backend_state.update()
@@ -866,12 +918,12 @@ def test_deploy_new_config_same_version(mock_backend_state):
         total=1,
         by_state=[(ReplicaState.RUNNING, 1)])
     backend_state.update()
-    assert goal_manager.check_complete(create_goal)
+    assert goal_manager.check_complete(goal_id)
 
     # Update to a new config without changing the version.
     b_info_2, b_version_2 = backend_info(
         version="1", user_config={"hello": "world"})
-    update_goal = backend_state.deploy_backend(TEST_TAG, b_info_2)
+    goal_id, updated = backend_state.deploy_backend(TEST_TAG, b_info_2)
     check_counts(
         backend_state,
         version=b_version_1,
@@ -898,7 +950,7 @@ def test_deploy_new_config_same_version(mock_backend_state):
         by_state=[(ReplicaState.RUNNING, 1)])
 
     backend_state.update()
-    assert goal_manager.check_complete(update_goal)
+    assert goal_manager.check_complete(goal_id)
 
 
 def test_deploy_new_config_new_version(mock_backend_state):
