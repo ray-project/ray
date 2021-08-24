@@ -180,7 +180,7 @@ class LSTMWrapper(RecurrentNetwork):
         self._rnn_model = tf.keras.Model(
             inputs=[input_layer, seq_in, state_in_h, state_in_c],
             outputs=[logits, values, state_h, state_c])
-        # Print out model summary in debug mode.
+        # Print out model summary in INFO logging mode.
         if logger.isEnabledFor(logging.INFO):
             self._rnn_model.summary()
 
