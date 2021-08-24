@@ -4,13 +4,12 @@ the ray clientserver.
 import sys
 import logging
 import queue
-import random
 import threading
-import time
 import grpc
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray.util.client.common import _keepalive_main
 
 logger = logging.getLogger(__name__)
 # TODO(barakmich): Running a logger in a logger causes loopback.
@@ -45,7 +44,9 @@ class LogstreamClient:
 
     def _start_keepalive_thread(self) -> threading.Thread:
         return threading.Thread(
-            target=self._keepalive_main, args=(), daemon=True)
+            target=_keepalive_main,
+            args=(self.stop_keepalive, self.stub, logger, self._metadata),
+            daemon=True)
 
     def _log_main(self) -> None:
         log_stream = self.stub.Logstream(
@@ -66,35 +67,6 @@ class LogstreamClient:
                 # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
                 # in practice we may need to think about the correct semantics
                 # here.
-                logger.info("Server disconnected from logs channel")
-            else:
-                # Some other, unhandled, gRPC error
-                logger.exception(
-                    f"Got Error from logger channel -- shutting down: {e}")
-
-    def _keepalive_main(self) -> None:
-        try:
-            while not self.stop_keepalive.is_set():
-                start = time.time()
-                request = ray_client_pb2.KeepAliveRequest(
-                    echo_request=random.randint(0, 2**16), )
-                duration = time.time() - start
-                response = self.stub.KeepAlive(
-                    request, metadata=self._metadata)
-                if response.echo_response != request.echo_request:
-                    logger.warning("Logs client keepalive echo did not match.")
-                wait_time = max(LOGSCLIENT_KEEPALIVE_INTERVAL - duration, 0)
-                if self.stop_keepalive.wait(timeout=wait_time):
-                    # Keep looping until the stop_keepalive event is set
-                    break
-        except grpc.RpcError as e:
-            if e.code() == grpc.StatusCode.CANCELLED:
-                # Graceful shutdown. We've cancelled our own connection.
-                logger.info("Shutting down logs keep alive thread")
-            elif e.code() in (grpc.StatusCode.UNAVAILABLE,
-                              grpc.StatusCode.RESOURCE_EXHAUSTED):
-                # Server may have dropped. Similar to _log_main we could
-                # technically attempt a reconnect here
                 logger.info("Server disconnected from logs channel")
             else:
                 # Some other, unhandled, gRPC error

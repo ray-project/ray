@@ -1,3 +1,4 @@
+import logging
 import ray._raylet as raylet
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -7,6 +8,8 @@ from ray.util.client.options import validate_options
 from dataclasses import dataclass
 import grpc
 import os
+import random
+import time
 import uuid
 import inspect
 from ray.util.inspect import is_cython, is_function_or_method
@@ -50,6 +53,8 @@ GRPC_OPTIONS = [
 
 CLIENT_SERVER_MAX_THREADS = float(
     os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
+
+MANUAL_KEEPALIVE_INTERVAL = 15
 
 # Aliases for compatibility.
 ClientObjectRef = raylet.ClientObjectRef
@@ -391,3 +396,39 @@ class ClientServerHandle:
     # expected simply a gRPC server
     def __getattr__(self, attr):
         return getattr(self.grpc_server, attr)
+
+
+def _keepalive_main(stop_keepalive_event: threading.Event,
+                    stub: Union[ray_client_pb2_grpc.RayletLogStreamerStub,
+                                ray_client_pb2_grpc.RayletDataStreamerStub],
+                    logger: logging.Logger, metadata: list) -> None:
+    """
+    Keepalive loop for data/logs client. Sounds a keep alive request with
+    random int and waits for echo from server.
+    """
+    try:
+        while not stop_keepalive_event.is_set():
+            start = time.time()
+            request = ray_client_pb2.KeepAliveRequest(
+                echo_request=random.randint(0, 2**16))
+            duration = time.time() - start
+            response = stub.KeepAlive(request, metadata=metadata)
+            if response.echo_response != request.echo_request:
+                logger.warning("Keepalive echo did not match.")
+            wait_time = max(MANUAL_KEEPALIVE_INTERVAL - duration, 0)
+            if stop_keepalive_event.wait(timeout=wait_time):
+                # Keep looping until the stop_keepalive event is set
+                break
+    except grpc.RpcError as e:
+        if e.code() == grpc.StatusCode.CANCELLED:
+            # Graceful shutdown. We've cancelled our own connection.
+            logger.info("Shutting down keep alive thread")
+        elif e.code() in (grpc.StatusCode.UNAVAILABLE,
+                          grpc.StatusCode.RESOURCE_EXHAUSTED):
+            # Server may have dropped. Similar to _data_main we could
+            # technically attempt a reconnect here
+            logger.info("Server disconnected from channel")
+        else:
+            # Some other, unhandled, gRPC error
+            logger.exception(
+                f"Got Error from keepalive channel -- shutting down: {e}")
