@@ -40,11 +40,11 @@ def serve_with_client(ray_client_instance):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Buggy on MacOS + Windows")
 def test_ray_client(ray_client_instance):
-    ray.util.connect(ray_client_instance, namespace="")
+    ray.util.connect(ray_client_instance, namespace="default_test_namespace")
 
     start = """
 import ray
-ray.util.connect("{}", namespace="")
+ray.util.connect("{}", namespace="default_test_namespace")
 
 from ray import serve
 
@@ -54,7 +54,7 @@ serve.start(detached=True)
 
     deploy = """
 import ray
-ray.util.connect("{}", namespace="")
+ray.util.connect("{}", namespace="default_test_namespace")
 
 from ray import serve
 
@@ -71,7 +71,7 @@ f.deploy()
 
     delete = """
 import ray
-ray.util.connect("{}", namespace="")
+ray.util.connect("{}", namespace="default_test_namespace")
 
 from ray import serve
 
@@ -83,7 +83,7 @@ serve.get_deployment("test1").delete()
 
     fastapi = """
 import ray
-ray.util.connect("{}", namespace="")
+ray.util.connect("{}", namespace="default_test_namespace")
 
 from ray import serve
 from fastapi import FastAPI
