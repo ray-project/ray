@@ -1,7 +1,7 @@
 import json
 import os
 import ray
-from ray import test_utils
+import ray._private.test_utils as test_utils
 from ray.util.placement_group import placement_group, remove_placement_group
 import time
 import tqdm

@@ -117,7 +117,8 @@ def train_func(config: Dict):
 
 
 def train_fashion_mnist(num_workers=1, use_gpu=False):
-    trainer = Trainer(backend="torch", num_workers=num_workers)
+    trainer = Trainer(
+        backend="torch", num_workers=num_workers, use_gpu=use_gpu)
     trainer.start()
     result = trainer.run(
         train_func=train_func,

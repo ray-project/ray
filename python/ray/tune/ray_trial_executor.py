@@ -19,7 +19,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError
 from ray import ray_constants
-from ray.resource_spec import ResourceSpec
+from ray._private.resource_spec import ResourceSpec, NODE_ID_PREFIX
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
@@ -934,7 +934,7 @@ class RayTrialExecutor(TrialExecutor):
                     total_resources.get(name, 0.),
                     self._avail_resources.get_res_total(name), name)
                 for name in self._avail_resources.custom_resources
-                if not name.startswith(ray.resource_spec.NODE_ID_PREFIX) and (
+                if not name.startswith(NODE_ID_PREFIX) and (
                     total_resources.get(name, 0.) > 0 or "_group_" not in name)
             ])
             if customs:
