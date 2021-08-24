@@ -20,7 +20,6 @@
 #include <unordered_map>
 
 #include "absl/synchronization/mutex.h"
-#include "nlohmann/json.hpp"
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/tags/tag_key.h"
@@ -32,8 +31,7 @@
 #include "ray/stats/metric_exporter.h"
 #include "ray/stats/metric_exporter_client.h"
 #include "ray/util/logging.h"
-
-using json = nlohmann::json;
+#include "src/ray/protobuf/agent_manager.grpc.pb.h"
 
 namespace ray {
 
@@ -113,18 +111,12 @@ static inline void Init(const TagsType &global_tags, GetAgentAddressFn get_agent
       [get_agent_address, client_call_manager](GetMetricsAgentClientCallback callback) {
         get_agent_address([client_call_manager, callback](Status status, auto &value) {
           if (status.ok()) {
-            RAY_LOG(INFO) << "Discover metrics agent addresss " << *value;
-            try {
-              json address = json::parse(*value);
-              RAY_CHECK(address.size() == 2);
-              const std::string ip = address[0].get<std::string>();
-              const int port = address[1].get<int>();
-              callback(status, std::make_shared<rpc::MetricsAgentClient>(
-                                   ip, port, *client_call_manager));
-            } catch (json::exception &ex) {
-              RAY_LOG(ERROR) << "Discover metrics agent address failed: " << ex.what();
-              callback(status, std::shared_ptr<rpc::MetricsAgentClient>());
-            }
+            RAY_LOG(INFO) << "Discover metrics agent addresss";
+            rpc::RegisterAgentRequest register_agent;
+            register_agent.ParseFromString(*value);
+            callback(status, std::make_shared<rpc::MetricsAgentClient>(
+                                 register_agent.agent_ip_address(),
+                                 register_agent.agent_port(), *client_call_manager));
           } else {
             RAY_LOG(ERROR) << "Discover metrics agent address failed: " << status;
             callback(status, std::shared_ptr<rpc::MetricsAgentClient>());

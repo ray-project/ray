@@ -613,6 +613,7 @@ cc_library(
     }),
     strip_include_prefix = "src",
     deps = [
+        ":agent_manager_rpc",
         ":reporter_rpc",
         ":stats_metric",
     ],

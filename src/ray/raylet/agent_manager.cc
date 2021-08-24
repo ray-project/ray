@@ -16,12 +16,9 @@
 
 #include <thread>
 
-#include "nlohmann/json.hpp"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
-
-using json = nlohmann::json;
 
 namespace ray {
 namespace raylet {
@@ -31,13 +28,11 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
                                        rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << request.agent_ip_address()
                 << ", port: " << request.agent_port() << ", pid: " << request.agent_pid();
-  json address;
-  address.push_back(request.agent_ip_address());
-  address.push_back(request.agent_port());
-  const std::string address_str = address.dump();
+  auto serialized_register_agent = request.SerializeAsString();
   put_agent_address_(
-      address_str, [this, request, reply, send_reply_callback, address_str](
-                       ray::Status status, const boost::optional<int> &result) {
+      serialized_register_agent,
+      [this, request, reply, send_reply_callback](ray::Status status,
+                                                  const boost::optional<int> &result) {
         RAY_UNUSED(result);
         if (status.ok()) {
           agent_pid_ = request.agent_pid();
@@ -46,7 +41,9 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
           runtime_env_agent_client_ =
               runtime_env_agent_client_factory_(agent_ip_address_, agent_port_);
           RAY_LOG(INFO) << "Update agent address success, node id = " << options_.node_id
-                        << ", address = " << address_str;
+                        << ", ip = " << request.agent_ip_address()
+                        << ", port = " << request.agent_port()
+                        << ", pid = " << request.agent_pid();
           reply->set_status(rpc::AGENT_RPC_STATUS_OK);
           send_reply_callback(ray::Status::OK(), nullptr, nullptr);
         } else {
