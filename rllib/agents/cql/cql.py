@@ -164,7 +164,7 @@ def after_init(trainer):
             replay_buffer.add_batch(batch)
         print(
             f"Loaded {num_batches} batches ({total_timesteps} ts) into the "
-            f"replay buffer, which has capacity {replay_buffer.buffer_size}.")
+            f"replay buffer, which has capacity {replay_buffer.capacity}.")
     else:
         raise ValueError(
             "Unknown offline input! config['input'] must either be list of "
