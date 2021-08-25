@@ -30,7 +30,6 @@ def gen_execute_special(special_f):
             futures.append(worker.execute.remote(special_f))
         return futures
 
-
     return execute_async_special
 
 

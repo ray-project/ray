@@ -76,7 +76,6 @@ class WorkerGroup:
             num_gpus=self.num_gpus_per_worker)(BaseWorker)
         return remote_cls.remote()
 
-
     def start(self):
         """Starts all the workers in this worker group."""
         if self.workers and len(self.workers) > 0:
@@ -208,7 +207,6 @@ class WorkerGroup:
         """
         for _ in range(num_workers):
             self.workers.append(self._create_worker())
-
 
     def __len__(self):
         return len(self.workers)

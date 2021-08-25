@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, TypeVar, List, Optional, Dict, Union, Tuple, Any
+from typing import Callable, TypeVar, List, Optional, Dict, Union
 
 import ray
 from ray import cloudpickle
@@ -30,6 +30,7 @@ class BackendConfig:
 
 class SGDBackendError(Exception):
     """Errors with BackendExecutor that should not be exposed to user."""
+
 
 class TrainingWorkerError(Exception):
     """Raised if a worker fails during training."""
@@ -410,12 +411,12 @@ class BackendExecutor:
             return ray.get(remote_values)
 
     def handle_failure(self, failed_worker_indexes: List[int]):
-        #import pdb; pdb.set_trace()
         self.worker_group.remove_workers(failed_worker_indexes)
-        self._backend.on_shutdown(self.worker_group, self._backend_config)
-        # If a failure occurs during handling of another failure.
-        futures = self.worker_group.execute_async(shutdown_session)
-        self.get_with_failure_handling(futures)
+        if len(self.worker_group) > 0:
+            self._backend.on_shutdown(self.worker_group, self._backend_config)
+            # If a failure occurs during handling of another failure.
+            futures = self.worker_group.execute_async(shutdown_session)
+            self.get_with_failure_handling(futures)
         self.worker_group.add_workers(len(failed_worker_indexes))
         raise TrainingWorkerError
 

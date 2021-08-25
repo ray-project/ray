@@ -30,3 +30,6 @@ RESULT_FILE_JSON = "results.json"
 
 # Default directory where all SGD logs, checkpoints, etc. will be stored.
 DEFAULT_RESULTS_DIR = Path("~/ray_results").expanduser()
+
+# Number of retries on failure.
+MAX_FAILURE_RETRIES = "SGD_MAX_FAILURE_RETRIES"
