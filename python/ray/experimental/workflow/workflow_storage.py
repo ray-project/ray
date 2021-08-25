@@ -318,7 +318,7 @@ class WorkflowStorage:
         with serialization_context.workflow_args_keeping_context():
             # TODO(suquark): in the future we should write to storage directly
             # with plasma store object in memory.
-            args_obj : ObjectRef = ray.get(inputs.inputs.args)
+            args_obj = ray.get(inputs.inputs.args)
         # TODO (Alex): We should write the contents of object refs here.
         save_tasks = [
             self._put(self._key_step_input_metadata(step_id), metadata, True),
