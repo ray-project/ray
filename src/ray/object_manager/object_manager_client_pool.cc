@@ -16,7 +16,7 @@
 
 namespace ray {
 
-shared_ptr<rpc::ObjectManagerClient> ObjectManagerClientPool::GetOrConnectByAddress(
+std::shared_ptr<rpc::ObjectManagerClient> ObjectManagerClientPool::GetOrConnectByAddress(
     const rpc::Address &address) {
   RAY_CHECK(address.raylet_id() != "");
   auto raylet_id = NodeID::FromBinary(address.raylet_id());
@@ -31,7 +31,7 @@ shared_ptr<rpc::ObjectManagerClient> ObjectManagerClientPool::GetOrConnectByAddr
   return connection;
 }
 
-optional<shared_ptr<rpc::ObjectManagerClient>> ObjectManagerClientPool::GetOrConnectByID(
+absl::optional<std::shared_ptr<rpc::ObjectManagerClient>> ObjectManagerClientPool::GetOrConnectByID(
     ray::NodeID id) {
   auto node_info = gcs_client_->Nodes().Get(id);
   if (!node_info) {
@@ -50,10 +50,10 @@ optional<shared_ptr<rpc::ObjectManagerClient>> ObjectManagerClientPool::GetOrCon
   return it->second;
 }
 
-std::vector<shared_ptr<rpc::ObjectManagerClient>>
-ObjectManagerClientPool::GetAllObjectManagerClients() {
+std::vector<std::shared_ptr<rpc::ObjectManagerClient>>
+ObjectManagerClientPool::GetOrConnectAllObjectManagerClients() {
   absl::MutexLock lock(&mu_);
-  std::vector<shared_ptr<rpc::ObjectManagerClient>> clients;
+  std::vector<std::shared_ptr<rpc::ObjectManagerClient>> clients;
   const auto &node_map = gcs_client_->Nodes().GetAll();
   for (const auto &item : node_map) {
     rpc::Address addr;

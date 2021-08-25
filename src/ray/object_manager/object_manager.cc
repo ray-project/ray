@@ -790,7 +790,7 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
   buffer_pool_.FreeObjects(object_ids);
   if (!local_only) {
-    auto rpc_clients = object_manager_client_pool_->GetAllObjectManagerClients();
+    auto rpc_clients = object_manager_client_pool_->GetOrConnectAllObjectManagerClients();
     rpc_service_.post(
         [this, object_ids, rpc_clients]() {
           SpreadFreeObjectsRequest(object_ids, rpc_clients);
