@@ -182,6 +182,7 @@ def test_get_named_step_duplicate(workflow_start_regular):
     @workflow.step
     def f(n, dep):
         return n
+
     inner = f.options(name="f").step(10, None)
     outer = f.options(name="f").step(20, inner)
     assert 20 == outer.run("duplicate")

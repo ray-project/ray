@@ -31,9 +31,9 @@ STEP_FUNC_BODY = "func_body.pkl"
 CLASS_BODY = "class_body.pkl"
 WORKFLOW_META = "workflow_meta.json"
 WORKFLOW_PROGRESS = "progress.json"
-# Without this counter, we're going to scan all steps to get the number of steps
-# with a given name. This can be very expensive if there are too many
-# duplicates.
+# Without this counter, we're going to scan all steps to get the number of
+# steps with a given name. This can be very expensive if there are too
+# many duplicates.
 DUPLICATE_NAME_COUNTER = "duplicate_name_counter"
 
 

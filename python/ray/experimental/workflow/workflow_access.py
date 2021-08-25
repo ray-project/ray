@@ -305,8 +305,8 @@ class WorkflowManagementActor:
         else:
             step_id = name
             if step_id is None:
-                raise ValueError(
-                    f"Fail to find step `{step_id}` in workflow `{workflow_id}`")
+                raise ValueError(f"Fail to find step `{step_id}` in workflow "
+                                 "`{workflow_id}`")
             output = self._step_output_cache.get(workflow_id, {}).get(
                 step_id, None)
             if output is not None:
