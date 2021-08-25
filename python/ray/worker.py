@@ -603,7 +603,7 @@ def init(
         _driver_object_store_memory: Optional[int] = None,
         _memory: Optional[int] = None,
         _redis_password: str = ray_constants.REDIS_DEFAULT_PASSWORD,
-        _temp_dir: str = None,
+        _temp_dir: Optional[str] = None,
         _lru_evict: bool = False,
         _metrics_export_port: int = None,
         _system_config: Dict[str, str] = None,
