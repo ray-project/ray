@@ -237,6 +237,7 @@ void ObjectLifecycleManager::EvictObjects(const std::vector<ObjectID> &object_id
 void ObjectLifecycleManager::DeleteObjectInternal(const ObjectID &object_id) {
   auto entry = object_store_->GetObject(object_id);
   RAY_CHECK(entry != nullptr);
+  RAY_LOG(DEBUG) << "Object " << object_id << " is deleted.";
 
   bool aborted = entry->state == ObjectState::PLASMA_CREATED;
 

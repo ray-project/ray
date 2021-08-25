@@ -538,5 +538,49 @@ def test_object_spilling_threshold_0_1():
     _test_object_spilling_threshold(0.1, 10, 5)
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 0,
+        "object_store_memory": 75 * 1024 * 1024,
+        "_system_config": {
+            "worker_lease_timeout_milliseconds": 0
+        }
+    }],
+    indirect=True)
+def test_maximize_concurrent_pulls(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(num_cpus=8, object_store_memory=75 * 1024 * 1024)
+
+    @ray.remote
+    class RemoteObjectCreator:
+        def put(self, i):
+            return np.random.rand(i * 1024 * 1024)  # 8 MB data
+
+        def idle(self):
+            pass
+
+    @ray.remote
+    def f(x):
+        print(x)
+        time.sleep(1)
+        return
+
+    remote_obj_creator = RemoteObjectCreator.remote()
+    remote_refs = [remote_obj_creator.put.remote(1) for _ in range(7)]
+    # Make sure all objects are created.
+    ray.get(remote_obj_creator.idle.remote())
+    # Trigger spilling
+    remote_refs.append(remote_obj_creator.put.remote(1))
+
+    local_refs = [ray.put(np.random.rand(1 * 1024 * 1024)) for _ in range(8)]
+    print(local_refs)
+    remote_tasks = [f.remote(x) for x in local_refs]
+
+    start = time.time()
+    ray.get(remote_tasks)
+    end = time.time()
+    print(end - start)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
