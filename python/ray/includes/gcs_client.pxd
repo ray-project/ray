@@ -43,8 +43,9 @@ cdef extern from * namespace "_gcs_maker":
               work_(io_context_),
               thread_([this](){
                   io_context_.run();
-              }) {}
-
+              }) {
+           RAY_CHECK_OK(Connect(io_context_));
+        }
         ~RayletGcsClient() {
           RAY_LOG(DEBUG)
             << "Destructing GCS client and associated event loop thread.";
@@ -52,11 +53,6 @@ cdef extern from * namespace "_gcs_maker":
           io_context_.stop();
           thread_.join();
         }
-
-        void DoConnect() {
-          RAY_CHECK_OK(Connect(io_context_));
-        }
-
        private:
         instrumented_io_context io_context_;
         boost::asio::io_service::work work_;
@@ -66,11 +62,8 @@ cdef extern from * namespace "_gcs_maker":
           const std::string& ip,
           int port,
           const std::string& password) {
-        std::shared_ptr<RayletGcsClient> raylet_gcs_client =
-          std::make_shared<RayletGcsClient>(
+        return std::make_shared<RayletGcsClient>(
             ray::gcs::GcsClientOptions(ip, port, password));
-        raylet_gcs_client->DoConnect();
-        return raylet_gcs_client;
       }
     }
     """
