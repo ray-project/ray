@@ -86,12 +86,9 @@ MOCK_MODULES = [
 ]
 
 CHILD_MOCK_MODULES = [
-    "pytorch_lightning",
-    "pytorch_lightning.accelerators",
-    "pytorch_lightning.plugins",
-    "pytorch_lightning.plugins.environments",
-    "pytorch_lightning.utilities",
-    "tensorflow.keras.callbacks"
+    "pytorch_lightning", "pytorch_lightning.accelerators",
+    "pytorch_lightning.plugins", "pytorch_lightning.plugins.environments",
+    "pytorch_lightning.utilities", "tensorflow.keras.callbacks"
 ]
 
 import scipy.stats
@@ -109,7 +106,6 @@ for mod_name in CHILD_MOCK_MODULES:
 
 assert "ray" not in sys.modules, (
     "If ray is already imported, we will not render documentation correctly!")
-
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
