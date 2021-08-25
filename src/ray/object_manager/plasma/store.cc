@@ -710,7 +710,7 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
     // Object already evicted or deleted.
     return false;
   }
-  return entry->GetRefCount() == 1;
+  return entry->Sealed() && entry->GetRefCount() == 1;
 }
 
 void PlasmaStore::PrintDebugDump() const {
