@@ -60,6 +60,9 @@ class ParquetDatasource(Datasource[ArrowRow]):
                 cloudpickle.loads(p) for p in serialized_pieces
             ]
 
+            # Ensure that we're reading at least one dataset fragment.
+            assert len(pieces) > 0
+
             import pyarrow as pa
             from pyarrow.dataset import _get_partition_keys
 
@@ -78,11 +81,15 @@ class ParquetDatasource(Datasource[ArrowRow]):
                         table = table.set_column(
                             table.schema.get_field_index(col), col,
                             pa.array([value] * len(table)))
-                tables.append(table)
+                # If the table is empty, drop it.
+                if table.num_rows > 0:
+                    tables.append(table)
             if len(tables) > 1:
                 table = pa.concat_tables(tables)
-            else:
+            elif len(tables) == 1:
                 table = tables[0]
+            # If len(tables) == 0, all fragments were empty, and we return the
+            # empty table from the last fragment.
             return table
 
         read_tasks = []
