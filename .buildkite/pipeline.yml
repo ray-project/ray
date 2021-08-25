@@ -173,6 +173,19 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...
     - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/serve/...
 
+- label: ":python: Minimal install"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - MINIMAL_INSTALL=1 ./ci/travis/install-dependencies.sh
+
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests/test_basic
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests/test_basic_2
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      python/ray/tests/test_basic_3
+
 - label: ":python: (Flaky tests)"
   conditions: ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_RLLIB_AFFECTED", "RAY_CI_TUNE_AFFECTED"]
   commands:
