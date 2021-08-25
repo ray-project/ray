@@ -29,8 +29,8 @@ import click
 import math
 import os
 import random
-import ray
 
+import ray
 from ray import serve
 from ray.serve.utils import logger
 from serve_test_utils import (
@@ -48,8 +48,8 @@ from serve_test_cluster_utils import (
 from typing import Optional
 
 # Experiment configs
-DEFAULT_SMOKE_TEST_NUM_REPLICA = 8
-DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS = 4  # 2 replicas each
+DEFAULT_SMOKE_TEST_NUM_REPLICA = 4
+DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS = 4  # 1 replicas each
 
 # TODO:(jiaodong) We should investigate and change this back to 1k
 # for now, we won't get valid latency numbers from wrk at 1k replica
@@ -176,3 +176,6 @@ def main(num_replicas: Optional[int], num_deployments: Optional[int],
 
 if __name__ == "__main__":
     main()
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

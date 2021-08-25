@@ -46,7 +46,7 @@ from serve_test_cluster_utils import (
 from typing import Optional
 
 # Experiment configs
-DEFAULT_SMOKE_TEST_NUM_REPLICA = 8
+DEFAULT_SMOKE_TEST_NUM_REPLICA = 4
 DEFAULT_FULL_TEST_NUM_REPLICA = 1000
 
 # Deployment configs
@@ -142,3 +142,6 @@ def main(num_replicas: Optional[int], trial_length: Optional[str],
 
 if __name__ == "__main__":
     main()
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

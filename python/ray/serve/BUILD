@@ -3,6 +3,7 @@
 py_library(
     name = "serve_lib",
     srcs = glob(["**/*.py"], exclude=["tests/**/*.py"]),
+    visibility = ["//python/ray/serve:__subpackages__", "//release:__pkg__"],
 )
 
 serve_tests_srcs = glob(["tests/**/*.py"])
