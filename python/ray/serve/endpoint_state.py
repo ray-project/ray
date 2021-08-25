@@ -80,7 +80,6 @@ class EndpointState:
         for endpoint, info in self._endpoints.items():
             endpoints[endpoint] = {
                 "route": info.route,
-                "methods": info.http_methods,
                 "python_methods": info.python_methods,
             }
         return endpoints
