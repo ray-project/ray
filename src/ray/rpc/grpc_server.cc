@@ -129,7 +129,7 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
     bool delete_call = false;
     // A new call is needed after the server sends a reply, no matter the reply is
     // successful or failed.
-    bool need_new_call = false;
+    // bool need_new_call = false;
     if (ok) {
       switch (server_call->GetState()) {
       case ServerCallState::PENDING:
@@ -144,7 +144,7 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
         // The rpc call has finished and can be deleted now.
         delete_call = true;
         // A new call should be suplied.
-        need_new_call = true;
+        // need_new_call = true;
         break;
       default:
         RAY_LOG(FATAL) << "Shouldn't reach here.";
@@ -158,15 +158,15 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       if (server_call->GetState() == ServerCallState::SENDING_REPLY) {
         server_call->OnReplyFailed();
         // A new call should be suplied.
-        need_new_call = true;
+        // need_new_call = true;
       }
 
       // Second, the server has been shut down, the server call's status is PENDING.
       // And don't need to do anything other than deleting this call.
-      delete_call = true;
+      // delete_call = true;
     }
     if (delete_call) {
-      if (need_new_call && server_call->GetServerCallFactory().GetMaxActiveRPCs() != -1) {
+      if (ok && server_call->GetServerCallFactory().GetMaxActiveRPCs() != -1) {
         // Create a new `ServerCall` to accept the next incoming request.
         server_call->GetServerCallFactory().CreateCall();
       }

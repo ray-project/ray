@@ -11,9 +11,23 @@ class TestServiceHandler {
   void HandleSleep(const SleepRequest &request, SleepReply *reply,
                    SendReplyCallback send_reply_callback) {
     RAY_LOG(INFO) << "Got sleep request, time=" << request.sleep_time_ms() << "ms";
+    while (frozen) {
+      RAY_LOG(INFO) << "Server is frozen...";
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+    RAY_LOG(INFO) << "Handling and replying request.";
     std::this_thread::sleep_for(std::chrono::milliseconds(request.sleep_time_ms()));
-    send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+    send_reply_callback(ray::Status::OK(),
+                        /*reply_success=*/[]() { RAY_LOG(INFO) << "Reply success."; },
+                        /*reply_failure=*/
+                        [this]() {
+                          RAY_LOG(INFO) << "Reply failed.";
+                          reply_failure_count++;
+                        });
   }
+
+  int reply_failure_count = 0;
+  bool frozen = false;
 };
 
 class TestGrpcService : public GrpcService {
@@ -31,7 +45,7 @@ class TestGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
-    RPC_SERVICE_HANDLER(TestService, Sleep, 10);
+    RPC_SERVICE_HANDLER(TestService, Sleep, /*max_active_rpcs=*/1);
   }
 
  private:
@@ -107,6 +121,41 @@ TEST_F(TestGrpcServerFixture, TestBasic) {
     RAY_LOG(INFO) << "replied, status=" << status;
     done = true;
   });
+  while (!done) {
+    RAY_LOG(INFO) << "waiting";
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  }
+}
+
+// This test aims to test ServerCall leaking when client died before server's reply.
+TEST_F(TestGrpcServerFixture, TestClientDiedBeforeReply) {
+  // Freeze server first, it won't reply any request
+  test_service_handler_.frozen = true;
+  // Send request
+  SleepRequest request;
+  request.set_sleep_time_ms(1000);
+  Sleep(request, [](const Status status, const SleepReply &reply) {
+    RAY_CHECK(false) << "Shouldn't reach here";
+  });
+  // Shutdown client before reply
+  grpc_client_.reset();
+  client_call_manager_.reset();
+  // Unfreeze server, server will fail to reply
+  test_service_handler_.frozen = false;
+  while (test_service_handler_.reply_failure_count <= 0) {
+    RAY_LOG(INFO) << "Waiting for reply failure";
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  }
+  // Reinit client
+  // client_call_manager_.reset(new ClientCallManager(client_io_service_));
+  // grpc_client_.reset(
+  //     new GrpcClient<TestService>("localhost", 123321, *client_call_manager_));
+  // Send again, this request should be replied.
+  bool done = false;
+  // Sleep(request, [&done](const Status status, const SleepReply &reply) {
+  //   RAY_LOG(INFO) << "replied, status=" << status;
+  //   done = true;
+  // });
   while (!done) {
     RAY_LOG(INFO) << "waiting";
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
