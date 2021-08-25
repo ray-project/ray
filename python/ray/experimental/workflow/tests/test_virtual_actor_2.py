@@ -97,10 +97,8 @@ def test_indirect_actor_writer(workflow_start_regular):
     }],
     indirect=True)
 def test_wf_in_actor_1(workflow_start_regular, tmp_path):
-    fail_flag = tmp_path /"fail"
+    fail_flag = tmp_path / "fail"
     cnt = tmp_path / "count"
-
-    import json
     cnt.write_text(str(0))
 
     @workflow.step

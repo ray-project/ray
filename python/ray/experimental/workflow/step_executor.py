@@ -318,7 +318,10 @@ def _workflow_step_executor(
 
     if step_type == StepType.READONLY_ACTOR_METHOD:
         if isinstance(volatile_output, Workflow):
-            raise TypeError("Returing a Workflow from readonly virtual actor is not allowed.")
+            raise TypeError(
+                "Returing a Workflow from readonly virtual actor "
+                "is not allowed."
+            )
         assert not isinstance(persisted_output, Workflow)
     else:
         store = workflow_storage.get_workflow_storage()
@@ -335,10 +338,10 @@ def _workflow_step_executor(
                     outer_most_step_id = workflow_context.get_current_step_id()
             assert volatile_output is None
             # execute sub-workflow
-            result = execute_workflow(
-                persisted_output, outer_most_step_id,
-                last_step_of_workflow)
-            persisted_output, volatile_output = result.persisted_output, result.volatile_output
+            result = execute_workflow(persisted_output, outer_most_step_id,
+                                      last_step_of_workflow)
+            persisted_output = result.persisted_output
+            volatile_output = result.volatile_output
         elif last_step_of_workflow:
             # advance the progress of the workflow
             store.advance_progress(step_id)
