@@ -82,6 +82,9 @@ class ActorMethod(ActorMethodBase):
         """
         return self._run(args, kwargs)
 
+    def step(self, *args,**kwargs):
+        return None
+
     def options(self, **options) -> ActorMethodBase:
         """Convenience method for executing an actor method call with options.
 
@@ -268,6 +271,7 @@ class VirtualActorClass(VirtualActorClassBase):
         DerivedActorClass.__name__ = name
         DerivedActorClass.__qualname__ = name
         # Construct the base object.
+
         self = DerivedActorClass.__new__(DerivedActorClass)
 
         self._metadata = metadata

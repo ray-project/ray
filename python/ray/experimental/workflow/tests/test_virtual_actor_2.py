@@ -89,6 +89,45 @@ def test_indirect_actor_writer(workflow_start_regular):
     assert ray.get([actor.add.run_async(i) for i in range(10, 20)]) == array
 
 
+@pytest.mark.parametrize(
+    "workflow_start_regular",
+    [{
+        "num_cpus": 4
+        # We need more CPUs, otherwise 'create()' blocks 'get()'
+    }],
+    indirect=True)
+def test_wf_in_actor(workflow_start_regular):
+    @workflow.step
+    def start_session():
+        return {"result": True}
+
+    @workflow.virtual_actor
+    class Session:
+        def __init__(self):
+            self._session_status = {}
+
+        def update_session(self, status):
+            self._session_status = status
+            return self._session_status
+
+        def session_start(self):
+            step = start_session.step()
+            @workflow.step
+            def x(s):
+                return self.update_session(s)
+            return x.step(step)
+
+        def __getstate__(self):
+            return self._session_status
+
+        def __setstate__(self, state):
+            self._session_status = state
+
+    actor = Session.get_or_create("session_id")
+    print("<<<<<<<<<<<<<<<<<<<", type(actor), actor)
+    actor.session_start.run()
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
