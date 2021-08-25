@@ -132,7 +132,6 @@ class BackendExecutor:
             checkpoint_strategy (Optional[CheckpointStrategy]): The
                 configurations for saving checkpoints.
         """
-        self.train_func = train_func
         # Create new log directory for this run.
         self._run_id += 1
         self.latest_run_dir.mkdir(parents=True, exist_ok=True)
