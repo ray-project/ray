@@ -95,7 +95,7 @@ def test_get_named_step_output_finished(workflow_start_regular, tmp_path):
     assert ray.get(workflow.get_output("double", name="outer")) == 4
 
 
-def test_get_named_step_output_runnin(workflow_start_regular, tmp_path):
+def test_get_named_step_output_running(workflow_start_regular, tmp_path):
     @workflow.step
     def double(v, lock=None):
         if lock is not None:
@@ -119,6 +119,7 @@ def test_get_named_step_output_runnin(workflow_start_regular, tmp_path):
     def wait(obj_ref):
         return ray.get(obj_ref[0])
 
+    # Make sure nothing is finished.
     ready, waiting = ray.wait(
         [wait.remote([output]),
          wait.remote([inner]),
@@ -127,6 +128,7 @@ def test_get_named_step_output_runnin(workflow_start_regular, tmp_path):
     assert 0 == len(ready)
     assert 3 == len(waiting)
 
+    # Once job finished, we'll be able to get the result.
     lock.release()
     assert 4 == ray.get(output)
     assert 2 == ray.get(inner)
@@ -145,10 +147,12 @@ def test_get_named_step_output_error(workflow_start_regular, tmp_path):
             raise Exception()
         return v + v
 
+    # Force it to fail for the outer step
     with pytest.raises(Exception):
         double.options(name="outer").step(
             double.options(name="inner").step(1, False), True).run("double")
 
+    # For the inner step, it should have already been executed.
     assert 2 == ray.get(workflow.get_output("double", name="inner"))
     outer = workflow.get_output("double", name="outer")
     with pytest.raises(Exception):
@@ -168,9 +172,24 @@ def test_get_named_step_default(workflow_start_regular, tmp_path):
         step_name = ("test_basic_workflows_2."
                      "test_get_named_step_default.locals.factorial")
         if i != 0:
-            step_name += "." + str(i)
+            step_name += "_" + str(i)
+        # All outputs will be 120
         assert math.factorial(5) == ray.get(
             workflow.get_output("factorial", name=step_name))
+
+
+def test_get_named_step_duplicate(workflow_start_regular):
+    @workflow.step
+    def f(n, dep):
+        return n
+    inner = f.options(name="f").step(10, None)
+    outer = f.options(name="f").step(20, inner)
+    assert 20 == outer.run("duplicate")
+    # The outer will be checkpointed first. So there is no suffix for the name
+    assert ray.get(workflow.get_output("duplicate", name="f")) == 20
+    # The inner will be checkpointed after the outer. And there is a duplicate
+    # for the name. suffix _1 is added automatically
+    assert ray.get(workflow.get_output("duplicate", name="f_1")) == 10
 
 
 if __name__ == "__main__":

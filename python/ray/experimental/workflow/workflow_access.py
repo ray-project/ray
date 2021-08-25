@@ -194,7 +194,7 @@ class WorkflowManagementActor:
         if idx == 0:
             return step_name
         else:
-            return f"{step_name}.{idx}"
+            return f"{step_name}_{idx}"
 
     def update_step_status(self, workflow_id: str, step_id: str,
                            status: common.WorkflowStatus,
@@ -306,7 +306,7 @@ class WorkflowManagementActor:
             step_id = name
             if step_id is None:
                 raise ValueError(
-                    f"Load such step {step_id} in workflow {workflow_id}")
+                    f"Fail to find step `{step_id}` in workflow `{workflow_id}`")
             output = self._step_output_cache.get(workflow_id, {}).get(
                 step_id, None)
             if output is not None:

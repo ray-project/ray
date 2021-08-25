@@ -31,7 +31,10 @@ STEP_FUNC_BODY = "func_body.pkl"
 CLASS_BODY = "class_body.pkl"
 WORKFLOW_META = "workflow_meta.json"
 WORKFLOW_PROGRESS = "progress.json"
-STEP_DEDUPE = "step_dedupe"
+# Without this counter, we're going to scan all steps to get the number of steps
+# with a given name. This can be very expensive if there are too many
+# duplicates.
+DUPLICATE_NAME_COUNTER = "duplicate_name_counter"
 
 
 # TODO: Get rid of this and use asyncio.run instead once we don't support py36
@@ -156,7 +159,7 @@ class WorkflowStorage:
 
     def gen_step_id(self, step_name: str) -> int:
         async def _gen_step_id():
-            key = self._key_step_dedupe(step_name)
+            key = self._key_num_steps_with_name(step_name)
             try:
                 val = await self._get(key, True)
                 await self._put(key, val + 1, True)
@@ -501,8 +504,8 @@ class WorkflowStorage:
     def _key_workflow_metadata(self):
         return [self._workflow_id, WORKFLOW_META]
 
-    def _key_step_dedupe(self, name):
-        return [self._workflow_id, STEP_DEDUPE, name]
+    def _key_num_steps_with_name(self, name):
+        return [self._workflow_id, DUPLICATE_NAME_COUNTER, name]
 
 
 def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
