@@ -217,17 +217,6 @@ message TaskSpec {
   string concurrency_group_name = 25;
 }
 
-message Bundle {
-  message BundleIdentifier {
-    bytes placement_group_id = 1;
-    int32 bundle_index = 2;
-  }
-  BundleIdentifier bundle_id = 1;
-  map<string, double> unit_resources = 2;
-  // The location of this bundle.
-  bytes node_id = 3;
-}
-
 message PlacementGroupSpec {
   // ID of the PlacementGroup.
   bytes placement_group_id = 1;

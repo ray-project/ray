@@ -25,6 +25,16 @@ enum PlacementStrategy {
   STRICT_SPREAD = 3;
 }
 
+message Bundle {
+  message BundleIdentifier {
+    bytes placement_group_id = 1;
+    int32 bundle_index = 2;
+  }
+  BundleIdentifier bundle_id = 1;
+  map<string, double> unit_resources = 2;
+  // The location of this bundle.
+  bytes node_id = 3;
+}
 ////////////////////////////
 //FROM gcs.proto (just keeping track of things, delete this comment before merge)
 ////////////////////////////
