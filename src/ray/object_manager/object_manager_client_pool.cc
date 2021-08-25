@@ -31,8 +31,8 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManagerClientPool::GetOrConnectB
   return connection;
 }
 
-absl::optional<std::shared_ptr<rpc::ObjectManagerClient>> ObjectManagerClientPool::GetOrConnectByID(
-    ray::NodeID id) {
+absl::optional<std::shared_ptr<rpc::ObjectManagerClient>>
+ObjectManagerClientPool::GetOrConnectByID(ray::NodeID id) {
   auto node_info = gcs_client_->Nodes().Get(id);
   if (!node_info) {
     return {};
