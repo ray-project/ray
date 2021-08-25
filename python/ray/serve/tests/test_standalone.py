@@ -5,6 +5,7 @@ requires a shared Serve instance.
 import os
 import sys
 import socket
+from typing import Optional
 
 import pytest
 import requests
@@ -48,8 +49,9 @@ def test_shutdown(ray_shutdown):
 
     f.deploy()
 
+    serve_controller_name = serve.api._global_client._controller_name
     actor_names = [
-        serve.api._global_client._controller_name,
+        serve_controller_name,
         format_actor_name(SERVE_PROXY_NAME,
                           serve.api._global_client._controller_name,
                           get_all_node_ids()[0][0])
@@ -59,7 +61,12 @@ def test_shutdown(ray_shutdown):
         alive = True
         for actor_name in actor_names:
             try:
-                ray.get_actor(actor_name)
+                if actor_name == serve_controller_name:
+                    ray.get_actor(
+                        actor_name,
+                        namespace=ray.get_runtime_context().namespace)
+                else:
+                    ray.get_actor(actor_name)
             except ValueError:
                 alive = False
         return alive
@@ -73,7 +80,12 @@ def test_shutdown(ray_shutdown):
     def check_dead():
         for actor_name in actor_names:
             try:
-                ray.get_actor(actor_name)
+                if actor_name == serve_controller_name:
+                    ray.get_actor(
+                        actor_name,
+                        namespace=ray.get_runtime_context().namespace)
+                else:
+                    ray.get_actor(actor_name)
                 return False
             except ValueError:
                 pass
@@ -386,18 +398,6 @@ def test_serve_shutdown(ray_shutdown):
     assert len(serve.list_deployments()) == 1
 
 
-def test_detached_namespace_warning(ray_shutdown):
-    ray.init()
-
-    # Can't start detached instance in anonymous namespace.
-    with pytest.raises(RuntimeError, match="anonymous Ray namespace"):
-        serve.start(detached=True)
-
-    # Can start non-detached instance in anonymous namespace.
-    serve.start()
-    ray.shutdown()
-
-
 def test_detached_namespace_default_ray_init(ray_shutdown):
     # Can start detached instance when ray is not initialized.
     serve.start(detached=True)
@@ -407,6 +407,31 @@ def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
     # Can start detached instance in non-anonymous namespace.
     ray.init(namespace="foo")
     serve.start(detached=True)
+
+
+@pytest.mark.parametrize("namespace", [None, "test_namespace"])
+@pytest.mark.parametrize("detached", [True, False])
+def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
+                                    detached: bool):
+    """
+    Tests the serve controller is started in the current namespace if not
+    anonymous or in the "serve" namespace if no namespace is specified.
+    When the controller is started in the "serve" namespace, this also tests
+    that we can get the serve controller from another namespace.
+    """
+
+    ray.init(namespace=namespace)
+    serve.start(detached=detached)
+    client = serve.api._global_client
+    if namespace:
+        controller_namespace = namespace
+    elif detached:
+        controller_namespace = "serve"
+    else:
+        controller_namespace = ray.get_runtime_context().namespace
+
+    assert ray.get_actor(
+        client._controller_name, namespace=controller_namespace)
 
 
 if __name__ == "__main__":
