@@ -26,6 +26,15 @@ logger = logging.getLogger(__name__)
 JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-(\d+)-(\d+)")
 # The groups are job id.
 RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
+# Log name update interval under pressure.
+# We need it because log name update is CPU intensive and uses 100%
+# of cpu when there are many log files.
+LOG_NAME_UPDATE_INTERVAL_S = float(
+    os.getenv("LOG_NAME_UPDATE_INTERVAL_S", 0.5))
+# Once there are more files than this threshold,
+# log monitor start giving backpressure to lower cpu usages.
+RAY_LOG_MONITOR_MANY_FILES_THRESHOLD = int(
+    os.getenv("RAY_LOG_MONITOR_MANY_FILES_THRESHOLD", 1000))
 
 
 class LogFileInfo:
@@ -141,6 +150,7 @@ class LogMonitor:
         # runtime_env setup process is logged here
         runtime_env_setup_paths = glob.glob(
             f"{self.logs_dir}/runtime_env*.log")
+        total_files = 0
         for file_path in (log_file_paths + raylet_err_paths + gcs_err_path +
                           monitor_log_paths + runtime_env_setup_paths):
             if os.path.isfile(
@@ -175,6 +185,8 @@ class LogMonitor:
                         worker_pid=worker_pid))
                 log_filename = os.path.basename(file_path)
                 logger.info(f"Beginning to track file {log_filename}")
+            total_files += 1
+        return total_files
 
     def open_closed_files(self):
         """Open some closed files if they may have new lines.
@@ -297,8 +309,14 @@ class LogMonitor:
         This will query Redis once every second to check if there are new log
         files to monitor. It will also store those log files in Redis.
         """
+        total_log_files = 0
+        last_updated = time.time()
         while True:
-            self.update_log_filenames()
+            elapsed_seconds = int(time.time() - last_updated)
+            if (total_log_files < RAY_LOG_MONITOR_MANY_FILES_THRESHOLD
+                    or elapsed_seconds > LOG_NAME_UPDATE_INTERVAL_S):
+                total_log_files = self.update_log_filenames()
+                last_updated = time.time()
             self.open_closed_files()
             anything_published = self.check_log_files_and_publish_updates()
             # If nothing was published, then wait a little bit before checking

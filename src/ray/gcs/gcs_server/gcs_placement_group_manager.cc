@@ -686,6 +686,8 @@ std::string GcsPlacementGroupManager::DebugString() const {
          << counts_[CountType::GET_ALL_PLACEMENT_GROUP_REQUEST]
          << ", WaitPlacementGroupUntilReady request count: "
          << counts_[CountType::WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST]
+         << ", GetNamedPlacementGroup request count: "
+         << counts_[CountType::GET_NAMED_PLACEMENT_GROUP_REQUEST]
          << ", Registered placement groups count: " << registered_placement_groups_.size()
          << ", Named placement group count: " << num_pgs
          << ", Pending placement groups count: " << pending_placement_groups_.size()
