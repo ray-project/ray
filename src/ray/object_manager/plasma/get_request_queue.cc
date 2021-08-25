@@ -54,7 +54,7 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
     // Set a timer that will cause the get request to return to the client. Note
     // that a timeout of -1 is used to indicate that no timer should be set.
     get_req->AsyncWait(timeout_ms,
-                       [this, get_req, callback](const boost::system::error_code &ec) {
+                       [get_req, callback](const boost::system::error_code &ec) {
                          if (ec != boost::asio::error::operation_aborted) {
                            // Timer was not cancelled, take necessary action.
                            callback(get_req);
