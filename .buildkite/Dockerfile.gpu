@@ -1,5 +1,7 @@
-FROM ubuntu:focal
+FROM nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04
 
+# This is a copy of the regular Dockerfile
+# adjusted for ubuntu 18 (removed python-is-python3)
 ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
 ARG BUILDKITE_COMMIT
@@ -28,7 +30,7 @@ ENV BUILDKITE_BAZEL_CACHE_URL=${REMOTE_CACHE_URL}
 
 RUN apt-get update -qq
 RUN apt-get install -y -qq \
-    curl python-is-python3 git build-essential \
+    curl git build-essential \
     sudo unzip apt-utils dialog tzdata wget rsync \
     language-pack-en tmux cmake gdb vim htop \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev maven \
