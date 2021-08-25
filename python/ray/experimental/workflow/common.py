@@ -97,6 +97,7 @@ class WorkflowData:
         return {
             "name": get_module(f) + "." + get_qualname(f),
             "step_type": self.step_type,
+            # TODO (Alex): Return the relative path of the object, not the hex of the ref here.
             "object_refs": [r.hex() for r in self.inputs.object_refs],
             "workflows": [w.id for w in self.inputs.workflows],
             "max_retries": self.max_retries,

@@ -94,6 +94,7 @@ def _construct_resume_workflow_from_step(
             input_workflows.append(None)
             instant_workflow_outputs[i] = r
     workflow_refs = list(map(WorkflowRef, result.workflow_refs))
+    # TODO (Alex): We need to resolve and pass in object refs here.
     recovery_workflow: Workflow = _recover_workflow_step.options(
         max_retries=result.max_retries,
         catch_exceptions=result.catch_exceptions,
