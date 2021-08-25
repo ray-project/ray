@@ -38,8 +38,11 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
     RAY_CHECK_OK(status);
     RAY_LOG(INFO) << "Finished registering node info, node id = " << node_id
                   << ", address = " << request.node_info().node_manager_address();
+    auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
+    node_info_delta->set_node_id(node_id));
+    node_info_delta->set_state(rpc::GcsNodeInfo::ALIVE);
     RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
-                                       request.node_info().SerializeAsString(), nullptr));
+                                       node_info_delta->SerializeAsString(), nullptr));
     AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
