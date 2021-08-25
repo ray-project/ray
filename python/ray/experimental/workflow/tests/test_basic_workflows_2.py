@@ -91,8 +91,8 @@ def test_get_named_step_output_finished(workflow_start_regular, tmp_path):
     # Get the result from named step after workflow finished
     assert 4 == double.options(name="outer").step(
         double.options(name="inner").step(1)).run("double")
-    assert ray.get(workflow.get_output("double", "inner")) == 2
-    assert ray.get(workflow.get_output("double", "outer")) == 4
+    assert ray.get(workflow.get_output("double", name="inner")) == 2
+    assert ray.get(workflow.get_output("double", name="outer")) == 4
 
 
 def test_get_named_step_output_runnin(workflow_start_regular, tmp_path):
@@ -112,8 +112,8 @@ def test_get_named_step_output_runnin(workflow_start_regular, tmp_path):
         double.options(name="inner").step(1, lock_path),
         lock_path).run_async("double-2")
 
-    inner = workflow.get_output("double-2", "inner")
-    outer = workflow.get_output("double-2", "outer")
+    inner = workflow.get_output("double-2", name="inner")
+    outer = workflow.get_output("double-2", name="outer")
 
     @ray.remote
     def wait(obj_ref):
@@ -132,8 +132,8 @@ def test_get_named_step_output_runnin(workflow_start_regular, tmp_path):
     assert 2 == ray.get(inner)
     assert 4 == ray.get(outer)
 
-    inner = workflow.get_output("double-2", "inner")
-    outer = workflow.get_output("double-2", "outer")
+    inner = workflow.get_output("double-2", name="inner")
+    outer = workflow.get_output("double-2", name="outer")
     assert 2 == ray.get(inner)
     assert 4 == ray.get(outer)
 
@@ -149,8 +149,8 @@ def test_get_named_step_output_error(workflow_start_regular, tmp_path):
         double.options(name="outer").step(
             double.options(name="inner").step(1, False), True).run("double")
 
-    assert 2 == ray.get(workflow.get_output("double", "inner"))
-    outer = workflow.get_output("double", "outer")
+    assert 2 == ray.get(workflow.get_output("double", name="inner"))
+    outer = workflow.get_output("double", name="outer")
     with pytest.raises(Exception):
         ray.get(outer)
 
@@ -170,7 +170,7 @@ def test_get_named_step_default(workflow_start_regular, tmp_path):
         if i != 0:
             step_name += "." + str(i)
         assert math.factorial(5) == ray.get(
-            workflow.get_output("factorial", step_name))
+            workflow.get_output("factorial", name=step_name))
 
 
 if __name__ == "__main__":
