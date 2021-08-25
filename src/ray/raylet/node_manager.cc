@@ -1301,8 +1301,8 @@ void NodeManager::DeleteLocalURI(const std::string &uri, std::function<void(bool
   boost::system::error_code ec;
   boost::filesystem::rename(from_path, to_path, ec);
   if (ec.value() != 0) {
-    RAY_LOG(ERROR) << "Failed to move file from " << from_path << " to " << to_path
-                   << " because of error " << ec.message();
+    RAY_LOG(INFO) << "Failed to move file from " << from_path << " to " << to_path
+                  << " because of error " << ec.message();
     cb(false);
   }
 
