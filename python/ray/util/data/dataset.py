@@ -48,6 +48,15 @@ class MLDataset(ParallelIterator[pd.DataFrame]):
         modin_iter = from_items(parts, num_shards=num_shards, repeat=False)
         return cls.from_parallel_it(modin_iter, batch_size=0, repeated=False)
 
+    @classmethod
+    def from_partitioned(cls, data):
+        assert hasattr(data, "__partitioned__")
+        partitions = data.__partitioned__["partitions"]
+        num_shards = len(partitions)
+        parts = [partition["data"] for partition in partitions.values()]
+        part_iter = from_items(parts, num_shards=num_shards, repeat=False)
+        return cls.from_parallel_it(part_iter, batch_size=0, repeated=False)
+
     @staticmethod
     def from_parallel_it(para_it: ParallelIterator[pd.DataFrame],
                          batch_size: int,
