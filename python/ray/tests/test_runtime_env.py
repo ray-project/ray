@@ -39,12 +39,12 @@ try:
 
 
     if os.environ.get("USE_RAY_CLIENT"):
-        ray.client("{address}").env({runtime_env}).namespace("").connect()
+        ray.client("{address}").env({runtime_env}).namespace("default_test_namespace").connect()
     else:
         ray.init(address="{address}",
                  job_config=job_config,
                  logging_level=logging.DEBUG,
-                 namespace=""
+                 namespace="default_test_namespace"
 )
 except ValueError:
     print("ValueError")
