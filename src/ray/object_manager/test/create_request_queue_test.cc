@@ -21,7 +21,8 @@ namespace plasma {
 
 class MockClient : public ClientInterface {
  public:
-  MockClient() {}
+  MOCK_METHOD1(SendFd, Status(MEMFD_TYPE));
+  MOCK_METHOD0(GetObjectIDs, std::unordered_set<ray::ObjectID> &());
 };
 
 #define ASSERT_REQUEST_UNFINISHED(queue, req_id)                    \
