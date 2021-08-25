@@ -94,18 +94,19 @@ class WorkflowData:
 
     def to_metadata(self) -> Dict[str, Any]:
         f = self.func_body
-        return { "name": get_module(f) + "." + get_qualname(f), "step_type":
-                 self.step_type,
-                 # todo (Alex): Return the relative path of the object, not the
-                 # hex of the ref here (or explicitely set the metadata on
-                 # recovery instead of calculating it).
-                 "object_refs": [r.hex() for r in self.inputs.object_refs],
-                 "workflows": [w.id for w in self.inputs.workflows],
-                 "max_retries": self.max_retries,
-                 "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
-                 "catch_exceptions": self.catch_exceptions,
-                 "ray_options": self.ray_options,
-                }
+        return {
+            "name": get_module(f) + "." + get_qualname(f),
+            "step_type": self.step_type,
+            # todo (Alex): Return the relative path of the object, not the
+            # hex of the ref here (or explicitely set the metadata on
+            # recovery instead of calculating it).
+            "object_refs": [r.hex() for r in self.inputs.object_refs],
+            "workflows": [w.id for w in self.inputs.workflows],
+            "max_retries": self.max_retries,
+            "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
+            "catch_exceptions": self.catch_exceptions,
+            "ray_options": self.ray_options,
+        }
 
 
 @dataclass
