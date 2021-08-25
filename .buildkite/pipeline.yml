@@ -189,7 +189,7 @@
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - MINIMAL_INSTALL=1 ./ci/travis/install-dependencies.sh
+    - ./ci/travis/install-minimal.sh
     - ./ci/travis/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       python/ray/tests/test_basic
