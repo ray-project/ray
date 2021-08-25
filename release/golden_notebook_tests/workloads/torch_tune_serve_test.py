@@ -87,17 +87,15 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
         checkpoint_at_end=True)
 
 
-def get_remote_model(remote_model_checkpoint_path):
-    addr = os.environ.get("RAY_ADDRESS")
-    if is_anyscale_connect(addr):
+def get_remote_model(remote_model_checkpoint_path, client=None):
+    if client:
         # Download training results to local client.
         local_dir = "~/ray_results"
         # TODO(matt): remove the following line when Anyscale Connect
         # supports tilde expansion.
         local_dir = os.path.expanduser(local_dir)
         remote_dir = "/home/ray/ray_results/"
-        ray.client().download_results(
-            local_dir=local_dir, remote_dir=remote_dir)
+        client.download_results(local_dir=local_dir, remote_dir=remote_dir)
 
         # Compute local path.
         rel_model_checkpoint_path = os.path.relpath(
@@ -215,9 +213,9 @@ if __name__ == "__main__":
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "torch_tune_serve_test")
     if is_anyscale_connect(addr):
-        ray.client(address=addr).job_name(job_name).connect()
+        client = ray.init(address=addr, job_name=job_name)
     else:
-        ray.init(address="auto")
+        client = ray.init(address="auto")
 
     num_workers = 2
     use_gpu = True
@@ -227,7 +225,7 @@ if __name__ == "__main__":
 
     print("Retrieving best model.")
     best_checkpoint = analysis.best_checkpoint
-    model_id = get_remote_model(best_checkpoint)
+    model_id = get_remote_model(best_checkpoint, client)
 
     print("Setting up Serve.")
     setup_serve(model_id)
