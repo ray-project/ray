@@ -23,7 +23,7 @@ python_grpc_compile(
 proto_library(
     name = "common_proto",
     srcs = ["common.proto"],
-    deps = [":autoscaler_proto"]
+    deps = [":autoscaler_proto"],
     visibility = ["//java:__subpackages__"],
 )
 
