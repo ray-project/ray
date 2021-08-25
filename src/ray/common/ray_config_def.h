@@ -61,9 +61,9 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 
 /// Whether to record the creation sites of object references. This adds more
-/// information to `ray memstat`, but introduces a little extra overhead when
-/// creating object references.
-RAY_CONFIG(bool, record_ref_creation_sites, true)
+/// information to `ray memory`, but introduces a little extra overhead when
+/// creating object references (e.g. 5~10 microsec per call in Python).
+RAY_CONFIG(bool, record_ref_creation_sites, false)
 
 /// Objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
