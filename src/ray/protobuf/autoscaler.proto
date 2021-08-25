@@ -1,0 +1,221 @@
+/* Please do not modify/remove/change the messages in this file to maintain
+backwards compatibility in autoscaler. This is necessary to make sure we can
+run autoscaler with any version of ray. For example, the K8s operator runs
+autoscaler in a separate pod, if the user upgrades the ray version on the head
+pod autoscaler can crash (if the newer version of ray modified the messages
+below). */
+
+////////////////////////////
+//FROM common.proto (just keeping track of things, delete this comment before merge)
+////////////////////////////
+// Type of placement group strategy.
+enum PlacementStrategy {
+  // Packs Bundles into as few nodes as possible.
+  PACK = 0;
+  // Places Bundles across distinct nodes or processes as even as possible.
+  SPREAD = 1;
+  // Packs Bundles within one node. The group is not allowed to span multiple nodes.
+  STRICT_PACK = 2;
+  // Places Bundles across distinct nodes.
+  // The group is not allowed to deploy more than one bundle on a node.
+  STRICT_SPREAD = 3;
+}
+
+////////////////////////////
+//FROM gcs.proto (just keeping track of things, delete this comment before merge)
+////////////////////////////
+// Represents the demand for a particular resource shape.
+message ResourceDemand {
+  // The resource shape requested. This is a map from the resource string
+  // (e.g., "CPU") to the amount requested.
+  map<string, double> shape = 1;
+  // The number of requests that are ready to run (i.e., dependencies have been
+  // fulfilled), but that are waiting for resources.
+  uint64 num_ready_requests_queued = 2;
+  // The number of requests for which there is no node that is a superset of
+  // the requested resource shape.
+  uint64 num_infeasible_requests_queued = 3;
+  // The number of requests of this shape still queued in CoreWorkers that this
+  // raylet knows about.
+  int64 backlog_size = 4;
+}
+
+// Represents the demand sorted by resource shape.
+message ResourceLoad {
+  // A list of all resource demands. The resource shape in each demand is
+  // unique.
+  repeated ResourceDemand resource_demands = 1;
+}
+
+message ResourcesData {
+  // Node id.
+  bytes node_id = 1;
+  // Resource capacity currently available on this node manager.
+  map<string, double> resources_available = 2;
+  // Indicates whether available resources is changed. Only used when light
+  // heartbeat enabled.
+  bool resources_available_changed = 3;
+  // Total resource capacity configured for this node manager.
+  map<string, double> resources_total = 4;
+  // Aggregate outstanding resource load on this node manager.
+  map<string, double> resource_load = 5;
+  // Indicates whether resource load is changed. Only used when
+  // light heartbeat enabled.
+  bool resource_load_changed = 6;
+  // The resource load on this node, sorted by resource shape.
+  ResourceLoad resource_load_by_shape = 7;
+  // Whether this node manager is requesting global GC.
+  bool should_global_gc = 8;
+  // IP address of the node.
+  string node_manager_address = 9;
+  // Normal task resources.
+  map<string, double> resources_normal_task = 10;
+  // Indicates whether resource normal task is changed. Only used when
+  // light heartbeat enabled.
+  bool resources_normal_task_changed = 11;
+  // Whether this node has object pulls queued. This can happen if
+  // the node has more pull requests than available object store
+  // memory. This is a proxy for available object store memory.
+  bool object_pulls_queued = 12;
+}
+
+message ResourceUsageBatchData {
+  repeated ResourcesData batch = 1;
+  // The total resource demand on all nodes included in the batch, sorted by
+  // resource shape.
+  ResourceLoad resource_load_by_shape = 2;
+  // The pending list of placement groups.
+  PlacementGroupLoad placement_group_load = 3;
+}
+
+message PlacementGroupLoad {
+  // The list of pending placement group specifications.
+  repeated PlacementGroupTableData placement_group_data = 1;
+}
+
+message PlacementGroupTableData {
+  // State of a placement group.
+  enum PlacementGroupState {
+    // Placement Group is pending or scheduling
+    PENDING = 0;
+    // Placement Group is created.
+    CREATED = 1;
+    // Placement Group is already removed and won't be reschedule.
+    REMOVED = 2;
+    // Placement Group is rescheduling because the node it placed is dead.
+    RESCHEDULING = 3;
+  }
+
+  // ID of the PlacementGroup.
+  bytes placement_group_id = 1;
+  // The name of the placement group.
+  string name = 2;
+  // The array of the bundle in Placement Group.
+  repeated Bundle bundles = 3;
+  // The schedule strategy of this Placement Group.
+  PlacementStrategy strategy = 4;
+  // Current state of this placement group.
+  PlacementGroupState state = 5;
+  // Fields to detect the owner of the placement group
+  // for automatic lifecycle management.
+  // The job id that created this placement group.
+  bytes creator_job_id = 6;
+  // The actor id that created this placement group.
+  bytes creator_actor_id = 7;
+  // Whether or not if the creator job is dead.
+  bool creator_job_dead = 8;
+  // Whether or not if the creator actor is dead.
+  bool creator_actor_dead = 9;
+  // Whether the placement group is persistent.
+  bool is_detached = 10;
+  // The pg's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
+  string ray_namespace = 11;
+}
+////////////////////////////
+//FROM gcs_service.proto (just keeping track of things delete this comment before merge)
+////////////////////////////
+message InternalKVGetRequest {
+  bytes key = 1;
+}
+
+message InternalKVGetReply {
+  GcsStatus status = 1;
+  bytes value = 2;
+}
+
+message InternalKVPutRequest {
+  bytes key = 1;
+  bytes value = 2;
+  bool overwrite = 3;
+}
+
+message InternalKVPutReply {
+  GcsStatus status = 1;
+  int32 added_num = 2;
+}
+
+message InternalKVDelRequest {
+  bytes key = 1;
+}
+
+message InternalKVDelReply {
+  GcsStatus status = 1;
+  int32 deleted_num = 2;
+}
+
+message InternalKVExistsRequest {
+  bytes key = 1;
+}
+
+message InternalKVExistsReply {
+  GcsStatus status = 1;
+  bool exists = 2;
+}
+
+message InternalKVKeysRequest {
+  bytes prefix = 1;
+}
+
+message InternalKVKeysReply {
+  GcsStatus status = 1;
+  repeated bytes results = 2;
+}
+
+// Service for KV storage
+service InternalKVGcsService {
+  rpc InternalKVGet(InternalKVGetRequest) returns (InternalKVGetReply);
+  rpc InternalKVPut(InternalKVPutRequest) returns (InternalKVPutReply);
+  rpc InternalKVDel(InternalKVDelRequest) returns (InternalKVDelReply);
+  rpc InternalKVExists(InternalKVExistsRequest) returns (InternalKVExistsReply);
+  rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
+}
+
+message GetAllResourceUsageRequest {
+}
+
+message GetAllResourceUsageReply {
+  GcsStatus status = 1;
+  ResourceUsageBatchData resource_usage_data = 2;
+}
+
+// Service for node resource info access.
+service NodeResourceInfoGcsService {
+  // Get node's resources from GCS Service.
+  rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
+  // Update resources of a node in GCS Service.
+  rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
+  // Delete resources of a node in GCS Service.
+  rpc DeleteResources(DeleteResourcesRequest) returns (DeleteResourcesReply);
+  // Get available resources of all nodes.
+  rpc GetAllAvailableResources(GetAllAvailableResourcesRequest)
+      returns (GetAllAvailableResourcesReply);
+  // Report resource usage of a node to GCS Service.
+  rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
+  // Get resource usage of all nodes from GCS Service.
+  rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
+}
+
+message GcsStatus {
+  int32 code = 1;
+  string message = 2;
+}

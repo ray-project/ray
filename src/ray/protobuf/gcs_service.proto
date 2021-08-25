@@ -18,6 +18,7 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
+import "src/ray/protobuf/autoscaler.proto";
 
 message AddJobRequest {
   JobTableData data = 1;
@@ -563,97 +564,3 @@ service PlacementGroupInfoGcsService {
       returns (WaitPlacementGroupUntilReadyReply);
 }
 
-///////////////////////////////////////////////////////////////////////////////
-/* Please do not modify/remove/change the following messages to maintain
-backwards compatibility in autoscaler. This is necessary to make sure we can
-run autoscaler with any version of ray. For example, the K8s operator runs
-autoscaler in a separate pod, if the user upgrades the ray version on the head
-pod autoscaler can crash (if the newer version of ray modified the messages
-below). */
-
-message InternalKVGetRequest {
-  bytes key = 1;
-}
-
-message InternalKVGetReply {
-  GcsStatus status = 1;
-  bytes value = 2;
-}
-
-message InternalKVPutRequest {
-  bytes key = 1;
-  bytes value = 2;
-  bool overwrite = 3;
-}
-
-message InternalKVPutReply {
-  GcsStatus status = 1;
-  int32 added_num = 2;
-}
-
-message InternalKVDelRequest {
-  bytes key = 1;
-}
-
-message InternalKVDelReply {
-  GcsStatus status = 1;
-  int32 deleted_num = 2;
-}
-
-message InternalKVExistsRequest {
-  bytes key = 1;
-}
-
-message InternalKVExistsReply {
-  GcsStatus status = 1;
-  bool exists = 2;
-}
-
-message InternalKVKeysRequest {
-  bytes prefix = 1;
-}
-
-message InternalKVKeysReply {
-  GcsStatus status = 1;
-  repeated bytes results = 2;
-}
-
-// Service for KV storage
-service InternalKVGcsService {
-  rpc InternalKVGet(InternalKVGetRequest) returns (InternalKVGetReply);
-  rpc InternalKVPut(InternalKVPutRequest) returns (InternalKVPutReply);
-  rpc InternalKVDel(InternalKVDelRequest) returns (InternalKVDelReply);
-  rpc InternalKVExists(InternalKVExistsRequest) returns (InternalKVExistsReply);
-  rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
-}
-
-message GetAllResourceUsageRequest {
-}
-
-message GetAllResourceUsageReply {
-  GcsStatus status = 1;
-  ResourceUsageBatchData resource_usage_data = 2;
-}
-
-// Service for node resource info access.
-service NodeResourceInfoGcsService {
-  // Get node's resources from GCS Service.
-  rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
-  // Update resources of a node in GCS Service.
-  rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
-  // Delete resources of a node in GCS Service.
-  rpc DeleteResources(DeleteResourcesRequest) returns (DeleteResourcesReply);
-  // Get available resources of all nodes.
-  rpc GetAllAvailableResources(GetAllAvailableResourcesRequest)
-      returns (GetAllAvailableResourcesReply);
-  // Report resource usage of a node to GCS Service.
-  rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
-  // Get resource usage of all nodes from GCS Service.
-  rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
-}
-
-message GcsStatus {
-  int32 code = 1;
-  string message = 2;
-}
-///////////////////////////////////////////////////////////////////////////////
