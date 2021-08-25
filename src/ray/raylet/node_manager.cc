@@ -800,6 +800,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
     remote_node_manager_addresses_.erase(node_entry);
   }
 
+  object_manager_.OnNodeRemoved(node_id);
   // Notify the object directory that the node has been removed so that it
   // can remove it from any cached locations.
   object_directory_->HandleNodeRemoved(node_id);

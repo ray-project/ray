@@ -236,6 +236,9 @@ class ObjectManager : public ObjectManagerInterface,
   ///                   or send it to all the object stores.
   void FreeObjects(const std::vector<ObjectID> &object_ids, bool local_only);
 
+  /// Method that's called when the node is removed.
+  void OnNodeRemoved(const NodeID &node_id);
+
   /// Returns debug string for class.
   ///
   /// \return string.

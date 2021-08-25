@@ -799,6 +799,10 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
   }
 }
 
+void ObjectManager::OnNodeRemoved(const NodeID &node_id) {
+  object_manager_client_pool_->Disconnect(node_id);
+}
+
 void ObjectManager::SpreadFreeObjectsRequest(
     const std::vector<ObjectID> &object_ids,
     const std::vector<std::shared_ptr<rpc::ObjectManagerClient>> &rpc_clients) {
