@@ -597,8 +597,8 @@ def init(
         runtime_env: Dict[str, Any] = None,
         # The following are unstable parameters and their use is discouraged.
         _enable_object_reconstruction: bool = False,
-        _redis_max_memory: int = None,
-        _plasma_directory: str = None,
+        _redis_max_memory: Optional[int] = None,
+        _plasma_directory: Optional[str] = None,
         _node_ip_address: str = ray_constants.NODE_DEFAULT_IP,
         _driver_object_store_memory: int = None,
         _memory: int = None,
