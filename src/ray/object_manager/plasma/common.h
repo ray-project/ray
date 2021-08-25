@@ -84,6 +84,7 @@ struct Allocation {
   friend class DummyAllocator;
   friend struct ObjectLifecycleManagerTest;
   FRIEND_TEST(ObjectStoreTest, PassThroughTest);
+  FRIEND_TEST(EvictionPolicyTest, Test);
 };
 
 /// This type is used by the Plasma store. It is here because it is exposed to
@@ -113,6 +114,7 @@ class LocalObject {
   friend struct ObjectLifecycleManagerTest;
   FRIEND_TEST(ObjectLifecycleManagerTest, RemoveReferenceOneRefNotSealed);
   friend struct ObjectStatsCollectorTest;
+  FRIEND_TEST(EvictionPolicyTest, Test);
 
   /// Allocation Info;
   Allocation allocation;

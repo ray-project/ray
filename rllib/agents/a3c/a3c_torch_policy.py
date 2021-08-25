@@ -41,7 +41,8 @@ def actor_critic_loss(policy: Policy, model: ModelV2,
     values = model.value_function()
 
     if policy.is_recurrent():
-        max_seq_len = torch.max(train_batch[SampleBatch.SEQ_LENS])
+        B = len(train_batch[SampleBatch.SEQ_LENS])
+        max_seq_len = logits.shape[0] // B
         mask_orig = sequence_mask(train_batch[SampleBatch.SEQ_LENS],
                                   max_seq_len)
         valid_mask = torch.reshape(mask_orig, [-1])

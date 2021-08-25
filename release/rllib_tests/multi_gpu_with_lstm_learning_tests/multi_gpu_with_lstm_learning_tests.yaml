@@ -1,0 +1,132 @@
+
+a2c-stateless-cartpole:
+    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
+    run: A2C
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 150.0
+        timesteps_total: 500000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 23
+        lr: 0.001
+        # Test w/ LSTMs.
+        model:
+            use_lstm: true
+
+appo-stateless-cartpole-no-vtrace:
+    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
+    run: APPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 150.0
+        timesteps_total: 500000
+    stop:
+        time_total_s: 600
+    config:
+        vtrace: false
+        num_gpus: 2
+        num_workers: 5
+        lr: 0.0003
+        observation_filter: MeanStdFilter
+        num_sgd_iter: 6
+        vf_loss_coeff: 0.01
+        model:
+            fcnet_hiddens: [32]
+            fcnet_activation: linear
+            vf_share_layers: true
+            # Test w/ LSTMs.
+            use_lstm: true
+        # Double batch size (2 GPUs).
+        train_batch_size: 1000
+
+appo-stateless-cartpole-vtrace:
+    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
+    run: APPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 150.0
+        timesteps_total: 500000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 5
+        lr: 0.0003
+        observation_filter: MeanStdFilter
+        num_sgd_iter: 6
+        vf_loss_coeff: 0.01
+        model:
+            fcnet_hiddens: [32]
+            fcnet_activation: linear
+            vf_share_layers: true
+            # Test w/ LSTMs.
+            use_lstm: true
+        # Double batch size (2 GPUs).
+        train_batch_size: 1000
+
+impala-stateless-cartpole:
+    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
+    run: IMPALA
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 150.0
+        timesteps_total: 500000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 23
+        # Double batch size (2 GPUs).
+        train_batch_size: 1000
+
+        # Test w/ LSTMs.
+        model:
+            use_lstm: true
+
+pg-stateless-cartpole:
+    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
+    run: PG
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 130.0
+        timesteps_total: 500000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 23
+        # Double batch size (2 GPUs).
+        train_batch_size: 400
+        model:
+            fcnet_hiddens: [64]
+            fcnet_activation: linear
+            # Test w/ LSTMs.
+            use_lstm: true
+
+ppo-stateless-cartpole:
+    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
+    run: PPO
+    # Minimum reward and total ts (in given time_total_s) to pass this test.
+    pass_criteria:
+        episode_reward_mean: 150.0
+        timesteps_total: 200000
+    stop:
+        time_total_s: 600
+    config:
+        num_gpus: 2
+        num_workers: 23
+        lr: 0.0003
+        observation_filter: MeanStdFilter
+        num_sgd_iter: 6
+        vf_loss_coeff: 0.01
+        model:
+            fcnet_hiddens: [32]
+            fcnet_activation: linear
+            vf_share_layers: true
+            # Test w/ LSTMs.
+            use_lstm: true
+        # Double batch size (2 GPUs).
+        train_batch_size: 8000
