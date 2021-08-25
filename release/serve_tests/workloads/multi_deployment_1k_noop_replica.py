@@ -144,9 +144,7 @@ def main(num_replicas: Optional[int], num_deployments: Optional[int],
 
     logger.info("Warming up cluster ....\n")
     rst_ray_refs = []
-    all_endpoints = list(
-        ray.get(serve_client._controller.get_all_endpoints.remote()).keys())
-
+    all_endpoints = list(serve.list_deployments().keys())
     for endpoint in all_endpoints:
         rst_ray_refs.append(
             warm_up_one_cluster.options(num_cpus=0.1).remote(
