@@ -111,14 +111,14 @@ void RuntimeContext::ShutdownTimer() {
   {
     AutoSpinLock lock(report_flag_);
     if (!config_.GetMetricsEnable()) {
-      STREAMING_LOG(WARNING) << "streaming metrics disabled";
+      STREAMING_LOG(WARNING) << "Streaming metrics disabled";
       return;
     }
     if (!enable_timer_service_) {
-      STREAMING_LOG(INFO) << "timer service already disabled";
+      STREAMING_LOG(INFO) << "Timer service already disabled";
       return;
     }
-    STREAMING_LOG(INFO) << "timer server shutdown";
+    STREAMING_LOG(INFO) << "Timer server shutdown";
     enable_timer_service_ = false;
     STREAMING_LOG(INFO) << "Cancel metrics timer.";
     metrics_timer_->cancel();

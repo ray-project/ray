@@ -40,6 +40,9 @@ class StreamingPerfBase {
                          double value) = 0;
 };
 
+/// Streaming perf is a reporter instance based multiple backend.
+/// Other module can report gauge/histogram/counter/qps measurement to meteric server
+/// side.
 class StreamingPerf : public StreamingPerfBase {
  public:
   StreamingPerf(){};

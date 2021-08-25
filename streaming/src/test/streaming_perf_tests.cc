@@ -37,7 +37,6 @@ class StreamingPerfCounterTest : public ::testing::Test {
     const std::unordered_map<std::string, std::string> default_tags = {
         {"app", "s_test"}, {"cluster", "kmon-dev"}};
     metrics_conf_.SetMetricsGlobalTags(default_tags);
-    // metric job name is streaming that's not true user-defined
     perf_counter_->Start(metrics_conf_);
   }
 

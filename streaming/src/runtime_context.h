@@ -34,6 +34,11 @@ class RuntimeContext {
   inline bool IsMockTest() { return is_mock_test_; }
 
   void InitMetricsReporter();
+
+  ///  It's periodic reporter entry for all runtime modules.
+  ///  \param metric_name, metric name
+  ///  \param value, metric value
+  ///  \param tags, metric tag map
   void ReportMetrics(const std::string &metric_name, double value,
                      const std::map<std::string, std::string> &tags = {});
   void EnableTimer(std::function<void()> report_timer_handler);
