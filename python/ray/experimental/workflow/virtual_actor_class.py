@@ -335,8 +335,8 @@ def _wrap_readonly_actor_method(actor_id: str, cls: type, method_name: str):
 
 def _wrap_actor_method(cls: type, method_name: str):
     @ray.experimental.workflow.step
-    def deref(state, job):
-        return (state, job)
+    def deref(*args):
+        return args
 
     @functools.wraps(getattr(cls, method_name))
     def _actor_method(state, *args, **kwargs):
@@ -346,8 +346,9 @@ def _wrap_actor_method(cls: type, method_name: str):
         method = getattr(instance, method_name)
         output = method(*args, **kwargs)
         if isinstance(output, Workflow):
-            next_step = deref.step(instance.__getstate__(), output)
-            next_step.data.step_type = StepType.ACTOR_METHOD
+            if output.data.step_type == StepType.FUNCTION:
+                next_step = deref.step(instance.__getstate__(), output)
+                next_step.data.step_type = StepType.ACTOR_METHOD
             return next_step, None
         return instance.__getstate__(), output
 
