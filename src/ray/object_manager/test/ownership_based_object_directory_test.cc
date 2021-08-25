@@ -183,8 +183,10 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
   }
 
   void AssertNoLeak() {
-    RAY_CHECK(obod_.in_flight_requests_.size() == 0);
-    RAY_CHECK(obod_.location_buffers_.size() == 0);
+    RAY_CHECK(obod_.in_flight_requests_.size() == 0)
+        << "There are " << obod_.in_flight_requests_.size() << " in flight requests.";
+    RAY_CHECK(obod_.location_buffers_.size() == 0)
+        << "There are " << obod_.location_buffers_.size() << " buffered locations.";
   }
 
   int NumBatchRequestSent() { return owner_client->batch_sent; }
@@ -225,6 +227,7 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBatchBasic) {
     ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
     ASSERT_EQ(NumBatchRequestSent(), 1);
     ASSERT_EQ(NumBatchReplied(), 1);
+    AssertNoLeak();
   }
 
   {
@@ -237,6 +240,7 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBatchBasic) {
     ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
     ASSERT_EQ(NumBatchRequestSent(), 2);
     ASSERT_EQ(NumBatchReplied(), 2);
+    AssertNoLeak();
   }
 }
 
@@ -254,6 +258,10 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBufferedUpdate) {
   // For the same object ID, it should report the latest result (which is REMOVED).
   AssertObjectIDState(object_info.owner_worker_id, object_info.object_id,
                       rpc::ObjectLocationState::REMOVED);
+
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  ASSERT_EQ(NumBatchReplied(), 2);
+  AssertNoLeak();
 }
 
 TEST_F(OwnershipBasedObjectDirectoryTest,
@@ -278,6 +286,7 @@ TEST_F(OwnershipBasedObjectDirectoryTest,
                       rpc::ObjectLocationState::REMOVED);
   AssertObjectIDState(object_info_2.owner_worker_id, object_info_2.object_id,
                       rpc::ObjectLocationState::ADDED);
+  AssertNoLeak();
 }
 
 TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBufferedMultipleOwners) {
@@ -294,15 +303,28 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateBufferedMultipleOwne
   obod_.ReportObjectRemoved(object_info_2.object_id, current_node_id, object_info_2);
   obod_.ReportObjectAdded(object_info_2.object_id, current_node_id, object_info_2);
 
+  // Only dummy batch is sent.
+  ASSERT_EQ(NumBatchRequestSent(), 2);
   // owner_1 batch replied
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   // owner_2 batch replied
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  // Requests are sent to owner 1 and 2.
+  ASSERT_EQ(NumBatchRequestSent(), 4);
+  ASSERT_EQ(NumBatchReplied(), 2);
   // For the same object ID, it should report the latest result (which is REMOVED).
   AssertObjectIDState(object_info.owner_worker_id, object_info.object_id,
                       rpc::ObjectLocationState::REMOVED);
   AssertObjectIDState(object_info_2.owner_worker_id, object_info_2.object_id,
                       rpc::ObjectLocationState::ADDED);
+
+  // Clean up reply and check assert.
+  // owner_1 batch replied
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  // owner_2 batch replied
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  ASSERT_EQ(NumBatchReplied(), 4);
+  AssertNoLeak();
 }
 
 TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateOneInFlightRequest) {
@@ -328,6 +350,7 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateOneInFlightRequest) 
   // request.
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_EQ(NumBatchRequestSent(), 2);
+  AssertNoLeak();
 }
 
 TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateMaxBatchSize) {
@@ -354,6 +377,35 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestLocationUpdateMaxBatchSize) {
   // Once the next batch is replied, there's no more requests.
   ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
   ASSERT_EQ(NumBatchRequestSent(), 3);
+  AssertNoLeak();
+}
+
+TEST_F(OwnershipBasedObjectDirectoryTest, TestOwnerFailed) {
+  // Make sure there's only one in-flight request.
+  const auto owner_1 = WorkerID::FromRandom();
+  SendDummyBatch(owner_1);
+
+  auto object_info = CreateNewObjectInfo(owner_1);
+  obod_.ReportObjectAdded(object_info.object_id, current_node_id, object_info);
+
+  // The dummy batch is replied, and the new batch is sent.
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  ASSERT_EQ(NumBatchRequestSent(), 2);
+
+  // Buffer is filled.
+  for (int i = 0; i < max_batch_size + 1; i++) {
+    object_info = CreateNewObjectInfo(owner_1);
+    obod_.ReportObjectAdded(object_info.object_id, current_node_id, object_info);
+    obod_.ReportObjectAdded(object_info.object_id, current_node_id, object_info);
+    obod_.ReportObjectRemoved(object_info.object_id, current_node_id, object_info);
+  }
+
+  // The second batch is replied, but failed.
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch(ray::Status::Invalid("")));
+  // Requests are not sent anymore.
+  ASSERT_EQ(NumBatchRequestSent(), 2);
+  // Make sure metadata is cleaned up properly.
+  AssertNoLeak();
 }
 
 }  // namespace ray
