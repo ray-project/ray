@@ -338,7 +338,7 @@ def ask_configuration():
         ] + [
             "export AUTOMATIC=1",
             "python3 -m pip install --user pyyaml",
-            "git clone -b ${RAY_TEST_BRANCH} ${RAY_TEST_REPO} ~/ray",
+            "git clone -b $${RAY_TEST_BRANCH} $${RAY_TEST_REPO} ~/ray",
             ("python3 ~/ray/release/.buildkite/build_pipeline.py "
              "| buildkite-agent pipeline upload"),
         ],
