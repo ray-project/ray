@@ -4,11 +4,12 @@ from typing import Optional, List, Union, TYPE_CHECKING
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.data.impl.arrow_block import ArrowRow
-from ray.data.impl.block_list import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.file_based_datasource import (
     _resolve_paths_and_filesystem)
+from ray.data.impl.arrow_block import ArrowRow
+from ray.data.impl.block_list import BlockMetadata
+from ray.data.impl.util import _check_pyarrow_version
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class ParquetDatasource(Datasource[ArrowRow]):
             **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
         """
+        _check_pyarrow_version()
         from ray import cloudpickle
         import pyarrow.parquet as pq
         import numpy as np
