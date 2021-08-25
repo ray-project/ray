@@ -140,10 +140,9 @@ if __name__ == "__main__":
         trainer.restore(checkpoint_path)
 
     # Serving and training loop.
-    tune.run("PPO", config=config, stop={"training_iteration": 100})
-    #while True:
-    #    print(pretty_print(trainer.train()))
-    #    checkpoint = trainer.save()
-    #    print("Last checkpoint", checkpoint)
-    #    with open(checkpoint_path, "w") as f:
-    #        f.write(checkpoint)
+    while True:
+        print(pretty_print(trainer.train()))
+        checkpoint = trainer.save()
+        print("Last checkpoint", checkpoint)
+        with open(checkpoint_path, "w") as f:
+            f.write(checkpoint)

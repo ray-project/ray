@@ -1,4 +1,3 @@
-import copy
 from gym import Env
 from gym.spaces import Box, Discrete, Tuple
 import numpy as np
