@@ -100,6 +100,9 @@ class GetRequestQueue {
   /// \param get_request The GetRequest to remove.
   void RemoveGetRequest(const std::shared_ptr<GetRequest> &get_request);
 
+  /// Only for tests.
+  bool IsGetRequestExist(const ObjectID &object_id);
+
   instrumented_io_context &io_context_;
 
   /// The object store stores created objects.
@@ -109,6 +112,8 @@ class GetRequestQueue {
       object_get_requests_;
 
   std::shared_ptr<IObjectLifecycleManager> object_lifecycle_mgr_;
+
+  FRIEND_TEST(GetRequestQueueTest, TestAddRequest);
 };
 
 }  // namespace plasma

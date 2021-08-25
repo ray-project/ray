@@ -145,4 +145,8 @@ void GetRequestQueue::ObjectSealed(const ObjectID &object_id) {
     object_get_requests_.erase(object_id);
   }
 }
+
+bool GetRequestQueue::IsGetRequestExist(const ObjectID &object_id) {
+  return object_get_requests_.count(object_id) > 0;
+}
 }  // namespace plasma

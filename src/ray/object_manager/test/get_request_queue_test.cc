@@ -73,20 +73,53 @@ struct GetRequestQueueTest : public Test {
 
 TEST_F(GetRequestQueueTest, TestAddRequest) {
   auto client = std::make_shared<MockClient>();
-  std::vector<ObjectID> object_ids{ObjectID::FromRandom()};
+  ObjectID object_id = ObjectID::FromRandom();
+  std::vector<ObjectID> object_ids{object_id};
   LocalObject object1{Allocation()};
   object1.object_info.data_size = 10;
   object1.object_info.metadata_size = 0;
-  /// Mock the object already sealed.
-  object1.state = ObjectState::PLASMA_SEALED;
-  EXPECT_CALL(*manager_, GetObject(_)).Times(1).WillOnce(Return(&object1));
-  bool satisfied = false;
-  get_request_queue_->AddRequest(client, object_ids, 1000, false,
-                                 [&](const std::shared_ptr<GetRequest> &get_req) {
-                                   RAY_LOG(INFO) << "AddRequest callback";
-                                   satisfied = true;
-                                 });
-  EXPECT_TRUE(satisfied);
+  /// Test object has been satisfied.
+  {
+    /// Mock the object already sealed.
+    object1.state = ObjectState::PLASMA_SEALED;
+    EXPECT_CALL(*manager_, GetObject(_)).Times(1).WillOnce(Return(&object1));
+    bool satisfied = false;
+    get_request_queue_->AddRequest(
+        client, object_ids, 1000, false,
+        [&](const std::shared_ptr<GetRequest> &get_req) { satisfied = true; });
+    EXPECT_TRUE(satisfied);
+  }
+
+  /// Test object not satisfied, time out.
+  {
+    object1.state = ObjectState::PLASMA_CREATED;
+    EXPECT_CALL(*manager_, GetObject(_)).Times(1).WillOnce(Return(&object1));
+    std::promise<bool> promise;
+    get_request_queue_->AddRequest(client, object_ids, 1000, false,
+                                   [&](const std::shared_ptr<GetRequest> &get_req) {
+                                     RAY_LOG(INFO) << "AddRequest callback";
+                                     promise.set_value(true);
+                                   });
+    promise.get_future().get();
+  }
+
+  get_request_queue_->RemoveGetRequestsForClient(client);
+  EXPECT_FALSE(get_request_queue_->IsGetRequestExist(object_id));
+
+  /// Test object not satisfied, then sealed.
+  {
+    object1.state = ObjectState::PLASMA_CREATED;
+    EXPECT_CALL(*manager_, GetObject(_)).Times(2).WillRepeatedly(Return(&object1));
+    std::promise<bool> promise;
+    get_request_queue_->AddRequest(client, object_ids, /*timeout_ms*/ -1, false,
+                                   [&](const std::shared_ptr<GetRequest> &get_req) {
+                                     RAY_LOG(INFO) << "AddRequest callback 2";
+                                     promise.set_value(true);
+                                   });
+    object1.state = ObjectState::PLASMA_SEALED;
+    get_request_queue_->ObjectSealed(object_id);
+    promise.get_future().get();
+  }
 }
 }  // namespace plasma
 
