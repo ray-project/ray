@@ -123,7 +123,16 @@ if __name__ == "__main__":
         config["framework"] = args.framework
 
     # Define stopping criteria.
-    stop = {}
+    # By default, all are None.
+    stop = {
+        "training_iteration": None,
+        "timesteps_total": None,
+        "episode_reward_mean": None,
+        "time_total_s": None,
+    }
+    # Add the ones from the yaml file ..
+    stop.update(experiment_config.get("stop", {}))
+    # .. but override with command line provided ones.
     if args.stop_iters:
         stop["training_iteration"] = args.stop_iters
     if args.stop_timesteps:
@@ -132,6 +141,13 @@ if __name__ == "__main__":
         stop["episode_reward_mean"] = args.stop_reward
     if args.stop_time:
         stop["time_total_s"] = args.stop_time
+
+    # Invalid pass criteria.
+    if stop["episode_reward_mean"] is None and \
+            (stop["timesteps_total"] is None or stop["time_total_s"] is None):
+        raise ValueError("Invalid pass criterium! Must use either "
+                         "(--stop-reward + optionally any other) OR "
+                         "(--stop-timesteps + --stop-time).")
 
     # - Stop ray.
     # - Uninstall and re-install ray (from source) if required.
@@ -176,19 +192,21 @@ if __name__ == "__main__":
 
     results = tune.run(run, stop=stop, config=config)
 
-    # Criterium is to have reached some min reward.
-    if args.stop_reward:
+    # Criterium is to have reached some min reward within given
+    # wall time, iters, or timesteps.
+    if stop["episode_reward_mean"] is not None:
         last_result = results.trials[0].last_result
         avg_reward = last_result["episode_reward_mean"]
         if avg_reward < args.stop_reward:
             raise ValueError("`stop-reward` of {} not reached!".format(
                 args.stop_reward))
-    # Criterium is to have run through n env timesteps in some wall time m.
-    elif args.stop_timesteps and args.stop_time:
+    # Criterium is to have run through n env timesteps in some wall time m
+    # (minimum throughput).
+    else:
         last_result = results.trials[0].last_result
         total_timesteps = last_result["timesteps_total"]
         total_time = last_result["time_total_s"]
-        desired_speed = args.stop_timesteps / args.stop_time
+        desired_speed = stop["timesteps_total"] / stop["time_total_s"]
         actual_speed = total_timesteps / total_time
         # We stopped because we reached the time limit ->
         # Means throughput is too slow (time steps not reached).
@@ -196,10 +214,6 @@ if __name__ == "__main__":
             raise ValueError(
                 "`stop-timesteps` of {} not reached in {}sec!".format(
                     args.stop_timesteps, args.stop_time))
-    else:
-        raise ValueError("Invalid pass criterium! Must use either "
-                         "(--stop-reward + optionally any other) OR "
-                         "(--stop-timesteps + --stop-time).")
 
     print("ok")
     ray.shutdown()
