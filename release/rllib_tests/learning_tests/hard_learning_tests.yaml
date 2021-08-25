@@ -52,16 +52,15 @@ apex-breakoutnoframeskip-v4:
         target_network_update_freq: 50000
         timesteps_per_iteration: 25000
 
-# Note: HalfCheetahBulletEnv-v0 is not the same as MuJoCo's HalfCheetah-v0.
-ddpg-halfcheetahbulletenv-v0:
-    env: HalfCheetahBulletEnv-v0
+ddpg-hopperbulletenv-v0:
+    env: HopperBulletEnv-v0
     run: DDPG
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: -300.0
-        timesteps_total: 200000
+        episode_reward_mean: 120.0
+        timesteps_total: 50000
     stop:
-        time_total_s: 7200
+        time_total_s: 3600
     config:
         actor_hiddens: [256, 256]
         critic_hiddens: [256, 256]
@@ -79,8 +78,8 @@ ddpg-halfcheetahbulletenv-v0:
         timesteps_per_iteration: 1000
         target_network_update_freq: 0
         tau: 0.001
-        buffer_size: 15000
-        prioritized_replay: true
+        buffer_size: 10000
+        prioritized_replay: True
         prioritized_replay_alpha: 0.6
         prioritized_replay_beta: 0.4
         prioritized_replay_eps: 0.000001
@@ -93,8 +92,8 @@ ddpg-halfcheetahbulletenv-v0:
         learning_starts: 500
         rollout_fragment_length: 1
         train_batch_size: 48
-        num_workers: 0
         num_gpus: 1
+        num_workers: 0
         num_gpus_per_worker: 0
         worker_side_prioritization: false
 
