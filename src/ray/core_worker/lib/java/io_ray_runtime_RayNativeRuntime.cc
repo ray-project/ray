@@ -300,8 +300,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, j
   }
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   const auto actor_handle = pair.first;
-  ActorID actor_id = actor_handle->GetActorID();
-  return IdToJavaByteArray<ActorID>(env, actor_id);
+  return IdToJavaByteArray<ActorID>(env, actor_handle->GetActorID());
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(
