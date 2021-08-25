@@ -1804,7 +1804,8 @@ def wait(object_refs: List[ray.ObjectRef],
 
 @PublicAPI
 @client_mode_hook
-def get_actor(name: str, namespace: str = None) -> "ray.actor.ActorHandle":
+def get_actor(name: str,
+              namespace: str = None) -> "ray.actor.ActorHandle":
     """Get a handle to a named actor.
 
     Gets a handle to an actor with the given name. The actor must
