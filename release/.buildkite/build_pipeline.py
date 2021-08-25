@@ -136,12 +136,12 @@ NIGHTLY_TESTS = {
         "distributed_api_test",
     ],
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
-        SmokeTest("learning_tests"),
-        "multi_gpu_learning_tests",
-        "multi_gpu_with_lstm_learning_tests",
+        SmokeTest("rllib_learning_tests"),
+        "rllib_multi_gpu_learning_tests",
+        "rllib_multi_gpu_with_lstm_learning_tests",
         # We'll have these as per-PR tests soon.
         # "example_scripts_on_gpu_tests",
-        SmokeTest("stress_tests"),
+        SmokeTest("rllib_stress_tests"),
     ],
     "~/ray/release/serve_tests/serve_tests.yaml": [
         "single_deployment_1k_noop_replica",
@@ -191,8 +191,8 @@ WEEKLY_TESTS = {
         "long_running_large_checkpoints",
     ],
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
-        "learning_tests",
-        "stress_tests",
+        "rllib_learning_tests",
+        "rllib_stress_tests",
     ],
 }
 
