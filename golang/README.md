@@ -13,7 +13,12 @@ bazel build //:libcore_worker_library_go.so
 # start ray
 cd $ray_source_dir
 
-export LD_LIBRARY_PATH=${PWD}/bazel-bin/:$LD_LIBRARY_PATH
+### linux
+export LD_LIBRARY_PATH=${PWD}/bazel-bin/:$LD_LIBRARY_PATH 
+
+### macos
+export LIBRARY_PATH=${PWD}/bazel-bin/:$LIBRARY_PATH
+export DYLD_LIBRARY_PATH=${PWD}/bazel-bin/:$DYLD_LIBRARY_PATH
 
 ray start --head --port=6379
 

@@ -1493,7 +1493,7 @@ def start_raylet(redis_address,
     ]
 
     golang_worker_command = [
-        "/root/ray/golang/worker",
+        GOLANG_WORKER_EXECUTABLE,
         f"--node-manager-address={node_ip_address}",
         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--object-store-socket-name={plasma_store_name}",
