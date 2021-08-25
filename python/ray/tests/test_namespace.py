@@ -205,9 +205,9 @@ print("Done!!!")
 
     print(
         run_string_as_driver(
-            template.format(address="localhost:8080", namespace="")))
+            template.format(address="localhost:8080", namespace="test")))
 
-    ray.util.connect("localhost:8080", namespace="")
+    ray.util.connect("localhost:8080", namespace="test")
 
     pinger = ray.get_actor("Pinger")
     assert ray.get(pinger.ping.remote()) == "pong from other job"
