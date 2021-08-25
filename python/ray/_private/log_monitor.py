@@ -11,8 +11,6 @@ import shutil
 import time
 import traceback
 
-from datetime import datetime
-
 import ray.ray_constants as ray_constants
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
@@ -256,7 +254,6 @@ class LogMonitor:
         anything_published = False
         for file_info in self.open_file_infos:
             assert not file_info.file_handle.closed
-            logger.error(f"reading a file {file_info.filename}")
 
             lines_to_publish = []
             max_num_lines_to_read = 100
@@ -313,17 +310,13 @@ class LogMonitor:
         files to monitor. It will also store those log files in Redis.
         """
         total_log_files = 0
-        last_updated = datetime.now()
+        last_updated = time.time()
         while True:
-            elapsed_seconds = (datetime.now() - last_updated).seconds
-            logger.error(f"files: {self.log_filenames}")
+            elapsed_seconds = int(time.time() - last_updated)
             if (total_log_files < RAY_LOG_MONITOR_MANY_FILES_THRESHOLD
                     or elapsed_seconds > LOG_NAME_UPDATE_INTERVAL_S):
-                logger.error(f"total log files: {total_log_files}")
-                logger.error(f"time elapsed: {elapsed_seconds}")
                 total_log_files = self.update_log_filenames()
-                last_updated = datetime.now()
-            logger.error(f"time elapsed outer: {elapsed_seconds}")
+                last_updated = time.time()
             self.open_closed_files()
             anything_published = self.check_log_files_and_publish_updates()
             # If nothing was published, then wait a little bit before checking
