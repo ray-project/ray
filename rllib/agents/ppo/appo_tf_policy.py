@@ -114,8 +114,8 @@ def appo_surrogate_loss(
 
     # TODO: (sven) deprecate this when trajectory view API gets activated.
     def make_time_major(*args, **kw):
-        return _make_time_major(policy, train_batch.get("seq_lens"), *args,
-                                **kw)
+        return _make_time_major(policy, train_batch.get(SampleBatch.SEQ_LENS),
+                                *args, **kw)
 
     actions = train_batch[SampleBatch.ACTIONS]
     dones = train_batch[SampleBatch.DONES]
@@ -131,8 +131,8 @@ def appo_surrogate_loss(
     policy.target_model_vars = policy.target_model.variables()
 
     if policy.is_recurrent():
-        max_seq_len = tf.reduce_max(train_batch["seq_lens"])
-        mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
+        max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
+        mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
         mask = tf.reshape(mask, [-1])
         mask = make_time_major(mask, drop_last=policy.config["vtrace"])
 
@@ -282,7 +282,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     """
     values_batched = _make_time_major(
         policy,
-        train_batch.get("seq_lens"),
+        train_batch.get(SampleBatch.SEQ_LENS),
         policy.model.value_function(),
         drop_last=policy.config["vtrace"])
 

@@ -332,7 +332,7 @@ from ray._private.test_utils import Semaphore
 def remote_print(s, file=None):
     print(s, file=file)
 
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="default_test_namespace")
 
 driver_wait = ray.get_actor("{}")
 main_wait = ray.get_actor("main_wait")

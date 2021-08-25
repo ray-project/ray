@@ -693,7 +693,7 @@ def test_detached_actor(ray_start_regular):
     create_actor_name = "DetachedActor"
     driver_script = """
 import ray
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="default_test_namespace")
 
 name = "{}"
 assert ray.util.list_named_actors() == [name]
