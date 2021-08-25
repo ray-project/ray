@@ -285,11 +285,27 @@ py_test(
     tags = ["team:ml", "learning_tests_tf", "learning_tests_cartpole", "flaky"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = [
-        "tuned_examples/dqn/cartpole-dqn.yaml",
-        "tuned_examples/dqn/cartpole-dqn-softq.yaml",
-        "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
-    ],
+    data = ["tuned_examples/dqn/cartpole-dqn.yaml"],
+    args = ["--yaml-dir=tuned_examples/dqn"]
+)
+
+py_test(
+    name = "run_regression_tests_cartpole_dqn_softq_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests_tf", "learning_tests_cartpole", "flaky"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/dqn/cartpole-dqn-softq.yaml"],
+    args = ["--yaml-dir=tuned_examples/dqn"]
+)
+
+py_test(
+    name = "run_regression_tests_cartpole_dqn_param_noise_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests_tf", "learning_tests_cartpole", "flaky"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/dqn/cartpole-dqn-param-noise.yaml"],
     args = ["--yaml-dir=tuned_examples/dqn"]
 )
 
@@ -299,11 +315,27 @@ py_test(
     tags = ["team:ml", "learning_tests_torch", "learning_tests_cartpole"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = [
-        "tuned_examples/dqn/cartpole-dqn.yaml",
-        "tuned_examples/dqn/cartpole-dqn-softq.yaml",
-        "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
-    ],
+    data = ["tuned_examples/dqn/cartpole-dqn.yaml"],
+    args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
+)
+
+py_test(
+    name = "run_regression_tests_cartpole_dqn_softq_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests_torch", "learning_tests_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/dqn/cartpole-dqn-softq.yaml"],
+    args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
+)
+
+py_test(
+    name = "run_regression_tests_cartpole_dqn_param_noise_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests_torch", "learning_tests_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/dqn/cartpole-dqn-param-noise.yaml"],
     args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
 )
 
@@ -332,7 +364,7 @@ py_test(
     name = "run_regression_tests_cartpole_simpleq_tf",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests_tf", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
         "tuned_examples/dqn/cartpole-simpleq.yaml",
@@ -344,7 +376,7 @@ py_test(
     name = "run_regression_tests_cartpole_simpleq_torch",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests_torch", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = [
         "tuned_examples/dqn/cartpole-simpleq.yaml",
@@ -452,7 +484,7 @@ py_test(
     name = "run_regression_tests_cartpole_pg_tf",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests_tf", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg"]
@@ -462,7 +494,7 @@ py_test(
     name = "run_regression_tests_cartpole_pg_torch",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests_torch", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/pg/cartpole-pg.yaml"],
     args = ["--yaml-dir=tuned_examples/pg", "--framework=torch"]
@@ -493,7 +525,7 @@ py_test(
     name = "run_regression_tests_cartpole_ppo_tf",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests_tf", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/cartpole-ppo.yaml"],
     args = ["--yaml-dir=tuned_examples/ppo"]
@@ -503,7 +535,7 @@ py_test(
     name = "run_regression_tests_cartpole_ppo_torch",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests_torch", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/cartpole-ppo.yaml"],
     args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
@@ -553,7 +585,7 @@ py_test(
     name = "run_regression_tests_repeat_after_me_tf",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests_tf"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
     args = ["--yaml-dir=tuned_examples/ppo"]
@@ -563,7 +595,7 @@ py_test(
     name = "run_regression_tests_repeat_after_me_torch",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests_torch"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
     args = ["--yaml-dir=tuned_examples/ppo", "--framework=torch"]
@@ -591,26 +623,22 @@ py_test(
 
 # R2D2
 py_test(
-    name = "run_regression_tests_cartpole_r2d2_tf",
+    name = "run_regression_tests_stateless_cartpole_r2d2_tf",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests_tf", "learning_tests_cartpole"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = [
-        "tuned_examples/dqn/cartpole-r2d2.yaml",
-    ],
+    data = ["tuned_examples/dqn/stateless-cartpole-r2d2.yaml"],
     args = ["--yaml-dir=tuned_examples/dqn"]
 )
 
 py_test(
-    name = "run_regression_tests_cartpole_r2d2_torch",
+    name = "run_regression_tests_stateless_cartpole_r2d2_torch",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests_torch", "learning_tests_cartpole"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = [
-        "tuned_examples/dqn/cartpole-r2d2.yaml",
-    ],
+    data = ["tuned_examples/dqn/stateless-cartpole-r2d2.yaml"],
     args = ["--yaml-dir=tuned_examples/dqn", "--framework=torch"]
 )
 
@@ -619,7 +647,7 @@ py_test(
     name = "run_regression_tests_cartpole_sac_tf",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests_tf", "learning_tests_cartpole"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/cartpole-sac.yaml"],
     args = ["--yaml-dir=tuned_examples/sac"]
