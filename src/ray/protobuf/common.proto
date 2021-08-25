@@ -16,6 +16,8 @@ syntax = "proto3";
 
 package ray.rpc;
 
+import "src/ray/protobuf/autoscaler.proto";
+
 option java_package = "io.ray.runtime.generated";
 
 // Language of a task or worker.
