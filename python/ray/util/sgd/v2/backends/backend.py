@@ -398,7 +398,7 @@ class BackendExecutor:
             # Calling ray.get will expose the failure as a RayActorError.
             for object_ref in finished:
                 try:
-                    ray.get(finished)
+                    ray.get(object_ref)
                 except RayActorError as exc:
                     logger.exception(str(exc))
                     failed_actor_rank = remote_values.index(object_ref)
