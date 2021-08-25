@@ -605,9 +605,9 @@ def init(
         _redis_password: str = ray_constants.REDIS_DEFAULT_PASSWORD,
         _temp_dir: Optional[str] = None,
         _lru_evict: bool = False,
-        _metrics_export_port: int = None,
-        _system_config: Dict[str, str] = None,
-        _tracing_startup_hook: Callable = None,
+        _metrics_export_port: Optional[int] = None,
+        _system_config: Optional[Dict[str, str]] = None,
+        _tracing_startup_hook: Optional[Callable] = None,
         **kwargs):
     """
     Connect to an existing Ray cluster or start one and connect to it.
