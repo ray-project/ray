@@ -5,6 +5,10 @@ autoscaler in a separate pod, if the user upgrades the ray version on the head
 pod autoscaler can crash (if the newer version of ray modified the messages
 below). */
 
+syntax = "proto3";
+
+package ray.rpc;
+
 ////////////////////////////
 //FROM common.proto (just keeping track of things, delete this comment before merge)
 ////////////////////////////

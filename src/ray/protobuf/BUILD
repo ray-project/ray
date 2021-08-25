@@ -38,6 +38,22 @@ python_grpc_compile(
 )
 
 proto_library(
+    name = "autoscaler_proto",
+    srcs = ["autoscaler.proto"],
+    visibility = ["//java:__subpackages__"],
+)
+
+cc_proto_library(
+    name = "autoscaler_cc_proto",
+    deps = [":autoscaler_proto"],
+)
+
+python_grpc_compile(
+    name = "autoscaler_py_proto",
+    deps = [":autoscaler_proto"],
+)
+
+proto_library(
     name = "node_manager_proto",
     srcs = ["node_manager.proto"],
     deps = [
