@@ -96,10 +96,20 @@ def test_indirect_actor_writer(workflow_start_regular):
         # We need more CPUs, otherwise 'create()' blocks 'get()'
     }],
     indirect=True)
-def test_wf_in_actor(workflow_start_regular):
+def test_wf_in_actor_1(workflow_start_regular, tmp_path):
+    fail_flag = tmp_path /"fail"
+    cnt = tmp_path / "count"
+
+    import json
+    cnt.write_text(str(0))
+
     @workflow.step
     def start_session():
-        return {"result": True}
+        if fail_flag.exists():
+            raise Exception()
+        v = int(cnt.read_text()) + 1
+        cnt.write_text(str(v))
+        return True
 
     @workflow.virtual_actor
     class Session:
@@ -112,10 +122,7 @@ def test_wf_in_actor(workflow_start_regular):
 
         def session_start(self):
             step = start_session.step()
-            @workflow.step
-            def x(s):
-                return self.update_session(s)
-            return x.step(step)
+            return step
 
         def __getstate__(self):
             return self._session_status
@@ -124,8 +131,16 @@ def test_wf_in_actor(workflow_start_regular):
             self._session_status = state
 
     actor = Session.get_or_create("session_id")
-    print("<<<<<<<<<<<<<<<<<<<", type(actor), actor)
-    actor.session_start.run()
+    fail_flag.touch()
+    with pytest.raises(Exception):
+        actor.session_start.run()
+    fail_flag.unlink()
+    ray.get(workflow.resume("session_id"))
+    # After resume, it'll rerun start_session which will
+    # generate 1
+    assert cnt.read_text() == "1"
+    assert actor.session_start.run() is True
+    assert cnt.read_text() == "2"
 
 
 if __name__ == "__main__":

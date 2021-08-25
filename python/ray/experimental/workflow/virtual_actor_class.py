@@ -82,9 +82,6 @@ class ActorMethod(ActorMethodBase):
         """
         return self._run(args, kwargs)
 
-    def step(self, *args,**kwargs):
-        return None
-
     def options(self, **options) -> ActorMethodBase:
         """Convenience method for executing an actor method call with options.
 
@@ -337,6 +334,10 @@ def _wrap_readonly_actor_method(actor_id: str, cls: type, method_name: str):
 
 
 def _wrap_actor_method(cls: type, method_name: str):
+    @ray.experimental.workflow.step
+    def deref(state, job):
+        return (state, job)
+
     @functools.wraps(getattr(cls, method_name))
     def _actor_method(state, *args, **kwargs):
         instance = cls.__new__(cls)
@@ -344,6 +345,10 @@ def _wrap_actor_method(cls: type, method_name: str):
             instance.__setstate__(state)
         method = getattr(instance, method_name)
         output = method(*args, **kwargs)
+        if isinstance(output, Workflow):
+            next_step = deref.step(instance.__getstate__(), output)
+            next_step.data.step_type = StepType.ACTOR_METHOD
+            return next_step, None
         return instance.__getstate__(), output
 
     return _actor_method

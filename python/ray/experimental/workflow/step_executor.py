@@ -281,13 +281,6 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
         else:
             raise ValueError(f"Unknown StepType '{step_type}'")
 
-    is_nested = isinstance(persisted_output, Workflow)
-    if step_type != StepType.FUNCTION and is_nested:
-        # TODO(suquark): Support returning a workflow inside
-        # a virtual actor.
-        raise TypeError("Only a workflow step function "
-                        "can return a workflow.")
-
     return persisted_output, volatile_output
 
 
@@ -323,11 +316,13 @@ def _workflow_step_executor(
                                                   catch_exceptions,
                                                   max_retries, *args, **kwargs)
 
-    if step_type != StepType.READONLY_ACTOR_METHOD:
+    if step_type == StepType.READONLY_ACTOR_METHOD:
+        if isinstance(volatile_output, Workflow):
+            raise TypeError("Returing a Workflow from readonly virtual actor is not allowed.")
+        assert not isinstance(persisted_output, Workflow)
+    else:
         store = workflow_storage.get_workflow_storage()
-        # Save workflow output
         commit_step(store, step_id, persisted_output, outer_most_step_id)
-        # We MUST execute the workflow after saving the output.
         if isinstance(persisted_output, Workflow):
             if step_type == StepType.FUNCTION:
                 # Passing down outer most step so inner nested steps would
@@ -338,15 +333,12 @@ def _workflow_step_executor(
                     # current step is the outer most step for the inner nested
                     # workflow steps.
                     outer_most_step_id = workflow_context.get_current_step_id()
-                # execute sub-workflow
-                persisted_output = execute_workflow(
-                    persisted_output, outer_most_step_id,
-                    last_step_of_workflow).persisted_output
-            else:
-                # TODO(suquark): Support returning a workflow inside
-                # a virtual actor.
-                raise TypeError("Only a workflow step function "
-                                "can return a workflow.")
+            assert volatile_output is None
+            # execute sub-workflow
+            result = execute_workflow(
+                persisted_output, outer_most_step_id,
+                last_step_of_workflow)
+            persisted_output, volatile_output = result.persisted_output, result.volatile_output
         elif last_step_of_workflow:
             # advance the progress of the workflow
             store.advance_progress(step_id)
