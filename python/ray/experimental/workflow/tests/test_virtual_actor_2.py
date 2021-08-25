@@ -96,7 +96,7 @@ def test_indirect_actor_writer(workflow_start_regular):
         # We need more CPUs, otherwise 'create()' blocks 'get()'
     }],
     indirect=True)
-def test_wf_in_actor_1(workflow_start_regular, tmp_path):
+def test_wf_in_actor(workflow_start_regular, tmp_path):
     fail_flag = tmp_path / "fail"
     cnt = tmp_path / "count"
     cnt.write_text(str(0))
@@ -114,13 +114,17 @@ def test_wf_in_actor_1(workflow_start_regular, tmp_path):
         def __init__(self):
             self._session_status = {}
 
-        def update_session(self, status):
-            self._session_status = status
+        def update_session(self, up):
+            self._session_status = {"started": up}
             return self._session_status
 
         def session_start(self):
             step = start_session.step()
             return step
+
+        def session_start_2(self):
+            step = workflow.step(self.update_session)
+            return step.step(start_session.step())
 
         def __getstate__(self):
             return self._session_status
@@ -139,6 +143,7 @@ def test_wf_in_actor_1(workflow_start_regular, tmp_path):
     assert cnt.read_text() == "1"
     assert actor.session_start.run() is True
     assert cnt.read_text() == "2"
+    assert actor.session_start_2.run() == {"started": True}
 
 
 if __name__ == "__main__":

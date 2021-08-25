@@ -350,6 +350,7 @@ def _wrap_actor_method(cls: type, method_name: str):
                 next_step = deref.step(instance.__getstate__(), output)
                 next_step.data.step_type = StepType.ACTOR_METHOD
             return next_step, None
+
         return instance.__getstate__(), output
 
     return _actor_method
