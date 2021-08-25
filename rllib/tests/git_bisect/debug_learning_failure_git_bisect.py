@@ -122,16 +122,8 @@ if __name__ == "__main__":
     if args.framework:
         config["framework"] = args.framework
 
-    # Define stopping criteria.
-    # By default, all are None.
-    stop = {
-        "training_iteration": None,
-        "timesteps_total": None,
-        "episode_reward_mean": None,
-        "time_total_s": None,
-    }
-    # Add the ones from the yaml file ..
-    stop.update(experiment_config.get("stop", {}))
+    # Define stopping criteria. From the yaml file ..
+    stop = experiment_config.get("stop", {})
     # .. but override with command line provided ones.
     if args.stop_iters:
         stop["training_iteration"] = args.stop_iters
@@ -143,8 +135,8 @@ if __name__ == "__main__":
         stop["time_total_s"] = args.stop_time
 
     # Invalid pass criteria.
-    if stop["episode_reward_mean"] is None and \
-            (stop["timesteps_total"] is None or stop["time_total_s"] is None):
+    if stop.get("episode_reward_mean") is None and \
+            (stop.get("timesteps_total") is None or stop.get("time_total_s") is None):
         raise ValueError("Invalid pass criterium! Must use either "
                          "(--stop-reward + optionally any other) OR "
                          "(--stop-timesteps + --stop-time).")
@@ -175,9 +167,13 @@ if __name__ == "__main__":
         os.chdir("../")
 
     try:
-        subprocess.run("ray start --head".split(" "))
+        subprocess.run("ray start --head --include-dashboard false".split(" "))
     except Exception:
-        subprocess.run("ray stop".split(" "))
+        try:
+            subprocess.run("ray stop".split(" "))
+            subprocess.run("ray stop".split(" "))
+        except Exception:
+            pass
         try:
             subprocess.run("ray start --head".split(" "))
         except Exception as e:
@@ -194,12 +190,12 @@ if __name__ == "__main__":
 
     # Criterium is to have reached some min reward within given
     # wall time, iters, or timesteps.
-    if stop["episode_reward_mean"] is not None:
+    if stop.get("episode_reward_mean") is not None:
         last_result = results.trials[0].last_result
         avg_reward = last_result["episode_reward_mean"]
-        if avg_reward < args.stop_reward:
+        if avg_reward < stop["episode_reward_mean"]:
             raise ValueError("`stop-reward` of {} not reached!".format(
-                args.stop_reward))
+                stop["episode_reward_mean"]))
     # Criterium is to have run through n env timesteps in some wall time m
     # (minimum throughput).
     else:
@@ -213,7 +209,7 @@ if __name__ == "__main__":
         if actual_speed < desired_speed:
             raise ValueError(
                 "`stop-timesteps` of {} not reached in {}sec!".format(
-                    args.stop_timesteps, args.stop_time))
+                    stop["timesteps_total"], stop["time_total_s"]))
 
     print("ok")
     ray.shutdown()
