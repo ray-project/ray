@@ -136,7 +136,8 @@ if __name__ == "__main__":
 
     # Invalid pass criteria.
     if stop.get("episode_reward_mean") is None and \
-            (stop.get("timesteps_total") is None or stop.get("time_total_s") is None):
+            (stop.get("timesteps_total") is None or
+             stop.get("time_total_s") is None):
         raise ValueError("Invalid pass criterium! Must use either "
                          "(--stop-reward + optionally any other) OR "
                          "(--stop-timesteps + --stop-time).")
