@@ -79,32 +79,6 @@ class TestIMPALA(unittest.TestCase):
             finally:
                 trainer.stop()
 
-    def test_impala_fake_multi_gpu_learning(self):
-        """Test whether IMPALATrainer can learn CartPole w/ faked multi-GPU."""
-        config = copy.deepcopy(impala.DEFAULT_CONFIG)
-        # Fake GPU setup.
-        config["_fake_gpus"] = True
-        config["num_gpus"] = 2
-
-        config["train_batch_size"] *= 2
-
-        # Test w/ LSTMs.
-        config["model"]["use_lstm"] = True
-
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = impala.ImpalaTrainer(config=config, env="CartPole-v0")
-            num_iterations = 200
-            learnt = False
-            for i in range(num_iterations):
-                results = trainer.train()
-                print(results)
-                if results["episode_reward_mean"] > 55.0:
-                    learnt = True
-                    break
-            assert learnt, \
-                "IMPALA multi-GPU (with fake-GPUs) did not learn CartPole!"
-            trainer.stop()
-
 
 if __name__ == "__main__":
     import pytest
