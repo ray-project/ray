@@ -45,7 +45,7 @@ class PullManagerTestWithCapacity {
             [this]() { return fake_time_; }, 10000, num_available_bytes,
             [this](const ObjectID &object_id) { return PinReturn(); },
             [this](const ObjectID &object_id) {
-              return GetSpilledObjectURL(object_id);
+              return GetLocalSpilledObjectURL(object_id);
             }) {}
 
   void AssertNoLeaks() {
@@ -73,7 +73,7 @@ class PullManagerTestWithCapacity {
     }
   }
 
-  std::string GetSpilledObjectURL(const ObjectID &oid) { return spilled_url_[oid]; }
+  std::string GetLocalSpilledObjectURL(const ObjectID &oid) { return spilled_url_[oid]; }
 
   void ObjectSpilled(const ObjectID &oid, std::string url) { spilled_url_[oid] = url; }
 

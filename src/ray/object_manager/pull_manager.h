@@ -67,7 +67,7 @@ class PullManager {
       const std::function<double()> get_time, int pull_timeout_ms,
       int64_t num_bytes_available,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-      std::function<std::string(const ObjectID &)> get_spilled_object_url);
+      std::function<std::string(const ObjectID &)> get_locally_spilled_object_url);
 
   /// Add a new pull request for a bundle of objects. The objects in the
   /// request will get pulled once:
@@ -361,7 +361,7 @@ class PullManager {
 
   // A callback to get the spilled object URL if the object is spilled locally.
   // It will return an empty string otherwise.
-  std::function<std::string(const ObjectID &)> get_spilled_object_url_;
+  std::function<std::string(const ObjectID &)> get_locally_spilled_object_url_;
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;

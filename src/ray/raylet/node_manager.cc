@@ -210,7 +210,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           },
           /*get_spilled_object_url=*/
           [this](const ObjectID &object_id) {
-            return GetLocalObjectManager().GetSpilledObjectURL(object_id);
+            return GetLocalObjectManager().GetLocalSpilledObjectURL(object_id);
           },
           /*spill_objects_callback=*/
           [this]() {

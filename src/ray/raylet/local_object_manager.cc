@@ -270,7 +270,7 @@ void LocalObjectManager::SpillObjectsInternal(
                 RAY_LOG(ERROR) << "Failed to send object spilling request: "
                                << status.ToString();
               } else {
-                AddSpilledUrls(objects_to_spill, r);
+                OnObjectSpilled(objects_to_spill, r);
               }
               if (callback) {
                 callback(status);
@@ -279,9 +279,8 @@ void LocalObjectManager::SpillObjectsInternal(
       });
 }
 
-void LocalObjectManager::AddSpilledUrls(const std::vector<ObjectID> &object_ids,
-                                        const rpc::SpillObjectsReply &worker_reply) {
-  auto num_remaining = std::make_shared<size_t>(object_ids.size());
+void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids,
+                                         const rpc::SpillObjectsReply &worker_reply) {
   for (size_t i = 0; i < static_cast<size_t>(worker_reply.spilled_objects_url_size());
        ++i) {
     const ObjectID &object_id = object_ids[i];
@@ -344,7 +343,7 @@ void LocalObjectManager::AddSpilledUrls(const std::vector<ObjectID> &object_ids,
   }
 }
 
-std::string LocalObjectManager::GetSpilledObjectURL(const ObjectID &object_id) {
+std::string LocalObjectManager::GetLocalSpilledObjectURL(const ObjectID &object_id) {
   if (!is_external_storage_type_fs_) {
     // If the external storage is cloud storage like S3, returns the empty string.
     // In that case, the URL is supposed to be obtained by OBOD.

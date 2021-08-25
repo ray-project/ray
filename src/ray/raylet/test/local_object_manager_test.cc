@@ -407,12 +407,12 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
 
   std::vector<std::string> urls;
   for (size_t i = 0; i < object_ids.size(); i++) {
-    ASSERT_TRUE(manager.GetSpilledObjectURL(object_ids[i]).empty());
+    ASSERT_TRUE(manager.GetLocalSpilledObjectURL(object_ids[i]).empty());
     urls.push_back(BuildURL("url" + std::to_string(i)));
   }
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
   for (size_t i = 0; i < object_ids.size(); i++) {
-    ASSERT_FALSE(manager.GetSpilledObjectURL(object_ids[i]).empty());
+    ASSERT_FALSE(manager.GetLocalSpilledObjectURL(object_ids[i]).empty());
   }
   for (size_t i = 0; i < object_ids.size(); i++) {
     ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
@@ -822,9 +822,9 @@ TEST_F(LocalObjectManagerTest, TestPartialSpillError) {
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     if (i < urls.size()) {
-      ASSERT_EQ(urls[i], manager.GetSpilledObjectURL(object_ids[i]));
+      ASSERT_EQ(urls[i], manager.GetLocalSpilledObjectURL(object_ids[i]));
     } else {
-      ASSERT_TRUE(manager.GetSpilledObjectURL(object_ids[i]).empty());
+      ASSERT_TRUE(manager.GetLocalSpilledObjectURL(object_ids[i]).empty());
     }
   }
 }

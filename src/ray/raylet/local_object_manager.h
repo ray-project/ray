@@ -144,7 +144,7 @@ class LocalObjectManager {
   /// or the empty string otherwise.
   /// If the external storage is cloud, this will always return an empty string.
   /// In that case, the URL is supposed to be obtained by the object directory.
-  std::string GetSpilledObjectURL(const ObjectID &object_id);
+  std::string GetLocalSpilledObjectURL(const ObjectID &object_id);
 
   std::string DebugString() const;
 
@@ -171,9 +171,13 @@ class LocalObjectManager {
   /// Release an object that has been freed by its owner.
   void ReleaseFreedObject(const ObjectID &object_id);
 
-  /// Add objects' spilled URLs to the owner's and its' own object directory.
-  void AddSpilledUrls(const std::vector<ObjectID> &object_ids,
-                      const rpc::SpillObjectsReply &worker_reply);
+  /// Do operations that are needed after spilling objects such as
+  /// 1. Unpin the pending spilling object.
+  /// 2. Update the spilled URL to the owner.
+  /// 3. Update the spilled URL to the local directory if it doesn't
+  ///    use the external storages like S3.
+  void OnObjectSpilled(const std::vector<ObjectID> &object_ids,
+                       const rpc::SpillObjectsReply &worker_reply);
 
   /// Delete spilled objects stored in given urls.
   ///
