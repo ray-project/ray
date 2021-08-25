@@ -30,4 +30,6 @@ go build -o worker pkg/worker/main.go
 #test driver (in golang directory)
 cd $ray_source_dir/golang
 
-go run pkg/driver/test.go
+go build -o test pkg/driver/test.go
+
+./test
