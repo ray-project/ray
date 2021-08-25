@@ -167,7 +167,7 @@ def train_func(config, reporter):  # add a reporter arg
         reporter(timesteps_total=i, mean_accuracy=i+97)  # report metrics
 
 os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="default_test_namespace")
 ray.tune.register_trainable("train_func", train_func)
 
 tune.run_experiments({{
