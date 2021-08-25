@@ -29,6 +29,8 @@ namespace plasma {
 
 class IObjectLifecycleManager {
  public:
+  virtual ~IObjectLifecycleManager() = default;
+
   /// Create a new object given object's info. Object creation might
   /// fail if runs out of space; or an object with the same id exists.
   ///

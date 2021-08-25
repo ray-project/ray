@@ -56,7 +56,7 @@ struct GetRequestQueueTest : public Test {
     get_request_queue_ = std::make_shared<GetRequestQueue>(io_context_, manager_);
   }
 
-  void TearDown() {
+  void TearDown() override {
     io_context_.stop();
     if (thread_.joinable()) {
       thread_.join();
