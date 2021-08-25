@@ -44,7 +44,9 @@ class PullManagerTestWithCapacity {
             },
             [this]() { return fake_time_; }, 10000, num_available_bytes,
             [this](const ObjectID &object_id) { return PinReturn(); },
-            [this](const ObjectID &object_id) { return GetSpilledObjectURL(); }) {}
+            [this](const ObjectID &object_id) {
+              return GetSpilledObjectURL(object_id);
+            }) {}
 
   void AssertNoLeaks() {
     ASSERT_TRUE(pull_manager_.get_request_bundles_.empty());
@@ -72,6 +74,8 @@ class PullManagerTestWithCapacity {
   }
 
   std::string GetSpilledObjectURL(const ObjectID &oid) { return spilled_url_[oid]; }
+
+  void ObjectSpilled(const ObjectID &oid, std::string url) { spilled_url_[oid] = url; }
 
   NodeID self_node_id_;
   bool object_is_local_;
@@ -191,6 +195,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectRemote) {
 
   NodeID node_that_object_spilled = NodeID::FromRandom();
   fake_time_ += 10.;
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  node_that_object_spilled, 0);
 
@@ -199,6 +204,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectRemote) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   // No retry yet.
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  node_that_object_spilled, 0);
   ASSERT_EQ(num_send_pull_request_calls_, 1);
@@ -207,6 +213,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectRemote) {
   // The call can be retried after a delay.
   client_ids.insert(node_that_object_spilled);
   fake_time_ += 10.;
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  node_that_object_spilled, 0);
   ASSERT_EQ(num_send_pull_request_calls_, 2);
@@ -214,6 +221,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectRemote) {
 
   // Don't restore an object if it's local.
   object_is_local_ = true;
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  NodeID::FromRandom(), 0);
   ASSERT_EQ(num_send_pull_request_calls_, 2);
@@ -249,6 +257,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectLocal) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   fake_time_ += 10.;
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
                                  0);
 
@@ -257,6 +266,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectLocal) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 1);
 
   // No retry yet.
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
                                  0);
   ASSERT_EQ(num_send_pull_request_calls_, 0);
@@ -264,6 +274,7 @@ TEST_P(PullManagerTest, TestRestoreSpilledObjectLocal) {
 
   // The call can be retried after a delay.
   fake_time_ += 10.;
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", self_node_id_,
                                  0);
   ASSERT_EQ(num_send_pull_request_calls_, 0);
@@ -301,6 +312,7 @@ TEST_P(PullManagerTest, TestLoadBalancingRestorationRequest) {
   const auto remote_node_that_spilled_object = NodeID::FromRandom();
   client_ids.insert(copy_node1);
   client_ids.insert(copy_node2);
+  ObjectSpilled(obj1, "remote_url/foo/bar");
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar",
                                  remote_node_that_spilled_object, 0);
 
