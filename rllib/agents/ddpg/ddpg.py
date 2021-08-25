@@ -77,7 +77,7 @@ DEFAULT_CONFIG = with_common_config({
         # The initial noise scaling factor.
         "initial_scale": 1.0,
         # The final noise scaling factor.
-        "final_scale": 1.0,
+        "final_scale": 0.02,
         # Timesteps over which to anneal scale (from initial to final values).
         "scale_timesteps": 10000,
     },
