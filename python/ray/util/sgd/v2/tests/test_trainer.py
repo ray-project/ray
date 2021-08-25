@@ -661,32 +661,6 @@ def test_worker_failure_2(ray_start_2_cpus):
         assert results == [1, 1]
 
 
-def test_worker_failure_checkpoint_2(ray_start_2_cpus):
-    test_config = TestConfig()
-
-    def train():
-        for i in range(3):
-            sgd.report(index=i)
-            sgd.save_checkpoint(epoch=i)
-
-    def train_actor_failure():
-        for i in range(3):
-            sgd.report(index=i)
-            sgd.save_checkpoint(epoch=i)
-        import sys
-        sys.exit(0)
-
-    new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
-
-    with patch.object(ray.util.sgd.v2.trainer, "BackendExecutor",
-                      new_backend_executor_cls):
-        trainer = Trainer(test_config, num_workers=2)
-        trainer.start()
-        with pytest.raises(RuntimeError):
-            trainer.run(train)
-        assert trainer.latest_checkpoint["epoch"] == 2
-
-
 def test_worker_kill(ray_start_2_cpus):
     test_config = TestConfig()
 
