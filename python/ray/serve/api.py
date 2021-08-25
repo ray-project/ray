@@ -159,11 +159,15 @@ class Client:
 
         ready, _ = ray.wait(
             [self._controller.wait_for_goal.remote(goal_id)], timeout=timeout)
-        # Goal as asyncio.Future could return exception if set, ray.get()
+        # AsyncGoal could return exception if set, ray.get()
         # retrieves and throws it to user code explicitly.
-        ray.get(ready)
-
-        return len(ready) == 1
+        if len(ready) == 1:
+            async_goal_exception = ray.get(ready)[0]
+            if async_goal_exception:
+                raise async_goal_exception
+            return True
+        else:
+            return False
 
     @_ensure_connected
     def deploy(self,

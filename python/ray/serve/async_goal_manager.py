@@ -1,23 +1,64 @@
 import asyncio
+from dataclasses import dataclass
 import time
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
 from ray.serve.common import GoalId
 from ray.serve.utils import logger
 
+@dataclass
+class AsyncGoal:
+    """
+    Wrapper dataclass to represent an async goal, usually created by user's
+    deploy / delete deployment API calls with built-in synchronization object
+    and optional result / exception fields.
+
+    A trade-off between providing asyncio.Future-like functionalities without
+    introducing its complexities of testing without clear value added.
+    """
+    goal_id: GoalId
+    event: asyncio.Event
+    result: Optional[Any]
+    exception: Optional[Exception]
+
+    def __init__(
+        self,
+        goal_id: GoalId,
+        event: asyncio.Event,
+        result: Optional[Any] = None,
+        exception: Optional[Exception] = None,
+    ):
+        self.goal_id = goal_id
+        self.event = event
+        self.result = result
+        self.exception = exception
+
+    # TODO: (jiaodong) Setup proper result and exception handling flow later
+    def set_result(self, result: Any) -> None:
+        self.result = result
+        self.event.set()
+
+    def set_exception(self, exception: Exception) -> None:
+        self.exception = exception
+        self.event.set()
+
+    def done(self) -> bool:
+        return self.event.is_set()
 
 class AsyncGoalManager:
     """
     Helper class to facilitate ServeController's async goal creation, tracking
-    and termination by maintaining a dictionary of <goal_id, asyncio.Future>.
+    and termination by maintaining a dictionary of <goal_id, AsyncGoal>.
 
     Ray serve external api calls can be assigned with a goal_id for tracking,
     and can be either awaited as blocking call or delegate to run
     asynchronously.
 
     Ex:
-        deploy() -> goal_id = UUID('1b985345-f0ae-4cb7-8349-aa2ea881bf89')
+        deploy() -> goal_id = AsyncGoal(
+                                UUID('1b985345-f0ae-4cb7-8349-aa2ea881bf89')
+                              )
             if blocking:
                 # Block until deploy() action is done
                 wait_for_goal(goal_id)
@@ -30,21 +71,21 @@ class AsyncGoalManager:
     """
 
     def __init__(self):
-        self._pending_goals: Dict[GoalId, asyncio.Future] = dict()
+        self._pending_goals: Dict[GoalId, AsyncGoal] = dict()
 
     def num_pending_goals(self) -> int:
         return len(self._pending_goals)
 
     def create_goal(self, goal_id: Optional[GoalId] = None) -> GoalId:
         """
-        Create a new asyncio.Future as goal and return its id. If an id
+        Create a new AsyncGoal as goal and return its id. If an id
         is already given, assign a future to it and return same id.
         """
         if goal_id is None:
             goal_id = uuid4()
 
         self._pending_goals[
-            goal_id] = asyncio.get_running_loop().create_future()
+            goal_id] = AsyncGoal(goal_id, asyncio.Event())
 
         return goal_id
 
@@ -56,12 +97,12 @@ class AsyncGoalManager:
         set exception instead.
         """
         logger.debug(f"Completing goal {goal_id}")
-        future = self._pending_goals.pop(goal_id, None)
-        if future:
+        async_goal = self._pending_goals.pop(goal_id, None)
+        if async_goal:
             if exception:
-                future.set_exception(exception)
+                async_goal.set_exception(exception)
             else:
-                future.set_result(goal_id)
+                async_goal.set_result(goal_id)
 
     def check_complete(self, goal_id: GoalId) -> bool:
         """
@@ -72,10 +113,10 @@ class AsyncGoalManager:
         if goal_id not in self._pending_goals:
             return True
         else:
-            fut = self._pending_goals[goal_id]
-            return fut.done()
+            async_goal = self._pending_goals[goal_id]
+            return async_goal.done()
 
-    async def wait_for_goal(self, goal_id: GoalId) -> GoalId:
+    async def wait_for_goal(self, goal_id: GoalId) -> Optional[Exception]:
         """
         Wait for given goal_id to complete by external code calling
         complete_goal(goal_id), either result or exception could be set.
@@ -93,9 +134,10 @@ class AsyncGoalManager:
             logger.debug(f"Goal {goal_id} not found")
             return
 
-        fut = self._pending_goals[goal_id]
-        await fut
+        async_goal = self._pending_goals[goal_id]
+        await async_goal.event.wait()
         logger.debug(
             f"Waiting for goal {goal_id} took {time.time() - start} seconds")
 
-        return fut.result()
+        if async_goal.exception:
+            return async_goal.exception
