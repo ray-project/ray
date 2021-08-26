@@ -89,6 +89,7 @@ Concepts
     assert fib.step(10).run() == 55
 
 **Virtual Actors**: Actors with state durably logged to workflow storage. Virtual actors can launch sub-workflows from method calls and receive timer-based and externally triggered events. [This feature is under development.]
+
 .. code-block:: python
     :caption: A persistent virtual actor counter:
 
@@ -110,3 +111,4 @@ Concepts
     workflow.init(storage="/tmp/data")
     c1 = Counter.get_or_create("counter_1")
     assert c1.incr.run() == 1
+    assert c1.incr.run() == 2
