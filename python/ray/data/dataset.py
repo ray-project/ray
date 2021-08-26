@@ -1292,7 +1292,7 @@ class Dataset(Generic[T]):
         This works by first converting this dataset into a distributed set of
         Pandas dataframes (using ``.to_pandas()``). Please see caveats there.
         Then the individual datarames are used to create the modin DataFrame
-        using 
+        using
         ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
 
         This is only supported for datasets convertible to Arrow records.
@@ -1305,7 +1305,8 @@ class Dataset(Generic[T]):
             A Modin dataframe created from this dataset.
         """
 
-        from modin.distributed.dataframe.pandas.partitions import from_partitions
+        from modin.distributed.dataframe.pandas.partitions import (
+            from_partitions)
         pd_objs = self.to_pandas()
         return from_partitions(pd_objs, axis=0)
 
