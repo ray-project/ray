@@ -57,15 +57,20 @@ Concepts
 .. code-block:: python
     :caption: Returning Ray objects from a workflow.
 
-    import ray
-    from ray import workflow
+    @ray.remote
+    def hello():
+        return "hello"
 
     @workflow.step
-    def gen_objects() -> List[ray.ObjectRef]:
-        return [ray.put("hello"), ray.put("world")]
+    def words() -> List[ray.ObjectRef]:
+        return [hello.remote(), ray.put("world")]
 
-    [a, b] = gen_objects.step().run()
-    assert ray.get([a, b]) == ["hello", "world"]
+    @workflow.step
+    def concat(words: List[ray.ObjectRef]) -> str:
+        return " ".join([ray.get(w) for w in words])
+
+    workflow.init()
+    assert concat.step(words.step()).run() == "hello world"
 
 **Dynamic Workflows**: Workflows that generate new steps at runtime. When a step returns a step future as its output, that DAG of steps is dynamically inserted into the workflow DAG following the original step. This feature enables nesting, looping, and recursion within workflows.
 
@@ -80,4 +85,4 @@ Concepts
 
     assert fib.step(10).run() == 55
 
-**Virtual Actors**: 
+**Virtual Actors**: (This feature is under development)
