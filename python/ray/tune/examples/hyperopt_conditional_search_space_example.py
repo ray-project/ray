@@ -1,4 +1,4 @@
-"""This example demonstrates the usage of Optuna define-by-run with Ray Tune.
+"""This example demonstrates the usage conditional search spaces with Tune.
 
 It also checks that it is usable with a separate scheduler.
 
@@ -77,7 +77,7 @@ config_space = {
 }
 
 
-def run_optuna_tune(config_dict=config_space, smoke_test=False):
+def run_hyperopt_tune(config_dict=config_space, smoke_test=False):
     algo = HyperOptSearch(space=config_dict, metric="mean_loss", mode="min")
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
@@ -112,4 +112,4 @@ if __name__ == "__main__":
     else:
         ray.init(configure_logging=False)
 
-    run_optuna_tune(smoke_test=args.smoke_test)
+    run_hyperopt_tune(smoke_test=args.smoke_test)
