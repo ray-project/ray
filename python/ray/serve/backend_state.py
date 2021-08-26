@@ -795,8 +795,6 @@ class BackendState:
                 backend_tag].backend_config.\
                 experimental_graceful_shutdown_timeout_s = 0
 
-        # import ipdb
-        # ipdb.set_trace()
         self._checkpoint()
         self._notify_backend_configs_changed(backend_tag)
         if existing_goal_id is not None:
@@ -1119,9 +1117,7 @@ class BackendState:
                     transitioned_backend_tags.add(backend_tag)
                 elif start_status == ReplicaStartupStatus.FAILED:
                     # Replica reconfigure (deploy / upgrade) failed
-                    if self._replica_constructor_retry_counter[
-                        backend_tag
-                    ] >= 0:
+                    if self._replica_constructor_retry_counter[backend_tag] >= 0: #noqa: E501 line too long
                         # Increase startup failure counter if we're tracking it
                         self._replica_constructor_retry_counter[
                             backend_tag] += 1
@@ -1190,7 +1186,8 @@ class BackendState:
                 self._goal_manager.complete_goal(
                     goal_id,
                     RuntimeError(
-                        "Deployment failed, reverting to previous version "
+                        f"Deployment failed, reverting {backend_tag} to "
+                        "previous version "
                         f"{self._backend_matadata_backup[backend_tag].version}"
                         f" asynchronously."))
             else:

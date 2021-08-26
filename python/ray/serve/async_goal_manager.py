@@ -1,7 +1,7 @@
 import asyncio
 from dataclasses import dataclass
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Awaitable, Dict, Optional
 from uuid import uuid4
 
 from ray.serve.common import GoalId
@@ -54,6 +54,9 @@ class AsyncGoal:
 
     def done(self) -> bool:
         return self.event.is_set()
+
+    def wait(self) -> Awaitable:
+        return self.event.wait()
 
 
 class AsyncGoalManager:
@@ -153,7 +156,7 @@ class AsyncGoalManager:
             return None
 
         async_goal = self._pending_goals[goal_id]
-        await async_goal.event.wait()
+        await async_goal.wait()
         logger.debug(
             f"Waiting for goal {goal_id} took {time.time() - start} seconds")
 
