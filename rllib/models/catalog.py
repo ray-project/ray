@@ -133,14 +133,15 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # == Atari ==
     # Which framestacking size to use for Atari envs.
     # "auto": Use a value of 4, but only if the env is an Atari env.
-    # > 1: Use the trajectory view API in the default VisionNets to request the
+    # > 1: Use the trajectory view API via the default VisionNets to request
     #      last n observations (single, grayscaled 84x84 image frames) as
     #      inputs. The time axis in the so provided observation tensors
     #      will come right after the batch axis (channels first format),
     #      e.g. BxTx84x84, where T=num_framestacks.
     # 0 or 1: No framestacking used.
-    # Use the deprecated `framestack=True`, to disable the above behavor and to
-    # enable legacy stacking behavior (w/o trajectory view API) instead.
+    # Use the (deprecated) `framestack=True`, to disable the above behavior
+    # and to enable legacy stacking behavior (w/o using trajectory view API)
+    # instead.
     "num_framestacks": "auto",
     # Final resized frame dimension
     "dim": 84,
@@ -167,7 +168,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.
     "lstm_use_prev_action_reward": DEPRECATED_VALUE,
     # Use `num_framestacks` (int) instead.
-    "framestack": True,
+    "framestack": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -887,9 +888,10 @@ class ModelCatalog:
                 raise ValueError("`use_lstm` not available for "
                                  "framework=jax so far!")
 
-        if config.get("framestack") != DEPRECATED_VALUE:
-            # deprecation_warning(
-            #     old="framestack", new="num_framestacks (int)", error=False)
+        if config.get("framestack", False) not in [DEPRECATED_VALUE, False]:
+            deprecation_warning(
+                old="framestack", new="num_framestacks=[int]", error=False)
             # If old behavior is desired, disable traj. view-style
             # framestacking.
+            config["framestack"] = True
             config["num_framestacks"] = 0
