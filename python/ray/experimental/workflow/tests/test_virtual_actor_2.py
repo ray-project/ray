@@ -187,6 +187,7 @@ def test_wf_in_actor(workflow_start_regular, tmp_path):
     indirect=True)
 def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
     file_lock = [str(tmp_path / str(i)) for i in range(5)]
+
     @workflow.virtual_actor
     class Counter:
         def __init__(self):
@@ -211,8 +212,8 @@ def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
             self._counter = v
 
     locks = [FileLock(f) for f in file_lock]
-    for l in locks:
-        l.acquire()
+    for lock in locks:
+        lock.acquire()
 
     c = Counter.get_or_create("counter")
     ray.get(c.ready())
@@ -227,6 +228,7 @@ def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
             time.sleep(1)
         assert val == i + 1
     assert ray.get(final_ret) == 5
+
 
 if __name__ == "__main__":
     import sys
