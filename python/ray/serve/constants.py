@@ -47,13 +47,6 @@ DEFAULT_LATENCY_BUCKET_MS = [
 #: Name of backend reconfiguration method implemented by user.
 BACKEND_RECONFIGURE_METHOD = "reconfigure"
 
-#: All defined HTTP methods.
-# https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
-ALL_HTTP_METHODS = [
-    "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE",
-    "PATCH"
-]
-
 SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
 #: Number of historically deleted deployments to store in the checkpoint.
