@@ -364,11 +364,6 @@ class VirtualActor:
         self._metadata = metadata
         self._actor_id = actor_id
         self._storage = storage
-        for method_name in metadata.signatures:
-            # TODO(suquark): Maybe we should avoid overriding class fields.
-            # However, we did not do it in ActorHandle.
-            method = ActorMethod(self, method_name)
-            setattr(self, method_name, method)
 
     def _create(self, args: Tuple[Any], kwargs: Dict[str, Any]):
         workflow_storage = WorkflowStorage(self._actor_id, self._storage)
