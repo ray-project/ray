@@ -60,11 +60,13 @@ class DataClient:
         return threading.Thread(target=self._data_main, args=(), daemon=True)
 
     def _data_main(self) -> None:
+        reconnecting = False
         while True:
             stub = ray_client_pb2_grpc.RayletDataStreamerStub(self.client_worker.channel)
+            metadata = self._metadata + [("reconnecting", reconnecting)]
             resp_stream = stub.Datapath(
                 iter(self.request_queue.get, None),
-                metadata=self._metadata,
+                metadata=self._metadata + metadata,
                 wait_for_ready=True)
             try:
                 for response in resp_stream:
@@ -101,6 +103,7 @@ class DataClient:
                         "Got Error from data channel:")
                 try:
                     self.client_worker._connect_grpc_channel()
+                    reconnecting = True
                     continue
                 except ConnectionError:
                     logger.info("Reconnection failed, cancelling data channel.")

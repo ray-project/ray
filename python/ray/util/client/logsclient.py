@@ -35,10 +35,12 @@ class LogstreamClient:
         return threading.Thread(target=self._log_main, args=(), daemon=True)
 
     def _log_main(self) -> None:
+        reconnecting = False
         while True:
             stub = ray_client_pb2_grpc.RayletLogStreamerStub(self.client_worker.channel)
+            metadata = self._metadata + [("reconnecting", reconnecting)]
             log_stream = stub.Logstream(
-                iter(self.request_queue.get, None), metadata=self._metadata)
+                iter(self.request_queue.get, None), metadata=metadata)
             try:
                 for record in log_stream:
                     if record.level < 0:
@@ -64,6 +66,7 @@ class LogstreamClient:
                         f"Got Error from logger channel: {e}")
                 try:
                     self.client_worker._connect_grpc_channel()
+                    reconnecting = True
                     continue
                 except ConnectionError:
                     logger.info("Reconnection failed, cancelling logs channel.")

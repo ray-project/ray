@@ -19,7 +19,6 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.util.client.common import (ClientServerHandle,
                                     CLIENT_SERVER_MAX_THREADS, GRPC_OPTIONS)
-from ray.util.client.server.dataservicer import WAIT_FOR_CLIENT_RECONNECT_SECONDS
 from ray._private.parameter import RayParams
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.utils import detect_fate_sharing_support
@@ -178,10 +177,6 @@ class ProxyManager():
             connect_only=True)
 
         return self._node
-
-    def get_specific_server(self, client_id) -> Optional[SpecificServer]:
-        with self.server_lock:
-            return self.servers.get(client_id)
 
     def create_specific_server(self, client_id: str) -> SpecificServer:
         """
@@ -407,7 +402,6 @@ def prepare_runtime_init_req(init_request: ray_client_pb2.DataRequest
 class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def __init__(self, proxy_manager: ProxyManager):
         self.num_clients = 0
-        self.clients_last_seen: Dict[str, float] = {}
         self.clients_lock = Lock()
         self.proxy_manager = proxy_manager
 
@@ -431,82 +425,55 @@ class DataServicerProxy(ray_client_pb2_grpc.RayletDataStreamerServicer):
         client_id = _get_client_id_from_context(context)
         if client_id == "":
             return
-        metadata = {k: v for k, v in context.invocation_metadata()}
-        reconnecting = metadata.get("reconnecting") or False
-        server = self.proxy_manager.get_specific_server(client_id)
+
         # Create Placeholder *before* reading the first request.
-
-        # TODO: cleanup, possibly that num_clients is incremented but not
-        # properly decremented
-        start_time = time.time()
-
-        if server is None:
-            # Specific server doesn't already exist, this is a new connection
-            server = self.proxy_manager.create_specific_server(client_id)
-            try:
-                with self.clients_lock:
-                    self.num_clients += 1
-                    self.clients_last_seen[client_id] = start_time
-
-                logger.info(f"New data connection from client {client_id}: ")
-                init_req = next(request_iterator)
-                try:
-                    # Modify the request iterator to use adjusted init_req
-                    modified_init_req, job_config = prepare_runtime_init_req(
-                        init_req)
-                    request_iterator = chain([modified_init_req], request_iterator)
-
-                    if not self.proxy_manager.start_specific_server(
-                            client_id, job_config):
-                        logger.error(
-                            f"Server startup failed for client: {client_id}, "
-                            f"using JobConfig: {job_config}!")
-                        raise RuntimeError(
-                            "Starting up Server Failed! Check "
-                            "`ray_client_server_[port].err` on the cluster.")
-                    channel = self.proxy_manager.get_channel(client_id)
-                    if channel is None:
-                        logger.error(f"Channel not found for {client_id}")
-                        raise RuntimeError(
-                            "Proxy failed to Connect to backend! Check "
-                            "`ray_client_server.err` on the cluster.")
-                except Exception:
-                    init_resp = ray_client_pb2.DataResponse(
-                        init=ray_client_pb2.InitResponse(
-                            ok=False, msg=traceback.format_exc()))
-                    init_resp.req_id = init_req.req_id
-                    yield init_resp
-                    return None
-            except Exception:
-                logger.exception("Proxying Datapath failed!")
-        else:
-            with self.client_lock:
-                self.clients_last_seen[client_id] = start_time
-            channel = self.proxy_manager.get_channel(client_id)
-
-        stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
-
+        server = self.proxy_manager.create_specific_server(client_id)
         try:
+            with self.clients_lock:
+                self.num_clients += 1
+
+            logger.info(f"New data connection from client {client_id}: ")
+            init_req = next(request_iterator)
+            try:
+                modified_init_req, job_config = prepare_runtime_init_req(
+                    init_req)
+                if not self.proxy_manager.start_specific_server(
+                        client_id, job_config):
+                    logger.error(
+                        f"Server startup failed for client: {client_id}, "
+                        f"using JobConfig: {job_config}!")
+                    raise RuntimeError(
+                        "Starting Ray client server failed. This is most "
+                        "likely because the runtime_env failed to be "
+                        "installed. See ray_client_server_[port].err on the "
+                        "head node of the cluster for the relevant logs.")
+                channel = self.proxy_manager.get_channel(client_id)
+                if channel is None:
+                    logger.error(f"Channel not found for {client_id}")
+                    raise RuntimeError(
+                        "Proxy failed to Connect to backend! Check "
+                        "`ray_client_server.err` on the cluster.")
+                stub = ray_client_pb2_grpc.RayletDataStreamerStub(channel)
+            except Exception:
+                init_resp = ray_client_pb2.DataResponse(
+                    init=ray_client_pb2.InitResponse(
+                        ok=False, msg=traceback.format_exc()))
+                init_resp.req_id = init_req.req_id
+                yield init_resp
+                return None
+
+            new_iter = chain([modified_init_req], request_iterator)
             resp_stream = stub.Datapath(
-                request_iterator, metadata=[("client_id", client_id)])
+                new_iter, metadata=[("client_id", client_id)])
             for resp in resp_stream:
                 yield self.modify_connection_info_resp(resp)
         except Exception:
             logger.exception("Proxying Datapath failed!")
-            time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS)
         finally:
+            server.set_result(None)
             with self.clients_lock:
-                if client_id not in self.clients_last_seen:
-                    # Connection has already been cleaned up
-                    return
-                last_seen = self.clients_last_seen[client_id]
-                if last_seen > start_time:
-                    # Client reconnected, don't clean up session
-                    return
                 logger.debug(f"Client detached: {client_id}")
-                del self.clients_last_seen[client_id]
                 self.num_clients -= 1
-                server.set_result(None)
 
 
 class LogstreamServicerProxy(ray_client_pb2_grpc.RayletLogStreamerServicer):
