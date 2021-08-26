@@ -1,9 +1,13 @@
 import numpy as np
 import time
 
+import pytest
 import ray
 from ray.cluster_utils import Cluster
 from ray.internal.internal_api import memory_summary
+
+# RayConfig to enable recording call sites during ObjectRej creations.
+ray_config = {"record_ref_creation_sites": True}
 
 # Unique strings.
 DRIVER_PID = "Driver"
@@ -22,7 +26,8 @@ PUT_OBJ = "(put object)"
 TASK_CALL_OBJ = "(task call)"
 ACTOR_TASK_CALL_OBJ = "(actor call)"
 DESER_TASK_ARG = "(deserialize task arg)"
-DESER_ACTOR_TASK_ARG = "(deserialize actor task arg)"
+# Only 22 characters can be matched because longer strings are wrapped around.
+DESER_ACTOR_TASK_ARG = "(deserialize actor tas"
 
 # Group by and sort by parameters.
 NODE_ADDRESS = "node address"
@@ -50,7 +55,7 @@ def num_objects(memory_str):
 
 
 def count(memory_str, substr):
-    substr = substr[:39]
+    substr = substr[:42]
     n = 0
     for line in memory_str.split("\n"):
         if substr in line:
@@ -73,6 +78,10 @@ def test_driver_put_ref(ray_start_regular):
     assert num_objects(info) == 0, info
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": ray_config
+    }], indirect=True)
 def test_worker_task_refs(ray_start_regular):
     address = ray_start_regular["redis_address"]
 
@@ -112,6 +121,10 @@ def test_worker_task_refs(ray_start_regular):
     assert num_objects(info) == 0, info
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": ray_config
+    }], indirect=True)
 def test_actor_task_refs(ray_start_regular):
     address = ray_start_regular["redis_address"]
 
@@ -272,6 +285,5 @@ def test_memory_used_output(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))
