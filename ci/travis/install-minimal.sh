@@ -19,4 +19,5 @@ CC=gcc python -m pip install -U psutil setproctitle==1.2.2 colorama --target="${
 
 # Install test requirements
 CC=gcc python -m pip install -U \
-  pytest==5.4.3
+  pytest==5.4.3 \
+  numpy
