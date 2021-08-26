@@ -25,6 +25,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
 @Deprecated
 class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                         TrainerOptimizersMixin):
