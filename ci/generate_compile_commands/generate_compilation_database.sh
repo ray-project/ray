@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 
 # Generates a compile_commands.json file at repo root (bazel info execution_root) for clang tooling needs.
 

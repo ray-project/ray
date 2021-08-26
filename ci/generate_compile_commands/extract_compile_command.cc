@@ -13,7 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Adapted from https://github.com/xulongwu4/bazel-compilation-database/blob/master/kythe/generate_compile_commands/extract_compile_command.cc
+ * Adapted from
+ * https://github.com/xulongwu4/bazel-compilation-database/blob/master/kythe/generate_compile_commands/extract_compile_command.cc
  */
 #include <fcntl.h>
 #include <stdio.h>
@@ -47,18 +48,15 @@ bool ReadExtraAction(const std::string &path, blaze::ExtraActionInfo *info,
   file_input.SetCloseOnDelete(true);
 
   CodedInputStream input(&file_input);
-  if (!info->ParseFromCodedStream(&input))
-    return false;
-  if (!info->HasExtension(blaze::CppCompileInfo::cpp_compile_info))
-    return false;
+  if (!info->ParseFromCodedStream(&input)) return false;
+  if (!info->HasExtension(blaze::CppCompileInfo::cpp_compile_info)) return false;
   *cpp_info = info->GetExtension(blaze::CppCompileInfo::cpp_compile_info);
   return true;
 }
 
 std::string JoinCommand(const std::vector<std::string> &command) {
   std::string output;
-  if (command.empty())
-    return output;
+  if (command.empty()) return output;
 
   // TODO(shahms): Deal with embedded spaces and quotes.
   auto iter = command.begin();
@@ -83,21 +81,19 @@ std::string FormatCompilationCommand(const std::string &source_file,
   writer.EndObject();
   return buffer.GetString();
 }
-} // namespace
+}  // namespace
 
 int main(int argc, char **argv) {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   if (argc != 3) {
-    std::cerr << "usage: " << argv[0] << " extra-action-file output-file"
-              << std::endl;
+    std::cerr << "usage: " << argv[0] << " extra-action-file output-file" << std::endl;
     return 1;
   }
   std::string extra_action_file = argv[1];
   std::string output_file = argv[2];
   blaze::ExtraActionInfo info;
   blaze::CppCompileInfo cpp_info;
-  if (!ReadExtraAction(extra_action_file, &info, &cpp_info))
-    return 1;
+  if (!ReadExtraAction(extra_action_file, &info, &cpp_info)) return 1;
 
   std::vector<std::string> args;
   args.push_back(cpp_info.tool());
@@ -117,8 +113,7 @@ int main(int argc, char **argv) {
     perror("Unable to open file for writing: ");
     return 1;
   }
-  ::fputs(FormatCompilationCommand(cpp_info.source_file(), args).c_str(),
-          output);
+  ::fputs(FormatCompilationCommand(cpp_info.source_file(), args).c_str(), output);
   ::fclose(output);
 
   google::protobuf::ShutdownProtobufLibrary();
