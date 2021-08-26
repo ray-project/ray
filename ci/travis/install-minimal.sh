@@ -18,9 +18,4 @@ CC=gcc python -m pip install -U psutil setproctitle==1.2.2 colorama --target="${
 
 # Install test requirements
 CC=gcc python -m pip install -U \
-  pytest \
-  pytest-asyncio \
-  pytest-rerunfailures \
-  pytest-sugar \
-  pytest-lazy-fixture \
-  pytest-timeout
+  pytest==5.4.3
