@@ -1475,10 +1475,11 @@ class SearchSpaceTest(unittest.TestCase):
             "nested": [
                 tune.sample.Integer(0, 10),
                 tune.sample.Integer(0, 10),
-            ]
+            ],
+            "nosample": [4, 8]
         }
 
-        points_to_evaluate = [{"nested": [2, 4]}]
+        points_to_evaluate = [{"nested": [2, 4], "nosample": [4, 8]}]
 
         from ray.tune.suggest.hyperopt import HyperOptSearch
         searcher = HyperOptSearch(
@@ -1490,6 +1491,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         self.assertSequenceEqual(config["nested"],
                                  points_to_evaluate[0]["nested"])
+
+        self.assertSequenceEqual(config["nosample"],
+                                 points_to_evaluate[0]["nosample"])
 
     def testPointsToEvaluateNevergrad(self):
         config = {
