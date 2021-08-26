@@ -110,7 +110,7 @@ class BackendExecutor:
 
     def start_training(self,
                        train_func: Callable[[], T],
-                       dataset: Optional[RayDataset] = None,
+                       dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
                        checkpoint: Optional[Dict] = None,
                        checkpoint_strategy: Optional[CheckpointStrategy] =
                        None
@@ -169,7 +169,16 @@ class BackendExecutor:
                     "calling `start_training` again.")
 
         if dataset is not None:
-            dataset_shards = self._split_dataset(dataset)
+            if isinstance(dataset, dict):
+                dataset_shards = []
+                for key, val in dataset.items():
+                    split_datasets = self._split_dataset(val)
+                    for i in range(len(split_datasets)):
+                        if i >= len(dataset_shards):
+                            dataset_shards.append({})
+                        dataset_shards[i][key] = split_datasets[i]
+            else:
+                dataset_shards = self._split_dataset(dataset)
         else:
             dataset_shards = [None] * len(self.worker_group)
 

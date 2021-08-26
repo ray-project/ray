@@ -127,7 +127,8 @@ class Trainer:
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
             callbacks: Optional[List[SGDCallback]] = None,
-            dataset: Optional[RayDataset] = None,
+            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] =
+    None,
             checkpoint: Optional[Union[Dict, str, Path]] = None,
             checkpoint_strategy: Optional[CheckpointStrategy] = None
             ) -> List[T]:
@@ -141,7 +142,7 @@ class Trainer:
             callbacks (Optional[List[SGDCallback]]): A list of Callbacks which
                 will be executed during training. If this is not set,
                 currently there are NO default Callbacks.
-            dataset (Optional[Union[Dataset, DatasetPipeline]]):
+            dataset (Optional[Union[RayDataset, Dict[str, RayDataset]]]):
                 Distributed Ray Dataset or DatasetPipeline to pass into
                 worker. Sharding will automatically be
                 handled by the Trainer.
@@ -187,7 +188,7 @@ class Trainer:
             self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             config: Optional[Dict[str, Any]] = None,
-            dataset: Optional[RayDataset] = None,
+            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
             checkpoint: Optional[Dict] = None,
             checkpoint_strategy: Optional[CheckpointStrategy] = None
     ) -> Iterator[List[Dict]]:
@@ -373,7 +374,7 @@ class SGDIterator:
     def __init__(
             self, backend_executor: BackendExecutor,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
-            dataset: Optional[RayDataset],
+            dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]],
             checkpoint: Optional[Dict],
             checkpoint_strategy: Optional[CheckpointStrategy]):
         self._executor = backend_executor

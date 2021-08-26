@@ -4,6 +4,8 @@ from typing import List, Any, Callable, Iterator, Iterable, Generic, TypeVar, \
     Dict, Optional, Union, TYPE_CHECKING
 from uuid import uuid4
 
+from ray.ray_constants import env_integer
+
 if TYPE_CHECKING:
     import pyarrow
     import pandas
@@ -1099,6 +1101,8 @@ class Dataset(Generic[T]):
             "torch.utils.data.IterableDataset":
         """Return a Torch IterableDataset over this dataset.
 
+        This is only supported for datasets convertible to Arrow records.
+
         It is recommended to use the returned ``IterableDataset`` directly
         instead of passing it into a torch ``DataLoader``.
 
@@ -1185,7 +1189,6 @@ class Dataset(Generic[T]):
               label_column: str,
               output_signature: List["tf.TypeSpec"],
               feature_columns: Optional[List[str]] = None,
-              enable_autoshard: bool = False,
               prefetch_blocks: int = 0,
               batch_size: int = 1) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
@@ -1215,11 +1218,6 @@ class Dataset(Generic[T]):
                 of `tf.TypeSpec` objects corresponding to (features, label).
             feature_columns (Optional[List[str]]): List of columns in datasets
                 to use. If None, all columns will be used.
-            enable_autoshard (bool): Enables tensorflow built-in autosharding
-                (https://www.tensorflow.org/tutorials/distribute/input) for the
-                resulting TF Dataset. Defaults to False. It is recommended
-                to use ``split()`` to shard the Dataset instead of
-                auto-sharding.
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: Record batch size. Defaults to 1.
@@ -1248,6 +1246,7 @@ class Dataset(Generic[T]):
         dataset = tf.data.Dataset.from_generator(
             make_generator, output_signature=output_signature)
 
+        enable_autoshard = bool(env_integer("RAY_DATA_TF_AUTOSHARD", 0))
         if not enable_autoshard:
             options = tf.data.Options()
             options.experimental_distribute.auto_shard_policy = \

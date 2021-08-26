@@ -8,9 +8,8 @@ import ray
 
 if TYPE_CHECKING:
     from ray.data import Dataset
-    from ray.data.dataset_pipeline import DatasetPipeline
 
-RayDataset = Union["Dataset", "DatasetPipeline"]
+RayDataset = Union["Dataset"]
 
 
 def get_address_and_port() -> Tuple[str, int]:
