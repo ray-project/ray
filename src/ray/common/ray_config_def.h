@@ -63,6 +63,7 @@ RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 /// Whether to record the creation sites of object references. This adds more
 /// information to `ray memory`, but introduces a little extra overhead when
 /// creating object references (e.g. 5~10 microsec per call in Python).
+/// TODO: maybe group this under RAY_DEBUG.
 RAY_CONFIG(bool, record_ref_creation_sites, false)
 
 /// Objects that have been unpinned are
