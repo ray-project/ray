@@ -3,6 +3,7 @@ import errno
 import io
 import fnmatch
 import os
+import json
 import pathlib
 import subprocess
 import sys
@@ -532,6 +533,30 @@ def get_error_message(pub_sub, num, error_type=None, timeout=20):
             msgs.append(error_data)
         else:
             time.sleep(0.01)
+
+    return msgs
+
+
+def init_log_pubsub():
+    """Initialize redis error info pub/sub"""
+    p = ray.worker.global_worker.redis_client.pubsub(
+        ignore_subscribe_messages=True)
+    log_pubsub_channel = gcs_utils.LOG_FILE_CHANNEL
+    p.psubscribe(log_pubsub_channel)
+    return p
+
+
+def get_log_message(pub_sub, num, timeout=20):
+    """Get errors through pub/sub."""
+    start_time = time.time()
+    msgs = []
+    while time.time() - start_time < timeout and len(msgs) < num:
+        msg = pub_sub.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            continue
+        log_lines = json.loads(ray._private.utils.decode(msg["data"]))["lines"]
+        msgs = log_lines
 
     return msgs
 

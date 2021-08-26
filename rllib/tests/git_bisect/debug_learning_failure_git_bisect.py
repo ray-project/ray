@@ -192,7 +192,7 @@ if __name__ == "__main__":
         actual_speed = total_timesteps / total_time
         # We stopped because we reached the time limit ->
         # Means throughput is too slow (time steps not reached).
-        if desired_speed < actual_speed:
+        if actual_speed < desired_speed:
             raise ValueError(
                 "`stop-timesteps` of {} not reached in {}sec!".format(
                     args.stop_timesteps, args.stop_time))

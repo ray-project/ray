@@ -1,4 +1,5 @@
 from typing import Dict, Any, List
+import hashlib
 
 import ray
 from ray.core.generated import gcs_service_pb2
@@ -93,14 +94,15 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
             actors[actor_id] = entry
 
             deployments = await self.get_serve_info()
-            for deployment_name, deployment_info in deployments.items():
+            for _, deployment_info in deployments.items():
                 for replica_actor_id, actor_info in deployment_info[
                         "actors"].items():
                     if replica_actor_id in actors:
                         serve_metadata = dict()
                         serve_metadata["replica_tag"] = actor_info[
                             "replica_tag"]
-                        serve_metadata["deployment_name"] = deployment_name
+                        serve_metadata["deployment_name"] = deployment_info[
+                            "name"]
                         serve_metadata["version"] = actor_info["version"]
                         actors[replica_actor_id]["metadata"][
                             "serve"] = serve_metadata
@@ -131,9 +133,17 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
                                          gcs_client) or "{}".encode("utf-8")
             deployments_per_controller.append(
                 json.loads(val_bytes.decode("utf-8")))
+        # Merge the deployments dicts of all controllers.
         deployments: Dict[str, Any] = {
             k: v
             for d in deployments_per_controller for k, v in d.items()
+        }
+        # Replace the keys (deployment names) with their hashes to prevent
+        # collisions caused by the automatic conversion to camelcase by the
+        # dashboard agent.
+        deployments = {
+            hashlib.sha1(name.encode()).hexdigest(): info
+            for name, info in deployments.items()
         }
         return deployments
 

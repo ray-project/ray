@@ -35,7 +35,7 @@ def get_default_fixture_ray_kwargs():
         "num_cpus": 1,
         "object_store_memory": 150 * 1024 * 1024,
         "dashboard_port": None,
-        "namespace": "",
+        "namespace": "default_test_namespace",
         "_system_config": system_config,
     }
     return ray_kwargs

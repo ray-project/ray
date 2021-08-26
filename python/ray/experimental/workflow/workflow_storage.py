@@ -31,6 +31,10 @@ STEP_FUNC_BODY = "func_body.pkl"
 CLASS_BODY = "class_body.pkl"
 WORKFLOW_META = "workflow_meta.json"
 WORKFLOW_PROGRESS = "progress.json"
+# Without this counter, we're going to scan all steps to get the number of
+# steps with a given name. This can be very expensive if there are too
+# many duplicates.
+DUPLICATE_NAME_COUNTER = "duplicate_name_counter"
 
 
 # TODO: Get rid of this and use asyncio.run instead once we don't support py36
@@ -122,12 +126,12 @@ class WorkflowStorage:
         tasks = []
         if isinstance(ret, Workflow):
             # This workflow step returns a nested workflow.
-            assert step_id != ret.id
+            assert step_id != ret.step_id
             tasks.append(
                 self._put(
                     self._key_step_output_metadata(step_id),
-                    {"output_step_id": ret.id}, True))
-            dynamic_output_id = ret.id
+                    {"output_step_id": ret.step_id}, True))
+            dynamic_output_id = ret.step_id
         else:
             # This workflow step returns a object.
             ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
@@ -152,6 +156,19 @@ class WorkflowStorage:
             A callable function.
         """
         return asyncio_run(self._get(self._key_step_function_body(step_id)))
+
+    def gen_step_id(self, step_name: str) -> int:
+        async def _gen_step_id():
+            key = self._key_num_steps_with_name(step_name)
+            try:
+                val = await self._get(key, True)
+                await self._put(key, val + 1, True)
+                return val + 1
+            except KeyNotFoundError:
+                await self._put(key, 0, True)
+                return 0
+
+        return asyncio_run(_gen_step_id())
 
     def load_step_args(
             self, step_id: StepID, workflows: List[Any],
@@ -335,7 +352,7 @@ class WorkflowStorage:
         """
         assert not workflow.executed
         tasks = [
-            self._write_step_inputs(w.id, w.data)
+            self._write_step_inputs(w.step_id, w.data)
             for w in workflow.iter_workflows_in_dag()
         ]
         asyncio_run(asyncio.gather(*tasks))
@@ -486,6 +503,9 @@ class WorkflowStorage:
 
     def _key_workflow_metadata(self):
         return [self._workflow_id, WORKFLOW_META]
+
+    def _key_num_steps_with_name(self, name):
+        return [self._workflow_id, DUPLICATE_NAME_COUNTER, name]
 
 
 def get_workflow_storage(workflow_id: Optional[str] = None) -> WorkflowStorage:
