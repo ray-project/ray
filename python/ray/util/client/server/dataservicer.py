@@ -127,6 +127,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 yield resp
         except grpc.RpcError as e:
             logger.debug(f"Closing data channel: {e}")
+            time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS)
         finally:
             logger.debug(f"Lost data connection from client {client_id}")
             queue_filler_thread.join(QUEUE_JOIN_SECONDS)
@@ -134,7 +135,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 logger.error(
                     "Queue filler thread failed to  join before timeout: {}".
                     format(QUEUE_JOIN_SECONDS))
-            time.sleep(WAIT_FOR_CLIENT_RECONNECT_SECONDS)
             with self.clients_lock:
                 # Could fail before client accounting happens
                 if client_id not in self.client_last_seen:
@@ -143,8 +143,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     return
                 last_seen = self.client_last_seen[client_id]
                 if last_seen > start_time:
-                    # The client reconnected at some point, don't clean up
-                    # session
                     return
                 # Client didn't reconnect in time, clean up
                 self.basic_service.release_all(client_id)
@@ -165,6 +163,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
         Returns a boolean indicating if initialization was successful.
         """
         with self.clients_lock:
+            metadata = {k: v for k, v in context.invocation_metadata()}
+            reconnecting = metadata.get("reconnecting") or False
             threshold = int(CLIENT_SERVER_MAX_THREADS / 2)
             if self.num_clients >= threshold:
                 logger.warning(
@@ -177,6 +177,11 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                         "threshold by setting the "
                         "RAY_CLIENT_SERVER_MAX_THREADS env var "
                         f"(currently set to {CLIENT_SERVER_MAX_THREADS}).")
+                context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
+                return False
+            if reconnecting and client_id not in self.client_last_seen:
+                # Client took too long to reconnect, session has been
+                # cleaned up. TODO: how to handle?
                 context.set_code(grpc.StatusCode.RESOURCE_EXHAUSTED)
                 return False
             if client_id in self.client_last_seen:

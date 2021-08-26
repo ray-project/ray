@@ -80,16 +80,18 @@ def backoff(timeout: int) -> int:
     return timeout
 
 def reconnect_on_grpc_error(func):
-    @functools.wraps
+    @functools.wraps(func)
     def f(self, *args, **kwargs):
         while True:
             try:
-                func(self, *args, **kwargs)
+                return func(self, *args, **kwargs)
             except grpc.RpcError as e:
                 if e.code() == grpc.StatusCode.CANCELLED:
                     # intentional shutdown
                     raise
                 self._connect_grpc_channel()
+                print("SERVER RECONNECTING")
+                print(e)
                 if not self.is_connected():
                     raise
     return f
@@ -127,11 +129,11 @@ class Worker:
         self._connect_grpc_channel()
 
         # Initialize the streams to finish protocol negotiation.
-        self.data_client = DataClient(self.channel, self._client_id,
+        self.data_client = DataClient(self, self._client_id,
                                       self.metadata)
         self.reference_count: Dict[bytes, int] = defaultdict(int)
 
-        self.log_client = LogstreamClient(self.channel, self.metadata)
+        self.log_client = LogstreamClient(self, self.metadata)
         self.log_client.set_logstream_level(logging.INFO)
 
         self.closed = False
@@ -142,13 +144,22 @@ class Worker:
         self.total_outbound_message_size_bytes = 0
 
     def _connect_grpc_channel(self):
+        if self._session_ended:
+            # Reconnect has already failed, give up early
+            return
+        if self._conn_state == grpc.ChannelConnectivity.READY:
+            # connection already fixed, return early
+            return
+
         acquired = self.channel_lock.acquire(False)
         if not acquired:
             # Some other thread is already reconnecting the channel
-            while not self._session_ended and not self._conn_state != grpc.ChannelConnectivity.READY:
+            while not self._session_ended and self._conn_state != grpc.ChannelConnectivity.READY:
                 # Spin until either the connection is ready, or the session
                 # has ended
                 time.sleep(1)
+            if self._session_ended:
+                raise ConnectionError("ray client connection timeout")
             return
         try:
             if self.channel:

@@ -82,13 +82,11 @@ class DataClient:
                         with self.cv:
                             self.ready_data[response.req_id] = response
                             self.cv.notify_all()
+                return
             except grpc.RpcError as e:
-                with self.cv:
-                    self._in_shutdown = True
-                    self.cv.notify_all()
                 if e.code() == grpc.StatusCode.CANCELLED:
                     # Gracefully shutting down
-                    logger.info("Data channel cancelled")
+                    self._shutdown()
                     return
                 elif e.code() in (grpc.StatusCode.UNAVAILABLE,
                                 grpc.StatusCode.RESOURCE_EXHAUSTED):
@@ -101,10 +99,18 @@ class DataClient:
                 else:
                     logger.exception(
                         "Got Error from data channel:")
-                self.client_worker._connect_grpc_channel()
-                if not self.client_worker.is_connected():
-                    logger.info("Reconnection failed, cancelling logs channel.")
+                try:
+                    self.client_worker._connect_grpc_channel()
+                    continue
+                except ConnectionError:
+                    logger.info("Reconnection failed, cancelling data channel.")
+                    self._shutdown()
                     return
+
+    def _shutdown(self):
+        with self.cv:
+            self._in_shutdown = True
+            self.cv.notify_all()
 
     def close(self) -> None:
         if self.request_queue is not None:

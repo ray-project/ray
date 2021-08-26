@@ -44,6 +44,7 @@ class LogstreamClient:
                     if record.level < 0:
                         self.stdstream(level=record.level, msg=record.msg)
                     self.log(level=record.level, msg=record.msg)
+                return
             except grpc.RpcError as e:
                 if e.code() == grpc.StatusCode.CANCELLED:
                     # Graceful shutdown. We've cancelled our own connection.
@@ -61,8 +62,10 @@ class LogstreamClient:
                     # Some other, unhandled, gRPC error
                     logger.exception(
                         f"Got Error from logger channel: {e}")
-                self.client_worker._connect_grpc_channel()
-                if not self.client_worker.is_connected():
+                try:
+                    self.client_worker._connect_grpc_channel()
+                    continue
+                except ConnectionError:
                     logger.info("Reconnection failed, cancelling logs channel.")
                     return
 
