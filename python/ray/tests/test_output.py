@@ -28,7 +28,7 @@ ray.get(foo.remote("abc", "def"))
     err_str = proc.stderr.read().decode("ascii")
 
     assert out_str.endswith("abc\n"), out_str
-    assert "(foo() pid=" in out_str, out_str
+    assert "(foo pid=" in out_str, out_str
     assert err_str.split("\n")[-2].endswith("def")
 
 

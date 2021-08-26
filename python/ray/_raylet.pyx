@@ -443,7 +443,7 @@ cdef execute_task(
         actor = actor_class.__new__(actor_class)
         worker.actors[actor_id] = actor
         # Record the actor name via :actor_name: magic token in the log file.
-        # This is used for the preefix in driver logs `(actor_repr pid=123) ...`
+        # This is used for the preefix in driver logs `(actor_repr pid=123)...`
         if "__repr__" in actor_class.__ray_actor_class__.__dict__:
             print("{}{}".format(
                 ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor)))
@@ -469,7 +469,8 @@ cdef execute_task(
         function_executor = execution_info.function
         # Record the task name via :task_name: magic token in the log file.
         # This is used for the prefix in driver logs `(task_name pid=123) ...`
-        print("{}{}".format(ray_constants.LOG_PREFIX_TASK_NAME, task_name))
+        print("{}{}".format(
+            ray_constants.LOG_PREFIX_TASK_NAME, task_name.replace("()", "")))
     else:
         actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
