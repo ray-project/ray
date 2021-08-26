@@ -37,12 +37,18 @@ class AsyncGoal:
 
     # TODO: (jiaodong) Setup proper result and exception handling flow later
     def set_result(self, result: Any) -> None:
+        assert not self.done(), "Can only set result once with unset Event"
+        assert self.result is None and self.exception is None, \
+            "Can only set result or exception once on the same AsyncGoal."
+
         self.result = result
-        self.exception = None
         self.event.set()
 
     def set_exception(self, exception: Exception) -> None:
-        self.result = None
+        assert not self.done(), "Can only set result once with unset Event"
+        assert self.result is None and self.exception is None, \
+            "Can only set result or exception once on the same AsyncGoal."
+
         self.exception = exception
         self.event.set()
 
