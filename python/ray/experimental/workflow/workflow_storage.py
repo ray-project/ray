@@ -185,12 +185,7 @@ class WorkflowStorage:
         Returns:
             None
         """
-
-        async def _save_object_ref():
-            data = await obj_ref
-            await self._put(self._key_obj_id(obj_ref.hex()), data)
-
-        return asyncio_run(_save_object_ref())
+        return asyncio_run(_save_object_ref(ref))
 
     def load_object_ref(self, object_id: str) -> ray.ObjectRef:
         """Load the input object ref.
@@ -311,6 +306,11 @@ class WorkflowStorage:
                 args_valid=field_list.args_exists,
                 func_body_valid=field_list.func_body_exists)
 
+    async def _save_object_ref(self, identifier: str, obj_ref: ray.ObjectRef):
+        # TODO (Alex): We should do this in a remote task to exploit locality.
+        data = await obj_ref
+        await self._put(self._key_obj_id(identifier), data)
+
     async def _write_step_inputs(self, step_id: StepID,
                                  inputs: WorkflowData) -> None:
         """Save workflow inputs."""
@@ -319,12 +319,15 @@ class WorkflowStorage:
             # TODO(suquark): in the future we should write to storage directly
             # with plasma store object in memory.
             args_obj = ray.get(inputs.inputs.args)
-        # TODO (Alex): We should write the contents of object refs here.
         save_tasks = [
             self._put(self._key_step_input_metadata(step_id), metadata, True),
             self._put(self._key_step_function_body(step_id), inputs.func_body),
             self._put(self._key_step_args(step_id), args_obj)
         ]
+        save_tasks.extend(
+            self._save_object_ref(obj_id, ref)
+            for obj_id, ref in zip(metadata["object_refs"], inputs.inputs.object_refs)
+        )
         await asyncio.gather(*save_tasks)
 
     def save_subworkflow(self, workflow: Workflow) -> None:

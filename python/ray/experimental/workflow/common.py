@@ -1,5 +1,8 @@
-from enum import Enum, unique
+import base64
+import cloudpickle
 from collections import deque
+from enum import Enum, unique
+import hashlib
 import re
 from typing import Dict, List, Optional, Callable, Set, Iterator, Any
 import unicodedata
@@ -77,6 +80,30 @@ class WorkflowInputs:
     workflow_refs: List[WorkflowRef]
 
 
+@ray.remote
+def hash(obj: Any) -> bytes:
+    """
+    Calculates a sha256 hash of an object.
+    """
+    # TODO (Alex): Ideally we shouldn't let ray serialize obj to begin with.
+    # (1) It would save us an unnecessary serialization/deserialization. (2)
+    # Cloudpickle doesn't isn't always stable, so for some objects (i.e.
+    # functions) this could produce inconsistent results.
+    m = hashlib.sha256()
+    m.update(cloudpickle.dumps(obj))
+    return m.digest()
+
+
+def calculate_identifiers(object_refs: List[ObjectRef]) -> List[str]:
+    """
+    Calculate identifiers for an object ref based on the contents. (i.e. a hash
+    of the contents).
+    """
+    hashes = ray.get([hash.remote(obj) for obj in object_refs])
+    encoded = map(base64.urlsafe_b64encode, hashes)
+    return [encoded_hash.decode("ascii") for encoded_hash in encoded]
+
+
 @dataclass
 class WorkflowData:
     # The workflow step function body.
@@ -91,22 +118,25 @@ class WorkflowData:
     catch_exceptions: bool
     # ray_remote options
     ray_options: Dict[str, Any]
+    # metadata cache
+    _metadata: Dict[str, Any] = None
 
     def to_metadata(self) -> Dict[str, Any]:
-        f = self.func_body
-        return {
-            "name": get_module(f) + "." + get_qualname(f),
-            "step_type": self.step_type,
-            # todo (Alex): Return the relative path of the object, not the
-            # hex of the ref here (or explicitely set the metadata on
-            # recovery instead of calculating it).
-            "object_refs": [r.hex() for r in self.inputs.object_refs],
-            "workflows": [w.id for w in self.inputs.workflows],
-            "max_retries": self.max_retries,
-            "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
-            "catch_exceptions": self.catch_exceptions,
-            "ray_options": self.ray_options,
-        }
+        if not self._metadata:
+            f = self.func_body
+            self._metadata = {
+                "name": get_module(f) + "." + get_qualname(f),
+                "step_type": self.step_type,
+                "object_refs": calculate_identifiers(self.inputs.object_refs),
+                "workflows": [w.id for w in self.inputs.workflows],
+                "max_retries": self.max_retries,
+                "workflow_refs": [
+                    wr.step_id for wr in self.inputs.workflow_refs
+                ],
+                "catch_exceptions": self.catch_exceptions,
+                "ray_options": self.ray_options,
+            }
+        return self._metadata
 
 
 @dataclass
