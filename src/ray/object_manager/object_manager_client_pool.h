@@ -43,7 +43,9 @@ class IObjectManagerClientPool {
   GetOrConnectAllObjectManagerClients() = 0;
 };
 
-/// The object manager client pool implementation. The class is thread-safe.
+/// The object manager client pool implementation. The class is thread-safe if the passed
+/// gcs_client is not shared by multiple threads. (GCS client is currently not
+/// thread-safe).
 class ObjectManagerClientPool : public IObjectManagerClientPool {
  public:
   absl::optional<std::shared_ptr<rpc::ObjectManagerClient>> GetOrConnectByID(
