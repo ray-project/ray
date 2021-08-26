@@ -11,13 +11,13 @@ def get_cli_args():
     parser = argparse.ArgumentParser()
 
     # general args
-    parser.add_argument(
-        "--run", default="PPO", help="The RLlib-registered algorithm to use.")
+    parser.add_argument("--run",
+                        default="PPO",
+                        help="The RLlib-registered algorithm to use.")
     parser.add_argument("--num-cpus", type=int, default=3)
-    parser.add_argument(
-        "--local-mode",
-        action="store_true",
-        help="Init Ray in local mode for easier debugging.")
+    parser.add_argument("--local-mode",
+                        action="store_true",
+                        help="Init Ray in local mode for easier debugging.")
     parser.add_argument(
         "--output-dir",
         default="output_bare_metal_policy",

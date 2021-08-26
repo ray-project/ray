@@ -14,7 +14,6 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
     how the Trajectory View API can be used to
     pass user-specific view requirements to RLlib.
     """
-
     def __init__(self, observation_space, action_space, model_config, *args,
                  **kwargs):
         super().__init__(observation_space, action_space, model_config, *args,
@@ -23,16 +22,11 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
         self.action_space = action_space
         self.state_size = 10
         self.model_config = model_config or {}
-        space = Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=(self.state_size, ),
-            dtype=np.float64)
-        infos_space = Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=(),
-            dtype=np.float64)
+        space = Box(low=-np.inf,
+                    high=np.inf,
+                    shape=(self.state_size, ),
+                    dtype=np.float64)
+        infos_space = Box(low=-np.inf, high=np.inf, shape=(), dtype=np.float64)
         # Set view requirements such that the policy state is held in
         # memory for 2 environment steps.
         self.view_requirements["state_in_0"] = \
@@ -51,7 +45,7 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
                 used_for_compute_actions=True,
                 batch_repeat_value=1)
         # Set view requirements such that the agent infos are written
-        # to the output. 
+        # to the output.
         self.view_requirements["agent_infos"] = \
             ViewRequirement(
                 space=infos_space,
@@ -82,7 +76,7 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
         actions = np.array(
             [self.action_space.sample() for _ in range(batch_size)])
         new_state_batches = list(state_batches[0][0])
-        new_infos = {"state_size": [self.state_size]*batch_size}
+        new_infos = {"state_size": [self.state_size] * batch_size}
         return actions, [new_state_batches], {"agent_infos": new_infos}
 
     @override(Policy)
