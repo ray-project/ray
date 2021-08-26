@@ -28,7 +28,7 @@ You might find that workflows is *lower level* compared to engines such as `AirF
 Concepts
 --------
 
-Workflows provides the *step* and *virtual actor* durable primitives, which correspond respectively to Ray's non-durable tasks and actors.
+Workflows provides the *step* and *virtual actor* durable primitives, which are analogous to Ray's non-durable tasks and actors.
 
 Steps
 ~~~~~
