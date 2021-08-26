@@ -163,7 +163,7 @@ class Client:
         # retrieves and throws it to user code explicitly.
         if len(ready) == 1:
             async_goal_exception = ray.get(ready)[0]
-            if async_goal_exception:
+            if async_goal_exception is not None:
                 raise async_goal_exception
             return True
         else:

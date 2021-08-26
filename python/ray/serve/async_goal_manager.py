@@ -37,9 +37,11 @@ class AsyncGoal:
     # TODO: (jiaodong) Setup proper result and exception handling flow later
     def set_result(self, result: Any) -> None:
         self.result = result
+        self.exception = None
         self.event.set()
 
     def set_exception(self, exception: Exception) -> None:
+        self.result = None
         self.exception = exception
         self.event.set()
 
@@ -84,8 +86,7 @@ class AsyncGoalManager:
         if goal_id is None:
             goal_id = uuid4()
 
-        self._pending_goals[
-            goal_id] = AsyncGoal(goal_id, asyncio.Event())
+        self._pending_goals[goal_id] = AsyncGoal(goal_id, asyncio.Event())
 
         return goal_id
 
@@ -132,12 +133,12 @@ class AsyncGoalManager:
         start = time.time()
         if goal_id not in self._pending_goals:
             logger.debug(f"Goal {goal_id} not found")
-            return
+            return None
 
         async_goal = self._pending_goals[goal_id]
         await async_goal.event.wait()
         logger.debug(
             f"Waiting for goal {goal_id} took {time.time() - start} seconds")
 
-        if async_goal.exception:
+        if async_goal.exception is not None:
             return async_goal.exception

@@ -711,12 +711,6 @@ class BackendState:
         new_goal_id = self._goal_manager.create_goal()
 
         if backend_info is not None:
-            # Keep a copy of previous backend info in case goal failed to
-            # complete to initiate rollback
-            if backend_tag in self._backend_metadata:
-                self._backend_matadata_backup[
-                    backend_tag] = self._backend_metadata[backend_tag]
-
             self._backend_metadata[backend_tag] = backend_info
             self._target_replicas[
                 backend_tag] = backend_info.backend_config.num_replicas
@@ -734,7 +728,13 @@ class BackendState:
             self._target_replicas[backend_tag] = 0
 
         self._backend_goals[backend_tag] = new_goal_id
-
+        logger.debug(
+            f"Set backend goal for {backend_tag} with version "
+            f"{backend_info if backend_info is None else backend_info.version}"
+        )
+        logger.debug(
+            f"new_goal_id: {new_goal_id}, existing_goal_id: {existing_goal_id}"
+        )
         return new_goal_id, existing_goal_id
 
     def deploy_backend(self, backend_tag: BackendTag, backend_info: BackendInfo
@@ -752,6 +752,10 @@ class BackendState:
         # Ensures this method is idempotent.
         existing_info = self._backend_metadata.get(backend_tag)
         if existing_info is not None:
+            # Keep a copy of previous backend info in case goal failed to
+            # complete to initiate rollback
+            self._backend_matadata_backup[
+                backend_tag] = self._backend_metadata[backend_tag]
             # Redeploying should not reset the deployment's start time.
             backend_info.start_time_ms = existing_info.start_time_ms
 
@@ -796,6 +800,8 @@ class BackendState:
                 backend_tag].backend_config.\
                 experimental_graceful_shutdown_timeout_s = 0
 
+        # import ipdb
+        # ipdb.set_trace()
         self._checkpoint()
         self._notify_backend_configs_changed(backend_tag)
         if existing_goal_id is not None:
@@ -1015,13 +1021,14 @@ class BackendState:
             # Got to make a call to complete current deploy() goal after
             # start failure threshold reached, while we might still have
             # pending replicas in current goal.
-            if failed_to_start_count >= failed_to_start_threshold:
+            if (failed_to_start_count >= failed_to_start_threshold and
+                failed_to_start_threshold != 0):
                 if running_at_target_version_replica_cnt > 0:
                     # At least one RUNNING replica at target state, partial
                     # success; We can stop tracking constructor failures and
                     # leave it to the controller to fully scale to target
                     # number of replicas and only return as completed once
-                    # reached
+                    # reached target replica count
                     self._replica_constructor_retry_counter[backend_tag] = -1
                 else:
                     failed_goals.append((backend_tag,
@@ -1163,7 +1170,7 @@ class BackendState:
 
         # After observe & shuffle is done with replicas sitting at new state,
         # determine which deployment goals succeeded or failed.
-        (complete_goal_ids, failed_goal_ids) = self._check_completed_goals()
+        complete_goal_ids, failed_goal_ids = self._check_completed_goals()
 
         for backend_tag, goal_id in complete_goal_ids:
             self._goal_manager.complete_goal(goal_id)
@@ -1190,7 +1197,7 @@ class BackendState:
                         f"asynchronously.")
                 )
             else:
-                self.delete_backend(backend_tag)
+                self.delete_backend(backend_tag, force_kill=False)
                 # Got to make sure rollback goal is submitted before marking
                 # user's original deploy() call as successful
                 self._goal_manager.complete_goal(

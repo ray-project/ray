@@ -725,7 +725,7 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
         serve_instance._controller._all_replica_handles.remote())
     assert backend_dict["ConstructorFailureDeploymentOneReplica"] == {}
 
-    # Test failed to deploy with total of 2 replicas
+    # # Test failed to deploy with total of 2 replicas
     @serve.deployment(num_replicas=2)
     class ConstructorFailureDeploymentTwoReplicas:
         def __init__(self):
