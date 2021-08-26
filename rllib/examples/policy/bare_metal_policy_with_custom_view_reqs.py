@@ -11,7 +11,7 @@ from ray.rllib.utils.typing import ModelWeights
 class BareMetalPolicyWithCustomViewReqs(Policy):
     """
     This policy does not much with the state, but shows,
-    how the training# Trajectory View API can be used to
+    how the Trajectory View API can be used to
     pass user-specific view requirements to RLlib.
     """
 
@@ -28,26 +28,46 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
             high=np.inf,
             shape=(self.state_size, ),
             dtype=np.float64)
+        infos_space = Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=(),
+            dtype=np.float64)
         # Set view requirements such that the policy state is held in
         # memory for 2 environment steps.
         self.view_requirements["state_in_0"] = \
-            ViewRequirement("state_out_0",
-                            shift="-2:-1",
-                            used_for_training=False,
-                            used_for_compute_actions=True,
-                            batch_repeat_value=1)
+            ViewRequirement(
+                "state_out_0",
+                shift="-2:-1",
+                used_for_training=False,
+                used_for_compute_actions=True,
+                batch_repeat_value=1)
         self.view_requirements["state_out_0"] = \
             ViewRequirement(
-                    space=space,
-                    used_for_training=False,
-                    used_for_compute_actions=True,
-                    batch_repeat_value=1)
+                space=space,
+                # NOTE: `used_for_training=True` is needed to write the
+                # `state_out_0` to the output.
+                used_for_training=True,
+                used_for_compute_actions=True,
+                batch_repeat_value=1)
+        # Set view requirements such that the agent infos are written
+        # to the output. 
+        self.view_requirements["agent_infos"] = \
+            ViewRequirement(
+                space=infos_space,
+                # NOTE: `used_for_training=True` is needed to write the
+                # `agent_infos` to the output.
+                used_for_training=True,
+                used_for_compute_actions=True,
+                batch_repeat_value=1)
 
     # Set the initial state. This is necessary for starting
     # the policy.
+    @override(Policy)
     def get_initial_state(self):
         return [np.zeros((self.state_size, ), dtype=np.float32)]
 
+    @override(Policy)
     def compute_actions(self,
                         obs_batch=None,
                         state_batches=None,
@@ -62,8 +82,9 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
         actions = np.array(
             [self.action_space.sample() for _ in range(batch_size)])
         new_state_batches = list(state_batches[0][0])
-        return actions, [new_state_batches], {}
+        return actions, [new_state_batches], {'agent_infos': {'state_size': [self.state_size]*batch_size}}
 
+    @override(Policy)
     def compute_actions_from_input_dict(self,
                                         input_dict,
                                         explore=None,
@@ -96,6 +117,8 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
             **kwargs,
         )
 
+    # We do not have a model so there is no learning.
+    @override(Policy)
     def learn_on_batch(self, samples):
         return
 

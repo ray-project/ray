@@ -18,6 +18,10 @@ def get_cli_args():
         "--local-mode",
         action="store_true",
         help="Init Ray in local mode for easier debugging.")
+    parser.add_argument(
+        "--output-dir",
+        default="output_bare_metal_policy",
+        help="Define the output directory for storing results.")
 
     args = parser.parse_args()
     print(f"Running with following CLI args: {args}")
@@ -46,6 +50,8 @@ if __name__ == "__main__":
         "framework": None,
         "log_level": "DEBUG",
         "create_env_on_driver": True,
+        # NOTE: This script stores results.
+        "output": args.output_dir,
     }
 
     # Train the Trainer with our policy.
