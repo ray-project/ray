@@ -169,7 +169,6 @@ def test_wf_in_actor(workflow_start_regular, tmp_path):
     for i in range(0, 60):
         if cnt.read_text() == "4":
             break
-        print(cnt.read_text())
         time.sleep(1)
     assert cnt.read_text() == "4"
     # This means when return from session_start_with_status,
@@ -178,6 +177,56 @@ def test_wf_in_actor(workflow_start_regular, tmp_path):
     lock.release()
     assert ray.get(ret) == "UP"
 
+
+@pytest.mark.parametrize(
+    "workflow_start_regular",
+    [{
+        "num_cpus": 4
+        # We need more CPUs, otherwise 'create()' blocks 'get()'
+    }],
+    indirect=True)
+def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
+    file_lock = [str(tmp_path / str(i)) for i in range(5)]
+    @workflow.virtual_actor
+    class Counter:
+        def __init__(self):
+            self._counter = 0
+
+        def incr(self, n):
+            with FileLock(file_lock[n]):
+                self._counter += 1
+            if n == 0:
+                return self._counter
+            else:
+                return self.incr.step(n - 1)
+
+        @workflow.virtual_actor.readonly
+        def val(self):
+            return self._counter
+
+        def __getstate__(self):
+            return self._counter
+
+        def __setstate__(self, v):
+            self._counter = v
+
+    locks = [FileLock(f) for f in file_lock]
+    for l in locks:
+        l.acquire()
+
+    c = Counter.get_or_create("counter")
+    ray.get(c.ready())
+    final_ret = c.incr.run_async(len(file_lock) - 1)
+    for i in range(0, len(file_lock)):
+        locks[len(file_lock) - i - 1].release()
+        val = c.val.run()
+        for _ in range(0, 60):
+            if val == i + 1:
+                break
+            val = c.val.run()
+            time.sleep(1)
+        assert val == i + 1
+    assert ray.get(final_ret) == 5
 
 if __name__ == "__main__":
     import sys
