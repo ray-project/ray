@@ -677,7 +677,7 @@ class TestRolloutWorker(unittest.TestCase):
             policy_spec=MockPolicy,
             seed=1)
         seeds = ev.foreach_env(lambda env: env.rng_seed)
-        # Make sure all the environments get set a different deterministic seed.
+        # Make sure all environments get a different deterministic seed.
         assert seeds == [1, 2, 3]
         ev.stop()
 

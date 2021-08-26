@@ -92,14 +92,12 @@ def _update_global_seed(policy_config: TrainerConfigDict, seed: int):
         torch.manual_seed(seed)
         # See https://github.com/pytorch/pytorch/issues/47672.
         cuda_version = torch.version.cuda
-        if cuda_version is not None and float(
-            torch.version.cuda) >= 10.2:
+        if cuda_version is not None and float(torch.version.cuda) >= 10.2:
             os.environ["CUBLAS_WORKSPACE_CONFIG"] = "4096:8"
         else:
             from distutils.version import LooseVersion
 
-            if LooseVersion(
-                torch.__version__) >= LooseVersion("1.8.0"):
+            if LooseVersion(torch.__version__) >= LooseVersion("1.8.0"):
                 # Not all Operations support this.
                 torch.use_deterministic_algorithms(True)
             else:
@@ -114,8 +112,8 @@ def _update_global_seed(policy_config: TrainerConfigDict, seed: int):
         tf1.set_random_seed(seed)
 
 
-def _update_env_seed(
-    env: EnvType, seed: int, worker_idx: int, vector_idx: int):
+def _update_env_seed(env: EnvType, seed: int, worker_idx: int,
+                     vector_idx: int):
     """Set a deterministic random seed on environment.
 
     TODO: does remote envs have seed() func?

@@ -52,6 +52,7 @@ class MockEnv2(gym.Env):
     def seed(self, rng_seed):
         self.rng_seed = rng_seed
 
+
 class VectorizedMockEnv(VectorEnv):
     """Vectorized version of the MockEnv.
 
