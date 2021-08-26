@@ -205,12 +205,11 @@ class TuneFailResumeGridTest(unittest.TestCase):
             self._check_after = check_after
 
         def on_step_begin(self, iteration: int, trials: List["Trial"], **info):
-            if not self._checked and self._check_after == 0:
+            if not self._checked and iteration >= self._check_after:
                 for trial in trials:
                     if trial.status == Trial.PENDING:
                         assert trial.resources.cpu == self._expected_new_cpu
                 self._checked = True
-                self._check_after -= 1
 
     def setUp(self):
         self.logdir = tempfile.mkdtemp()
