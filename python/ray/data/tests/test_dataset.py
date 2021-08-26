@@ -186,7 +186,7 @@ def test_tensors(ray_start_regular_shared):
         "schema=<Tensor: shape=(None, 2, 2, 2), dtype=float64>)"), ds
 
 
-def test_npio(ray_start_regular_shared, tmp_path):
+def test_numpy_roundtrip(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_np_dir")
     os.mkdir(path)
     ds = ray.data.range_tensor(10, parallelism=2)
@@ -201,7 +201,7 @@ def test_npio(ray_start_regular_shared, tmp_path):
                        "array([7]), array([8]), array([9])]"), ds.take()
 
 
-def test_read_np_savefile(ray_start_regular_shared, tmp_path):
+def test_numpy_read(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_np_dir")
     os.mkdir(path)
     np.save(

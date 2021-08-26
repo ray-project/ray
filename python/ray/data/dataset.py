@@ -24,7 +24,8 @@ import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata
-from ray.data.datasource import Datasource, CSVDatasource, JSONDatasource
+from ray.data.datasource import (
+    Datasource, CSVDatasource, JSONDatasource, NumpyDatasource)
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
@@ -918,23 +919,11 @@ class Dataset(Generic[T]):
                 files will be written to.
             filesystem: The filesystem implementation to write to.
         """
-
-        if filesystem:
-            raise NotImplementedError
-
-        # TODO(ekl) remove once ported to datasource
-        @ray.remote
-        def numpy_write(write_path: str, block: Block):
-            np.save(open(write_path, "wb"), block)
-
-        refs = [
-            numpy_write.remote(
-                os.path.join(path, f"{self._uuid}_{block_idx:06}.npy"), block)
-            for block_idx, block in enumerate(self._blocks)
-        ]
-
-        # Block until writing is done.
-        ray.get(refs)
+        self.write_datasource(
+            NumpyDatasource(),
+            path=path,
+            uuid=self._uuid,
+            filesystem=filesystem)
 
     def write_datasource(self, datasource: Datasource[T],
                          **write_args) -> None:
