@@ -544,6 +544,38 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     assert sorted(values) == [1, 1, 1, 3, 3, 3]
 
 
+def test_parquet_read_partitioned_with_filter(ray_start_regular_shared,
+                                              tmp_path):
+    df = pd.DataFrame({
+        "one": [1, 1, 1, 3, 3, 3],
+        "two": ["a", "a", "b", "b", "c", "c"]
+    })
+    table = pa.Table.from_pandas(df)
+    pq.write_to_dataset(
+        table,
+        root_path=str(tmp_path),
+        partition_cols=["one"],
+        use_legacy_dataset=False)
+
+    # 2 partitions, 1 empty partition, 1 block/read task
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), parallelism=1, filter=(pa.dataset.field("two") == "a"))
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert len(ds._blocks._blocks) == 1
+    assert sorted(values) == [[1, "a"], [1, "a"]]
+
+    # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
+
+    ds = ray.data.read_parquet(
+        str(tmp_path), parallelism=2, filter=(pa.dataset.field("two") == "a"))
+
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    assert len(ds._blocks._blocks) == 2
+    assert sorted(values) == [[1, "a"], [1, "a"]]
+
+
 def test_parquet_write(ray_start_regular_shared, tmp_path):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
