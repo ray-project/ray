@@ -21,12 +21,10 @@ logger = logging.getLogger(__name__)
 
 
 def check_for_failure(remote_values):
-    """Gets the remote values while handling for worker failures.
+    """Check for actor failure when retrieving the remote values.
 
     Args:
-        remote_values (list): List of object refs representing functions
-            that may fail in the middle of execution. For example, running
-            a SGD training loop in multiple parallel actor calls.
+        remote_values (list): List of object references from Ray actor methods.
 
     Returns:
         Returns Tuple of success boolean and list of workers indexes that fail.
