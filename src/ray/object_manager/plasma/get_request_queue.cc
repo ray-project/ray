@@ -13,6 +13,10 @@ GetRequest::GetRequest(
       is_from_worker(is_from_worker),
       callback(callback),
       timer_(io_context) {
+  std::transform(
+      object_ids.begin(), object_ids.end(),
+      std::inserter(object_satisfied, object_satisfied.end()),
+      [](const ObjectID &object_id) { return std::make_pair(object_id, false); });
   std::unordered_set<ObjectID> unique_ids(object_ids.begin(), object_ids.end());
   num_objects_to_wait_for = unique_ids.size();
 };
@@ -32,6 +36,7 @@ void GetRequestQueue::AddRequest(const std::shared_ptr<ClientInterface> &client,
       // Update the get request to take into account the present object.
       ToPlasmaObject(*entry, &get_req->objects[object_id], /* checksealed */ true);
       get_req->num_satisfied += 1;
+      get_req->object_satisfied[object_id] = true;
     } else {
       // Add a placeholder plasma object to the get request to indicate that the
       // object is not present. This will be parsed by the client. We set the
@@ -125,6 +130,7 @@ void GetRequestQueue::ObjectSealed(const ObjectID &object_id) {
     RAY_CHECK(entry != nullptr);
     ToPlasmaObject(*entry, &get_req->objects[object_id], /* check sealed */ true);
     get_req->num_satisfied += 1;
+    get_req->object_satisfied[object_id] = true;
     // If this get request is done, reply to the client.
     if (get_req->num_satisfied == get_req->num_objects_to_wait_for) {
       get_req->callback(get_req);

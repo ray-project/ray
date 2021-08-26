@@ -30,6 +30,7 @@ struct GetRequest {
   std::shared_ptr<ClientInterface> client;
   /// The object IDs involved in this request. This is used in the reply.
   std::vector<ObjectID> object_ids;
+  std::unordered_map<ObjectID, bool> object_satisfied;
   /// The object information for the objects in this request. This is used in
   /// the reply.
   std::unordered_map<ObjectID, PlasmaObject> objects;

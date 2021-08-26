@@ -196,7 +196,9 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_req) {
     /// NOTE:(MissionToMars) Record that the client is using the object.
     /// This operation is defered when all objects are ready, to make our
     /// code cleaner.
-    AddToClientObjectIds(object_id, get_req->client);
+    if (get_req->object_satisfied[object_id]) {
+      AddToClientObjectIds(object_id, get_req->client);
+    }
     const PlasmaObject &object = get_req->objects[object_id];
     MEMFD_TYPE fd = object.store_fd;
     if (object.data_size != -1 && fds_to_send.count(fd) == 0 && fd.first != INVALID_FD) {
