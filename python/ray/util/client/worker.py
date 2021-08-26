@@ -90,8 +90,6 @@ def reconnect_on_grpc_error(func):
                     # intentional shutdown
                     raise
                 self._connect_grpc_channel()
-                print("SERVER RECONNECTING")
-                print(e)
                 if not self.is_connected():
                     raise
     return f
