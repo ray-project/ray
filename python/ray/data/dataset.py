@@ -1289,12 +1289,25 @@ class Dataset(Generic[T]):
     def to_modin(self) -> "modin.DataFrame":
         """Convert this dataset into a Modin dataframe.
 
+        This works by first converting this dataset into a distributed set of
+        Pandas dataframes (using ``.to_pandas()``). Please see caveats there.
+        Then the individual datarames are used to create the modin DataFrame
+        using 
+        ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
+
+        This is only supported for datasets convertible to Arrow records.
+        This function induces a copy of the data. For zero-copy access to the
+        underlying data, consider using ``.to_arrow()`` or ``.get_blocks()``.
+
         Time complexity: O(dataset size / parallelism)
 
         Returns:
             A Modin dataframe created from this dataset.
         """
-        raise NotImplementedError  # P1
+
+        from modin.distributed.dataframe.pandas.partitions import from_partitions
+        pd_objs = self.to_pandas()
+        return from_partitions(pd_objs, axis=0)
 
     def to_spark(self) -> "pyspark.sql.DataFrame":
         """Convert this dataset into a Spark dataframe.
