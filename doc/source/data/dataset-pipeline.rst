@@ -61,12 +61,12 @@ You can also create a DatasetPipeline from a custom iterator over dataset creato
     import ray
     from ray.data.dataset_pipeline import DatasetPipeline
 
-    # Equivalent to ray.data.range(100).repeat(times=4)
+    # Equivalent to ray.data.range(1000).repeat(times=4)
     source = ray.data.range(1000)
     pipe = DatasetPipeline.from_iterable(
         [lambda: source, lambda: source, lambda: source, lambda: source])
 
-    # Equivalent to ray.data.range(100).pipeline(parallelism=10)
+    # Equivalent to ray.data.range(1000).pipeline(parallelism=10)
     splits = ray.data.range(1000, parallelism=200).split(20)
     pipe = DatasetPipeline.from_iterable([lambda s=s: s for s in splits])
 
