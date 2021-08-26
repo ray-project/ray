@@ -85,7 +85,7 @@ class ParquetDatasource(Datasource[ArrowRow]):
                 if table.num_rows > 0:
                     tables.append(table)
             if len(tables) > 1:
-                table = pa.concat_tables(tables)
+                table = pa.concat_tables(tables, promote=True)
             elif len(tables) == 1:
                 table = tables[0]
             # If len(tables) == 0, all fragments were empty, and we return the
