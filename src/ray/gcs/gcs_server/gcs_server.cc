@@ -26,6 +26,8 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/task_info_handler_impl.h"
+#include "ray/util/event.h"
+#include "ray/util/event_label.h"
 
 namespace ray {
 namespace gcs {
@@ -431,6 +433,12 @@ void GcsServer::InstallEventListeners() {
   gcs_node_manager_->AddNodeRemovedListener(
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
         auto node_id = NodeID::FromBinary(node->node_id());
+        RAY_EVENT(ERROR, EL_RAY_NODE_REMOVED)
+                .WithField("node_id", node_id.Hex())
+                .WithField("ip", node->node_manager_address())
+            << "Node " << node_id << " removed. Address: " << node->node_manager_address()
+            << ":" << node->node_manager_port()
+            << ", Hostname: " << node->node_manager_hostname();
         // All of the related placement groups and actors should be reconstructed when a
         // node is removed from the GCS.
         gcs_resource_manager_->OnNodeDead(node_id);
