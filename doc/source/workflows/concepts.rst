@@ -28,6 +28,8 @@ You might find that workflows is *lower level* compared to engines such as `AirF
 Concepts
 --------
 
+Workflows provides the *step* and *virtual actor* durable primitives, which correspond respectively to Ray's non-durable tasks and actors.
+
 Steps
 ~~~~~
 Steps are functions annotated with the ``@workflow.step`` decorator. Steps are retried on failure, but once a step finishes successfully it will never be run again. Similar to Ray tasks, steps can take other step futures as arguments. Unlike Ray tasks, you are not allowed to call ``ray.get()`` or ``ray.wait()`` on step futures, which ensures recoverability.
