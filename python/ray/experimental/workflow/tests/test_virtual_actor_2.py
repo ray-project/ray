@@ -223,7 +223,7 @@ def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
     ray.get(c.ready())
     final_ret = c.incr.run_async(len(file_lock) - 1)
     for i in range(0, len(file_lock) - 2):
-        locks[-i-1].release()
+        locks[-i - 1].release()
         val = c.val.run()
         for _ in range(0, 60):
             if val == i + 1:
@@ -233,7 +233,7 @@ def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
         assert val == i + 1
 
     fail_flag.touch()
-    locks[1 -len(file_lock)].release()
+    locks[1 - len(file_lock)].release()
     # Fail the pipeline
     with pytest.raises(Exception):
         ray.get(final_ret)
@@ -242,7 +242,7 @@ def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
     workflow.resume("counter")
     # After resume, it'll start form the place where it failed
     for i in range(len(file_lock) - 1, len(file_lock)):
-        locks[-i-1].release()
+        locks[-i - 1].release()
         val = c.val.run()
         for _ in range(0, 60):
             if val == i + 1:
@@ -252,6 +252,7 @@ def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
         assert val == i + 1
 
     assert c.val.run() == 5
+
 
 if __name__ == "__main__":
     import sys
