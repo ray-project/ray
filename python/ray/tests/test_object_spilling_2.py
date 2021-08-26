@@ -502,6 +502,7 @@ def _check_spilled(num_objects_spilled=0):
             return actual_num_objects >= num_objects_spilled
 
         return False
+
     wait_for_condition(ok, timeout=30, retry_interval_ms=5000)
 
 
