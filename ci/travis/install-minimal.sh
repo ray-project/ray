@@ -7,6 +7,7 @@ WORKSPACE_DIR="${ROOT_DIR}/../.."
 MINIMAL_INSTALL=1 PYTHON=3.7 "${WORKSPACE_DIR}/ci/travis/install-dependencies.sh"
 
 # Create new conda env
+conda init
 conda create -y -n minimal python=3.7
 conda activate minimal
 
