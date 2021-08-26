@@ -3,17 +3,19 @@ from ray.job_config import JobConfig
 from ray._private.client_mode_hook import _set_client_hook_status
 from ray._private.client_mode_hook import _explicitly_enable_client_mode
 
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 
 
-def connect(conn_str: str,
-            secure: bool = False,
-            metadata: List[Tuple[str, str]] = None,
-            connection_retries: int = 3,
-            job_config: JobConfig = None,
-            namespace: str = None,
-            *,
-            ignore_version: bool = False) -> Dict[str, Any]:
+def connect(
+        conn_str: str,
+        secure: bool = False,
+        metadata: List[Tuple[str, str]] = None,
+        connection_retries: int = 3,
+        job_config: JobConfig = None,
+        namespace: str = None,
+        *,
+        ignore_version: bool = False,
+        ray_init_kwargs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if ray.is_connected():
         raise RuntimeError("Ray Client is already connected. Maybe you called "
                            'ray.init("ray://<address>") twice by accident?')
@@ -25,14 +27,16 @@ def connect(conn_str: str,
     # TODO(barakmich): https://github.com/ray-project/ray/issues/13274
     # for supporting things like cert_path, ca_path, etc and creating
     # the correct metadata
-    return ray.connect(
+    conn = ray.connect(
         conn_str,
         job_config=job_config,
         secure=secure,
         metadata=metadata,
         connection_retries=connection_retries,
         namespace=namespace,
-        ignore_version=ignore_version)
+        ignore_version=ignore_version,
+        ray_init_kwargs=ray_init_kwargs)
+    return conn
 
 
 def disconnect():

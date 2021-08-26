@@ -6,10 +6,10 @@ import time
 
 import ray
 from ray import ray_constants
-from ray.test_utils import (RayTestTimeoutException, run_string_as_driver,
-                            run_string_as_driver_nonblocking,
-                            init_error_pubsub, get_error_message,
-                            object_memory_usage, wait_for_condition)
+from ray._private.test_utils import (
+    RayTestTimeoutException, run_string_as_driver,
+    run_string_as_driver_nonblocking, init_error_pubsub, get_error_message,
+    object_memory_usage, wait_for_condition)
 
 
 def test_error_isolation(call_ray_start):
@@ -46,7 +46,7 @@ def test_error_isolation(call_ray_start):
     driver_script = """
 import ray
 import time
-from ray.test_utils import (init_error_pubsub, get_error_message)
+from ray._private.test_utils import (init_error_pubsub, get_error_message)
 
 ray.init(address="{}")
 p = init_error_pubsub()
@@ -184,7 +184,7 @@ def test_cleanup_on_driver_exit(call_ray_start):
 import time
 import ray
 import numpy as np
-from ray.test_utils import object_memory_usage
+from ray._private.test_utils import object_memory_usage
 import os
 
 
@@ -235,13 +235,13 @@ def test_drivers_named_actors(call_ray_start):
     # named actor.
     address = call_ray_start
 
-    ray.init(address=address, namespace="")
+    ray.init(address=address, namespace="test")
 
     # Define a driver that creates a named actor then sleeps for a while.
     driver_script1 = """
 import ray
 import time
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="test")
 @ray.remote
 class Counter:
     def __init__(self):
@@ -257,7 +257,7 @@ time.sleep(100)
     driver_script2 = """
 import ray
 import time
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="test")
 while True:
     try:
         counter = ray.get_actor("Counter")

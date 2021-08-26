@@ -53,7 +53,7 @@ class TestSimpleQ(unittest.TestCase):
         config["num_gpus"] = 2
         config["_fake_gpus"] = True
 
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
             trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
             num_iterations = 200
             learnt = False
@@ -100,7 +100,8 @@ class TestSimpleQ(unittest.TestCase):
             vars = policy.get_weights()
             if isinstance(vars, dict):
                 vars = list(vars.values())
-            vars_t = policy.target_q_func_vars
+
+            vars_t = policy.target_model.variables()
             if fw == "tf":
                 vars_t = policy.get_session().run(vars_t)
 

@@ -349,8 +349,6 @@ Each node type is identified by a user-specified key.
                         Ebs:
                             VolumeSize: 100
                 resources: {"CPU": 2}
-                min_workers: 0
-                max_workers: 0
             ray.worker.default:
                 node_config:
                   InstanceType: m5.large
@@ -971,6 +969,8 @@ The minimum number of workers to maintain for this node type regardless of utili
 
 The maximum number of workers to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-workers>`. By default, the number of workers of a node type is unbounded, constrained only by the cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`. (Prior to Ray 1.3.0, the default value for this field was 0.)
 
+Note, for the nodes of type ``head_node_type`` the default number of max workers is 0.
+
 * **Required:** No
 * **Importance:** High
 * **Type:** Integer
@@ -1162,4 +1162,18 @@ Full configuration
     .. group-tab:: GCP
 
         .. literalinclude:: ../../../python/ray/autoscaler/gcp/example-full.yaml
+            :language: yaml
+
+TPU Configuration
+~~~~~~~~~~~~~~~~~
+
+It is possible to use `TPU VMs <https://cloud.google.com/tpu/docs/users-guide-tpu-vm>`_ on GCP. Currently, `TPU pods <https://cloud.google.com/tpu/docs/system-architecture-tpu-vm#pods>`_ (TPUs other than v2-8 and v3-8) are not supported.
+
+Before using a config with TPUs, ensure that the `TPU API is enabled for your GCP project <https://cloud.google.com/tpu/docs/users-guide-tpu-vm#enable_the_cloud_tpu_api>`_.
+
+.. tabs::
+
+    .. group-tab:: GCP
+
+        .. literalinclude:: ../../../python/ray/autoscaler/gcp/tpu.yaml
             :language: yaml

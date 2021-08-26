@@ -1,4 +1,4 @@
-base_image: "anyscale/ray-ml:1.3.0-gpu"
+base_image: "anyscale/ray-ml:pinned-nightly-py37-gpu"
 env_vars: {}
 debian_packages:
   - libglib2.0-0
@@ -13,6 +13,8 @@ python:
     - gym[atari]
     - atari_py
     - pybullet
+    # Pin this to 2.4.3 so it'll work with CUDA=11.0.
+    - tensorflow==2.4.3
   conda_packages: []
 
 post_build_cmds:

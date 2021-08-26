@@ -45,7 +45,7 @@
     ]
   commands:
     # Build the debug wheels
-    - RAY_DEBUG_BUILD=1 LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - RAY_DEBUG_BUILD=debug LINUX_WHEELS=1 ./ci/travis/ci.sh build
     # Upload the wheels.
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
@@ -54,6 +54,26 @@
     - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
     # Upload to latest directory.
     - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
+
+# Not working now.
+# - label: ":ferris_wheel: ASAN Wheels"
+#   conditions:
+#     [
+#         "RAY_CI_LINUX_WHEELS_AFFECTED",
+#         "RAY_CI_JAVA_AFFECTED",
+#         "RAY_CI_STREAMING_JAVA_AFFECTED",
+#     ]
+#   commands:
+#     # Build the asan wheels
+#     - RAY_DEBUG_BUILD=asan LINUX_WHEELS=1 ./ci/travis/ci.sh build
+#     # Upload the wheels.
+#     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
+#     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+#     - pip install -q docker aws_requests_auth boto3
+#     # Upload to branch directory.
+#     - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
+#     # Upload to latest directory.
+#     - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
 
 - label: ":docker: Build Images: py36"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -130,6 +150,27 @@
       --test_tag_filters=-flaky
       -- //:all -//:core_worker_test
 
+- label: ":cpp: Tests (UBSAN)"
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bazel test --config=ci --config=ubsan $(./scripts/bazel_export_options)
+      --build_tests_only
+      --jobs=2
+      --test_tag_filters=-flaky
+      -- //:all -//:core_worker_test -//:logging_test
+
+- label: ":cpp: Tests (TSAN)"
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bazel test --config=ci --config=tsan $(./scripts/bazel_export_options)
+      --build_tests_only
+      --jobs=2
+      --test_tag_filters=-flaky
+      -- //:all -//:core_worker_test -//:event_test -//:gcs_actor_manager_test
+      -//:gcs_placement_group_manager_test -//:gcs_placement_group_scheduler_test
+      -//:gcs_server_rpc_test -//:gcs_server_test -//:global_state_accessor_test
+      -//:metric_exporter_client_test -//:stats_test -//:worker_pool_test
+
 - label: ":serverless: Dashboard + Serve Tests"
   conditions:
     [
@@ -195,9 +236,23 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - pip uninstall -y ray
-    - RAY_DEBUG_BUILD=1 ./ci/travis/ci.sh build
+    - RAY_DEBUG_BUILD=debug ./ci/travis/ci.sh build
     - bazel test --config=ci-debug $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,-jenkins_only,debug_tests,-flaky
+      python/ray/tests/...
+- label: ":core: (ASAN tests)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci --config=asan $(./scripts/bazel_export_options)
+      --config=asan-buildkite
+      --test_tag_filters=-kubernetes,-jenkins_only,asan_tests,-flaky
+      --test_env=CONDA_EXE
+      --test_env=CONDA_PYTHON_EXE
+      --test_env=CONDA_SHLVL
+      --test_env=CONDA_PREFIX
+      --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
 - label: ":python: (Worker In Container)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -241,7 +296,7 @@
       --build_tests_only
       --test_tag_filters=learning_tests_torch,-flaky
       rllib/...
-- label: ":brain: RLlib: Quick Agent train.py runs"
+- label: ":brain: RLlib: Quick Agent train.py runs (TODO: obsolete)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -252,7 +307,19 @@
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
-- label: ":brain: RLlib: everything else"
+- label: ":brain: RLlib: Trainer Tests"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    # Test all tests in the `agents` (soon to be "trainers") dir:
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=trainers_dir,-flaky
+      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
+      rllib/...
+
+- label: ":brain: RLlib: Everything else (env-, evaluation-, ... dirs)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -261,7 +328,7 @@
     # "learning_tests|quick_train|examples|tests_dir".
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=-learning_tests_tf,-learning_tests_torch,-quick_train,-examples,-tests_dir,-flaky
+      --test_tag_filters=-learning_tests_tf,-learning_tests_torch,-quick_train,-examples,-tests_dir,-trainers_dir,-flaky
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 

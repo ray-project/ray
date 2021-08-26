@@ -9,7 +9,8 @@ import json
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.test_utils import init_error_pubsub
+from ray._private.test_utils import init_error_pubsub
+import ray._private.gcs_utils as gcs_utils
 
 
 @pytest.fixture
@@ -34,7 +35,7 @@ def get_default_fixture_ray_kwargs():
         "num_cpus": 1,
         "object_store_memory": 150 * 1024 * 1024,
         "dashboard_port": None,
-        "namespace": "",
+        "namespace": "default_test_namespace",
         "_system_config": system_config,
     }
     return ray_kwargs
@@ -261,7 +262,7 @@ def error_pubsub():
 def log_pubsub():
     p = ray.worker.global_worker.redis_client.pubsub(
         ignore_subscribe_messages=True)
-    log_channel = ray.gcs_utils.LOG_FILE_CHANNEL
+    log_channel = gcs_utils.LOG_FILE_CHANNEL
     p.psubscribe(log_channel)
     yield p
     p.close()
