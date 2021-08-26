@@ -453,7 +453,11 @@ def from_modin(df: "modin.DataFrame", *,
     Returns:
         Dataset holding Arrow records read from the dataframe.
     """
-    raise NotImplementedError  # P1
+    from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
+
+    parts = unwrap_partitions(df, axis=0)
+    return from_pandas(parts, parallelism=parallelism)
+
 
 
 @PublicAPI(stability="beta")

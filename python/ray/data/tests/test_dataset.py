@@ -1081,6 +1081,15 @@ def test_to_dask(ray_start_regular_shared):
     assert df.equals(ddf.compute())
 
 
+def test_from_modin(ray_start_regular_shared):
+    import modin.pandas as mopd
+    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))}, )
+    modf = mopd.DataFrame(df)
+    ds = ray.data.from_modin(modf)
+    dfds = pd.concat(ray.get(ds.to_pandas()))
+    assert df.equals(dfds)
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_to_tf(ray_start_regular_shared, pipelined):
     import tensorflow as tf
