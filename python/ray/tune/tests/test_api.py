@@ -1639,6 +1639,24 @@ class ApiTestFast(unittest.TestCase):
         self.assertIsInstance(capture["search_alg"], BasicVariantGenerator)
         self.assertIsInstance(capture["scheduler"], AsyncHyperBandScheduler)
 
+
+class MaxConcurrentTrialsTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(
+            num_cpus=4, num_gpus=0, local_mode=False, include_dashboard=False)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+        _register_all()
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
     def testMaxConcurrentTrials(self):
         def train(config):
             tune.report(metric=1)
