@@ -475,10 +475,17 @@ def run(
                 raise ValueError(
                     "`max_concurrent_trials` must be greater or equal than 1, "
                     f"got {max_concurrent_trials}.")
-            search_alg = ConcurrencyLimiter(
-                search_alg, max_concurrent=max_concurrent_trials)
+            if isinstance(search_alg, Searcher):
+                search_alg = ConcurrencyLimiter(
+                    search_alg, max_concurrent=max_concurrent_trials)
+            elif not is_local_mode:
+                logger.warning(
+                    "You have passed a `SearchGenerator` instance as a "
+                    "`search_alg`, but `max_concurrent_trials` requires a "
+                    "`Searcher` instance`. `max_concurrent_trials` "
+                    "will be ignored.")
 
-    if issubclass(type(search_alg), Searcher):
+    if isinstance(search_alg, Searcher):
         search_alg = SearchGenerator(search_alg)
 
     if config and not search_alg.set_search_properties(metric, mode, config):
