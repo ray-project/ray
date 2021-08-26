@@ -138,6 +138,7 @@ NIGHTLY_TESTS = {
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
         SmokeTest("learning_tests"),
         "multi_gpu_learning_tests",
+        "multi_gpu_with_lstm_learning_tests",
         # We'll have these as per-PR tests soon.
         # "example_scripts_on_gpu_tests",
         SmokeTest("stress_tests"),
@@ -338,7 +339,8 @@ def ask_configuration():
         ] + [
             "export AUTOMATIC=1",
             "python3 -m pip install --user pyyaml",
-            ("python3 release/.buildkite/build_pipeline.py "
+            "git clone -b $${RAY_TEST_BRANCH} $${RAY_TEST_REPO} ~/ray",
+            ("python3 ~/ray/release/.buildkite/build_pipeline.py "
              "| buildkite-agent pipeline upload"),
         ],
         "label": ":pipeline: Again",

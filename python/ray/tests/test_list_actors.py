@@ -93,7 +93,7 @@ def test_list_named_actors_detached(ray_start_regular):
 
     driver_script = """
 import ray
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="default_test_namespace")
 
 @ray.remote
 class A:
