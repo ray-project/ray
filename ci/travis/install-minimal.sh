@@ -7,9 +7,12 @@ WORKSPACE_DIR="${ROOT_DIR}/../.."
 MINIMAL_INSTALL=1 PYTHON=3.7 "${WORKSPACE_DIR}/ci/travis/install-dependencies.sh"
 
 # Create new conda env
-source /opt/miniconda/etc/profile.d/conda.sh
 conda create -y -n minimal python=3.7
+# source /opt/miniconda/etc/profile.d/conda.sh
+eval "$(conda shell.bash hook)"
 conda activate minimal
+
+python -W ignore -m pip config -q --user set global.quiet False
 
 # Install Ray wheels
 python -m pip install -e "${WORKSPACE_DIR}/python/"
