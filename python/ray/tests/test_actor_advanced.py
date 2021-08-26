@@ -777,7 +777,7 @@ def test_detached_actor_cleanup(ray_start_regular):
 import ray
 import ray._private.gcs_utils as gcs_utils
 import time
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="default_test_namespace")
 
 @ray.remote
 class DetachedActor:
