@@ -1117,7 +1117,7 @@ class BackendState:
                     transitioned_backend_tags.add(backend_tag)
                 elif start_status == ReplicaStartupStatus.FAILED:
                     # Replica reconfigure (deploy / upgrade) failed
-                    if self._replica_constructor_retry_counter[backend_tag] >= 0: #noqa: E501 line too long
+                    if self._replica_constructor_retry_counter[backend_tag] >= 0:  # noqa: E501 line too long
                         # Increase startup failure counter if we're tracking it
                         self._replica_constructor_retry_counter[
                             backend_tag] += 1
