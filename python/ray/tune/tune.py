@@ -441,6 +441,12 @@ def run(
         from ray.tune.suggest import create_searcher
         search_alg = create_searcher(search_alg)
 
+    # if local_mode=True is set during ray.init().
+    is_local_mode = ray.worker._mode() == ray.worker.LOCAL_MODE
+
+    if is_local_mode:
+        max_concurrent_trials = 1
+
     if isinstance(scheduler, str):
         # importing at top level causes a recursive dependency
         from ray.tune.schedulers import create_scheduler

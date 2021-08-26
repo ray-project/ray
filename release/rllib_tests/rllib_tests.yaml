@@ -1,3 +1,4 @@
+# Heavy learning tests (Atari and HalfCheetah) for major algos.
 - name: learning_tests
   cluster:
     app_config: app_config.yaml
@@ -5,17 +6,40 @@
 
   run:
     timeout: 14400
-    script: python learning_tests/run_learning_tests.py
+    script: python learning_tests/run.py
 
-- name: example_scripts_on_gpu_tests
+# 2-GPU learning tests (CartPole and RepeatAfterMeEnv) for major algos.
+- name: multi_gpu_learning_tests
   cluster:
     app_config: app_config.yaml
-    compute_template: 1gpu_4cpus.yaml
+    compute_template: 8gpus_96cpus.yaml
 
   run:
     timeout: 7200
-    script: bash unit_gpu_tests/run.sh
+    script: python multi_gpu_learning_tests/run.py
 
+# 2-GPU learning tests (StatelessCartPole) + LSTM=True for major algos
+# (that support RNN models).
+- name: multi_gpu_with_lstm_learning_tests
+  cluster:
+    app_config: app_config.yaml
+    compute_template: 8gpus_96cpus.yaml
+
+  run:
+    timeout: 7200
+    script: python multi_gpu_with_lstm_learning_tests/run.py
+
+# We'll have these as per-PR tests soon.
+# - name: example_scripts_on_gpu_tests
+#  cluster:
+#    app_config: app_config.yaml
+#    compute_template: 1gpu_4cpus.yaml
+
+#  run:
+#    timeout: 7200
+#    script: bash unit_gpu_tests/run.sh
+
+# IMPALA large machine stress tests (Atari).
 - name: stress_tests
   cluster:
     app_config: app_config.yaml

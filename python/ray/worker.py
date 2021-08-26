@@ -12,13 +12,12 @@ import sys
 import threading
 import time
 import traceback
-from typing import Any, Dict, List, Iterator
+from typing import Any, Dict, List, Optional, Iterator
 
 # Ray modules
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 import ray.cloudpickle as pickle
-import ray.gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray.node
 import ray.job_config
@@ -26,6 +25,7 @@ import ray._private.parameter
 import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
+import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
 import ray._private.runtime_env as runtime_env_pkg
 import ray._private.import_thread as import_thread
@@ -42,7 +42,7 @@ from ray import (
     ObjectRef,
     Language,
 )
-from ray import profiling
+import ray._private.profiling as profiling
 
 from ray.exceptions import (
     RaySystemError,
@@ -433,7 +433,7 @@ class Worker:
         """
         pubsub_client = self.redis_client.pubsub(
             ignore_subscribe_messages=True)
-        pubsub_client.subscribe(ray.gcs_utils.LOG_FILE_CHANNEL)
+        pubsub_client.subscribe(gcs_utils.LOG_FILE_CHANNEL)
         localhost = services.get_node_ip_address()
         try:
             # Keep track of the number of consecutive log messages that have
@@ -1049,7 +1049,7 @@ def custom_excepthook(type, value, tb):
                                                      "worker_id"):
         error_message = "".join(traceback.format_tb(tb))
         worker_id = global_worker.worker_id
-        worker_type = ray.gcs_utils.DRIVER
+        worker_type = gcs_utils.DRIVER
         worker_info = {"exception": error_message}
 
         ray.state.state._check_connected()
@@ -1176,7 +1176,7 @@ def listen_error_messages_raylet(worker, threads_stopped):
 
     # Really we should just subscribe to the errors for this specific job.
     # However, currently all errors seem to be published on the same channel.
-    error_pubsub_channel = ray.gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+    error_pubsub_channel = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
     worker.error_message_pubsub_client.psubscribe(error_pubsub_channel)
 
     try:
@@ -1196,9 +1196,8 @@ def listen_error_messages_raylet(worker, threads_stopped):
             if msg is None:
                 threads_stopped.wait(timeout=0.01)
                 continue
-            pubsub_msg = ray.gcs_utils.PubSubMessage.FromString(msg["data"])
-            error_data = ray.gcs_utils.ErrorTableData.FromString(
-                pubsub_msg.data)
+            pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
+            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
             job_id = error_data.job_id
             if job_id not in [
                     worker.current_job_id.binary(),
@@ -1353,6 +1352,8 @@ def connect(node,
         job_config = ray.job_config.JobConfig()
 
     if namespace is not None:
+        ray._private.utils.validate_namespace(namespace)
+
         # The namespace field of job config may have already been set in code
         # paths such as the client.
         job_config.set_ray_namespace(namespace)
@@ -1666,7 +1667,7 @@ def put(value, *, _owner=None):
     elif isinstance(_owner, ray.actor.ActorHandle):
         # Ensure `ray.state.state.global_state_accessor` is not None
         ray.state.state._check_connected()
-        owner_address = ray.gcs_utils.ActorTableData.FromString(
+        owner_address = gcs_utils.ActorTableData.FromString(
             ray.state.state.global_state_accessor.get_actor_info(
                 _owner._actor_id)).address
         if len(owner_address.worker_id) == 0:
@@ -1797,7 +1798,7 @@ def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
 
 @PublicAPI
 @client_mode_hook
-def get_actor(name: str, namespace: str = None):
+def get_actor(name: str, namespace: Optional[str] = None):
     """Get a handle to a named actor.
 
     Gets a handle to an actor with the given name. The actor must
@@ -1817,6 +1818,10 @@ def get_actor(name: str, namespace: str = None):
     """
     if not name:
         raise ValueError("Please supply a non-empty value to get_actor")
+
+    if namespace is not None:
+        ray._private.utils.validate_namespace(namespace)
+
     worker = global_worker
     worker.check_connected()
     return worker.core_worker.get_named_actor_handle(name, namespace or "")

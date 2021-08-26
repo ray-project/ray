@@ -8,7 +8,7 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 
 import ray
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 from ray.util.sgd.torch import TorchTrainer
 from ray.util.sgd.torch.worker_group import RemoteWorkerGroup
 from ray.util.sgd.torch.training_operator import TrainingOperator

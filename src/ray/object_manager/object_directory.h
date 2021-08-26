@@ -46,9 +46,9 @@ using OnLocationsFound = std::function<void(
     const ray::ObjectID &object_id, const std::unordered_set<ray::NodeID> &,
     const std::string &, const NodeID &, size_t object_size)>;
 
-class ObjectDirectoryInterface {
+class IObjectDirectory {
  public:
-  virtual ~ObjectDirectoryInterface() {}
+  virtual ~IObjectDirectory() {}
 
   /// Lookup how to connect to a remote object manager.
   ///
@@ -134,61 +134,6 @@ class ObjectDirectoryInterface {
   ///
   /// \return string.
   virtual std::string DebugString() const = 0;
-};
-
-/// Ray ObjectDirectory declaration.
-class ObjectDirectory : public ObjectDirectoryInterface {
- public:
-  /// Create an object directory.
-  ///
-  /// \param io_service The event loop to dispatch callbacks to. This should
-  /// usually be the same event loop that the given gcs_client runs on.
-  /// \param gcs_client A Ray GCS client to request object and node
-  /// information from.
-  ObjectDirectory(instrumented_io_context &io_service,
-                  std::shared_ptr<gcs::GcsClient> &gcs_client);
-
-  virtual ~ObjectDirectory() {}
-
-  void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
-
-  std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const override;
-
-  void HandleNodeRemoved(const NodeID &node_id) override;
-
-  /// ObjectDirectory should not be copied.
-  RAY_DISALLOW_COPY_AND_ASSIGN(ObjectDirectory);
-
- protected:
-  /// Callbacks associated with a call to GetLocations.
-  struct LocationListenerState {
-    /// The callback to invoke when object locations are found.
-    std::unordered_map<UniqueID, OnLocationsFound> callbacks;
-    /// The current set of known locations of this object.
-    std::unordered_set<NodeID> current_object_locations;
-    /// The location where this object has been spilled, if any.
-    std::string spilled_url = "";
-    // The node id that spills the object to the disk.
-    // It will be Nil if it uses a distributed external storage.
-    NodeID spilled_node_id = NodeID::Nil();
-    /// The size of the object.
-    size_t object_size = 0;
-    /// This flag will get set to true if received any notification of the object.
-    /// It means current_object_locations is up-to-date with GCS. It
-    /// should never go back to false once set to true. If this is true, and
-    /// the current_object_locations is empty, then this means that the object
-    /// does not exist on any nodes due to eviction or the object never getting created.
-    bool subscribed;
-    /// The address of the owner.
-    rpc::Address owner_address;
-  };
-
-  /// Reference to the event loop.
-  instrumented_io_context &io_service_;
-  /// Reference to the gcs client.
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// Info about subscribers to object locations.
-  std::unordered_map<ObjectID, LocationListenerState> listeners_;
 };
 
 }  // namespace ray

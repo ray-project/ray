@@ -250,7 +250,6 @@ class DatasetPipeline(Generic[T]):
         return DatasetPipeline(self._base_iterable, self._stages + [fn],
                                self._length, self._progress_bars)
 
-    @DeveloperAPI
     @staticmethod
     def from_iterable(iterable: Iterable[Callable[[], Dataset[T]]],
                       ) -> "DatasetPipeline[T]":

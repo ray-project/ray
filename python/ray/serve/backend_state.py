@@ -1,7 +1,7 @@
 import math
 import time
 from abc import ABC
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from collections.abc import Iterable
 from enum import Enum
 import os
@@ -14,7 +14,7 @@ from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
                               ReplicaTag)
 from ray.serve.config import BackendConfig
-from ray.serve.constants import RESERVED_VERSION_TAG
+from ray.serve.constants import MAX_NUM_DELETED_DEPLOYMENTS
 from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
@@ -114,7 +114,8 @@ class ActorReplicaWrapper:
                 **backend_info.replica_config.ray_actor_options).remote(
                     self._backend_tag, self._replica_tag,
                     backend_info.replica_config.init_args,
-                    backend_info.backend_config, self._controller_name)
+                    backend_info.backend_config, self._controller_name,
+                    self._detached)
 
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
             backend_info.backend_config.user_config)
@@ -185,8 +186,12 @@ class BackendVersion:
         if code_version is not None and not isinstance(code_version, str):
             raise TypeError(
                 f"code_version must be str, got {type(code_version)}.")
-
-        self.code_version = code_version
+        if code_version is None:
+            self.unversioned = True
+            self.code_version = get_random_letters()
+        else:
+            self.unversioned = False
+            self.code_version = code_version
         self.user_config_hash = self._hash_user_config(user_config)
         self._hash = hash((self.code_version, self.user_config_hash))
 
@@ -539,6 +544,8 @@ class BackendState:
         self._goal_manager = goal_manager
         self._replicas: Dict[BackendTag, ReplicaStateContainer] = dict()
         self._backend_metadata: Dict[BackendTag, BackendInfo] = dict()
+        self._deleted_backend_metadata: Dict[BackendTag,
+                                             BackendInfo] = OrderedDict()
         self._target_replicas: Dict[BackendTag, int] = defaultdict(int)
         self._backend_goals: Dict[BackendTag, GoalId] = dict()
         self._target_versions: Dict[BackendTag, BackendVersion] = dict()
@@ -547,7 +554,8 @@ class BackendState:
 
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
-            (self._replicas, self._backend_metadata, self._target_replicas,
+            (self._replicas, self._backend_metadata,
+             self._deleted_backend_metadata, self._target_replicas,
              self._target_versions,
              self._backend_goals) = cloudpickle.loads(checkpoint)
 
@@ -588,7 +596,8 @@ class BackendState:
         self._kv_store.put(
             CHECKPOINT_KEY,
             cloudpickle.dumps(
-                (self._replicas, self._backend_metadata, self._target_replicas,
+                (self._replicas, self._backend_metadata,
+                 self._deleted_backend_metadata, self._target_replicas,
                  self._target_versions, self._backend_goals)))
 
     def _notify_backend_configs_changed(
@@ -621,18 +630,28 @@ class BackendState:
                 list(replica_dict.values()),
             )
 
-    def get_backend_configs(
-            self,
-            filter_tag: Optional[BackendTag] = None,
-    ) -> Dict[BackendTag, BackendConfig]:
+    def get_backend_configs(self,
+                            filter_tag: Optional[BackendTag] = None,
+                            include_deleted: Optional[bool] = False
+                            ) -> Dict[BackendTag, BackendConfig]:
+        metadata = self._backend_metadata.copy()
+        if include_deleted:
+            metadata.update(self._deleted_backend_metadata)
         return {
             tag: info.backend_config
-            for tag, info in self._backend_metadata.items()
+            for tag, info in metadata.items()
             if filter_tag is None or tag == filter_tag
         }
 
-    def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
-        return self._backend_metadata.get(backend_tag)
+    def get_backend(self,
+                    backend_tag: BackendTag,
+                    include_deleted: Optional[bool] = False
+                    ) -> Optional[BackendInfo]:
+        if not include_deleted:
+            return self._backend_metadata.get(backend_tag)
+        else:
+            return self._backend_metadata.get(
+                backend_tag) or self._deleted_backend_metadata.get(backend_tag)
 
     def _set_backend_goal(self, backend_tag: BackendTag,
                           backend_info: Optional[BackendInfo]) -> None:
@@ -652,14 +671,8 @@ class BackendState:
             self._backend_metadata[backend_tag] = backend_info
             self._target_replicas[
                 backend_tag] = backend_info.backend_config.num_replicas
-
-            if backend_info.version is not None:
-                code_version = backend_info.version
-            else:
-                code_version = get_random_letters()
-
             self._target_versions[backend_tag] = BackendVersion(
-                code_version,
+                backend_info.version,
                 user_config=backend_info.backend_config.user_config)
 
         else:
@@ -687,18 +700,9 @@ class BackendState:
             # Redeploying should not reset the deployment's start time.
             backend_info.start_time_ms = existing_info.start_time_ms
 
-            # Old codepath. We use RESERVED_VERSION_TAG to distinguish that
-            # we shouldn't use versions at all to determine redeployment
-            # because `None` is used to indicate always redeploying.
-            if backend_info.version == RESERVED_VERSION_TAG:
-                if (existing_info.backend_config == backend_info.backend_config
-                        and existing_info.replica_config ==
-                        backend_info.replica_config):
-                    return self._backend_goals.get(backend_tag, None), False
-            # New codepath: treat version as ground truth for implementation.
-            elif (existing_info.backend_config == backend_info.backend_config
-                  and backend_info.version is not None
-                  and existing_info.version == backend_info.version):
+            if (existing_info.backend_config == backend_info.backend_config
+                    and backend_info.version is not None
+                    and existing_info.version == backend_info.version):
                 return self._backend_goals.get(backend_tag, None), False
 
         if backend_tag not in self._replicas:
@@ -706,6 +710,9 @@ class BackendState:
 
         new_goal_id, existing_goal_id = self._set_backend_goal(
             backend_tag, backend_info)
+
+        if backend_tag in self._deleted_backend_metadata:
+            del self._deleted_backend_metadata[backend_tag]
 
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
@@ -745,12 +752,6 @@ class BackendState:
         This includes both explicit code version updates and changes to the
         user_config.
         """
-        # NOTE(edoakes): this short-circuits when using the legacy
-        # `create_backend` codepath -- it can be removed once we deprecate
-        # that as the version should never be None.
-        if target_version is None:
-            return 0
-
         # Short circuit if target replicas is 0 (the backend is being deleted)
         # because this will be handled in the main loop.
         if target_replicas == 0:
@@ -949,6 +950,14 @@ class BackendState:
                         self._backend_goals.pop(backend_tag, None))
 
         for backend_tag in deleted_backends:
+            end_time_ms = int(time.time() * 1000)
+            self._backend_metadata[backend_tag].end_time_ms = end_time_ms
+            if (len(self._deleted_backend_metadata) >
+                    MAX_NUM_DELETED_DEPLOYMENTS):
+                self._deleted_backend_metadata.popitem(last=False)
+            self._deleted_backend_metadata[
+                backend_tag] = self._backend_metadata[backend_tag]
+
             del self._replicas[backend_tag]
             del self._backend_metadata[backend_tag]
             del self._target_replicas[backend_tag]

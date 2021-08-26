@@ -81,8 +81,10 @@ struct Allocation {
       : address(nullptr), size(0), fd(), offset(0), device_num(0), mmap_size(0) {}
 
   friend class PlasmaAllocator;
+  friend class DummyAllocator;
   friend struct ObjectLifecycleManagerTest;
   FRIEND_TEST(ObjectStoreTest, PassThroughTest);
+  FRIEND_TEST(EvictionPolicyTest, Test);
 };
 
 /// This type is used by the Plasma store. It is here because it is exposed to
@@ -103,12 +105,16 @@ class LocalObject {
 
   const Allocation &GetAllocation() const { return allocation; }
 
+  const plasma::flatbuf::ObjectSource &GetSource() const { return source; }
+
  private:
   friend class ObjectStore;
   friend class ObjectLifecycleManager;
   FRIEND_TEST(ObjectStoreTest, PassThroughTest);
   friend struct ObjectLifecycleManagerTest;
   FRIEND_TEST(ObjectLifecycleManagerTest, RemoveReferenceOneRefNotSealed);
+  friend struct ObjectStatsCollectorTest;
+  FRIEND_TEST(EvictionPolicyTest, Test);
 
   /// Allocation Info;
   Allocation allocation;

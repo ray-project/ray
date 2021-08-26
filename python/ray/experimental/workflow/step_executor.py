@@ -8,7 +8,7 @@ from ray._private import signature
 
 from ray.experimental.workflow import workflow_context
 from ray.experimental.workflow import recovery
-from ray.experimental.workflow.storage import DataLoadError
+from ray.experimental.workflow.storage import KeyNotFoundError
 from ray.experimental.workflow.workflow_context import get_step_status_info
 from ray.experimental.workflow import serialization_context
 from ray.experimental.workflow import workflow_storage
@@ -74,7 +74,7 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
             wf_store = workflow_storage.get_workflow_storage()
             try:
                 output = wf_store.load_step_output(workflow_ref.step_id)
-            except DataLoadError:
+            except KeyNotFoundError:
                 current_step_id = workflow_context.get_current_step_id()
                 logger.warning("Failed to get the output of step "
                                f"{workflow_ref.step_id}. Trying to resume it. "
@@ -162,21 +162,21 @@ def execute_workflow(
     if workflow.executed:
         return workflow.result
     workflow_data = workflow.data
-
-    if workflow_data.step_type != StepType.READONLY_ACTOR_METHOD:
-        _record_step_status(workflow.id, WorkflowStatus.RUNNING)
-
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
     persisted_output, volatile_output = _workflow_step_executor.options(
         **workflow_data.ray_options).remote(
             workflow_data.step_type, workflow_data.func_body,
-            workflow_context.get_workflow_step_context(), workflow.id,
+            workflow_context.get_workflow_step_context(), workflow.step_id,
             baked_inputs, outer_most_step_id, workflow_data.catch_exceptions,
             workflow_data.max_retries, last_step_of_workflow)
 
     if not isinstance(persisted_output, WorkflowOutputType):
         raise TypeError("Unexpected return type of the workflow.")
+
+    if workflow_data.step_type != StepType.READONLY_ACTOR_METHOD:
+        _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
+                            [volatile_output])
 
     result = WorkflowExecutionResult(persisted_output, volatile_output)
     workflow._result = result
@@ -250,7 +250,7 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
             else:
                 retry_msg = "The step will be retried."
             logger.error(
-                f"{workflow_context.get_step_name()} failed with error message"
+                f"{workflow_context.get_name()} failed with error message"
                 f" {e}. {retry_msg}")
             exception = e
 
@@ -378,9 +378,11 @@ class _BakedWorkflowInputs:
                                       self.object_refs, self.workflow_refs)
 
 
-def _record_step_status(step_id: "StepID", status: "WorkflowStatus") -> None:
+def _record_step_status(step_id: "StepID",
+                        status: "WorkflowStatus",
+                        outputs: List["ObjectRef"] = []) -> None:
     workflow_id = workflow_context.get_current_workflow_id()
     workflow_manager = get_management_actor()
     ray.get(
         workflow_manager.update_step_status.remote(workflow_id, step_id,
-                                                   status))
+                                                   status, outputs))
