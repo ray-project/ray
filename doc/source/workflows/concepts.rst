@@ -3,11 +3,11 @@
 Workflows: Fast, Durable Workflow Engine
 ========================================
 
-.. tip::
+.. warning::
 
-  Workflows is available as **alpha** in Ray 1.7+. Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
+  Workflows is available as **alpha** in Ray 1.7+. Expect rough corners and for its APIs and storage format to change in subsequent releases. Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
 
-Workflows provides high-performance, *durable* workflows using Ray tasks as the underlying execution engine. It is intended to support both business workflows (e.g., thousands of long-running user workflows as in Cadence), and large-scale workflows (e.g., ML and data pipelines).
+Workflows provides high-performance, *durable* workflows using Ray tasks as the underlying execution engine. It is intended to support both large-scale workflows (e.g., ML and data pipelines) and long-running business workflows (e.g., thousands of user workflows as in Cadence).
 
 .. image:: workflows.svg
 
@@ -23,7 +23,7 @@ Why Workflows?
 
 **Dependency management:** Workflows leverages Ray's runtime environment feature to snapshot the code dependencies of a workflow. This enables management of workflows and virtual actors as code is upgraded over time.
 
-You might find that workflows is *lower level* compared to engines such as `AirFlow <https://www.astronomer.io/blog/airflow-ray-data-science-story>`__ (which can also run on Ray). This means workflows focuses more on core workflow primitives over tools and integrations.
+You might find that workflows is *lower level* compared to engines such as `AirFlow <https://www.astronomer.io/blog/airflow-ray-data-science-story>`__ (which can also run on Ray). This means workflows is focusing more on the core workflow primitives as opposed to tools and integrations.
 
 Concepts
 --------
