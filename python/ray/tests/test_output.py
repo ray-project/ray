@@ -20,6 +20,10 @@ def foo(out_str, err_str):
     print(out_str)
     print(err_str, file=sys.stderr)
 
+@ray.remote
+def bar():
+    print("OK")
+
 ray.get(foo.remote("abc", "def"))
     """
 
@@ -29,6 +33,7 @@ ray.get(foo.remote("abc", "def"))
 
     assert out_str.endswith("abc\n"), out_str
     assert "(foo pid=" in out_str, out_str
+    assert "(bar pid=" in out_str, out_str
     assert err_str.split("\n")[-2].endswith("def")
 
 
