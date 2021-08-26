@@ -1,7 +1,7 @@
 import asyncio
 from dataclasses import dataclass
 import time
-from typing import Any, Awaitable, Dict, Optional
+from typing import Any, Coroutine, Dict, Optional
 from uuid import uuid4
 
 from ray.serve.common import GoalId
@@ -55,9 +55,8 @@ class AsyncGoal:
     def done(self) -> bool:
         return self.event.is_set()
 
-    def wait(self) -> Awaitable:
+    def wait(self) -> Coroutine:
         return self.event.wait()
-
 
 class AsyncGoalManager:
     """
