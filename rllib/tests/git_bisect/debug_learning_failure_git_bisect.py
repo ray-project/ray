@@ -27,6 +27,7 @@ $ python debug_learning_failure_git_bisect.py -f [yaml file] --stop-reward=180
 import argparse
 import importlib
 import json
+import numpy as np
 import os
 import subprocess
 import yaml
@@ -47,6 +48,11 @@ parser.add_argument(
     "--skip-install-ray",
     action="store_true",
     help="If set, do not attempt to re-build ray from source.")
+parser.add_argument(
+    "--num-samples",
+    type=int,
+    default=1,
+    help="The number of samples to run for the given experiment.")
 parser.add_argument(
     "--stop-iters",
     type=int,
@@ -143,14 +149,15 @@ if __name__ == "__main__":
                          "(--stop-timesteps + --stop-time).")
 
     # - Stop ray.
-    # - Uninstall and re-install ray (from source) if required.
-    # - Start ray.
+    # Do this twice to make sure all processes are stopped (older versions of
+    # ray used to not kill everything the first time around).
     try:
         subprocess.run("ray stop".split(" "))
         subprocess.run("ray stop".split(" "))
     except Exception:
         pass
 
+    # - Uninstall and re-install ray (from source) if required.
     # Install ray from the checked out repo.
     if not args.skip_install_ray:
         subprocess.run("sudo apt-get update".split(" "))
@@ -167,8 +174,9 @@ if __name__ == "__main__":
         subprocess.run("pip install -e . --verbose".split(" "))
         os.chdir("../")
 
+    # - Start ray.
     try:
-        subprocess.run("ray start --head --include-dashboard false".split(" "))
+        subprocess.run("ray start --head".split(" "))
     except Exception:
         try:
             subprocess.run("ray stop".split(" "))
@@ -188,21 +196,21 @@ if __name__ == "__main__":
     ray.init()
 
     results = tune.run(run, stop=stop, config=config)
+    last_results = [t.last_result for t in results.trials]
 
-    # Criterium is to have reached some min reward within given
+    # Criterion is to have reached some min reward within given
     # wall time, iters, or timesteps.
     if stop.get("episode_reward_mean") is not None:
-        last_result = results.trials[0].last_result
-        avg_reward = last_result["episode_reward_mean"]
-        if avg_reward < stop["episode_reward_mean"]:
+        max_avg_reward = np.max(
+            [r["episode_reward_mean"] for r in last_results])
+        if max_avg_reward < stop["episode_reward_mean"]:
             raise ValueError("`stop-reward` of {} not reached!".format(
                 stop["episode_reward_mean"]))
-    # Criterium is to have run through n env timesteps in some wall time m
+    # Criterion is to have run through n env timesteps in some wall time m
     # (minimum throughput).
     else:
-        last_result = results.trials[0].last_result
-        total_timesteps = last_result["timesteps_total"]
-        total_time = last_result["time_total_s"]
+        total_timesteps = np.sum([r["timesteps_total"] for r in last_results])
+        total_time = np.sum([r["time_total_s"] for r in last_results])
         desired_speed = stop["timesteps_total"] / stop["time_total_s"]
         actual_speed = total_timesteps / total_time
         # We stopped because we reached the time limit ->
