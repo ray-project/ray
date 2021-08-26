@@ -9,6 +9,7 @@ from ray.data.impl.arrow_block import (ArrowRow, DelegatingArrowBlockBuilder)
 from ray.data.impl.block_list import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
+from ray.data.impl.util import _check_pyarrow_version
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             **reader_args) -> List[ReadTask]:
         """Creates and returns read tasks for a file-based datasource.
         """
+        _check_pyarrow_version()
         import pyarrow as pa
         import numpy as np
 

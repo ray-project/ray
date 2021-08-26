@@ -670,6 +670,17 @@ class TestRolloutWorker(unittest.TestCase):
         assert not hasattr(ev.env, "seed")
         ev.stop()
 
+    def test_multi_env_seed(self):
+        ev = RolloutWorker(
+            env_creator=lambda _: MockEnv2(100),
+            num_envs=3,
+            policy_spec=MockPolicy,
+            seed=1)
+        seeds = ev.foreach_env(lambda env: env.rng_seed)
+        # Make sure all environments get a different deterministic seed.
+        assert seeds == [1, 2, 3]
+        ev.stop()
+
     def sample_and_flush(self, ev):
         time.sleep(2)
         ev.sample()
