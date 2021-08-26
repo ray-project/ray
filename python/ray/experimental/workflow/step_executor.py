@@ -338,6 +338,8 @@ def _workflow_step_executor(
             # execute sub-workflow
             result = execute_workflow(persisted_output, outer_most_step_id,
                                       last_step_of_workflow)
+            # When virtual actor returns a workflow in the method,
+            # the volatile_output and persisted_output will be put together
             persisted_output = result.persisted_output
             volatile_output = result.volatile_output
         elif last_step_of_workflow:
@@ -346,6 +348,8 @@ def _workflow_step_executor(
         _record_step_status(step_id, WorkflowStatus.SUCCESSFUL)
     logger.info(get_step_status_info(WorkflowStatus.SUCCESSFUL))
     if isinstance(volatile_output, Workflow):
+        # This is the case where a step method is called in the virtual actor.
+        # We need to run the method to get the final result.
         assert step_type == StepType.ACTOR_METHOD
         volatile_output = volatile_output.run_async(
             workflow_context.get_current_workflow_id())

@@ -187,6 +187,7 @@ def test_wf_in_actor(workflow_start_regular, tmp_path):
     indirect=True)
 def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
     file_lock = [str(tmp_path / str(i)) for i in range(5)]
+    fail_flag = tmp_path / "fail"
 
     @workflow.virtual_actor
     class Counter:
@@ -196,6 +197,9 @@ def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
         def incr(self, n):
             with FileLock(file_lock[n]):
                 self._counter += 1
+                if fail_flag.exists():
+                    raise Exception()
+
             if n == 0:
                 return self._counter
             else:
@@ -218,8 +222,8 @@ def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
     c = Counter.get_or_create("counter")
     ray.get(c.ready())
     final_ret = c.incr.run_async(len(file_lock) - 1)
-    for i in range(0, len(file_lock)):
-        locks[len(file_lock) - i - 1].release()
+    for i in range(0, len(file_lock) - 2):
+        locks[-i-1].release()
         val = c.val.run()
         for _ in range(0, 60):
             if val == i + 1:
@@ -227,8 +231,27 @@ def test_wf_in_actor_chain(workflow_start_regular, tmp_path):
             val = c.val.run()
             time.sleep(1)
         assert val == i + 1
-    assert ray.get(final_ret) == 5
 
+    fail_flag.touch()
+    locks[1 -len(file_lock)].release()
+    # Fail the pipeline
+    with pytest.raises(Exception):
+        ray.get(final_ret)
+
+    fail_flag.unlink()
+    workflow.resume("counter")
+    # After resume, it'll start form the place where it failed
+    for i in range(len(file_lock) - 1, len(file_lock)):
+        locks[-i-1].release()
+        val = c.val.run()
+        for _ in range(0, 60):
+            if val == i + 1:
+                break
+            val = c.val.run()
+            time.sleep(1)
+        assert val == i + 1
+
+    assert c.val.run() == 5
 
 if __name__ == "__main__":
     import sys
