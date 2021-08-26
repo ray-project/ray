@@ -24,7 +24,7 @@ import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata
-from ray.data.datasource import Datasource, CSVDatasource
+from ray.data.datasource import Datasource, CSVDatasource, JSONDatasource
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
@@ -832,7 +832,8 @@ class Dataset(Generic[T]):
             self,
             path: str,
             *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None) -> None:
+            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+            **pandas_json_args) -> None:
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
@@ -850,27 +851,17 @@ class Dataset(Generic[T]):
             path: The path to the destination root directory, where json
                 files will be written to.
             filesystem: The filesystem implementation to write to.
+            pandas_json_args: These args will be passed to
+                pandas.DataFrame.to_json(), which we use under the hood to
+                write out each Datasets block. These
+                are dict(orient="records", lines=True) by default.
         """
-
-        if filesystem:
-            raise NotImplementedError
-
-        # TODO(ekl) remove once ported to datasource
-        @ray.remote
-        def json_write(write_path: str, block: Block):
-            block = BlockAccessor.for_block(block)
-            logger.debug(
-                f"Writing {block.num_rows()} records to {write_path}.")
-            block.to_pandas().to_json(write_path, orient="records", lines=True)
-
-        refs = [
-            json_write.remote(
-                os.path.join(path, f"{self._uuid}_{block_idx:06}.json"), block)
-            for block_idx, block in enumerate(self._blocks)
-        ]
-
-        # Block until writing is done.
-        ray.get(refs)
+        self.write_datasource(
+            JSONDatasource(),
+            path=path,
+            uuid=self._uuid,
+            filesystem=filesystem,
+            **pandas_json_args)
 
     def write_csv(
             self,
