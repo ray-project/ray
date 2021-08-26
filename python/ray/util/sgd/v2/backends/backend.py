@@ -7,46 +7,18 @@ import ray
 from ray import cloudpickle
 from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
+from ray.types import ObjectRef
 from ray.util.sgd.v2.checkpoint import CheckpointStrategy
 from ray.util.sgd.v2.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     DEFAULT_RESULTS_DIR
 from ray.util.sgd.v2.session import TrainingResultType, TrainingResult
 from ray.util.sgd.v2.session import init_session, get_session, shutdown_session
-from ray.util.sgd.v2.utils import construct_path
+from ray.util.sgd.v2.utils import construct_path, check_for_failure
 from ray.util.sgd.v2.worker_group import WorkerGroup
 
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
-
-
-def check_for_failure(remote_values):
-    """Check for actor failure when retrieving the remote values.
-
-    Args:
-        remote_values (list): List of object references from Ray actor methods.
-
-    Returns:
-        Returns Tuple of success boolean and list of workers indexes that fail.
-    """
-    unfinished = remote_values.copy()
-    dead_worker_indexes = []  # Store the indexes of the failed workers.
-    while len(unfinished) > 0:
-        finished, unfinished = ray.wait(unfinished)
-        # If a failure occurs the ObjectRef will be marked as finished.
-        # Calling ray.get will expose the failure as a RayActorError.
-        for object_ref in finished:
-            try:
-                ray.get(object_ref)
-            except RayActorError as exc:
-                logger.exception(str(exc))
-                failed_actor_rank = remote_values.index(object_ref)
-                logger.info(f"Worker {failed_actor_rank} has failed.")
-                dead_worker_indexes.append(failed_actor_rank)
-    if len(dead_worker_indexes) > 0:
-        return False, dead_worker_indexes
-    else:
-        return True, []
 
 
 class BackendConfig:
@@ -474,10 +446,18 @@ class BackendInterface:
                     backend_config: BackendConfig):
         raise NotImplementedError
 
+    def run_with_failure_handling(self, futures: List[ObjectRef],
+                                  worker_group: WorkerGroup,
+                                  backend_config: BackendConfig):
+        success, failed_workers = check_for_failure(futures)
+        if success:
+            ray.get(futures)
+        else:
+            self.handle_failure(worker_group, failed_workers, backend_config)
+
     def handle_failure(self, worker_group: WorkerGroup,
                        failed_worker_indexes: List[int],
                        backend_config: BackendConfig):
-        # TODO: Handle failures during handling of another failure.
         worker_group.remove_workers(failed_worker_indexes)
         if len(worker_group) > 0:
             self.on_shutdown(worker_group, backend_config)

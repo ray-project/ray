@@ -1,10 +1,43 @@
 from contextlib import closing
+import logging
 import socket
 from pathlib import Path
 from threading import Thread
 from typing import Tuple
 
 import ray
+from ray.exceptions import RayActorError
+
+logger = logging.getLogger(__name__)
+
+
+def check_for_failure(remote_values):
+    """Check for actor failure when retrieving the remote values.
+
+    Args:
+        remote_values (list): List of object references from Ray actor methods.
+
+    Returns:
+        Returns Tuple of success boolean and list of workers indexes that fail.
+    """
+    unfinished = remote_values.copy()
+    dead_worker_indexes = []  # Store the indexes of the failed workers.
+    while len(unfinished) > 0:
+        finished, unfinished = ray.wait(unfinished)
+        # If a failure occurs the ObjectRef will be marked as finished.
+        # Calling ray.get will expose the failure as a RayActorError.
+        for object_ref in finished:
+            try:
+                ray.get(object_ref)
+            except RayActorError as exc:
+                logger.exception(str(exc))
+                failed_actor_rank = remote_values.index(object_ref)
+                logger.info(f"Worker {failed_actor_rank} has failed.")
+                dead_worker_indexes.append(failed_actor_rank)
+    if len(dead_worker_indexes) > 0:
+        return False, dead_worker_indexes
+    else:
+        return True, []
 
 
 def get_address_and_port() -> Tuple[str, int]:

@@ -5,7 +5,6 @@ import os
 from datetime import timedelta
 from typing import Optional, List
 
-import ray
 from ray.util.sgd.v2.backends.backend import BackendConfig, BackendInterface
 from ray.util.sgd.v2.worker_group import WorkerGroup
 from ray.util.sgd.v2.utils import get_address_and_port
@@ -84,7 +83,9 @@ def setup_torch_process_group(backend: str,
         timeout=timedelta(seconds=timeout_s))
 
 
-def shutdown_torch():
+def shutdown_torch(destroy_pg=False):
+    if destroy_pg:
+        dist.destroy_process_group()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
@@ -131,15 +132,18 @@ class TorchBackend(BackendInterface):
                         world_size=len(worker_group),
                         init_method=url,
                         timeout_s=backend_config.timeout_s))
-            ray.get(setup_futures)
+            self.run_with_failure_handling(setup_futures, worker_group,
+                                           backend_config)
         else:
             logger.info("Distributed torch is not being used.")
 
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: TorchConfig):
-        if len(worker_group) > 1:
-            worker_group.execute(dist.destroy_process_group)
-        worker_group.execute(shutdown_torch)
+
+        shutdown_futures = worker_group.execute_async(
+            shutdown_torch, destroy_pg=len(worker_group) > 1)
+        self.run_with_failure_handling(shutdown_futures, worker_group,
+                                       backend_config)
 
     def handle_failure(self, worker_group: WorkerGroup,
                        failed_worker_indexes: List[int],
