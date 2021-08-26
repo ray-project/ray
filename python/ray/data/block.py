@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from ray.data.impl.block_builder import BlockBuilder
 
 from ray.util.annotations import DeveloperAPI
+from ray.data.impl.util import _check_pyarrow_version
 
 T = TypeVar("T")
 
@@ -112,6 +113,7 @@ class BlockAccessor(Generic[T]):
     @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":
         """Create a block accessor for the given block."""
+        _check_pyarrow_version()
         import pyarrow
 
         if isinstance(block, pyarrow.Table):

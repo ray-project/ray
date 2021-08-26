@@ -45,7 +45,7 @@ std::pair<const LocalObject *, flatbuf::PlasmaError> ObjectLifecycleManager::Cre
   if (entry == nullptr) {
     return {nullptr, PlasmaError::OutOfMemory};
   }
-  eviction_policy_->ObjectCreated(object_info.object_id, /*is_create=*/true);
+  eviction_policy_->ObjectCreated(object_info.object_id);
   stats_collector_.OnObjectCreated(*entry);
   return {entry, PlasmaError::OK};
 }
@@ -113,7 +113,7 @@ PlasmaError ObjectLifecycleManager::DeleteObject(const ObjectID &object_id) {
 int64_t ObjectLifecycleManager::RequireSpace(int64_t size) {
   std::vector<ObjectID> objects_to_evict;
   int64_t num_bytes_evicted =
-      eviction_policy_->ChooseObjectsToEvict(size, &objects_to_evict);
+      eviction_policy_->ChooseObjectsToEvict(size, objects_to_evict);
   EvictObjects(objects_to_evict);
   return num_bytes_evicted;
 }
@@ -189,7 +189,7 @@ const LocalObject *ObjectLifecycleManager::CreateObjectInternal(
     // Tell the eviction policy how much space we need to create this object.
     std::vector<ObjectID> objects_to_evict;
     int64_t space_needed =
-        eviction_policy_->RequireSpace(object_info.GetObjectSize(), &objects_to_evict);
+        eviction_policy_->RequireSpace(object_info.GetObjectSize(), objects_to_evict);
     EvictObjects(objects_to_evict);
     // More space is still needed.
     if (space_needed > 0) {
