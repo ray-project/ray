@@ -1,8 +1,8 @@
 from gym import wrappers
 import os
-import re
 
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 
 def gym_env_creator(env_context: EnvContext, env_descriptor: str):
@@ -70,7 +70,7 @@ c) Make sure you provide a fully qualified classpath, e.g.:
         raise gym.error.Error(error_msg)
 
 
-class VideoMonitor(wrappers.Monitor):
+class VideoMonitor(wrappers.Monitor, MultiAgentEnv):
     # Same as original method, but doesn't use the StatsRecorder as it will
     # try to add up multi-agent rewards dicts, which throws errors.
     def _after_step(self, observation, reward, done, info):
@@ -96,10 +96,9 @@ def record_env_wrapper(env, record_env, log_dir, policy_config):
         path_ = record_env if isinstance(record_env, str) else log_dir
         # Relative path: Add logdir here, otherwise, this would
         # not work for non-local workers.
-        if not re.search("[/\\\]", path_):
+        if not os.path.isabs(path_):
             path_ = os.path.join(log_dir, path_)
         print(f"Setting the path for recording to {path_}")
-        from ray.rllib.env.multi_agent_env import MultiAgentEnv
         wrapper_cls = VideoMonitor if isinstance(env, MultiAgentEnv) \
             else wrappers.Monitor
         env = wrapper_cls(

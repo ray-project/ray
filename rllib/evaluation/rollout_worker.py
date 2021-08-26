@@ -432,30 +432,8 @@ class RolloutWorker(ParallelIteratorWorker):
             # Custom validation function given.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
-
-            # MultiAgentEnv (a gym.Env) -> Wrap and make
-            # the wrapped Env yet another MultiAgentEnv.
-            if isinstance(self.env, MultiAgentEnv):
-
-                def wrap(env):
-                    cls = env.__class__
-                    # Add gym.Env as mixin parent to the env's class
-                    # (so it can be wrapped).
-                    env.__class__ = \
-                        type(env.__class__.__name__, (type(env), gym.Env), {})
-                    # Wrap the (now gym.Env) env with our (multi-agent capable)
-                    # recording wrapper.
-                    env = record_env_wrapper(env, record_env, log_dir,
-                                             policy_config)
-                    # Make sure, we make the wrapped object a member of the
-                    # original MultiAgentEnv sub-class again.
-                    if type(env) is not cls:
-                        env.__class__ = \
-                            type(cls.__name__, (type(env), cls), {})
-                    return env
-
             # We can't auto-wrap a BaseEnv.
-            elif isinstance(self.env, (BaseEnv, ray.actor.ActorHandle)):
+            if isinstance(self.env, (BaseEnv, ray.actor.ActorHandle)):
 
                 def wrap(env):
                     return env
