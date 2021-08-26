@@ -1,7 +1,7 @@
 import time
 import ray
 import pytest
-
+from filelock import FileLock
 from ray.tests.conftest import *  # noqa
 from ray.experimental import workflow
 
@@ -100,31 +100,41 @@ def test_wf_in_actor(workflow_start_regular, tmp_path):
     fail_flag = tmp_path / "fail"
     cnt = tmp_path / "count"
     cnt.write_text(str(0))
-
+    lock = tmp_path / "lock"
     @workflow.step
     def start_session():
         if fail_flag.exists():
             raise Exception()
         v = int(cnt.read_text()) + 1
         cnt.write_text(str(v))
-        return True
+        with FileLock(str(lock)):
+            return "UP"
 
     @workflow.virtual_actor
     class Session:
         def __init__(self):
-            self._session_status = {}
+            self._session_status = "DOWN"
+
+        @workflow.virtual_actor.readonly
+        def get_status(self):
+            return self._session_status
 
         def update_session(self, up):
-            self._session_status = {"started": up}
+            (ret, err) = up
+            if err is None:
+                self._session_status = ret
+            else:
+                self._session_status = err
             return self._session_status
 
         def session_start(self):
             step = start_session.step()
             return step
 
-        def session_start_2(self):
-            step = workflow.step(self.update_session)
-            return step.step(start_session.step())
+        def session_start_with_status(self):
+            self._session_status = "STARTING"
+            return self.update_session.step(
+                start_session.options(catch_exceptions=True).step())
 
         def __getstate__(self):
             return self._session_status
@@ -141,9 +151,31 @@ def test_wf_in_actor(workflow_start_regular, tmp_path):
     # After resume, it'll rerun start_session which will
     # generate 1
     assert cnt.read_text() == "1"
-    assert actor.session_start.run() is True
+    assert actor.session_start.run() == "UP"
     assert cnt.read_text() == "2"
-    assert actor.session_start_2.run() == {"started": True}
+    assert actor.session_start_with_status.run() == "UP"
+    assert cnt.read_text() == "3"
+
+    # Now test a new session.
+    actor = Session.get_or_create("session_id")
+    fail_flag.touch()
+    assert isinstance(actor.session_start_with_status.run(), Exception)
+    assert cnt.read_text() == "3"
+    l = FileLock(str(lock))
+    l.acquire()
+    fail_flag.unlink()
+    ret = actor.session_start_with_status.run_async()
+    for i in range(0, 60):
+        if cnt.read_text() == "4":
+            break
+        print(cnt.read_text())
+        time.sleep(1)
+    assert cnt.read_text() == "4"
+    # This means when return from session_start_with_status,
+    # the session got updated
+    assert actor.get_status.run() == "STARTING"
+    l.release()
+    assert ray.get(ret) == "UP"
 
 
 if __name__ == "__main__":
