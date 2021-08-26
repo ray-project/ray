@@ -480,7 +480,7 @@ def run(
                     search_alg, max_concurrent=max_concurrent_trials)
             elif not is_local_mode:
                 logger.warning(
-                    "You have passed a `SearchGenerator` instance as a "
+                    "You have passed a `SearchGenerator` instance as the "
                     "`search_alg`, but `max_concurrent_trials` requires a "
                     "`Searcher` instance`. `max_concurrent_trials` "
                     "will be ignored.")
