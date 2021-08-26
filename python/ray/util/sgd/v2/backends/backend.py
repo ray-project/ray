@@ -139,9 +139,6 @@ class BackendExecutor:
                                         self._num_gpus_per_worker)
         if initialization_hook:
             self.worker_group.execute(initialization_hook)
-        self.start_backend()
-
-    def start_backend(self):
         self._backend.on_start(self.worker_group, self._backend_config)
 
     def start_training(
