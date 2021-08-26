@@ -82,7 +82,8 @@ class BareMetalPolicyWithCustomViewReqs(Policy):
         actions = np.array(
             [self.action_space.sample() for _ in range(batch_size)])
         new_state_batches = list(state_batches[0][0])
-        return actions, [new_state_batches], {'agent_infos': {'state_size': [self.state_size]*batch_size}}
+        new_infos = {"state_size": [self.state_size]*batch_size}
+        return actions, [new_state_batches], {"agent_infos": new_infos}
 
     @override(Policy)
     def compute_actions_from_input_dict(self,
