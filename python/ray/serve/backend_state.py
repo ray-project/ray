@@ -591,14 +591,13 @@ class BackendState:
             float)
 
         self._replica_constructor_retry_counter: Dict[BackendTag,
-                                                    int] = defaultdict(int)
+                                                      int] = defaultdict(int)
 
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
             (self._replicas, self._backend_metadata,
-             self._backend_matadata_backup,
-             self._deleted_backend_metadata, self._target_replicas,
-             self._target_versions,
+             self._backend_matadata_backup, self._deleted_backend_metadata,
+             self._target_replicas, self._target_versions,
              self._backend_goals) = cloudpickle.loads(checkpoint)
 
             for goal_id in self._backend_goals.values():
@@ -639,9 +638,9 @@ class BackendState:
             CHECKPOINT_KEY,
             cloudpickle.dumps(
                 (self._replicas, self._backend_metadata,
-                 self._backend_matadata_backup,
-                 self._deleted_backend_metadata, self._target_replicas,
-                 self._target_versions, self._backend_goals)))
+                 self._backend_matadata_backup, self._deleted_backend_metadata,
+                 self._target_replicas, self._target_versions,
+                 self._backend_goals)))
 
     def _notify_backend_configs_changed(
             self, key: Optional[BackendTag] = None) -> None:
@@ -731,9 +730,6 @@ class BackendState:
         logger.debug(
             f"Set backend goal for {backend_tag} with version "
             f"{backend_info if backend_info is None else backend_info.version}"
-        )
-        logger.debug(
-            f"new_goal_id: {new_goal_id}, existing_goal_id: {existing_goal_id}"
         )
         return new_goal_id, existing_goal_id
 
@@ -1021,8 +1017,8 @@ class BackendState:
             # Got to make a call to complete current deploy() goal after
             # start failure threshold reached, while we might still have
             # pending replicas in current goal.
-            if (failed_to_start_count >= failed_to_start_threshold and
-                failed_to_start_threshold != 0):
+            if (failed_to_start_count >= failed_to_start_threshold
+                    and failed_to_start_threshold != 0):
                 if running_at_target_version_replica_cnt > 0:
                     # At least one RUNNING replica at target state, partial
                     # success; We can stop tracking constructor failures and
@@ -1124,9 +1120,12 @@ class BackendState:
                     transitioned_backend_tags.add(backend_tag)
                 elif start_status == ReplicaStartupStatus.FAILED:
                     # Replica reconfigure (deploy / upgrade) failed
-                    if self._replica_constructor_retry_counter[backend_tag] >= 0:
+                    if self._replica_constructor_retry_counter[
+                        backend_tag
+                    ] >= 0:
                         # Increase startup failure counter if we're tracking it
-                        self._replica_constructor_retry_counter[backend_tag] += 1
+                        self._replica_constructor_retry_counter[
+                            backend_tag] += 1
 
                     replica.set_should_stop(0)
                     replicas.add(ReplicaState.SHOULD_STOP, replica)
@@ -1193,16 +1192,13 @@ class BackendState:
                     goal_id,
                     RuntimeError(
                         "Deployment failed, reverting to previous version "
-                        f"{self._backend_matadata_backup[backend_tag].version} "
-                        f"asynchronously.")
-                )
+                        f"{self._backend_matadata_backup[backend_tag].version}"
+                        f" asynchronously."))
             else:
                 self.delete_backend(backend_tag, force_kill=False)
                 # Got to make sure rollback goal is submitted before marking
                 # user's original deploy() call as successful
                 self._goal_manager.complete_goal(
                     goal_id,
-                    RuntimeError(
-                        f"Deployment failed, deleting {backend_tag} "
-                        "asynchronously.")
-                )
+                    RuntimeError(f"Deployment failed, deleting {backend_tag} "
+                                 "asynchronously."))

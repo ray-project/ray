@@ -716,6 +716,7 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
 
         async def serve(self, request):
             return "hi"
+
     with pytest.raises(RuntimeError):
         ConstructorFailureDeploymentOneReplica.deploy()
 

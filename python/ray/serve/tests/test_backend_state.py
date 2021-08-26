@@ -1,7 +1,6 @@
 import time
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import patch, Mock
-from uuid import uuid4
 
 import pytest
 
@@ -10,18 +9,18 @@ from ray.serve.common import (
     BackendConfig,
     BackendInfo,
     BackendTag,
-    GoalId,
     ReplicaConfig,
     ReplicaTag,
 )
 from ray.serve.backend_state import (
     BackendState,
     BackendVersion,
-    ReplicaStartingStatus,
+    ReplicaStartupStatus,
     ReplicaState,
     ReplicaStateContainer,
     VersionedReplica,
 )
+from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.utils import get_random_letters
 
 TEST_TAG = "TEST"
@@ -152,10 +151,10 @@ class MockReplicaActorWrapper:
         return None
 
     def set_ready(self):
-        self.ready = ReplicaStartingStatus.SUCCEEDED
+        self.ready = ReplicaStartupStatus.SUCCEEDED
 
     def set_failed_to_start(self):
-        self.ready = ReplicaStartingStatus.FAILED
+        self.ready = ReplicaStartupStatus.FAILED
 
     def set_done_stopping(self):
         self.done_stopping = True
@@ -166,10 +165,10 @@ class MockReplicaActorWrapper:
     def start_or_update(self, backend_info: BackendInfo):
         self.started = True
 
-    def check_ready(self) -> ReplicaStartingStatus:
+    def check_ready(self) -> ReplicaStartupStatus:
         assert self.started
         ready = self.ready
-        self.ready = ReplicaStartingStatus.PENDING
+        self.ready = ReplicaStartupStatus.PENDING
         return ready
 
     def resource_requirements(
@@ -197,46 +196,6 @@ class MockReplicaActorWrapper:
     def check_health(self):
         self.health_check_called = True
         return self.healthy
-
-
-class MockAsyncGoalManager:
-    def __init__(self):
-        self._pending_goals = dict()
-
-        self._completed_goals = set()
-        self._failed_goals = set()
-
-    def num_pending_goals(self) -> int:
-        return len(self._pending_goals)
-
-    def create_goal(self, goal_id: Optional[GoalId] = None) -> GoalId:
-        if goal_id is None:
-            goal_id = uuid4()
-
-        self._pending_goals[goal_id] = Mock()
-
-        return goal_id
-
-    def complete_goal(self,
-                      goal_id: GoalId,
-                      exception: Optional[Exception] = None) -> None:
-
-        mock_future = self._pending_goals.pop(goal_id, None)
-        if mock_future:
-            if exception:
-                self._failed_goals.add(goal_id)
-            else:
-                self._completed_goals.add(goal_id)
-
-    def check_complete(self, goal_id: GoalId) -> bool:
-        if goal_id not in self._pending_goals:
-            return True
-
-        return (goal_id in self._completed_goals
-                or goal_id in self._failed_goals)
-
-    def check_failed(self, goal_id: GoalId) -> bool:
-        return goal_id in self._failed_goals
 
 
 def backend_info(version: Optional[str] = None,
@@ -288,12 +247,11 @@ def mock_backend_state() -> Tuple[BackendState, Mock, Mock]:
                     BackendState, "_checkpoint") as mock_checkpoint:
 
         mock_kv_store.get = Mock(return_value=None)
-        # goal_manager = AsyncGoalManager()
-        mock_goal_manager = MockAsyncGoalManager()
+        goal_manager = AsyncGoalManager()
         backend_state = BackendState("name", True, mock_kv_store,
-                                     mock_long_poll, mock_goal_manager)
+                                     mock_long_poll, goal_manager)
         mock_checkpoint.return_value = None
-        yield backend_state, timer, mock_goal_manager
+        yield backend_state, timer, goal_manager
 
 
 def replica(version: Optional[BackendVersion] = None) -> VersionedReplica:
@@ -1812,7 +1770,7 @@ def _constructor_failure_loop_two_replica(backend_state, num_loops):
             total=2,
             by_state=[(ReplicaState.STARTING_OR_UPDATING, 2)])
 
-        assert backend_state._replica_failed_to_start_counter[
+        assert backend_state._replica_constructor_retry_counter[
             TEST_TAG] == i * 2
 
         replica_1 = backend_state._replicas[TEST_TAG].get()[0]
@@ -1843,21 +1801,21 @@ def test_deploy_with_consistent_constructor_failure(mock_backend_state):
             failed with exception
         2) There should be no hanging replicas running since failed initial
             deploy() is followed by delete_backend()
-        3) Replica counter set as -1 to stop tracking current goal as it's
-            already completed
 
     Same testing for same test case in test_deploy.py.
     """
     backend_state, timer, goal_manager = mock_backend_state
 
     b_info_1, b_version_1 = backend_info(num_replicas=2)
-    create_goal, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
-
+    create_goal_id, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    goal_obj = goal_manager.get_goal(create_goal_id)
     _constructor_failure_loop_two_replica(backend_state, 3)
 
-    assert backend_state._replica_failed_to_start_counter[TEST_TAG] == -1
-    assert goal_manager.check_complete(create_goal)
-    assert goal_manager.check_failed(create_goal)
+    assert backend_state._replica_constructor_retry_counter[TEST_TAG] == 6
+    assert goal_manager.check_complete(create_goal_id)
+    check_counts(backend_state, total=0)
+    assert backend_state._backend_metadata == {}
+    assert goal_obj.exception is not None
 
 
 def test_deploy_with_partial_constructor_failure(mock_backend_state):
@@ -1879,6 +1837,7 @@ def test_deploy_with_partial_constructor_failure(mock_backend_state):
 
     b_info_1, b_version_1 = backend_info(num_replicas=2)
     create_goal, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    goal_obj = goal_manager.get_goal(create_goal)
 
     _constructor_failure_loop_two_replica(backend_state, 2)
 
@@ -1887,7 +1846,7 @@ def test_deploy_with_partial_constructor_failure(mock_backend_state):
         backend_state,
         total=2,
         by_state=[(ReplicaState.STARTING_OR_UPDATING, 2)])
-    assert backend_state._replica_failed_to_start_counter[TEST_TAG] == 4
+    assert backend_state._replica_constructor_retry_counter[TEST_TAG] == 4
 
     # Let one replica reach RUNNING state while the other still fails
     replica_1 = backend_state._replicas[TEST_TAG].get()[0]
@@ -1925,13 +1884,49 @@ def test_deploy_with_partial_constructor_failure(mock_backend_state):
     starting_replica = backend_state._replicas[TEST_TAG].get(
         states=[ReplicaState.STARTING_OR_UPDATING])[0]
     starting_replica._actor.set_failed_to_start()
-    backend_state.update()
 
+    backend_state.update()
     # Ensure our goal returned with construtor start counter reset
-    assert backend_state._replica_failed_to_start_counter[TEST_TAG] == -1
+    assert backend_state._replica_constructor_retry_counter[TEST_TAG] == -1
+    # Deploy() goal should NOT be considered complete yet
+    assert not goal_manager.check_complete(create_goal)
+
+    check_counts(backend_state, total=2, by_state=[(ReplicaState.RUNNING, 1)])
+    check_counts(
+        backend_state, total=2, by_state=[(ReplicaState.SHOULD_STOP, 1)])
+
+    backend_state.update()
+    check_counts(backend_state, total=2, by_state=[(ReplicaState.RUNNING, 1)])
+    check_counts(backend_state, total=2, by_state=[(ReplicaState.STOPPING, 1)])
+    starting_replica = backend_state._replicas[TEST_TAG].get(
+        states=[ReplicaState.STOPPING])[0]
+    starting_replica._actor.set_done_stopping()
+
+    backend_state.update()
+    check_counts(backend_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
+    check_counts(
+        backend_state,
+        total=1,
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 0)])
+
+    backend_state.update()
+    check_counts(backend_state, total=2, by_state=[(ReplicaState.RUNNING, 1)])
+    check_counts(
+        backend_state,
+        total=2,
+        by_state=[(ReplicaState.STARTING_OR_UPDATING, 1)])
+
+    starting_replica = backend_state._replicas[TEST_TAG].get(
+        states=[ReplicaState.STARTING_OR_UPDATING])[0]
+    starting_replica._actor.set_ready()
+
+    backend_state.update()
+    check_counts(backend_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
+
+    # Deploy() goal should be considered complete
     assert goal_manager.check_complete(create_goal)
-    # Deploy() goal should be considered successful
-    assert not goal_manager.check_failed(create_goal)
+    # No except set on the AsyncGoal object
+    assert goal_obj.exception is None
 
 
 def test_deploy_with_transient_constructor_failure(mock_backend_state):
@@ -1951,6 +1946,7 @@ def test_deploy_with_transient_constructor_failure(mock_backend_state):
 
     b_info_1, b_version_1 = backend_info(num_replicas=2)
     create_goal, updating = backend_state.deploy_backend(TEST_TAG, b_info_1)
+    goal_obj = goal_manager.get_goal(create_goal)
 
     # Burn 4 retries from both replicas.
     _constructor_failure_loop_two_replica(backend_state, 2)
@@ -1962,7 +1958,7 @@ def test_deploy_with_transient_constructor_failure(mock_backend_state):
         total=2,
         by_state=[(ReplicaState.STARTING_OR_UPDATING, 2)])
 
-    assert backend_state._replica_failed_to_start_counter[TEST_TAG] == 4
+    assert backend_state._replica_constructor_retry_counter[TEST_TAG] == 4
     replica_1 = backend_state._replicas[TEST_TAG].get()[0]
     replica_2 = backend_state._replicas[TEST_TAG].get()[1]
 
@@ -1971,9 +1967,9 @@ def test_deploy_with_transient_constructor_failure(mock_backend_state):
     backend_state.update()
     check_counts(backend_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
 
-    assert backend_state._replica_failed_to_start_counter[TEST_TAG] == -1
+    assert backend_state._replica_constructor_retry_counter[TEST_TAG] == 4
     assert goal_manager.check_complete(create_goal)
-    assert not goal_manager.check_failed(create_goal)
+    assert goal_obj.exception is None
 
 
 if __name__ == "__main__":

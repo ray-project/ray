@@ -7,6 +7,7 @@ from uuid import uuid4
 from ray.serve.common import GoalId
 from ray.serve.utils import logger
 
+
 @dataclass
 class AsyncGoal:
     """
@@ -23,11 +24,11 @@ class AsyncGoal:
     exception: Optional[Exception]
 
     def __init__(
-        self,
-        goal_id: GoalId,
-        event: asyncio.Event,
-        result: Optional[Any] = None,
-        exception: Optional[Exception] = None,
+            self,
+            goal_id: GoalId,
+            event: asyncio.Event,
+            result: Optional[Any] = None,
+            exception: Optional[Exception] = None,
     ):
         self.goal_id = goal_id
         self.event = event
@@ -47,6 +48,7 @@ class AsyncGoal:
 
     def done(self) -> bool:
         return self.event.is_set()
+
 
 class AsyncGoalManager:
     """
@@ -90,6 +92,17 @@ class AsyncGoalManager:
 
         return goal_id
 
+    def get_goal(self, goal_id: GoalId) -> Optional[AsyncGoal]:
+        """
+        Retrieve reference to the underlying AsyncGoal object with given
+        goal_id. Note the object might be not available anymore if the
+        goal is already completed or popped from pending_goals.
+
+        But if the goal is still pending while this function is called, we
+        can use this AsyncGoal object for testing or tracking purposes.
+        """
+        return self._pending_goals.get(goal_id)
+
     def complete_goal(self,
                       goal_id: GoalId,
                       exception: Optional[Exception] = None) -> None:
@@ -107,9 +120,7 @@ class AsyncGoalManager:
 
     def check_complete(self, goal_id: GoalId) -> bool:
         """
-        Check if given goal is completed. If the goal previously errored but
-        was removed, original exception won't be re-raised since we lost the
-        corresponding future object.
+        Check if given goal is completed by checking underlying asyncio.Event
         """
         if goal_id not in self._pending_goals:
             return True

@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple, Any
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.async_goal_manager import AsyncGoal, AsyncGoalManager
+from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.backend_state import ReplicaState, BackendState
 from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
