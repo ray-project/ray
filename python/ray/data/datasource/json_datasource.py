@@ -23,9 +23,8 @@ class JSONDatasource(FileBasedDatasource):
             "read_options", json.ReadOptions(use_threads=False))
         return json.read_json(f, read_options=read_options, **reader_args)
 
-    def _write_block(
-            self, f: "pyarrow.NativeFile", block: BlockAccessor,
-            **writer_args):
+    def _write_block(self, f: "pyarrow.NativeFile", block: BlockAccessor,
+                     **writer_args):
         orient = writer_args.pop("orient", "records")
         lines = writer_args.pop("lines", True)
         block.to_pandas().to_json(f, orient=orient, lines=lines, **writer_args)

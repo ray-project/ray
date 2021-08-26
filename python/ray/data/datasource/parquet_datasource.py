@@ -109,9 +109,8 @@ class ParquetDatasource(FileBasedDatasource):
 
         return read_tasks
 
-    def _write_block(
-            self, f: "pyarrow.NativeFile", block: BlockAccessor,
-            **writer_args):
+    def _write_block(self, f: "pyarrow.NativeFile", block: BlockAccessor,
+                     **writer_args):
         import pyarrow.parquet as pq
 
         pq.write_table(block.to_arrow(), f, **writer_args)

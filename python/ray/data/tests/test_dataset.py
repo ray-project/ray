@@ -1587,8 +1587,7 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
     ds.write_csv(path)
     file_path2 = os.path.join(path, "data_000001.csv")
     df = pd.concat([df1, df2])
-    ds_df = pd.concat([
-        pd.read_csv(file_path), pd.read_csv(file_path2)])
+    ds_df = pd.concat([pd.read_csv(file_path), pd.read_csv(file_path2)])
     assert df.equals(ds_df)
     shutil.rmtree(path)
 

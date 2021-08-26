@@ -23,9 +23,8 @@ class CSVDatasource(FileBasedDatasource):
             "read_options", csv.ReadOptions(use_threads=False))
         return csv.read_csv(f, read_options=read_options, **reader_args)
 
-    def _write_block(
-            self, f: "pyarrow.NativeFile", block: BlockAccessor,
-            **writer_args):
+    def _write_block(self, f: "pyarrow.NativeFile", block: BlockAccessor,
+                     **writer_args):
         from pyarrow import csv
 
         write_options = writer_args.pop("write_options", None)

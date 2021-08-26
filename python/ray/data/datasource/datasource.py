@@ -56,8 +56,7 @@ class Datasource(Generic[T]):
         """
         raise NotImplementedError
 
-    def on_write_complete(self,
-                          write_tasks: List[ObjectRef[WriteResult]],
+    def on_write_complete(self, write_tasks: List[ObjectRef[WriteResult]],
                           **kwargs) -> None:
         """Callback for when a write job completes.
 
@@ -207,8 +206,8 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
             tasks.append(self.data_sink.write.remote(b))
         return tasks
 
-    def on_write_complete(
-            self, write_tasks: List[ObjectRef[WriteResult]]) -> None:
+    def on_write_complete(self,
+                          write_tasks: List[ObjectRef[WriteResult]]) -> None:
         assert all(w == "ok" for w in ray.get(write_tasks)), write_tasks
         self.num_ok += 1
 

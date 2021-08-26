@@ -29,9 +29,8 @@ class NumpyDatasource(FileBasedDatasource):
         buf.seek(0)
         return np.load(buf)
 
-    def _write_block(
-            self, f: "pyarrow.NativeFile", block: BlockAccessor,
-            **writer_args):
+    def _write_block(self, f: "pyarrow.NativeFile", block: BlockAccessor,
+                     **writer_args):
         np.save(f, block.to_arrow())
 
     def _file_format(self):

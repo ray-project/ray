@@ -23,9 +23,8 @@ import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata
-from ray.data.datasource import (
-    Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
-    ParquetDatasource)
+from ray.data.datasource import (Datasource, CSVDatasource, JSONDatasource,
+                                 NumpyDatasource, ParquetDatasource)
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
@@ -785,12 +784,11 @@ class Dataset(Generic[T]):
                 files.add(f)
         return list(files)
 
-    def write_parquet(
-            self,
-            path: str,
-            *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-            **arrow_parquet_args) -> None:
+    def write_parquet(self,
+                      path: str,
+                      *,
+                      filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                      **arrow_parquet_args) -> None:
         """Write the dataset to parquet.
 
         This is only supported for datasets convertible to Arrow records.
@@ -819,12 +817,11 @@ class Dataset(Generic[T]):
             filesystem=filesystem,
             **arrow_parquet_args)
 
-    def write_json(
-            self,
-            path: str,
-            *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-            **pandas_json_args) -> None:
+    def write_json(self,
+                   path: str,
+                   *,
+                   filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                   **pandas_json_args) -> None:
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
@@ -854,12 +851,11 @@ class Dataset(Generic[T]):
             filesystem=filesystem,
             **pandas_json_args)
 
-    def write_csv(
-            self,
-            path: str,
-            *,
-            filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-            **arrow_csv_args) -> None:
+    def write_csv(self,
+                  path: str,
+                  *,
+                  filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+                  **arrow_csv_args) -> None:
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
